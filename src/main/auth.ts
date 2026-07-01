@@ -6,14 +6,15 @@
  *   2. User completes auth on the platform
  *   3. Web generates a one-time device code and redirects to /auth/callback?code=XXX
  *   4. We intercept the navigation, extract the code, exchange it for JWT tokens
- *   5. Tokens stored encrypted via safeStorage
+ *   5. Tokens stored on disk (0600 perms), not the OS keychain — see the
+ *      "Session file storage" comment below for why
  *   6. Heartbeat polls server every 4 hours for tier/entitlements
  */
 
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { BrowserWindow, net, safeStorage, shell } from "electron";
+import { BrowserWindow, net, shell } from "electron";
 
 const CONFIG_DIR = path.join(os.homedir(), "yo");
 const SESSION_FILE = path.join(CONFIG_DIR, ".session");
@@ -83,30 +84,23 @@ function triggerReauth(): void {
   try { reauthHandler?.(); } catch { /* noop */ }
 }
 
-// ── Encrypted storage ────────────────────────────────────────
-
+// ── Session file storage ──────────────────────────────────────
+// Plain file, 0600 perms — NOT safeStorage/OS-keychain. Session tokens are
+// short-lived and already scoped/revocable server-side, so the tradeoff of
+// hitting the macOS Keychain on every single boot (a user-visible OS prompt
+// on some setups) isn't worth it for this value. Provider API keys (the
+// actually sensitive, long-lived secret) live server-side entirely — see
+// provider-keys.ts — so this file never holds anything higher-value than a
+// session token.
 function secureWrite(filePath: string, data: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  if (safeStorage.isEncryptionAvailable()) {
-    const encrypted = safeStorage.encryptString(data);
-    fs.writeFileSync(filePath, encrypted, { mode: 0o600 });
-  } else {
-    fs.writeFileSync(filePath, data, { encoding: "utf-8", mode: 0o600 });
-  }
+  fs.writeFileSync(filePath, data, { encoding: "utf-8", mode: 0o600 });
 }
 
 function secureRead(filePath: string): string | null {
   if (!fs.existsSync(filePath)) return null;
   try {
-    const raw = fs.readFileSync(filePath);
-    if (safeStorage.isEncryptionAvailable()) {
-      try {
-        return safeStorage.decryptString(raw);
-      } catch {
-        return raw.toString("utf-8");
-      }
-    }
-    return raw.toString("utf-8");
+    return fs.readFileSync(filePath, "utf-8");
   } catch {
     return null;
   }
@@ -695,13 +689,27 @@ export function serverDeleteAuthed<T>(endpoint: string): Promise<T> {
 }
 
 export function serverPostAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  return serverWriteAuthed<T>("POST", endpoint, body);
+}
+
+/** PATCH variant of serverPostAuthed — same auth/refresh/timeout handling. */
+export function serverPatchAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  return serverWriteAuthed<T>("PATCH", endpoint, body);
+}
+
+/** PUT variant of serverPostAuthed — same auth/refresh/timeout handling. */
+export function serverPutAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  return serverWriteAuthed<T>("PUT", endpoint, body);
+}
+
+function serverWriteAuthed<T>(method: "POST" | "PATCH" | "PUT", endpoint: string, body: Record<string, unknown>): Promise<T> {
   const token = getAuthToken();
   if (!token) { void refreshTokens(); return Promise.reject(new Error("Not authenticated")); }
 
   return new Promise((resolve, reject) => {
     const url = `${AUTH_SERVER}${endpoint}`;
     const data = JSON.stringify(body);
-    const request = net.request({ url, method: "POST" });
+    const request = net.request({ url, method });
     request.setHeader("Content-Type", "application/json");
     request.setHeader("Authorization", `Bearer ${token}`);
     const timer = setTimeout(() => { request.abort(); reject(new Error("Request timeout")); }, 10_000);
@@ -729,9 +737,5 @@ export function serverPostAuthed<T>(endpoint: string, body: Record<string, unkno
     request.end();
   });
 }
-
-// ── API key storage (use llm-config.ts secureWrite/secureRead) ──
-// Legacy plaintext saveApiKey/loadApiKey removed — all API key
-// storage now goes through llm-config.ts which uses safeStorage.
 
 // validateApiKey removed — use validateLLMConfig from llm-config.ts

@@ -47,7 +47,7 @@ export async function runByokStream(
   sink: AdapterTurnSink,
   signal?: AbortSignal,
 ): Promise<string> {
-  const key = providerKeys.getKey(PROVIDER_TO_KEY[provider]);
+  const key = await providerKeys.getKey(PROVIDER_TO_KEY[provider]);
   if (!key) throw new ProviderNotConfiguredError(provider);
 
   if (provider === "anthropic") return runAnthropic(key, req, sink, signal);

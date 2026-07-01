@@ -14,12 +14,30 @@ import { initDownloads } from "./downloads-ui.js";
 import { initDrip } from "./drip-ui.js";
 import { initTabBar } from "./tab-bar-ui.js";
 import { initGrid } from "./grid-ui.js";
-import { initCanvas } from "./canvas-ui.js";
-import { initCommandCenter } from "./command-center-ui.js";
 import { initSearchClears } from "./search-clear.js";
 import { yoConfirm } from "./yo-modal.js";
 
 type TabInfo = { id: string; name: string; favicon?: string; layoutFavicons?: string[]; pinned?: boolean; url?: string };
+
+// Mirrors preload.ts's SavedPanelApp — duplicated rather than imported so
+// the renderer program (ES2022 module tsconfig) never pulls preload.ts
+// (CommonJS-targeted) into its compile graph, which previously caused
+// build:renderer to silently re-emit dist/renderer/preload.js as an ESM
+// file and break Electron's (CommonJS-only) preload loader.
+type SavedPanelApp = {
+  id: string;
+  orgId: string;
+  createdBy: string;
+  name: string;
+  slug: string;
+  url: string;
+  forceWeb: boolean;
+  connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+  mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
+  commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
+  createdAt: string;
+  updatedAt: string;
+};
 
 declare global {
   interface Window {
@@ -79,6 +97,18 @@ declare global {
         kind?: "user" | "system"; internal?: boolean; requiresFolder?: boolean;
       }>>;
       appsAdd: (id: string, name: string, url?: string) => Promise<unknown>;
+      // Dashboard shell (5a): server-authoritative Apps tab CRUD — see
+      // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
+      panelAppsList: () => Promise<SavedPanelApp[]>;
+      panelAppsCreate: (input: { name: string; slug: string; url: string; forceWeb?: boolean }) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      panelAppsUpdate: (id: string, patch: Partial<{ name: string; slug: string; url: string; forceWeb: boolean }>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      panelAppsSetConnection: (id: string, pipedreamSlug: string) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      panelAppsRemoveConnection: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      panelAppsRemoveMcp: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      panelAppsRemoveCommand: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
       appExport: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
       appsSetMcp: (id: string, mcp: { transport: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; enabled: boolean; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string } }) => Promise<unknown>;
@@ -93,7 +123,7 @@ declare global {
       appsSetConnectedSlug: (id: string, slug: string | null) => Promise<boolean>;
       appsSetCommand: (id: string, key: string, mapping: { selector: string; action: string; description: string }) => Promise<boolean>;
       appsRemoveCommand: (id: string, key: string) => Promise<boolean>;
-      appsTestCommand: (id: string, key: string, wcId?: number) => Promise<string>;
+      appsTestCommand: (mapping: { selector: string; action: string; description?: string; text?: string } | null, wcId?: number) => Promise<string>;
       startPicker: (wcId: number) => void;
       onPickerResult: (cb: (result: { selector: string; tag: string; text: string; isEditable: boolean; isClickable: boolean }) => void) => void;
 
@@ -126,6 +156,8 @@ declare global {
       authLogin: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
       authForgotPassword: (email: string) => Promise<{ ok: boolean; error?: string }>;
       getAccountInfo: () => Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string } | null>;
+      userTimezoneGet: () => Promise<string | null>;
+      userTimezoneSet: (tz: string) => Promise<{ ok: boolean; error?: string }>;
       logout: () => Promise<void>;
       validateApiKey: () => Promise<{ valid: boolean }>;
       getApiKey: () => Promise<null>;
@@ -163,7 +195,6 @@ declare global {
       onDownloadProgress: (cb: (info: { filename: string; receivedBytes: number; totalBytes: number }) => void) => void;
       onDownloadDone: (cb: (info: { filename: string; savePath: string; state: string }) => void) => void;
       downloadShow: (filePath: string) => void;
-      onShowDownloadsDropdown: (cb: () => void) => void;
       // Drip effects
       onDripEffect: (callback: (effect: string) => void) => void;
       // Drips CRUD
@@ -190,7 +221,6 @@ declare global {
       tabReorder: (newOrder: string[]) => void;
       tabNew: () => void;
       tabNewApp: (appId: string) => void;
-      canvasOpenApp: (appId: string) => void;
       onTabState: (callback: (state: { tabs: TabInfo[]; activeId: string; visible: boolean }) => void) => void;
       // URL bar
       urlBarNavigate: (url: string) => void;
@@ -448,6 +478,7 @@ document.getElementById("btn-close")!.addEventListener("click", () => window.yo.
 document.getElementById("btn-minimize")!.addEventListener("click", () => window.yo.windowMinimize());
 document.getElementById("btn-maximize")!.addEventListener("click", () => window.yo.windowMaximize());
 document.getElementById("splash-close")?.addEventListener("click", () => window.yo.windowClose());
+document.getElementById("titlebar-logout")?.addEventListener("click", () => { void window.yo.logout(); });
 
 // -- Titlebar label -> open home tab --
 
@@ -539,15 +570,6 @@ window.yo.onExecCommandFromPalette((cmd) => window.yo.execCommand(cmd));
 // -- Global keyboard shortcuts --
 
 document.addEventListener("keydown", (e) => {
-  // Cmd+Shift+. and Cmd+. — toggle the Command Center (zoom-out view of all
-  // open apps). The plain Cmd+. binding used to toggle the (now-removed)
-  // agent panel; it now also opens Command Center for a consistent shortcut.
-  if (e.key === "." && (e.metaKey || e.ctrlKey)) {
-    e.preventDefault();
-    commandCenter.toggle();
-    return;
-  }
-
   // Cmd+R / Ctrl+R to refresh panels
   if (e.key === "r" && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
@@ -570,13 +592,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 
-// Open a system/user app in the workspace. In canvas mode each app is a
-// free-floating window, so route through canvasOpenApp; otherwise open a tab.
-// Keep every "app tray" entry point (nav rail, header gear, settings signal)
-// going through here so they all respect the active layout mode.
+// Open a system/user app in the workspace as a tab. Keep every "app tray"
+// entry point (nav rail, header gear, settings signal) going through here.
 function openWorkspaceApp(slug: string): void {
-  if (document.body.classList.contains("canvas-mode")) window.yo.canvasOpenApp(slug);
-  else window.yo.tabNewApp(slug);
+  window.yo.tabNewApp(slug);
 }
 
 // Open settings tab when main process signals (kept; welcome removed).
@@ -596,248 +615,7 @@ const gridApi = initGrid({
 
 // -- Downloads dropdown (extracted to downloads-ui.ts) --
 initDownloads();
-// A canvas window's URL-bar download button opens this dropdown (the list
-// always lives here regardless of which panel triggered the download).
-window.yo.onShowDownloadsDropdown(() => { document.getElementById("dl-btn")?.click(); });
 initSearchClears();
-
-// -- Canvas mode + Command Center --
-initCanvas();
-const commandCenter = initCommandCenter();
-// Header Command Center launcher (zoom-out view of all open apps + layouts).
-document.getElementById("header-command-center")?.addEventListener("click", () => commandCenter.toggle());
-
-// -- Left rail: working-folder picker + app navigation --
-{
-  const rail = document.getElementById("files-rail")!;
-  const railToggle = document.getElementById("files-rail-toggle")!;
-  const railResize = document.getElementById("files-rail-resize")!;
-
-  let railWidth = 240;
-
-  // Measure the chrome before #tab-bar inside #titlebar so the first tab can
-  // line up with the rail's right edge regardless of label width / font.
-  // Sets --tabbar-chrome-w which the #tab-bar's padding-left calc consumes.
-  function measureTabbarChromeWidth(): void {
-    const tabBarEl = document.getElementById("tab-bar");
-    if (!tabBarEl) return;
-    const r = tabBarEl.getBoundingClientRect();
-    document.body.style.setProperty("--tabbar-chrome-w", `${Math.round(r.left)}px`);
-  }
-  measureTabbarChromeWidth();
-  window.addEventListener("resize", measureTabbarChromeWidth);
-
-  const setInset = (px: number) => {
-    document.body.style.setProperty("--left-inset", `${px}px`);
-    window.yo.filesRailResize(px);
-    // Reposition any split drag-handles to track the new content offset.
-    gridApi.renderGridHandles();
-  };
-
-  function applyOpen(open: boolean) {
-    railToggle.classList.toggle("active", open);
-    if (open) {
-      rail.classList.remove("hidden");
-      void rail.offsetHeight;
-      rail.classList.add("open");
-      setInset(railWidth);
-    } else {
-      rail.classList.remove("open");
-      setInset(0);
-      setTimeout(() => rail.classList.add("hidden"), 200);
-    }
-    try { localStorage.setItem("filesRailOpen", open ? "1" : "0"); } catch {}
-    tabApi.refreshEmptyState();
-  }
-
-  railToggle.addEventListener("click", () => applyOpen(!rail.classList.contains("open")));
-
-  // Nav: each rail button opens the matching yo://<slug> system app in a
-  // panel. The data-section value (dashboard, apps, agents, vibes, councils,
-  // schedules, layouts, skills, drips) IS the app slug — they're registered
-  // as INTERNAL_APPS with kind:"system" in app-connector.ts and routed in
-  // main.ts. Same mechanism .dip uses, so there's one entry point per app.
-  rail.querySelectorAll<HTMLElement>(".files-rail-navitem[data-section]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const slug = btn.dataset.section;
-      if (slug) openWorkspaceApp(slug);
-    });
-  });
-  document.getElementById("files-rail-logout")?.addEventListener("click", () => {
-    void window.yo.logout();
-  });
-  // Resize handle.
-  let dragging = false;
-  railResize.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    dragging = true;
-    railResize.classList.add("dragging");
-    rail.style.transition = "none";
-  });
-  document.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
-    railWidth = Math.max(160, Math.min(window.innerWidth * 0.4, e.clientX));
-    rail.style.width = `${railWidth}px`;
-    setInset(railWidth);
-  });
-  document.addEventListener("mouseup", () => {
-    if (!dragging) return;
-    dragging = false;
-    railResize.classList.remove("dragging");
-    rail.style.transition = "";
-    window.yo.filesRailWidthSave(railWidth);
-  });
-
-  void (async () => {
-    railWidth = await window.yo.filesRailGetWidth().catch(() => 240);
-    rail.style.width = `${railWidth}px`;
-    let savedOpen: string | null = null;
-    try { savedOpen = localStorage.getItem("filesRailOpen"); } catch { /* ignore */ }
-    applyOpen(savedOpen !== "0"); // default open
-  })();
-
-  // ── Rail Recents (bottom pane) ───────────────────────────────────
-  // App-centric: shows the last 10 distinct apps the user has opened, with the
-  // app's icon (favicon for web apps, initial for yo:// internal). Grid
-  // layout — at least 2 wide, expands to fill the rail's width.
-  type RailRecent = { kind: "app" | "layout"; id: string; name: string; folder: string; ts: number };
-  type AppMeta = { id: string; name: string; url?: string };
-  const railNav = document.getElementById("files-rail-nav")!;
-  const railSplitHandle = document.getElementById("rail-split-handle")!;
-
-  // Shared icon renderer (favicon for web apps, initial for yo:// internal).
-  function iconHtml(app: RailRecent, meta?: AppMeta): string {
-    const initial = (meta?.name || app.name).charAt(0).toUpperCase();
-    const url = meta?.url || "";
-    const isWeb = url && !url.startsWith("yo://") && !url.startsWith("file://");
-    if (isWeb) {
-      try {
-        const host = new URL(url).hostname;
-        const fav = `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
-        return `<img class="rail-recents-icon-img" src="${fav}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="rail-recents-icon-initial" style="display:none">${initial}</span>`;
-      } catch { /* malformed URL — fall through */ }
-    }
-    return `<span class="rail-recents-icon-initial">${initial}</span>`;
-  }
-
-  // ── Apps section — every openable app, alphabetical, click to open ──
-  // (canvas-aware). This is the canvas-mode stand-in for the `+` picker.
-  const railAppsListEl = document.getElementById("rail-apps-list");
-  const railAppsSearch = document.getElementById("rail-apps-search") as HTMLInputElement | null;
-  let railAppsAll: Array<{ id: string; name: string; url?: string }> = [];
-  let railAppsQuery = "";
-  function renderRailAppsList(): void {
-    if (!railAppsListEl) return;
-    const q = railAppsQuery.trim().toLowerCase();
-    const list = railAppsAll.filter((a) => !q || a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q));
-    railAppsListEl.innerHTML = "";
-    if (list.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "rail-recents-empty";
-      empty.textContent = q ? `No apps matching "${railAppsQuery}".` : "No apps.";
-      railAppsListEl.appendChild(empty);
-      return;
-    }
-    for (const app of list) {
-      const entry: RailRecent = { kind: "app", id: app.id, name: app.name, folder: "", ts: 0 };
-      const meta: AppMeta = { id: app.id, name: app.name, url: app.url };
-      const cell = document.createElement("button");
-      cell.className = "rail-recents-cell";
-      cell.type = "button";
-      cell.title = app.name;
-      cell.innerHTML = `<div class="rail-recents-icon">${iconHtml(entry, meta)}</div><div class="rail-recents-name"></div>`;
-      (cell.querySelector(".rail-recents-name") as HTMLElement).textContent = app.name;
-      cell.addEventListener("click", () => openWorkspaceApp(app.id));
-      railAppsListEl.appendChild(cell);
-    }
-  }
-  async function refreshRailAppsSection(): Promise<void> {
-    let apps: Array<{ id: string; name: string; url?: string }> = [];
-    try { apps = await window.yo.appsListMountable(); } catch { /* leave empty */ }
-    // Only real, openable apps (drops stale/removed entries without a URL), A→Z.
-    railAppsAll = apps
-      .filter((a) => !!a.url)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    renderRailAppsList();
-  }
-  railAppsSearch?.addEventListener("input", () => { railAppsQuery = railAppsSearch.value; renderRailAppsList(); });
-  // The header's open icon launches the Apps management page.
-  document.getElementById("rail-apps-open")?.addEventListener("click", () => openWorkspaceApp("apps"));
-  window.yo.onAppsChanged?.(() => { void refreshRailAppsSection(); });
-  void refreshRailAppsSection();
-
-  // Left-rail user section (bottom) — signed-in name/avatar + an upward menu
-  // with Settings / Manage Account / Sign out.
-  (function initRailUser() {
-    const wrap = document.getElementById("files-rail-user");
-    const btn = document.getElementById("files-rail-user-btn");
-    const menu = document.getElementById("files-rail-user-menu");
-    if (!wrap || !btn || !menu) return;
-    const avatar = document.getElementById("files-rail-user-avatar");
-    const nameEl = document.getElementById("files-rail-user-name");
-    const subEl = document.getElementById("files-rail-user-sub");
-
-    void window.yo.getAccountInfo().then((info) => {
-      if (!info) return;
-      const name = `${info.firstName || ""} ${info.lastName || ""}`.trim() || info.email;
-      const initials = ((info.firstName?.[0] || "") + (info.lastName?.[0] || "")).toUpperCase()
-        || (info.email?.[0] || "?").toUpperCase();
-      if (nameEl) nameEl.textContent = name || "Account";
-      if (subEl) subEl.textContent = info.email || info.orgName || "";
-      if (avatar) avatar.textContent = initials;
-    }).catch(() => {});
-
-    const close = () => { menu.classList.add("hidden"); wrap.classList.remove("open"); };
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (menu.classList.contains("hidden")) { menu.classList.remove("hidden"); wrap.classList.add("open"); }
-      else close();
-    });
-    document.addEventListener("click", (e) => { if (!wrap.contains(e.target as Node)) close(); });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
-    menu.querySelectorAll<HTMLButtonElement>(".files-rail-user-item").forEach((item) => {
-      item.addEventListener("click", () => {
-        close();
-        const act = item.dataset.act;
-        if (act === "settings") openWorkspaceApp("settings");
-        else if (act === "account") void window.yo.execCommand(`dip ${window.yo.platformUrl}`);
-        else if (act === "logout") void window.yo.logout();
-      });
-    });
-  })();
-
-  // ── Rail split: draggable divider between nav and Apps ──
-  //  - leftRailSplit (px): height of the top nav pane (Apps takes the rest,
-  //    Workspaces removed).
-  let navH = 280;
-  let splitDragging = false;
-  const applyNavHeight = (px: number): void => { rail.style.setProperty("--rail-nav-h", `${Math.max(80, px)}px`); };
-  void (async () => {
-    const savedNav = await window.yo.getPreference("leftRailSplit", 280);
-    if (typeof savedNav === "number" && savedNav > 0) navH = savedNav;
-    applyNavHeight(navH);
-  })();
-  railSplitHandle.addEventListener("mousedown", (e) => {
-    e.preventDefault(); splitDragging = true; railSplitHandle.classList.add("dragging"); document.body.style.cursor = "row-resize";
-  });
-  document.addEventListener("mousemove", (e) => {
-    if (!splitDragging) return;
-    const railRect = rail.getBoundingClientRect();
-    const relY = e.clientY - railRect.top;
-    navH = Math.max(80, Math.min(railRect.height - 200, relY));
-    applyNavHeight(navH);
-  });
-  document.addEventListener("mouseup", () => {
-    if (!splitDragging) return;
-    splitDragging = false;
-    railSplitHandle.classList.remove("dragging");
-    document.body.style.cursor = "";
-    void window.yo.setPreference("leftRailSplit", navH);
-  });
-
-  // Silence the unused-var warning for railNav — used implicitly via DOM.
-  void railNav;
-}
 
 // -- Update bar --
 
@@ -878,11 +656,50 @@ updateDismiss.addEventListener("click", () => {
 initDrip();
 
 
+// -- Dashboard shell (5a) --
+//
+// Replaces the tab-bar + files-rail chrome shown after Splash -> Auth with a
+// simple two-tab Apps / Settings dashboard. Tabs open the existing yo://apps
+// and yo://dashboard-settings system-app panels through the same
+// panel-manager mechanism the old rail used (openWorkspaceApp) — a deliberate
+// stopgap; the real Panel Manager rewrite is sub-phase 5b.
+let dashboardInitialized = false;
+function initDashboard(): void {
+  document.getElementById("files-rail")?.classList.add("dashboard-hidden");
+  document.getElementById("tab-bar")?.classList.add("dashboard-hidden");
+  const tabs = document.getElementById("dashboard-tabs");
+  tabs?.classList.remove("hidden");
+
+  if (dashboardInitialized) return;
+  dashboardInitialized = true;
+
+  const setActive = (slug: "apps" | "settings") => {
+    document.getElementById("dashboard-tab-apps")?.classList.toggle("active", slug === "apps");
+    document.getElementById("dashboard-tab-settings")?.classList.toggle("active", slug === "settings");
+  };
+
+  document.getElementById("dashboard-tab-apps")?.addEventListener("click", () => {
+    setActive("apps");
+    openWorkspaceApp("apps");
+  });
+  document.getElementById("dashboard-tab-settings")?.addEventListener("click", () => {
+    setActive("settings");
+    openWorkspaceApp("dashboard-settings");
+  });
+
+  // Land on Apps by default — just the tab styling. Main already opened and
+  // activated the "apps" panel directly at boot (openAppsPanelOnly() in
+  // main.ts); calling openWorkspaceApp("apps") here too raced it into
+  // opening a SECOND "apps" instance (tabNewApp doesn't know the boot-time
+  // one exists), which was the extra flash/transition after the splash.
+  setActive("apps");
+}
+
 // -- Boot gate --
 
 initBootGate({
   onBootReady: () => {},
-  showPanels: () => window.yo.panelsShow(),
+  showPanels: () => { window.yo.panelsShow(); initDashboard(); },
   hidePanels: () => window.yo.panelsHide(),
   applyTheme: (theme) => {
     document.documentElement.setAttribute("data-theme", theme);

@@ -35,21 +35,61 @@ const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
 let currentAppId = "";
-let activeAppTab: "panel" | "connection" | "mcp" = "panel";
+let activeAppTab: "dashboard" | "connection" | "mcp" = "dashboard";
 let connectorSearchOffset = 0;
 
+// Dashboard shell (5a): apps are server objects (yo-server's saved_apps),
+// not local ones — `id` is the server row's UUID (used for every write:
+// update/delete/connection/mcp/commands); `slug` is the human-readable
+// identifier shown/edited in the UI (was previously `id` in the local model).
 interface PanelApp {
   id: string;
+  slug: string;
   name: string;
   url?: string;
-  connectedSlug?: string;
   forceWeb?: boolean;
-  commands?: Record<string, { selector: string; action: string; description: string }>;
-  connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean };
-  mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string }; enabled: boolean };
+  commands?: Record<string, { selector: string; action: string; description?: string; text?: string }>;
+  connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+  mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
+}
+
+function toPanelApp(a: {
+  id: string; slug: string; name: string; url: string; forceWeb: boolean;
+  commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
+  connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+  mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
+}): PanelApp {
+  return {
+    id: a.id, slug: a.slug, name: a.name, url: a.url, forceWeb: a.forceWeb,
+    commands: a.commands, connection: a.connection, mcp: a.mcp,
+  };
 }
 
 let panelApps: PanelApp[] = [];
+
+// Pipedream's catalog icon per connected app's pipedreamSlug — the saved-app
+// row doesn't carry an icon itself, so it's looked up from the connector
+// catalog once per unique slug and cached for the session. Mirrors the
+// platform Apps page (yo-platform/app/dashboard/apps/page.js).
+const connectedIconCache: Record<string, string | null> = {};
+
+async function loadConnectedIcons(): Promise<void> {
+  const slugs = [...new Set(
+    panelApps
+      .filter((a) => a.connection?.accountId && a.connection?.pipedreamSlug)
+      .map((a) => a.connection!.pipedreamSlug),
+  )].filter((slug) => !(slug in connectedIconCache));
+  if (slugs.length === 0) return;
+  await Promise.all(slugs.map(async (slug) => {
+    try {
+      const { apps } = await window.yo.connectorsGetApps(slug);
+      connectedIconCache[slug] = apps.find((a) => a.id === slug)?.icon || null;
+    } catch {
+      connectedIconCache[slug] = null;
+    }
+  }));
+  renderAppsList();
+}
 
 async function loadApps() {
   appDetail.classList.add("hidden");
@@ -61,19 +101,15 @@ async function loadApps() {
   appsToolbar.classList.remove("hidden");
 
   try {
-    const apps = await window.yo.appsList();
-    panelApps = apps
-      .filter((a) => a.url)
-      .map((a) => ({
-        id: a.id, name: a.name, url: a.url,
-        connectedSlug: a.connectedSlug, forceWeb: a.forceWeb,
-        commands: a.commands, connection: a.connection, mcp: a.mcp,
-      }));
+    const apps = await window.yo.panelAppsList();
+    panelApps = apps.filter((a) => a.url).map(toPanelApp);
   } catch { panelApps = []; }
 
   document.getElementById("apps-limit-msg")!.classList.add("hidden");
 
   renderAppsList();
+  // Async — re-renders once Pipedream catalog icons for connected apps land.
+  void loadConnectedIcons();
 }
 
 function renderAppsList() {
@@ -104,6 +140,12 @@ function renderAppsList() {
     const faviconUrl = hasUrl
       ? `https://www.google.com/s2/favicons?domain=${new URL(app.url!).hostname}&sz=64`
       : "";
+    // Connected apps use Pipedream's own catalog icon; fall back to the web
+    // favicon (then the initial) when not connected or no catalog icon exists.
+    const connectedIcon = app.connection?.accountId && app.connection.pipedreamSlug
+      ? connectedIconCache[app.connection.pipedreamSlug] || ""
+      : "";
+    const iconUrl = connectedIcon || faviconUrl;
     const initial = app.name.charAt(0).toUpperCase();
 
     const badges: string[] = [];
@@ -115,12 +157,12 @@ function renderAppsList() {
     card.innerHTML = `
       ${badges.join("")}
       <div class="app-card-icon">
-        ${faviconUrl
-          ? `<img src="${faviconUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="app-card-initial" style="display:none">${initial}</span>`
+        ${iconUrl
+          ? `<img src="${iconUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="app-card-initial" style="display:none">${initial}</span>`
           : `<span class="app-card-initial">${initial}</span>`}
       </div>
       <div class="app-card-name">${app.name}</div>
-      <div class="app-card-id">${app.id}</div>`;
+      <div class="app-card-id">${app.slug}</div>`;
 
     card.addEventListener("click", () => openPanelAppDetail(app));
     appsList.appendChild(card);
@@ -142,7 +184,7 @@ function switchAppTab(tab: string) {
   document.querySelectorAll<HTMLElement>(".app-tab-right").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
-  if (tab === "panel") loadPanelTab();
+  if (tab === "dashboard") loadPanelTab();
   if (tab === "connection") loadConnectionTab();
   if (tab === "mcp") loadMcpTab();
 }
@@ -156,7 +198,7 @@ function loadPanelTab() {
   const app = panelApps.find((a) => a.id === currentAppId);
   if (!app) return;
   if (!app.url) {
-    document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">No URL configured for this app. Add a URL on the Dashboard tab to enable panel features.</div>`;
+    document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">No URL configured for this app. Add one above to enable panel features.</div>`;
     return;
   }
   if (!panelLoaded) {
@@ -216,9 +258,9 @@ async function loadConnectionTab() {
       btn.textContent = "Disconnecting...";
       await window.yo.connectorsDisconnect(app.connection.accountId);
       // Also remove the connection from the app so it clears properly
-      await window.yo.appsRemoveConnection(app.id);
-      const apps = await window.yo.appsList();
-      reloadPanelApps(apps);
+      await window.yo.panelAppsRemoveConnection(app.id);
+      const apps = await window.yo.panelAppsList();
+      reloadPanelApps(apps.map(toPanelApp));
       loadConnectionTab();
     });
   } else {
@@ -303,18 +345,18 @@ async function loadConnectorGrid(search?: string) {
         // Set the pipedream slug on the current app FIRST so syncAccountsToApps can find it
         const currentApp = panelApps.find((a) => a.id === currentAppId);
         if (currentApp) {
-          await window.yo.appsSetConnection(currentApp.id, app.id);
+          await window.yo.panelAppsSetConnection(currentApp.id, app.id);
         }
         const result = await window.yo.connectorsConnect(app.id);
         if (!result.ok) {
           nameEl.textContent = result.error || "Connection failed";
           // Remove the connection we just set since connect failed
-          if (currentApp) await window.yo.appsRemoveConnection(currentApp.id);
+          if (currentApp) await window.yo.panelAppsRemoveConnection(currentApp.id);
           setTimeout(() => { nameEl.textContent = app.name; }, 3000);
           return;
         }
-        const allApps = await window.yo.appsList();
-        reloadPanelApps(allApps);
+        const allApps = await window.yo.panelAppsList();
+        reloadPanelApps(allApps.map(toPanelApp));
         loadConnectionTab();
       });
       grid.appendChild(card);
@@ -514,7 +556,7 @@ async function saveMcpConfig() {
     config.url = url;
   }
 
-  await window.yo.appsSetMcp(currentAppId, config as any);
+  await window.yo.panelAppsSetMcp(currentAppId, config);
   if (app?.mcp) {
     await window.yo.mcpUpdateServer(currentAppId, config);
   } else {
@@ -532,7 +574,7 @@ async function openPanelAppDetail(app: PanelApp) {
   connectorSearchOffset = 0;
 
   // Populate dashboard fields
-  appDetailId.value = app.id;
+  appDetailId.value = app.slug;
   appDetailName.value = app.name;
   appDetailUrl.value = app.url || "";
   appForceWeb.checked = !!app.forceWeb;
@@ -552,11 +594,11 @@ async function openPanelAppDetail(app: PanelApp) {
   mcpAddForm.classList.add("hidden");
   appDetail.classList.remove("hidden");
 
-  switchAppTab("panel");
+  switchAppTab("dashboard");
 }
 
 async function refreshCommands() {
-  const apps = await window.yo.appsList();
+  const apps = await window.yo.panelAppsList();
   const app = apps.find((a) => a.id === currentAppId);
   const commands = app?.commands || {};
   const keys = Object.keys(commands);
@@ -594,7 +636,7 @@ async function refreshCommands() {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const key = (btn.closest(".command-row") as HTMLElement).dataset.key!;
-      await window.yo.appsRemoveCommand(currentAppId, key);
+      await window.yo.panelAppsRemoveCommand(currentAppId, key);
       refreshCommands();
     });
   });
@@ -604,7 +646,7 @@ async function refreshCommands() {
       e.stopPropagation();
       const key = (btn.closest(".command-row") as HTMLElement).dataset.key!;
       const wcId = getPreviewWebContentsId();
-      const result = await window.yo.appsTestCommand(currentAppId, key, wcId);
+      const result = await window.yo.appsTestCommand(commands[key] || null, wcId);
       appConnectStatus.textContent = result ? `Test ${key}: ${result.slice(0, 80)}` : `Test ${key}: executed`;
       setTimeout(() => { appConnectStatus.textContent = ""; }, 3000);
     });
@@ -719,7 +761,7 @@ async function saveMapping() {
     description: descInput.value.trim() || key,
   };
   if (mappingText) mapping.text = mappingText;
-  await window.yo.appsSetCommand(currentAppId, key, mapping as any);
+  await window.yo.panelAppsSetCommand(currentAppId, key, mapping);
 
   appMapCommand.classList.add("hidden");
   appConnectStatus.textContent = `Mapped: ${key}`;
@@ -739,13 +781,7 @@ function closeAppDetail() {
 }
 
 function reloadPanelApps(apps: Array<PanelApp>) {
-  panelApps = apps
-    .filter((a) => a.url)
-    .map((a) => ({
-      id: a.id, name: a.name, url: a.url,
-      connectedSlug: a.connectedSlug, forceWeb: a.forceWeb,
-      commands: a.commands, connection: a.connection, mcp: a.mcp,
-    }));
+  panelApps = apps.filter((a) => a.url);
 }
 
 // When a browser tab is "Create App"'d, the originating tab id is stashed here
@@ -862,14 +898,18 @@ function initApps() {
       mcpConfig.url = url;
     }
 
+    // KNOWN GAP: headless MCP-only entries (no panel URL) stay local — the
+    // server's saved_apps.url column is NOT NULL, so this path can't move to
+    // /api/panel-apps without a schema change. Flagged, not fixed here since
+    // it's a server-side ask outside this pass's scope.
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
     await window.yo.appsAdd(id, name);
     await window.yo.appsSetMcp(id, mcpConfig as any);
     await window.yo.mcpAddServer({ id, name, ...mcpConfig } as any);
 
     mcpAddForm.classList.add("hidden");
-    const apps = await window.yo.appsList();
-    reloadPanelApps(apps);
+    const apps = await window.yo.panelAppsList();
+    reloadPanelApps(apps.map(toPanelApp));
     const created = panelApps.find((a) => a.id === id);
     if (created) openPanelAppDetail(created);
     else loadApps();
@@ -907,23 +947,28 @@ function initApps() {
       return;
     }
     // Uniqueness check — apps and vibes share one namespace.
-    const existing = await window.yo.appsList();
-    if (existing.some((a) => a.id === id)) {
+    const existing = await window.yo.panelAppsList();
+    if (existing.some((a) => a.slug === id)) {
       addSlugInput.classList.add("invalid"); clearInvalid(addSlugInput);
       appFormError.textContent = `Slug "${id}" is already taken. Pick a different one.`;
       appFormError.classList.remove("hidden");
       return;
     }
-    await window.yo.appsAdd(id, name, url);
+    const created = await window.yo.panelAppsCreate({ name, slug: id, url });
+    if (!created.ok || !created.app) {
+      appFormError.textContent = created.error || "Failed to create app.";
+      appFormError.classList.remove("hidden");
+      return;
+    }
     // Force-web / do-not-record are set from the app's detail screen now; new
-    // apps already default to capture-off in app-connector.add.
+    // apps already default to capture-off.
     // If this app was created from a browser tab, convert that tab into it.
     if (pendingOriginTab) { window.yo.convertTabToApp(pendingOriginTab, id); pendingOriginTab = null; }
     appAddForm.classList.add("hidden");
-    const apps = await window.yo.appsList();
-    reloadPanelApps(apps);
-    const created = panelApps.find((a) => a.id === id);
-    if (created) openPanelAppDetail(created);
+    const apps = await window.yo.panelAppsList();
+    reloadPanelApps(apps.map(toPanelApp));
+    const createdLocal = panelApps.find((a) => a.id === created.app!.id);
+    if (createdLocal) openPanelAppDetail(createdLocal);
     else loadApps();
   });
 
@@ -932,9 +977,13 @@ function initApps() {
 
   // App detail "Open app" — opens the app as a panel (same path .dip uses)
   // and closes the Settings overlay so the panel is visible.
+  // NOTE: apps are server-only now (no local mirror), so `.dip <slug>` can't
+  // resolve this app until the real Panel Manager (5b) opens apps straight
+  // from the server record instead of the local app registry.
   document.getElementById("app-detail-open")!.addEventListener("click", () => {
-    if (!currentAppId) return;
-    void window.yo.execCommand(`dip ${currentAppId}`);
+    const app = panelApps.find((a) => a.id === currentAppId);
+    if (!app) return;
+    void window.yo.execCommand(`dip ${app.slug}`);
     closeAppDetail();
   });
 
@@ -967,16 +1016,16 @@ function initApps() {
   // Dashboard save
   document.getElementById("app-dash-save")!.addEventListener("click", async () => {
     if (!currentAppId) return;
-    const newId = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    if (newId && newId !== currentAppId) {
-      const ok = await window.yo.appsUpdateId(currentAppId, newId);
-      if (ok) currentAppId = newId;
-    }
+    const newSlug = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    const patch: Partial<{ name: string; slug: string; url: string; forceWeb: boolean }> = {
+      forceWeb: appForceWeb.checked,
+    };
+    if (newSlug) patch.slug = newSlug;
     const name = appDetailName.value.trim();
     const url = appDetailUrl.value.trim();
-    if (name) await window.yo.appsUpdateName(currentAppId, name);
-    if (url) await window.yo.appsUpdateUrl(currentAppId, url);
-    await window.yo.appsUpdateForceWeb(currentAppId, appForceWeb.checked);
+    if (name) patch.name = name;
+    if (url) patch.url = url;
+    await window.yo.panelAppsUpdate(currentAppId, patch);
 
     closeAppDetail();
   });
@@ -989,7 +1038,7 @@ function initApps() {
     if (!currentAppId) return;
     const confirmed = await confirmAction(`Delete app "${appDetailName.value}"?`);
     if (!confirmed) return;
-    await window.yo.appsRemove(currentAppId);
+    await window.yo.panelAppsDelete(currentAppId);
     closeAppDetail();
   });
 
@@ -1087,8 +1136,8 @@ function initApps() {
   // Connectors changed event — refresh connection tab if viewing
   window.yo.onConnectorsChanged(async () => {
     if (!appDetail.classList.contains("hidden") && activeAppTab === "connection" && currentAppId) {
-      const apps = await window.yo.appsList();
-      reloadPanelApps(apps);
+      const apps = await window.yo.panelAppsList();
+      reloadPanelApps(apps.map(toPanelApp));
       loadConnectionTab();
     }
   });

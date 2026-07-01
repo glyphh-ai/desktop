@@ -4,6 +4,24 @@
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
+/** Server-authoritative Apps tab record — mirrors yo-server's SavedApp
+ *  (saved-app-service.ts). `id` is the server row's UUID; `slug` is the
+ *  human-readable identifier shown/edited in the UI. */
+export interface SavedPanelApp {
+  id: string;
+  orgId: string;
+  createdBy: string;
+  name: string;
+  slug: string;
+  url: string;
+  forceWeb: boolean;
+  connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+  mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
+  commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 contextBridge.exposeInMainWorld("yo", {
   copyToClipboard: (text: string) => ipcRenderer.invoke("copy-to-clipboard", text),
   // Resolve a dropped/selected File to its absolute on-disk path. Electron 32+
@@ -21,28 +39,6 @@ contextBridge.exposeInMainWorld("yo", {
   panelsRefresh: (id?: string) => ipcRenderer.send("panels-refresh", id),
   panelsZoom: (factor: number) => ipcRenderer.send("panels-zoom", factor),
   panelsGetZoom: () => ipcRenderer.invoke("panels-get-zoom") as Promise<number>,
-
-  // ── Canvas (free-floating window) mode ────────────────────
-  canvasGetState: () => ipcRenderer.invoke("canvas-get-state") as Promise<{ mode: boolean; titlebarH: number; active: string | null; windows: Array<{ id: string; name: string; favicon: string; x: number; y: number; w: number; h: number; z: number; collapsed: boolean }> }>,
-  canvasSetMode: (on: boolean) => ipcRenderer.send("canvas-set-mode", on),
-  canvasSetBounds: (id: string, rect: { x: number; y: number; w: number; h: number }) => ipcRenderer.send("canvas-set-bounds", id, rect),
-  canvasFocus: (id: string) => ipcRenderer.send("canvas-focus", id),
-  canvasCollapse: (id: string) => ipcRenderer.send("canvas-collapse", id),
-  canvasRestore: (id: string) => ipcRenderer.send("canvas-restore", id),
-  canvasClose: (id: string) => ipcRenderer.send("canvas-close", id),
-  canvasMaximize: (id: string) => ipcRenderer.send("canvas-maximize", id),
-  canvasDipLayout: (name?: string) => ipcRenderer.send("canvas-dip-layout", name),
-  canvasOpenApp: (appId: string) => ipcRenderer.send("canvas-open-app", appId),
-  onCanvasState: (cb: (state: { mode: boolean; titlebarH: number; active: string | null; windows: Array<{ id: string; name: string; favicon: string; x: number; y: number; w: number; h: number; z: number; collapsed: boolean }> }) => void) => {
-    ipcRenderer.on("canvas-state", (_e, state) => cb(state));
-  },
-  // Backup mouseup for canvas drag/resize: if the pointer is released somewhere
-  // the chrome view can't see (e.g. window clamped at a screen edge), the main
-  // renderer ends the gesture so the ghost doesn't get stuck following.
-  onCanvasInteracting: (cb: (active: boolean) => void) => {
-    ipcRenderer.on("canvas-interacting", (_e, active: boolean) => cb(!!active));
-  },
-  canvasInteractEndGlobal: () => ipcRenderer.send("canvas-interact-end-global"),
 
   // Skills CRUD
   skillsList: () => ipcRenderer.invoke("skills-list") as Promise<string[]>,
@@ -190,7 +186,30 @@ contextBridge.exposeInMainWorld("yo", {
     id: string; name: string; url?: string; connected: boolean;
     kind?: "user" | "system"; internal?: boolean; requiresFolder?: boolean;
   }>>,
+  // Only for the still-local system-app registry (nav/.dip apps) — NOT the
+  // Apps tab, which is fully server-authoritative via panelApps* below.
   appsAdd: (id: string, name: string, url?: string) => ipcRenderer.invoke("apps-add", id, name, url),
+  // Dashboard shell (5a): the Apps tab's data source. Every call here is a
+  // main-process-mediated, JWT-authed request to yo-server's /api/panel-apps
+  // (see panel-apps-* handlers in apps-ipc.ts) — no local mirror.
+  panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
+  panelAppsCreate: (input: { name: string; slug: string; url: string; forceWeb?: boolean }) =>
+    ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
+  panelAppsUpdate: (id: string, patch: Partial<{ name: string; slug: string; url: string; forceWeb: boolean }>) =>
+    ipcRenderer.invoke("panel-apps-update", id, patch) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
+  panelAppsDelete: (id: string) => ipcRenderer.invoke("panel-apps-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  panelAppsSetConnection: (id: string, pipedreamSlug: string) =>
+    ipcRenderer.invoke("panel-apps-set-connection", id, pipedreamSlug) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
+  panelAppsRemoveConnection: (id: string) =>
+    ipcRenderer.invoke("panel-apps-remove-connection", id) as Promise<{ ok: boolean; error?: string }>,
+  panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) =>
+    ipcRenderer.invoke("panel-apps-set-mcp", id, mcp) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
+  panelAppsRemoveMcp: (id: string) =>
+    ipcRenderer.invoke("panel-apps-remove-mcp", id) as Promise<{ ok: boolean; error?: string }>,
+  panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) =>
+    ipcRenderer.invoke("panel-apps-set-command", id, key, mapping) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
+  panelAppsRemoveCommand: (id: string, key: string) =>
+    ipcRenderer.invoke("panel-apps-remove-command", id, key) as Promise<{ ok: boolean; error?: string }>,
   // yo app package (import / export)
   appImport: () => ipcRenderer.invoke("app-import") as Promise<{ ok: boolean; appId?: string; error?: string }>,
   appExport: (appId: string) => ipcRenderer.invoke("app-export", appId) as Promise<{ ok: boolean; path?: string; error?: string }>,
@@ -209,8 +228,8 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("apps-set-command", id, key, mapping) as Promise<boolean>,
   appsRemoveCommand: (id: string, key: string) =>
     ipcRenderer.invoke("apps-remove-command", id, key) as Promise<boolean>,
-  appsTestCommand: (id: string, key: string, wcId?: number) =>
-    ipcRenderer.invoke("apps-test-command", id, key, wcId) as Promise<string>,
+  appsTestCommand: (mapping: { selector: string; action: string; description?: string; text?: string } | null, wcId?: number) =>
+    ipcRenderer.invoke("apps-test-command", mapping, wcId) as Promise<string>,
   startPicker: (wcId: number) => ipcRenderer.send("start-picker", wcId),
   onPickerResult: (cb: (result: { selector: string; tag: string; text: string; isEditable: boolean; isClickable: boolean }) => void) => {
     ipcRenderer.on("picker-result", (_e, result) => cb(result));
@@ -232,6 +251,9 @@ contextBridge.exposeInMainWorld("yo", {
   authLogin: (email: string, password: string) => ipcRenderer.invoke("auth-login", email, password) as Promise<{ ok: boolean; error?: string }>,
   authForgotPassword: (email: string) => ipcRenderer.invoke("auth-forgot-password", email) as Promise<{ ok: boolean; error?: string }>,
   getAccountInfo: () => ipcRenderer.invoke("get-account-info") as Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string } | null>,
+  // Server-profile timezone (users.timezone) — same field the platform edits.
+  userTimezoneGet: () => ipcRenderer.invoke("user-timezone-get") as Promise<string | null>,
+  userTimezoneSet: (tz: string) => ipcRenderer.invoke("user-timezone-set", tz) as Promise<{ ok: boolean; error?: string }>,
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   validateApiKey: () => Promise.resolve({ valid: true }),
   getApiKey: () => Promise.resolve(null),
@@ -279,11 +301,6 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.on("download:done", (_e, info) => cb(info));
   },
   downloadShow: (filePath: string) => ipcRenderer.send("download:show", filePath),
-  // A canvas window's URL-bar download button asks main to open the shared
-  // downloads dropdown (the list itself always lives in this window).
-  onShowDownloadsDropdown: (cb: () => void) => {
-    ipcRenderer.on("show-downloads-dropdown", () => cb());
-  },
 
   // Drip effects
   onDripEffect: (callback: (effect: string) => void) => {

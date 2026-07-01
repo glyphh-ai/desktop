@@ -186,24 +186,18 @@ export const CATEGORY_COMMANDS: Record<string, Array<{ key: string; description:
 // captured, etc. `kind: "system"` is a separate axis controlling whether
 // the app appears in Layouts (rail surfaces don't; user-mountable
 // internal apps like Agent/Vibe/Spec do).
+// Dashboard shell (5a): Agents/Schedules/Layouts/Skills/Drips/Settings/Home
+// are no longer local internal apps — that management UI is server-side
+// (yo-platform's Build/Manage pages) now, not a local panel. Only real local
+// execution surfaces stay: Browser and Terminal, plus the Dashboard's own
+// Apps/Settings tabs (which aren't the old left-rail CRUD pages — "apps" is
+// the Apps-tab webview container, "dashboard-settings" is the trimmed
+// General/Appearance/MCP settings panel).
 const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKind; requiresFolder?: boolean }> = [
-  // Boot-time fallback shown when there's no panel state to restore.
-  // Settings — opened from the header gear; no longer in the left rail.
-  { id: "home", name: "Settings", url: "yo://home", kind: "system" },
   { id: "term", name: "Terminal", url: "yo://terminal", requiresFolder: true },
   { id: "browser", name: "Browser", url: "yo://browser" },
-
-  // Left-rail surfaces — every section becomes its own mountable system app.
-  // Slug = panel id, so `.dip apps` and the panel id "apps" match naturally.
-  // Reuses home.html scoped to a single section via ?section=<slug>.
-  // Hidden from the Apps registry + Layouts builder; visible in `+` and `.dip`.
-  { id: "apps",       name: "Apps",       url: "yo://apps",       kind: "system" },
-  { id: "agents",     name: "Agents",     url: "yo://agents",     kind: "system" },
-  { id: "schedules",  name: "Schedules",  url: "yo://schedules",  kind: "system" },
-  { id: "layouts",    name: "Layouts",    url: "yo://layouts",    kind: "system" },
-  { id: "skills",     name: "Skills",     url: "yo://skills",     kind: "system" },
-  { id: "drips",      name: "Drips",      url: "yo://drips",      kind: "system" },
-  { id: "settings",   name: "Settings",   url: "yo://settings",   kind: "system" },
+  { id: "apps", name: "Apps", url: "yo://apps", kind: "system" },
+  { id: "dashboard-settings", name: "Settings", url: "yo://dashboard-settings", kind: "system" },
 ];
 
 // Default panel apps — seeded on first launch so the workspace isn't empty
@@ -330,9 +324,13 @@ export class AppConnector {
       }
     }
 
-    // Apps removed from the product entirely (Agent / Plan / Ada panels) —
-    // purge unconditionally; these ids aren't real apps any more.
-    const REMOVED_IDS = ["agent", "plan", "ada", "adal", "workbench", "vscode"];
+    // Apps removed from the product entirely (Agent / Plan / Ada panels, and
+    // — Dashboard shell (5a) — the left-rail CRUD pages now server-side on
+    // yo-platform) — purge unconditionally; these ids aren't real apps any more.
+    const REMOVED_IDS = [
+      "agent", "plan", "ada", "adal", "workbench", "vscode",
+      "home", "agents", "schedules", "layouts", "skills", "drips", "settings",
+    ];
     for (const id of REMOVED_IDS) {
       if (this.apps.has(id)) {
         this.apps.delete(id);
@@ -621,13 +619,48 @@ export class AppConnector {
   }
 
   // ── Persistence ─────────────────────────────────────
+  //
+  // Internal apps (INTERNAL_APPS) are never written to disk — they're
+  // static, fully re-derivable from code on every boot, and used to get
+  // needlessly persisted as individually safeStorage-encrypted files. That
+  // meant every boot decrypted ~15 files with nothing sensitive in them,
+  // hitting the OS keychain every single launch.
+  //
+  // User app files are plain JSON. The one genuinely sensitive field — a
+  // custom MCP server's OAuth client secret — is encrypted individually
+  // (only when actually present), not the whole file.
 
   private save(app: AppConfig): void {
+    if (app.internal) return;
+    const secret = app.mcp?.oauth?.clientSecret;
+    const toWrite: AppConfig = secret
+      ? { ...app, mcp: { ...app.mcp!, oauth: { ...app.mcp!.oauth!, clientSecret: encryptSecretField(secret) } } }
+      : app;
     fs.writeFileSync(
       path.join(this.appsDir, `${app.id}.json`),
-      encryptJson(app),
+      JSON.stringify(toWrite, null, 2),
       { mode: 0o600 },
     );
+  }
+
+  /** Read one app file — plain JSON (current format), with a one-time
+   *  fallback to the legacy whole-file-encrypted format (self-migrates: the
+   *  next save() call rewrites it as plain JSON with only the secret field
+   *  encrypted, so the legacy path only ever runs once per file). */
+  private readAppFile(filePath: string): AppConfig | null {
+    const raw = fs.readFileSync(filePath);
+    try {
+      const app = JSON.parse(raw.toString("utf-8")) as AppConfig;
+      const secret = app.mcp?.oauth?.clientSecret;
+      if (secret) app.mcp = { ...app.mcp!, oauth: { ...app.mcp!.oauth!, clientSecret: decryptSecretField(secret) } };
+      return app;
+    } catch {
+      // Legacy whole-file-encrypted format — decrypt once via safeStorage,
+      // then immediately rewrite in the new plain format.
+      const legacy = decryptJson<AppConfig>(raw);
+      if (legacy) { try { this.save(legacy); } catch { /* best-effort */ } }
+      return legacy;
+    }
   }
 
   private loadAll(): void {
@@ -635,11 +668,27 @@ export class AppConnector {
     for (const file of fs.readdirSync(this.appsDir)) {
       if (!file.endsWith(".json")) continue;
       try {
-        const app = decryptJson<AppConfig>(fs.readFileSync(path.join(this.appsDir, file)));
+        const app = this.readAppFile(path.join(this.appsDir, file));
         if (app?.id) this.apps.set(app.id, app);
       } catch {
         // skip corrupt files
       }
     }
+  }
+}
+
+/** Encrypt just the OAuth client secret string (base64-encoded ciphertext) —
+ *  not the whole app config. Only touches safeStorage when an app actually
+ *  has a custom MCP server with a client secret configured, which is rare. */
+function encryptSecretField(plaintext: string): string {
+  return encryptJson(plaintext).toString("base64");
+}
+
+function decryptSecretField(value: string): string {
+  try {
+    const decoded = decryptJson<string>(Buffer.from(value, "base64"));
+    return typeof decoded === "string" ? decoded : value;
+  } catch {
+    return value;
   }
 }

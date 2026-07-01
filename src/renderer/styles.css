@@ -1274,6 +1274,53 @@ body.account-locked #dl-btn-wrap {
 
 .tab-new-btn:hover { color: var(--text); background: var(--surface-2); border-color: var(--border-2); }
 
+/* Dashboard shell (5a) — two-tab Apps / Settings chrome, shown in place of
+   the tab-bar + files-rail after auth. */
+.dashboard-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+.dashboard-tab {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 14px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.dashboard-tab:hover { color: var(--text); background: var(--surface-2); }
+.dashboard-tab.active { color: var(--text); background: var(--surface-2); border-color: var(--border-2); }
+
+/* Global, always-visible — sits at the far right of the titlebar regardless
+   of which dashboard tab (Apps/Settings) is active. */
+.titlebar-logout {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+  -webkit-app-region: no-drag;
+}
+.titlebar-logout:hover { color: var(--text); background: var(--surface-2); border-color: var(--border-3); }
+
 /* MCP indicator */
 .mcp-indicator {
   display: flex;
@@ -4084,6 +4131,13 @@ ol.docs-list li::before {
   flex: 1;
 }
 
+/* General tab: separates the app form from the pick-elements/commands
+   section rendered below it (was its own "Panel" tab). */
+.app-detail-section-sep {
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+
 /* ── Dashboard placeholder ────────────────────────────── */
 
 /* App dashboard right panel — compact sizing like dash-split-col */
@@ -5572,6 +5626,11 @@ select.settings-input {
 }
 .files-rail.open { transform: translateX(0); }
 .files-rail.hidden { display: none !important; }
+/* Dashboard shell (5a) — files-rail + tab-bar are not shown in the new
+   post-auth flow. The rail toggle button stays in the DOM (unused for now,
+   not deleted per the 5a scope) but the rail itself never opens. */
+.files-rail.dashboard-hidden { display: none !important; }
+#tab-bar.dashboard-hidden { display: none !important; }
 
 /* ── Left-rail user section (bottom) — chip + upward dropup ─────── */
 .files-rail-user {
@@ -8712,6 +8771,12 @@ select.settings-input {
   padding-right: 0;
 }
 
+/* Settings sits tighter into the corner — trim the page's 32/40px gutters. */
+#help-content:has(.help-section[data-section="settings"].active) {
+  padding-top: 12px;
+  padding-left: 16px;
+}
+
 /* Wide settings panels — the 420px .settings-form clamp is right for narrow
    input rows but too tight for compound panels (provider cards, MCP
    tokens + connectors). Let these fill the available width so the user
@@ -10005,74 +10070,8 @@ select.settings-input {
 .ws-plan-status .ws-monaco-mode-btn svg { width: 13px; height: 13px; }
 
 /* ============================================================
-   Canvas mode + Command Center
+   Command Center
    ============================================================ */
-
-/* ── Canvas mode window chrome ─────────────────────────────── */
-#canvas-chrome { position: fixed; inset: 0; pointer-events: none; z-index: 30; }
-body:not(.canvas-mode) #canvas-chrome { display: none; }
-.canvas-win {
-  position: fixed;
-  pointer-events: none;
-  border-radius: 10px;
-  box-shadow: 0 0 0 1px var(--border), 0 10px 40px rgba(0,0,0,.30);
-  outline: 1px solid transparent;
-}
-.canvas-win--active { box-shadow: 0 0 0 1px var(--accent), 0 14px 48px rgba(0,0,0,.42); }
-.canvas-win--dragging { box-shadow: 0 0 0 1px var(--accent), 0 18px 56px rgba(0,0,0,.5); transition: none; }
-.canvas-titlebar {
-  pointer-events: auto;
-  position: absolute; top: 0; left: 0; right: 0;
-  display: flex; align-items: center; gap: 7px;
-  padding: 0 8px;
-  background: var(--surface-2);
-  border-radius: 10px 10px 0 0;
-  border-bottom: 1px solid var(--border);
-  cursor: move;
-  user-select: none;
-}
-.canvas-fav { width: 14px; height: 14px; object-fit: contain; border-radius: 3px; }
-.canvas-fav-initial {
-  width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; border-radius: 3px;
-}
-.canvas-title { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.canvas-tb-spacer { flex: 1; }
-.canvas-tb-btn {
-  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
-  border: none; background: transparent; color: var(--text-3); cursor: pointer; border-radius: 5px; padding: 0;
-}
-.canvas-tb-btn svg { width: 13px; height: 13px; }
-.canvas-tb-btn:hover { background: var(--hover); color: var(--text); }
-.canvas-tb-close:hover { background: var(--danger); color: #fff; }
-.canvas-rz { pointer-events: auto; position: absolute; }
-.canvas-rz-r { top: 0; right: 0; bottom: 0; cursor: ew-resize; }
-.canvas-rz-b { left: 0; right: 0; bottom: 0; cursor: ns-resize; }
-.canvas-rz-br { right: 0; bottom: 0; cursor: nwse-resize; }
-
-/* Collapsed-window tray (above the dock) */
-#canvas-collapsed-tray {
-  position: fixed; left: 0; right: 0; bottom: 8px;
-  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
-  pointer-events: none; z-index: 35; padding: 0 16px;
-}
-#canvas-collapsed-tray.hidden { display: none; }
-.canvas-tray-pill {
-  pointer-events: auto;
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 10px; border-radius: 8px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text-2); font-size: 12px; cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0,0,0,.22);
-  transition: transform .12s ease, border-color .12s ease, color .12s ease;
-  transform-origin: bottom center;
-}
-.canvas-tray-pill:hover { border-color: var(--accent); color: var(--text); transform: scale(1.06); }
-.canvas-tray-pill img { width: 14px; height: 14px; object-fit: contain; border-radius: 3px; }
-.canvas-tray-name { white-space: nowrap; }
-
-/* When canvas mode is on, the tab bar is hidden (no tabs in canvas mode). */
-body.canvas-mode #tab-bar { visibility: hidden; }
 
 /* ── Command Center ───────────────────────────────────────── */
 .command-center {

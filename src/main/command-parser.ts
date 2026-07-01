@@ -9,7 +9,7 @@
  *   peace [count]   → particle peace-sign gesture
  */
 
-import { BrowserWindow, WebContents, ipcMain } from "electron";
+import { BrowserWindow, WebContents } from "electron";
 import { PanelManager } from "./panel-manager";
 import { SkillEngine } from "./skill-engine";
 import { LayoutManager } from "./layout-manager";
@@ -439,40 +439,9 @@ export class CommandParser {
       return this.handleDipSplit(args.slice(1), win);
     }
 
-    // Canvas mode: `dip grid` tiles all open windows equally; `dip grid <c> <r>`
-    // forces columns/rows. (Falls through to the fixed-grid spec parser only when
-    // not in canvas mode.)
-    if (sub === "grid" && this.panels.canvasMode) {
-      // Drop any active layout so execCommand's post-command sync doesn't
-      // re-arrange the windows back to it (e.g. after `.dip <layout>`).
-      this.layouts.clearSplit();
-      const cols = parseInt(args[1] ?? "", 10);
-      const rows = parseInt(args[2] ?? "", 10);
-      ipcMain.emit(
-        "canvas-grid-all",
-        {} as Electron.IpcMainEvent,
-        Number.isFinite(cols) ? cols : undefined,
-        Number.isFinite(rows) ? rows : undefined,
-      );
-      return rows || cols ? `Grid: ${cols || "auto"}×${rows || "auto"}` : "Arranged windows in a grid";
-    }
-
     // dip grid — full grid with spans, custom widths/heights
     if (sub === "grid" && args.length >= 2) {
       return this.handleDipGrid(args.slice(1), win);
-    }
-
-    // Canvas window controls. min/exp toggle the active window's minimize/expand;
-    // minAll/expAll act on every window.
-    if (sub === "min" || sub === "exp" || sub === "minall" || sub === "expall") {
-      if (!this.panels.canvasMode) return "Window controls (min/exp/minAll/expAll) only work in canvas mode.";
-      if (sub === "minall") { ipcMain.emit("canvas-collapse-all", {} as Electron.IpcMainEvent); return "Minimized all windows."; }
-      if (sub === "expall") { ipcMain.emit("canvas-restore-all", {} as Electron.IpcMainEvent); return "Expanded all windows."; }
-      const id = this.panels.activePanelId;
-      if (!id) return "No active window.";
-      if (sub === "min") { ipcMain.emit("canvas-collapse-toggle", {} as Electron.IpcMainEvent, id); return `Minimize toggled: ${id}`; }
-      ipcMain.emit("canvas-maximize", {} as Electron.IpcMainEvent, id); // exp → expand/restore toggle
-      return `Expand toggled: ${id}`;
     }
 
     // Check for saved layout
@@ -541,13 +510,6 @@ export class CommandParser {
     const switched = this.panels.switchTo(sub, win);
     if (!switched) return `Unknown panel: ${sub}. Try: dip list`;
     setPreference("lastView", { type: "panel", id: sub });
-
-    // In canvas grid mode, dipping to an app opens/raises its window and re-tiles
-    // so the new window joins the grid (rather than just bringing it to front).
-    if (this.panels.canvasMode && this.panels.canvasGrid && args.length === 1) {
-      ipcMain.emit("canvas-grid-all", {} as Electron.IpcMainEvent);
-      return `Added ${sub} to grid`;
-    }
 
     // No commands to run — just a switch
     const commands = args.slice(1);

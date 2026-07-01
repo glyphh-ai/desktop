@@ -5,8 +5,7 @@
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "npm run build && ELECTRON_RUN_AS_NODE= electron .",
-    "build": "npm run build:main && npm run build:renderer && npm run build:terminal && npm run build:monaco && npm run build:overlay && npm run build:skill-flow && npm run build:canvas-chrome",
-    "build:canvas-chrome": "esbuild src/renderer/canvas-chrome-preload.ts --bundle --outfile=dist/main/canvas-chrome-preload.js --platform=node --external:electron && shx cp src/renderer/canvas-chrome.html dist/renderer/",
+    "build": "npm run build:main && npm run build:renderer && npm run build:terminal && npm run build:monaco && npm run build:overlay && npm run build:skill-flow",
     "build:skill-flow": "esbuild src/renderer/skill-flow.tsx --bundle --outfile=dist/renderer/skill-flow.js --platform=browser --format=iife --jsx=automatic",
     "build:main": "tsc",
     "build:overlay": "node scripts/build-overlay.js",

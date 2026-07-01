@@ -1,12 +1,14 @@
 /**
- * LocalDb — singleton encrypted SQLite database for user state.
+ * LocalDb — singleton SQLite database for user state.
  *
  * Stores agents, layouts, and preferences in ~/yo/user-state.sqlite.
- * Uses WAL mode for performance. Sensitive fields (systemPrompt, API keys)
- * are encrypted via Electron's safeStorage before writing and decrypted on read.
+ * Uses WAL mode for performance.
  *
- * Does NOT use SQLCipher — instead uses application-level field encryption
- * to avoid complex native rebuilds.
+ * encryptField/decryptField (safeStorage/OS-keychain-backed) exist for the
+ * rare genuinely-sensitive local field, but agent system prompts no longer
+ * use them (see stores/agent-store-db.ts) — a prompt isn't a secret, and
+ * routing it through the keychain meant every agent list/load triggered an
+ * OS permission prompt.
  */
 
 import path from "path";
@@ -102,6 +104,16 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE agents ADD COLUMN avatar_url TEXT;
       ALTER TABLE agents ADD COLUMN bio TEXT;
     `,
+  },
+  {
+    // system_prompt_enc (safeStorage/OS-keychain-encrypted) is retired — an
+    // agent's system prompt isn't a secret, and encrypting it meant every
+    // agent list/load touched the OS keychain, which is the "safe storage
+    // is annoying" prompt users were hitting on every boot. New plain
+    // column; agent-store-db.ts migrates any legacy encrypted rows to it
+    // on first read (a one-time decrypt, never again after that).
+    version: 3,
+    sql: `ALTER TABLE agents ADD COLUMN system_prompt TEXT;`,
   },
 ];
 

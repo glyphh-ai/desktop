@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, powerSaveBlocker } from "electron";
-import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, hasMcpAccess } from "./auth";
+import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, hasMcpAccess, serverGetAuthed, serverPatchAuthed } from "./auth";
 import type { LLMConfig } from "./llm-config";
 import type { McpExpose } from "./mcp-expose";
 import { configureClaudeDesktop, configureCursor, configureWindsurf, configureCodexCli, type McpClientConfigResult } from "./mcp-client-config";
@@ -148,6 +148,25 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
 
   ipcMain.handle("get-account-info", () => getAccountInfo());
 
+  // Timezone lives on the user's server profile (users.timezone) — same
+  // value the platform's Settings > Profile page edits. Not a local pref.
+  ipcMain.handle("user-timezone-get", async () => {
+    try {
+      const me = await serverGetAuthed<{ timezone?: string }>("/api/user/me");
+      return me.timezone || "UTC";
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle("user-timezone-set", async (_e, timezone: string) => {
+    try {
+      await serverPatchAuthed("/api/user/me", { timezone });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "save failed" };
+    }
+  });
+
   // Per-user usage + credit balance, straight from the server (the proxy meters
   // this org/user). Replaces the old local UsageTracker numbers on the dashboard.
   ipcMain.handle("user-usage", async (_e, range?: { from?: string; to?: string; tz?: string }) => {
@@ -276,16 +295,16 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   });
 
   ipcMain.handle("provider-keys-list", () => providerKeys.listStatus());
-  ipcMain.handle("provider-keys-set", (_e, provider: string, key: string) => {
+  ipcMain.handle("provider-keys-set", async (_e, provider: string, key: string) => {
     try {
-      providerKeys.setKey(provider as providerKeysModule.ProviderId, key);
+      await providerKeys.setKey(provider as providerKeysModule.ProviderId, key);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "save failed" };
     }
   });
-  ipcMain.handle("provider-keys-remove", (_e, provider: string) => {
-    providerKeys.removeKey(provider as providerKeysModule.ProviderId);
+  ipcMain.handle("provider-keys-remove", async (_e, provider: string) => {
+    await providerKeys.removeKey(provider as providerKeysModule.ProviderId);
     return { ok: true };
   });
   ipcMain.handle("provider-keys-test", (_e, provider: string) =>

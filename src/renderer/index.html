@@ -87,15 +87,22 @@
       <button id="btn-maximize" class="wc wc-maximize"></button>
     </div>
     <div id="titlebar-label"><img class="glyphh-mark" src="brand/glyphh-mark.png" alt="Glyphh" /></div>
-    <button id="files-rail-toggle" class="files-rail-toggle" title="Toggle files sidebar">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-    </button>
-    <button id="header-command-center" class="files-rail-toggle" title="Command Center (⌘⇧.)">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-    </button>
     <div id="tab-bar">
       <button id="tab-new-btn" class="tab-new-btn" title="New tab">+</button>
     </div>
+    <!-- Dashboard shell (5a): replaces the tab-bar + files-rail chrome after
+         auth. Two tabs — Apps / Settings — each open the matching yo://
+         system-app panel via the existing panel-manager mechanism (see
+         renderer.ts initDashboard()). Hidden until boot-gate-ui calls
+         showPanels() the first time post-auth. -->
+    <div id="dashboard-tabs" class="dashboard-tabs hidden">
+      <button id="dashboard-tab-apps" class="dashboard-tab active" data-dashboard-tab="apps">Apps</button>
+      <button id="dashboard-tab-settings" class="dashboard-tab" data-dashboard-tab="settings">Settings</button>
+    </div>
+    <button id="titlebar-logout" class="titlebar-logout" title="Sign out">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <span>Logout</span>
+    </button>
   </div>
 
   <!-- URL bar — shown below titlebar for all panels -->
@@ -258,100 +265,11 @@
   </div>
 
   <!-- Yo agent slide-out panel removed (pivot-mcp) -->
-
-  <!-- Files left rail — explorer scoped to the working directory + app nav -->
-  <div id="files-rail" class="files-rail hidden">
-    <div id="files-rail-nav" class="files-rail-nav">
-      <button class="files-rail-navitem" data-section="agents">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"/><path d="M5.5 21a8.5 8.5 0 0 1 13 0"/></svg>
-        <span>Agents</span>
-      </button>
-      <button class="files-rail-navitem" data-section="schedules">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-        <span>Schedules</span>
-      </button>
-      <button class="files-rail-navitem" data-section="layouts">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-        <span>Layouts</span>
-      </button>
-      <button class="files-rail-navitem" data-section="skills">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        <span>Skills</span>
-      </button>
-      <button class="files-rail-navitem" data-section="drips">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L19.7 10l-5.8 1.9L12 17.7l-1.9-5.8L4.3 10l5.8-1.9L12 3z"/></svg>
-        <span>Drips</span>
-      </button>
-      <div class="files-rail-spacer"></div>
-    </div>
-    <!-- Draggable divider between the top launchers and the Apps pane.
-         Drag persists as `leftRailSplit` (px of nav pane height). -->
-    <div id="rail-split-handle" class="rail-split-handle" title="Drag to resize"></div>
-    <!-- Apps — every app, alphabetical, click to open. Manage via the open icon. -->
-    <div id="rail-apps" class="rail-recents rail-apps">
-      <div class="rail-recents-header">
-        <span class="rail-recents-title">Apps</span>
-        <span class="rail-recents-spacer"></span>
-        <button id="rail-apps-open" class="rail-section-clear" type="button" title="Manage apps">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-        </button>
-      </div>
-      <input id="rail-apps-search" class="rail-recents-search" type="text" placeholder="Search…" spellcheck="false" />
-      <div id="rail-apps-list" class="rail-recents-list">
-        <div class="rail-recents-empty">Loading…</div>
-      </div>
-    </div>
-    <!-- Bottom: signed-in user — name + avatar; click opens an upward menu
-         with Settings / Manage Account / Sign out. -->
-    <div id="files-rail-user" class="files-rail-user">
-      <div id="files-rail-user-menu" class="files-rail-user-menu hidden">
-        <button class="files-rail-user-item" data-act="settings" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span>Settings</span>
-        </button>
-        <button class="files-rail-user-item" data-act="account" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span>Manage Account</span>
-        </button>
-        <div class="files-rail-user-divider"></div>
-        <button class="files-rail-user-item danger" data-act="logout" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-          <span>Sign out</span>
-        </button>
-      </div>
-      <button id="files-rail-user-btn" class="files-rail-user-btn" type="button">
-        <span class="files-rail-user-avatar" id="files-rail-user-avatar">?</span>
-        <span class="files-rail-user-meta">
-          <span class="files-rail-user-name" id="files-rail-user-name">Account</span>
-          <span class="files-rail-user-sub" id="files-rail-user-sub"></span>
-        </span>
-        <svg class="files-rail-user-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-      </button>
-    </div>
-    <div id="files-rail-resize" class="files-rail-resize"></div>
-  </div>
+  <!-- Files left rail removed — Apps/Settings dashboard tabs replace it. -->
 
   <div id="panel-container"></div>
 
-  <!-- Canvas mode: DOM window chrome (titlebars + resize frames) drawn over the
-       free-floating BrowserViews. Positioned by canvas-ui.ts from main bounds. -->
-  <div id="canvas-chrome"></div>
-  <!-- Collapsed canvas windows tray (bottom of the app) -->
-  <div id="canvas-collapsed-tray" class="hidden"></div>
-
-  <!-- Command Center — zoom-out view of all open apps + saved layouts.
-       Shown over freeze-frame; rendered by command-center-ui.ts. -->
-  <div id="command-center" class="command-center hidden">
-    <div class="cc-inner">
-      <div class="cc-header">
-        <span class="cc-title">Command Center</span>
-        <button id="cc-close" class="cc-close" title="Close">&times;</button>
-      </div>
-      <div id="cc-apps" class="cc-apps"></div>
-      <div class="cc-section-label">Layouts</div>
-      <div id="cc-layouts" class="cc-layouts"></div>
-    </div>
-  </div>
+  <!-- Command Center feature removed. -->
 
   <!-- Claude Code bootstrap modal — gates app use behind a CC sign-in.
        Hidden by default; shown by renderer.ts when CC creds are missing. -->

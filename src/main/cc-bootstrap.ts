@@ -5,8 +5,8 @@
  * the resulting credentials from disk or the OS keychain) was removed
  * because hosting that flow in our own app violates Anthropic's Terms of
  * Service. Users now bring their own Anthropic API key, pasted into the
- * boot-gate modal and stored encrypted under ~/yo/.providers.json via the
- * provider-keys module.
+ * boot-gate modal and stored server-side (yo-server's user_provider_keys
+ * table) via the provider-keys module — never written to local disk.
  *
  * Surface (kept for back-compat with existing call sites):
  *   • bootstrapStatus() — { found, byokAnthropic } reflecting BYOK key
@@ -29,9 +29,9 @@ export interface BootstrapStatus {
   byokAnthropic: boolean;
 }
 
-export function bootstrapStatus(): BootstrapStatus {
+export async function bootstrapStatus(): Promise<BootstrapStatus> {
   let byok = false;
-  try { byok = hasProviderKey("anthropic"); } catch { /* */ }
+  try { byok = await hasProviderKey("anthropic"); } catch { /* */ }
   let loggedIn = false;
   try { loggedIn = !!getAuthToken(); } catch { /* not logged in */ }
   // `found` = the Glyphh agent can run. That's true when logged in (it goes
@@ -47,9 +47,9 @@ export function bootstrapStatus(): BootstrapStatus {
  * coding agents.) Only when signed out AND without a BYOK key do we fall back to
  * the legacy key modal.
  */
-export function ensureCcAuth(): boolean {
+export async function ensureCcAuth(): Promise<boolean> {
   try { if (getAuthToken()) return true; } catch { /* not logged in */ }
-  if (bootstrapStatus().found) return true;
+  if ((await bootstrapStatus()).found) return true;
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send("cc-show-modal");
   }

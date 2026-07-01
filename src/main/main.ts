@@ -20,6 +20,18 @@ try {
 }
 
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeTheme, net, protocol, session as electronSession, shell, systemPreferences, webContents } from "electron";
+
+// Stop Chromium from encrypting its own internal cookie/session storage via
+// the OS keychain ("Chrome Safe Storage" on macOS). This is separate from
+// anything our own code does (provider-keys.ts, auth.ts, app-connector.ts
+// all avoid safeStorage already) — it's Chromium's automatic behavior for
+// ANY persistent session partition (e.g. `persist:yo`, used by webviews and
+// browser tabs), and it's what was still triggering a keychain prompt on
+// every launch. In an unsigned/dev build, macOS can't remember the "Always
+// Allow" grant across relaunches (the app's signature changes each build),
+// so it re-prompts every single time. Must be set before app is ready.
+app.commandLine.appendSwitch("use-mock-keychain");
+
 import path from "path";
 import fs from "fs";
 import { PanelManager } from "./panel-manager";
@@ -94,7 +106,6 @@ import { registerAppsIpc } from "./apps-ipc";
 import { registerMarketplaceIpc } from "./marketplace-ipc";
 import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
-import { registerCanvasIpc } from "./canvas-ipc";
 import { buildSubstrateDeps } from "./substrate-deps";
 import { createCypherSession } from "./cypher-session";
 import { initLocalDb, closeLocalDb } from "./local-db";
@@ -729,12 +740,6 @@ async function boot() {
     for (const wc of panelManager.getAllWebContents()) {
       wc.send("theme-changed", resolved);
     }
-    // Canvas window frames (titlebar/URL bar) are separate BrowserViews — they
-    // also listen for "theme-changed", so they recolor live instead of needing
-    // a close/reopen.
-    for (const wc of panelManager.getChromeWebContents()) {
-      wc.send("theme-changed", resolved);
-    }
   }
 
   // Live apps reload — watch ~/yo/apps so an app dropped on disk (e.g. a
@@ -862,9 +867,11 @@ async function boot() {
   };
 
   function resolveBrowserHome(): string {
-    const pref = getPreference<string>("browserHomepage", "google");
-    if (pref === "custom") return getPreference<string>("browserHomepageUrl", "");
-    return BROWSER_HOMES[pref] || BROWSER_HOMES.google;
+    // Default matches the Appearance tab's select (claude) — was "google",
+    // which isn't even an option there, so the setting read as broken.
+    const pref = getPreference<string>("browserHomepage", "claude");
+    if (pref === "custom") return getPreference<string>("browserHomepageUrl", "") || BROWSER_HOMES.claude;
+    return BROWSER_HOMES[pref] || BROWSER_HOMES.claude;
   }
 
   function browserHtmlUrl(initialUrl?: string): string {
@@ -893,17 +900,17 @@ async function boot() {
   const terminalHtml = `file://${path.join(__dirname, "..", "renderer", "terminal.html")}`;
   const terminalPreload = path.join(__dirname, "terminal-preload.js");
   const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
-  // Slugs that map to home.html with ?section=<slug>. Each gets its own panel
-  // so users can mount, e.g., a standalone Drips or Agents browser inside any
-  // layout (or via .dip <slug>).
+  // Slugs that map to home.html with ?section=<slug>. Dashboard shell (5a):
+  // Agents/Schedules/Layouts/Skills/Drips/Settings management moved to
+  // yo-platform (server-side) — "apps" is the only local section left, the
+  // Dashboard's Apps-tab webview container.
   const HOME_SECTION_SLUGS: Record<string, string> = {
-    "yo://apps":      "apps",
-    "yo://agents":    "agents",
-    "yo://schedules": "schedules",
-    "yo://layouts":   "layouts",
-    "yo://skills":    "skills",
-    "yo://drips":     "drips",
-    "yo://settings":  "settings",
+    "yo://apps": "apps",
+  };
+  // Dashboard shell (5a) — same section panels as above, plus &dashboard=1 so
+  // home.ts applies the trimmed-down [data-home-scope="settings-flat"] view.
+  const DASHBOARD_SECTION_SLUGS: Record<string, string> = {
+    "yo://dashboard-settings": "settings",
   };
   for (const app of appConnector.list()) {
     if (app.url === "yo://home") {
@@ -914,12 +921,16 @@ async function boot() {
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
       panelManager.addPanel(app.id, `${homeHtml}?section=${section}`, homePreload, undefined, true);
+    } else if (app.url && DASHBOARD_SECTION_SLUGS[app.url]) {
+      const section = DASHBOARD_SECTION_SLUGS[app.url];
+      const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
+      panelManager.addPanel(app.id, `${homeHtml}?section=${section}&dashboard=1`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
-      const savedBrowserUrls = getPreference<Record<string, string>>("browserTabUrls", {});
-      const browserUrl = savedBrowserUrls[app.id] || resolveBrowserHome();
-      panelManager.addPanel(app.id, browserHtmlUrl(browserUrl), undefined, undefined, true);
+      // Always open at the configured homepage (Appearance tab) — restoring
+      // the last-visited URL here made the homepage setting a no-op.
+      panelManager.addPanel(app.id, browserHtmlUrl(resolveBrowserHome()), undefined, undefined, true);
     } else {
       panelManager.addPanel(app.id, app.url!, undefined, app.forceWeb);
     }
@@ -1015,10 +1026,6 @@ async function boot() {
   // Wire command callbacks for interceptor + chat (both need dip routing)
   const callbacks = { openYoPanel: null as ((query: string) => void) | null };
 
-  // Canvas controller — assigned once its IPC is registered below.
-  // Declared here so execCommand / inset handling can reach it.
-  let canvasApi: ReturnType<typeof registerCanvasIpc> | null = null;
-
   const execCommand = async (cmd: string, sourcePanelId?: string) => {
     // .waz is now handled by commandParser.execute (so chained forms like
     // `.dip gmail .waz new <prompt>` work too); the inline shim that used
@@ -1035,31 +1042,20 @@ async function boot() {
     const gridInfo = layoutManager.getGridInfo();
     mainWindow?.webContents.send("split-state", gridInfo);
     sendSessionState();
-    // Track every panel in the layout FIRST — a layout can open apps that
-    // weren't previously open, and canvas-mode arrangeToGrid only lays out
-    // panels that are tracked tabs. Doing this before arranging means those new
-    // windows actually appear in the grid.
+    // Track every panel in the layout — a layout can open apps that weren't
+    // previously open.
     if (gridInfo) {
       for (const id of gridInfo.panelIds) ensureTab(id);
-    }
-    // In canvas mode, a dipped layout arranges the free windows to its grid
-    // instead of attaching fixed grid views.
-    if (gridInfo && canvasApi?.isCanvasMode()) {
-      canvasApi.arrangeToGrid(gridInfo);
     }
     // Sync tab state (dip commands change active panel / open grids)
     if (gridInfo) {
       setPreference("suspendedLayout", null);
-      // The per-cell URL bar belongs to the fixed grid — skip it in canvas mode,
-      // where each window carries its own chrome (and a top inset would shift all
-      // the free windows down).
-      if (!canvasApi?.isCanvasMode()) {
-        // Show it whenever the grid has a browser, regardless of which cell is
-        // focused. Set once on entry so the browser cell is editable from paint.
-        const showBar = layoutManager.gridHasBrowser();
-        panelManager.setTopInset(showBar ? URL_BAR_HEIGHT : 0);
-        mainWindow?.webContents.send("url-bar-force", showBar);
-      }
+      // Show the per-cell URL bar whenever the grid has a browser, regardless
+      // of which cell is focused. Set once on entry so the browser cell is
+      // editable from paint.
+      const showBar = layoutManager.gridHasBrowser();
+      panelManager.setTopInset(showBar ? URL_BAR_HEIGHT : 0);
+      mainWindow?.webContents.send("url-bar-force", showBar);
     } else if (panelManager.activePanelId) {
       ensureTab(panelManager.activePanelId);
     }
@@ -1096,12 +1092,7 @@ async function boot() {
   panelManager.setOnInsetChange(() => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (panelManager.isHidden) return; // don't re-show during splash/overlay
-    // Re-attaching views during a canvas drag/resize would break the chrome
-    // view's mouse capture — skip until the gesture ends (it re-syncs then).
-    if (panelManager.canvasInteracting) return;
-    if (canvasApi?.isCanvasMode()) {
-      canvasApi.applyCanvas();
-    } else if (layoutManager.hasSplit) {
+    if (layoutManager.hasSplit) {
       layoutManager.restoreSplit(mainWindow);
     } else {
       panelManager.resizeViews(mainWindow);
@@ -1162,6 +1153,21 @@ async function boot() {
       seen.add(instanceId);
       return instanceId;
     });
+  }
+
+  // Dashboard shell (5a): boot lands directly on the Apps panel instead of
+  // restoring the previous session's grid/split/tabs. restorePanels() below
+  // used to recreate every panel from the last session before the renderer's
+  // initDashboard() swapped over to the Apps tab — each restored BrowserView
+  // paints/loads independently, which looked like every screen flashing on
+  // launch. Kept restorePanels() defined (unused) rather than deleted, in
+  // case per-app windows (5b) want to resurrect a "reopen last session" option.
+  function openAppsPanelOnly() {
+    const appsApp = appConnector.get("apps");
+    if (appsApp?.url && mainWindow) {
+      createPanelForApp("apps", appsApp);
+      panelManager.switchTo("apps", mainWindow);
+    }
   }
 
   // Restore panels from last view (or default to claude)
@@ -1292,9 +1298,6 @@ async function boot() {
   function sendSplitState() {
     const gridInfo = layoutManager.getGridInfo();
     mainWindow?.webContents.send("split-state", gridInfo);
-    // Canvas mode: keep the free windows matching the grid when it changes
-    // (e.g. dragging a layout divider re-flows the windows live).
-    if (gridInfo && canvasApi?.isCanvasMode()) canvasApi.arrangeToGrid(gridInfo);
   }
 
   // ── Tab management ─────────���───────────────────────────────
@@ -1330,9 +1333,8 @@ async function boot() {
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
-      const savedBrowserUrls = getPreference<Record<string, string>>("browserTabUrls", {});
-      const browserUrl = savedBrowserUrls[instanceId] || resolveBrowserHome();
-      panelManager.addPanel(instanceId, browserHtmlUrl(browserUrl), undefined, undefined, true);
+      // New browser panels start at the configured homepage (Appearance tab).
+      panelManager.addPanel(instanceId, browserHtmlUrl(resolveBrowserHome()), undefined, undefined, true);
     } else {
       panelManager.addPanel(instanceId, app.url!, undefined, app.forceWeb);
     }
@@ -1482,8 +1484,6 @@ async function boot() {
       url: panelUrls[panelId] || "",
       favicon: panelFavicons[panelId] || "",
     });
-    // Canvas mode: keep the window's own URL bar (in its chrome view) in sync.
-    if (canvasApi?.isCanvasMode()) canvasApi.refreshChrome(panelId);
   }
 
   function ensureTab(id: string | null | undefined) {
@@ -1572,10 +1572,6 @@ async function boot() {
     }
     sendTabState();
     sendUrlUpdate();
-    // Canvas mode: clicking into an app's content raises its window to the front.
-    if (canvasApi?.isCanvasMode()) {
-      ipcMain.emit("canvas-focus", {} as Electron.IpcMainEvent, id);
-    }
   });
 
   // When a browser panel's webview guest attaches, focus it so clicks pass through
@@ -1617,10 +1613,6 @@ async function boot() {
       persistTabs();
       sendSplitState();
       sendTabState();
-      // Canvas mode: refresh the free-window layout (and push fresh canvas-state)
-      // so the closed window's chrome is cleared — including the last one, which
-      // has no switchTo to trigger it.
-      if (canvasApi?.isCanvasMode()) canvasApi.applyCanvas();
     },
     () => [...openTabs],
     (url: string) => {
@@ -2014,7 +2006,7 @@ async function boot() {
   // Only restore panels if not gated by onboarding
   if (!needsOnboarding) {
     restoring = true;
-    restorePanels();
+    openAppsPanelOnly();
     restoring = false;
     panelsReady = true;
     // Hide panels during splash — renderer will show them after splash dismisses
@@ -2270,9 +2262,7 @@ async function boot() {
   ipcMain.on("panels-show", () => {
     if (!mainWindow || !panelsReady) return;
     panelManager.hidden = false;
-    if (canvasApi?.isCanvasMode()) {
-      canvasApi.applyCanvas();
-    } else if (layoutManager.hasSplit) {
+    if (layoutManager.hasSplit) {
       layoutManager.restoreSplit(mainWindow);
     } else {
       panelManager.showActive(mainWindow);
@@ -2814,65 +2804,7 @@ async function boot() {
     createPanelForApp,
     setPreference, getPreference,
     URL_BAR_HEIGHT,
-    afterNav: () => { if (canvasApi?.isCanvasMode()) canvasApi.applyCanvas(); },
   });
-
-  // ── Canvas mode ───────────────────────────────────────────
-  // Right-click on a canvas window's titlebar → native context menu.
-  ipcMain.on("canvas-window-menu", (_e, id: string) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    const base = resolveAppId(id) || id;
-    const menu = Menu.buildFromTemplate([
-      { label: "New Window", click: () => ipcMain.emit("tab-new-window", {} as Electron.IpcMainEvent, base) },
-      { type: "separator" },
-      { label: "Collapse", click: () => ipcMain.emit("canvas-collapse", {} as Electron.IpcMainEvent, id) },
-      { label: "Expand", click: () => ipcMain.emit("canvas-maximize", {} as Electron.IpcMainEvent, id) },
-      { type: "separator" },
-      { label: "Close", click: () => ipcMain.emit("canvas-close", {} as Electron.IpcMainEvent, id) },
-      { label: "Close All", click: () => {
-        // Same as `.dip clear`: drop any layout, then close every open window.
-        layoutManager.clearSplit();
-        for (const tid of [...openTabs]) ipcMain.emit("tab-close", {} as Electron.IpcMainEvent, tid);
-      } },
-    ]);
-    menu.popup({ window: mainWindow });
-  });
-
-  const getPanelMeta = (id: string) => ({
-    name: getTabName(id),
-    favicon: panelFavicons[id] || agentPanelFavicon(id) || "",
-    url: panelUrls[id] || "",
-    isBrowser: resolveAppId(id) === "browser",
-  });
-  // Per-window chrome views (canvas mode): point them at their local HTML +
-  // preload before any window is laid out.
-  panelManager.configureCanvasChrome(
-    `file://${path.join(__dirname, "..", "renderer", "canvas-chrome.html")}`,
-    path.join(__dirname, "canvas-chrome-preload.js"),
-  );
-  canvasApi = registerCanvasIpc({
-    panelManager, layoutManager,
-    getMainWindow: () => mainWindow,
-    getPreference, setPreference,
-    openTabs,
-    getPanelMeta,
-    closeTab: (id: string) => { ipcMain.emit("tab-close", {} as Electron.IpcMainEvent, id); },
-    sendTabState,
-  });
-  // Any switchTo() while in canvas mode lays out as a window, not full-bleed:
-  // make sure the panel is a tracked tab (so applyCanvas includes it), bring it
-  // to front, then re-apply. Covers .dip, the nav rail, the gear, boot restore…
-  panelManager.setOnCanvasApply((id) => {
-    ensureTab(id);
-    if (canvasApi?.isCanvasMode()) {
-      ipcMain.emit("canvas-focus", {} as Electron.IpcMainEvent, id);
-      sendTabState();
-    }
-  });
-  // Restore canvas mode on boot if it was active when the app last closed.
-  if (getPreference<boolean>("canvasMode", false)) {
-    panelManager.setCanvasMode(true);
-  }
 
   ipcMain.on("open-external", (_e, url: string) => {
     // Only allow http(s) and mailto URLs — block file://, javascript://, etc.
@@ -2927,9 +2859,9 @@ async function boot() {
     app.exit(0);
   });
 
-  // IPC: onboarding complete — restore panels after activation
+  // IPC: onboarding complete — land on the Apps panel after activation
   ipcMain.handle("onboarding-complete", () => {
-    restorePanels();
+    openAppsPanelOnly();
     panelsReady = true;
     // Hide panels immediately — the tutorial will show next and it's HTML
     // that gets painted under BrowserViews. panelsShow fires when tutorial closes.
@@ -2967,7 +2899,7 @@ async function boot() {
     });
     if (!currentNeedsOnboarding && !panelsReady) {
       restoring = true;
-      restorePanels();
+      openAppsPanelOnly();
       restoring = false;
       panelsReady = true;
       sendSplitState();

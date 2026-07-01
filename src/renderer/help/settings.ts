@@ -367,17 +367,6 @@ function initSettings() {
     showRelaunch();
   });
 
-  // ── Canvas mode ─────────────────────────────────────────────
-  {
-    const canvasYo = window.yo as unknown as { canvasSetMode: (on: boolean) => void };
-    const canvasMode = document.getElementById("toggle-canvas-mode") as HTMLInputElement | null;
-    canvasMode?.addEventListener("change", () => canvasYo.canvasSetMode(!!canvasMode.checked));
-    (async () => {
-      if (canvasMode) canvasMode.checked = await window.yo.getPreference("canvasMode", false) as boolean;
-    })();
-  }
-
-
   // Marketplace registration is auto-managed: any joinable jammer keeps
   // it on; zero joinable jammers means it auto-withdraws. The Settings
   // panel only renders the resulting status (read-only).
@@ -617,9 +606,9 @@ function initSettings() {
   // Show URL Bar toggle removed — only the Browser panel shows a URL bar
   // now; everything else (Agent, Plan, Workbench, internal yo://) doesn't.
 
-  // Timezone
+  // Timezone — persists to the user's server profile (shared with platform).
   settingsTimezone.addEventListener("change", () => {
-    window.yo.setPreference("timezone", settingsTimezone.value);
+    void window.yo.userTimezoneSet(settingsTimezone.value);
   });
 
   // Browser homepage
@@ -709,22 +698,23 @@ async function loadSettings() {
   await refreshMcpExposeStatus();
   await renderMcpTokens();
 
-  // Timezone dropdown
-  const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Timezone dropdown — same option list as the platform's Settings > Profile
+  // page (Intl.supportedValuesOf), value read from the user's server profile
+  // (users.timezone), not a local preference.
   try {
     const allTz = (Intl as any).supportedValuesOf("timeZone") as string[];
-    settingsTimezone.innerHTML = `<option value="auto">Auto — ${detectedTz}</option>`;
-    for (const tz of allTz) {
+    settingsTimezone.innerHTML = "";
+    for (const tz of allTz.includes("UTC") ? allTz : ["UTC", ...allTz]) {
       const opt = document.createElement("option");
       opt.value = tz;
       opt.textContent = tz.replace(/_/g, " ");
       settingsTimezone.appendChild(opt);
     }
   } catch {
-    settingsTimezone.innerHTML = `<option value="auto">Auto — ${detectedTz}</option>`;
+    settingsTimezone.innerHTML = `<option value="UTC">UTC</option>`;
   }
-  const savedTz = await window.yo.getPreference("timezone", "auto") as string;
-  settingsTimezone.value = savedTz;
+  const serverTz = await window.yo.userTimezoneGet().catch(() => null);
+  settingsTimezone.value = serverTz || "UTC";
 
   // Browser homepage
   const homePref = await window.yo.getPreference("browserHomepage", "claude") as string;

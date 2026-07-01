@@ -14,7 +14,7 @@ import { ProviderNotConfiguredError } from "./provider-adapters/agent-adapter";
 
 export class Transcriber {
   async transcribe(audio: Float32Array): Promise<string> {
-    const apiKey = providerKeys.getKey("openai");
+    const apiKey = await providerKeys.getKey("openai");
     if (!apiKey) throw new ProviderNotConfiguredError("openai");
 
     const wav = encodeWav(audio, 16000);

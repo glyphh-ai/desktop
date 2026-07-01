@@ -43,8 +43,16 @@ void (async () => {
   try {
     const params = new URLSearchParams(window.location.search);
     const urlSection = params.get("section");
+    // Dashboard shell (5a): the new two-tab Dashboard's Settings tab loads
+    // home.html?section=settings&dashboard=1 — same single-section lock as
+    // above, plus a flag that trims Settings to General/Appearance/MCP only
+    // (see the [data-home-scope="settings-flat"] CSS rules in home.html).
+    const dashboardScope = params.get("dashboard") === "1";
     if (urlSection) {
-      document.documentElement.setAttribute("data-home-scope", urlSection);
+      document.documentElement.setAttribute(
+        "data-home-scope",
+        dashboardScope && urlSection === "settings" ? "settings-flat" : urlSection,
+      );
       // Hide the left rail when this panel is locked to a single section —
       // it's mounted as its own app (yo://<slug>), so no in-rail switching.
       const style = document.createElement("style");

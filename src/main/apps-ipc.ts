@@ -1,7 +1,55 @@
 import { ipcMain, dialog } from "electron";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./yo-app-package";
-import { hasMcpAccess } from "./auth";
+import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
+
+/** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
+ *  list is no longer a local object; every read/write goes straight to
+ *  yo-server's /api/panel-apps (see saved-app-routes.ts). Errors surface as
+ *  { ok: false, error } rather than throwing, so the renderer can show a
+ *  message instead of crashing on a network hiccup. */
+function registerPanelAppsIpc(): void {
+  ipcMain.handle("panel-apps-list", async () => {
+    try { return await serverGetAuthed<unknown[]>("/api/panel-apps"); }
+    catch { return []; }
+  });
+  ipcMain.handle("panel-apps-create", async (_e, input: { name: string; slug: string; url: string; forceWeb?: boolean }) => {
+    try { return { ok: true, app: await serverPostAuthed("/api/panel-apps", input) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-update", async (_e, id: string, patch: Record<string, unknown>) => {
+    try { return { ok: true, app: await serverPatchAuthed(`/api/panel-apps/${id}`, patch) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-delete", async (_e, id: string) => {
+    try { await serverDeleteAuthed(`/api/panel-apps/${id}`); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-set-connection", async (_e, id: string, pipedreamSlug: string) => {
+    try { return { ok: true, app: await serverPatchAuthed(`/api/panel-apps/${id}/connection`, { pipedreamSlug }) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-remove-connection", async (_e, id: string) => {
+    try { await serverDeleteAuthed(`/api/panel-apps/${id}/connection`); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-set-mcp", async (_e, id: string, mcp: Record<string, unknown>) => {
+    try { return { ok: true, app: await serverPatchAuthed(`/api/panel-apps/${id}/mcp`, mcp) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-remove-mcp", async (_e, id: string) => {
+    try { await serverDeleteAuthed(`/api/panel-apps/${id}/mcp`); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-set-command", async (_e, id: string, key: string, mapping: Record<string, unknown>) => {
+    try { return { ok: true, app: await serverPatchAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`, mapping) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-remove-command", async (_e, id: string, key: string) => {
+    try { await serverDeleteAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+}
 
 /** Strip the MCP OAuth client secret before any app config crosses IPC to the
  *  renderer. The secret stays in the main process / encrypted on disk; the UI
@@ -45,6 +93,8 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     getMainWindow,
     PICKER_SCRIPT,
   } = deps;
+
+  registerPanelAppsIpc();
 
   // IPC: layouts CRUD
   ipcMain.handle("layouts-list", () =>
@@ -134,6 +184,9 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("apps-list-mountable", () =>
     redactSecrets(appConnector.list().filter(isUserKindApp)),
   );
+  // "apps-add" stays for the still-local INTERNAL_APPS registry (system nav
+  // apps, .dip-openable panels) — NOT the Apps tab's user-facing library,
+  // which is server-authoritative via panel-apps-* above (see apps.ts).
   ipcMain.handle("apps-add", (_e, id: string, name: string, url?: string) => {
     const userApps = appConnector.list().filter(a => a.url && !a.url.startsWith("yo://")).length;
     const gate = canAddApp(userApps);
@@ -220,17 +273,17 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("apps-remove-command", (_e, id: string, key: string) => {
     return appConnector.removeCommand(id, key);
   });
-  ipcMain.handle("apps-test-command", async (_e, id: string, key: string, wcId?: number) => {
-    const app = appConnector.get(id);
-    if (!app) return "App not found";
-    const mapping = app.commands[key];
+  // Dashboard shell (5a): commands now live server-side (saved_apps.commands),
+  // so the renderer passes the mapping it already has in hand rather than
+  // asking main to look it up by (id, key) in the local appConnector — that
+  // registry no longer holds user-added panel apps' command data.
+  ipcMain.handle("apps-test-command", async (_e, mapping: import("./app-connector").CommandMapping | null, wcId?: number) => {
     if (!mapping) return "Command not found";
     let wc: import("electron").WebContents | null = null;
     if (wcId) {
       const { webContents } = require("electron") as typeof import("electron");
       wc = webContents.fromId(wcId) ?? null;
     }
-    if (!wc) wc = panelManager.getGuestOrWebContents(id);
     if (!wc || wc.isDestroyed()) return "Panel not open";
     const { executeCommand: execCmd } = await import("./dom-bridge");
     return execCmd(wc, mapping);

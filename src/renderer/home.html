@@ -16,6 +16,16 @@
     /* The nav lives in the app's left rail now — keep it in the DOM (its
        buttons still drive section switching) but hide the sidebar. */
     #help-nav { display: none !important; }
+    /* Dashboard tab scope (5a): Settings trimmed to General / Appearance / MCP,
+       no Account / Providers / Support / About / Docs sub-tabs. See home.ts. */
+    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="providers"],
+    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="account"],
+    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="support"],
+    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="about"],
+    [data-home-scope="settings-flat"] .settings-nav-item[data-jump="docs"],
+    [data-home-scope="settings-flat"] .settings-nav-sep {
+      display: none !important;
+    }
   </style>
   <script src="monaco/loader.js"></script>
   <script>
@@ -82,8 +92,11 @@
       </nav>
       <main id="help-content">
 
-        <!-- Guide -->
-        <div class="help-section active" data-section="guide">
+        <!-- Guide. NOT active by default — no section paints until home.ts's
+             gotoSection() activates the right one (?section=apps etc.). A
+             hardcoded active section here painted before home.js ran, which
+             flashed the guide behind the Apps page on every load. -->
+        <div class="help-section" data-section="guide">
           <h2>Just talk.</h2>
 
           <div class="help-group">
@@ -744,7 +757,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
 
             <div class="app-detail-tabs">
               <button class="app-detail-tab" data-tab="dashboard">General</button>
-              <button class="app-detail-tab" data-tab="panel">Panel</button>
               <button class="app-detail-tab" data-tab="connection">Connection</button>
               <button class="app-detail-tab" data-tab="mcp">MCP</button>
             </div>
@@ -752,7 +764,8 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
             <div class="app-builder-split">
               <!-- Left panel: swaps per tab -->
               <div class="app-builder-controls">
-                <!-- Dashboard left -->
+                <!-- Dashboard left: form, then (below it) the pick-elements /
+                     mapped-commands section that used to be its own "Panel" tab. -->
                 <div class="app-tab-left" data-tab="dashboard">
                   <label class="settings-label">ID <span style="color:var(--text-3);font-weight:400;font-size:11px;">(used in commands like .sup, .dip)</span></label>
                   <input id="app-detail-id" class="settings-input" spellcheck="false" style="font-family:var(--font-mono);font-size:12px;" />
@@ -775,10 +788,9 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                     <button id="app-dash-cancel" class="action-btn">Cancel</button>
                     <button id="app-dash-save" class="action-btn primary">Save</button>
                   </div>
-                </div>
 
-                <!-- Panel left -->
-                <div class="app-tab-left" data-tab="panel">
+                  <div class="app-detail-section-sep"></div>
+
                   <div id="app-connect-status"></div>
                   <div id="app-commands-list"></div>
                   <div id="app-map-command" class="hidden">
@@ -887,8 +899,9 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
 
               <!-- Right panel: swaps per tab -->
               <div class="app-builder-preview">
-                <!-- Panel right -->
-                <div class="app-tab-right" data-tab="panel">
+                <!-- Dashboard right: the live app preview (was its own "Panel"
+                     tab) now sits beside the General form. -->
+                <div class="app-tab-right" data-tab="dashboard">
                   <div class="preview-toolbar">
                     <div style="flex:1;"></div>
                     <button id="app-preview-refresh" class="preview-action preview-action-visible">
@@ -1114,6 +1127,9 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
               <button class="settings-nav-item" data-sub="about">About</button>
               <button class="settings-nav-item" data-jump="docs">Docs</button>
             </nav>
+            <!-- Dashboard scope (?dashboard=1, see home.ts) trims this to General /
+                 Appearance / MCP only via [data-home-scope="settings-flat"] CSS below;
+                 the full nav above still renders normally as yo://settings. -->
             <div class="settings-panels">
 
               <!-- General: Model selection -->
@@ -1207,16 +1223,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                     <input id="settings-browser-home-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" />
                   </div>
                 </div>
-
-                <h3 class="settings-subheading">Workspace</h3>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="toggle-canvas-mode" />
-                  <span class="toggle-switch"></span>
-                  <div class="toggle-info">
-                    <span class="toggle-title">Canvas mode</span>
-                    <span class="toggle-desc">Render apps as draggable windows instead of tabs. Dip to a layout to arrange them to its grid.</span>
-                  </div>
-                </label>
               </div>
 
               <!-- Account -->

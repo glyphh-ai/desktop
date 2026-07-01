@@ -497,14 +497,6 @@ export class LayoutManager {
     const grid = this.activeGrid;
     if (!grid) return;
 
-    // Canvas mode: never tile fixed grid views. Just make sure each panel's view
-    // exists; canvas-ipc's arrangeToGrid then positions them as free-floating
-    // windows. (Without this the old grid renders underneath the canvas windows.)
-    if (this.panelManager.canvasMode) {
-      for (const cell of grid.cells) this.panelManager.getOrCreateView(cell.panelId, win);
-      return;
-    }
-
     const [rawW, h] = win.getContentSize();
     const left = this.panelManager.leftInset;
     const w = rawW - this.panelManager.rightInset - left;

@@ -3,10 +3,15 @@
  *
  * Drop-in replacement for the file-based agent-store.ts.
  * Same public API shape, backed by the local-db singleton.
- * Encrypts systemPrompt via safeStorage before storing.
+ *
+ * systemPrompt is stored PLAINTEXT (system_prompt column) — it's agent
+ * instructions, not a secret, and encrypting it via safeStorage meant every
+ * agent list/load hit the OS keychain. Legacy rows with the old
+ * safeStorage-encrypted system_prompt_enc column get migrated to plaintext
+ * once, on first read (see rowToAgent) — a single decrypt, never repeated.
  */
 
-import { getLocalDb, encryptField, decryptField } from "../local-db";
+import { getLocalDb, decryptField } from "../local-db";
 import type { AgentConfig, AgentType, Guardrails, RemoteConfig } from "../agent-store";
 
 // Re-export types so consumers can import from this module
@@ -19,6 +24,7 @@ interface AgentRow {
   name: string;
   type: string;
   role: string | null;
+  system_prompt: string | null;
   system_prompt_enc: string | null;
   joinable: number;
   apps_json: string | null;
@@ -44,7 +50,17 @@ function rowToAgent(row: AgentRow): AgentConfig {
   };
 
   if (row.role) agent.role = row.role;
-  if (row.system_prompt_enc) agent.systemPrompt = decryptField(row.system_prompt_enc);
+  if (row.system_prompt) {
+    agent.systemPrompt = row.system_prompt;
+  } else if (row.system_prompt_enc) {
+    // One-time legacy migration off safeStorage — decrypt once, persist as
+    // plaintext, never touch the keychain for this row again.
+    try {
+      const plaintext = decryptField(row.system_prompt_enc);
+      agent.systemPrompt = plaintext;
+      getLocalDb().prepare("UPDATE agents SET system_prompt = ?, system_prompt_enc = NULL WHERE id = ?").run(plaintext, row.id);
+    } catch { /* leave systemPrompt unset rather than fail the whole load */ }
+  }
   if (row.joinable) agent.joinable = true;
   if (row.apps_json) agent.apps = JSON.parse(row.apps_json);
   if (row.skills_json) agent.skills = JSON.parse(row.skills_json);
@@ -87,7 +103,7 @@ function agentToParams(cfg: AgentConfig, existingCreatedAt?: string) {
     name: cfg.name,
     type: cfg.type || "local",
     role: cfg.role || null,
-    system_prompt_enc: cfg.systemPrompt ? encryptField(cfg.systemPrompt) : null,
+    system_prompt: cfg.systemPrompt || null,
     joinable: cfg.joinable ? 1 : 0,
     apps_json: cfg.apps ? JSON.stringify(cfg.apps) : null,
     skills_json: cfg.skills ? JSON.stringify(cfg.skills) : null,
@@ -129,11 +145,11 @@ export function saveAgent(cfg: AgentConfig): AgentConfig {
 
   db.prepare(`
     INSERT OR REPLACE INTO agents
-      (id, name, type, role, system_prompt_enc, joinable, apps_json, skills_json,
+      (id, name, type, role, system_prompt, joinable, apps_json, skills_json,
        builtin_tools_json, mcp_servers_json, guardrails_json, remote_json, config_json,
        avatar_url, bio, created_at, updated_at)
     VALUES
-      (@id, @name, @type, @role, @system_prompt_enc, @joinable, @apps_json, @skills_json,
+      (@id, @name, @type, @role, @system_prompt, @joinable, @apps_json, @skills_json,
        @builtin_tools_json, @mcp_servers_json, @guardrails_json, @remote_json, @config_json,
        @avatar_url, @bio, @created_at, @updated_at)
   `).run(params);

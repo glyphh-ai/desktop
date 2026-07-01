@@ -45,7 +45,7 @@ export class ClaudeBackend implements JammerBackend {
    *  missing; returns ok:false to abort the start (the modal owns the UX). */
   async preflight(): Promise<{ ok: boolean }> {
     const { ensureCcAuth } = await import("../cc-bootstrap");
-    return { ok: ensureCcAuth() };
+    return { ok: await ensureCcAuth() };
   }
 
   async init(config: AgentConfig, hooks: JammerBackendHooks): Promise<void> {
