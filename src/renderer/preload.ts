@@ -611,6 +611,7 @@ contextBridge.exposeInMainWorld("yo", {
   mcpExposeGetTokens: () => ipcRenderer.invoke("mcp-expose-get-tokens") as Promise<Array<{ token: string; label: string; createdAt: string; expiresAt: string }>>,
   mcpExposeGenToken: (label: string, ttlDays?: number) => ipcRenderer.invoke("mcp-expose-gen-token", label, ttlDays) as Promise<{ token: string; label: string; createdAt: string; expiresAt: string }>,
   mcpExposeRevokeToken: (token: string) => ipcRenderer.invoke("mcp-expose-revoke-token", token) as Promise<void>,
+  mcpConfigureClient: (client: string) => ipcRenderer.invoke("mcp-configure-client", client) as Promise<{ ok: boolean; configPath?: string; error?: string }>,
 
   // Remote relay — settings UI uses these. The JWT authenticates the WS,
   // so there's no client-token to manage; only the external (server) tokens

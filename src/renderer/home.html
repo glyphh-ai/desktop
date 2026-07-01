@@ -1674,6 +1674,19 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                     </div>
                   </div>
 
+                  <!-- One-click Configure — writes directly into each tool's own config file (a fresh token + merged entry), instead of copy-pasting the example below. -->
+                  <div style="margin-bottom:20px;">
+                    <h3 class="settings-subheading" style="margin:0 0 6px;">Connect a Tool</h3>
+                    <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">One click generates a token and adds this MCP server to that tool's config. Restart the tool afterward.</p>
+                    <div id="mcp-configure-buttons" style="display:flex;flex-wrap:wrap;gap:8px;">
+                      <button class="action-btn" data-mcp-client="claude-desktop" style="font-size:12px;">Configure Claude Desktop</button>
+                      <button class="action-btn" data-mcp-client="cursor" style="font-size:12px;">Configure Cursor</button>
+                      <button class="action-btn" data-mcp-client="windsurf" style="font-size:12px;">Configure Windsurf</button>
+                      <button class="action-btn" data-mcp-client="codex-cli" style="font-size:12px;">Configure Codex CLI</button>
+                    </div>
+                    <div id="mcp-configure-status" style="font-size:11px;color:var(--text-2);margin-top:8px;"></div>
+                  </div>
+
                   <!-- Example Config -->
                   <div>
                     <h3 class="settings-subheading" style="margin:0 0 6px;">Example Config</h3>

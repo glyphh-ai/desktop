@@ -350,6 +350,7 @@ declare global {
       mcpExposeGetTokens: () => Promise<Array<{ token: string; label: string; createdAt: string; expiresAt: string }>>;
       mcpExposeGenToken: (label: string, ttlDays?: number) => Promise<{ token: string; label: string; createdAt: string; expiresAt: string }>;
       mcpExposeRevokeToken: (token: string) => Promise<void>;
+      mcpConfigureClient: (client: string) => Promise<{ ok: boolean; configPath?: string; error?: string }>;
       // Remote relay
       relayReconnect: () => Promise<void>;
       relayStatus: () => Promise<{ enabled: boolean; signedIn: boolean; state: "off" | "connecting" | "connected" | "disconnected" }>;

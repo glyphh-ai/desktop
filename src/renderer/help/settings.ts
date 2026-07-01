@@ -539,6 +539,33 @@ function initSettings() {
     await renderMcpTokens();
   });
 
+  // One-click Configure — generates a fresh token and merges our MCP server
+  // into that tool's own config file.
+  const mcpConfigureStatus = document.getElementById("mcp-configure-status");
+  document.querySelectorAll<HTMLButtonElement>("#mcp-configure-buttons [data-mcp-client]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const client = btn.dataset.mcpClient!;
+      const label = btn.textContent || client;
+      btn.disabled = true;
+      if (mcpConfigureStatus) { mcpConfigureStatus.textContent = `Configuring ${label}…`; mcpConfigureStatus.style.color = "var(--text-2)"; }
+      try {
+        const result = await window.yo.mcpConfigureClient(client);
+        if (mcpConfigureStatus) {
+          if (result.ok) {
+            mcpConfigureStatus.textContent = `${label} configured — ${result.configPath}. Restart it to apply.`;
+            mcpConfigureStatus.style.color = "var(--accent)";
+          } else {
+            mcpConfigureStatus.textContent = `${label}: ${result.error || "failed to configure"}`;
+            mcpConfigureStatus.style.color = "var(--danger, #e0483d)";
+          }
+        }
+        await renderMcpTokens();
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+
   // Copy new token
   document.getElementById("mcp-expose-copy-token")!.addEventListener("click", () => {
     const val = document.getElementById("mcp-expose-new-token-value")!.textContent || "";
