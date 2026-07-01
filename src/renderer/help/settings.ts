@@ -155,7 +155,7 @@ async function refreshMcpExposeStatus() {
   if (configEl) {
     configEl.textContent = `{
   "mcpServers": {
-    "yo": {
+    "glyphh": {
       "type": "sse",
       "url": "http://127.0.0.1:${port}/sse",
       "headers": {

@@ -303,7 +303,7 @@ export class McpExpose {
     if (url === "/" || url === "/mcp") {
       if (req.method === "GET") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ name: "yo", version: "1.0.0", status: "ok" }));
+        res.end(JSON.stringify({ name: "glyphh", version: "1.0.0", status: "ok" }));
         return;
       }
     }
@@ -425,7 +425,7 @@ export class McpExpose {
           result: {
             protocolVersion: "2024-11-05",
             capabilities: { tools: {} },
-            serverInfo: { name: "yo", version: "1.0.0" },
+            serverInfo: { name: "glyphh", version: "1.0.0" },
           },
         };
 
@@ -497,7 +497,7 @@ export class McpExpose {
 
     switch (params.name) {
       // ── Capture store tools ────────────────────────────────
-      case "yo": {
+      case "glyphh_search": {
         if (!this.captureStore) return reply("Capture store not available.", true);
         const query = String(args.query || "");
         const limit = Number(args.limit) || 10;
@@ -1113,8 +1113,8 @@ export class McpExpose {
   private buildToolList() {
     const tools: Record<string, unknown>[] = [
       {
-        name: "yo",
-        description: "Search the user's .Yo capture store. Returns context from across all the user's apps — conversations, code, emails, docs, anything they've worked on.",
+        name: "glyphh_search",
+        description: "Search the user's Glyphh capture store. Returns context from across all the user's apps — conversations, code, emails, docs, anything they've worked on.",
         inputSchema: {
           type: "object",
           properties: {

@@ -221,9 +221,9 @@ export async function runSkillJs(
       call: async (qualified: string, args: Record<string, unknown> = {}) => {
         // The Glyphh agent's own tools are always available to skills. Accept
         // the bare name ("open_panel"), the dotted "yo.open_panel", or Claude's
-        // flattened "mcp__yo__open_panel". Route them straight to the agent's
+        // flattened "mcp__glyphh__open_panel". Route them straight to the agent's
         // tool executor — no allowed-tools entry required.
-        const bare = qualified.replace(/^mcp__yo__/, "").replace(/^yo\./, "");
+        const bare = qualified.replace(/^mcp__glyphh__/, "").replace(/^yo\./, "");
         if (agentTools.has(bare)) {
           const ev = startEvent(em, "mcp", `yo: ${bare}`, root.id, { toolName: bare });
           try {

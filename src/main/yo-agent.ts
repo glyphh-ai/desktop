@@ -114,7 +114,7 @@ RULES:
 - grab_panel is EXPENSIVE (~10K tokens). Only when you need full page text.
 - For workspace arrangement use split_view, grid_layout, switch_panel.
 - For the user's connected apps (Gmail, Slack, Calendar, …), follow the "Connected apps" section below — it tells you whether their tools are already loaded or must be fetched with find_tools. For other specialized actions (skills, data stores, layouts, drips, workspace coordination), call find_tools to find the right tool, then call_tool to run it.
-- For multi-choice questions to the user, use mcp__yo__ask_user_question (the built-in AskUserQuestion is unavailable). It renders a proper "Input required" card with side-by-side code/markdown previews. Provide 2–4 distinct options with short labels and one-line descriptions; mark one Recommended if you have a default. Add a "preview" markdown field when the choice is between layouts, code snippets, or mockups.
+- For multi-choice questions to the user, use mcp__glyphh__ask_user_question (the built-in AskUserQuestion is unavailable). It renders a proper "Input required" card with side-by-side code/markdown previews. Provide 2–4 distinct options with short labels and one-line descriptions; mark one Recommended if you have a default. Add a "preview" markdown field when the choice is between layouts, code snippets, or mockups.
 - When the user asks you to "build me an X" or "make a tool that does Y" and a single-page web app fits, use create_app — it scaffolds a static HTML bundle under ~/yo/apps/<id>/, registers it in the Apps list, and the file watcher makes it appear without restart. Then open it with open_app to show the user. For follow-up edits use write_app_file. Prefer vanilla HTML/CSS/JS or React-via-CDN; no build step.
 - Delegate via spawn_background, call_agent, or create_swarm — they run detached and stream into the Sub-Agents panel. If you need a sub-agent's result within THIS turn to continue, call request_dev_tools first to load the foreground Task tool.`;
 
@@ -391,7 +391,7 @@ export class YoAgent {
     const sdk = await this.ensureSDK();
     const tools = this.buildSdkMcpTools(sdk);
     this.mcpServer = sdk.createSdkMcpServer({
-      name: "yo",
+      name: "glyphh",
       version: "1.0.0",
       tools,
       alwaysLoad: true,
@@ -738,7 +738,7 @@ export class YoAgent {
       // Strip native tools that this surface can't honor, so the model can't
       // reach for them (they'd render as dead cards or silently shift context
       // with no UI). Removed from the model's context entirely:
-      //   - AskUserQuestion → use mcp__yo__ask_user_question (composer wizard).
+      //   - AskUserQuestion → use mcp__glyphh__ask_user_question (composer wizard).
       //   - EnterWorktree / ExitWorktree → git worktrees have no UI in the
       //     right-rail .Yo (it runs at ~/yo/); switching trees invisibly would
       //     be deeply confusing. Sub-agents/Bash cover any real need.
@@ -747,7 +747,7 @@ export class YoAgent {
       // todo capture) or renders fine as a generic tool card. In DEV mode the
       // escalation tool is also hidden — the agent already has dev tools.
       disallowedTools: ["AskUserQuestion", "EnterWorktree", "ExitWorktree",
-        ...(this._devMode ? ["mcp__yo__request_dev_tools"] : [])],
+        ...(this._devMode ? ["mcp__glyphh__request_dev_tools"] : [])],
       mcpServers: { "yo": mcpServer },
       systemPrompt: this.buildSystemPrompt(this._devMode),
       abortController: this.abortController,
@@ -943,7 +943,7 @@ export class YoAgent {
                     description: taskInput.prompt || taskInput.description,
                   });
                 }
-                // mcp__yo__call_agent / create_swarm surface in the Workbench
+                // mcp__glyphh__call_agent / create_swarm surface in the Workbench
                 // Sub-Agents view too, but the panel tab + live transcript are
                 // driven by the swarm lifecycle in main.ts (runSwarm spawns a
                 // tab per roster agent keyed `swarm:<agentId>`, and the cypher
@@ -1049,7 +1049,7 @@ export class YoAgent {
                 }
                 cb.onToolResult?.(block.tool_use_id, text.slice(0, 500));
                 // Close out any sub-agent tab keyed by this tool_use_id (Task
-                // tool or mcp__yo__call_agent). The Sub-Agents view ignores
+                // tool or mcp__glyphh__call_agent). The Sub-Agents view ignores
                 // events with unknown ids, so emitting unconditionally is safe.
                 cb.onSubAgent?.({
                   id: block.tool_use_id,

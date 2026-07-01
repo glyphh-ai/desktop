@@ -397,7 +397,7 @@ export class McpClient extends EventEmitter {
     await this.sendRequest("initialize", {
       protocolVersion: version,
       capabilities: {},
-      clientInfo: { name: "yo", version: "2.0.0" },
+      clientInfo: { name: "glyphh", version: "2.0.0" },
     });
   }
 

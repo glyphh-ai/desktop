@@ -2687,7 +2687,7 @@ async function boot() {
   });
 
   // Council + Vibe apps removed. Multi-agent work is now done by the
-  // right-rail Yo invoking saved agents via the mcp__yo__call_agent tool,
+  // right-rail Yo invoking saved agents via the mcp__glyphh__call_agent tool,
   // with each invocation surfacing in the Workbench Sub-Agents view.
   registerWorkbenchTerminalIpc();
   registerAgentDefaultsIpc();

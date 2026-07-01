@@ -146,7 +146,7 @@ export function getToolTier(toolName: string): ToolTier {
  * Tools that ARE the user interaction (or are harmless UI affordances) and so
  * must never be gated behind an approval card — gating them would double-prompt
  * the user (approve the tool, *then* answer the question it raises). Names can
- * arrive bare or MCP-namespaced (`mcp__yo__<name>`), so we compare on the bare
+ * arrive bare or MCP-namespaced (`mcp__glyphh__<name>`), so we compare on the bare
  * name.
  */
 const ALWAYS_EXECUTE = new Set<string>([

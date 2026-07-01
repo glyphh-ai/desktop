@@ -5,7 +5,7 @@
  * file each tool already reads on its own — so Settings → MCP can offer a
  * button instead of a copy-paste snippet. Every writer:
  *   - reads the existing file if present (tolerating a missing/empty file),
- *   - merges in ONLY our "yo" entry under that tool's servers key,
+ *   - merges in ONLY our "glyphh" entry under that tool's servers key,
  *   - leaves every other entry the user already has untouched,
  *   - creates the parent directory if needed,
  *   - returns the resolved path so the UI can show exactly what changed.
@@ -51,7 +51,7 @@ function writeJsonObject(filePath: string, obj: Record<string, any>): void {
 function mergeSseEntry(filePath: string, serversKey: string, port: number, token: string): McpClientConfigResult {
   const root = readJsonObject(filePath);
   const servers = (root[serversKey] && typeof root[serversKey] === "object") ? root[serversKey] : {};
-  servers["yo"] = {
+  servers["glyphh"] = {
     type: "sse",
     url: `http://127.0.0.1:${port}/sse`,
     headers: { Authorization: `Bearer ${token}` },
@@ -65,7 +65,7 @@ function mergeSseEntry(filePath: string, serversKey: string, port: number, token
 function mergeStdioBridgeEntry(filePath: string, serversKey: string, port: number, token: string): McpClientConfigResult {
   const root = readJsonObject(filePath);
   const servers = (root[serversKey] && typeof root[serversKey] === "object") ? root[serversKey] : {};
-  servers["yo"] = {
+  servers["glyphh"] = {
     command: "npx",
     args: ["-y", "mcp-remote", `http://127.0.0.1:${port}/sse`, "--header", `Authorization: Bearer ${token}`],
   };
@@ -113,7 +113,7 @@ export function configureWindsurf(port: number, token: string): McpClientConfigR
   }
 }
 
-/** Codex CLI's config is TOML — patch just the `[mcp_servers.yo]` table by
+/** Codex CLI's config is TOML — patch just the `[mcp_servers.glyphh]` table by
  *  text, leaving every other line (including other tables) untouched, rather
  *  than pulling in a full TOML parser/serializer for one small table. */
 export function configureCodexCli(port: number, token: string): McpClientConfigResult {
@@ -123,15 +123,15 @@ export function configureCodexCli(port: number, token: string): McpClientConfigR
     const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : "";
 
     const ourTable = [
-      "[mcp_servers.yo]",
+      "[mcp_servers.glyphh]",
       `command = "npx"`,
       `args = ["-y", "mcp-remote", "http://127.0.0.1:${port}/sse", "--header", "Authorization: Bearer ${token}"]`,
       "",
     ].join("\n");
 
-    // Replace an existing [mcp_servers.yo] table (up to the next top-level
+    // Replace an existing [mcp_servers.glyphh] table (up to the next top-level
     // "[" header or EOF) if present; otherwise append ours at the end.
-    const tableRe = /^\[mcp_servers\.yo\]\r?\n(?:(?!^\[)[^\n]*\r?\n?)*/m;
+    const tableRe = /^\[mcp_servers\.glyphh\]\r?\n(?:(?!^\[)[^\n]*\r?\n?)*/m;
     const next = tableRe.test(existing)
       ? existing.replace(tableRe, ourTable)
       : (existing.trimEnd() + (existing.trim() ? "\n\n" : "") + ourTable);
