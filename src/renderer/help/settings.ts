@@ -21,7 +21,7 @@ async function refreshMcpExposeStatus() {
   const port = status.port || parseInt(mcpExposePort.value, 10) || 7860;
   if (status.running) {
     mcpExposeStatus.textContent = `Running on http://127.0.0.1:${port}`;
-    mcpExposeStatus.style.color = "var(--accent)";
+    mcpExposeStatus.style.color = "var(--text)";
   } else {
     mcpExposeStatus.textContent = "Starting...";
     mcpExposeStatus.style.color = "var(--text-2)";
@@ -142,8 +142,8 @@ async function renderProviderKeys() {
       badge.style.color = "#d44a4a";
     } else if (s.lastTestOk) {
       badge.textContent = "verified";
-      badge.style.background = "rgba(155, 60, 246,0.18)";
-      badge.style.color = "var(--accent)";
+      badge.style.background = "rgba(140, 59, 242,0.18)";
+      badge.style.color = "var(--text)";
     } else {
       badge.textContent = "configured";
       badge.style.background = "rgba(165,165,255,0.18)";
@@ -419,7 +419,7 @@ function initSettings() {
         if (mcpConfigureStatus) {
           if (result.ok) {
             mcpConfigureStatus.textContent = `${label} configured — ${result.configPath}. Restart it to apply.`;
-            mcpConfigureStatus.style.color = "var(--accent)";
+            mcpConfigureStatus.style.color = "var(--text)";
           } else {
             mcpConfigureStatus.textContent = `${label}: ${result.error || "failed to configure"}`;
             mcpConfigureStatus.style.color = "var(--danger, #e0483d)";
@@ -576,7 +576,7 @@ function initSettings() {
         status.style.color = "var(--danger)";
       } else {
         status.textContent = `✓ Installed to ${res.path}`;
-        status.style.color = "var(--accent)";
+        status.style.color = "var(--text)";
       }
     }
   });

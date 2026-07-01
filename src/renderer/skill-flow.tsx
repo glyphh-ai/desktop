@@ -29,12 +29,12 @@ import "./skill-flow.css";
 type Kind = "start" | "trigger" | "input" | "skill" | "tool" | "subskill" | "app" | "output" | "end";
 
 const KIND: Record<Kind, { color: string; glyph: string; tag: string }> = {
-  start:    { color: "#9b3cf6", glyph: "▶", tag: "Start" },
+  start:    { color: "#8c3bf2", glyph: "▶", tag: "Start" },
   trigger:  { color: "#f59e0b", glyph: "▸", tag: "Trigger" },
   input:    { color: "#4a9eff", glyph: "›", tag: "Input" },
-  skill:    { color: "#9b3cf6", glyph: "◆", tag: "Skill" },
+  skill:    { color: "#8c3bf2", glyph: "◆", tag: "Skill" },
   tool:     { color: "#a78bfa", glyph: "⚙", tag: "MCP tool" },
-  subskill: { color: "#9b3cf6", glyph: "⊂", tag: "Sub-skill" },
+  subskill: { color: "#8c3bf2", glyph: "⊂", tag: "Sub-skill" },
   app:      { color: "#f59e0b", glyph: "▦", tag: "Glyphh app" },
   output:   { color: "#4a9eff", glyph: "⤷", tag: "Output" },
   end:      { color: "#e0607e", glyph: "■", tag: "End" },
