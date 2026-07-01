@@ -10,14 +10,13 @@
  *   - creates the parent directory if needed,
  *   - returns the resolved path so the UI can show exactly what changed.
  *
- * Two transport shapes, depending on what each tool's CURRENT stable release
- * is confirmed to support:
- *   - Claude Desktop + Cursor: native remote MCP via a `url` + `headers` entry
- *     (SSE), matching the manual example already shown in this settings page.
- *   - Windsurf + Codex CLI: no confirmed native remote-MCP support as of this
- *     writing, so we route through the community `mcp-remote` stdio↔SSE
- *     bridge (`npx -y mcp-remote <url> --header "Authorization: Bearer …"`) —
- *     the portable option that works regardless of the installed version.
+ * All four route through the community `mcp-remote` stdio↔SSE bridge
+ * (`npx -y mcp-remote <url> --header "Authorization: Bearer …"`) rather than a
+ * native `url`/`type:"sse"` config entry. We tried the native-entry shape for
+ * Claude Desktop first — it rejected it outright ("not a valid MCP server
+ * configuration") — so `command`+`args` stdio is the only shape confirmed to
+ * work across every client's local config file, regardless of what each
+ * tool's remote-MCP support looks like in its own UI/connectors flow.
  */
 
 import fs from "fs";
@@ -45,20 +44,6 @@ function readJsonObject(filePath: string): Record<string, any> {
 function writeJsonObject(filePath: string, obj: Record<string, any>): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2) + "\n", "utf-8");
-}
-
-/** Merge our SSE entry into `<root>[serversKey]`, preserving every other server. */
-function mergeSseEntry(filePath: string, serversKey: string, port: number, token: string): McpClientConfigResult {
-  const root = readJsonObject(filePath);
-  const servers = (root[serversKey] && typeof root[serversKey] === "object") ? root[serversKey] : {};
-  servers["glyphh"] = {
-    type: "sse",
-    url: `http://127.0.0.1:${port}/sse`,
-    headers: { Authorization: `Bearer ${token}` },
-  };
-  root[serversKey] = servers;
-  writeJsonObject(filePath, root);
-  return { ok: true, configPath: filePath };
 }
 
 /** Merge our mcp-remote stdio-bridge entry into `<root>[serversKey]`. */
@@ -89,7 +74,7 @@ export function configureClaudeDesktop(port: number, token: string): McpClientCo
   const configPath = claudeDesktopConfigPath();
   if (!configPath) return { ok: false, error: "Claude Desktop isn't available on this OS." };
   try {
-    return mergeSseEntry(configPath, "mcpServers", port, token);
+    return mergeStdioBridgeEntry(configPath, "mcpServers", port, token);
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
@@ -98,7 +83,7 @@ export function configureClaudeDesktop(port: number, token: string): McpClientCo
 export function configureCursor(port: number, token: string): McpClientConfigResult {
   const configPath = path.join(os.homedir(), ".cursor", "mcp.json");
   try {
-    return mergeSseEntry(configPath, "mcpServers", port, token);
+    return mergeStdioBridgeEntry(configPath, "mcpServers", port, token);
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }

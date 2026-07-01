@@ -702,13 +702,13 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
               <p>Use this when you want Claude Desktop, Cursor, Windsurf, or other MCP-compatible tools to access everything you've captured in Glyphh. The server runs on your machine and uses bearer tokens for auth.</p>
 
               <h4>Connecting from Claude Desktop</h4>
-              <p>Edit <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>:</p>
+              <p>Edit <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> (Claude Desktop's local config only accepts stdio servers, so we route through the community <code>mcp-remote</code> bridge):</p>
               <pre class="docs-code">{
   "mcpServers": {
     "glyphh": {
-      "command": "curl",
-      "args": ["-N", "-H", "Authorization: Bearer YOUR_TOKEN",
-               "http://localhost:7860/sse"]
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:7860/sse",
+               "--header", "Authorization: Bearer YOUR_TOKEN"]
     }
   }
 }</pre>
@@ -719,10 +719,9 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
               <pre class="docs-code">{
   "mcpServers": {
     "glyphh": {
-      "url": "http://localhost:7860/sse",
-      "headers": {
-        "Authorization": "Bearer YOUR_TOKEN"
-      }
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:7860/sse",
+               "--header", "Authorization: Bearer YOUR_TOKEN"]
     }
   }
 }</pre>

@@ -156,11 +156,8 @@ async function refreshMcpExposeStatus() {
     configEl.textContent = `{
   "mcpServers": {
     "glyphh": {
-      "type": "sse",
-      "url": "http://127.0.0.1:${port}/sse",
-      "headers": {
-        "Authorization": "Bearer <your-token>"
-      }
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://127.0.0.1:${port}/sse", "--header", "Authorization: Bearer <your-token>"]
     }
   }
 }`;
