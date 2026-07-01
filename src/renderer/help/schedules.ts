@@ -267,15 +267,9 @@ async function runNow(t: TaskRow): Promise<void> {
     : window.yo.skillsRun(t.name, undefined)
   ).catch(() => { /* failure shows in history */ });
 
-  // Toast immediately; "View" waits for the run, then opens it in the yo agent.
-  showToast(`Task "${t.name}" is running…`, "View run", async () => {
-    await runPromise;
-    try {
-      const after = await window.yo.runsList(t.name);
-      const fresh = after.find((r) => !before.has(r.id)) || after[0];
-      if (fresh) window.yo.openYoChat(fresh.id);
-    } catch { /* ignore */ }
-  });
+  // Toast immediately; run history refreshes below once it completes (the
+  // in-app agent panel that used to open a run's chat transcript was removed).
+  showToast(`Task "${t.name}" is running…`);
 
   await runPromise;
   if (currentDetail && currentDetail.name === t.name) void loadDetailHistory(t);
@@ -372,15 +366,11 @@ async function loadDetailHistory(t: TaskRow): Promise<void> {
     const row = document.createElement("button");
     row.className = "sched-history-row";
     row.innerHTML = `<span class="sched-history-dot ${r.ok ? "ok" : "err"}"></span><span>${escapeHtml(when)}</span>`;
-    row.addEventListener("click", () => openRunInAgent(r.id));
+    // Row click used to open the run's transcript in the (now-removed) in-app
+    // agent chat panel. No replacement viewer exists yet, so rows are
+    // currently display-only.
     host.appendChild(row);
   }
-}
-
-function openRunInAgent(runId: string): void {
-  // The yo panel lives in the main window (this page is the home BrowserView),
-  // so route through main to open the panel + load this run as a chat.
-  window.yo.openYoChat(runId);
 }
 
 // ── Editor ──────────────────────────────────────────────────

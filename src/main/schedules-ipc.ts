@@ -8,19 +8,26 @@ import { listSchedules, getSchedule, saveSchedule, removeSchedule, type Schedule
 import { ScheduleScheduler, type ScheduleRunner } from "./schedule-scheduler";
 
 export interface SchedulesIpcDeps {
-  runForResult: (prompt: string) => Promise<{ text: string; error?: string }>;
   saveRunChat: (opts: { skillName: string; trigger: string; output?: unknown; error?: string; startedAt: number; instructions?: string }) => string;
   deleteRunsForSkill: (name: string) => number;
 }
 
 export function registerSchedulesIpc(deps: SchedulesIpcDeps): ScheduleScheduler {
+  // TODO(pivot-mcp): standalone prompt schedules (Schedule.prompt) had no
+  // deterministic executor even before this pivot — they ran the raw prompt
+  // through the full interactive chat agent (YoAgent.runForResult), which has
+  // been removed entirely. We are NOT rebuilding a general "run any prompt
+  // through an internal LLM" executor (that was the chat agent's job). Until
+  // a replacement executor exists (e.g. routing through create_agent/
+  // run_agent), a run attempt fails clearly instead of silently reconnecting
+  // to an LLM call.
   const runner: ScheduleRunner = {
     run: async (id, trigger) => {
       const s = getSchedule(id);
       if (!s) return;
       const startedAt = Date.now();
-      const r = await deps.runForResult(s.prompt).catch((e) => ({ text: "", error: e?.message || String(e) }));
-      deps.saveRunChat({ skillName: s.name, trigger, output: r.text, error: r.error, startedAt, instructions: s.prompt });
+      const error = "This schedule has no deterministic implementation — standalone prompt schedules can no longer run (the interactive chat agent that executed them was removed). Use a skill- or agent-based schedule instead.";
+      deps.saveRunChat({ skillName: s.name, trigger, error, startedAt, instructions: s.prompt });
     },
   };
   const scheduler = new ScheduleScheduler(runner);

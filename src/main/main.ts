@@ -73,11 +73,11 @@ function isNewerVersion(latest: string, current: string): boolean {
 import { ConfigSync } from "./config-sync";
 import { reloadRemotePatterns } from "./firewall";
 import { usageTracker } from "./usage-tracker";
-import { usageQueue } from "./usage-queue";
 import { promptLog } from "./prompt-log";
 import { Embedder } from "./embedder";
 import { CaptureStore } from "./capture-store";
-import { YoAgent } from "./yo-agent";
+import { RunStore } from "./run-store";
+import { startOverlay } from "./overlay-bridge";
 import { ActionGrabber } from "./action-grabber";
 import { AgentRunner, AgentConfig } from "./agent-runner";
 import { McpExpose, ghRequest } from "./mcp-expose";
@@ -89,7 +89,6 @@ import { registerAgentDefaultsIpc } from "./agent-defaults";
 import { registerCodeIndexIpc } from "./code-index/ipc";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
-import { startOverlay } from "./overlay-bridge";
 import { ConnectorManager } from "./connectors";
 import { SkillToolRouter } from "./skill-tool-router";
 import { SkillScheduler } from "./skill-scheduler";
@@ -146,7 +145,6 @@ function syncMcpExpose(): void {
   }
 }
 let mcpManager: McpManager | null = null;
-let wazManager: import("./waz-manager").WazManager | null = null;
 let dripManager: DripManager | null = null;
 let actionGrabber: ActionGrabber | null = null;
 let connectorManager: ConnectorManager | null = null;
@@ -342,8 +340,6 @@ async function boot() {
     llmConfig = config;
     yoChat?.setLLMConfig(config);
     skillEngine?.setLLMConfig(config);
-    yoAgent?.setLLMConfig(config);
-    wazManager?.setLLMConfig(config);
     yoInterceptor?.setCurrentModel(config.model);
     const modelNames = serverModelsCache.length > 0
       ? serverModelsCache.map((m) => m.model)
@@ -649,21 +645,21 @@ async function boot() {
     mainWindow?.webContents.send("connectors-changed");
   });
 
-  // Yo agent — capture search + format assistant
-  const yoAgent = new YoAgent();
-  yoAgent.setCaptureStore(captureStore);
-  yoAgent.setWorkspaceGetter(workspaceGetter);
-  yoAgent.setSkillEngine(skillEngine);
-  yoAgent.setAppsProvider(() => appConnector.list().map((a) => ({ id: a.id, name: a.name })));
+  // Run persistence — skill/schedule task runs (~/yo/chats/run-*.md).
+  // Deterministic file I/O only; no LLM involved (see run-store.ts).
+  const runStore = new RunStore();
 
-  // Run prompt-mode skills/tasks through the full agent (tools + MCP) so
-  // tasks like "read my email and summarize" actually work.
-  skillEngine.setAgenticRunner((prompt) => yoAgent.runForResult(prompt));
+  // NOTE: prompt-only skills (no SKILL.js) used to fall back to running their
+  // instructions through the full interactive chat agent (YoAgent). That
+  // agent has been removed entirely, so skillEngine no longer has an
+  // agentic-runner fallback — see skill-engine.ts's runSkill()/process(),
+  // which now fail clearly for prompt-only skills instead of silently
+  // calling an internal LLM.
 
   // Persist every completed task run as a `type: run` chat (Activity + history).
   skillEngine.onRunComplete((run) => {
     try {
-      yoAgent.saveRunChat({
+      runStore.saveRunChat({
         skillName: run.skillName,
         trigger: run.trigger,
         output: run.output,
@@ -675,12 +671,8 @@ async function boot() {
     } catch {}
   });
 
-  // Waz manager — disposable agent popup windows (.waz command)
-  const { WazManager } = await import("./waz-manager");
-  wazManager = new WazManager();
-  wazManager.setCaptureStore(captureStore);
-  wazManager.setWorkspaceGetter(workspaceGetter);
-  wazManager.setSkillEngine(skillEngine);
+  // Waz manager (.waz popup chat agent) removed with the interactive chat
+  // agent it was built on (YoAgent) — see yo-agent.ts deletion notes.
 
   // Terminal manager — pty processes for terminal panels
   terminalManager = new TerminalManager();
@@ -754,8 +746,10 @@ async function boot() {
   const yoInterceptor = new YoInterceptor(appConnector, skillEngine, session);
   {
     // `agentMode` holds the permission (default/plan/acceptEdits/bypassPermissions).
+    // Previously also set on yoAgent (the now-removed chat agent); the panel's
+    // permission dropdown is gone too, so this just feeds the interceptor's
+    // (currently-unread) mode field for now.
     const savedPerm = getAgentMode();
-    yoAgent.setMode(savedPerm);
     yoInterceptor.setAgentMode(savedPerm);
   }
   yoInterceptor.setCurrentModel(llmConfig.model);
@@ -1074,28 +1068,16 @@ async function boot() {
     const overlayBin = app.isPackaged
       ? path.join(process.resourcesPath, "overlay", "keytap")
       : path.join(__dirname, "overlay", "keytap");
-    const overlayTriggers = getPreference<boolean>("overlayAgentEnabled", false)
-      ? ".yo,.dip,.sup,.drip,.peace"
-      : ".drip";
+    // Agent-backed triggers (.yo/.sup/.peace) were removed with YoAgent — only
+    // .dip/.drip remain live regardless of `overlayAgentEnabled`.
+    const overlayTriggers = ".dip,.drip";
     startOverlay(
-      yoAgent,
       (cmd) => commandParser.execute(cmd),
       () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } },
       overlayBin,
       overlayTriggers,
     );
   }
-
-  // Wire yo agent dependencies
-  yoAgent.setSessionCache(session);
-  yoAgent.setMemoryStore(memoryStore);
-  yoAgent.setNoteStore(noteStore);
-
-  // Wire waz manager dependencies
-  wazManager.setSessionCache(session);
-  wazManager.setMemoryStore(memoryStore);
-  wazManager.setNoteStore(noteStore);
-
 
   // Give interceptor access to visible panel IDs (for multi-panel grab)
   yoInterceptor.setVisiblePanelsGetter(() => {
@@ -1242,38 +1224,15 @@ async function boot() {
     }
   });
 
-  // Panel opener — called by interceptor or Cmd+> when user types .yo <query>
-  const openYoPanel = (query: string, _sourcePanelId?: string) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.webContents.send("yo-panel-open", query);
-    panelManager.setRightInset(yoPanelWidth());
-    mainWindow.webContents.focus();
-  };
-  yoInterceptor.setPanelOpener(openYoPanel);
-  yoInterceptor.setLastAgentResult(() => yoAgent.getLastResponse());
-  wazManager.setThemeFn(() => {
-    const t = getPreference<string>("theme", "dark");
-    return t === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : t;
-  });
-  yoInterceptor.setWazSpawner((prompt) => wazManager?.spawn(prompt));
-  // Same hook on the command-parser path so chained .waz works
-  // (e.g. `.dip gmail .waz new <prompt>`).
-  commandParser.setWazSpawner((prompt) => wazManager?.spawn(prompt));
+  // Panel opener / .waz spawner / mode changer removed with the interactive
+  // chat agent (YoAgent) and its popup variant (.waz) — see yo-agent.ts /
+  // waz-manager.ts deletion notes. `.yo`, `set-mode`, and `.waz` command
+  // dispatches in yo-interceptor.ts now no-op gracefully (their callback
+  // hooks are simply never wired).
   yoInterceptor.setFaviconsGetter(() => panelFavicons);
   yoInterceptor.setLayoutsGetter(() => layoutManager.listLayouts());
 
-  // Command palette mode/model changers
-  yoInterceptor.setModeChanger((mode) => {
-    yoAgent.setMode(mode as any);
-    setPreference("agentMode", mode);
-    mainWindow?.webContents.send("agent-mode-changed", mode);
-    yoInterceptor.setAgentMode(mode);
-  });
-  yoAgent.onModeChange((mode) => {
-    setPreference("agentMode", mode);
-    mainWindow?.webContents.send("agent-mode-changed", mode);
-    yoInterceptor.setAgentMode(mode);
-  });
+  // Command palette model changer — still meaningful (feeds skillEngine/yoChat).
   yoInterceptor.setModelChanger((model) => {
     const cfg = loadLLMConfig();
     cfg.model = model;
@@ -1283,7 +1242,6 @@ async function boot() {
     yoInterceptor.setCurrentModel(model);
     mainWindow?.webContents.send("llm-config-changed", { provider: cfg.provider, model: cfg.model });
   });
-  callbacks.openYoPanel = openYoPanel;
 
   yoChat.setCommandCallback(execCommand);
 
@@ -2029,8 +1987,6 @@ async function boot() {
         }
       }
     }
-    // Persist into the active chat record so the thread restores in full.
-    yoAgent.appendSwarmEntry("swarm", JSON.stringify(activity));
   });
 
   // Sync all joinable agents to server on boot (fire-and-forget)
@@ -2198,10 +2154,6 @@ async function boot() {
     cloudSyncInstance.setWorkspaceGetter(workspaceGetter);
     cloudSyncInstance.start();
   }
-
-  // Usage queue — durable write-ahead log for usage reporting
-  usageQueue.setTokenGetter(getAuthToken);
-  usageQueue.start();
 
   // Initialize Pipedream connectors — always attempt so MCP tools are available.
   connectorManager?.init().catch((err) => console.error("[connectors]", err));
@@ -2463,93 +2415,12 @@ async function boot() {
           view.webContents.reload();
         }
       }
-      // Always open the yo panel on launch, regardless of whether it was
-      // open when the app last closed.
-      mainWindow.webContents.send("yo-panel-open", "");
     }
 
   });
 
-  // IPC: Command palette — toggle the injected overlay on the active panel
-  ipcMain.on("cmd-palette-open", () => {
-    // Cmd+. now opens the yo agent panel
-    mainWindow?.webContents.send("yo-panel-open", "");
-  });
-
-  // IPC: Yo panel commands — route through command parser
-  ipcMain.on("yo-panel-send", async (_e, message: string) => {
-    const trimmed = message.trim();
-
-    // Route dot-commands (.dip, .drip, .sup) through command parser
-    if (trimmed.startsWith(".")) {
-      const firstWord = trimmed.slice(1).split(/\s+/)[0]?.toLowerCase();
-      if (firstWord && ["dip", "drip", "sup", "waz"].includes(firstWord)) {
-        try {
-          const result = await execCommand(trimmed.slice(1));
-          mainWindow?.webContents.send("yo-panel-done", result || "done.");
-          // A `.dip` switch focuses the new BrowserView, stealing keyboard focus
-          // from the yo input. Hand it back once the slide settles.
-          if (firstWord === "dip") {
-            setTimeout(() => {
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.focus();
-                mainWindow.webContents.send("yo-panel-refocus");
-              }
-            }, 300);
-          }
-        } catch (err: any) {
-          mainWindow?.webContents.send("yo-panel-error", err?.message || String(err));
-        }
-        return;
-      }
-
-    }
-
-    const wc = mainWindow?.webContents;
-    if (!wc || mainWindow!.isDestroyed()) return;
-
-    // `compact` / `/compact [extra]` → manual compaction. The CC binary
-    // interprets the /compact slash command; we fold in the user's saved
-    // custom compaction prompt (Settings → Agent Defaults) plus any inline
-    // instructions so the summary is shaped how they want.
-    let agentMessage = trimmed;
-    if (/^\/?compact(\s|$)/i.test(trimmed)) {
-      // Inline instructions (e.g. from the compaction modal) take precedence;
-      // otherwise fall back to the saved default compaction prompt.
-      const extra = trimmed.replace(/^\/?compact\s*/i, "").trim();
-      const saved = getPreference<string>("compactPrompt", "");
-      const instructions = extra || saved.trim();
-      agentMessage = instructions ? `/compact ${instructions}` : "/compact";
-    }
-
-    // Everything goes to the yo agent (in swarm mode it defaults to create_swarm).
-    yoAgent.send(agentMessage, {
-      onText: (delta) => {
-        wc.send("yo-panel-token", delta);
-      },
-      onToolUse: (id, name, input) => {
-        wc.send("yo-panel-tool-use", id, name, input);
-      },
-      onToolResult: (id, detail) => {
-        wc.send("yo-panel-tool-result", id, detail);
-      },
-      onToolProgress: (id, status) => wc.send("yo-panel-tool-progress", id, status),
-      onSubAgent: (evt) => {
-        // Broadcast to every panel so any open Workbench Sub-Agents
-        // view picks it up (multiple workbenches in a layout all see it).
-        broadcastSubAgent(evt);
-      },
-      onDone: (fullText) => {
-        wc.send("yo-panel-done", fullText);
-      },
-      onError: (err) => wc.send("yo-panel-error", err),
-      onContextUsage: (used, window) => wc.send("yo-context-usage", { used, window }),
-    });
-  });
-
-  ipcMain.on("yo-panel-stop", () => {
-    yoAgent.abort();
-  });
+  // yo-panel-send/-stop/cmd-palette-open removed with the interactive chat
+  // agent panel (YoAgent + yo-panel-ui-vscode.ts).
 
   // Open a file from a yo-panel file link — defers to the OS default app.
   ipcMain.on("open-in-editor", (_e, filePath: string) => {
@@ -2616,53 +2487,11 @@ async function boot() {
   });
   ipcMain.handle("home:get-pending-section", () => pendingHomeSection);
 
-  // Renderer-initiated panel open (Cmd+> or .yo command)
-  ipcMain.on("yo-panel-open-from-renderer", (_e, query: string) => {
-    yoAgent.clear();
-    panelManager.setRightInset(yoPanelWidth());
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.focus();
-    }
-    if (query) openYoPanel(query);
-  });
-
-  // Open the yo panel and PREFILL its input without sending (e.g. Skills'
-  // "Create with .Yo" hands over a partial prompt for the user to finish).
-  ipcMain.on("yo-panel-prefill-from-renderer", (_e, text: string) => {
-    yoAgent.clear();
-    openYoPanel("");
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.focus();
-      mainWindow.webContents.send("yo-panel-prefill", text);
-    }
-  });
-
-  ipcMain.on("yo-panel-dismiss", () => {
-    yoAgent.clear();
-    mainWindow?.webContents.send("yo-panel-close");
-    panelManager.setRightInset(0);
-  });
-
-  // Open the yo panel and load a specific chat/run by id (e.g. clicking a
-  // schedule's run history opens that run as a normal chat in the panel).
-  ipcMain.on("yo-open-chat-from-renderer", (_e, id: string) => {
-    openYoPanel("");
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.focus();
-      mainWindow.webContents.send("yo-panel-load-chat", id);
-    }
-  });
-
-  // IPC: Yo panel resize
-  ipcMain.on("yo-panel-resize", (_e, width: number) => {
-    panelManager.setRightInset(width);
-  });
-  ipcMain.on("yo-panel-width-save", (_e, width: number) => {
-    setPreference("yoPanelWidth", width);
-  });
-  ipcMain.handle("yo-panel-get-width", () => {
-    return getPreference<number>("yoPanelWidth", 380);
-  });
+  // yo-panel-open/-prefill/-dismiss-from-renderer removed with the panel.
+  // The Schedules run-history "View run" hand-off (previously window.yo.openYoChat
+  // -> "yo-open-chat-from-renderer") was also removed from the renderer side
+  // (src/renderer/help/schedules.ts) since there's no surface left to open a
+  // run's transcript INTO. No handler is registered for that channel anymore.
 
   // IPC: Files left rail resize + width persistence
   ipcMain.on("files-rail-resize", (_e, width: number) => {
@@ -2675,16 +2504,8 @@ async function boot() {
     return getPreference<number>("filesRailWidth", 240);
   });
 
-  // IPC: Agent permission mode (default/plan/acceptEdits/bypassPermissions).
-  ipcMain.handle("get-agent-mode", () => ({
-    perm: yoAgent.getMode(),
-  }));
-  ipcMain.on("set-agent-mode", (_e, mode: string) => {
-    yoAgent.setMode(mode as any);
-    setPreference("agentMode", mode);
-    mainWindow?.webContents.send("agent-mode-changed", mode);
-    yoInterceptor.setAgentMode(mode);
-  });
+  // get-agent-mode/set-agent-mode removed — they only fed the (now removed)
+  // chat panel's permission dropdown (default/plan/acceptEdits/bypassPermissions).
 
   // Council + Vibe apps removed. Multi-agent work is now done by the
   // right-rail Yo invoking saved agents via the mcp__glyphh__call_agent tool,
@@ -2759,113 +2580,11 @@ async function boot() {
   // crash if they still try to call it.
   ipcMain.handle("agents:open-as-app", () => false);
 
-  // Approval system — pending approvals map + IPC
-  const pendingApprovals = new Map<string, (approved: boolean) => void>();
-  let approvalCounter = 0;
-
-  yoAgent.setApprovalCallback(async (toolName, input) => {
-    const id = `approval-${++approvalCounter}`;
-    const { TOOL_LABELS } = require("./action-gate");
-    let toolLabel = TOOL_LABELS[toolName] || toolName;
-    const mcpMatch = toolName.match(/^mcp__[^_]+__(.+)$/);
-    if (mcpMatch) toolLabel = TOOL_LABELS[mcpMatch[1]] || mcpMatch[1].replace(/_/g, " ");
-    mainWindow?.webContents.send("approval-request", id, toolName, toolLabel, input);
-    return new Promise<boolean>((resolve) => {
-      pendingApprovals.set(id, resolve);
-      setTimeout(() => {
-        if (pendingApprovals.has(id)) {
-          pendingApprovals.delete(id);
-          resolve(false);
-        }
-      }, 60000);
-    });
-  });
-
-  ipcMain.on("approval-respond", (_e, id: string, approved: boolean) => {
-    const resolve = pendingApprovals.get(id);
-    if (resolve) {
-      pendingApprovals.delete(id);
-      resolve(approved);
-    }
-  });
-
-  // ExitPlanMode means the agent has finished planning and the user wants to
-  // proceed. The SDK exits its own plan-mode state, but our `agentMode` pref
-  // (which `gate()` consults) stays "plan" until something rewrites it. That
-  // left subsequent Edit/Write calls in the same turn returning "skip" with
-  // a "stale plan-mode permission" — the bug Chris reported. Drop the mode
-  // back to "default" the moment the SDK fires the ExitPlanMode tool so the
-  // gate releases in lockstep with the SDK.
-  yoAgent.onToolUseSeen?.((toolName) => {
-    if (toolName === "ExitPlanMode" && yoAgent.getMode() === "plan") {
-      yoAgent.setMode("default");
-      setPreference("agentMode", "default");
-      mainWindow?.webContents.send("agent-mode-changed", "default");
-      yoInterceptor.setAgentMode("default");
-    }
-  });
-
-  // ── ask_user_question — purple "Input required" card ──
-  // Mirrors approvals but for multi-choice questions. The MCP tool blocks
-  // until the user picks an option (or cancels) in the Yo panel.
-  const pendingAsks = new Map<string, (answers: Array<string | null>) => void>();
-  let askCounter = 0;
-  yoAgent.setAskCallback(async (questions) => {
-    const id = `ask-${++askCounter}`;
-    mainWindow?.webContents.send("yo-ask-request", id, questions);
-    return new Promise<Array<string | null>>((resolve) => {
-      pendingAsks.set(id, resolve);
-      // No timeout — questions can be answered whenever the user gets back.
-    });
-  });
-  ipcMain.on("yo-ask-respond", (_e, id: string, answers: Array<string | null>) => {
-    const resolve = pendingAsks.get(id);
-    if (resolve) {
-      pendingAsks.delete(id);
-      resolve(Array.isArray(answers) ? answers : []);
-    }
-  });
-
-  // ── preview_url tool wiring ──
-  // Broadcast the URL to every Workbench panel. The first one whose Preview
-  // slot is open (or the user's selected default Preview) accepts and
-  // confirms by replying via wb-preview:accepted. The tool resolves true if
-  // any accepted; false otherwise so the agent can tell the user to add a
-  // Preview slot.
-  const pendingPreview = new Map<string, (ok: boolean) => void>();
-  let previewCounter = 0;
-  yoAgent.setPreviewCallback(async (url) => {
-    const reqId = `preview-${++previewCounter}`;
-    // Broadcast only to workbench panels.
-    const workbenchPanelIds: string[] = [];
-    for (const app of appConnector.list()) {
-      if (app.url === "yo://workbench") workbenchPanelIds.push(app.id);
-    }
-    if (workbenchPanelIds.length === 0) return false;
-    for (const id of workbenchPanelIds) {
-      const wc = panelManager.getWebContents(id);
-      if (wc && !wc.isDestroyed()) {
-        try { wc.send("wb-preview:set-url", reqId, url); } catch { /* */ }
-      }
-    }
-    return new Promise<boolean>((resolve) => {
-      pendingPreview.set(reqId, resolve);
-      setTimeout(() => {
-        if (pendingPreview.has(reqId)) {
-          pendingPreview.delete(reqId);
-          resolve(false);
-        }
-      }, 1500);
-    });
-  });
-  ipcMain.on("wb-preview:accepted", (_e, reqId: string) => {
-    const resolve = pendingPreview.get(reqId);
-    if (resolve) {
-      pendingPreview.delete(reqId);
-      resolve(true);
-    }
-  });
-
+  // Approval system, ask_user_question, and preview_url (wb-preview:*)
+  // callback wiring removed — they only served the interactive chat agent's
+  // (YoAgent) SDK MCP tools, which no longer exist. mcp-expose.ts's own
+  // preview_url tool (used by run_jammer etc.) is unrelated — it posts to
+  // cypherBus directly and was never routed through this machinery.
 
   // ── Extracted IPC modules ──────────────────────────────
   registerSettingsIpc({
@@ -2876,7 +2595,7 @@ async function boot() {
     mcpExpose: mcpExpose!, session, sendSessionState,
     providerKeys: providerKeysModule, ccBootstrapStatus,
     transcriber, cloudSyncInstance, execCommand,
-    getMainWindow: () => mainWindow, panelManager, yoAgent,
+    getMainWindow: () => mainWindow, panelManager, runStore,
   });
 
   registerSkillsIpc({
@@ -2890,9 +2609,8 @@ async function boot() {
   {
     const { registerSchedulesIpc } = require("./schedules-ipc") as typeof import("./schedules-ipc");
     registerSchedulesIpc({
-      runForResult: (prompt: string) => yoAgent.runForResult(prompt),
-      saveRunChat: (opts) => yoAgent.saveRunChat(opts),
-      deleteRunsForSkill: (name: string) => yoAgent.deleteRunsForSkill(name),
+      saveRunChat: (opts) => runStore.saveRunChat(opts),
+      deleteRunsForSkill: (name: string) => runStore.deleteRunsForSkill(name),
     });
   }
 
@@ -3025,8 +2743,6 @@ async function boot() {
       backgroundSpawns.set(a.agentId, { name: nm, transcript: "" });
     }
     notifyBgCount();
-    // Persist the start marker so the thread restores with the swarm card.
-    yoAgent.appendSwarmEntry("swarm-start", JSON.stringify(swarmStart));
     const res = await spawnSwarm(manifest, mainWindow.webContents);
     if (!res.ok) return `Swarm failed to start: ${res.error || "unknown error"}`;
     return `Swarm started — ${res.spawned ?? 0} agent(s): ${roster.join(", ")}. `
@@ -3225,7 +2941,7 @@ async function boot() {
   // IPC: tabs + URL bar (extracted to tab-ipc.ts)
   registerTabIpc({
     panelManager, layoutManager, appConnector,
-    yoAgent, yoInterceptor, agentRunner,
+    yoInterceptor, agentRunner,
     getMainWindow: () => mainWindow,
     openTabs,
     tabBrowserCounter: { get value() { return tabBrowserCounter; }, set value(v) { tabBrowserCounter = v; } },
@@ -3233,7 +2949,7 @@ async function boot() {
     panelNavWc,
     resolveAppId, resolveBrowserHome, browserHtmlUrl,
     ensureTab, persistTabs, sendSplitState, sendTabState,
-    openYoPanel, createPanelForApp,
+    createPanelForApp,
     setPreference, getPreference,
     URL_BAR_HEIGHT,
     afterNav: () => { if (canvasApi?.isCanvasMode()) canvasApi.applyCanvas(); },
@@ -3500,11 +3216,9 @@ function cleanupAll() {
   voiceRelay?.stop();
   cloudSyncInstance?.stop();
   cloudSyncInstance = null;
-  usageQueue.stop();
   configSync?.stop();
   configSync = null;
   terminalManager?.killAll();
-  wazManager?.closeAll();
   // agentRunner instances are aborted when their webContents are destroyed
   mcpExpose?.stop();
   inboxRouter?.stop();

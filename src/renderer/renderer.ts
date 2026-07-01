@@ -16,7 +16,6 @@ import { initTabBar } from "./tab-bar-ui.js";
 import { initGrid } from "./grid-ui.js";
 import { initCanvas } from "./canvas-ui.js";
 import { initCommandCenter } from "./command-center-ui.js";
-import { initYoPanel } from "./yo-panel-ui-vscode.js";
 import { initSearchClears } from "./search-clear.js";
 import { yoConfirm } from "./yo-modal.js";
 
@@ -255,39 +254,6 @@ declare global {
       submitSupportTicket: (ticket: { subject: string; description: string }) => Promise<{ ok: boolean; error?: string }>;
       // Voice transcription
       transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>;
-      // Yo agent panel
-      yoPanelOpen: (query: string) => void;
-      yoPanelSend: (message: string) => void;
-      yoPanelDismiss: () => void;
-      yoPanelStop: () => void;
-      onYoPanelOpen: (cb: (query: string) => void) => void;
-      onYoPanelToggle: (cb: () => void) => void;
-      onYoPanelKickoff: (cb: (prompt: string) => void) => void;
-      onYoPanelToken: (cb: (delta: string) => void) => void;
-      onYoPanelToolUse: (cb: (id: string, name: string, input: unknown) => void) => void;
-      onYoPanelToolResult: (cb: (id: string, detail: string) => void) => void;
-      onYoPanelToolProgress: (cb: (id: string, status: string) => void) => void;
-      onYoPanelDone: (cb: (fullText: string) => void) => void;
-      onYoPanelBackgroundResult: (cb: (r: { id: string; name: string; ok: boolean; text: string }) => void) => void;
-      onYoPanelBgCount: (cb: (count: number) => void) => void;
-      onYoPanelError: (cb: (err: string) => void) => void;
-      onYoContextUsage: (cb: (info: { used: number; window: number }) => void) => void;
-      onYoPanelClose: (cb: () => void) => void;
-      onYoPanelRefocus: (cb: () => void) => void;
-      yoPanelPrefill: (text: string) => void;
-      onYoPanelPrefill: (cb: (text: string) => void) => void;
-      openYoChat: (id: string) => void;
-      onYoPanelLoadChat: (cb: (id: string) => void) => void;
-      // Local swarm — inline activity in the yo panel
-      onYoPanelSwarmStart: (cb: (info: { title: string; goal: string; agents: Array<{ id: string; position: string; provider?: string; model?: string }> }) => void) => void;
-      onYoPanelSwarmActivity: (cb: (event: { from: string; to?: string; kind: string; body: string; tags?: string[]; ts: number; meta?: Record<string, unknown> }) => void) => void;
-      // Cypher chat layer
-      onYoPanelChatMsg: (cb: (msg: { from: string; body: string; ts: number; isLocal: boolean }) => void) => void;
-      onYoPanelDripEffect: (cb: (recipe: string) => void) => void;
-      // Yo panel resize
-      yoPanelResize: (width: number) => void;
-      yoPanelWidthSave: (width: number) => void;
-      yoPanelGetWidth: () => Promise<number>;
       // Files left rail
       filesRailResize: (width: number) => void;
       filesRailWidthSave: (width: number) => void;
@@ -311,11 +277,6 @@ declare global {
       openHomeSection: (section: string, sub?: string) => void;
       onGotoSection: (cb: (section: string, sub?: string) => void) => void;
       getPendingSection: () => Promise<{ section: string; sub?: string } | null>;
-      // Yo chat history
-      yoChatsList: () => Promise<Array<{ id: string; title: string; created: string; messageCount: number }>>;
-      yoChatsLoad: (id: string) => Promise<Array<{ role: string; text: string; tools?: Array<{ name: string; input?: unknown }> }> | null>;
-      yoChatsDelete: (id: string) => Promise<boolean>;
-      yoChatNew: () => Promise<boolean>;
       // Agent mode + guardrails
       getAgentMode: () => Promise<{ perm: string; swarm: boolean }>;
       setAgentMode: (mode: string) => void;
@@ -529,22 +490,11 @@ document.getElementById("splash-close")?.addEventListener("click", () => window.
 (window as unknown as { refreshYosBadge?: () => void }).refreshYosBadge = () => {};
 
 
-// -- Yo panel (extracted to yo-panel-ui.ts) --
-const { openYoPanel, closeYoPanel, isYoPanelOpen, yoScroll, showYoWelcome, hideYoWelcome, getYoPanelWidth } = initYoPanel({
-  renderGridHandles: () => gridApi.renderGridHandles(),
-});
-
-// Right-rail toggle in the header — slides the yo agent panel in/out.
-document.getElementById("yo-rail-toggle")?.addEventListener("click", () => {
-  if (isYoPanelOpen()) {
-    window.yo.yoPanelDismiss();
-  } else {
-    window.yo.yoPanelOpen("");
-    openYoPanel("");
-  }
-  // Yo panel open/close is also rail "content" — re-evaluate empty state.
-  setTimeout(() => tabApi.refreshEmptyState(), 250);
-});
+// -- Yo agent panel removed (pivot-mcp) --
+// The in-app interactive chat agent panel was removed; these stubs keep
+// grid-ui.ts's layout math (right-inset calc) working with "no panel open".
+const isYoPanelOpen = (): boolean => false;
+const getYoPanelWidth = (): number => 0;
 
 // -- Tab bar (extracted to tab-bar-ui.ts) --
 const tabApi = initTabBar({
@@ -614,44 +564,18 @@ window.yo.onUrlBarForce((show: boolean) => {
 });
 
 
-// -- Cmd+. opens yo agent panel --
-
-// focus-command-input from main → open agent panel
-window.yo.onFocusInput(() => {
-  if (!isYoPanelOpen()) {
-    window.yo.yoPanelOpen("");
-    openYoPanel("");
-  }
-});
-
-
-
 // Commands submitted from the palette child window
 window.yo.onExecCommandFromPalette((cmd) => window.yo.execCommand(cmd));
 
 // -- Global keyboard shortcuts --
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    if (isYoPanelOpen()) window.yo.yoPanelDismiss();
-  }
-
-  // Cmd+Shift+. — toggle the Command Center (zoom-out view of all open apps)
-  if (e.key === "." && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+  // Cmd+Shift+. and Cmd+. — toggle the Command Center (zoom-out view of all
+  // open apps). The plain Cmd+. binding used to toggle the (now-removed)
+  // agent panel; it now also opens Command Center for a consistent shortcut.
+  if (e.key === "." && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
     commandCenter.toggle();
-    return;
-  }
-
-  // Cmd+. (without shift) — toggle yo agent panel
-  if (e.key === "." && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-    e.preventDefault();
-    if (isYoPanelOpen()) {
-      window.yo.yoPanelDismiss();
-    } else {
-      window.yo.yoPanelOpen("");
-      openYoPanel("");
-    }
     return;
   }
 
@@ -985,36 +909,10 @@ updateDismiss.addEventListener("click", () => {
 initDrip();
 
 
-// -- First-run: auto-open the yo agent panel --
-// On the very first launch — after the splash, and after onboarding for a
-// brand-new user — drop the user straight into the yo agent so the assistant
-// is the first thing they reach for. Once-only, guarded by a preference.
-function maybeAutoOpenYoPanel(): void {
-  window.yo.getPreference("hasAutoOpenedYoPanel", false).then((opened) => {
-    if (opened) return;
-    window.yo.setPreference("hasAutoOpenedYoPanel", true);
-    setTimeout(() => {
-      if (!isYoPanelOpen()) {
-        window.yo.yoPanelOpen("");
-        openYoPanel("");
-      }
-    }, 1200);
-  });
-}
-
-// Brand-new user: fires once onboarding activation completes.
-window.addEventListener("yo-onboarding-done", () => {
-  setTimeout(maybeAutoOpenYoPanel, 800);
-});
-
 // -- Boot gate --
 
 initBootGate({
-  onBootReady: (data) => {
-    // Returning/authenticated user's first launch with this build — a
-    // brand-new user reaches this via the yo-onboarding-done path instead.
-    if (!data.needsOnboarding) maybeAutoOpenYoPanel();
-  },
+  onBootReady: () => {},
   showPanels: () => window.yo.panelsShow(),
   hidePanels: () => window.yo.panelsHide(),
   applyTheme: (theme) => {

@@ -379,94 +379,14 @@ contextBridge.exposeInMainWorld("yo", {
   transcribeAudio: (audioBuffer: ArrayBuffer) =>
     ipcRenderer.invoke("transcribe-audio", audioBuffer) as Promise<{ ok: boolean; text?: string; error?: string }>,
 
-  // Yo panel
-  yoPanelOpen: (query: string) => ipcRenderer.send("yo-panel-open-from-renderer", query),
-  yoPanelPrefill: (text: string) => ipcRenderer.send("yo-panel-prefill-from-renderer", text),
-  openYoChat: (id: string) => ipcRenderer.send("yo-open-chat-from-renderer", id),
-  yoPanelSend: (message: string) => ipcRenderer.send("yo-panel-send", message),
-  yoPanelDismiss: () => ipcRenderer.send("yo-panel-dismiss"),
-  yoPanelStop: () => ipcRenderer.send("yo-panel-stop"),
-  onYoPanelOpen: (cb: (query: string) => void) => {
-    ipcRenderer.on("yo-panel-open", (_e, query) => cb(query));
-  },
-  onYoPanelToggle: (cb: () => void) => {
-    ipcRenderer.on("yo-panel-toggle", () => cb());
-  },
-  onYoPanelKickoff: (cb: (prompt: string) => void) => {
-    ipcRenderer.on("yo-panel-kickoff", (_e, prompt) => cb(prompt));
-  },
-  onYoPanelToken: (cb: (delta: string) => void) => {
-    ipcRenderer.on("yo-panel-token", (_e, delta) => cb(delta));
-  },
-  onYoPanelToolUse: (cb: (id: string, name: string, input: unknown) => void) => {
-    ipcRenderer.on("yo-panel-tool-use", (_e, id, name, input) => cb(id, name, input));
-  },
-  onYoPanelToolResult: (cb: (id: string, detail: string) => void) => {
-    ipcRenderer.on("yo-panel-tool-result", (_e, id, detail) => cb(id, detail));
-  },
-  onYoPanelToolProgress: (cb: (id: string, status: string) => void) => {
-    ipcRenderer.on("yo-panel-tool-progress", (_e, id, status) => cb(id, status));
-  },
-  onYoPanelDone: (cb: (fullText: string) => void) => {
-    ipcRenderer.on("yo-panel-done", (_e, text) => cb(text));
-  },
-  // A detached background agent (spawn_background) finished — its result is
-  // handed back to the yo conversation as a follow-up turn.
-  onYoPanelBackgroundResult: (cb: (r: { id: string; name: string; ok: boolean; text: string }) => void) => {
-    ipcRenderer.on("yo-panel-background-result", (_e, r) => cb(r));
-  },
-  // Live count of in-flight background agents — drives the persistent
-  // "N running" indicator in the main panel.
-  onYoPanelBgCount: (cb: (count: number) => void) => {
-    ipcRenderer.on("yo-panel-bg-count", (_e, count: number) => cb(count));
-  },
-  onYoPanelError: (cb: (err: string) => void) => {
-    ipcRenderer.on("yo-panel-error", (_e, err) => cb(err));
-  },
-  // Conversation context size vs the compaction window — drives the gauge.
-  onYoContextUsage: (cb: (info: { used: number; window: number }) => void) => {
-    ipcRenderer.on("yo-context-usage", (_e, info) => cb(info));
-  },
-  onYoPanelClose: (cb: () => void) => {
-    ipcRenderer.on("yo-panel-close", () => cb());
-  },
-  onYoPanelRefocus: (cb: () => void) => {
-    ipcRenderer.on("yo-panel-refocus", () => cb());
-  },
-  onYoPanelPrefill: (cb: (text: string) => void) => {
-    ipcRenderer.on("yo-panel-prefill", (_e, text) => cb(text));
-  },
-  onYoPanelLoadChat: (cb: (id: string) => void) => {
-    ipcRenderer.on("yo-panel-load-chat", (_e, id) => cb(id));
-  },
+  // Yo agent panel bindings removed (pivot-mcp) — the interactive chat agent
+  // panel (YoAgent + yo-panel-ui-vscode.ts) that these IPC channels served is
+  // gone; no renderer code calls them anymore.
 
   // Jammer activity feed (workspace bus events forwarded from main)
   onJammerActivity: (cb: (event: { from: string; kind: string; body: string; tags?: string[]; ts: number }) => void) => {
     ipcRenderer.on("jammer-activity", (_e, event) => cb(event));
   },
-
-  // Local swarm — start signal (roster, for model badges) + inline activity.
-  onYoPanelSwarmStart: (cb: (info: { title: string; goal: string; agents: Array<{ id: string; position: string; provider?: string; model?: string }> }) => void) => {
-    ipcRenderer.on("yo-panel-swarm-start", (_e, info) => cb(info));
-  },
-  onYoPanelSwarmActivity: (cb: (event: { from: string; to?: string; kind: string; body: string; tags?: string[]; ts: number; meta?: Record<string, unknown> }) => void) => {
-    ipcRenderer.on("yo-panel-swarm-activity", (_e, event) => cb(event));
-  },
-
-  // Cypher chat messages (observer/mistro chat layer)
-  onYoPanelChatMsg: (cb: (msg: { from: string; body: string; ts: number; isLocal: boolean }) => void) => {
-    ipcRenderer.on("yo-panel-chat-msg", (_e, msg) => cb(msg));
-  },
-  // Cypher drip effects from other observers
-  onYoPanelDripEffect: (cb: (recipe: string) => void) => {
-    ipcRenderer.on("yo-panel-drip-effect", (_e, recipe) => cb(recipe));
-  },
-
-  // Yo chat history
-  yoChatsList: () => ipcRenderer.invoke("yo-chats-list") as Promise<Array<{ id: string; title: string; created: string; messageCount: number }>>,
-  yoChatsLoad: (id: string) => ipcRenderer.invoke("yo-chats-load", id) as Promise<Array<{ role: string; text: string; tools?: Array<{ name: string; input?: unknown }> }> | null>,
-  yoChatsDelete: (id: string) => ipcRenderer.invoke("yo-chats-delete", id) as Promise<boolean>,
-  yoChatNew: () => ipcRenderer.invoke("yo-chat-new") as Promise<boolean>,
 
   // Task runs (persisted scheduled/manual runs → Activity + schedule history)
   runsList: (skillName?: string) => ipcRenderer.invoke("runs-list", skillName) as Promise<Array<{ id: string; skillName: string; title: string; created: string; trigger: string; ok: boolean }>>,
@@ -530,11 +450,6 @@ contextBridge.exposeInMainWorld("yo", {
   onPanelUrlUpdate: (cb: (info: { id: string; url: string; favicon: string }) => void) => {
     ipcRenderer.on("panel-url-update", (_e, info) => cb(info));
   },
-
-  // Yo panel resize
-  yoPanelResize: (width: number) => ipcRenderer.send("yo-panel-resize", width),
-  yoPanelWidthSave: (width: number) => ipcRenderer.send("yo-panel-width-save", width),
-  yoPanelGetWidth: () => ipcRenderer.invoke("yo-panel-get-width") as Promise<number>,
 
   // Files left rail — explorer scoped to the working directory
   filesRailResize: (width: number) => ipcRenderer.send("files-rail-resize", width),

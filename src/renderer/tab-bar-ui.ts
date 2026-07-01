@@ -287,9 +287,10 @@ export function initTabBar(deps: TabBarDeps): {
     tabBar.appendChild(tabNewBtn);
   }
 
-  /** Shown only when there are no tabs AND neither rail is open. Either
-   *  rail (left files rail or right yo panel) being open is itself "content"
-   *  for the user, so the placeholder is redundant. */
+  /** Shown only when there are no tabs AND the left files rail isn't open —
+   *  an open rail is itself "content" for the user, so the placeholder is
+   *  redundant. (The right-hand agent panel this also used to check was
+   *  removed in the pivot-mcp pass.) */
   let lastTabCount = 0;
   function updateEmptyState(tabs: TabInfo[]) {
     lastTabCount = tabs.length;
@@ -297,8 +298,7 @@ export function initTabBar(deps: TabBarDeps): {
   }
   function refreshEmptyState() {
     const leftRailOpen = !!document.getElementById("files-rail")?.classList.contains("open");
-    const yoPanelOpen = !!document.getElementById("yo-panel")?.classList.contains("open");
-    const showEmpty = lastTabCount === 0 && !leftRailOpen && !yoPanelOpen;
+    const showEmpty = lastTabCount === 0 && !leftRailOpen;
     emptyState.classList.toggle("hidden", !showEmpty);
   }
 

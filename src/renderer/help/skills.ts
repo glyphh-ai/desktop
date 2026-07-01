@@ -20,10 +20,12 @@ const MENU_EDIT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const MENU_UPLOAD = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`;
 const SEARCH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/></svg>`;
 
-/** Agent hand-off: open the .Yo panel with a build prompt prefilled (not sent)
- *  so the user can finish/refine it before submitting. */
-function handToAgent(prompt: string): void {
-  window.yo.yoPanelPrefill(prompt);
+/** Agent hand-off used to open the in-app agent panel with a build prompt
+ *  prefilled. That panel was removed (pivot-mcp); there is currently no
+ *  in-app destination for this hand-off, so surface a clear message instead
+ *  of silently failing or reconnecting to an internal LLM call. */
+function handToAgent(_prompt: string): void {
+  void confirmAction("Building skills with the in-app agent isn't available yet — use Claude Code (or another external agent) with this prompt for now.");
 }
 
 export function loadSkills(): void {

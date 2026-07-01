@@ -16,7 +16,6 @@
     } catch (e) {}
   </script>
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="chat-renderer.css">
 </head>
 <body>
   <!-- Splash screen -->
@@ -97,9 +96,6 @@
     <div id="tab-bar">
       <button id="tab-new-btn" class="tab-new-btn" title="New tab">+</button>
     </div>
-    <button id="yo-rail-toggle" class="files-rail-toggle" title="Toggle Glyphh agent panel">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-    </button>
   </div>
 
   <!-- URL bar — shown below titlebar for all panels -->
@@ -261,193 +257,7 @@
     </div>
   </div>
 
-  <!-- Yo agent slide-out panel -->
-  <div id="yo-panel" class="yo-panel hidden">
-    <div id="yo-panel-resize" class="yo-panel-resize"></div>
-    <div class="yo-panel-header">
-      <span class="yo-panel-title">
-        <span class="yo-brand-text"><span class="yo-dot">.</span>Sup <span id="yo-brand-name">there</span></span>
-      </span>
-      <span class="yo-panel-header-spacer"></span>
-      <button id="yo-history-toggle" class="yo-history-toggle" title="Chat history">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-      </button>
-      <button id="yo-chat-new" class="yo-chat-new" title="New chat">+</button>
-      <div id="yo-history" class="yo-history hidden">
-        <input id="yo-history-search" class="yo-history-search" type="text" placeholder="Search history…" spellcheck="false" />
-        <div id="yo-history-list" class="yo-history-list"></div>
-      </div>
-    </div>
-    <div class="yo-panel-messages" id="yo-panel-messages"></div>
-    <button id="yo-scroll-btn" class="yo-scroll-btn" title="Scroll to bottom">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2.5v9"/><path d="M3 8l4 4 4-4"/></svg>
-    </button>
-
-    <!-- Drip picker tray -->
-    <div id="drip-picker" class="drip-picker hidden">
-      <div class="drip-picker-section" id="drip-picker-builtin"></div>
-      <div class="drip-picker-divider" id="drip-picker-custom-divider" style="display:none;"></div>
-      <div class="drip-picker-section" id="drip-picker-custom"></div>
-    </div>
-
-    <!-- Workdir bar — folder picker + git branch + add-folder, with the
-         animated `.` dot pinned far right. Ported from the (now-removed)
-         Agent app so the right-rail Yo becomes folder-bound. -->
-    <div class="yo-workdir-bar">
-      <button class="yo-workdir-btn" id="workdir-btn" title="Pick the working folder" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
-        </svg>
-        <span id="workdir-name">Pick a folder</span>
-      </button>
-      <span class="yo-workdir-branch" id="workdir-branch-wrap" style="display:none;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/>
-          <path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/>
-        </svg>
-        <span id="workdir-branch"></span>
-      </span>
-      <button class="yo-workdir-add" id="workdir-add-btn" title="Add folder" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
-          <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
-        </svg>
-      </button>
-      <span class="yo-workdir-bar-spacer"></span>
-      <button id="yo-panel-drip" class="yo-workdir-drip" title="Drips" type="button">&#x2728;</button>
-    </div>
-
-    <!-- Composer-area interaction host. When the agent needs the user to
-         answer a question (mcp__yo__ask_user_question) or approve a tool, the
-         prompt takes over this slot just above the input — native look, then
-         collapses back. Empty + hidden when idle. -->
-    <div id="yo-composer-interaction" class="yo-composer-interaction" hidden></div>
-
-    <!-- Persistent indicator: shows while detached background agents are still
-         running (the main turn spinner clears as soon as the spawning turn ends). -->
-    <div id="yo-bg-indicator" class="yo-bg-indicator" hidden>
-      <span class="yo-bg-dot"></span><span id="yo-bg-indicator-label" class="yo-bg-indicator-label"></span>
-    </div>
-
-    <div class="yo-panel-input-wrap">
-      <textarea id="yo-panel-input" rows="1" placeholder=".yo ..."></textarea>
-      <button id="yo-panel-mic" class="yo-mic-btn" title="Voice input"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="1" y1="8" x2="1" y2="8"/><line x1="3.5" y1="5" x2="3.5" y2="11"/><line x1="6" y1="3" x2="6" y2="13"/><line x1="8.5" y1="5" x2="8.5" y2="11"/><line x1="11" y1="2" x2="11" y2="14"/><line x1="13.5" y1="5" x2="13.5" y2="11"/></svg></button>
-    </div>
-    <div class="yo-panel-controls">
-      <div id="yo-perm-dropdown" class="yo-mode-dropdown">
-        <button id="yo-perm-trigger" class="yo-mode-trigger" title="Permissions">
-          <!-- Trigger icon body is painted by applyPerm (PERM_ICONS) on mount. -->
-          <span class="yo-perm-icon"></span>
-          <span class="yo-perm-label">ask</span>
-          <span class="yo-mode-chevron">&#x25BE;</span>
-        </button>
-        <div id="yo-perm-menu" class="yo-mode-menu hidden">
-          <div class="yo-perm-option" data-value="default">
-            <span class="yo-mode-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">ask</span>
-              <span class="yo-mode-opt-desc">confirms before acting</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-          <div class="yo-perm-option" data-value="plan">
-            <span class="yo-mode-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg></span>
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">plan</span>
-              <span class="yo-mode-opt-desc">drafts a plan, no tool calls</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-          <div class="yo-perm-option" data-value="acceptEdits">
-            <span class="yo-mode-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">auto</span>
-              <span class="yo-mode-opt-desc">runs safe tools, asks for risky</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-          <div class="yo-perm-option" data-value="bypassPermissions">
-            <span class="yo-mode-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">bypass</span>
-              <span class="yo-mode-opt-desc">no prompts &mdash; use with care</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-        </div>
-      </div>
-      <div id="yo-model-dropdown" class="yo-mode-dropdown">
-        <button id="yo-model-trigger" class="yo-mode-trigger" title="Model">
-          <span class="yo-model-label">Default</span>
-          <span class="yo-mode-chevron">&#x25BE;</span>
-        </button>
-        <div id="yo-model-menu" class="yo-mode-menu hidden">
-          <div class="yo-model-section-header">Claude</div>
-          <div class="yo-model-option" data-provider="anthropic" data-value="">
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">Default</span>
-              <span class="yo-mode-opt-desc">use the workspace default</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-          <div class="yo-model-option" data-provider="anthropic" data-value="claude-sonnet-4-6">
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">Sonnet 4.6</span>
-              <span class="yo-mode-opt-desc">balanced quality + speed</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-          <div class="yo-model-option" data-provider="anthropic" data-value="claude-opus-4-8">
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">Opus 4.8</span>
-              <span class="yo-mode-opt-desc">newest opus, heaviest reasoning</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-          <div class="yo-model-option" data-provider="anthropic" data-value="claude-opus-4-7">
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">Opus 4.7</span>
-              <span class="yo-mode-opt-desc">previous opus</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-          <div class="yo-model-option" data-provider="anthropic" data-value="claude-haiku-4-5-20251001">
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">Haiku 4.5</span>
-              <span class="yo-mode-opt-desc">fastest, lightest</span>
-            </div>
-            <span class="yo-mode-opt-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          </div>
-          <div class="yo-model-section-header">GPT</div>
-          <div class="yo-model-option disabled" data-provider="openai" data-value="gpt-5-codex" title="GPT loop not yet implemented in the .yo agent">
-            <div class="yo-mode-opt-text">
-              <span class="yo-mode-opt-label">GPT-5 Codex</span>
-              <span class="yo-mode-opt-desc">coming soon</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div id="yo-effort-dropdown" class="yo-mode-dropdown">
-        <button id="yo-effort-trigger" class="yo-mode-trigger" title="Reasoning effort">
-          <span id="yo-effort-trigger-label" class="yo-effort-trigger-label">Balanced</span>
-          <span class="yo-mode-chevron">&#x25BE;</span>
-        </button>
-        <div id="yo-effort-menu" class="yo-mode-menu yo-effort-menu hidden">
-          <div class="yo-effort-head">
-            <span class="yo-effort-head-label">Effort</span>
-            <span id="yo-effort-value" class="yo-effort-value">Balanced</span>
-          </div>
-          <div class="yo-effort-track-wrap">
-            <span class="yo-effort-end">Faster</span>
-            <input id="yo-effort-input" type="range" min="0" max="3" step="1" value="1" class="yo-effort-slider" title="Faster → Ultracode" />
-            <span class="yo-effort-end">Smarter</span>
-          </div>
-        </div>
-      </div>
-      <button id="yo-panel-compaction" class="yo-compaction-btn" title="Context usage — click to compact"><svg class="yo-compaction-ring" viewBox="0 0 36 36" width="18" height="18"><circle class="yo-compaction-track" cx="18" cy="18" r="15"/><circle class="yo-compaction-fill" cx="18" cy="18" r="15"/></svg></button>
-      <button id="yo-panel-send">&uarr;</button>
-    </div>
-  </div>
+  <!-- Yo agent slide-out panel removed (pivot-mcp) -->
 
   <!-- Files left rail — explorer scoped to the working directory + app nav -->
   <div id="files-rail" class="files-rail hidden">
