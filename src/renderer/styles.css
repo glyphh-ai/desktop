@@ -62,9 +62,9 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --text-faint:  #9ca3af;
   --white:       #111111;
   --hover:       #f0f0f0;
-  --active-bg:   rgba(168, 85, 247, 0.06);
-  --accent:      #a855f7;
-  --accent-hover:#b975f9;
+  --active-bg:   rgba(155, 60, 246, 0.06);
+  --accent:      #9b3cf6;
+  --accent-hover:#a855f7;
   --accent-dark: #7e22ce;
   --accent-bg:   #f5ecfd;
   --danger:      #ef4444;
@@ -73,12 +73,12 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --warning:     #f59e0b;
   --success:     #16a34a;
   --blue:        #3b82f6;
-  --purple:      #a855f7;
+  --purple:      #9b3cf6;
   --overlay-bg:  rgba(0, 0, 0, 0.3);
   --shadow:      rgba(0, 0, 0, 0.12);
-  --selection:   rgba(168, 85, 247, 0.2);
+  --selection:   rgba(155, 60, 246, 0.2);
   --scrollbar:   #d4d4d4;
-  --scrollbar-hover: #a855f7;
+  --scrollbar-hover: #9b3cf6;
   --toast-bg:    #ffffff;
   --code-inline: #9333ea;
   --input-bg:    var(--surface-2);
@@ -103,9 +103,9 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --text-faint:  #545454;
   --white:       #ffffff;
   --hover:       #303035;
-  --active-bg:   rgba(168, 85, 247, 0.08);
-  --accent:      #a855f7;
-  --accent-hover:#b975f9;
+  --active-bg:   rgba(155, 60, 246, 0.08);
+  --accent:      #9b3cf6;
+  --accent-hover:#a855f7;
   --accent-dark: #7e22ce;
   --accent-bg:   #241a2e;
   --danger:      #ff5f57;
@@ -114,10 +114,10 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --warning:     #f0a030;
   --success:     #28c840;
   --blue:        #4A9EFF;
-  --purple:      #a855f7;
+  --purple:      #9b3cf6;
   --overlay-bg:  rgba(0, 0, 0, 0.6);
   --shadow:      rgba(0, 0, 0, 0.4);
-  --selection:   rgba(168, 85, 247, 0.3);
+  --selection:   rgba(155, 60, 246, 0.3);
   --scrollbar:   #333;
   --scrollbar-hover: #555;
   --toast-bg:    #1a1a2e;
@@ -145,9 +145,9 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --text-faint:  #544a6a;
   --white:       #ffffff;
   --hover:       #2e2046;
-  --active-bg:   rgba(168, 85, 247, 0.12);
-  --accent:      #b975f9;
-  --accent-hover:#c98ffb;
+  --active-bg:   rgba(173, 93, 248, 0.12);
+  --accent:      #ad5df8;
+  --accent-hover:#b975f9;
   --accent-dark: #7e22ce;
   --accent-bg:   #2a1a40;
   --danger:      #ff5f57;
@@ -156,10 +156,10 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --warning:     #f0a030;
   --success:     #28c840;
   --blue:        #4A9EFF;
-  --purple:      #b975f9;
+  --purple:      #ad5df8;
   --overlay-bg:  rgba(10, 4, 20, 0.6);
   --shadow:      rgba(0, 0, 0, 0.5);
-  --selection:   rgba(168, 85, 247, 0.35);
+  --selection:   rgba(173, 93, 248, 0.35);
   --scrollbar:   #3a2857;
   --scrollbar-hover: #543a7e;
   --toast-bg:    #1b1029;
@@ -198,6 +198,9 @@ button, input, select, textarea {
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Kill the default translucent tap-highlight flash Chromium applies on
+     click — it reads as an unwanted color flicker on buttons. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -548,7 +551,7 @@ body {
 }
 #onboarding-overlay .auth-shell-input:focus {
   border-color: var(--accent);
-  background: rgba(168, 85, 247, 0.04);
+  background: rgba(155, 60, 246, 0.04);
 }
 #onboarding-overlay .auth-shell-input.has-error {
   border-color: var(--danger);
@@ -1018,7 +1021,7 @@ body.account-locked #dl-btn-wrap {
 }
 .url-bar-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.15);
+  box-shadow: 0 0 0 2px rgba(155, 60, 246, 0.15);
 }
 .url-bar-input::placeholder {
   color: var(--text-muted);
@@ -1879,7 +1882,7 @@ body.account-locked #dl-btn-wrap {
   white-space: nowrap;
 }
 .skill-pill-vibe {
-  background: rgba(168, 85, 247, 0.12);
+  background: rgba(155, 60, 246, 0.12);
   color: var(--purple);
 }
 .skill-pill-js {
@@ -2129,7 +2132,7 @@ body.account-locked #dl-btn-wrap {
   font-weight: 600;
   font-family: var(--font-mono);
 }
-.skill-run-status-success { background: rgba(168, 85, 247, 0.15); color: var(--accent); }
+.skill-run-status-success { background: rgba(155, 60, 246, 0.15); color: var(--accent); }
 .skill-run-status-error { background: rgba(255, 68, 68, 0.15); color: var(--danger); }
 .skill-run-item-details {
   margin-top: 6px;
@@ -2195,7 +2198,7 @@ body.account-locked #dl-btn-wrap {
   border-color: var(--accent);
 }
 .skill-generate-btn:hover {
-  background: rgba(168, 85, 247, 0.1);
+  background: rgba(155, 60, 246, 0.1);
 }
 .skill-input {
   width: 100%;
@@ -2331,21 +2334,21 @@ body.account-locked #dl-btn-wrap {
 }
 
 .grid-col-handle:hover::before {
-  background: rgba(168, 85, 247, 0.19);
+  background: rgba(155, 60, 246, 0.19);
   width: 2px;
 }
 
 .grid-col-handle.dragging::before {
   background: var(--accent);
   width: 2px;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 12px rgba(155, 60, 246, 0.5);
 }
 
 .grid-col-handle:hover::after {
   background: var(--accent);
   height: 48px;
   width: 4px;
-  box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+  box-shadow: 0 0 10px rgba(155, 60, 246, 0.4);
 }
 
 .grid-col-handle.dragging::after {
@@ -2353,7 +2356,7 @@ body.account-locked #dl-btn-wrap {
   height: 100%;
   width: 2px;
   border-radius: 0;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 12px rgba(155, 60, 246, 0.5);
 }
 
 .grid-row-handle {
@@ -2395,21 +2398,21 @@ body.account-locked #dl-btn-wrap {
 }
 
 .grid-row-handle:hover::before {
-  background: rgba(168, 85, 247, 0.19);
+  background: rgba(155, 60, 246, 0.19);
   height: 2px;
 }
 
 .grid-row-handle.dragging::before {
   background: var(--accent);
   height: 2px;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 12px rgba(155, 60, 246, 0.5);
 }
 
 .grid-row-handle:hover::after {
   background: var(--accent);
   width: 48px;
   height: 4px;
-  box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+  box-shadow: 0 0 10px rgba(155, 60, 246, 0.4);
 }
 
 .grid-row-handle.dragging::after {
@@ -2417,7 +2420,7 @@ body.account-locked #dl-btn-wrap {
   width: 100%;
   height: 2px;
   border-radius: 0;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 12px rgba(155, 60, 246, 0.5);
 }
 
 #drag-overlay {
@@ -3204,7 +3207,7 @@ ol.docs-list li::before {
   font-size: 10.5px;
   margin-right: 4px;
 }
-.sched-badge.freq { color: var(--accent); border-color: rgba(168, 85, 247, 0.3); }
+.sched-badge.freq { color: var(--accent); border-color: rgba(155, 60, 246, 0.3); }
 .sched-badge.ask  { color: var(--text-3); }
 
 .sched-toggle {
@@ -3358,7 +3361,7 @@ ol.docs-list li::before {
 .dash-range-btn { background: var(--hover); border: 1px solid var(--border); color: var(--text-3); font-size: 11px; padding: 3px 10px; cursor: pointer; transition: all 0.15s; }
 .dash-range-btn:first-child { border-radius: 4px 0 0 4px; }
 .dash-range-btn:last-child { border-radius: 0 4px 4px 0; }
-.dash-range-btn.active { background: var(--accent-bg); border-color: rgba(168, 85, 247, 0.27); color: var(--accent); }
+.dash-range-btn.active { background: var(--accent-bg); border-color: rgba(155, 60, 246, 0.27); color: var(--accent); }
 .dash-range-btn:hover:not(.active) { color: var(--text-2); }
 .dash-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; margin-top: 24px; }
 .dash-section-title { font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; }
@@ -3423,7 +3426,7 @@ ol.docs-list li::before {
 
 /* adaL card — same card structure as the split columns, but spans full width
    above them as the primary memory tier (green accent border to signal that). */
-.dash-adal-col { margin-bottom: 16px; border-color: rgba(168, 85, 247, 0.27); }
+.dash-adal-col { margin-bottom: 16px; border-color: rgba(155, 60, 246, 0.27); }
 .dash-adal-col .dash-stat-num { font-size: 18px; }
 .dash-adal-col .dash-stat-values { gap: 14px; }
 .dash-adal-col .dash-chart-container { padding: 14px; }
@@ -4107,7 +4110,7 @@ ol.docs-list li::before {
 }
 
 .app-card-badge.badge-connection {
-  background: rgba(168, 85, 247, 0.15);
+  background: rgba(155, 60, 246, 0.15);
   color: var(--accent);
 }
 
@@ -5487,7 +5490,7 @@ select.settings-input {
   height: 100%;
   width: 2px;
   border-radius: 0;
-  box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+  box-shadow: 0 0 10px rgba(155, 60, 246, 0.4);
 }
 .yo-panel.open {
   transform: translateX(0);
@@ -5552,7 +5555,7 @@ select.settings-input {
 .files-rail-user-btn:hover { background: var(--surface-3); }
 .files-rail-user-avatar {
   width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
-  background: var(--accent-bg, rgba(168,85,247,0.18)); color: var(--accent);
+  background: var(--accent-bg, rgba(155,60,246,0.18)); color: var(--accent);
   display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 700; text-transform: uppercase;
 }
@@ -5992,7 +5995,7 @@ select.settings-input {
   color: var(--text);
 }
 .files-rail-row:hover { background: var(--surface); }
-.files-rail-row.active { background: var(--accent-soft, rgba(168, 85, 247,0.14)); }
+.files-rail-row.active { background: var(--accent-soft, rgba(155, 60, 246,0.14)); }
 .files-rail-caret {
   display: inline-flex;
   align-items: center;
@@ -6278,7 +6281,7 @@ select.settings-input {
 }
 .yo-welcome-hint:hover {
   background: var(--border-2);
-  border-color: rgba(168, 85, 247, 0.25);
+  border-color: rgba(155, 60, 246, 0.25);
   color: var(--text);
 }
 @keyframes yo-welcome-in {
@@ -6549,10 +6552,10 @@ select.settings-input {
   transition: border-color 0.12s, background 0.12s;
 }
 .yo-run-marker:hover {
-  border-color: var(--accent, #a855f7);
+  border-color: var(--accent, #9b3cf6);
   background: var(--surface-3, rgba(127,127,127,0.10));
 }
-.yo-run-marker > svg { width: 16px; height: 16px; stroke: var(--accent, #a855f7); flex-shrink: 0; }
+.yo-run-marker > svg { width: 16px; height: 16px; stroke: var(--accent, #9b3cf6); flex-shrink: 0; }
 .yo-run-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
 .yo-run-label { font-weight: 600; color: var(--text); }
 .yo-run-skill {
@@ -6576,7 +6579,7 @@ select.settings-input {
   border-left: 3px solid #A855F7;
   border-radius: 8px;
   padding: 8px 12px;
-  background: rgba(168, 85, 247, 0.06);
+  background: rgba(155, 60, 246, 0.06);
 }
 .swarm-start-title { font-weight: 700; font-size: 12.5px; color: var(--text); }
 .swarm-start-goal { font-size: 11.5px; color: var(--text-2); margin: 2px 0 6px; }
@@ -6683,7 +6686,7 @@ select.settings-input {
 }
 .yo-msg-copy-btn.yo-copied {
   color: var(--accent);
-  border-color: rgba(168, 85, 247, 0.33);
+  border-color: rgba(155, 60, 246, 0.33);
 }
 .yo-msg-copy-btn svg {
   flex-shrink: 0;
@@ -6716,7 +6719,7 @@ select.settings-input {
 .yo-msg-chat {
   align-self: flex-start;
   white-space: normal;
-  background: rgba(168, 85, 247, 0.06);
+  background: rgba(155, 60, 246, 0.06);
   border-radius: 2px 12px 12px 12px;
   padding: 6px 10px;
   max-width: 80%;
@@ -6730,7 +6733,7 @@ select.settings-input {
 .yo-chat-body { font-size: 12.5px; color: var(--text); line-height: 1.45; }
 .yo-msg-chat-local {
   align-self: flex-end;
-  background: rgba(168, 85, 247, 0.1);
+  background: rgba(155, 60, 246, 0.1);
   border-radius: 12px 2px 12px 12px;
 }
 .yo-msg-chat-local .yo-chat-sender { color: var(--accent); }
@@ -6749,10 +6752,10 @@ select.settings-input {
   top: 0;
   bottom: 0;
   width: 1.5px;
-  background: rgba(168, 85, 247, 0.35);
+  background: rgba(155, 60, 246, 0.35);
 }
 .yo-ag-timeline.done::before {
-  background: rgba(168, 85, 247, 0.15);
+  background: rgba(155, 60, 246, 0.15);
 }
 
 /* ── Tool row (per-call: dot + bold name + subtitle) ── */
@@ -6788,12 +6791,12 @@ select.settings-input {
 }
 .yo-result-block.yo-active .yo-ag-dot {
   animation: yo-dot-pulse 1.2s ease-in-out infinite;
-  box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 0 0 rgba(155, 60, 246, 0.6);
 }
 @keyframes yo-dot-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.55); }
-  70%  { box-shadow: 0 0 0 6px rgba(168, 85, 247, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(155, 60, 246, 0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(155, 60, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(155, 60, 246, 0); }
 }
 
 .yo-result-headings {
@@ -7067,12 +7070,12 @@ select.settings-input {
 }
 .yo-md-cmd:hover {
   background: var(--accent-bg);
-  border-color: rgba(168, 85, 247, 0.4);
+  border-color: rgba(155, 60, 246, 0.4);
   color: var(--accent);
 }
 .yo-md-cmd.yo-cmd-copied {
-  background: rgba(168, 85, 247, 0.15);
-  border-color: rgba(168, 85, 247, 0.5);
+  background: rgba(155, 60, 246, 0.15);
+  border-color: rgba(155, 60, 246, 0.5);
   color: var(--accent);
 }
 
@@ -7153,7 +7156,7 @@ select.settings-input {
 }
 .yo-md-copy-btn.yo-copied {
   color: var(--accent);
-  border-color: rgba(168, 85, 247, 0.33);
+  border-color: rgba(155, 60, 246, 0.33);
 }
 
 .yo-md-pre {
@@ -8031,7 +8034,7 @@ select.settings-input {
   background-color: var(--surface-3, rgba(255,255,255,0.08));
   /* Plain mode (Faster / Balanced / Smarter): solid accent fill up to the thumb,
      NO animation — it's just a slider. */
-  background-image: linear-gradient(90deg, var(--accent-dark, #7e22ce), var(--accent, #a855f7));
+  background-image: linear-gradient(90deg, var(--accent-dark, #7e22ce), var(--accent, #9b3cf6));
   background-size: var(--effort-fill, 33%) 100%;
   background-repeat: no-repeat;
 }
@@ -8042,7 +8045,7 @@ select.settings-input {
   background-image:
     repeating-linear-gradient(115deg, rgba(255,255,255,.65) 0 1px, rgba(255,255,255,0) 1px 5px),
     repeating-linear-gradient(115deg, rgba(196,150,255,.5) 0 1px, rgba(196,150,255,0) 1px 9px),
-    linear-gradient(90deg, rgba(126,34,206,.10) 0%, var(--accent-dark, #7e22ce) 45%, var(--accent, #a855f7) 100%);
+    linear-gradient(90deg, rgba(126,34,206,.10) 0%, var(--accent-dark, #7e22ce) 45%, var(--accent, #9b3cf6) 100%);
   background-size: 100% 100%, 100% 100%, 100% 100%;
   background-repeat: no-repeat;
   animation: yo-effort-matrix 0.7s linear infinite;
@@ -8253,7 +8256,7 @@ select.settings-input {
   white-space: nowrap;
 }
 .mcp-status-badge.status-connected {
-  background: rgba(168, 85, 247, 0.15);
+  background: rgba(155, 60, 246, 0.15);
   color: var(--accent);
 }
 .mcp-status-badge.status-connecting {
@@ -8275,7 +8278,7 @@ select.settings-input {
   font-size: 11px;
   font-weight: 600;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  background: rgba(168, 85, 247, 0.12);
+  background: rgba(155, 60, 246, 0.12);
   color: var(--accent);
 }
 
@@ -8905,7 +8908,7 @@ select.settings-input {
    slack, otherwise spawns a new rail to the right.
    ════════════════════════════════════════════════════════════════════ */
 :root {
-  --ws-diff-add-bg: rgba(168, 85, 247, 0.10);
+  --ws-diff-add-bg: rgba(155, 60, 246, 0.10);
   --ws-diff-del-bg: rgba(212, 74, 74, 0.10);
   --ws-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
@@ -9835,7 +9838,7 @@ select.settings-input {
   font-weight: 600;
   font-size: 9.5px;
 }
-.ws-subagents-status.status-running { background: rgba(168, 85, 247, 0.15); color: var(--ws-accent); }
+.ws-subagents-status.status-running { background: rgba(155, 60, 246, 0.15); color: var(--ws-accent); }
 .ws-subagents-status.status-done    { background: var(--ws-line); color: var(--ws-text-faint); }
 .ws-subagents-status.status-error   { background: rgba(220, 38, 38, 0.15); color: var(--danger); }
 

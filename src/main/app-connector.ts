@@ -332,7 +332,7 @@ export class AppConnector {
 
     // Apps removed from the product entirely (Agent / Plan / Ada panels) —
     // purge unconditionally; these ids aren't real apps any more.
-    const REMOVED_IDS = ["agent", "plan", "ada", "adal"];
+    const REMOVED_IDS = ["agent", "plan", "ada", "adal", "workbench", "vscode"];
     for (const id of REMOVED_IDS) {
       if (this.apps.has(id)) {
         this.apps.delete(id);
