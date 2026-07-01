@@ -3,8 +3,6 @@
  */
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning } from "./shared.js";
-import { loadDashboard, initDashboardEvents, closeDashPromptDetail } from "./dashboard.js";
-import { closeDataDetail } from "./data-store.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadSkills, initSkillsEvents } from "./skills.js";
 import { loadApps, initApps, openNewAppForm } from "./apps.js";
@@ -57,14 +55,6 @@ export function openNewAppDeepLink(data: { url?: string; name?: string; tabId?: 
 // ── Navigation ───────────────────────────────────────────
 
 export function resetEditors() {
-  const pd = document.getElementById("dash-prompt-detail");
-  if (pd && !pd.classList.contains("hidden")) {
-    closeDashPromptDetail();
-  }
-  const sd = document.getElementById("data-detail");
-  if (sd && !sd.classList.contains("hidden")) {
-    closeDataDetail();
-  }
   const se = document.getElementById("skill-editor");
   if (se && !se.classList.contains("hidden")) {
     se.classList.add("hidden");
@@ -129,8 +119,7 @@ export function loadActiveSection(explicit?: string) {
   // item breaks sections that have no `help-nav-item` (e.g. Schedules), which
   // would otherwise resolve to "guide" and never load.
   const sec = explicit || activeSection();
-  if (sec === "dashboard") loadDashboard();
-  else if (sec === "skills") loadSkills();
+  if (sec === "skills") loadSkills();
   else if (sec === "drips") loadDrips();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "apps") loadApps();
@@ -283,7 +272,6 @@ export function initHelp() {
   // Initialize all section event handlers
   initSettings();
   initApps();
-  initDashboardEvents();
   initLayoutsEvents();
   initDripsEvents();
   initSkillsEvents();

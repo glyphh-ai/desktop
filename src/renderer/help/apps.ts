@@ -20,7 +20,6 @@ const appDetailId = document.getElementById("app-detail-id") as HTMLInputElement
 const appDetailName = document.getElementById("app-detail-name") as HTMLInputElement;
 const appDetailUrl = document.getElementById("app-detail-url") as HTMLInputElement;
 const appForceWeb = document.getElementById("app-detail-force-web") as HTMLInputElement;
-const appDoNotRecord = document.getElementById("app-detail-do-not-record") as HTMLInputElement;
 const appSearchInput = document.getElementById("app-search") as HTMLInputElement;
 const appConnectStatus = document.getElementById("app-connect-status")!;
 const appCommandsList = document.getElementById("app-commands-list")!;
@@ -36,7 +35,7 @@ const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
 let currentAppId = "";
-let activeAppTab: "dashboard" | "panel" | "connection" | "mcp" = "dashboard";
+let activeAppTab: "panel" | "connection" | "mcp" = "panel";
 let connectorSearchOffset = 0;
 
 interface PanelApp {
@@ -45,7 +44,6 @@ interface PanelApp {
   url?: string;
   connectedSlug?: string;
   forceWeb?: boolean;
-  doNotRecord?: boolean;
   commands?: Record<string, { selector: string; action: string; description: string }>;
   connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean };
   mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string }; enabled: boolean };
@@ -68,7 +66,7 @@ async function loadApps() {
       .filter((a) => a.url)
       .map((a) => ({
         id: a.id, name: a.name, url: a.url,
-        connectedSlug: a.connectedSlug, forceWeb: a.forceWeb, doNotRecord: a.doNotRecord,
+        connectedSlug: a.connectedSlug, forceWeb: a.forceWeb,
         commands: a.commands, connection: a.connection, mcp: a.mcp,
       }));
   } catch { panelApps = []; }
@@ -144,205 +142,11 @@ function switchAppTab(tab: string) {
   document.querySelectorAll<HTMLElement>(".app-tab-right").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
-  if (tab === "dashboard") loadDashboardTab();
   if (tab === "panel") loadPanelTab();
   if (tab === "connection") loadConnectionTab();
   if (tab === "mcp") loadMcpTab();
 }
 
-// ── Dashboard tab ────────────────────────────────────────
-
-let appDashIntakeChart: any = null;
-let appDashRangeMode: "7" | "30" = "7";
-let appDashDataOffset = 0;
-const APP_DASH_PAGE_SIZE = 20;
-let appDashViewingId: string | null = null;
-// search not yet wired — placeholder for future use
-
-async function loadDashboardTab() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-
-  const icon = document.getElementById("app-dash-icon")!;
-  const dashName = document.getElementById("app-dash-name")!;
-  dashName.textContent = app.name;
-
-  if (app.url && !app.url.startsWith("yo://")) {
-    try {
-      icon.innerHTML = `<img src="https://www.google.com/s2/favicons?domain=${new URL(app.url).hostname}&sz=64" onerror="this.outerHTML='${app.name.charAt(0).toUpperCase()}'" style="width:100%;height:100%;object-fit:contain;" />`;
-    } catch { icon.textContent = app.name.charAt(0).toUpperCase(); }
-  } else {
-    icon.textContent = app.name.charAt(0).toUpperCase();
-  }
-
-  appDashDataOffset = 0;
-  appDashViewingId = null;
-
-  const stats = await window.yo.capturesStatsForSource(app.id);
-
-  document.getElementById("app-dash-captures")!.textContent = String(stats.count);
-  document.getElementById("app-dash-embedded")!.textContent = String(stats.embeddedCount);
-  document.getElementById("app-dash-disk")!.textContent = formatBytes(stats.diskBytes);
-  document.getElementById("app-dash-oldest")!.textContent = relativeTime(stats.oldestTs);
-  document.getElementById("app-dash-newest")!.textContent = relativeTime(stats.newestTs);
-
-  renderAppDashIntakeChart();
-  renderAppDashDataList();
-}
-
-async function renderAppDashIntakeChart() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-  const canvas = document.getElementById("app-dash-chart-intake") as HTMLCanvasElement | null;
-  if (!canvas) return;
-
-  const days = appDashRangeMode === "30" ? 30 : 7;
-  const history: Array<{ date: string; count: number; bytes: number }> = await window.yo.capturesDailyHistoryForSource(app.id, days);
-
-  const labels = history.map((d) => {
-    const dt = new Date(d.date + "T00:00:00");
-    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  });
-  const countData = history.map((d) => d.count);
-  const bytesData = history.map((d) => d.bytes);
-
-  const ctx = canvas.getContext("2d")!;
-  if (appDashIntakeChart) appDashIntakeChart.destroy();
-
-  appDashIntakeChart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        { label: "Captures", data: countData, backgroundColor: "rgba(168, 85, 247,0.6)", borderRadius: 3, yAxisID: "y" },
-        { label: "Bytes", data: bytesData, backgroundColor: "rgba(72,219,251,0.35)", borderRadius: 3, yAxisID: "y1" },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      scales: {
-        x: { ticks: { color: cssVar("--text-3"), font: { size: 10 }, maxRotation: 0 }, grid: { color: cssVar("--border") } },
-        y: { position: "left", ticks: { color: cssVar("--accent"), font: { size: 10 }, stepSize: 1 }, grid: { color: cssVar("--border") }, title: { display: false } },
-        y1: { position: "right", ticks: { color: "#48dbfb", font: { size: 10 }, callback: (v: string | number) => formatBytes(Number(v)) }, grid: { drawOnChartArea: false } },
-      },
-      plugins: {
-        legend: { labels: { color: cssVar("--text-2"), font: { size: 11 }, usePointStyle: true, pointStyleWidth: 14, padding: 16 } },
-        tooltip: { callbacks: { label: (c: any) => c.dataset.label === "Bytes" ? `${c.dataset.label}: ${formatBytes(c.parsed.y)}` : `${c.dataset.label}: ${c.parsed.y}` } },
-      },
-    },
-  });
-}
-
-async function renderAppDashDataList() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-
-  const listEl = document.getElementById("app-dash-data-list")!;
-  const toolbarEl = document.getElementById("app-dash-data-toolbar")!;
-  const detailEl = document.getElementById("app-dash-data-detail")!;
-
-  detailEl.classList.add("hidden");
-  listEl.classList.remove("hidden");
-  toolbarEl.classList.remove("hidden");
-
-  const entries = await window.yo.capturesListForSource(app.id, appDashDataOffset, APP_DASH_PAGE_SIZE);
-  const stats = await window.yo.capturesStatsForSource(app.id);
-  const total = stats.count;
-
-  listEl.innerHTML = "";
-  if (entries.length === 0 && appDashDataOffset === 0) {
-    listEl.innerHTML = `<div class="crud-empty">No captures yet. Use .sup on this app to start capturing.</div>`;
-    return;
-  }
-
-  for (const e of entries) {
-    const card = document.createElement("div");
-    card.className = "crud-card";
-    const info = document.createElement("div");
-    info.className = "crud-card-info";
-    info.style.cssText = "min-width:0;";
-
-    const nameRow = document.createElement("div");
-    nameRow.style.cssText = "display:flex;gap:6px;align-items:center;";
-    const timeSpan = document.createElement("span");
-    timeSpan.className = "crud-card-name";
-    timeSpan.textContent = relativeTime(e.meta.created);
-    nameRow.appendChild(timeSpan);
-    if (e.size > 0) {
-      const sizeSpan = document.createElement("span");
-      sizeSpan.style.cssText = "font-size:10px;color:#48dbfb;flex-shrink:0;";
-      sizeSpan.textContent = formatBytes(e.size);
-      nameRow.appendChild(sizeSpan);
-    }
-    info.appendChild(nameRow);
-
-    const meta = document.createElement("span");
-    meta.className = "crud-card-meta";
-    meta.textContent = e.snippet;
-    meta.style.cssText = "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;";
-    info.appendChild(meta);
-    card.appendChild(info);
-
-    const actions = document.createElement("div");
-    actions.className = "crud-card-actions";
-    const delBtn = document.createElement("button");
-    delBtn.className = "crud-card-btn danger crud-delete-btn";
-    delBtn.title = "Delete";
-    delBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
-    delBtn.addEventListener("click", async (ev) => {
-      ev.stopPropagation();
-      await window.yo.capturesDelete(e.meta.id);
-      renderAppDashDataList();
-    });
-    actions.appendChild(delBtn);
-    card.appendChild(actions);
-
-    card.addEventListener("click", () => openAppDashDataDetail(e.meta.id, e.meta.created));
-    listEl.appendChild(card);
-  }
-
-  if (total > APP_DASH_PAGE_SIZE) {
-    listEl.appendChild(buildPaginationBar(appDashDataOffset, APP_DASH_PAGE_SIZE, total, (newOffset) => {
-      appDashDataOffset = newOffset;
-      renderAppDashDataList();
-    }));
-  }
-}
-
-async function openAppDashDataDetail(id: string, created: number) {
-  appDashViewingId = id;
-  const [content, size] = await Promise.all([
-    window.yo.capturesRead(id),
-    window.yo.capturesEntrySize(id),
-  ]);
-  const detailEl = document.getElementById("app-dash-data-detail")!;
-  const listEl = document.getElementById("app-dash-data-list")!;
-  const toolbarEl = document.getElementById("app-dash-data-toolbar")!;
-  document.getElementById("app-dash-data-meta")!.textContent = `${new Date(created).toLocaleString()} · ${formatBytes(size)} · ${id}`;
-  document.getElementById("app-dash-data-content")!.textContent = content || "(empty)";
-
-  listEl.classList.add("hidden");
-  toolbarEl.classList.add("hidden");
-  detailEl.classList.remove("hidden");
-}
-
-function closeAppDashDataDetail() {
-  document.getElementById("app-dash-data-detail")!.classList.add("hidden");
-  document.getElementById("app-dash-data-list")!.classList.remove("hidden");
-  document.getElementById("app-dash-data-toolbar")!.classList.remove("hidden");
-  appDashViewingId = null;
-  renderAppDashDataList();
-}
-
-async function deleteAppDashDataEntry() {
-  if (!appDashViewingId) return;
-  const confirmed = await confirmAction("Delete this capture?");
-  if (!confirmed) return;
-  await window.yo.capturesDelete(appDashViewingId);
-  closeAppDashDataDetail();
-  loadDashboardTab();
-}
 
 // ── Panel tab ────────────────────────────────────────────
 
@@ -722,39 +526,6 @@ async function saveMcpConfig() {
 }
 
 
-const policySelect = document.getElementById("app-detail-capture-policy") as HTMLSelectElement;
-const policyParam = document.getElementById("app-detail-policy-param") as HTMLInputElement;
-const policyDesc = document.getElementById("app-detail-policy-desc")!;
-
-const POLICY_DESCRIPTIONS: Record<string, string> = {
-  append: "Every capture is stored as-is. Best for chat streams and logs.",
-  versioned: "Keeps the last N versions of the content. Older versions are pruned automatically.",
-  deduplicate: "Skips if content is identical to last capture. Replaces if changed.",
-  incremental: "Diffs against the last capture and only stores new lines. Ideal for conversations.",
-  "sliding-window": "Auto-prunes captures older than N hours. Good for ephemeral feeds.",
-  manual: "No automatic capture. Only explicit .sup commands are stored.",
-};
-
-const POLICY_PARAM_LABELS: Record<string, string> = {
-  versioned: "Versions",
-  "sliding-window": "Hours",
-  incremental: "Min chars",
-};
-
-function updatePolicyUI() {
-  const type = policySelect.value;
-  policyDesc.textContent = POLICY_DESCRIPTIONS[type] || "";
-  const paramLabel = POLICY_PARAM_LABELS[type];
-  if (paramLabel) {
-    policyParam.style.display = "";
-    policyParam.placeholder = paramLabel;
-    policyParam.title = paramLabel;
-  } else {
-    policyParam.style.display = "none";
-    policyParam.value = "";
-  }
-}
-
 async function openPanelAppDetail(app: PanelApp) {
   currentAppId = app.id;
   panelLoaded = false;
@@ -765,16 +536,9 @@ async function openPanelAppDetail(app: PanelApp) {
   appDetailName.value = app.name;
   appDetailUrl.value = app.url || "";
   appForceWeb.checked = !!app.forceWeb;
-  appDoNotRecord.checked = !!app.doNotRecord;
   appConnectStatus.textContent = "";
   appMapCommand.classList.add("hidden");
   appDetailHeading.textContent = app.name;
-
-  const policy = await window.yo.appsGetCapturePolicy(app.id);
-  policySelect.value = policy.type;
-  const paramVal = policy.maxVersions ?? policy.windowHours ?? policy.minDeltaChars;
-  policyParam.value = paramVal ? String(paramVal) : "";
-  updatePolicyUI();
 
   // All tabs always visible
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
@@ -788,7 +552,7 @@ async function openPanelAppDetail(app: PanelApp) {
   mcpAddForm.classList.add("hidden");
   appDetail.classList.remove("hidden");
 
-  switchAppTab("dashboard");
+  switchAppTab("panel");
 }
 
 async function refreshCommands() {
@@ -971,7 +735,6 @@ function closeAppDetail() {
   appDetail.classList.add("hidden");
   appsList.classList.remove("hidden");
   appsToolbar.classList.remove("hidden");
-  if (appDashIntakeChart) { appDashIntakeChart.destroy(); appDashIntakeChart = null; }
   loadApps();
 }
 
@@ -980,7 +743,7 @@ function reloadPanelApps(apps: Array<PanelApp>) {
     .filter((a) => a.url)
     .map((a) => ({
       id: a.id, name: a.name, url: a.url,
-      connectedSlug: a.connectedSlug, forceWeb: a.forceWeb, doNotRecord: a.doNotRecord,
+      connectedSlug: a.connectedSlug, forceWeb: a.forceWeb,
       commands: a.commands, connection: a.connection, mcp: a.mcp,
     }));
 }
@@ -1009,38 +772,6 @@ export function openNewAppForm(url = "", name = "", tabId: string | null = null)
   nameInput.focus();
 }
 
-/** Red warning modal shown when the user is about to ENABLE capture for an
- *  app (unchecking "Do Not Capture"). Returns true if the user confirmed,
- *  false on cancel. Async so the caller can `await` and revert on cancel. */
-function confirmEnableCapture(appName: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "capture-warning-overlay";
-    overlay.innerHTML = `
-      <div class="capture-warning-card">
-        <div class="capture-warning-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>Enable capture for ${appName}?</span>
-        </div>
-        <div class="capture-warning-body">
-          <p>Capture lets the LLM read and learn from the content inside this app's panel — your conversations, documents, dashboards, whatever you have on screen.</p>
-          <p><strong>Stored in plain text on this machine.</strong> Captured content lands in the local capture store. We make every effort to filter passwords and obvious PII (emails, SSNs, card numbers), but the filter is not perfect — anything sensitive you read or type in this app may end up on disk in clear text.</p>
-          <p>You can turn capture back off any time from this app's detail panel.</p>
-        </div>
-        <div class="capture-warning-actions">
-          <button type="button" class="capture-warning-cancel">Cancel</button>
-          <button type="button" class="capture-warning-confirm">Enable capture</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    const cleanup = (result: boolean) => { overlay.remove(); resolve(result); };
-    overlay.querySelector(".capture-warning-cancel")!.addEventListener("click", () => cleanup(false));
-    overlay.querySelector(".capture-warning-confirm")!.addEventListener("click", () => cleanup(true));
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) cleanup(false); });
-  });
-}
-
 function initApps() {
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
@@ -1051,20 +782,6 @@ function initApps() {
   const addNameInput = document.getElementById("app-add-name") as HTMLInputElement;
   const addSlugInput = document.getElementById("app-add-slug") as HTMLInputElement;
   const addUrlInput = document.getElementById("app-add-url") as HTMLInputElement;
-  // Force web mode / Do not record are no longer on the create form — new apps
-  // default to capture-off (set in app-connector.add) and the user tunes both on
-  // the app's detail screen.
-
-  // Detail toggle — show the warning modal when the user is about to
-  // ENABLE capture (going from "Do Not Capture: on" to "off"). Cancel
-  // reverts the checkbox.
-  appDoNotRecord?.addEventListener("change", async () => {
-    if (appDoNotRecord.checked) return; // still on — nothing to warn about
-    const name = appDetailName.value.trim() || "this app";
-    const ok = await confirmEnableCapture(name);
-    if (!ok) appDoNotRecord.checked = true;
-  });
-
   // URL → live preview sync in the detail form. Editing the URL field
   // navigates the embedded panel preview to the new address so the user
   // sees their change without having to Save + reopen. Debounced to ride
@@ -1242,8 +959,6 @@ function initApps() {
   document.getElementById("app-add-cancel")!.addEventListener("click", () => { pendingOriginTab = null; loadApps(); });
   document.getElementById("app-add-cancel-btn")!.addEventListener("click", () => { pendingOriginTab = null; loadApps(); });
 
-  policySelect.addEventListener("change", updatePolicyUI);
-
   // Tab buttons
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
     btn.addEventListener("click", () => switchAppTab(btn.dataset.tab!));
@@ -1262,39 +977,12 @@ function initApps() {
     if (name) await window.yo.appsUpdateName(currentAppId, name);
     if (url) await window.yo.appsUpdateUrl(currentAppId, url);
     await window.yo.appsUpdateForceWeb(currentAppId, appForceWeb.checked);
-    await window.yo.appsUpdateDoNotRecord(currentAppId, appDoNotRecord.checked);
-
-    const pType = policySelect.value;
-    const pVal = parseInt(policyParam.value, 10) || undefined;
-    const policy: Record<string, unknown> = { type: pType };
-    if (pType === "versioned" && pVal) policy.maxVersions = pVal;
-    if (pType === "sliding-window" && pVal) policy.windowHours = pVal;
-    if (pType === "incremental" && pVal) policy.minDeltaChars = pVal;
-    await window.yo.appsUpdateCapturePolicy(currentAppId, policy as any);
 
     closeAppDetail();
   });
 
   // Dashboard cancel
   document.getElementById("app-dash-cancel")!.addEventListener("click", () => closeAppDetail());
-
-  // App dashboard range toggle
-  document.getElementById("app-dash-range-7")?.addEventListener("click", () => {
-    appDashRangeMode = "7";
-    document.getElementById("app-dash-range-7")!.classList.add("active");
-    document.getElementById("app-dash-range-30")!.classList.remove("active");
-    renderAppDashIntakeChart();
-  });
-  document.getElementById("app-dash-range-30")?.addEventListener("click", () => {
-    appDashRangeMode = "30";
-    document.getElementById("app-dash-range-30")!.classList.add("active");
-    document.getElementById("app-dash-range-7")!.classList.remove("active");
-    renderAppDashIntakeChart();
-  });
-
-  // App dashboard data detail
-  document.getElementById("app-dash-data-back")?.addEventListener("click", closeAppDashDataDetail);
-  document.getElementById("app-dash-data-delete")?.addEventListener("click", deleteAppDashDataEntry);
 
   // Delete
   document.getElementById("app-detail-delete")!.addEventListener("click", async () => {

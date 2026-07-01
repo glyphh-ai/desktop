@@ -7,7 +7,6 @@
 const settingsSaveBtn = document.getElementById("settings-save") as HTMLButtonElement;
 const settingsStatus = document.getElementById("settings-status")!;
 
-const toggleVoiceInput = document.getElementById("toggle-voice-input") as HTMLInputElement;
 const toggleAutoUpdate = document.getElementById("toggle-auto-update") as HTMLInputElement;
 const mcpExposeStatus = document.getElementById("mcp-expose-status")!;
 const mcpExposePort = document.getElementById("mcp-expose-port") as HTMLInputElement;
@@ -16,130 +15,6 @@ const settingsTimezone = document.getElementById("settings-timezone") as HTMLSel
 const settingsBrowserHome = document.getElementById("settings-browser-home") as HTMLSelectElement;
 const settingsBrowserHomeUrl = document.getElementById("settings-browser-home-url") as HTMLInputElement;
 const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!;
-
-// The Claude Code CLI validates autoCompactWindow as min(100_000).max(1_000_000)
-// and silently discards anything outside that range (falling back to the model's
-// full window) — so values below 100K are simply never honored. Clamp to the
-// CLI's real range so what the user enters is actually applied.
-const MIN_COMPACT_WINDOW = 100000;
-const MAX_COMPACT_WINDOW = 1000000;
-
-// ── Settings → Agent Defaults ────────────────────────────
-// Seed values for new agents created in the Agents app.
-(function wireAgentDefaults() {
-  // Provider/model are no longer client-chosen — the proxy/server pick the model.
-  const perm = document.getElementById("agent-default-perm") as HTMLSelectElement | null;
-  const prompt = document.getElementById("agent-default-prompt") as HTMLTextAreaElement | null;
-  const mcp = document.getElementById("agent-default-mcp") as HTMLInputElement | null;
-  const compactEnabled = document.getElementById("agent-autocompact-enabled") as HTMLInputElement | null;
-  const compactWindow = document.getElementById("agent-autocompact-window") as HTMLInputElement | null;
-  const compactPrompt = document.getElementById("agent-compact-prompt") as HTMLTextAreaElement | null;
-  const save = document.getElementById("agent-defaults-save") as HTMLButtonElement | null;
-  const status = document.getElementById("agent-defaults-status") as HTMLElement | null;
-  if (!perm || !prompt || !mcp || !save || !status) return;
-
-  // The HTML `min`/`max` on a number field are only soft hints — they don't
-  // auto-correct a typed value. Snap into the CLI's honored range [100K, 1M]
-  // the moment the field loses focus, so the limit is visibly enforced (not
-  // just silently on Save). Blank stays blank (= use the default window).
-  compactWindow?.addEventListener("blur", () => {
-    const raw = parseInt(compactWindow.value, 10);
-    if (!Number.isFinite(raw) || raw <= 0) { compactWindow.value = ""; return; }
-    const clamped = Math.min(Math.max(raw, MIN_COMPACT_WINDOW), MAX_COMPACT_WINDOW);
-    if (clamped !== raw) compactWindow.value = String(clamped);
-  });
-
-  const invoke = (window.yo as any).invoke || ((channel: string, ...args: unknown[]) =>
-    (window as any).electron?.ipcRenderer?.invoke?.(channel, ...args));
-
-  // Use the generic invoke surface — agent-defaults:get / :set are added in
-  // main but not (yet) on the typed window.yo bridge. They work via the
-  // global ipc bridge exposed by preload.
-  const ipc = {
-    get: () => (window.yo as any).agentDefaultsGet?.() ?? Promise.resolve(null),
-    set: (v: unknown) => (window.yo as any).agentDefaultsSet?.(v) ?? Promise.resolve(),
-  };
-
-  void (async () => {
-    try {
-      const d = await ipc.get();
-      if (!d) return;
-      prompt.value = d.systemPrompt || "";
-      mcp.value = Array.isArray(d.mcpServers) ? d.mcpServers.join(", ") : "";
-    } catch { /* ignore */ }
-    // Perm is the SAME store the right-rail .Yo agent reads at boot. Reading
-    // from agentMode here (instead of permDefault on disk) means whatever the
-    // user picked anywhere — Settings → Agent or the right-rail dropdown —
-    // shows up consistently AND survives restart.
-    try {
-      const m = await window.yo.getAgentMode();
-      perm.value = m?.perm || "default";
-    } catch { /* ignore */ }
-    // Compaction prefs live in the preference store (read by the right-rail
-    // .Yo agent at turn start), not the agent-defaults seed record.
-    try {
-      if (compactEnabled) compactEnabled.checked = (await window.yo.getPreference("autoCompactEnabled", true)) as boolean;
-      if (compactWindow) {
-        const w = (await window.yo.getPreference("autoCompactWindow", 0)) as number;
-        compactWindow.value = w > 0 ? String(w) : "";
-      }
-      if (compactPrompt) compactPrompt.value = (await window.yo.getPreference("compactPrompt", "")) as string;
-    } catch { /* ignore */ }
-  })();
-  // Reflect external perm changes (right-rail dropdown, command palette) live.
-  window.yo.onAgentModeChanged?.((mode: string) => {
-    if (perm) perm.value = mode || "default";
-  });
-
-  // Reflect compaction prefs changed elsewhere (e.g. the right-rail .Yo agent's
-  // compaction modal "Save as my default") so this form never shows stale values.
-  window.yo.onPreferenceChanged?.((key: string, value: unknown) => {
-    if (key === "compactPrompt" && compactPrompt) compactPrompt.value = (value as string) || "";
-    else if (key === "autoCompactEnabled" && compactEnabled) compactEnabled.checked = !!value;
-    else if (key === "autoCompactWindow" && compactWindow) {
-      const w = Number(value);
-      compactWindow.value = Number.isFinite(w) && w > 0 ? String(w) : "";
-    }
-  });
-
-  save.addEventListener("click", async () => {
-    status.textContent = "Saving…";
-    try {
-      await ipc.set({
-        permDefault: perm.value as "default" | "plan" | "acceptEdits" | "bypassPermissions",
-        systemPrompt: prompt.value,
-        mcpServers: mcp.value.split(",").map((s) => s.trim()).filter(Boolean),
-      });
-      // Perm dropdown also writes through to the agentMode pref so the
-      // right-rail .Yo agent picks it up on restart (single source of truth).
-      window.yo.setAgentMode(perm.value);
-      // Compaction prefs → preference store (read by yo-agent at turn start).
-      if (compactEnabled) window.yo.setPreference("autoCompactEnabled", compactEnabled.checked);
-      let clampedNote = "";
-      if (compactWindow) {
-        let w = parseInt(compactWindow.value, 10);
-        // Clamp into the CLI's honored range [100K, 1M] — values outside it are
-        // silently discarded by the runtime, so we keep the user's intent.
-        if (Number.isFinite(w) && w > 0 && w < MIN_COMPACT_WINDOW) {
-          w = MIN_COMPACT_WINDOW;
-          compactWindow.value = String(w);
-          clampedNote = ` (compaction window raised to ${MIN_COMPACT_WINDOW.toLocaleString()} minimum)`;
-        } else if (Number.isFinite(w) && w > MAX_COMPACT_WINDOW) {
-          w = MAX_COMPACT_WINDOW;
-          compactWindow.value = String(w);
-          clampedNote = ` (compaction window capped at ${MAX_COMPACT_WINDOW.toLocaleString()} maximum)`;
-        }
-        window.yo.setPreference("autoCompactWindow", Number.isFinite(w) && w > 0 ? w : 0);
-      }
-      if (compactPrompt) window.yo.setPreference("compactPrompt", compactPrompt.value.trim());
-      status.textContent = `Saved.${clampedNote}`;
-    } catch (err: any) {
-      status.textContent = `Error: ${err?.message || err}`;
-    }
-    setTimeout(() => { if (status) status.textContent = ""; }, 2000);
-  });
-})();
-
 
 async function refreshMcpExposeStatus() {
   const status = await window.yo.mcpExposeStatus();
@@ -487,12 +362,6 @@ function initSettings() {
     const bar = document.getElementById("settings-relaunch")!;
     if (bar) bar.classList.remove("hidden");
   };
-  toggleVoiceInput.addEventListener("change", () => {
-    window.yo.setPreference("voiceEnabled", toggleVoiceInput.checked);
-    const micBtn = document.getElementById("yo-panel-mic");
-    if (micBtn) micBtn.style.display = toggleVoiceInput.checked ? "" : "none";
-  });
-
   toggleAutoUpdate.addEventListener("change", () => {
     window.yo.setPreference("autoUpdate", toggleAutoUpdate.checked);
     showRelaunch();
@@ -829,7 +698,6 @@ async function loadSettings() {
   }
 
   // Load toggle states
-  toggleVoiceInput.checked = await window.yo.getPreference("voiceEnabled", false) as boolean;
   toggleAutoUpdate.checked = await window.yo.getPreference("autoUpdate", true) as boolean;
 
   const mcpSectionWrap = document.getElementById("mcp-section-wrap")!;

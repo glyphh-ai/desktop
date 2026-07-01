@@ -12,8 +12,6 @@ import fs from "fs";
 import type { McpExpose } from "./mcp-expose";
 import type { McpManager } from "./mcp-manager";
 import type { ConnectorManager } from "./connectors";
-import type { PanelManager } from "./panel-manager";
-import type { AppConnector } from "./app-connector";
 import { reconnectRelay, getRelayStatus } from "./relay-client";
 import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, hasMcpAccess } from "./auth";
 
@@ -22,21 +20,10 @@ interface HomeIpcDeps {
   mcpManager: McpManager | null;
   connectorManager: ConnectorManager | null;
   canUseMcp: () => { allowed: boolean; reason?: string };
-  usageTracker: { getToday: () => unknown; getHistory: (days: number) => unknown; getAllTime: () => unknown };
-  promptLog: { list: (offset: number, limit: number) => unknown; search: (query: string, limit: number) => unknown; get: (id: string) => unknown; count: number };
-  llmConfig: { provider: string; model: string };
-  panelManager: PanelManager;
-  appConnector: AppConnector;
-  getMainWindow: () => import("electron").BrowserWindow | null;
-  activeReminders: Map<string, { message: string; fireAt: number; timer: ReturnType<typeof setTimeout> }>;
 }
 
 export function registerHomeIpc(deps: HomeIpcDeps): void {
-  const {
-    mcpExpose, mcpManager, connectorManager, canUseMcp,
-    usageTracker, promptLog, llmConfig,
-    panelManager, getMainWindow, activeReminders,
-  } = deps;
+  const { mcpExpose, mcpManager, connectorManager, canUseMcp } = deps;
 
   ipcMain.handle("mcp-expose-get-tokens", () => mcpExpose.getTokens());
   ipcMain.handle("mcp-expose-gen-token", (_e, label: string, ttlDays?: number) => {
@@ -175,71 +162,4 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     return connectorManager.listTools();
   });
 
-  ipcMain.handle("dashboard:today", () => usageTracker.getToday());
-  ipcMain.handle("dashboard:history", (_e, days?: number) => usageTracker.getHistory(days || 30));
-  ipcMain.handle("dashboard:all-time", () => usageTracker.getAllTime());
-
-  ipcMain.handle("dashboard:apps", () => {
-    const appsDir = path.join(os.homedir(), "yo", "apps");
-    try {
-      if (!fs.existsSync(appsDir)) return [];
-      const entries = fs.readdirSync(appsDir, { withFileTypes: true });
-      return entries
-        .filter((e) => e.isDirectory())
-        .map((e) => {
-          const indexPath = path.join(appsDir, e.name, "index.html");
-          let modified = "";
-          try {
-            const stat = fs.statSync(indexPath);
-            modified = stat.mtime.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          } catch {}
-          return { name: e.name, path: path.join(appsDir, e.name), modified };
-        })
-        .filter((a) => a.modified);
-    } catch { return []; }
-  });
-
-  ipcMain.on("dashboard:open-app", (_e, name: string) => {
-    const filePath = path.join(os.homedir(), "yo", "apps", name, "index.html");
-    const mainWindow = getMainWindow();
-    if (fs.existsSync(filePath) && mainWindow) {
-      const fileUrl = `file://${filePath}`;
-      panelManager.addPanel(`app-${name}`, fileUrl);
-      panelManager.switchTo(`app-${name}`, mainWindow);
-    }
-  });
-
-  ipcMain.handle("dashboard:delete-app", (_e, name: string) => {
-    const appDir = path.join(os.homedir(), "yo", "apps", name);
-    try {
-      fs.rmSync(appDir, { recursive: true, force: true });
-      return true;
-    } catch { return false; }
-  });
-
-  ipcMain.handle("dashboard:reminders", () => {
-    const result: Array<{ id: string; message: string; fireAt: number }> = [];
-    for (const [id, r] of activeReminders) {
-      result.push({ id, message: r.message, fireAt: r.fireAt });
-    }
-    return result;
-  });
-
-  ipcMain.handle("dashboard:cancel-reminder", (_e, id: string) => {
-    const r = activeReminders.get(id);
-    if (!r) return false;
-    clearTimeout(r.timer);
-    activeReminders.delete(id);
-    return true;
-  });
-
-  ipcMain.handle("dashboard:llm-info", () => ({
-    provider: llmConfig.provider,
-    model: llmConfig.model,
-  }));
-
-  ipcMain.handle("prompts-list", (_e, offset?: number, limit?: number) => promptLog.list(offset || 0, limit || 50));
-  ipcMain.handle("prompts-search", (_e, query: string, limit?: number) => promptLog.search(query, limit || 50));
-  ipcMain.handle("prompts-get", (_e, id: string) => promptLog.get(id));
-  ipcMain.handle("prompts-count", () => promptLog.count);
 }

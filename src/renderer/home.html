@@ -17,9 +17,6 @@
        buttons still drive section switching) but hide the sidebar. */
     #help-nav { display: none !important; }
   </style>
-  <!-- Chart.js must load BEFORE Monaco's AMD loader, otherwise Chart's UMD wrapper
-       registers as an AMD module instead of attaching to window.Chart. -->
-  <script src="chart.umd.min.js"></script>
   <script src="monaco/loader.js"></script>
   <script>
     // Apply theme synchronously before anything renders (avoids flash).
@@ -42,7 +39,6 @@
           <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
           <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
         </div>
-        <button class="help-nav-item active" data-section="dashboard">Dashboard</button>
         <div class="help-nav-group">
           <button class="help-nav-item has-sub" data-section="docs">Docs</button>
           <div class="help-nav-sub">
@@ -86,218 +82,8 @@
       </nav>
       <main id="help-content">
 
-        <!-- Dashboard (Landing Page) -->
-        <div class="help-section active" data-section="dashboard">
-          <div class="dash-header">
-            <h2><span class="dot">.</span>Dashboard</h2>
-            <div class="dash-provider" id="dash-provider">—</div>
-            <button id="dash-refresh" class="action-btn" title="Refresh dashboard">↻</button>
-          </div>
-
-          <!-- DASHBOARD pane — detailed usage (the only pane now; Home/tabs removed) -->
-          <div class="dash-pane active" data-dash-pane="dashboard">
-
-          <!-- Daily Activity — full-width line chart spanning both columns -->
-          <div class="dash-activity-card">
-            <div class="dash-activity-head">
-              <div class="dash-split-header">Daily Activity</div>
-              <div class="dash-range-toggle">
-                <button class="dash-range-btn active" id="dash-activity-range-7">7d</button>
-                <button class="dash-range-btn" id="dash-activity-range-30">30d</button>
-              </div>
-            </div>
-            <div class="dash-activity-chart-box"><canvas id="dash-chart-activity"></canvas></div>
-          </div>
-
-          <div class="dash-split-row">
-            <!-- Left: Token Metrics (input/output, no yos billing) -->
-            <div class="dash-split-col">
-              <div class="dash-split-header">Token Metrics</div>
-
-              <div class="dash-stat-row">
-                <div class="dash-stat-card">
-                  <div class="dash-stat-label">Today</div>
-                  <div class="dash-stat-values">
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num green" id="dash-today-input">0</div>
-                      <div class="dash-stat-sub">Credits</div>
-                    </div>
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num" id="dash-today-calls">0</div>
-                      <div class="dash-stat-sub">Requests</div>
-                    </div>
-                  </div>
-                </div>
-                <div class="dash-stat-card">
-                  <div class="dash-stat-label">All Time</div>
-                  <div class="dash-stat-values">
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num green" id="dash-alltime-input">0</div>
-                      <div class="dash-stat-sub">Credits</div>
-                    </div>
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num" id="dash-alltime-calls">0</div>
-                      <div class="dash-stat-sub">Requests</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="dash-chart-stack">
-                <div class="dash-chart-container">
-                  <div class="dash-stat-label">Tokens by Agent</div>
-                  <div class="dash-chart-box"><canvas id="dash-chart-agents"></canvas></div>
-                </div>
-                <div class="dash-chart-container">
-                  <div style="display:flex;align-items:center;margin-bottom:8px;">
-                    <div class="dash-stat-label" style="margin-bottom:0">Usage History</div>
-                    <div class="dash-range-toggle" style="margin-left:auto">
-                      <button class="dash-range-btn active" id="dash-range-7">7d</button>
-                      <button class="dash-range-btn" id="dash-range-30">30d</button>
-                    </div>
-                  </div>
-                  <div class="dash-chart-box"><canvas id="dash-chart-history"></canvas></div>
-                </div>
-              </div>
-
-              <div class="dash-split-subhead dash-data-trigger">
-                <span>Prompts</span>
-                <button class="action-btn" data-modal-open="dash-prompts-modal">View all</button>
-              </div>
-            </div>
-
-            <!-- Right: Store Metrics -->
-            <div class="dash-split-col">
-              <div class="dash-split-header">Store Metrics</div>
-
-              <div class="dash-stat-row">
-                <div class="dash-stat-card">
-                  <div class="dash-stat-label">Capture Store</div>
-                  <div class="dash-stat-values">
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num green" id="dash-captures">—</div>
-                      <div class="dash-stat-sub">Captures</div>
-                    </div>
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num" id="dash-embedded">—</div>
-                      <div class="dash-stat-sub">Embedded</div>
-                    </div>
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num" id="dash-sources">—</div>
-                      <div class="dash-stat-sub">Sources</div>
-                    </div>
-                  </div>
-                </div>
-                <div class="dash-stat-card">
-                  <div class="dash-stat-label">Store Info</div>
-                  <div class="dash-stat-values">
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num" id="dash-disk">—</div>
-                      <div class="dash-stat-sub">Disk</div>
-                    </div>
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num" id="dash-oldest">—</div>
-                      <div class="dash-stat-sub">Oldest</div>
-                    </div>
-                    <div class="dash-stat-item">
-                      <div class="dash-stat-num" id="dash-newest">—</div>
-                      <div class="dash-stat-sub">Newest</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="dash-chart-stack">
-                <div class="dash-chart-container">
-                  <div class="dash-stat-label">Data Flow</div>
-                  <div class="dash-chart-box"><canvas id="dash-chart-flow"></canvas></div>
-                </div>
-                <div class="dash-chart-container">
-                  <div style="display:flex;align-items:center;margin-bottom:8px;">
-                    <div class="dash-stat-label" style="margin-bottom:0">Daily Intake</div>
-                    <div class="dash-range-toggle" style="margin-left:auto">
-                      <button class="dash-range-btn active" id="store-range-7">7d</button>
-                      <button class="dash-range-btn" id="store-range-30">30d</button>
-                    </div>
-                  </div>
-                  <div class="dash-chart-box"><canvas id="dash-chart-intake"></canvas></div>
-                </div>
-              </div>
-
-              <div class="dash-split-subhead dash-data-trigger">
-                <span>Data Store</span>
-                <button class="action-btn" data-modal-open="data-modal">Browse</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Data sections open in modals to keep the dashboard clean -->
-
-          <div id="data-modal" class="dash-modal hidden">
-            <div class="dash-modal-backdrop" data-modal-close="data-modal"></div>
-            <div class="dash-modal-panel">
-              <div class="dash-modal-head">
-                <span class="dash-modal-title">Data Store</span>
-                <button class="action-btn dash-modal-x" data-modal-close="data-modal">✕</button>
-              </div>
-              <div class="dash-modal-body">
-                <div id="data-toolbar" class="crud-toolbar">
-                  <input id="data-search" type="text" class="crud-search" placeholder="Search captures..." spellcheck="false" autocomplete="off" />
-                  <div class="data-clear-group">
-                    <select id="data-clear-select" class="data-clear-select">
-                      <option value="__all__">All sources</option>
-                    </select>
-                    <button id="data-clear-btn" class="action-btn danger">Clear</button>
-                  </div>
-                </div>
-                <div id="data-list" class="crud-cards"></div>
-                <div id="data-detail" class="crud-inline-form hidden">
-                  <div class="crud-inline-header">
-                    <a class="crud-breadcrumb-back" id="data-back-link">&larr; Data Store</a>
-                    <div class="crud-spacer"></div>
-                    <button id="data-delete-btn" class="action-btn danger">Delete</button>
-                  </div>
-                  <div id="data-detail-meta" style="font-size:11px;color:var(--text-2);margin-bottom:8px;"></div>
-                  <pre id="data-detail-content" class="dash-pre-block" style="max-height:50vh;"></pre>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="dash-prompts-modal" class="dash-modal hidden">
-            <div class="dash-modal-backdrop" data-modal-close="dash-prompts-modal"></div>
-            <div class="dash-modal-panel">
-              <div class="dash-modal-head">
-                <span class="dash-modal-title">Prompts</span>
-                <button class="action-btn dash-modal-x" data-modal-close="dash-prompts-modal">✕</button>
-              </div>
-              <div class="dash-modal-body">
-                <div id="dash-prompts-toolbar" class="crud-toolbar">
-                  <input id="dash-prompts-search" type="text" class="crud-search" placeholder="Search prompts..." spellcheck="false" autocomplete="off" />
-                </div>
-                <div id="dash-prompts-list" class="crud-cards"></div>
-                <div id="dash-prompt-detail" class="crud-inline-form hidden">
-                  <div class="crud-inline-header">
-                    <a class="crud-breadcrumb-back" id="dash-prompt-back">&larr; Prompts</a>
-                    <div class="crud-spacer"></div>
-                  </div>
-                  <div class="dash-prompt-meta-grid" id="dash-prompt-meta"></div>
-                  <label class="settings-label" style="margin-top:12px;">Prompt</label>
-                  <pre id="dash-prompt-text" class="dash-pre-block"></pre>
-                  <label class="settings-label" style="margin-top:12px;">Response</label>
-                  <pre id="dash-prompt-response" class="dash-pre-block"></pre>
-                  <div class="settings-actions" style="margin-top:12px;">
-                    <button id="dash-prompt-cancel" class="action-btn">Cancel</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          </div><!-- /.dash-pane[dashboard] -->
-        </div>
-
         <!-- Guide -->
-        <div class="help-section" data-section="guide">
+        <div class="help-section active" data-section="guide">
           <h2>Just talk.</h2>
 
           <div class="help-group">
@@ -695,11 +481,11 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
 
             <div class="docs-panel" data-doc="mcp">
               <h3>MCP (Model Context Protocol)</h3>
-              <p>Glyphh supports MCP in two ways: as a <strong>server</strong> that exposes your captures to external tools, and as a way to configure <strong>local MCP servers</strong> for the agent to use.</p>
+              <p>Glyphh supports MCP in two ways: as a <strong>server</strong> that exposes your saved agents and jammers to external tools, and as a way to configure <strong>local MCP servers</strong> for the agent to use.</p>
 
-              <h4>Glyphh MCP Server (expose captures)</h4>
-              <p>Enable in <strong>Settings &gt; General &gt; MCP Server</strong>. This runs a local MCP server that lets external AI tools search your capture store — your ambient captures, .sup snapshots, and notes.</p>
-              <p>Use this when you want Claude Desktop, Cursor, Windsurf, or other MCP-compatible tools to access everything you've captured in Glyphh. The server runs on your machine and uses bearer tokens for auth.</p>
+              <h4>Glyphh MCP Server</h4>
+              <p>Enable in <strong>Settings &gt; General &gt; MCP Server</strong>. This runs a local MCP server that lets external AI tools run and manage your saved agents, jammers, and swarms.</p>
+              <p>Use this when you want Claude Desktop, Cursor, Windsurf, or other MCP-compatible tools to drive Glyphh's agents. The server runs on your machine and uses bearer tokens for auth.</p>
 
               <h4>Connecting from Claude Desktop</h4>
               <p>Edit <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> (Claude Desktop's local config only accepts stdio servers, so we route through the community <code>mcp-remote</code> bridge):</p>
@@ -957,7 +743,7 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
             </div>
 
             <div class="app-detail-tabs">
-              <button class="app-detail-tab" data-tab="dashboard">Dashboard</button>
+              <button class="app-detail-tab" data-tab="dashboard">General</button>
               <button class="app-detail-tab" data-tab="panel">Panel</button>
               <button class="app-detail-tab" data-tab="connection">Connection</button>
               <button class="app-detail-tab" data-tab="mcp">MCP</button>
@@ -982,29 +768,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                       <span class="toggle-desc">Block native app redirects and desktop prompts</span>
                     </div>
                   </label>
-                  <label class="settings-toggle" style="margin-top:4px;padding:8px 12px;">
-                    <input type="checkbox" id="app-detail-do-not-record" />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Do not record</span>
-                      <span class="toggle-desc">Never capture this app's content</span>
-                    </div>
-                  </label>
-                  <div class="settings-field" style="margin-top:8px;">
-                    <label class="settings-label">Capture policy</label>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                      <select id="app-detail-capture-policy" class="settings-input" style="flex:1;">
-                        <option value="append">Append — always store, never replace</option>
-                        <option value="versioned">Versioned — keep last N versions</option>
-                        <option value="deduplicate">Deduplicate — skip identical, replace changed</option>
-                        <option value="incremental">Incremental — diff, store only new content</option>
-                        <option value="sliding-window">Sliding window — prune older than N hours</option>
-                        <option value="manual">Manual — only explicit .sup captures</option>
-                      </select>
-                      <input type="number" id="app-detail-policy-param" class="settings-input settings-input-sm" min="1" placeholder="N" />
-                    </div>
-                    <span class="toggle-desc" id="app-detail-policy-desc" style="margin-top:4px;display:block;"></span>
-                  </div>
                   <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
                     <button id="app-detail-delete" class="action-btn danger">Delete</button>
                     <button id="app-detail-export" class="action-btn" title="Export this app as a .yoapp bundle">Export</button>
@@ -1124,76 +887,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
 
               <!-- Right panel: swaps per tab -->
               <div class="app-builder-preview">
-                <!-- Dashboard right -->
-                <div class="app-tab-right" data-tab="dashboard">
-                  <div class="dash-split-header" style="display:flex;align-items:center;">
-                    <div class="app-dash-icon" id="app-dash-icon" style="width:24px;height:24px;font-size:13px;margin-right:8px;border-radius:6px;background:var(--bg-2);display:flex;align-items:center;justify-content:center;overflow:hidden;"></div>
-                    <span id="app-dash-name"></span>
-                  </div>
-
-                  <div class="dash-stat-row">
-                    <div class="dash-stat-card">
-                      <div class="dash-stat-label">Captures</div>
-                      <div class="dash-stat-values">
-                        <div class="dash-stat-item">
-                          <div class="dash-stat-num green" id="app-dash-captures">—</div>
-                          <div class="dash-stat-sub">Total</div>
-                        </div>
-                        <div class="dash-stat-item">
-                          <div class="dash-stat-num" id="app-dash-embedded">—</div>
-                          <div class="dash-stat-sub">Embedded</div>
-                        </div>
-                        <div class="dash-stat-item">
-                          <div class="dash-stat-num" id="app-dash-disk">—</div>
-                          <div class="dash-stat-sub">Disk</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="dash-stat-card">
-                      <div class="dash-stat-label">Activity</div>
-                      <div class="dash-stat-values">
-                        <div class="dash-stat-item">
-                          <div class="dash-stat-num" id="app-dash-oldest">—</div>
-                          <div class="dash-stat-sub">Oldest</div>
-                        </div>
-                        <div class="dash-stat-item">
-                          <div class="dash-stat-num" id="app-dash-newest">—</div>
-                          <div class="dash-stat-sub">Newest</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="dash-chart-stack">
-                    <div class="dash-chart-container">
-                      <div style="display:flex;align-items:center;margin-bottom:8px;">
-                        <div class="dash-stat-label" style="margin-bottom:0">Daily Intake</div>
-                        <div class="dash-range-toggle" style="margin-left:auto">
-                          <button class="dash-range-btn active" id="app-dash-range-7">7d</button>
-                          <button class="dash-range-btn" id="app-dash-range-30">30d</button>
-                        </div>
-                      </div>
-                      <div class="dash-chart-box"><canvas id="app-dash-chart-intake"></canvas></div>
-                    </div>
-                  </div>
-
-                  <div class="dash-split-subhead">Captures</div>
-                  <div id="app-dash-data-toolbar" class="crud-toolbar">
-                    <input id="app-dash-data-search" type="text" class="crud-search" placeholder="Search captures..." spellcheck="false" autocomplete="off" />
-                  </div>
-                  <div id="app-dash-data-list" class="crud-cards"></div>
-
-                  <div id="app-dash-data-detail" class="crud-inline-form hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="app-dash-data-back">&larr; Captures</a>
-                      <div class="crud-spacer"></div>
-                      <button id="app-dash-data-delete" class="action-btn danger">Delete</button>
-                    </div>
-                    <div id="app-dash-data-meta" style="font-size:11px;color:var(--text-2);margin-bottom:8px;"></div>
-                    <pre id="app-dash-data-content" class="dash-pre-block" style="max-height:50vh;"></pre>
-                  </div>
-                </div>
-
                 <!-- Panel right -->
                 <div class="app-tab-right" data-tab="panel">
                   <div class="preview-toolbar">
@@ -1412,7 +1105,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
           <div class="settings-layout">
             <nav class="settings-nav">
               <button class="settings-nav-item active" data-sub="general">General</button>
-              <button class="settings-nav-item" data-sub="agent-defaults">Agent Defaults</button>
               <button class="settings-nav-item" data-sub="providers">Providers</button>
               <button class="settings-nav-item" data-sub="appearance">Appearance</button>
               <button class="settings-nav-item" data-sub="account">Account</button>
@@ -1427,7 +1119,7 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
               <!-- General: Model selection -->
               <div class="settings-panel active" data-sub="general">
                 <h2>General</h2>
-                <p class="section-desc">App-wide preferences. Model selection lives under Agent Defaults.</p>
+                <p class="section-desc">App-wide preferences.</p>
                 <div class="settings-form">
                   <label class="settings-label">Timezone</label>
                   <select id="settings-timezone" class="settings-input">
@@ -1437,14 +1129,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                 </div>
 
                 <div class="settings-toggles" style="margin-top:24px;">
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="toggle-voice-input" />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Voice Input</span>
-                      <span class="toggle-desc">Enable mic button in .yo panel — uses Whisper for transcription via proxy</span>
-                    </div>
-                  </label>
                   <!-- Auto Updates hidden for now -->
                   <label class="settings-toggle" style="display:none;">
                     <input type="checkbox" id="toggle-auto-update" checked />
@@ -1463,63 +1147,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                 <div class="settings-actions" style="margin-top:24px;">
                   <button id="settings-save" class="action-btn primary">Save</button>
                   <span id="settings-status"></span>
-                </div>
-              </div>
-
-              <!-- Agent Defaults: seed values for new agents created in the Agents app -->
-              <div class="settings-panel" data-sub="agent-defaults">
-                <h2>Agent Defaults</h2>
-                <p class="section-desc">
-                  Defaults applied when you create a new agent. Each saved
-                  agent can override any of these.
-                </p>
-                <div class="settings-form">
-                  <!-- The model/provider are no longer chosen client-side — the
-                       Glyphh agent runs through the server proxy, which picks the
-                       model from the org's plan/allowed list. -->
-                  <label class="settings-label">Default permission mode</label>
-                  <select id="agent-default-perm" class="settings-input settings-input-md">
-                    <option value="default">ask (default)</option>
-                    <option value="plan">plan</option>
-                    <option value="acceptEdits">auto (accept edits)</option>
-                    <option value="bypassPermissions">bypass</option>
-                  </select>
-
-                  <label class="settings-label" style="margin-top:12px;">Default system prompt (CLAUDE.md seed)</label>
-                  <textarea id="agent-default-prompt" class="settings-input" rows="8" spellcheck="false" placeholder="You are a yo agent…"></textarea>
-
-                  <label class="settings-label" style="margin-top:12px;">Default MCP servers (comma-separated)</label>
-                  <input id="agent-default-mcp" type="text" class="settings-input" placeholder="" spellcheck="false" />
-
-                  <h3 style="margin-top:20px;margin-bottom:4px;">Context &amp; compaction</h3>
-                  <p class="section-desc" style="margin-top:0;">
-                    When a conversation grows past the window, older turns are
-                    summarized so the agent keeps going instead of erroring out.
-                    The default window is <strong>160,000 tokens</strong> (roughly
-                    80% of a 200K-context model, leaving headroom for the reply).
-                    The gauge next to the prompt input fills as the conversation
-                    approaches this limit.
-                  </p>
-                  <label class="settings-toggle" style="margin-top:4px;padding:8px 12px;">
-                    <input type="checkbox" id="agent-autocompact-enabled" checked />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Auto-compact when context fills</span>
-                      <span class="toggle-desc">Summarize older turns automatically before the window overflows</span>
-                    </div>
-                  </label>
-
-                  <label class="settings-label" style="margin-top:12px;">Context window before compaction (tokens)</label>
-                  <input id="agent-autocompact-window" type="number" min="100000" max="1000000" step="10000" class="settings-input settings-input-md" placeholder="160000 (default)" spellcheck="false" />
-                  <span class="settings-hint" style="display:block;margin-top:4px;font-size:11px;color:var(--text-3);">Context-window size the agent fills before auto-summarizing older turns — a <em>smaller</em> window compacts sooner. Must be 100,000–1,000,000; the model runtime silently ignores anything outside that range. Leave blank for the 160,000 default; recommended 120,000–180,000 on a 200K model.</span>
-
-                  <label class="settings-label" style="margin-top:12px;">Custom compaction prompt (optional)</label>
-                  <textarea id="agent-compact-prompt" class="settings-input" rows="4" spellcheck="false" placeholder="How should the agent summarize the conversation when compacting? Leave blank for the default summary."></textarea>
-
-                  <div class="settings-actions" style="margin-top:16px;">
-                    <button id="agent-defaults-save" class="action-btn primary" type="button">Save defaults</button>
-                    <span id="agent-defaults-status"></span>
-                  </div>
                 </div>
               </div>
 
@@ -1629,7 +1256,7 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
               <!-- MCP Server -->
               <div class="settings-panel" data-sub="mcp">
                 <h2>MCP Server</h2>
-                <p class="section-desc">Expose your capture store to external LLM tools like Claude Desktop, Cursor, and Windsurf.</p>
+                <p class="section-desc">Expose your saved agents and jammers to external LLM tools like Claude Desktop, Cursor, and Windsurf.</p>
 
                 <div id="mcp-pro-gate" class="hidden" style="padding:16px 0;">
                   <p style="color:var(--text-2);font-size:13px;margin:0 0 10px;">MCP Server requires an Advanced subscription.</p>

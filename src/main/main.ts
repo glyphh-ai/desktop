@@ -52,7 +52,6 @@ import { VoiceRelay } from "./voice-relay";
 import { smartGrab } from "./smart-grab";
 import { scanPanel, formatScan } from "./dom-scanner";
 import { resolveShellPath } from "./shell-path";
-import { VSCodeServer } from "./vscode-server";
 import { WorkspaceManager } from "./workspace-manager";
 import { EventLog } from "./event-log";
 // WorkspaceMcpServer removed — workspace tools merged into McpExpose
@@ -74,18 +73,13 @@ import { ConfigSync } from "./config-sync";
 import { reloadRemotePatterns } from "./firewall";
 import { usageTracker } from "./usage-tracker";
 import { promptLog } from "./prompt-log";
-import { Embedder } from "./embedder";
-import { CaptureStore } from "./capture-store";
 import { RunStore } from "./run-store";
 import { startOverlay } from "./overlay-bridge";
-import { ActionGrabber } from "./action-grabber";
 import { AgentRunner, AgentConfig } from "./agent-runner";
 import { McpExpose, ghRequest } from "./mcp-expose";
 import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay } from "./relay-client";
 import { installRelayHandlers } from "./relay-handlers";
-import { registerWorkbenchTerminalIpc } from "./wb-terminal";
-import { registerAgentDefaultsIpc } from "./agent-defaults";
 import { registerCodeIndexIpc } from "./code-index/ipc";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
@@ -97,7 +91,6 @@ import { closeSubstrateDb } from "./substrate/store";
 import { registerSettingsIpc } from "./settings-ipc";
 import { registerSkillsIpc } from "./skills-ipc";
 import { registerAppsIpc } from "./apps-ipc";
-import { registerCapturesIpc } from "./captures-ipc";
 import { registerMarketplaceIpc } from "./marketplace-ipc";
 import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
@@ -124,7 +117,6 @@ let noteStore: NoteStore;
 let voiceRelay: VoiceRelay | null = null;
 let cloudSyncInstance: CloudSync | null = null;
 let configSync: ConfigSync | null = null;
-let embedder: Embedder | null = null;
 let mcpExpose: McpExpose | null = null;
 let inboxRouter: InboxRouter | null = null;
 
@@ -146,7 +138,6 @@ function syncMcpExpose(): void {
 }
 let mcpManager: McpManager | null = null;
 let dripManager: DripManager | null = null;
-let actionGrabber: ActionGrabber | null = null;
 let connectorManager: ConnectorManager | null = null;
 let skillToolRouter: SkillToolRouter | null = null;
 let skillScheduler: SkillScheduler | null = null;
@@ -402,18 +393,6 @@ async function boot() {
   }
   appConnector = new AppConnector();
 
-  // Embedder + capture store
-  embedder = new Embedder();
-  embedder.init().catch((err) => console.error("[embedder]", err));
-
-  const captureStore = new CaptureStore();
-  captureStore.setEmbedder(embedder);
-  captureStore.setPolicyResolver((source) =>
-    // Swarm output accumulates — every agent message is kept, not deduped.
-    source.startsWith("swarm/")
-      ? { type: "append" }
-      : appConnector.getCapturePolicy(source));
-
   const dataStore = new DataStore();
 
   // Workspace registry — { slug, name, rootDir } per workspace, persisted to
@@ -423,8 +402,6 @@ async function boot() {
   const workspaceManager = new WorkspaceManager();
   workspaceManager.init();
 
-  // Every component that writes to captureStore needs this to tag entries so
-  // capture-store search / listeners scope correctly.
   const workspaceGetter = (): string => workspaceManager.getActiveSlug();
 
   // Phase 3: workspace event log + MCP server. The server is started on-demand
@@ -435,16 +412,10 @@ async function boot() {
   // and drains subscription-matched events into per-agent inbox files.
   inboxRouter = new InboxRouter(workspaceManager, eventLog);
 
-  // Action-driven capture — grabs content on blur/navigate + polls chat panels
-  actionGrabber = new ActionGrabber();
-  actionGrabber.setCaptureStore(captureStore);
-  actionGrabber.setAppConnector(appConnector);
-
   // MCP expose — exposes Glyphh as a local MCP server. This is a paid-tier
   // feature, so it is NOT started here unconditionally; the heartbeat observer
   // starts it once the tier is confirmed paid (and stops it on downgrade).
   mcpExpose = new McpExpose();
-  mcpExpose.setCaptureStore(captureStore);
   mcpExpose.setWorkspaceGetter(workspaceGetter);
   mcpExpose.setWorkspaceBackend(eventLog, workspaceManager);
   syncMcpExpose();
@@ -472,7 +443,6 @@ async function boot() {
 
   // Tool registry deps — provides dependencies to substrate/tools.ts
   setSubstrateToolDeps({
-    captureStore: { search: (q, n) => captureStore.search(q, n) },
     sessionCache: { get: () => session.get() },
     noteStore: {
       search: (q, n) => noteStore.search(q, n),
@@ -707,22 +677,6 @@ async function boot() {
     }
   });
 
-  // Record substantive swarm output into the capture store, so a swarm's
-  // findings / reports are searchable and available to the yo agent as
-  // context later (via search_captures). Coordination chatter and telemetry
-  // are skipped — only messages that carry real content.
-  const SWARM_CAPTURE_KINDS = new Set([
-    "complete_task", "report_status", "artifact", "post", "post_to",
-  ]);
-  cypherBus.onPost((wsSlug, event) => {
-    if (!SWARM_CAPTURE_KINDS.has(event.kind)) return;
-    const body = (event.body || "").trim();
-    if (body.length < 40) return; // skip trivial acks
-    const header = `[swarm · ${event.from}${event.to ? ` → ${event.to}` : ""} · ${event.kind}]`;
-    void captureStore.ingest(`swarm/${event.from}`, `${header}\n${body}`, wsSlug)
-      .catch(() => { /* capture is best-effort */ });
-  });
-
   agentRunner = new AgentRunner();
   agentRunner.setBus(cypherBus);
   agentRunner.setUsagePoster((cypherId, agentId, inputTokens, outputTokens) => {
@@ -737,10 +691,6 @@ async function boot() {
   // Session cache — in-memory yo/sup content store
   const session = new SessionCache();
   session.setOnCapture(() => {});
-  session.setOnRawCapture((appId, content) => {
-    const ws = getPreference<string>("activeWorkspace", "default");
-    captureStore.ingest(appId, content, ws).catch(() => {});
-  });
 
   // yo/dip/drip interceptor — injected into ALL app panels
   const yoInterceptor = new YoInterceptor(appConnector, skillEngine, session);
@@ -846,14 +796,9 @@ async function boot() {
         };
         childWc.on("did-navigate", (_e: unknown, url: string) => {
           trackChild(url);
-          actionGrabber?.onPanelNavigate(id).catch(() => {});
         });
         childWc.on("did-navigate-in-page", (_e: unknown, url: string, isMainFrame: boolean) => {
           if (isMainFrame) trackChild(url);
-          actionGrabber?.onInPageNavigate(id).catch(() => {});
-        });
-        childWc.on("did-finish-load", () => {
-          actionGrabber?.onPageLoad(id).catch(() => {});
         });
         childWc.on("page-favicon-updated" as any, (_e: unknown, favicons: string[]) => {
           if (favicons?.length) {
@@ -878,14 +823,9 @@ async function boot() {
       };
       wc.on("did-navigate", (_e: unknown, url: string) => {
         trackDirect(url);
-        actionGrabber?.onPanelNavigate(id).catch(() => {});
       });
       wc.on("did-navigate-in-page", (_e: unknown, url: string, isMainFrame: boolean) => {
         if (isMainFrame) trackDirect(url);
-        actionGrabber?.onInPageNavigate(id).catch(() => {});
-      });
-      wc.on("did-finish-load", () => {
-        actionGrabber?.onPageLoad(id).catch(() => {});
       });
       wc.on("page-favicon-updated" as any, (_e: unknown, favicons: string[]) => {
         if (favicons?.length) {
@@ -898,12 +838,6 @@ async function boot() {
       });
     }
   });
-
-  // Wire action grabber to panel manager for webContents access + polling
-  actionGrabber.setWebContentsGetter((id) => panelManager.getGuestOrWebContents(id));
-  actionGrabber.setPanelIdGetter(() => panelManager.getLoadedPanelIds());
-  actionGrabber.setWorkspaceGetter(() => getPreference<string>("activeWorkspace", "default"));
-  actionGrabber.startPolling();
 
   // Persist zoom when changed via keyboard shortcut in panels
   panelManager.setOnZoomChange((factor) => {
@@ -958,56 +892,11 @@ async function boot() {
   // Seed PanelManager configs from apps (apps are the source of truth)
   const terminalHtml = `file://${path.join(__dirname, "..", "renderer", "terminal.html")}`;
   const terminalPreload = path.join(__dirname, "terminal-preload.js");
-  const workbenchHtml = `file://${path.join(__dirname, "..", "renderer", "workbench.html")}`;
-  const workbenchPreload = path.join(__dirname, "workbench-preload.js");
   const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
-  // VS Code embed — spawns `code serve-web` and the yo://vscode panel loads
-  // its localhost URL. The server defaults ON when the `code` CLI is on
-  // PATH, OFF otherwise. An explicit `enableVscodeServer` preference wins
-  // when set so the user can override either way.
-  const vscodeServer = new VSCodeServer();
-  const vscodePref = getPreference<boolean | undefined>("enableVscodeServer", undefined);
-  const enableVscode = vscodePref ?? vscodeServer.available;
-  if (enableVscode && vscodeServer.available) {
-    vscodeServer.start(getWorkingDirectory()).catch((err) => {
-      console.log("[vscode-server] failed to start:", err?.message || err);
-    });
-  }
-  function vscodePanelUrl(): string {
-    if (enableVscode && vscodeServer.available) return VSCodeServer.expectedUrl();
-    // No-CLI fallback page: a tiny status card pointing users to install VS Code.
-    const reason = !enableVscode
-      ? "VS Code Server is disabled."
-      : "VS Code CLI not found on this machine.";
-    return `data:text/html,${encodeURIComponent(`<html><head><style>
-        body{background:#0a0a0a;color:#999;font-family:-apple-system,system-ui,sans-serif;
-          display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-        .card{text-align:center;max-width:420px;padding:40px}
-        h2{color:#ddd;font-size:18px;font-weight:600;margin:0 0 12px}
-        p{font-size:14px;line-height:1.6;margin:8px 0}
-        .reason{color:#777;font-size:13px;margin-bottom:16px}
-        a{color:#a855f7;text-decoration:none;font-weight:500}
-        a:hover{text-decoration:underline}
-        .steps{text-align:left;margin:16px 0;padding:0;list-style:none}
-        .steps li{padding:6px 0;font-size:13px;color:#888}
-        .steps li::before{content:"→ ";color:#a855f7}
-        code{font-family:"SF Mono","Fira Code",monospace;font-size:12px;
-          background:#151515;padding:2px 6px;border-radius:4px;color:#ccc}
-      </style></head><body><div class="card">
-        <h2>VS Code Server</h2>
-        <p class="reason">${reason}</p>
-        <ul class="steps">
-          <li>Install <a href="https://code.visualstudio.com/" target="_blank">Visual Studio Code</a></li>
-          <li>Run <code>Shell Command: Install 'code' in PATH</code> from the VS Code command palette</li>
-          <li>Restart Glyphh</li>
-        </ul>
-      </div></body></html>`)}`;
-  }
   // Slugs that map to home.html with ?section=<slug>. Each gets its own panel
   // so users can mount, e.g., a standalone Drips or Agents browser inside any
   // layout (or via .dip <slug>).
   const HOME_SECTION_SLUGS: Record<string, string> = {
-    "yo://dashboard": "dashboard",
     "yo://apps":      "apps",
     "yo://agents":    "agents",
     "yo://schedules": "schedules",
@@ -1027,10 +916,6 @@ async function boot() {
       panelManager.addPanel(app.id, `${homeHtml}?section=${section}`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
-    } else if (app.url === "yo://workbench") {
-      panelManager.addPanel(app.id, workbenchHtml, workbenchPreload);
-    } else if (app.url === "yo://vscode") {
-      panelManager.addPanel(app.id, vscodePanelUrl());
     } else if (app.url === "yo://browser") {
       const savedBrowserUrls = getPreference<Record<string, string>>("browserTabUrls", {});
       const browserUrl = savedBrowserUrls[app.id] || resolveBrowserHome();
@@ -1055,7 +940,6 @@ async function boot() {
   const yoChat = new YoChat(panelManager);
   applyLLMConfig(llmConfig);
   yoInterceptor.setYoChat(yoChat);
-  yoInterceptor.setCaptureStore(captureStore);
   commandParser.setYoChat(yoChat);
 
   // Global keytap overlay (macOS): native CGEventTap helper intercepts dot-commands
@@ -1445,10 +1329,6 @@ async function boot() {
       panelManager.addPanel(instanceId, `${homeHtml}?section=${section}`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
-    } else if (app.url === "yo://workbench") {
-      panelManager.addPanel(instanceId, workbenchHtml, workbenchPreload);
-    } else if (app.url === "yo://vscode") {
-      panelManager.addPanel(instanceId, vscodePanelUrl());
     } else if (app.url === "yo://browser") {
       const savedBrowserUrls = getPreference<Record<string, string>>("browserTabUrls", {});
       const browserUrl = savedBrowserUrls[instanceId] || resolveBrowserHome();
@@ -1671,10 +1551,6 @@ async function boot() {
   // Hook into panel focus events — add tab when panel becomes active
   let lastFocusedPanel: string | null = null;
   panelManager.setOnPanelFocused((id: string) => {
-    // Action capture: previous panel just lost focus — capture it
-    if (lastFocusedPanel && lastFocusedPanel !== id) {
-      actionGrabber?.onPanelBlur(lastFocusedPanel).catch(() => {});
-    }
     lastFocusedPanel = id;
 
     ensureTab(id);
@@ -2150,7 +2026,6 @@ async function boot() {
   // Start cloud sync if authenticated and tier allows it
   if (authenticated && canUseSync().allowed) {
     cloudSyncInstance = new CloudSync(noteStore);
-    cloudSyncInstance.setCaptureStore(captureStore);
     cloudSyncInstance.setWorkspaceGetter(workspaceGetter);
     cloudSyncInstance.start();
   }
@@ -2507,12 +2382,6 @@ async function boot() {
   // get-agent-mode/set-agent-mode removed — they only fed the (now removed)
   // chat panel's permission dropdown (default/plan/acceptEdits/bypassPermissions).
 
-  // Council + Vibe apps removed. Multi-agent work is now done by the
-  // right-rail Yo invoking saved agents via the mcp__glyphh__call_agent tool,
-  // with each invocation surfacing in the Workbench Sub-Agents view.
-  registerWorkbenchTerminalIpc();
-  registerAgentDefaultsIpc();
-
   /** Per-instance (app, folder) bindings. Lets recents:open reuse an
    *  already-open Vibe/Spec/etc panel that's bound to the same folder
    *  instead of spawning a duplicate. Pruned lazily on lookup so a
@@ -2621,11 +2490,6 @@ async function boot() {
     PICKER_SCRIPT,
   });
 
-  registerCapturesIpc({
-    captureStore, workspaceManager, panelManager,
-    resolveAppId,
-  });
-
   // IPC: grid resize (drag dividers)
   ipcMain.on("grid-drag-end", (_e, type: "col" | "row", index: number, fraction: number) => {
     if (!mainWindow) return;
@@ -2667,8 +2531,6 @@ async function boot() {
   // Settings / home panel IPC — dashboard, MCP servers, connectors, prompts.
   registerHomeIpc({
     mcpExpose: mcpExpose!, mcpManager, connectorManager, canUseMcp,
-    usageTracker, promptLog, llmConfig,
-    panelManager, appConnector, getMainWindow: () => mainWindow, activeReminders,
   });
 
   // ── Local swarm session (cypher-session.ts) ──────────────────────
@@ -3224,8 +3086,6 @@ function cleanupAll() {
   inboxRouter?.stop();
   mcpManager?.disconnectAll();
   connectorManager?.cleanup();
-  actionGrabber?.stopPolling();
-  embedder?.cleanup();
   dripManager?.cleanup();
   closeLocalDb();
   closeDataStoreDb();

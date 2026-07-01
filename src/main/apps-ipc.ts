@@ -170,11 +170,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     refuseIfInternal(id) ? false : appConnector.updateUrl(id, url));
   ipcMain.handle("apps-update-force-web", (_e, id: string, forceWeb: boolean) =>
     refuseIfInternal(id) ? false : appConnector.updateForceWeb(id, forceWeb));
-  ipcMain.handle("apps-update-do-not-record", (_e, id: string, doNotRecord: boolean) =>
-    refuseIfInternal(id) ? false : appConnector.updateDoNotRecord(id, doNotRecord));
-  ipcMain.handle("apps-update-capture-policy", (_e, id: string, policy: { type: string; maxVersions?: number; windowHours?: number; minDeltaChars?: number }) =>
-    refuseIfInternal(id) ? false : appConnector.updateCapturePolicy(id, policy as any));
-  ipcMain.handle("apps-get-capture-policy", (_e, id: string) => appConnector.getCapturePolicy(id));
   ipcMain.handle("apps-set-connected-slug", () => false);
 
   // ── yo app package (import / export) ──────────────────────

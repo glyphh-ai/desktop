@@ -21,7 +21,6 @@ import { getWorkingDirectory } from "../working-directory";
 // Privileged accessors injected by main.ts. Substrate tools use these;
 // user-skill ctx never sees them.
 export interface SubstrateToolDeps {
-  captureStore?: { search: (q: string, n: number) => Promise<Array<{ meta: { id: string; source: string; created: number }; content: string; score: number }>> };
   sessionCache?: { get: () => string | null };
   noteStore?: { search: (q: string, n: number) => Promise<Array<{ file: string; title: string; content: string; rank: number }>>; write: (title: string, content: string, source?: string) => Promise<string> };
   memoryStore?: { save: (content: string, category: string) => Promise<string> };
@@ -135,35 +134,6 @@ export interface ToolDef {
 // ── Built-in substrate tools (namespace: yo) ────────────────
 
 const BUILTIN_TOOLS: ToolDef[] = [
-  {
-    name: "search_captures",
-    namespace: "yo",
-    description: "Vector search across all captured content (.sup captures). Returns ranked results with confidence scores. Use descriptive natural language queries for best results.",
-    input_schema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Descriptive search query" },
-        limit: { type: "number", description: "Max results (default 10)" },
-      },
-      required: ["query"],
-    },
-    async run(input) {
-      const query = input.query as string;
-      const limit = (input.limit as number) || 10;
-      if (!query) return "No query provided.";
-      if (!deps.captureStore) return "Capture store not available.";
-      const results = await deps.captureStore.search(query, limit);
-      if (results.length === 0) return "No matching captures found.";
-      return results.map((r, i) => {
-        const ageMs = Date.now() - r.meta.created;
-        const age = ageMs < 60_000 ? "just now" :
-          ageMs < 3_600_000 ? `${Math.floor(ageMs / 60_000)}m ago` :
-          ageMs < 86_400_000 ? `${Math.floor(ageMs / 3_600_000)}h ago` :
-          `${Math.floor(ageMs / 86_400_000)}d ago`;
-        return `[${i + 1}] score: ${r.score.toFixed(2)} | source: ${r.meta.source} | ${age}\n${r.content.slice(0, 800)}`;
-      }).join("\n\n---\n\n");
-    },
-  },
   {
     name: "get_context",
     namespace: "yo",

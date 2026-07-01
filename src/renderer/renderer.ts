@@ -90,9 +90,6 @@ declare global {
       appsUpdateName: (id: string, name: string) => Promise<boolean>;
       appsUpdateUrl: (id: string, url: string) => Promise<boolean>;
       appsUpdateForceWeb: (id: string, forceWeb: boolean) => Promise<boolean>;
-      appsUpdateDoNotRecord: (id: string, doNotRecord: boolean) => Promise<boolean>;
-      appsUpdateCapturePolicy: (id: string, policy: { type: string; maxVersions?: number; windowHours?: number; minDeltaChars?: number }) => Promise<boolean>;
-      appsGetCapturePolicy: (id: string) => Promise<{ type: string; maxVersions?: number; windowHours?: number; minDeltaChars?: number }>;
       appsSetConnectedSlug: (id: string, slug: string | null) => Promise<boolean>;
       appsSetCommand: (id: string, key: string, mapping: { selector: string; action: string; description: string }) => Promise<boolean>;
       appsRemoveCommand: (id: string, key: string) => Promise<boolean>;
@@ -175,40 +172,12 @@ declare global {
       dripsDelete: (name: string) => Promise<string>;
       dripsPreview: (recipe: string) => Promise<string>;
       dripsBuiltinEffects: () => Promise<string[]>;
-      // Dashboard
-      dashboardToday: (tz?: string) => Promise<any>;
-      dashboardHistory: (days?: number, tz?: string) => Promise<any[]>;
       userUsage: (range?: { from?: string; to?: string; tz?: string }) => Promise<{
         credits: { balance: number; grants: number; purchases: number; allowance?: number } | null;
         days: Array<{ day: string; credits: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; requests: number }>;
       }>;
       usageByChat: () => Promise<{ byChat: Record<string, { credits: number; requests: number }> }>;
       agentModels: () => Promise<{ models: Array<{ provider: string; model: string; display_name: string }>; default_model: string | null }>;
-      dashboardAllTime: (tz?: string) => Promise<{ agents: Record<string, any>; total: any }>;
-      dashboardApps: () => Promise<Array<{ name: string; path: string; modified: string }>>;
-      dashboardOpenApp: (name: string) => void;
-      dashboardDeleteApp: (name: string) => Promise<boolean>;
-      dashboardReminders: () => Promise<Array<{ id: string; message: string; fireAt: number }>>;
-      dashboardCancelReminder: (id: string) => Promise<boolean>;
-      dashboardLLMInfo: () => Promise<{ provider: string; model: string }>;
-      // Prompt log
-      promptsList: (offset?: number, limit?: number) => Promise<Array<{ id: string; startTs: number; endTs: number; prompt: string; response: string; inputTokens: number; outputTokens: number; cacheCreationTokens?: number; cacheReadTokens?: number; model: string; provider: string; mode: string; toolsUsed: string[] }>>;
-      promptsSearch: (query: string, limit?: number) => Promise<Array<{ id: string; startTs: number; endTs: number; prompt: string; response: string; inputTokens: number; outputTokens: number; cacheCreationTokens?: number; cacheReadTokens?: number; model: string; provider: string; mode: string; toolsUsed: string[] }>>;
-      promptsGet: (id: string) => Promise<{ id: string; startTs: number; endTs: number; prompt: string; response: string; inputTokens: number; outputTokens: number; cacheCreationTokens?: number; cacheReadTokens?: number; model: string; provider: string; mode: string; toolsUsed: string[] } | null>;
-      promptsCount: () => Promise<number>;
-      // Capture store
-      capturesStats: () => Promise<{ count: number; sources: Record<string, number>; diskBytes: number; oldestTs: number; newestTs: number; embeddedCount: number; ingestCount: number; searchCount: number; ingestBytes: number }>;
-      capturesList: (offset: number, limit: number) => Promise<Array<{ meta: { id: string; source: string; created: number; chunkParent?: string }; snippet: string; size: number }>>;
-      capturesRead: (id: string) => Promise<string | null>;
-      capturesDelete: (id: string) => Promise<boolean>;
-      capturesDeleteBySource: (source: string) => Promise<number>;
-      capturesClear: () => Promise<number>;
-      capturesSearch: (query: string, limit: number) => Promise<Array<{ meta: { id: string; source: string; created: number }; content: string; score: number }>>;
-      capturesDailyHistory: (days?: number) => Promise<Array<{ date: string; count: number; bytes: number }>>;
-      capturesEntrySize: (id: string) => Promise<number>;
-      capturesStatsForSource: (source: string) => Promise<{ count: number; diskBytes: number; oldestTs: number; newestTs: number; embeddedCount: number }>;
-      capturesListForSource: (source: string, offset: number, limit: number) => Promise<Array<{ meta: { id: string; source: string; created: number; chunkParent?: string }; snippet: string; size: number }>>;
-      capturesDailyHistoryForSource: (source: string, days?: number) => Promise<Array<{ date: string; count: number; bytes: number }>>;
       // LLM config
       getLLMConfig: () => Promise<{ provider: string; model: string }>;
       getLLMPresets: () => Promise<Record<string, { name: string; models: string[]; defaultModel: string }>>;

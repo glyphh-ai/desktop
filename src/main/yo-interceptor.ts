@@ -20,7 +20,6 @@ import { SkillEngine } from "./skill-engine";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
 import type { YoChat } from "./yo-chat";
-import type { CaptureStore } from "./capture-store";
 
 import crypto from "crypto";
 
@@ -46,7 +45,6 @@ export class YoInterceptor {
   private availableModels: string[] = [];
   private theme = "dark";
   private lastAgentResult: (() => string) | null = null;
-  private captureStore: CaptureStore | null = null;
   private getFavicons: (() => Record<string, string>) | null = null;
   private getLayouts: (() => Array<{ name: string }>) | null = null;
   private getDripCustoms: (() => Array<{ name: string; recipe: string }>) | null = null;
@@ -61,7 +59,6 @@ export class YoInterceptor {
   ) {}
 
   setYoChat(chat: YoChat): void { this.yoChat = chat; }
-  setCaptureStore(store: CaptureStore): void { this.captureStore = store; }
   setCommandHandler(handler: (input: string, sourcePanelId?: string) => Promise<string>): void { this.commandHandler = handler; }
   setVisiblePanelsGetter(getter: () => string[]): void { this.getVisiblePanelIds = getter; }
   setSessionNotifier(fn: () => void): void { this.sessionNotifier = fn; }
@@ -564,70 +561,9 @@ window.addEventListener('beforeunload',function(e){
     }
   }
 
-  /**
-   * .yo > <prompt> — search capture history + inject result.
-   * Searches the capture store, passes results to LLM with the user's prompt,
-   * injects the processed result into the current text area.
-   */
-  private async handleYoPull(wc: WebContents, _appId: string, prompt: string): Promise<void> {
-    if (!this.captureStore) {
-      this.notify(wc, "Capture store not available.", "error");
-      return;
-    }
-    if (!this.yoChat) {
-      this.notify(wc, "Agent not ready.", "error");
-      return;
-    }
-
-    const myOp = ++this.opId;
-    this.notify(wc, "", "loading");
-
-    try {
-      // Search captures for relevant content
-      const results = await this.captureStore.search(prompt, 5);
-      if (!results || results.length === 0) {
-        if (this.opId !== myOp) return;
-        await this.clearNotify(wc);
-        this.notify(wc, "No matching captures found.", "error");
-        return;
-      }
-
-      // Build context from search results
-      const context = results
-        .map((r, i) =>
-          `[${i + 1}] (score: ${r.score.toFixed(2)}, source: ${r.meta.source})\n${r.content}`)
-        .join("\n\n---\n\n");
-
-      // Check if prompt is a skill name
-      const matchedSkill = /^\S+$/.test(prompt)
-        ? this.skillEngine.listSkills().find((s) => s.toLowerCase() === prompt.toLowerCase())
-        : undefined;
-
-      let finalResult: string;
-      if (matchedSkill) {
-        try {
-          finalResult = await this.skillEngine.process(context, matchedSkill);
-        } catch (err) {
-          finalResult = `Skill error: ${err instanceof Error ? err.message : String(err)}`;
-        }
-      } else {
-        finalResult = await this.yoChat.executeProcess(prompt, context);
-      }
-
-      if (this.opId !== myOp) return;
-      await this.clearNotify(wc);
-
-      // Inject the result directly into the text area
-      try {
-        await wc.executeJavaScript(
-          `(function(){if(window.__yoInject){window.__yoInject(${JSON.stringify(finalResult)});}})()`,
-        );
-      } catch {}
-    } catch (err) {
-      if (this.opId !== myOp) return;
-      await this.clearNotify(wc);
-      this.notify(wc, `Failed: ${err instanceof Error ? err.message : err}`, "error");
-    }
+  /** .yo > <prompt> — searched capture history; capture store is removed. */
+  private async handleYoPull(wc: WebContents, _appId: string, _prompt: string): Promise<void> {
+    this.notify(wc, "Capture store not available.", "error");
   }
 
   private timestamp(): string {

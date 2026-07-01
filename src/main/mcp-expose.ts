@@ -12,7 +12,6 @@
 import http from "http";
 import https from "https";
 import crypto from "crypto";
-import type { CaptureStore } from "./capture-store";
 import type { EventLog, YoEvent } from "./event-log";
 import type { WorkspaceManager } from "./workspace-manager";
 import type { CypherBus } from "./cypher-bus";
@@ -64,7 +63,6 @@ export interface ProjectContext {
 
 export class McpExpose {
   private server: http.Server | null = null;
-  private captureStore: CaptureStore | null = null;
   private clients = new Map<string, SseClient>();
   private port = DEFAULT_PORT;
   private eventLog: EventLog | null = null;
@@ -74,10 +72,6 @@ export class McpExpose {
   private projectContext: ProjectContext | null = null;
   /** Runs a local swarm — injected by main. Returns a human status line. */
   private swarmRunner: ((goal: string, agentIds?: string[], size?: number) => Promise<string>) | null = null;
-
-  setCaptureStore(store: CaptureStore): void {
-    this.captureStore = store;
-  }
 
   setBus(bus: CypherBus): void {
     this.bus = bus;
@@ -293,12 +287,6 @@ export class McpExpose {
       return;
     }
 
-    // REST endpoint — simple POST to ingest content (used by hooks)
-    if (url === "/api/sup" && req.method === "POST") {
-      this.handleApiSup(req, res);
-      return;
-    }
-
     // Health check
     if (url === "/" || url === "/mcp") {
       if (req.method === "GET") {
@@ -450,39 +438,6 @@ export class McpExpose {
     }
   }
 
-  private async handleApiSup(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (!this.captureStore) {
-      res.writeHead(503, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Capture store not available" }));
-      return;
-    }
-
-    let body = "";
-    for await (const chunk of req) body += chunk;
-
-    let data: { name?: string; content?: string };
-    try {
-      data = JSON.parse(body);
-    } catch {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Invalid JSON" }));
-      return;
-    }
-
-    const name = String(data.name || "").trim();
-    const content = String(data.content || "").trim();
-
-    if (!name || !content) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Both name and content are required" }));
-      return;
-    }
-
-    const entryId = await this.captureStore.ingest(name, content, this.workspaceGetter?.());
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, id: entryId }));
-  }
-
   private async handleToolCall(
     id: string | number | undefined,
     params: { name: string; arguments?: Record<string, unknown> },
@@ -496,32 +451,6 @@ export class McpExpose {
     const replyJson = (data: unknown) => reply(JSON.stringify(data, null, 2));
 
     switch (params.name) {
-      // ── Capture store tools ────────────────────────────────
-      case "glyphh_search": {
-        if (!this.captureStore) return reply("Capture store not available.", true);
-        const query = String(args.query || "");
-        const limit = Number(args.limit) || 10;
-        if (!query) return reply("query is required", true);
-
-        const results = await this.captureStore.search(query, limit);
-        if (results.length === 0) return reply(`No results for "${query}".`);
-
-        const text = results.map((r) =>
-          `[${r.meta.source}] (score: ${r.score.toFixed(2)}) ${new Date(r.meta.created).toLocaleString()}\n${r.content}`,
-        ).join("\n\n---\n\n");
-        return reply(text);
-      }
-
-      case "sup": {
-        if (!this.captureStore) return reply("Capture store not available.", true);
-        const name = String(args.name || "").trim();
-        const content = String(args.content || "").trim();
-        if (!name || !content) return reply("Both name and content are required.", true);
-
-        const entryId = await this.captureStore.ingest(name, content, this.workspaceGetter?.());
-        return reply(`Stored "${name}" (id: ${entryId}). Content chunked, embedded, and indexed.`);
-      }
-
       // ── Workspace tools ────────────────────────────────────
       case "team_status": {
         // In a cypher, the team IS the cypher's jammer roster — not the
@@ -1112,30 +1041,6 @@ export class McpExpose {
 
   private buildToolList() {
     const tools: Record<string, unknown>[] = [
-      {
-        name: "glyphh_search",
-        description: "Search the user's Glyphh capture store. Returns context from across all the user's apps — conversations, code, emails, docs, anything they've worked on.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "Natural language search query" },
-            limit: { type: "number", description: "Max results (default 10)" },
-          },
-          required: ["query"],
-        },
-      },
-      {
-        name: "sup",
-        description: "Push context into the user's .Yo capture store. Content is chunked, embedded, and indexed for future search.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Short label (e.g. 'auth-refactor')" },
-            content: { type: "string", description: "The content to store" },
-          },
-          required: ["name", "content"],
-        },
-      },
       {
         name: "create_jammer",
         description: "Create a reusable jammer (a named sub-agent) in the user's global jammer "

@@ -111,37 +111,6 @@ contextBridge.exposeInMainWorld("yo", {
   dripsPreview: (recipe: string) => ipcRenderer.invoke("drips-preview", recipe) as Promise<string>,
   dripsBuiltinEffects: () => ipcRenderer.invoke("drips-builtin-effects") as Promise<string[]>,
 
-  // Dashboard
-  dashboardToday: (tz?: string) => ipcRenderer.invoke("dashboard:today", tz) as Promise<any>,
-  dashboardHistory: (days?: number, tz?: string) => ipcRenderer.invoke("dashboard:history", days, tz) as Promise<any[]>,
-  dashboardAllTime: (tz?: string) => ipcRenderer.invoke("dashboard:all-time", tz) as Promise<{ agents: Record<string, any>; total: any }>,
-  dashboardApps: () => ipcRenderer.invoke("dashboard:apps") as Promise<Array<{ name: string; path: string; modified: string }>>,
-  dashboardOpenApp: (name: string) => ipcRenderer.send("dashboard:open-app", name),
-  dashboardDeleteApp: (name: string) => ipcRenderer.invoke("dashboard:delete-app", name) as Promise<boolean>,
-  dashboardReminders: () => ipcRenderer.invoke("dashboard:reminders") as Promise<Array<{ id: string; message: string; fireAt: number }>>,
-  dashboardCancelReminder: (id: string) => ipcRenderer.invoke("dashboard:cancel-reminder", id) as Promise<boolean>,
-  dashboardLLMInfo: () => ipcRenderer.invoke("dashboard:llm-info") as Promise<{ provider: string; model: string }>,
-
-  // Prompt log
-  promptsList: (offset?: number, limit?: number) => ipcRenderer.invoke("prompts-list", offset, limit) as Promise<Array<{ id: string; startTs: number; endTs: number; prompt: string; response: string; inputTokens: number; outputTokens: number; cacheCreationTokens?: number; cacheReadTokens?: number; model: string; provider: string; mode: string; toolsUsed: string[] }>>,
-  promptsSearch: (query: string, limit?: number) => ipcRenderer.invoke("prompts-search", query, limit) as Promise<Array<{ id: string; startTs: number; endTs: number; prompt: string; response: string; inputTokens: number; outputTokens: number; cacheCreationTokens?: number; cacheReadTokens?: number; model: string; provider: string; mode: string; toolsUsed: string[] }>>,
-  promptsGet: (id: string) => ipcRenderer.invoke("prompts-get", id) as Promise<{ id: string; startTs: number; endTs: number; prompt: string; response: string; inputTokens: number; outputTokens: number; cacheCreationTokens?: number; cacheReadTokens?: number; model: string; provider: string; mode: string; toolsUsed: string[] } | null>,
-  promptsCount: () => ipcRenderer.invoke("prompts-count") as Promise<number>,
-
-  // Capture store
-  capturesStats: () => ipcRenderer.invoke("captures-stats") as Promise<{ count: number; sources: Record<string, number>; diskBytes: number; oldestTs: number; newestTs: number; embeddedCount: number; ingestCount: number; searchCount: number; ingestBytes: number }>,
-  capturesList: (offset: number, limit: number) => ipcRenderer.invoke("captures-list", offset, limit) as Promise<Array<{ meta: { id: string; source: string; created: number; chunkParent?: string }; snippet: string; size: number }>>,
-  capturesRead: (id: string) => ipcRenderer.invoke("captures-read", id) as Promise<string | null>,
-  capturesDelete: (id: string) => ipcRenderer.invoke("captures-delete", id) as Promise<boolean>,
-  capturesDeleteBySource: (source: string) => ipcRenderer.invoke("captures-delete-source", source) as Promise<number>,
-  capturesClear: () => ipcRenderer.invoke("captures-clear") as Promise<number>,
-  capturesSearch: (query: string, limit: number) => ipcRenderer.invoke("captures-search", query, limit) as Promise<Array<{ meta: { id: string; source: string; created: number }; content: string; score: number }>>,
-  capturesDailyHistory: (days?: number) => ipcRenderer.invoke("captures-daily-history", days) as Promise<Array<{ date: string; count: number; bytes: number }>>,
-  capturesEntrySize: (id: string) => ipcRenderer.invoke("captures-entry-size", id) as Promise<number>,
-  capturesStatsForSource: (source: string) => ipcRenderer.invoke("captures-stats-source", source) as Promise<{ count: number; diskBytes: number; oldestTs: number; newestTs: number; embeddedCount: number }>,
-  capturesListForSource: (source: string, offset: number, limit: number) => ipcRenderer.invoke("captures-list-source", source, offset, limit) as Promise<Array<{ meta: { id: string; source: string; created: number; chunkParent?: string }; snippet: string; size: number }>>,
-  capturesDailyHistoryForSource: (source: string, days?: number) => ipcRenderer.invoke("captures-daily-history-source", source, days) as Promise<Array<{ date: string; count: number; bytes: number }>>,
-
 
   // Grid resize
   gridDragEnd: (type: "col" | "row", index: number, fraction: number) =>
@@ -235,10 +204,6 @@ contextBridge.exposeInMainWorld("yo", {
   appsUpdateName: (id: string, name: string) => ipcRenderer.invoke("apps-update-name", id, name) as Promise<boolean>,
   appsUpdateUrl: (id: string, url: string) => ipcRenderer.invoke("apps-update-url", id, url) as Promise<boolean>,
   appsUpdateForceWeb: (id: string, forceWeb: boolean) => ipcRenderer.invoke("apps-update-force-web", id, forceWeb) as Promise<boolean>,
-  appsUpdateDoNotRecord: (id: string, doNotRecord: boolean) => ipcRenderer.invoke("apps-update-do-not-record", id, doNotRecord) as Promise<boolean>,
-  appsUpdateCapturePolicy: (id: string, policy: { type: string; maxVersions?: number; windowHours?: number; minDeltaChars?: number }) =>
-    ipcRenderer.invoke("apps-update-capture-policy", id, policy) as Promise<boolean>,
-  appsGetCapturePolicy: (id: string) => ipcRenderer.invoke("apps-get-capture-policy", id) as Promise<{ type: string; maxVersions?: number; windowHours?: number; minDeltaChars?: number }>,
   appsSetConnectedSlug: (id: string, slug: string | null) => ipcRenderer.invoke("apps-set-connected-slug", id, slug) as Promise<boolean>,
   appsSetCommand: (id: string, key: string, mapping: { selector: string; action: string; description: string }) =>
     ipcRenderer.invoke("apps-set-command", id, key, mapping) as Promise<boolean>,
@@ -586,9 +551,6 @@ contextBridge.exposeInMainWorld("yo", {
   agentsIdAvailable: (id: string) => ipcRenderer.invoke("agents-id-available", id) as Promise<boolean>,
   /** Open a saved agent as a standalone panel (yo://agent?slug=<slug>). */
   agentsOpenAsApp: (slug: string) => ipcRenderer.invoke("agents:open-as-app", slug) as Promise<boolean>,
-  /** Agent defaults — seed values for new agents (~/yo/.agent-defaults.json). */
-  agentDefaultsGet: () => ipcRenderer.invoke("agent-defaults:get") as Promise<{ provider: string; model: string; permDefault: string; systemPrompt: string; mcpServers: string[] }>,
-  agentDefaultsSet: (d: unknown) => ipcRenderer.invoke("agent-defaults:set", d) as Promise<unknown>,
 
   // yos wallet + rate cards
   yosBalance: () => ipcRenderer.invoke("yos-balance") as Promise<{ user_id: string; balance: number } | { error: string }>,

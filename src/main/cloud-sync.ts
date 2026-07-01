@@ -6,7 +6,6 @@
  */
 
 import { NoteStore } from "./note-store";
-import type { CaptureStore } from "./capture-store";
 import { getPreference } from "./preferences";
 
 interface PendingItem {
@@ -21,17 +20,12 @@ const DEFAULT_SERVER = process.env.YO_AUTH_SERVER || "https://api.glyphh.ai";
 
 export class CloudSync {
   private noteStore: NoteStore;
-  private captureStore: CaptureStore | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
   private authFailed = false;
 
   constructor(noteStore: NoteStore) {
     this.noteStore = noteStore;
-  }
-
-  setCaptureStore(store: CaptureStore): void {
-    this.captureStore = store;
   }
 
   private workspaceGetter: (() => string) | null = null;
@@ -99,10 +93,9 @@ export class CloudSync {
       const items = (await res.json()) as PendingItem[];
       if (items.length === 0) return;
 
-      // 2. Write each to local notes + capture store
+      // 2. Write each to local notes
       for (const item of items) {
         await this.noteStore.write(item.name, item.content, "cloud-sync");
-        this.captureStore?.ingest("cloud-sync", item.content, this.workspaceGetter?.()).catch(() => {});
       }
 
       // 3. ACK all fetched IDs

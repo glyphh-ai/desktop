@@ -20,7 +20,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import AdmZip from "adm-zip";
-import type { AppConnector, CapturePolicy, CommandMapping, McpConfig } from "./app-connector";
+import type { AppConnector, CommandMapping, McpConfig } from "./app-connector";
 
 // ── Manifest ────────────────────────────────────────────────
 
@@ -30,8 +30,6 @@ export interface YoAppManifest {
   url?: string;
   commands?: Record<string, CommandMapping>;
   mcp?: McpConfig;
-  capturePolicy?: CapturePolicy;
-  doNotRecord?: boolean;
   forceWeb?: boolean;
   /** Entry file (relative to code/) for bundled apps. Defaults to index.html. */
   entry?: string;
@@ -125,8 +123,6 @@ export function exportApp(
     ...(app.url ? { url: app.url } : {}),
     ...(app.commands && Object.keys(app.commands).length ? { commands: app.commands } : {}),
     ...(app.mcp ? { mcp: app.mcp } : {}),
-    ...(app.capturePolicy ? { capturePolicy: app.capturePolicy } : {}),
-    ...(app.doNotRecord ? { doNotRecord: true } : {}),
     ...(app.forceWeb ? { forceWeb: true } : {}),
     ...(entry ? { entry } : {}),
   };
@@ -226,9 +222,7 @@ export function importApp(appConnector: AppConnector, srcPath: string): ImportRe
     if (manifest.commands && Object.keys(manifest.commands).length) {
       appConnector.updateCommands(appId, manifest.commands);
     }
-    if (manifest.capturePolicy) appConnector.updateCapturePolicy(appId, manifest.capturePolicy);
     if (manifest.mcp) appConnector.setMcp(appId, manifest.mcp);
-    if (manifest.doNotRecord) appConnector.updateDoNotRecord(appId, true);
     if (manifest.forceWeb) appConnector.updateForceWeb(appId, true);
     void app;
     return { ok: true, appId };

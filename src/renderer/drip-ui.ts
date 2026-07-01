@@ -81,15 +81,27 @@ function makeDripTile(name: string, recipe: string, emoji: string, closePicker: 
 }
 
 export function initDrip(): { openDripPicker: () => void; closeDripPicker: () => void } {
-  // Register drip effect handler
+  // Register drip effect handler — this must stay wired unconditionally: it's
+  // how .drip/.dip commands (typed into any app panel, see yo-interceptor.ts)
+  // render their in-app effect, independent of the manual picker UI below.
   window.yo.onDripEffect(playDrip);
 
-  // DOM elements for the picker
-  const dripPicker = document.getElementById("drip-picker")!;
-  const dripPickerBuiltin = document.getElementById("drip-picker-builtin")!;
-  const dripPickerCustom = document.getElementById("drip-picker-custom")!;
-  const dripPickerDivider = document.getElementById("drip-picker-custom-divider")!;
-  const dripBtn = document.getElementById("yo-panel-drip")!;
+  // DOM elements for the manual picker — these lived inside the now-removed
+  // #yo-panel markup, so the picker has no UI home right now. Skip wiring it
+  // rather than crash; .drip/.dip commands still work via the handler above.
+  const dripPickerEl = document.getElementById("drip-picker");
+  const dripPickerBuiltinEl = document.getElementById("drip-picker-builtin");
+  const dripPickerCustomEl = document.getElementById("drip-picker-custom");
+  const dripPickerDividerEl = document.getElementById("drip-picker-custom-divider");
+  const dripBtnEl = document.getElementById("yo-panel-drip");
+  if (!dripPickerEl || !dripPickerBuiltinEl || !dripPickerCustomEl || !dripPickerDividerEl || !dripBtnEl) {
+    return { openDripPicker: () => {}, closeDripPicker: () => {} };
+  }
+  const dripPicker = dripPickerEl;
+  const dripPickerBuiltin = dripPickerBuiltinEl;
+  const dripPickerCustom = dripPickerCustomEl;
+  const dripPickerDivider = dripPickerDividerEl;
+  const dripBtn = dripBtnEl;
   let dripPickerOpen = false;
 
   async function populateDripPicker() {
