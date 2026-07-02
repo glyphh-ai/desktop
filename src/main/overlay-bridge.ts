@@ -83,9 +83,10 @@ async function handleLine(line: string): Promise<void> {
   const query = (msg.query || "").trim();
 
   try {
-    // .dip → switch apps: bring yo to the front, run through the parser, clear spinner.
+    // .dip → run the OS layout command. Do NOT focus Glyphh — commands like
+    // `dip min` / `dip exp` act on whatever window the user is currently in, so
+    // stealing focus to the Glyphh window would target the wrong app.
     if (trigger === ".dip") {
-      focusMainFn?.();
       const cmd = `dip${query ? " " + query : ""}`;
       try { await runCommandFn?.(cmd); }
       catch (e) { console.error("[overlay] command failed:", e); }

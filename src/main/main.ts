@@ -75,6 +75,7 @@ import { usageTracker } from "./usage-tracker";
 import { promptLog } from "./prompt-log";
 import { startOverlay } from "./overlay-bridge";
 import { registerCommandWindow, disposeCommandWindow } from "./command-window";
+import { runDip } from "./dip-commands";
 import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay } from "./relay-client";
 import { installRelayHandlers } from "./relay-handlers";
@@ -606,20 +607,20 @@ async function boot() {
   commandParser.setYoChat(yoChat);
 
   // Global keytap overlay (macOS): native CGEventTap helper intercepts dot-commands
-  // typed in ANY app and shows an inline braille spinner at the caret while we work.
-  // DISABLED by default — spawning the helper triggers the macOS Accessibility /
-  // Input-Monitoring permission prompt on launch, which we don't want yet. Flip the
-  // `overlayEnabled` pref to turn it back on. When enabled, `overlayAgentEnabled`
-  // further controls whether the .yo/.dip/.sup agent triggers are live (vs. .drip only).
-  if (getPreference<boolean>("overlayEnabled", false)) {
+  // typed in ANY app so `.dip <…>` works from any text box. Enabled by default —
+  // it prompts once for macOS Accessibility / Input-Monitoring, which the OS-level
+  // `.dip` window management needs anyway. Set the `overlayEnabled` pref to false
+  // to opt out. `.dip` routes to the OS layout runner; `.drip` stays the effect.
+  if (getPreference<boolean>("overlayEnabled", true)) {
     const overlayBin = app.isPackaged
       ? path.join(process.resourcesPath, "overlay", "keytap")
       : path.join(__dirname, "overlay", "keytap");
-    // Agent-backed triggers (.yo/.sup/.peace) were removed with YoAgent — only
-    // .dip/.drip remain live regardless of `overlayAgentEnabled`.
     const overlayTriggers = ".dip,.drip";
     startOverlay(
-      (cmd) => commandParser.execute(cmd),
+      async (cmd) => {
+        if (/^dip\b/.test(cmd)) { await runDip(cmd); return ""; }
+        return commandParser.execute(cmd);
+      },
       () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } },
       overlayBin,
       overlayTriggers,
