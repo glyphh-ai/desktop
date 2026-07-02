@@ -6,6 +6,7 @@
  */
 
 import { $a, escapeHtml, slugify, paginate, renderPaginationBar, confirmAction } from "./shared.js";
+import { gotoSection } from "./navigation.js";
 
 interface AgentGuardrails {
   max_tokens_per_session?: number;
@@ -191,12 +192,22 @@ async function openEditor(agent: AgentDef | null): Promise<void> {
 
 function populateModelSelector(provider?: string, model?: string): void {
   const sel = $a<HTMLSelectElement>("agent-model");
+  const empty = $a("agent-model-empty");
   const models = availableModels();
-  sel.innerHTML = `<option value="">Default (Claude Sonnet)</option>`;
 
-  // No configured provider has a catalog model — point the user at Providers.
-  $a("agent-model-hint")?.classList.toggle("hidden", models.length > 0);
+  // No configured provider has a catalog model — mirror the platform: hide the
+  // select entirely and show the styled warning (no misleading "Default").
+  if (models.length === 0) {
+    sel.classList.add("hidden");
+    empty?.classList.remove("hidden");
+    sel.innerHTML = "";
+    updateModeGating();
+    return;
+  }
+  sel.classList.remove("hidden");
+  empty?.classList.add("hidden");
 
+  sel.innerHTML = `<option value="">Default</option>`;
   const grouped = new Map<string, CatalogModel[]>();
   for (const m of models) {
     const label = PROVIDER_GROUP_LABEL[m.provider] || m.provider;
@@ -218,23 +229,25 @@ function populateModelSelector(provider?: string, model?: string): void {
   updateModeGating();
 }
 
-/** The full agent loop is only offered for models flagged agentLoopCapable (an
- *  SDK backend exists). A non-capable model can only run one-shot; the Default
- *  (no model) uses the built-in Claude backend, so the loop is allowed there. */
+/** Mirror the platform: the full agent loop is only offered for a selected
+ *  model flagged agentLoopCapable (an SDK backend exists). Otherwise — including
+ *  Default (no model) — the Mode select is disabled and one-shot only. */
 function updateModeGating(): void {
   const modelSel = $a<HTMLSelectElement>("agent-model");
   const modeSel = $a<HTMLSelectElement>("agent-mode");
   const fullOpt = modeSel.querySelector('option[value="full"]') as HTMLOptionElement | null;
 
   const key = modelSel.value;
-  let loopOk = true;
-  if (key) {
-    const [p, m] = key.split("::");
-    loopOk = !!availableModels().find((x) => x.provider === p && x.model === m)?.agentLoopCapable;
-  }
+  const selected = key
+    ? availableModels().find((x) => `${x.provider}::${x.model}` === key) ?? null
+    : null;
+  const loopOk = !!selected?.agentLoopCapable;
+
   if (fullOpt) { fullOpt.disabled = !loopOk; fullOpt.hidden = !loopOk; }
-  if (!loopOk && modeSel.value === "full") modeSel.value = "readonly";
-  $a("agent-mode-hint")?.classList.toggle("hidden", loopOk);
+  if (!loopOk) modeSel.value = "readonly";
+  modeSel.disabled = !loopOk;
+  // Hint only when a model IS selected but isn't loop-capable (not for Default).
+  $a("agent-mode-hint")?.classList.toggle("hidden", !(!loopOk && !!selected));
 }
 
 // ── Apps / Skills multi-pick ────────────────────────────────
@@ -385,9 +398,11 @@ function initAgents(): void {
   });
   $a("agent-apps-add").addEventListener("click", () => showPicker("apps"));
   $a("agent-skills-add").addEventListener("click", () => showPicker("skills"));
-  // Re-gate the Swarm mode when the model changes (full loop needs an
+  // Re-gate the mode when the model changes (full loop needs an
   // agentLoopCapable model — an SDK backend).
   $a("agent-model").addEventListener("change", () => updateModeGating());
+  // Empty-state "Providers" link → switch to the Providers section.
+  $a("agent-model-empty-link").addEventListener("click", (e) => { e.preventDefault(); gotoSection("providers"); });
 }
 
 export { loadAgents, initAgents };

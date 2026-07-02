@@ -10354,3 +10354,18 @@ select:focus {
   border-color: var(--text-bright) !important;
   box-shadow: none !important;
 }
+
+/* ── Field hints + inline messages (ported from platform globals.css for
+   Agents-form parity) ─────────────────────────────────────── */
+.field-hint { font-size: 0.75rem; color: var(--text-3); margin-top: 0.25rem; }
+.msg { font-size: 0.8125rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 6px); }
+.msg-warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--text);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.msg-warning svg { flex-shrink: 0; color: #f59e0b; margin-top: 0.0625rem; }
+.msg-warning a { color: var(--text); text-decoration: underline; font-weight: 600; cursor: pointer; }
