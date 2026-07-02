@@ -17,11 +17,10 @@
        buttons still drive section switching) but hide the sidebar. */
     #help-nav { display: none !important; }
     /* Dashboard tab scope (5a): Settings trimmed to General / Appearance / MCP,
-       no Account / Providers / Support / About / Docs sub-tabs. See home.ts. */
+       no Account / Providers / Support / Docs sub-tabs. See home.ts. */
     [data-home-scope="settings-flat"] .settings-nav-item[data-sub="providers"],
     [data-home-scope="settings-flat"] .settings-nav-item[data-sub="account"],
     [data-home-scope="settings-flat"] .settings-nav-item[data-sub="support"],
-    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="about"],
     [data-home-scope="settings-flat"] .settings-nav-item[data-jump="docs"],
     [data-home-scope="settings-flat"] .settings-nav-sep {
       display: none !important;
@@ -551,6 +550,30 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
         <!-- Skills — file explorer (tree + preview), ported from v4 -->
         <div class="help-section" data-section="skills">
           <div id="skills-explorer-host" class="skills-explorer-host"></div>
+        </div>
+
+        <!-- About — top-level dashboard tab (app version + updates). No policy
+             copy here by design; wired by docs.ts loadAbout(). -->
+        <div class="help-section" data-section="about">
+          <h2>About</h2>
+          <div class="about-header">
+            <div class="about-logo">
+              <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+              <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+            </div>
+            <div class="about-version" id="about-version">Version 2.1.3</div>
+            <div class="about-copyright">&copy; 2026 Glyphh AI LLC. All rights reserved.</div>
+            <!-- Check for Updates hidden for now -->
+            <button class="about-update-btn" id="about-check-update" style="display:none;">Check for Updates</button>
+            <div class="about-progress hidden" id="about-progress">
+              <div class="about-progress-bar"><div class="about-progress-fill" id="about-progress-fill"></div></div>
+              <span class="about-progress-text" id="about-progress-text">Downloading...</span>
+            </div>
+            <div class="about-restart hidden" id="about-restart">
+              <span class="about-restart-text">Update downloaded — restart to apply</span>
+              <button class="about-restart-btn" id="about-restart-btn">Restart now</button>
+            </div>
+          </div>
         </div>
 
         <!-- MCP section removed — merged into Apps tabs -->
@@ -1220,7 +1243,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
               <button class="settings-nav-item" data-sub="mcp">MCP Server</button>
               <div class="settings-nav-sep"></div>
               <button class="settings-nav-item" data-sub="support">Support</button>
-              <button class="settings-nav-item" data-sub="about">About</button>
               <button class="settings-nav-item" data-jump="docs">Docs</button>
             </nav>
             <!-- Dashboard scope (?dashboard=1, see home.ts) trims this to General /
@@ -1504,44 +1526,7 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
           </form>
         </div>
 
-              <!-- About — kept inside Settings so the left nav stays up -->
-              <div class="settings-panel" data-sub="about">
-          <h2>About</h2>
-          <div class="about-header">
-            <div class="about-logo">
-              <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
-              <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
-            </div>
-            <div class="about-version" id="about-version">Version 2.1.3</div>
-            <div class="about-copyright">&copy; 2026 Glyphh AI LLC. All rights reserved.</div>
-            <!-- Check for Updates hidden for now -->
-            <button class="about-update-btn" id="about-check-update" style="display:none;">Check for Updates</button>
-            <div class="about-progress hidden" id="about-progress">
-              <div class="about-progress-bar"><div class="about-progress-fill" id="about-progress-fill"></div></div>
-              <span class="about-progress-text" id="about-progress-text">Downloading...</span>
-            </div>
-            <div class="about-restart hidden" id="about-restart">
-              <span class="about-restart-text">Update downloaded — restart to apply</span>
-              <button class="about-restart-btn" id="about-restart-btn">Restart now</button>
-            </div>
-          </div>
-
-          <div class="about-policies">
-            <div class="about-policy" id="policy-terms">
-              <h3>Terms of Use</h3>
-              <div class="policy-content"></div>
-            </div>
-            <div class="about-policy" id="policy-privacy">
-              <h3>Privacy Policy</h3>
-              <div class="policy-content"></div>
-            </div>
-            <div class="about-policy" id="policy-refund">
-              <h3>Refund Policy</h3>
-              <div class="policy-content"></div>
-            </div>
-          </div>
-              </div>
-              <!-- /About -->
+              <!-- About moved to its own top-level dashboard tab (data-section="about"). -->
 
             </div>
           </div>

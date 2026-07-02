@@ -906,6 +906,7 @@ async function boot() {
   const HOME_SECTION_SLUGS: Record<string, string> = {
     "yo://apps": "apps",
     "yo://skills": "skills",
+    "yo://about": "about",
   };
   // Dashboard shell (5a) — same section panels as above, plus &dashboard=1 so
   // home.ts applies the trimmed-down [data-home-scope="settings-flat"] view.

@@ -199,6 +199,7 @@ const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKi
   { id: "apps", name: "Apps", url: "yo://apps", kind: "system" },
   { id: "skills", name: "Skills", url: "yo://skills", kind: "system" },
   { id: "dashboard-settings", name: "Settings", url: "yo://dashboard-settings", kind: "system" },
+  { id: "about", name: "About", url: "yo://about", kind: "system" },
 ];
 
 // Default panel apps — seeded on first launch so the workspace isn't empty

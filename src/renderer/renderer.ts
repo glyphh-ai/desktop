@@ -694,10 +694,11 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  const setActive = (slug: "apps" | "skills" | "settings") => {
+  const setActive = (slug: "apps" | "skills" | "settings" | "about") => {
     document.getElementById("dashboard-tab-apps")?.classList.toggle("active", slug === "apps");
     document.getElementById("dashboard-tab-skills")?.classList.toggle("active", slug === "skills");
     document.getElementById("dashboard-tab-settings")?.classList.toggle("active", slug === "settings");
+    document.getElementById("dashboard-tab-about")?.classList.toggle("active", slug === "about");
   };
 
   document.getElementById("dashboard-tab-apps")?.addEventListener("click", () => {
@@ -711,6 +712,10 @@ function initDashboard(): void {
   document.getElementById("dashboard-tab-settings")?.addEventListener("click", () => {
     setActive("settings");
     openWorkspaceApp("dashboard-settings");
+  });
+  document.getElementById("dashboard-tab-about")?.addEventListener("click", () => {
+    setActive("about");
+    openWorkspaceApp("about");
   });
 
   // Land on Apps by default — just the tab styling. Main already opened and
