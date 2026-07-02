@@ -73,7 +73,6 @@ import { ConfigSync } from "./config-sync";
 import { reloadRemotePatterns } from "./firewall";
 import { usageTracker } from "./usage-tracker";
 import { promptLog } from "./prompt-log";
-import { RunStore } from "./run-store";
 import { startOverlay } from "./overlay-bridge";
 import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay } from "./relay-client";
@@ -350,10 +349,6 @@ async function boot() {
   connectorManager.on("changed", () => {
     mainWindow?.webContents.send("connectors-changed");
   });
-
-  // Run persistence — deterministic task-run file I/O (~/yo/chats/run-*.md).
-  // Retained to back the runs-list/runs-get IPC; no LLM involved.
-  const runStore = new RunStore();
 
   // Terminal manager — pty processes for terminal panels
   terminalManager = new TerminalManager();
@@ -1762,7 +1757,7 @@ async function boot() {
     session, sendSessionState,
     providerKeys: providerKeysModule, ccBootstrapStatus,
     transcriber, cloudSyncInstance, execCommand,
-    getMainWindow: () => mainWindow, panelManager, runStore,
+    getMainWindow: () => mainWindow, panelManager,
   });
 
   registerAppsIpc({

@@ -6,7 +6,6 @@ import type { PanelManager } from "./panel-manager";
 import type { CloudSync } from "./cloud-sync";
 import type * as providerKeysModule from "./provider-keys";
 import type { Transcriber } from "./transcriber";
-import type { RunStore } from "./run-store";
 
 interface SettingsIpcDeps {
   getPreference: <T>(key: string, def?: T) => T;
@@ -33,7 +32,6 @@ interface SettingsIpcDeps {
   execCommand: (cmd: string, sourcePanelId?: string) => Promise<string>;
   getMainWindow: () => BrowserWindow | null;
   panelManager: PanelManager;
-  runStore: RunStore;
 }
 
 // Active power-save-blocker id for the "Keep awake" toggle (-1 = none).
@@ -48,7 +46,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     session, sendSessionState,
     providerKeys, ccBootstrapStatus,
     transcriber, cloudSyncInstance,
-    getMainWindow, panelManager, runStore,
+    getMainWindow, panelManager,
   } = deps;
 
   ipcMain.handle("get-entitlements", () => getCurrentLimits());
@@ -290,13 +288,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
 
   ipcMain.handle("cc-status", () => ccBootstrapStatus());
 
-  // yo-chats-*/yo-chat-new (interactive chat history) removed with the chat
-  // panel. runs-list/runs-get survive — they back the Schedules UI's
-  // run-history view — now backed by RunStore instead of YoAgent.
-  ipcMain.handle("runs-list", (_e, skillName?: string) => runStore.listRuns(skillName));
-  ipcMain.handle("runs-get", (_e, id: string) => runStore.getRun(id));
-
-  // Keep awake — block app suspension so scheduled tasks fire on time.
+  // Keep awake — block app suspension.
   ipcMain.on("set-keep-awake", (_e, on: boolean) => { applyKeepAwake(!!on); });
   // Apply the saved preference at startup.
   applyKeepAwake(getPreference<boolean>("schedulesKeepAwake", false));

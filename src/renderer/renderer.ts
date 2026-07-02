@@ -320,19 +320,7 @@ declare global {
       mcpSetServerOverride: (serverId: string, override: string) => void;
       onMcpChanged: (cb: () => void) => void;
       onAppsChanged: (cb: () => void) => void;
-      // Schedules (skill-runs history + keep-awake)
-      runsList: (skillName?: string) => Promise<Array<{ id: string; skillName: string; title: string; created: string; trigger: string; ok: boolean }>>;
       setKeepAwake: (on: boolean) => void;
-      councilsList: () => Promise<Array<Record<string, unknown>>>;
-      councilsGet: (id: string) => Promise<Record<string, unknown> | null>;
-      councilsSave: (cfg: Record<string, unknown>) => Promise<Record<string, unknown>>;
-      councilsDelete: (id: string) => Promise<boolean>;
-      councilsRun: (id: string, live?: boolean) => Promise<{ ok: boolean; error?: string; message?: string; runId?: string }>;
-      councilsRuns: (id: string) => Promise<Array<Record<string, unknown>>>;
-      councilsRunGet: (id: string, runId: string) => Promise<Record<string, unknown> | null>;
-      councilsScheduleStatus: () => Promise<Array<{ id: string; schedule: string; paused: boolean }>>;
-      councilsPauseSchedule: (id: string) => Promise<void>;
-      councilsResumeSchedule: (id: string) => Promise<void>;
     };
   }
 }

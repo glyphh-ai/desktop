@@ -348,10 +348,6 @@ contextBridge.exposeInMainWorld("yo", {
   // panel (YoAgent + yo-panel-ui-vscode.ts) that these IPC channels served is
   // gone; no renderer code calls them anymore.
 
-  // Task runs (persisted scheduled/manual runs → Activity + schedule history)
-  runsList: (skillName?: string) => ipcRenderer.invoke("runs-list", skillName) as Promise<Array<{ id: string; skillName: string; title: string; created: string; trigger: string; ok: boolean }>>,
-  runsGet: (id: string) => ipcRenderer.invoke("runs-get", id) as Promise<{ title: string; messages: Array<{ role: string; text: string; tools?: Array<{ name: string; input?: unknown }> }> } | null>,
-  onRunsChanged: (cb: () => void) => { ipcRenderer.on("runs-changed", () => cb()); },
   setKeepAwake: (on: boolean) => ipcRenderer.send("set-keep-awake", on),
 
   // mcp__yo__ask_user_question — purple "Input required" card. Main fires
