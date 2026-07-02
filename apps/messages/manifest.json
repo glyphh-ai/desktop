@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "kind": "glyphh-app",
+  "name": "Send Message",
+  "slug": "send-message",
+  "entry": "index.html",
+  "description": "Pick a contact and send them an iMessage or SMS through Messages.app.",
+  "capabilities": ["contacts.search", "messages.send"],
+  "window": { "width": 460, "height": 640 }
+}

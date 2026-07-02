@@ -86,6 +86,7 @@ import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc } from "./settings-ipc";
 import { registerAppsIpc } from "./apps-ipc";
+import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
@@ -1784,6 +1785,9 @@ async function boot() {
     getMainWindow: () => mainWindow,
     PICKER_SCRIPT,
   });
+
+  // Installable Glyphh apps (marketplace unit) — capability-scoped windows.
+  registerGlyphhAppHost();
 
   // IPC: grid resize (drag dividers)
   ipcMain.on("grid-drag-end", (_e, type: "col" | "row", index: number, fraction: number) => {

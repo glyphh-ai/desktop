@@ -8,6 +8,7 @@ import { openAppWindow } from "./app-window-manager";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch";
 import { openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
+import { isGlyphhAppBundle, installGlyphhAppBundle, openGlyphhApp } from "./glyphh-app-host";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -35,6 +36,10 @@ function registerPanelAppsIpc(): void {
     launchConfig?: Record<string, unknown> | null;
   }) => {
     if (!spec) return { ok: false, error: "No app given" };
+    // Installed Glyphh app (marketplace unit) → open its capability-scoped window.
+    if (spec.appArchetype === "glyphh-app") {
+      return openGlyphhApp({ name: spec.name, slug: spec.slug, execPath: spec.execPath, launchConfig: spec.launchConfig });
+    }
     const isBrowser = spec.isBrowser !== false; // legacy rows default to browser
     if (!isBrowser) {
       return launchNativeApp(spec.execPath ?? "", spec.appArchetype, spec.launchConfig);
@@ -344,17 +349,25 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     return exportApp(appConnector, appId, dest, codeDir);
   });
 
-  // Import a .yoapp bundle → register it (deduping the id) → return the appId.
+  // Import a .yoapp bundle. A glyphh-app bundle (marketplace unit) installs as
+  // a server saved-app; a legacy .yoapp registers into the local connector.
   ipcMain.handle("app-import", async () => {
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
     const result = await dialog.showOpenDialog(win, {
-      title: "Import app",
+      title: "Install app",
       properties: ["openFile"],
-      filters: [{ name: "yo app", extensions: ["yoapp"] }],
+      filters: [{ name: "Glyphh app", extensions: ["yoapp"] }],
     });
     if (result.canceled || result.filePaths.length === 0) return { ok: false, error: "Canceled" };
-    const res = importApp(appConnector, result.filePaths[0]);
+    const file = result.filePaths[0];
+
+    // glyphh-app bundle? → install as a server app (appears on the Apps page).
+    if (isGlyphhAppBundle(file)) {
+      return installGlyphhAppBundle(file);
+    }
+
+    const res = importApp(appConnector, file);
     if (res.ok && res.appId) {
       const app = appConnector.get(res.appId);
       if (app?.url) panelManager.addPanel(res.appId, app.url);

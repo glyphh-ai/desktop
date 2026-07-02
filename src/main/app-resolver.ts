@@ -17,6 +17,7 @@ import {
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
 import { positionAppWindow } from "./os-window-manager.js";
 import { findInstalledApp, launchInstalledApp, normKey, isSubsequence } from "./installed-apps.js";
+import { openGlyphhApp } from "./glyphh-app-host.js";
 
 export interface ServerApp {
   id: string;
@@ -121,6 +122,13 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
       return { slug: normKey(installed.name), name: installed.name };
     }
     throw new Error(`unknown app: ${ref} — not in the app library or installed apps`);
+  }
+
+  // Installed Glyphh app (marketplace unit) → capability-scoped window.
+  if (app.appArchetype === "glyphh-app") {
+    const r = openGlyphhApp({ name: app.name, slug: app.slug, execPath: app.execPath, launchConfig: app.launchConfig });
+    if (!r.ok) throw new Error(r.error || "failed to open app");
+    return { slug: app.slug, name: app.name };
   }
 
   // Native = explicitly flagged, or simply has an executable and no URL.

@@ -9,3 +9,4 @@ release/
 # .yo agent's per-folder runtime artifacts (plan.md from MODE: PLAN,
 # chat history, etc). Per-developer state — never committed.
 .yo/
+dist-apps/
