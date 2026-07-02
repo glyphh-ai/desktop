@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("yo", {
   commandOpenApp: (ref: string) => ipcRenderer.invoke("command:open-app", ref),
   commandOpenLayout: (name: string) => ipcRenderer.invoke("command:open-layout", name),
   commandExec: (text: string) => ipcRenderer.invoke("command:exec", text),
+  commandOsApps: () => ipcRenderer.invoke("command:os-apps"),
+  commandFocusApp: (proc: string) => ipcRenderer.invoke("command:focus-app", proc),
   commandClose: () => ipcRenderer.send("command:close"),
 
   // Main tells the overlay to rebuild its list (with the active theme) each

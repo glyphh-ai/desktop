@@ -7,10 +7,11 @@
  * openLayoutByName). Nothing renders inside the Glyphh client.
  */
 
-import { BrowserWindow, globalShortcut, ipcMain, nativeTheme, screen } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, nativeTheme, screen } from "electron";
 import path from "path";
 import { openAppByRef, openLayoutByName } from "./app-resolver.js";
 import { runDip } from "./dip-commands.js";
+import { listOsApps, focusOsApp } from "./os-window-manager.js";
 import { getPreference } from "./stores/preferences-db";
 
 /** Resolve the active theme the same way the main window does. */
@@ -106,6 +107,24 @@ export function registerCommandWindow(): void {
   ipcMain.handle("command:exec", async (_e, raw: string) => {
     hideCommandWindow();
     return runDip(String(raw || ""));
+  });
+
+  // Running OS apps NOT managed by Glyphh — shown as a lighter section in the
+  // overlay so the user can switch to them too. Excludes our own process.
+  ipcMain.handle("command:os-apps", async () => {
+    try {
+      const self = (app.getName() || "").toLowerCase();
+      const skip = new Set([self, "electron", "glyphh", "dock"]);
+      return (await listOsApps()).filter((a) => !skip.has(a.proc.toLowerCase()));
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle("command:focus-app", async (_e, proc: string) => {
+    hideCommandWindow();
+    try { await focusOsApp(String(proc)); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
   ipcMain.on("command:close", () => hideCommandWindow());

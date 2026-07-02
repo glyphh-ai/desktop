@@ -391,6 +391,74 @@ export async function minimizeAll(): Promise<boolean> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// ── running-apps list + focus (command overlay's "Running apps" section) ─
+
+export interface OsApp {
+  /** Process / application name, e.g. "Google Chrome". */
+  proc: string;
+  /** Executable / .app bundle path ("" when unresolvable) — used for its icon. */
+  path: string;
+}
+
+const MAC_APPS = `
+tell application "System Events"
+  set AppleScript's text item delimiters to linefeed
+  set acc to {}
+  repeat with proc in (every process whose visible is true and background only is false)
+    try
+      set end of acc to (name of proc) & tab & (POSIX path of (application file of proc))
+    on error
+      try
+        set end of acc to (name of proc) & tab & ""
+      end try
+    end try
+  end repeat
+  return acc as text
+end tell`;
+
+/** Visible, foreground-capable apps currently running (deduped by process). */
+export async function listOsApps(): Promise<OsApp[]> {
+  let rows: OsApp[] = [];
+  if (isMac) {
+    const out = await osa(MAC_APPS);
+    rows = out.split("\n").map((l) => l.split("\t")).filter((f) => f.length >= 1 && f[0].trim())
+      .map((f) => ({ proc: f[0].trim(), path: (f[1] || "").trim() }));
+  } else if (isWin) {
+    const out = await ps(`Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { "{0}\`t{1}" -f $_.ProcessName, $_.Path }`);
+    rows = out.split("\n").map((l) => l.trim().split("\t")).filter((f) => f.length >= 1 && f[0])
+      .map((f) => ({ proc: f[0], path: f[1] || "" }));
+  }
+  const seen = new Set<string>();
+  return rows.filter((a) => {
+    const k = a.proc.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/** Bring a running app to the front (unminimizing its first window if needed). */
+export async function focusOsApp(proc: string): Promise<boolean> {
+  const name = proc.trim();
+  if (!name) return false;
+  if (isMac) {
+    await osa(`tell application "System Events"
+  try
+    set value of attribute "AXMinimized" of window 1 of process "${esc(name)}" to false
+  end try
+  set frontmost of process "${esc(name)}" to true
+end tell`);
+    return true;
+  }
+  if (isWin) {
+    await ps(`${WIN_USER32}
+$p = Get-Process -Name "${name.replace(/"/g, '""')}" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+if ($p) { [void][Win32]::ShowWindow($p.MainWindowHandle, 9); [void][Win32]::SetForegroundWindow($p.MainWindowHandle) }`);
+    return true;
+  }
+  return false;
+}
+
 /**
  * Find the window matching `match` (process name or title, case-insensitive)
  * and move it to `rect`. Polls briefly because a just-launched native app's

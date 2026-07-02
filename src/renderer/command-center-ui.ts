@@ -31,6 +31,8 @@ interface OverlayApi {
   commandOpenApp: (ref: string) => Promise<{ ok: boolean; error?: string }>;
   commandOpenLayout: (name: string) => Promise<{ ok: boolean; error?: string }>;
   commandExec: (text: string) => Promise<{ ok: boolean; error?: string }>;
+  commandOsApps: () => Promise<Array<{ proc: string; path: string }>>;
+  commandFocusApp: (proc: string) => Promise<{ ok: boolean; error?: string }>;
   commandClose: () => void;
   onCommandRefresh: (cb: (theme: string) => void) => void;
 }
@@ -43,6 +45,9 @@ const appsPagerEl = document.getElementById("cc-apps-pager")!;
 const layoutsWrapEl = document.getElementById("cc-layouts-wrap")!;
 const layoutsEl = document.getElementById("cc-layouts")!;
 const layoutsPagerEl = document.getElementById("cc-layouts-pager")!;
+const osWrapEl = document.getElementById("cc-os-wrap")!;
+const osAppsEl = document.getElementById("cc-os-apps")!;
+const osPagerEl = document.getElementById("cc-os-pager")!;
 const emptyEl = document.getElementById("cc-empty")!;
 
 const APPS_PER_PAGE = 14;
@@ -56,9 +61,12 @@ const BUILTINS: App[] = [
 
 let apps: App[] = [];
 let layouts: Layout[] = [];
+/** Running OS apps NOT in the Glyphh library (Chrome, Slack, …). */
+let osApps: Array<{ proc: string; path: string }> = [];
 let query = "";
 let appsPage = 0;
 let layoutsPage = 0;
+let osPage = 0;
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
@@ -156,12 +164,40 @@ function renderLayouts(): void {
   if (totalPages > 1) layoutsPagerEl.appendChild(pager(page, totalPages, (p) => { layoutsPage = p; renderLayouts(); }));
 }
 
-function renderAll(): void { renderApps(); renderLayouts(); }
+/** Running apps outside the Glyphh library — lighter cards; click to focus. */
+function renderOsApps(): void {
+  const all = osApps.filter((a) => matchesQuery(a.proc));
+  osAppsEl.innerHTML = "";
+  osPagerEl.innerHTML = "";
+  if (all.length === 0) { osWrapEl.classList.add("hidden"); return; }
+  osWrapEl.classList.remove("hidden");
+  const { items, page, totalPages } = paginate(all, osPage, APPS_PER_PAGE);
+  osPage = page;
+  for (const a of items) {
+    const card = document.createElement("button");
+    card.className = "cc-card cc-card--os";
+    card.title = `Switch to ${a.proc}`;
+    card.innerHTML = `
+      <div class="cc-card-shot">${appIconInner({ execPath: a.path || null }, a.proc, "cc-card-initial")}</div>
+      <span class="cc-card-name">${esc(a.proc)}</span>`;
+    card.addEventListener("click", () => { void api.commandFocusApp(a.proc); });
+    osAppsEl.appendChild(card);
+  }
+  if (totalPages > 1) osPagerEl.appendChild(pager(page, totalPages, (p) => { osPage = p; renderOsApps(); }));
+}
+
+function renderAll(): void { renderApps(); renderLayouts(); renderOsApps(); }
+
+/** Basename of an exec/.app path, lowercased, ".app" stripped — dedupe key. */
+function execKey(p: string | null | undefined): string {
+  return (p || "").split(/[\\/]/).pop()?.replace(/\.app$/i, "").toLowerCase() || "";
+}
 
 async function refresh(): Promise<void> {
   query = "";
   appsPage = 0;
   layoutsPage = 0;
+  osPage = 0;
   if (inputEl) inputEl.value = "";
   try {
     const [a, l] = await Promise.all([api.panelAppsList(), api.layoutsList()]);
@@ -175,6 +211,17 @@ async function refresh(): Promise<void> {
   void primeConnectedIcons(apps, renderAll);
   void primeNativeIcons(apps, renderAll);
   inputEl?.focus();
+
+  // Running OS apps land async too (osascript enumeration takes a beat).
+  // Drop any that duplicate a library app (by name or executable basename).
+  void api.commandOsApps().then((list) => {
+    const libNames = new Set(apps.map((x) => x.name.trim().toLowerCase()));
+    const libExecs = new Set(apps.map((x) => execKey(x.execPath)).filter(Boolean));
+    osApps = (list || []).filter((o) =>
+      !libNames.has(o.proc.trim().toLowerCase()) && !libExecs.has(execKey(o.path)));
+    renderOsApps();
+    void primeNativeIcons(osApps.map((o) => ({ execPath: o.path || null })), renderOsApps);
+  }).catch(() => { osApps = []; renderOsApps(); });
 }
 
 // ── Input: filter as you type, Enter runs a .dip command ─────────────────────
@@ -182,6 +229,7 @@ inputEl?.addEventListener("input", () => {
   query = inputEl.value.trim().toLowerCase();
   appsPage = 0;
   layoutsPage = 0;
+  osPage = 0;
   renderAll();
 });
 inputEl?.addEventListener("keydown", (e) => {
