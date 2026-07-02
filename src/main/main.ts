@@ -565,6 +565,7 @@ async function boot() {
     "yo://apps": "apps",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
+    "yo://skills": "skills",
     "yo://about": "about",
   };
   // Dashboard shell (5a) — same section panels as above, plus &dashboard=1 so
