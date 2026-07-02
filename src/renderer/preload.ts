@@ -62,57 +62,6 @@ contextBridge.exposeInMainWorld("yo", {
   panelsZoom: (factor: number) => ipcRenderer.send("panels-zoom", factor),
   panelsGetZoom: () => ipcRenderer.invoke("panels-get-zoom") as Promise<number>,
 
-  // Skills CRUD
-  skillsList: () => ipcRenderer.invoke("skills-list") as Promise<string[]>,
-  skillsListDetailed: () => ipcRenderer.invoke("skills-list-detailed") as Promise<Array<{ name: string; description?: string; hasRunner: boolean; hasApp: boolean; scheduled: boolean; scheduleExpr?: string }>>,
-  skillsRead: (name: string) => ipcRenderer.invoke("skills-read", name) as Promise<string | null>,
-  skillsGet: (name: string) => ipcRenderer.invoke("skills-get", name) as Promise<{ name: string; manifest: any; prompt: string; hasRunner: boolean; hasApp: boolean; runnerCode: string | null; runnerSchedule: string | null } | null>,
-  skillsWrite: (name: string, prompt: string) => ipcRenderer.invoke("skills-write", name, prompt) as Promise<boolean | { error: string }>,
-  skillsWriteFull: (name: string, manifest: any, prompt: string, runnerCode?: string | null) =>
-    ipcRenderer.invoke("skills-write-full", name, manifest, prompt, runnerCode) as Promise<boolean | { error: string }>,
-  skillsRemove: (name: string) => ipcRenderer.invoke("skills-remove", name) as Promise<boolean>,
-  skillsGenerate: (name: string, description: string) => ipcRenderer.invoke("skills-generate", name, description) as Promise<string>,
-  skillsAvailableTools: () => ipcRenderer.invoke("skills-available-tools") as Promise<Array<{ namespace: string; label: string; tools: Array<{ name: string; description: string }> }>>,
-  // Vibe base CSS for preview
-  getVibeBaseCss: () => ipcRenderer.invoke("vibe:get-base-css") as Promise<string>,
-  vibePreviewWrite: (html: string, vibeName: string) => ipcRenderer.invoke("vibe:preview-write", html, vibeName) as Promise<{ fileUrl: string; preloadPath: string }>,
-  vibePreviewRegister: (vibeName: string) => ipcRenderer.invoke("vibe:preview-register", vibeName) as Promise<void>,
-  // Files in a skill folder
-  skillsListFiles: (name: string) => ipcRenderer.invoke("skills-list-files", name) as Promise<string[]>,
-  skillsReadFile: (name: string, rel: string) => ipcRenderer.invoke("skills-read-file", name, rel) as Promise<string | null>,
-  skillsWriteFile: (name: string, rel: string, content: string) => ipcRenderer.invoke("skills-write-file", name, rel, content) as Promise<boolean>,
-  skillsDeleteFile: (name: string, rel: string) => ipcRenderer.invoke("skills-delete-file", name, rel) as Promise<boolean>,
-  skillsOpenInEditor: (name: string) => ipcRenderer.invoke("skills-open-in-editor", name) as Promise<boolean>,
-  skillsOpenFileInEditor: (name: string, rel: string) => ipcRenderer.invoke("skills-open-file-in-editor", name, rel) as Promise<boolean>,
-  skillsFileUrl: (name: string, rel: string) => ipcRenderer.invoke("skills-file-url", name, rel) as Promise<string>,
-  // Run
-  skillsRun: (name: string, input: unknown) => ipcRenderer.invoke("skills-run", name, input) as Promise<{ ok: true; output: unknown } | { ok: false; error: string }>,
-  skillsCancel: (runId: string) => ipcRenderer.invoke("skills-cancel", runId) as Promise<boolean>,
-  skillsUserResponse: (qid: string, answer: string) => ipcRenderer.invoke("skills-user-response", qid, answer) as Promise<boolean>,
-  skillsRunHistory: (name: string) => ipcRenderer.invoke("skills-run-history", name) as Promise<any[]>,
-  onSkillProgress: (cb: (data: { runId: string; event: any }) => void) => {
-    ipcRenderer.on("skill-progress", (_e, data) => cb(data));
-  },
-  /** Skills directory changed (CRUD via skillEngine OR the agent writing
-   *  files directly under ~/.claude/skills). The Skills explorer
-   *  subscribes to auto-reload its tree. */
-  onSkillsChanged: (cb: () => void) => {
-    const handler = () => cb();
-    ipcRenderer.on("skills-changed", handler);
-    return () => { ipcRenderer.removeListener("skills-changed", handler); };
-  },
-  onSkillAskUser: (cb: (data: { runId: string; qid: string; question: string }) => void) => {
-    ipcRenderer.on("skill-ask-user", (_e, data) => cb(data));
-  },
-  // Export/import
-  skillsExport: (name: string) => ipcRenderer.invoke("skills-export", name) as Promise<string | null>,
-  skillsImport: (base64: string, overwrite?: boolean) =>
-    ipcRenderer.invoke("skills-import", base64, overwrite) as Promise<{ imported: string[]; skipped: string[]; error?: string }>,
-  // Scheduler
-  skillsScheduleStatus: () => ipcRenderer.invoke("skills-schedule-status") as Promise<Array<{ name: string; schedule: string; paused: boolean }>>,
-  skillsPauseSchedule: (name: string) => ipcRenderer.invoke("skills-pause-schedule", name) as Promise<void>,
-  skillsResumeSchedule: (name: string) => ipcRenderer.invoke("skills-resume-schedule", name) as Promise<void>,
-
   // Layouts CRUD
   layoutsList: () => ipcRenderer.invoke("layouts-list") as Promise<Array<{ name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }> }>>,
   layoutsSave: (name: string, panelIds: string[]) => ipcRenderer.invoke("layouts-save", name, panelIds) as Promise<boolean>,
@@ -399,37 +348,11 @@ contextBridge.exposeInMainWorld("yo", {
   // panel (YoAgent + yo-panel-ui-vscode.ts) that these IPC channels served is
   // gone; no renderer code calls them anymore.
 
-  // Jammer activity feed (workspace bus events forwarded from main)
-  onJammerActivity: (cb: (event: { from: string; kind: string; body: string; tags?: string[]; ts: number }) => void) => {
-    ipcRenderer.on("jammer-activity", (_e, event) => cb(event));
-  },
-
   // Task runs (persisted scheduled/manual runs → Activity + schedule history)
   runsList: (skillName?: string) => ipcRenderer.invoke("runs-list", skillName) as Promise<Array<{ id: string; skillName: string; title: string; created: string; trigger: string; ok: boolean }>>,
   runsGet: (id: string) => ipcRenderer.invoke("runs-get", id) as Promise<{ title: string; messages: Array<{ role: string; text: string; tools?: Array<{ name: string; input?: unknown }> }> } | null>,
   onRunsChanged: (cb: () => void) => { ipcRenderer.on("runs-changed", () => cb()); },
   setKeepAwake: (on: boolean) => ipcRenderer.send("set-keep-awake", on),
-
-  // Standalone prompt schedules (decoupled from skills)
-  schedulesList: () => ipcRenderer.invoke("schedules-list") as Promise<Array<Record<string, unknown>>>,
-  schedulesGet: (id: string) => ipcRenderer.invoke("schedules-get", id) as Promise<Record<string, unknown> | null>,
-  schedulesSave: (cfg: Record<string, unknown>) => ipcRenderer.invoke("schedules-save", cfg) as Promise<Record<string, unknown>>,
-  schedulesDelete: (id: string) => ipcRenderer.invoke("schedules-delete", id) as Promise<boolean>,
-  schedulesRun: (id: string) => ipcRenderer.invoke("schedules-run", id) as Promise<void>,
-  schedulesPause: (id: string) => ipcRenderer.invoke("schedules-pause", id) as Promise<void>,
-  schedulesResume: (id: string) => ipcRenderer.invoke("schedules-resume", id) as Promise<void>,
-  schedulesDeleteRuns: (name: string) => ipcRenderer.invoke("schedules-delete-runs", name) as Promise<number>,
-
-  // Agent mode + guardrails
-  getAgentMode: () => ipcRenderer.invoke("get-agent-mode") as Promise<{ perm: string; swarm: boolean }>,
-  setAgentMode: (mode: string) => ipcRenderer.send("set-agent-mode", mode),
-  onAgentModeChanged: (cb: (mode: string) => void) => {
-    ipcRenderer.on("agent-mode-changed", (_e, mode) => cb(mode));
-  },
-  onApprovalRequest: (cb: (id: string, toolName: string, toolLabel: string, input: unknown) => void) => {
-    ipcRenderer.on("approval-request", (_e, id, toolName, toolLabel, input) => cb(id, toolName, toolLabel, input));
-  },
-  approvalRespond: (id: string, approved: boolean) => ipcRenderer.send("approval-respond", id, approved),
 
   // mcp__yo__ask_user_question — purple "Input required" card. Main fires
   // yo-ask-request with the questions; renderer replies via yo-ask-respond
@@ -538,15 +461,6 @@ contextBridge.exposeInMainWorld("yo", {
   // "Relaunch to Update" prompt on load, not only when a live event arrives.
   getUpdateStatus: () => ipcRenderer.invoke("get-update-status") as Promise<{ version: string; ready: boolean } | null>,
 
-  // MCP Expose (pro feature — read-only capture store server)
-  mcpExposeStart: () => ipcRenderer.invoke("mcp-expose-start") as Promise<{ ok: boolean; error?: string }>,
-  mcpExposeStop: () => ipcRenderer.invoke("mcp-expose-stop") as Promise<void>,
-  mcpExposeStatus: () => ipcRenderer.invoke("mcp-expose-status") as Promise<{ running: boolean; port: number }>,
-  mcpExposeGetTokens: () => ipcRenderer.invoke("mcp-expose-get-tokens") as Promise<Array<{ token: string; label: string; createdAt: string; expiresAt: string }>>,
-  mcpExposeGenToken: (label: string, ttlDays?: number) => ipcRenderer.invoke("mcp-expose-gen-token", label, ttlDays) as Promise<{ token: string; label: string; createdAt: string; expiresAt: string }>,
-  mcpExposeRevokeToken: (token: string) => ipcRenderer.invoke("mcp-expose-revoke-token", token) as Promise<void>,
-  mcpConfigureClient: (client: string) => ipcRenderer.invoke("mcp-configure-client", client) as Promise<{ ok: boolean; configPath?: string; error?: string }>,
-
   // Remote relay — settings UI uses these. The JWT authenticates the WS,
   // so there's no client-token to manage; only the external (server) tokens
   // for the user's external tools.
@@ -574,79 +488,6 @@ contextBridge.exposeInMainWorld("yo", {
     return () => ipcRenderer.removeListener("cc-show-modal", handler);
   },
 
-  // Capability Offer — share this client's compute/LLM capacity with the .yo network
-  capabilitiesSetEnabled: (enabled: boolean) => ipcRenderer.invoke("capabilities-set-enabled", enabled) as Promise<{ ok: boolean; enabled: boolean; derived_tier?: string; client_id?: string; error?: string }>,
-  capabilitiesGetStatus: () => ipcRenderer.invoke("capabilities-get-status") as Promise<{ enabled: boolean; client_id: string; derived_tier: string | null; report: unknown }>,
-
-  // yos wallet + rate cards
-  yosBalance: () => ipcRenderer.invoke("yos-balance") as Promise<{ user_id: string; balance: number } | { error: string }>,
-  yosRateCards: () => ipcRenderer.invoke("yos-rate-cards") as Promise<{ cards: Array<{ tier: string; yos_per_1k_input: number; yos_per_1k_output: number; yos_per_idle_minute: number }> } | { error: string }>,
-  modelsList: () => ipcRenderer.invoke("models-list") as Promise<{ models: Array<{ provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number }> } | { error: string }>,
-  yosBuyUrl: () => ipcRenderer.invoke("yos-buy-url") as Promise<{ url: string }>,
-
-  // Marketplace + reservations
-  marketplaceAvailable: (opts?: { tier?: string; provider?: string; limit?: number }) =>
-    ipcRenderer.invoke("marketplace-available", opts) as Promise<{ entries: Array<{ offer_handle: string; derived_tier: string; providers: string[]; pricing: unknown; last_seen_at: string }>; count: number; ts: string } | { error: string }>,
-  agentsLeaderboard: (opts?: { skills?: string; days?: number; limit?: number }) =>
-    ipcRenderer.invoke("agents-leaderboard", opts) as Promise<{
-      entries: Array<{
-        published_agent_id: string | null;
-        user_id: string;
-        agent_local_id: string;
-        name: string;
-        avatar_url: string | null;
-        bio: string | null;
-        skills: string[];
-        cyphers_count: number;
-        tasks_completed: number;
-        tasks_assigned: number;
-        success_rate: number;
-        avg_approval: number | null;
-        total_yos: number;
-        last_active_at: string | null;
-        score: number;
-      }>;
-      count: number;
-    } | { error: string }>,
-  reservationCreate: (body: { provider_handle: string; idle_minutes: number; guardrails?: unknown }) =>
-    ipcRenderer.invoke("reservation-create", body) as Promise<{ ok: boolean; reservation?: unknown; buyer_balance_after?: number; error?: string }>,
-  reservationRelease: (id: string, reason?: string) =>
-    ipcRenderer.invoke("reservation-release", id, reason) as Promise<{ ok: boolean; reservation?: unknown; buyer_balance_after?: number; idle_yos_settled?: number; provider_earned?: number; error?: string }>,
-  reservationList: (opts?: { status?: string }) =>
-    ipcRenderer.invoke("reservation-list", opts) as Promise<{ reservations: unknown[]; count: number } | { error: string }>,
-
-  // Cyphers — collaborative gatherings of agents
-  cypherCreate: (input: Record<string, unknown>) => ipcRenderer.invoke("cypher-create", input) as Promise<{ ok: boolean; cypher?: unknown; error?: string }>,
-  cypherUpdate: (id: string, patch: Record<string, unknown>) => ipcRenderer.invoke("cypher-update", id, patch) as Promise<{ ok: boolean; cypher?: unknown; error?: string }>,
-  cypherPublish: (id: string, opts?: { initial_kitty_deposit?: number; lobby_duration_seconds?: number | null }) =>
-    ipcRenderer.invoke("cypher-publish", id, opts) as Promise<{ ok: boolean; cypher?: unknown; kitty_balance?: number; error?: string }>,
-  cypherStart: (id: string) => ipcRenderer.invoke("cypher-start", id) as Promise<{ ok: boolean; cypher?: unknown; error?: string }>,
-  cypherWrap: (id: string) => ipcRenderer.invoke("cypher-wrap", id) as Promise<{ ok: boolean; cypher?: unknown; refunds?: Array<{ user_id: string; amount: number }>; error?: string }>,
-  cypherCancel: (id: string) => ipcRenderer.invoke("cypher-cancel", id) as Promise<{ ok: boolean; cypher?: unknown; error?: string }>,
-  cypherDiscover: (opts?: { status?: string; type?: string; limit?: number; offset?: number }) =>
-    ipcRenderer.invoke("cypher-discover", opts) as Promise<{ cyphers: unknown[]; count: number } | { error: string }>,
-  cypherListMine: () => ipcRenderer.invoke("cypher-list-mine") as Promise<{ cyphers: unknown[]; count: number } | { error: string }>,
-  cypherGet: (id: string) => ipcRenderer.invoke("cypher-get", id) as Promise<{ cypher: unknown; kitty_balance: number } | { error: string }>,
-  cypherGetBySlug: (slug: string) => ipcRenderer.invoke("cypher-get-by-slug", slug) as Promise<{ cypher: unknown } | { error: string }>,
-  cypherJoin: (id: string, agent_local_id: string, role?: string, invite_token?: string) => ipcRenderer.invoke("cypher-join", id, agent_local_id, role, invite_token) as Promise<{ ok: boolean; cypher?: unknown; cohort_size?: number; error?: string }>,
-  cypherInviteMint: (id: string, opts?: { role?: string; ttl_seconds?: number; multi_use?: boolean; invitee_user_id?: string }) =>
-    ipcRenderer.invoke("cypher-invite-mint", id, opts) as Promise<{ ok: boolean; invite?: { jti: string; cypher_id: string; role: string; multi_use: boolean; expires_at: string; invitee_user_id: string | null; revoked_at: string | null; used_at: string | null }; token?: string; error?: string }>,
-  cypherInviteList: (id: string) =>
-    ipcRenderer.invoke("cypher-invite-list", id) as Promise<{ invites: Array<{ jti: string; role: string; multi_use: boolean; expires_at: string; invitee_user_id: string | null; revoked_at: string | null; used_at: string | null; used_by_user_id: string | null; created_at: string }>; count: number } | { error: string }>,
-  cypherInviteRevoke: (id: string, jti: string) =>
-    ipcRenderer.invoke("cypher-invite-revoke", id, jti) as Promise<{ ok: boolean; invite?: unknown; error?: string }>,
-  cypherLeave: (id: string, agent_local_id: string) => ipcRenderer.invoke("cypher-leave", id, agent_local_id) as Promise<{ ok: boolean }>,
-  cypherJammers: (id: string) => ipcRenderer.invoke("cypher-jammers", id) as Promise<{ jammers: Array<{ user_id: string; agent_local_id: string; role: string; joined_at: string; left_at: string | null }>; count: number } | { error: string }>,
-  cypherJamsList: (id: string) => ipcRenderer.invoke("cypher-jams-list", id) as Promise<{ jams: Array<{ id: string; slug: string; title: string; description: string | null; state_doc: unknown; state_version: string }>; count: number } | { error: string }>,
-  cypherJamCreate: (id: string, slug: string, title: string, description?: string) => ipcRenderer.invoke("cypher-jam-create", id, slug, title, description) as Promise<{ ok: boolean; jam?: { id: string; slug: string }; error?: string }>,
-  cypherJamSetState: (id: string, jam_id: string, expected_version: number, state: unknown) => ipcRenderer.invoke("cypher-jam-set-state", id, jam_id, expected_version, state) as Promise<{ ok: boolean; version?: number; error?: string }>,
-  cypherEventPost: (id: string, kind: string, payload: unknown, jam_id?: string, by_agent_id?: string) =>
-    ipcRenderer.invoke("cypher-event-post", id, kind, payload, jam_id, by_agent_id) as Promise<{ ok: boolean; event?: unknown; error?: string }>,
-  cypherEventsList: (id: string, opts?: { since?: number; jam_id?: string; limit?: number }) =>
-    ipcRenderer.invoke("cypher-events-list", id, opts) as Promise<{ events: Array<{ id: string; seq: string; kind: string; jam_id: string | null; by_user_id: string | null; by_agent_id: string | null; payload: unknown; created_at: string }>; count: number } | { error: string }>,
-  cypherKittyDeposit: (id: string, amount: number) => ipcRenderer.invoke("cypher-kitty-deposit", id, amount) as Promise<{ ok: boolean; kitty_balance?: number; user_balance?: number; error?: string }>,
-  cypherKittyBalance: (id: string) => ipcRenderer.invoke("cypher-kitty-balance", id) as Promise<{ balance: number } | { error: string }>,
-  cypherKittyLedger: (id: string, opts?: { limit?: number }) => ipcRenderer.invoke("cypher-kitty-ledger", id, opts) as Promise<{ entries: Array<{ id: string; user_id: string; delta: number; kind: string; description: string | null; created_at: string }>; count: number } | { error: string }>,
 
   // MCP Servers (custom user-configured servers — Advanced plan)
   mcpGetServers: () => ipcRenderer.invoke("mcp-get-servers") as Promise<Array<{ config: { id: string; name: string; transport: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; enabled: boolean }; status: string; error?: string; tools: Array<{ name: string; description?: string }> }>>,

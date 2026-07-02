@@ -1,8 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, powerSaveBlocker } from "electron";
-import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, hasMcpAccess, serverGetAuthed, serverPatchAuthed } from "./auth";
+import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, serverGetAuthed, serverPatchAuthed } from "./auth";
 import type { LLMConfig } from "./llm-config";
-import type { McpExpose } from "./mcp-expose";
-import { configureClaudeDesktop, configureCursor, configureWindsurf, configureCodexCli, type McpClientConfigResult } from "./mcp-client-config";
 import type { SessionCache } from "./session-cache";
 import type { PanelManager } from "./panel-manager";
 import type { CloudSync } from "./cloud-sync";
@@ -26,7 +24,6 @@ interface SettingsIpcDeps {
   saveLLMConfig: (config: LLMConfig) => void;
   applyLLMConfig: (config: LLMConfig) => void;
   fetchServerModels: () => Promise<Array<{ provider: string; model: string }>>;
-  mcpExpose: McpExpose;
   session: SessionCache;
   sendSessionState: () => void;
   providerKeys: typeof providerKeysModule;
@@ -48,7 +45,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     serverGetAuthed, startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     llmConfig, saveLLMConfig, applyLLMConfig, fetchServerModels,
-    mcpExpose, session, sendSessionState,
+    session, sendSessionState,
     providerKeys, ccBootstrapStatus,
     transcriber, cloudSyncInstance,
     getMainWindow, panelManager, runStore,
@@ -265,38 +262,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
-  });
-
-  ipcMain.handle("mcp-expose-start", async () => {
-    if (!hasMcpAccess()) return { ok: false, error: "Exposing Glyphh as an MCP server requires a Pro plan." };
-    const result = await mcpExpose.start();
-    if (result.ok) setPreference("mcpExposeRunning", true);
-    return result;
-  });
-  ipcMain.handle("mcp-expose-stop", () => {
-    mcpExpose.stop();
-    setPreference("mcpExposeRunning", false);
-  });
-  ipcMain.handle("mcp-expose-status", () => ({
-    running: mcpExpose.isRunning,
-    port: mcpExpose.getPort(),
-  }));
-
-  // One-click "Configure" for external MCP clients — generates a token
-  // labeled for the tool and merges our server entry into that tool's own
-  // config file (never touching its other entries).
-  const CLIENT_CONFIGURERS: Record<string, { label: string; configure: (port: number, token: string) => McpClientConfigResult }> = {
-    "claude-desktop": { label: "Claude Desktop", configure: configureClaudeDesktop },
-    "cursor": { label: "Cursor", configure: configureCursor },
-    "windsurf": { label: "Windsurf", configure: configureWindsurf },
-    "codex-cli": { label: "Codex CLI", configure: configureCodexCli },
-  };
-  ipcMain.handle("mcp-configure-client", (_e, client: string) => {
-    if (!hasMcpAccess()) return { ok: false, error: "Exposing Glyphh as an MCP server requires a Pro plan." };
-    const entry = CLIENT_CONFIGURERS[client];
-    if (!entry) return { ok: false, error: `Unknown client: ${client}` };
-    const { token } = mcpExpose.generateToken(entry.label);
-    return entry.configure(mcpExpose.getPort(), token);
   });
 
   ipcMain.handle("transcribe-audio", async (_e, audioBuffer: ArrayBuffer) => {

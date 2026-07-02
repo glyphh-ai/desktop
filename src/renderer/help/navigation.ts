@@ -5,7 +5,6 @@
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning } from "./shared.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps, openNewAppForm } from "./apps.js";
-import { loadSchedules, initSchedules, openScheduleByName } from "./schedules.js";
 import { loadSettings, initSettings } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
@@ -108,13 +107,11 @@ function activeSection(): string {
 
 export function loadActiveSection(explicit?: string) {
   // Prefer the explicitly-navigated section. Falling back to the active nav
-  // item breaks sections that have no `help-nav-item` (e.g. Schedules), which
-  // would otherwise resolve to "guide" and never load.
+  // item can resolve to "guide" for sections with no `help-nav-item`.
   const sec = explicit || activeSection();
   if (sec === "drips") loadDrips();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "apps") loadApps();
-  else if (sec === "schedules") void loadSchedules();
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
   else if (sec === "support") loadSupport();
@@ -152,10 +149,6 @@ export function gotoSection(section: string, sub?: string): void {
       navBtns.forEach((n) => n.classList.toggle("active", n.dataset.sub === sub));
       panels.forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
     }
-  } else if (section === "schedules" && sub) {
-    // Deep-link straight to a specific schedule's detail (e.g. from the yo
-    // panel's Scheduled history).
-    void openScheduleByName(sub);
   } else {
     loadActiveSection(section);
   }
@@ -264,5 +257,4 @@ export function initHelp() {
   initApps();
   initLayoutsEvents();
   initDripsEvents();
-  initSchedules();
 }

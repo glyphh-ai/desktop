@@ -139,67 +139,6 @@
                 </div>
 
                 <div id="mcp-section-wrap" class="settings-form">
-                  <h3 class="settings-subheading" style="margin:0 0 12px;">Local machine</h3>
-                  <p style="font-size:11px;color:var(--text-3);margin:0 0 16px;">Run a local MCP server on this machine and connect desktop tools (Claude Desktop, Cursor, Windsurf) to it directly.</p>
-
-                  <!-- Port -->
-                  <div style="margin-bottom:20px;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                      <label class="settings-label" style="margin:0;min-width:36px;">Port</label>
-                      <input id="mcp-expose-port" type="number" class="settings-input settings-input-sm" min="1024" max="65535" value="7860" style="width:90px;" />
-                      <button id="mcp-expose-port-save" class="action-btn" style="font-size:12px;">Save</button>
-                    </div>
-                    <span id="mcp-expose-status" style="font-size:12px;color:var(--text-2);"></span>
-                  </div>
-
-                  <!-- Access Tokens -->
-                  <div style="margin-bottom:20px;">
-                    <h3 class="settings-subheading" style="margin:0 0 6px;">Access Tokens</h3>
-                    <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">Generate a token for each external tool. Tokens are shown once — copy immediately.</p>
-                    <div id="mcp-expose-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-                      <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
-                      <div style="display:flex;gap:6px;align-items:center;">
-                        <code id="mcp-expose-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
-                        <button id="mcp-expose-copy-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
-                      </div>
-                    </div>
-                    <div id="mcp-expose-tokens" style="margin-bottom:10px;"></div>
-                    <div style="display:flex;gap:6px;align-items:center;">
-                      <input id="mcp-expose-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop, Cursor)" style="flex:1;font-size:12px;padding:5px 8px;" />
-                      <select id="mcp-expose-token-ttl" class="settings-input" style="width:auto;font-size:12px;padding:5px 8px;">
-                        <option value="7">7 days</option>
-                        <option value="30">30 days</option>
-                        <option value="90" selected>90 days</option>
-                        <option value="365">1 year</option>
-                        <option value="0">Never</option>
-                      </select>
-                      <button id="mcp-expose-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
-                    </div>
-                  </div>
-
-                  <!-- One-click Configure — writes directly into each tool's own config file (a fresh token + merged entry), instead of copy-pasting the example below. -->
-                  <div style="margin-bottom:20px;">
-                    <h3 class="settings-subheading" style="margin:0 0 6px;">Connect a Tool</h3>
-                    <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">One click generates a token and adds this MCP server to that tool's config. Restart the tool afterward.</p>
-                    <div id="mcp-configure-buttons" style="display:flex;flex-wrap:wrap;gap:8px;">
-                      <button class="action-btn" data-mcp-client="claude-desktop" style="font-size:12px;">Configure Claude Desktop</button>
-                      <button class="action-btn" data-mcp-client="cursor" style="font-size:12px;">Configure Cursor</button>
-                      <button class="action-btn" data-mcp-client="windsurf" style="font-size:12px;">Configure Windsurf</button>
-                      <button class="action-btn" data-mcp-client="codex-cli" style="font-size:12px;">Configure Codex CLI</button>
-                    </div>
-                    <div id="mcp-configure-status" style="font-size:11px;color:var(--text-2);margin-top:8px;"></div>
-                  </div>
-
-                  <!-- Example Config -->
-                  <div>
-                    <h3 class="settings-subheading" style="margin:0 0 6px;">Example Config</h3>
-                    <p style="font-size:11px;color:var(--text-3);margin:0 0 8px;">Add this to your Claude Desktop, Cursor, or Windsurf MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a generated token above.</p>
-                    <div style="position:relative;">
-                      <pre id="mcp-expose-config-example" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
-                      <button id="mcp-expose-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
-                    </div>
-                  </div>
-
                   <!-- ── Remote Relay (org-admin only) ────────────────── -->
                   <div id="relay-section" class="hidden">
                     <hr style="border:none;border-top:1px solid var(--border-2);margin:24px 0;" />

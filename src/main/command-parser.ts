@@ -11,7 +11,6 @@
 
 import { BrowserWindow, WebContents } from "electron";
 import { PanelManager } from "./panel-manager";
-import { SkillEngine } from "./skill-engine";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
@@ -35,10 +34,8 @@ export class CommandParser {
   private tabLister: (() => string[]) | null = null;
   private tabCreator: ((url: string) => string) | null = null;
   private instanceCreator: ((appId: string) => string | null) | null = null;
-  private cypherOpener: ((slug: string) => Promise<boolean>) | null = null;
   constructor(
     private panels: PanelManager,
-    private skillEngine: SkillEngine,
     private layouts: LayoutManager,
     private appConnector: AppConnector,
     private session: SessionCache,
@@ -90,11 +87,6 @@ export class CommandParser {
    *  and by `.dip <app> .waz <panel-cmd> <prompt>` chains. */
   private wazSpawner: ((prompt: string) => void) | null = null;
   setWazSpawner(fn: (prompt: string) => void): void { this.wazSpawner = fn; }
-
-  /** Set callback that opens the cypher workspace bound to a specific cypher slug. */
-  setCypherOpener(fn: (slug: string) => Promise<boolean>): void {
-    this.cypherOpener = fn;
-  }
 
   /** Split input at dot-prefixed command keyword boundaries for chaining.
    *  Only .yo / .dip / .drip trigger a split — bare keywords like "yo"
@@ -251,23 +243,13 @@ export class CommandParser {
       return "";
     }
 
-    // .sup . <skill/prompt> → capture + process → return result for injection
+    // .sup . <prompt> → capture + process → return result for injection
     let finalContent = content;
-    const matchedSkill = /^\S+$/.test(instruction)
-      ? this.skillEngine.listSkills().find((s) => s.toLowerCase() === instruction.toLowerCase())
-      : undefined;
-
-    if (matchedSkill) {
-      try {
-        finalContent = await this.skillEngine.process(content, matchedSkill);
-      } catch (err) {
-        finalContent = `Skill error: ${err instanceof Error ? err.message : String(err)}`;
-      }
-    } else if (this.yoChat) {
+    if (this.yoChat) {
       finalContent = await this.yoChat.executeProcess(instruction, content);
     }
 
-    const label = matchedSkill || this.timestamp();
+    const label = this.timestamp();
     this.session.capture("command-bar", finalContent, `${label}.md`, label);
     this.session.copyToClipboard();
     return finalContent;
@@ -493,15 +475,6 @@ export class CommandParser {
         return `Opened ${target} in new tab (${tabId})`;
       }
       return "Tab manager not available";
-    }
-
-    // dip <cypher-slug> — open cypher workspace bound to that cypher
-    if (this.cypherOpener && !this.panels.hasPanel(sub) && !this.appConnector.get(sub)) {
-      const opened = await this.cypherOpener(sub);
-      if (opened) {
-        setPreference("lastView", { type: "panel", id: "cypher" });
-        return `Cypher: ${sub}`;
-      }
     }
 
     // dip <panel-id> [cmd1 cmd2 ...] — switch + optional app commands. Dipping to

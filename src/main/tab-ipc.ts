@@ -4,14 +4,12 @@ import type { PanelManager } from "./panel-manager";
 import type { LayoutManager } from "./layout-manager";
 import type { AppConnector } from "./app-connector";
 import type { YoInterceptor } from "./yo-interceptor";
-import type { AgentRunner } from "./agent-runner";
 
 interface TabIpcDeps {
   panelManager: PanelManager;
   layoutManager: LayoutManager;
   appConnector: AppConnector;
   yoInterceptor: YoInterceptor;
-  agentRunner: AgentRunner;
   getMainWindow: () => BrowserWindow | null;
   openTabs: string[];
   tabBrowserCounter: { value: number };

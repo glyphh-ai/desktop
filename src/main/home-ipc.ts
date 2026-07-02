@@ -9,28 +9,19 @@ import { ipcMain } from "electron";
 import path from "path";
 import os from "os";
 import fs from "fs";
-import type { McpExpose } from "./mcp-expose";
 import type { McpManager } from "./mcp-manager";
 import type { ConnectorManager } from "./connectors";
 import { reconnectRelay, getRelayStatus } from "./relay-client";
 import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, hasMcpAccess } from "./auth";
 
 interface HomeIpcDeps {
-  mcpExpose: McpExpose;
   mcpManager: McpManager | null;
   connectorManager: ConnectorManager | null;
   canUseMcp: () => { allowed: boolean; reason?: string };
 }
 
 export function registerHomeIpc(deps: HomeIpcDeps): void {
-  const { mcpExpose, mcpManager, connectorManager, canUseMcp } = deps;
-
-  ipcMain.handle("mcp-expose-get-tokens", () => mcpExpose.getTokens());
-  ipcMain.handle("mcp-expose-gen-token", (_e, label: string, ttlDays?: number) => {
-    if (!hasMcpAccess()) throw new Error("Exposing Glyphh as an MCP server requires a Pro plan.");
-    return mcpExpose.generateToken(label, ttlDays);
-  });
-  ipcMain.handle("mcp-expose-revoke-token", (_e, token: string) => { mcpExpose.revokeToken(token); });
+  const { mcpManager, connectorManager, canUseMcp } = deps;
 
   // Relay: bouncing the WS after the user flips the toggle, and proxying
   // token CRUD to yo-server (the JWT authenticates these calls — same one

@@ -16,7 +16,6 @@
 
 import { WebContents } from "electron";
 import { AppConnector } from "./app-connector";
-import { SkillEngine } from "./skill-engine";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
 import type { YoChat } from "./yo-chat";
@@ -54,7 +53,6 @@ export class YoInterceptor {
 
   constructor(
     private appConnector: AppConnector,
-    private skillEngine: SkillEngine,
     private session: SessionCache,
   ) {}
 

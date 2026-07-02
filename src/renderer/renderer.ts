@@ -73,35 +73,6 @@ declare global {
       panelsRefresh: (id?: string) => void;
       panelsZoom: (factor: number) => void;
       panelsGetZoom: () => Promise<number>;
-      // Skills
-      skillsList: () => Promise<string[]>;
-      skillsListDetailed: () => Promise<Array<{ name: string; description?: string; hasRunner: boolean; hasApp: boolean; scheduled: boolean; scheduleExpr?: string }>>;
-      skillsRead: (name: string) => Promise<string | null>;
-      skillsGet: (name: string) => Promise<{ name: string; manifest: any; prompt: string; hasRunner: boolean; hasApp: boolean; runnerCode: string | null; runnerSchedule: string | null } | null>;
-      skillsWrite: (name: string, prompt: string) => Promise<boolean | { error: string }>;
-      skillsWriteFull: (name: string, manifest: any, prompt: string, runnerCode?: string | null) => Promise<boolean | { error: string }>;
-      skillsRemove: (name: string) => Promise<boolean>;
-      skillsGenerate: (name: string, description: string) => Promise<string>;
-      skillsAvailableTools: () => Promise<Array<{ namespace: string; label: string; tools: Array<{ name: string; description: string }> }>>;
-      skillsListFiles: (name: string) => Promise<string[]>;
-      skillsReadFile: (name: string, rel: string) => Promise<string | null>;
-      skillsWriteFile: (name: string, rel: string, content: string) => Promise<boolean>;
-      skillsDeleteFile: (name: string, rel: string) => Promise<boolean>;
-      skillsOpenInEditor: (name: string) => Promise<boolean>;
-      skillsOpenFileInEditor: (name: string, rel: string) => Promise<boolean>;
-      skillsFileUrl: (name: string, rel: string) => Promise<string>;
-      skillsRun: (name: string, input: unknown) => Promise<{ ok: true; output: unknown } | { ok: false; error: string }>;
-      skillsCancel: (runId: string) => Promise<boolean>;
-      skillsUserResponse: (qid: string, answer: string) => Promise<boolean>;
-      skillsRunHistory: (name: string) => Promise<any[]>;
-      skillsExport: (name: string) => Promise<string | null>;
-      skillsImport: (base64: string, overwrite?: boolean) => Promise<{ imported: string[]; skipped: string[]; error?: string }>;
-      skillsScheduleStatus: () => Promise<Array<{ name: string; schedule: string; paused: boolean }>>;
-      skillsPauseSchedule: (name: string) => Promise<void>;
-      skillsResumeSchedule: (name: string) => Promise<void>;
-      onSkillProgress: (cb: (data: { runId: string; event: any }) => void) => void;
-      onSkillAskUser: (cb: (data: { runId: string; qid: string; question: string }) => void) => void;
-      onSkillsChanged: (cb: () => void) => () => void;
       // Apps
       appsList: () => Promise<Array<{
         id: string; name: string; url?: string; connected: boolean; connectedSlug?: string;
@@ -303,14 +274,6 @@ declare global {
       openHomeSection: (section: string, sub?: string) => void;
       onGotoSection: (cb: (section: string, sub?: string) => void) => void;
       getPendingSection: () => Promise<{ section: string; sub?: string } | null>;
-      // Agent mode + guardrails
-      getAgentMode: () => Promise<{ perm: string; swarm: boolean }>;
-      setAgentMode: (mode: string) => void;
-      onAgentModeChanged: (cb: (mode: string) => void) => void;
-      getToolRegistry: () => Promise<Array<{ name: string; label: string; description: string; tier: string; override: string }>>;
-      setToolOverride: (toolName: string, override: string) => void;
-      onApprovalRequest: (cb: (id: string, toolName: string, toolLabel: string, input: unknown) => void) => void;
-      approvalRespond: (id: string, approved: boolean) => void;
       onYoAskRequest: (cb: (id: string, questions: Array<{
         question: string;
         header?: string;
@@ -331,14 +294,6 @@ declare global {
       updateInstall: () => void;
       checkForUpdates: () => Promise<string | null>;
       getUpdateStatus: () => Promise<{ version: string; ready: boolean } | null>;
-      // MCP Expose
-      mcpExposeStart: () => Promise<{ ok: boolean; error?: string }>;
-      mcpExposeStop: () => Promise<void>;
-      mcpExposeStatus: () => Promise<{ running: boolean; port: number }>;
-      mcpExposeGetTokens: () => Promise<Array<{ token: string; label: string; createdAt: string; expiresAt: string }>>;
-      mcpExposeGenToken: (label: string, ttlDays?: number) => Promise<{ token: string; label: string; createdAt: string; expiresAt: string }>;
-      mcpExposeRevokeToken: (token: string) => Promise<void>;
-      mcpConfigureClient: (client: string) => Promise<{ ok: boolean; configPath?: string; error?: string }>;
       // Remote relay
       relayReconnect: () => Promise<void>;
       relayStatus: () => Promise<{ enabled: boolean; signedIn: boolean; state: "off" | "connecting" | "connected" | "disconnected" }>;
@@ -353,73 +308,6 @@ declare global {
       // BYOK gate — Anthropic API key saved via the Claude Code bootstrap gate.
       ccStatus: () => Promise<{ found: boolean; byokAnthropic: boolean }>;
       onCcShowModal: (callback: () => void) => () => void;
-      // Capability Offer
-      capabilitiesSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; enabled: boolean; derived_tier?: string; client_id?: string; error?: string }>;
-      capabilitiesGetStatus: () => Promise<{ enabled: boolean; client_id: string; derived_tier: string | null; report: unknown }>;
-      // Vibes — persisted vibe-coding projects
-      vibesList: () => Promise<Array<Record<string, unknown>>>;
-      vibesGet: (id: string) => Promise<Record<string, unknown> | null>;
-      vibesCreate: (name: string, description?: string) => Promise<Record<string, unknown>>;
-      vibesDelete: (id: string) => Promise<boolean>;
-      vibesOpen: (id: string) => Promise<Record<string, unknown> | null>;
-      vibesPlan: (id: string, goal: string) => Promise<{ ok: boolean; error?: string }>;
-      vibesPlanWithCouncil: (id: string, goal: string) => Promise<{ ok: boolean; error?: string; fellBack?: boolean }>;
-      vibesShip: (id: string) => Promise<{ ok: boolean; appId?: string; error?: string }>;
-      // yos wallet
-      yosBalance: () => Promise<{ user_id: string; balance: number } | { error: string }>;
-      yosRateCards: () => Promise<{ cards: Array<{ tier: string; yos_per_1k_input: number; yos_per_1k_output: number; yos_per_idle_minute: number }> } | { error: string }>;
-      modelsList: () => Promise<{ models: Array<{ provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number }> } | { error: string }>;
-      yosBuyUrl: () => Promise<{ url: string }>;
-      // Marketplace + reservations
-      marketplaceAvailable: (opts?: { tier?: string; provider?: string; limit?: number }) => Promise<{ entries: Array<{ offer_handle: string; derived_tier: string; providers: string[]; pricing: { terms: string; tier: string; yos_per_1k_input?: number; yos_per_1k_output?: number } | null; last_seen_at: string }>; count: number; ts: string } | { error: string }>;
-      agentsLeaderboard: (opts?: { skills?: string; days?: number; limit?: number }) => Promise<{
-        entries: Array<{
-          published_agent_id: string | null;
-          user_id: string;
-          agent_local_id: string;
-          name: string;
-          avatar_url: string | null;
-          bio: string | null;
-          skills: string[];
-          cyphers_count: number;
-          tasks_completed: number;
-          tasks_assigned: number;
-          success_rate: number;
-          avg_approval: number | null;
-          total_yos: number;
-          last_active_at: string | null;
-          score: number;
-        }>;
-        count: number;
-      } | { error: string }>;
-      reservationCreate: (body: { provider_handle: string; idle_minutes: number; guardrails?: unknown }) => Promise<{ ok: boolean; reservation?: { id: string; status: string; idle_budget_yos: number; release_at: string }; buyer_balance_after?: number; error?: string }>;
-      reservationRelease: (id: string, reason?: string) => Promise<{ ok: boolean; reservation?: unknown; buyer_balance_after?: number; idle_yos_settled?: number; provider_earned?: number; error?: string }>;
-      reservationList: (opts?: { status?: string }) => Promise<{ reservations: Array<{ id: string; provider_client_id: string; status: string; idle_budget_yos: number; idle_yos_used: number; release_at: string; reserved_at: string }>; count: number } | { error: string }>;
-      // Cyphers
-      cypherCreate: (input: Record<string, unknown>) => Promise<{ ok: boolean; cypher?: { id: string; slug: string; status: string; type: string; visibility: string; title: string }; error?: string }>;
-      cypherUpdate: (id: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; cypher?: unknown; error?: string }>;
-      cypherPublish: (id: string, opts?: { initial_kitty_deposit?: number; lobby_duration_seconds?: number | null }) => Promise<{ ok: boolean; cypher?: { id: string; slug: string; status: string }; kitty_balance?: number; error?: string }>;
-      cypherStart: (id: string) => Promise<{ ok: boolean; cypher?: { id: string; slug: string; status: string }; error?: string }>;
-      cypherWrap: (id: string) => Promise<{ ok: boolean; cypher?: { id: string; status: string }; refunds?: Array<{ user_id: string; amount: number }>; error?: string }>;
-      cypherCancel: (id: string) => Promise<{ ok: boolean; cypher?: unknown; error?: string }>;
-      cypherDiscover: (opts?: { status?: string; type?: string; limit?: number; offset?: number }) => Promise<{ cyphers: Array<{ id: string; slug: string; title: string; description: string | null; type: string; status: string; visibility: string; max_jammers: number | null; created_at: string }>; count: number } | { error: string }>;
-      cypherListMine: () => Promise<{ cyphers: Array<{ id: string; slug: string; title: string; type: string; status: string; visibility: string; created_at: string; updated_at: string }>; count: number } | { error: string }>;
-      cypherGet: (id: string) => Promise<{ cypher: { id: string; slug: string; title: string; description: string | null; goal: string | null; type: string; status: string; visibility: string; max_jammers: number | null; min_tier: string | null; requirements: { skills?: string[]; apps?: string[]; mcp_servers?: string[]; model_provider?: string; min_tier?: string }; sensitivity: string; owner_user_id: string; created_at: string; started_at: string | null; ended_at: string | null }; kitty_balance: number } | { error: string }>;
-      cypherGetBySlug: (slug: string) => Promise<{ cypher: unknown } | { error: string }>;
-      cypherJoin: (id: string, agent_local_id: string, role?: string, invite_token?: string) => Promise<{ ok: boolean; cypher?: unknown; cohort_size?: number; error?: string }>;
-      cypherInviteMint: (id: string, opts?: { role?: string; ttl_seconds?: number; multi_use?: boolean; invitee_user_id?: string }) => Promise<{ ok: boolean; invite?: { jti: string; cypher_id: string; role: string; multi_use: boolean; expires_at: string; invitee_user_id: string | null; revoked_at: string | null; used_at: string | null }; token?: string; error?: string }>;
-      cypherInviteList: (id: string) => Promise<{ invites: Array<{ jti: string; role: string; multi_use: boolean; expires_at: string; invitee_user_id: string | null; revoked_at: string | null; used_at: string | null; used_by_user_id: string | null; created_at: string }>; count: number } | { error: string }>;
-      cypherInviteRevoke: (id: string, jti: string) => Promise<{ ok: boolean; invite?: unknown; error?: string }>;
-      cypherLeave: (id: string, agent_local_id: string) => Promise<{ ok: boolean }>;
-      cypherJammers: (id: string) => Promise<{ jammers: Array<{ user_id: string; agent_local_id: string; role: string; joined_at: string; left_at: string | null }>; count: number } | { error: string }>;
-      cypherJamsList: (id: string) => Promise<{ jams: Array<{ id: string; slug: string; title: string; description: string | null; state_doc: unknown; state_version: string }>; count: number } | { error: string }>;
-      cypherJamCreate: (id: string, slug: string, title: string, description?: string) => Promise<{ ok: boolean; jam?: { id: string; slug: string }; error?: string }>;
-      cypherJamSetState: (id: string, jam_id: string, expected_version: number, state: unknown) => Promise<{ ok: boolean; version?: number; error?: string }>;
-      cypherEventPost: (id: string, kind: string, payload: unknown, jam_id?: string, by_agent_id?: string) => Promise<{ ok: boolean; event?: { id: string; seq: string }; error?: string }>;
-      cypherEventsList: (id: string, opts?: { since?: number; jam_id?: string; limit?: number }) => Promise<{ events: Array<{ id: string; seq: string; kind: string; jam_id: string | null; by_user_id: string | null; by_agent_id: string | null; payload: unknown; created_at: string }>; count: number } | { error: string }>;
-      cypherKittyDeposit: (id: string, amount: number) => Promise<{ ok: boolean; kitty_balance?: number; user_balance?: number; error?: string }>;
-      cypherKittyBalance: (id: string) => Promise<{ balance: number } | { error: string }>;
-      cypherKittyLedger: (id: string, opts?: { limit?: number }) => Promise<{ entries: Array<{ id: string; user_id: string; delta: number; kind: string; description: string | null; created_at: string }>; count: number } | { error: string }>;
       // MCP Servers (custom user-configured)
       mcpGetServers: () => Promise<Array<{ config: { id: string; name: string; transport: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; enabled: boolean }; status: string; error?: string; tools: Array<{ name: string; description?: string }> }>>;
       mcpAddServer: (config: Record<string, unknown>) => Promise<void>;
@@ -435,14 +323,6 @@ declare global {
       // Schedules (skill-runs history + keep-awake)
       runsList: (skillName?: string) => Promise<Array<{ id: string; skillName: string; title: string; created: string; trigger: string; ok: boolean }>>;
       setKeepAwake: (on: boolean) => void;
-      schedulesList: () => Promise<Array<Record<string, unknown>>>;
-      schedulesGet: (id: string) => Promise<Record<string, unknown> | null>;
-      schedulesSave: (cfg: Record<string, unknown>) => Promise<Record<string, unknown>>;
-      schedulesDelete: (id: string) => Promise<boolean>;
-      schedulesRun: (id: string) => Promise<void>;
-      schedulesPause: (id: string) => Promise<void>;
-      schedulesResume: (id: string) => Promise<void>;
-      schedulesDeleteRuns: (name: string) => Promise<number>;
       councilsList: () => Promise<Array<Record<string, unknown>>>;
       councilsGet: (id: string) => Promise<Record<string, unknown> | null>;
       councilsSave: (cfg: Record<string, unknown>) => Promise<Record<string, unknown>>;
