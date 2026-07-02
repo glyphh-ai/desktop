@@ -48,7 +48,7 @@ let agentsCache: AgentDef[] = [];
 let agentsPage = 1;
 let current: AgentDef | null = null;     // agent being edited; null when not editing
 let isNew = false;
-let appsCache: Array<{ id: string; name: string }> = [];
+let appsCache: Array<{ id: string; name: string; description?: string }> = [];
 let skillsCache: Array<{ name: string; description?: string }> = [];
 
 /**
@@ -256,7 +256,7 @@ async function loadAgentApps(): Promise<void> {
   if (appsCache.length === 0) {
     // Server panel-apps (same source as the platform Agents form), keyed by
     // slug so an agent's apps list is portable across client and web.
-    try { appsCache = (await window.yo.panelAppsList()).map((a) => ({ id: a.slug, name: a.name })); }
+    try { appsCache = (await window.yo.panelAppsList()).map((a) => ({ id: a.slug, name: a.name, description: a.url || undefined })); }
     catch { appsCache = []; }
   }
   renderPickList("apps");
@@ -276,12 +276,17 @@ function renderPickList(kind: "apps" | "skills"): void {
   list.innerHTML = "";
   const selected = (kind === "apps" ? current.apps : current.skills) || [];
   for (const key of selected) {
-    const label = kind === "apps"
-      ? (appsCache.find((a) => a.id === key)?.name || key)
-      : key;
+    const entry = kind === "apps"
+      ? appsCache.find((a) => a.id === key)
+      : skillsCache.find((s) => s.name === key);
+    const label = (kind === "apps" ? (entry as { name?: string } | undefined)?.name : key) || key;
+    const desc = entry?.description;
     const row = document.createElement("div");
     row.className = "skill-row";
-    row.innerHTML = `<span style="font-size:13px;">${escapeHtml(label)}</span><button class="skill-row-remove" title="Remove">×</button>`;
+    const descHtml = desc
+      ? `<span style="font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(desc)}</span>`
+      : "";
+    row.innerHTML = `<span style="display:flex;flex-direction:column;min-width:0;flex:1;"><span style="font-size:13px;">${escapeHtml(label)}</span>${descHtml}</span><button class="skill-row-remove" title="Remove">×</button>`;
     row.querySelector(".skill-row-remove")!.addEventListener("click", () => {
       if (kind === "apps") current!.apps = (current!.apps || []).filter((k) => k !== key);
       else current!.skills = (current!.skills || []).filter((k) => k !== key);
@@ -295,8 +300,8 @@ function showPicker(kind: "apps" | "skills"): void {
   if (!current) return;
   const selected = new Set((kind === "apps" ? current.apps : current.skills) || []);
   const available = kind === "apps"
-    ? appsCache.filter((a) => !selected.has(a.id)).map((a) => ({ key: a.id, label: a.name }))
-    : skillsCache.filter((s) => !selected.has(s.name)).map((s) => ({ key: s.name, label: s.name }));
+    ? appsCache.filter((a) => !selected.has(a.id)).map((a) => ({ key: a.id, label: a.name, desc: a.description }))
+    : skillsCache.filter((s) => !selected.has(s.name)).map((s) => ({ key: s.name, label: s.name, desc: s.description }));
 
   const menu = document.createElement("div");
   menu.className = "skill-row-picker";
@@ -311,7 +316,17 @@ function showPicker(kind: "apps" | "skills"): void {
   for (const opt of available) {
     const item = document.createElement("div");
     item.style.cssText = "padding:6px 12px;cursor:pointer;font-size:13px;";
-    item.textContent = opt.label;
+    const nameEl = document.createElement("div");
+    nameEl.textContent = opt.label;
+    nameEl.style.cssText = "font-weight:500;";
+    item.appendChild(nameEl);
+    if (opt.desc) {
+      const descEl = document.createElement("div");
+      descEl.textContent = opt.desc;
+      descEl.title = opt.desc;
+      descEl.style.cssText = "font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:216px;";
+      item.appendChild(descEl);
+    }
     item.addEventListener("click", () => {
       if (kind === "apps") current!.apps = [...(current!.apps || []), opt.key];
       else current!.skills = [...(current!.skills || []), opt.key];
