@@ -74,6 +74,7 @@ import { reloadRemotePatterns } from "./firewall";
 import { usageTracker } from "./usage-tracker";
 import { promptLog } from "./prompt-log";
 import { startOverlay } from "./overlay-bridge";
+import { registerCommandWindow, disposeCommandWindow } from "./command-window";
 import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay } from "./relay-client";
 import { installRelayHandlers } from "./relay-handlers";
@@ -624,6 +625,10 @@ async function boot() {
       overlayTriggers,
     );
   }
+
+  // Full-screen command overlay (apps + layouts launcher) + its global hotkey
+  // (Cmd+Shift+Space). Opens apps/layouts as real OS windows.
+  registerCommandWindow();
 
   // Give interceptor access to visible panel IDs (for multi-panel grab)
   yoInterceptor.setVisiblePanelsGetter(() => {
@@ -2012,6 +2017,7 @@ function cleanupAll() {
   if (cleanedUp) return;
   cleanedUp = true;
   globalShortcut.unregisterAll();
+  disposeCommandWindow();
   cleanupAuthTimers();
   try {
     const tabs = getPreference<string[]>("openTabs", []);

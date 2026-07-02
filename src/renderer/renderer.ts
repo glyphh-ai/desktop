@@ -62,6 +62,7 @@ declare global {
   interface Window {
     yo: {
       copyToClipboard: (text: string) => void;
+      commandToggle: () => void;
       getPathForFile: (file: File) => string;
       windowClose: () => void;
       windowMinimize: () => void;
@@ -354,6 +355,7 @@ document.getElementById("btn-minimize")!.addEventListener("click", () => window.
 document.getElementById("btn-maximize")!.addEventListener("click", () => window.yo.windowMaximize());
 document.getElementById("splash-close")?.addEventListener("click", () => window.yo.windowClose());
 document.getElementById("titlebar-logout")?.addEventListener("click", () => { void window.yo.logout(); });
+document.getElementById("header-command-center")?.addEventListener("click", () => window.yo.commandToggle());
 
 // -- Titlebar label -> open home tab --
 

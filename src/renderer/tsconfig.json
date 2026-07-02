@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "sourceMap": true
   },
-  "include": ["renderer.ts", "app-window.ts", "layout-window.ts", "downloads-ui.ts", "boot-gate-ui.ts", "drip-ui.ts", "voice-ui.ts", "tab-bar-ui.ts", "grid-ui.ts", "yo-modal.ts", "council.ts", "vibe.ts", "help/**/*.ts", "home.ts", "onboarding.ts", "model-badges.ts", "search-clear.ts"]
+  "include": ["renderer.ts", "app-window.ts", "layout-window.ts", "downloads-ui.ts", "boot-gate-ui.ts", "drip-ui.ts", "voice-ui.ts", "tab-bar-ui.ts", "grid-ui.ts", "yo-modal.ts", "council.ts", "vibe.ts", "help/**/*.ts", "home.ts", "onboarding.ts", "model-badges.ts", "search-clear.ts", "command-center-ui.ts"]
 }

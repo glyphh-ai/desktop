@@ -18,40 +18,13 @@
 import type { WebContents } from "electron";
 import type { McpManager } from "./mcp-manager.js";
 import { registerRelayHandler } from "./relay-client.js";
-import { serverGetAuthed } from "./auth.js";
 import {
-  openAppWindow, focusAppWindow, closeAppWindow, listAppWindows,
-  getAppWebContents, openLayoutInWindow, openLayoutOnScreen,
-  resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
+  openAppWindow, focusAppWindow, closeAppWindow, listAppWindows, getAppWebContents,
 } from "./app-window-manager.js";
+import { resolveAppSpec, openLayoutByName } from "./app-resolver.js";
 
 interface Deps {
   getMcpManager: () => McpManager | null;
-}
-
-interface ServerApp {
-  id: string;
-  slug: string;
-  name: string;
-  url: string;
-  forceWeb?: boolean;
-}
-
-/** Resolve an app reference (slug) to a window spec. "browser" and
- *  "terminal" are built-in; everything else is the user's server app
- *  library (/api/panel-apps), matched by slug then name. */
-async function resolveAppSpec(ref: string): Promise<AppWindowSpec> {
-  const key = ref.trim().toLowerCase();
-  if (!key) throw new Error("app is required");
-  if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
-  if (key === "terminal" || key === "term") return { slug: "terminal", name: "Terminal", url: "yo://terminal" };
-
-  const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
-  const app = apps.find((a) => a.slug === key)
-    || apps.find((a) => a.name.toLowerCase() === key)
-    || apps.find((a) => a.id === ref.trim());
-  if (!app?.url) throw new Error(`unknown app: ${ref} — use panels.list or the user's app library slugs`);
-  return { slug: app.slug, name: app.name, url: app.url, forceWeb: !!app.forceWeb };
 }
 
 /** Pull the live webview WebContents for an app, or throw. */
@@ -105,31 +78,7 @@ export function installRelayHandlers(deps: Deps): void {
     const name = String(p?.name || "").trim();
     if (!name) throw new Error("layouts.open requires { name }");
     const mode = p?.mode === "screen" ? "screen" : "window";
-
-    const layouts = await serverGetAuthed<Array<LayoutSpec & { id: string }>>("/api/layouts");
-    const layout = layouts.find((l) => l.name.toLowerCase() === name.toLowerCase())
-      || layouts.find((l) => l.id === name);
-    if (!layout) {
-      const names = layouts.map((l) => l.name).join(", ") || "(none saved)";
-      throw new Error(`unknown layout: ${name} — saved layouts: ${names}`);
-    }
-
-    // Cells reference apps by slug (panelId). Resolve against the app
-    // library once; browser/terminal resolve as built-ins.
-    const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
-    const resolve = (panelId: string): AppWindowSpec | null => {
-      const key = panelId.toLowerCase();
-      if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
-      if (key === "terminal" || key === "term") return { slug: "terminal", name: "Terminal", url: "yo://terminal" };
-      const app = apps.find((a) => a.slug === key) || apps.find((a) => a.id === panelId);
-      return app?.url ? { slug: app.slug, name: app.name, url: app.url, forceWeb: !!app.forceWeb } : null;
-    };
-
-    const opened = mode === "screen"
-      ? openLayoutOnScreen(layout, resolve)
-      : openLayoutInWindow(layout, resolve);
-    if (opened.length === 0) throw new Error(`layout "${layout.name}" has no resolvable apps`);
-    return { layout: layout.name, mode, apps: opened };
+    return openLayoutByName(name, mode);
   });
 
   // ── rpa — drive an app's webview ────────────────────────

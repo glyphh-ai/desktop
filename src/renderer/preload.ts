@@ -46,6 +46,8 @@ export interface PanelAppInput {
 
 contextBridge.exposeInMainWorld("yo", {
   copyToClipboard: (text: string) => ipcRenderer.invoke("copy-to-clipboard", text),
+  // Toggle the full-screen command overlay (also bound to a global hotkey).
+  commandToggle: () => ipcRenderer.send("command:toggle"),
   // Resolve a dropped/selected File to its absolute on-disk path. Electron 32+
   // removed File.path; webUtils.getPathForFile is the supported replacement.
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },

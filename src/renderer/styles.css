@@ -1418,6 +1418,24 @@ body.account-locked #dl-btn-wrap {
 }
 .titlebar-logout:hover { color: var(--text); background: var(--surface-2); border-color: var(--border-3); }
 
+/* Command overlay launcher — icon button right of the Glyphh mark. */
+.titlebar-cmd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  margin-left: 8px;
+  background: none;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.12s;
+  -webkit-app-region: no-drag;
+}
+.titlebar-cmd:hover { color: var(--text); background: var(--surface-2); border-color: var(--border-3); }
+
 /* MCP indicator */
 .mcp-indicator {
   display: flex;
@@ -3259,6 +3277,69 @@ ol.docs-list li::before {
   font-size: 11px;
   font-weight: 600;
 }
+
+/* ── Command overlay (full-screen OS launcher: apps + layouts) ────────────── */
+.command-center {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+}
+.cc-inner { width: min(1200px, 92vw); padding: 64px 28px 48px; }
+.cc-header { display: flex; align-items: center; margin-bottom: 22px; }
+.cc-title { font-size: 18px; font-weight: 700; color: var(--text); }
+.cc-close {
+  margin-left: auto; width: 30px; height: 30px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  font-size: 20px; line-height: 1; cursor: pointer;
+}
+.cc-close:hover { color: var(--text); border-color: var(--accent); }
+.cc-apps {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 18px;
+  margin-bottom: 32px;
+}
+.cc-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 0; cursor: pointer;
+  border: none; background: transparent; text-align: center;
+  transition: transform .16s cubic-bezier(.2,.8,.2,1);
+}
+.cc-card:hover { transform: scale(1.06); }
+.cc-card-shot {
+  aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 28px rgba(0,0,0,.25);
+}
+.cc-card-shot img { width: 46px; height: 46px; object-fit: contain; border-radius: 10px; }
+.cc-card-initial {
+  width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; font-size: 26px; font-weight: 700; border-radius: 14px;
+}
+.cc-card-name {
+  font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cc-section-label {
+  font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase;
+  letter-spacing: .06em; margin-bottom: 12px;
+}
+.cc-layouts { display: flex; flex-wrap: wrap; gap: 16px; }
+.cc-layout-card {
+  display: flex; flex-direction: column; gap: 8px; cursor: pointer;
+  border: none; background: transparent; align-items: center;
+  transition: transform .16s cubic-bezier(.2,.8,.2,1);
+}
+.cc-layout-card:hover { transform: scale(1.06); }
+.cc-mini {
+  position: relative; width: 150px; height: 94px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); overflow: hidden;
+}
+.cc-mini-cell { position: absolute; background: var(--hover); border: 1px solid var(--border-2); border-radius: 3px; }
+.cc-empty { color: var(--text-3); font-size: 13px; padding: 8px 0; }
 
 .crud-card-info {
   flex: 1;

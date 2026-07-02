@@ -1,0 +1,27 @@
+<!doctype html>
+<html data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="command-center" class="command-center">
+    <div class="cc-inner">
+      <div class="cc-header">
+        <span class="cc-title">Open</span>
+        <button id="cc-close" class="cc-close" title="Close (Esc)">&times;</button>
+      </div>
+      <div id="cc-apps" class="cc-apps"></div>
+      <div id="cc-layouts-wrap" class="cc-layouts-wrap hidden">
+        <div class="cc-section-label">Layouts</div>
+        <div id="cc-layouts" class="cc-layouts"></div>
+      </div>
+      <div id="cc-empty" class="cc-empty hidden">No apps yet — add one from the Apps tab.</div>
+    </div>
+  </div>
+  <script type="module" src="command-center-ui.js"></script>
+</body>
+</html>
