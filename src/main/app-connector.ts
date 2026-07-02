@@ -195,6 +195,7 @@ export const CATEGORY_COMMANDS: Record<string, Array<{ key: string; description:
 // General/Appearance/MCP settings panel).
 const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKind; requiresFolder?: boolean }> = [
   { id: "term", name: "Terminal", url: "yo://terminal", requiresFolder: true },
+  { id: "workbench", name: "Workbench", url: "yo://workbench", requiresFolder: true },
   { id: "browser", name: "Browser", url: "yo://browser" },
   { id: "apps", name: "Apps", url: "yo://apps", kind: "system" },
   { id: "skills", name: "Skills", url: "yo://skills", kind: "system" },

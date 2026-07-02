@@ -36,6 +36,7 @@ import path from "path";
 import fs from "fs";
 import { PanelManager } from "./panel-manager";
 import { TerminalManager, AgentSpawnConfig } from "./terminal";
+import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { writeAgentBriefing, ensureProjectClaudeMd, ensureProjectMcpJson, rewriteAllBriefings } from "./agent-briefing";
 import { CommandParser } from "./command-parser";
 import { SkillEngine } from "./skill-engine";
@@ -660,6 +661,11 @@ async function boot() {
   terminalManager = new TerminalManager();
   terminalManager.init();
 
+  // Workbench terminal — multi-pty-per-panel bridge (wb-term:* IPC) for the
+  // yo://workbench Terminal slot, which hosts several terminals as tabs in one
+  // renderer.
+  registerWorkbenchTerminalIpc();
+
   // Cypher bus — canonical message bus for inter-agent communication
   const cypherBus = new CypherBus(
     (wsSlug) => {
@@ -898,6 +904,8 @@ async function boot() {
   // Seed PanelManager configs from apps (apps are the source of truth)
   const terminalHtml = `file://${path.join(__dirname, "..", "renderer", "terminal.html")}`;
   const terminalPreload = path.join(__dirname, "terminal-preload.js");
+  const workbenchHtml = `file://${path.join(__dirname, "..", "renderer", "workbench.html")}`;
+  const workbenchPreload = path.join(__dirname, "workbench-preload.js");
   const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
   // Slugs that map to home.html with ?section=<slug>. Dashboard shell (5a):
   // Agents/Schedules/Layouts/Skills/Drips/Settings management moved to
@@ -931,6 +939,8 @@ async function boot() {
       panelManager.addPanel(app.id, `${homeHtml}?section=${section}&dashboard=1`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
+    } else if (app.url === "yo://workbench") {
+      panelManager.addPanel(app.id, workbenchHtml, workbenchPreload);
     } else if (app.url === "yo://browser") {
       // Always open at the configured homepage (Appearance tab) — restoring
       // the last-visited URL here made the homepage setting a no-op.
@@ -1336,6 +1346,8 @@ async function boot() {
       panelManager.addPanel(instanceId, `${homeHtml}?section=${section}`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
+    } else if (app.url === "yo://workbench") {
+      panelManager.addPanel(instanceId, workbenchHtml, workbenchPreload);
     } else if (app.url === "yo://browser") {
       // New browser panels start at the configured homepage (Appearance tab).
       panelManager.addPanel(instanceId, browserHtmlUrl(resolveBrowserHome()), undefined, undefined, true);
@@ -2422,10 +2434,15 @@ async function boot() {
       instanceBindings.set(instanceId, { appId: baseId, folder });
     }
   }
-  // yo://agent removed — the right-rail Yo is the only chat surface now.
-  // The agents:open-as-app channel becomes a no-op so renderers don't
-  // crash if they still try to call it.
-  ipcMain.handle("agents:open-as-app", () => false);
+  // yo://agent (the in-app chat agent) was removed in the pivot. Clicking an
+  // agent now opens the developer Workbench (Files/Terminal/Monaco/Preview/Diff)
+  // seeded at the current working directory. Agents don't carry their own cwd
+  // in the config, so we open at the default folder; the Workbench will evolve
+  // to bind per-agent folders later.
+  ipcMain.handle("agents:open-as-app", (_e, _slug: string) => {
+    openFreshInternalApp("workbench");
+    return true;
+  });
 
   // Approval system, ask_user_question, and preview_url (wb-preview:*)
   // callback wiring removed — they only served the interactive chat agent's

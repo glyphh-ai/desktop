@@ -152,7 +152,11 @@ function renderAgentsList(): void {
       await window.yo.agentsRemove(a.id);
       await loadAgents();
     });
-    card.addEventListener("click", () => openEditor(a));
+    // Clicking the card opens the developer Workbench for this agent. The
+    // pencil (crud-edit-btn) still opens the CRUD editor for config changes.
+    card.addEventListener("click", () => {
+      void (window.yo as any).agentsOpenAsApp?.(a.id);
+    });
     list.appendChild(card);
   }
 
