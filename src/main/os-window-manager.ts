@@ -73,10 +73,12 @@ function esc(s: string): string { return s.replace(/\\/g, "\\\\").replace(/"/g, 
 
 // ── macOS (System Events) ────────────────────────────────────────────────
 
+// NB: `rows` is a reserved System Events term (table rows) — using it as a
+// variable throws -10006. Use `acc` for the accumulator.
 const MAC_LIST = `
 tell application "System Events"
   set AppleScript's text item delimiters to linefeed
-  set rows to {}
+  set acc to {}
   repeat with proc in (every process whose visible is true and background only is false)
     set pn to name of proc
     set wi to 0
@@ -85,11 +87,11 @@ tell application "System Events"
       try
         set pos to position of w
         set sz to size of w
-        set end of rows to pn & tab & wi & tab & (name of w) & tab & (item 1 of pos) & tab & (item 2 of pos) & tab & (item 1 of sz) & tab & (item 2 of sz)
+        set end of acc to pn & tab & wi & tab & (name of w) & tab & (item 1 of pos) & tab & (item 2 of pos) & tab & (item 1 of sz) & tab & (item 2 of sz)
       end try
     end repeat
   end repeat
-  return rows as text
+  return acc as text
 end tell`;
 
 async function macList(): Promise<OsWindow[]> {
