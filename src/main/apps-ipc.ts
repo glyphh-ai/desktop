@@ -1,5 +1,6 @@
 import { app, ipcMain, dialog } from "electron";
 import fs from "fs";
+import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./yo-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
@@ -49,12 +50,15 @@ function registerPanelAppsIpc(): void {
     return { ok: true };
   });
 
-  // Native-app icon: extract the OS icon for an executable / .app bundle as a
-  // data URL (Apps page, Layouts cards, command overlay). Session-cached per
-  // path. getFileIcon runs on Chromium's worker pool — the renderer primes
-  // dozens of paths at once, so calls are SERIALIZED through a promise chain
-  // (parallel getFileIcon calls have crashed ThreadPoolForegroundWorker) and
-  // the path is validated to exist first.
+  // Native-app icon as a data URL (Apps page, Layouts cards, command overlay),
+  // session-cached per path and SERIALIZED through a promise chain.
+  //
+  // macOS deliberately does NOT use app.getFileIcon: it decodes NSImage icon
+  // reps on Chromium's worker pool and a malformed rep hard-CHECKs the whole
+  // process (SIGTRAP in rust_bmp…Reader::metadata_loaded — crashed twice).
+  // Instead the icon is extracted out-of-process (icns → sips → PNG); a bad
+  // icon can only fail the sips child, never Electron. Windows keeps
+  // getFileIcon (SHGetFileInfo path, not implicated).
   const fileIconCache = new Map<string, string>();
   let fileIconChain: Promise<unknown> = Promise.resolve();
   ipcMain.handle("app-file-icon", (_e, execPath: string) => {
@@ -68,8 +72,12 @@ function registerPanelAppsIpc(): void {
       let url = "";
       try {
         if (fs.existsSync(p)) {
-          const icon = await app.getFileIcon(p, { size: "large" });
-          url = icon.isEmpty() ? "" : icon.toDataURL();
+          if (process.platform === "darwin") {
+            url = await extractMacAppIcon(p);
+          } else {
+            const icon = await app.getFileIcon(p, { size: "large" });
+            url = icon.isEmpty() ? "" : icon.toDataURL();
+          }
         }
       } catch { url = ""; }
       fileIconCache.set(p, url);
