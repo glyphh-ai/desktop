@@ -10343,3 +10343,14 @@ select.settings-input {
 .home-card-row-meta .crud-card-meta { flex: none; }
 .home-card-open { flex-shrink: 0; opacity: 0.7; }
 .home-list-card:hover .home-card-open { opacity: 1; }
+
+/* ── Form-field focus highlight ──────────────────────────────
+   Neutral highlight (white in dark mode, black in light mode) instead of the
+   purple accent — applies app-wide, overriding the per-component :focus rules.
+   Error/invalid states keep their own higher-specificity colour. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+textarea:focus,
+select:focus {
+  border-color: var(--text-bright) !important;
+  box-shadow: none !important;
+}

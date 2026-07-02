@@ -2,6 +2,8 @@
  * Settings section — model config, toggles, MCP expose, tool overrides.
  */
 
+import { confirmAction } from "./shared.js";
+
 // ── Settings ─────────────────────────────────────────────
 
 const settingsSaveBtn = document.getElementById("settings-save") as HTMLButtonElement;
@@ -103,12 +105,13 @@ interface ProviderRow {
   keysUrl: string;
 }
 
+// Mirrors the platform Providers page (yo-platform .../settings/providers).
+// xAI (Grok) and Perplexity are hidden — neither has a real SDK integration
+// yet, only the generic OpenAI-compatible adapter — so they don't appear here.
 const PROVIDER_ROWS: ProviderRow[] = [
-  { id: "anthropic",   label: "Anthropic (Claude)",     hint: "Claude chat outside the agent loop and read-only swarm agents on Claude.", keyExample: "sk-ant-…",  keysUrl: "https://console.anthropic.com/settings/keys" },
-  { id: "openai",      label: "OpenAI",                 hint: "GPT-4 / GPT-5 across swarm agents and direct chat.",                       keyExample: "sk-proj-…", keysUrl: "https://platform.openai.com/api-keys" },
-  { id: "google",      label: "Google AI (Gemini)",     hint: "Gemini family models in swarm agents and direct chat.",                    keyExample: "AIza…",     keysUrl: "https://aistudio.google.com/apikey" },
-  { id: "xai",         label: "xAI (Grok)",             hint: "Grok models in read-only swarm agents and direct chat.",                   keyExample: "xai-…",     keysUrl: "https://console.x.ai" },
-  { id: "perplexity",  label: "Perplexity",             hint: "Perplexity search-grounded models in read-only swarm agents.",             keyExample: "pplx-…",    keysUrl: "https://www.perplexity.ai/settings/api" },
+  { id: "anthropic",  label: "Anthropic (Claude)", hint: "Claude models for agents and swarms running on your own key.", keyExample: "sk-ant-…",  keysUrl: "https://console.anthropic.com/settings/keys" },
+  { id: "openai",     label: "OpenAI",             hint: "GPT-4 / GPT-5 across swarm agents.",                          keyExample: "sk-proj-…", keysUrl: "https://platform.openai.com/api-keys" },
+  { id: "google",     label: "Google AI (Gemini)", hint: "Gemini family models in swarm agents.",                       keyExample: "AIza…",     keysUrl: "https://aistudio.google.com/apikey" },
 ];
 
 async function renderProviderKeys() {
@@ -116,7 +119,6 @@ async function renderProviderKeys() {
   if (!container) return;
   const status = await window.yo.providerKeysList();
   const byId = new Map(status.map((s) => [s.provider, s]));
-  const allModels = await window.yo.providerModelsGetAll().catch(() => ({} as Record<string, { default: string; models: string[] }>));
   container.innerHTML = "";
 
   for (const row of PROVIDER_ROWS) {
@@ -144,6 +146,7 @@ async function renderProviderKeys() {
       badge.textContent = "verified";
       badge.style.background = "rgba(140, 59, 242,0.18)";
       badge.style.color = "var(--text)";
+      badge.style.fontWeight = "700";
     } else {
       badge.textContent = "configured";
       badge.style.background = "rgba(165,165,255,0.18)";
@@ -159,18 +162,18 @@ async function renderProviderKeys() {
     hint.textContent = row.hint;
     card.appendChild(hint);
 
-    // Link to the provider's API-keys page — opens in-yo (browser tab), not external.
+    // "Get API key" link — opens in-yo (browser tab), not external.
     const keyLink = document.createElement("a");
     keyLink.textContent = "Get API key ↗";
     keyLink.href = "#";
-    keyLink.style.cssText = "font-size:12px;color:var(--accent);text-decoration:none;font-weight:500;margin-bottom:10px;display:inline-block;";
+    keyLink.style.cssText = "font-size:12px;color:var(--text);text-decoration:underline;font-weight:700;margin-bottom:10px;display:inline-block;";
     keyLink.addEventListener("click", (e) => {
       e.preventDefault();
       void window.yo.execCommand(`dip ${row.keysUrl}`);
     });
     card.appendChild(keyLink);
 
-    // Input + buttons
+    // Input + Save (+ Remove when configured)
     const inputRow = document.createElement("div");
     inputRow.style.cssText = "display:flex;gap:6px;align-items:center;";
     const input = document.createElement("input");
@@ -180,65 +183,34 @@ async function renderProviderKeys() {
     input.style.cssText = "flex:1;font-family:var(--font-mono, monospace);";
     inputRow.appendChild(input);
 
+    const errEl = document.createElement("p");
+    errEl.className = "hidden";
+    errEl.style.cssText = "margin-top:6px;font-size:12px;color:#d44a4a;";
+
     const saveBtn = document.createElement("button");
-    saveBtn.className = "action-btn primary";
+    saveBtn.className = "btn btn-primary";
     saveBtn.textContent = "Save";
-    saveBtn.addEventListener("click", async () => {
+    const runSave = async () => {
       const key = input.value.trim();
       if (!key) return;
-      saveBtn.disabled = true;
+      saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+      errEl.classList.add("hidden");
       const r = await window.yo.providerKeysSet(row.id, key);
-      saveBtn.disabled = false;
+      saveBtn.disabled = false; saveBtn.textContent = "Save";
+      if (!r.ok) { errEl.textContent = r.error || "Save failed"; errEl.classList.remove("hidden"); return; }
       input.value = "";
-      if (!r.ok) { alert(`Save failed: ${r.error || "unknown"}`); return; }
       await renderProviderKeys();
-    });
+    };
+    saveBtn.addEventListener("click", () => void runSave());
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") void runSave(); });
     inputRow.appendChild(saveBtn);
 
-    let testRespEl: HTMLElement | null = null;
     if (s?.configured) {
-      // Live test: send a real prompt and show the model's reply (or the error).
-      testRespEl = document.createElement("div");
-      testRespEl.style.cssText = "display:none;margin-top:8px;font-size:12px;border-radius:6px;padding:8px 10px;white-space:pre-wrap;line-height:1.5;font-family:var(--font-mono, monospace);";
-
-      const testPromptBtn = document.createElement("button");
-      testPromptBtn.className = "action-btn primary";
-      testPromptBtn.textContent = "Send test";
-      testPromptBtn.title = "Send a one-shot prompt to this provider and show the response";
-      testPromptBtn.addEventListener("click", async () => {
-        const re = testRespEl!;
-        testPromptBtn.disabled = true;
-        const prev = testPromptBtn.textContent;
-        testPromptBtn.textContent = "Sending…";
-        re.style.display = "block";
-        re.style.background = "var(--surface-3)";
-        re.style.color = "var(--text-2)";
-        re.style.border = "1px solid var(--border)";
-        re.textContent = `Contacting ${row.label}…`;
-        let r: { ok: boolean; text?: string; model?: string; error?: string };
-        try { r = await window.yo.providerKeysTestPrompt(row.id); }
-        catch (e) { r = { ok: false, error: e instanceof Error ? e.message : String(e) }; }
-        testPromptBtn.disabled = false;
-        testPromptBtn.textContent = prev;
-        if (r.ok) {
-          re.style.background = "var(--accent-bg)";
-          re.style.color = "var(--text)";
-          re.style.border = "1px solid var(--accent)";
-          re.textContent = `✓ ${r.model}\n\n${r.text}`;
-        } else {
-          re.style.background = "rgba(212,74,74,0.12)";
-          re.style.color = "#d44a4a";
-          re.style.border = "1px solid #d44a4a";
-          re.textContent = `✗ ${r.model || row.id} failed:\n\n${r.error || "unknown error"}`;
-        }
-      });
-      inputRow.appendChild(testPromptBtn);
-
       const removeBtn = document.createElement("button");
-      removeBtn.className = "action-btn danger";
+      removeBtn.className = "btn btn-danger";
       removeBtn.textContent = "Remove";
       removeBtn.addEventListener("click", async () => {
-        if (!confirm(`Remove the saved ${row.label} key?`)) return;
+        if (!(await confirmAction(`Remove the saved ${row.label} key?`))) return;
         await window.yo.providerKeysRemove(row.id);
         await renderProviderKeys();
       });
@@ -246,67 +218,7 @@ async function renderProviderKeys() {
     }
 
     card.appendChild(inputRow);
-    if (testRespEl) card.appendChild(testRespEl);
-
-    // ── Editable model catalog (so users can fix/add models as providers change) ──
-    const cfg = allModels[row.id] || { default: "", models: [] };
-    const details = document.createElement("details");
-    details.style.cssText = "margin-top:10px;";
-    const summary = document.createElement("summary");
-    summary.style.cssText = "cursor:pointer;font-size:12px;color:var(--text-2);user-select:none;";
-    summary.textContent = `Models (${cfg.models.length}) — default: ${cfg.default || "none"}`;
-    details.appendChild(summary);
-
-    const inner = document.createElement("div");
-    inner.style.cssText = "margin-top:8px;display:flex;flex-direction:column;gap:6px;";
-    const ta = document.createElement("textarea");
-    ta.className = "settings-input";
-    ta.style.cssText = "min-height:84px;font-family:var(--font-mono, monospace);font-size:12px;";
-    ta.placeholder = "one model id per line";
-    ta.value = cfg.models.join("\n");
-    const defLabel = document.createElement("label");
-    defLabel.className = "settings-label";
-    defLabel.textContent = "Default model";
-    const defSel = document.createElement("select");
-    defSel.className = "settings-input";
-    defSel.style.width = "auto";
-    const fillDefSel = () => {
-      const models = ta.value.split("\n").map((m) => m.trim()).filter(Boolean);
-      defSel.innerHTML = "";
-      for (const m of models) { const o = document.createElement("option"); o.value = m; o.textContent = m; defSel.appendChild(o); }
-      defSel.value = models.includes(cfg.default) ? cfg.default : (models[0] || "");
-    };
-    fillDefSel();
-    ta.addEventListener("input", fillDefSel);
-
-    const mStatus = document.createElement("span");
-    mStatus.style.cssText = "font-size:11px;color:var(--text-3);";
-    const saveModelsBtn = document.createElement("button");
-    saveModelsBtn.className = "action-btn primary";
-    saveModelsBtn.textContent = "Save models";
-    saveModelsBtn.addEventListener("click", async () => {
-      const models = ta.value.split("\n").map((m) => m.trim()).filter(Boolean);
-      await window.yo.providerModelsSet(row.id, models, defSel.value);
-      mStatus.textContent = "Saved ✓";
-      await renderProviderKeys();
-    });
-    const resetModelsBtn = document.createElement("button");
-    resetModelsBtn.className = "action-btn";
-    resetModelsBtn.textContent = "Reset to defaults";
-    resetModelsBtn.addEventListener("click", async () => {
-      await window.yo.providerModelsReset(row.id);
-      await renderProviderKeys();
-    });
-    const mBtnRow = document.createElement("div");
-    mBtnRow.style.cssText = "display:flex;gap:6px;align-items:center;";
-    mBtnRow.append(saveModelsBtn, resetModelsBtn, mStatus);
-
-    inner.append(
-      (() => { const l = document.createElement("label"); l.className = "settings-label"; l.textContent = "Available models (one per line)"; return l; })(),
-      ta, defLabel, defSel, mBtnRow,
-    );
-    details.appendChild(inner);
-    card.appendChild(details);
+    card.appendChild(errEl);
 
     // Last-test detail line (failures only)
     if (s?.lastTestOk === false && s.lastTestError) {
