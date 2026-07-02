@@ -318,6 +318,7 @@ contextBridge.exposeInMainWorld("yo", {
 
   // Theme
   getTheme: () => ipcRenderer.invoke("get-theme") as Promise<string>,
+  exportGlyphhSkill: (provider: string) => ipcRenderer.invoke("export-glyphh-skill", provider) as Promise<{ ok: boolean; path?: string; error?: string }>,
   setTheme: (theme: string) => ipcRenderer.invoke("set-theme", theme),
 
   // Account info

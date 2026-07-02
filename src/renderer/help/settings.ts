@@ -259,6 +259,27 @@ function initSettings() {
     window.yo.relaunch();
   });
 
+  // Export a Glyphh skill for an external LLM (Claude / Gemini / OpenAI).
+  const exportSkillStatus = document.getElementById("export-skill-status");
+  for (const btn of Array.from(document.querySelectorAll<HTMLButtonElement>("[id^='export-skill-']"))) {
+    const provider = btn.dataset.provider;
+    if (!provider) continue;
+    btn.addEventListener("click", async () => {
+      if (exportSkillStatus) { exportSkillStatus.textContent = "Saving…"; exportSkillStatus.style.color = "var(--text-3)"; }
+      const res = await window.yo.exportGlyphhSkill(provider);
+      if (!exportSkillStatus) return;
+      if (res.ok) {
+        exportSkillStatus.textContent = `Saved ${res.path}`;
+        exportSkillStatus.style.color = "var(--text-2)";
+      } else if (res.error !== "Canceled") {
+        exportSkillStatus.textContent = `✗ ${res.error}`;
+        exportSkillStatus.style.color = "var(--danger)";
+      } else {
+        exportSkillStatus.textContent = "";
+      }
+    });
+  }
+
   // Manage Account — open the platform inside the app (a panel tab), the same
   // way the left-rail Platform button does (.dip <platformUrl>).
   document.getElementById("account-dashboard-btn")?.addEventListener("click", () => {

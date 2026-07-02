@@ -239,6 +239,7 @@ declare global {
       onPanelUrlUpdate: (cb: (info: { id: string; url: string; favicon: string }) => void) => void;
       // Theme
       getTheme: () => Promise<string>;
+      exportGlyphhSkill: (provider: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
       setTheme: (theme: string) => Promise<void>;
       // Account info
       getAuthStatus: () => Promise<{ authenticated: boolean; status: string; tier?: string }>;

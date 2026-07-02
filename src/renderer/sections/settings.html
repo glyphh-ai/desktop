@@ -46,6 +46,18 @@
                   <button id="settings-save" class="action-btn primary">Save</button>
                   <span id="settings-status"></span>
                 </div>
+
+                <hr style="border:none;border-top:1px solid var(--border-2);margin:24px 0;" />
+                <h3 class="settings-subheading" style="margin:0 0 4px;">Glyphh Skills</h3>
+                <p style="font-size:12px;color:var(--text-2);margin:0 0 10px;">
+                  Export a skill that teaches your AI assistant to drive Glyphh through the MCP relay — open apps and layouts, run your installed apps' tools, and orchestrate tasks. Save it into that tool's skills or custom instructions, then connect the Glyphh endpoint in <strong>Settings &gt; MCP</strong>.
+                </p>
+                <div class="settings-actions" style="display:flex;gap:8px;">
+                  <button id="export-skill-claude" class="action-btn" data-provider="claude">Claude</button>
+                  <button id="export-skill-gemini" class="action-btn" data-provider="gemini">Gemini</button>
+                  <button id="export-skill-openai" class="action-btn" data-provider="openai">OpenAI</button>
+                </div>
+                <span id="export-skill-status" style="font-size:11px;color:var(--text-3);margin-top:8px;display:inline-block;"></span>
               </div>
 
               <!-- Appearance: Tabs, URL bar, Browser home -->

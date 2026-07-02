@@ -1,4 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme } from "electron";
+import fs from "fs";
+import { generateGlyphhSkill } from "./glyphh-skill-export";
 import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, serverGetAuthed, serverPatchAuthed } from "./auth";
 import type { LLMConfig } from "./llm-config";
 import type { SessionCache } from "./session-cache";
@@ -284,4 +286,26 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   });
 
   ipcMain.handle("cc-status", () => ccBootstrapStatus());
+
+  // Export a provider-tailored Glyphh skill (Claude / Gemini / OpenAI) — a file
+  // that teaches that LLM to drive Glyphh over the MCP relay. Shows a save
+  // dialog and writes it.
+  ipcMain.handle("export-glyphh-skill", async (_e, provider: string) => {
+    const p = provider === "gemini" || provider === "openai" ? provider : "claude";
+    const { filename, content } = generateGlyphhSkill(p as "claude" | "gemini" | "openai");
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
+    const result = await dialog.showSaveDialog(win, {
+      title: "Export Glyphh skill",
+      defaultPath: filename,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
+    try {
+      fs.writeFileSync(result.filePath, content, "utf8");
+      return { ok: true, path: result.filePath };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 }
