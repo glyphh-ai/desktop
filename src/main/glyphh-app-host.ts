@@ -124,9 +124,13 @@ export interface GlyphhAppRow {
   launchConfig?: Record<string, unknown> | null;
 }
 
-/** True when a saved-app row is an installed Glyphh app. */
-export function isGlyphhAppRow(row: { appArchetype?: string | null }): boolean {
-  return row.appArchetype === "glyphh-app";
+/** True when a saved-app row is an installed Glyphh app — by archetype, or
+ *  structurally (its executable is an .html entry, which must never be spawned
+ *  as a program). The structural check keeps routing correct even if the
+ *  archetype field was dropped somewhere. */
+export function isGlyphhAppRow(row: { appArchetype?: string | null; execPath?: string | null }): boolean {
+  if (row.appArchetype === "glyphh-app") return true;
+  return !!row.execPath && /\.html?$/i.test(row.execPath);
 }
 
 /** Open (or focus) an installed Glyphh app from its saved-app row. */

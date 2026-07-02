@@ -17,7 +17,7 @@ import {
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
 import { positionAppWindow } from "./os-window-manager.js";
 import { findInstalledApp, launchInstalledApp, normKey, isSubsequence } from "./installed-apps.js";
-import { openGlyphhApp } from "./glyphh-app-host.js";
+import { openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host.js";
 
 export interface ServerApp {
   id: string;
@@ -125,7 +125,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   }
 
   // Installed Glyphh app (marketplace unit) → capability-scoped window.
-  if (app.appArchetype === "glyphh-app") {
+  if (isGlyphhAppRow(app)) {
     const r = openGlyphhApp({ name: app.name, slug: app.slug, execPath: app.execPath, launchConfig: app.launchConfig });
     if (!r.ok) throw new Error(r.error || "failed to open app");
     return { slug: app.slug, name: app.name };
@@ -204,6 +204,13 @@ export async function openLayoutByName(
       || apps.find((a) => a.slug === key)
       || apps.find((a) => a.name.toLowerCase() === key);
     if (!app) { console.error(`[layout] cell "${cell.panelId}" — no matching app in library`); continue; }
+
+    // Installed Glyphh app → its own capability-scoped window (no tiling).
+    if (isGlyphhAppRow(app)) {
+      const gr = openGlyphhApp({ name: app.name, slug: app.slug, execPath: app.execPath, launchConfig: app.launchConfig });
+      if (gr.ok) opened.push(app.slug);
+      continue;
+    }
 
     // Native = explicitly flagged native, OR simply has an executable and no
     // URL (defensive: don't depend solely on the isBrowser flag).

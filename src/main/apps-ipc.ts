@@ -8,7 +8,7 @@ import { openAppWindow } from "./app-window-manager";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch";
 import { openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
-import { isGlyphhAppBundle, installGlyphhAppBundle, openGlyphhApp } from "./glyphh-app-host";
+import { isGlyphhAppBundle, installGlyphhAppBundle, openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -37,7 +37,7 @@ function registerPanelAppsIpc(): void {
   }) => {
     if (!spec) return { ok: false, error: "No app given" };
     // Installed Glyphh app (marketplace unit) → open its capability-scoped window.
-    if (spec.appArchetype === "glyphh-app") {
+    if (isGlyphhAppRow(spec)) {
       return openGlyphhApp({ name: spec.name, slug: spec.slug, execPath: spec.execPath, launchConfig: spec.launchConfig });
     }
     const isBrowser = spec.isBrowser !== false; // legacy rows default to browser

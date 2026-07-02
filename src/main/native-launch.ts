@@ -20,6 +20,19 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+/** Detached spawn with a MANDATORY error handler — a failed exec (EACCES,
+ *  ENOENT, …) emits 'error' asynchronously, and with no listener Node raises an
+ *  uncaught exception that crashes the app. Log instead. */
+function safeSpawn(cmd: string, args: string[], cwd?: string): void {
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: "ignore", cwd });
+    child.on("error", (err) => console.error(`[native-launch] spawn failed (${cmd}):`, err.message));
+    child.unref();
+  } catch (err) {
+    console.error(`[native-launch] spawn threw (${cmd}):`, err instanceof Error ? err.message : String(err));
+  }
+}
+
 /** Escape a string for embedding inside an AppleScript double-quoted literal. */
 function appleEscape(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -96,6 +109,12 @@ export function launchNativeApp(
 ): LaunchResult {
   const exec = str(execPath);
   if (!exec) return { ok: false, error: "Native app has no executable path" };
+  // Guard: an HTML entry (e.g. a Glyphh app's index.html) must NEVER be
+  // spawned as a program — spawn would fire an async EACCES that crashes the
+  // whole app. Those apps are opened by glyphh-app-host, not here.
+  if (/\.html?$/i.test(exec)) {
+    return { ok: false, error: "not a launchable executable (Glyphh apps open in their own window)" };
+  }
   const lc = launchConfig || {};
 
   // macOS Terminal.app honors the window/tab choice + runs cwd/init commands
@@ -127,15 +146,11 @@ export function launchNativeApp(
       const args = ["-a", exec];
       if (pathArg) args.push(pathArg);
       if (genericArgs.length) args.push("--args", ...genericArgs);
-      spawn("open", args, { detached: true, stdio: "ignore" }).unref();
+      safeSpawn("open", args);
     } else {
       // Plain executable — spawn directly with cwd honored where relevant.
       const args = [...(pathArg ? [pathArg] : []), ...genericArgs];
-      spawn(exec, args, {
-        detached: true,
-        stdio: "ignore",
-        cwd: str(lc.cwd) || undefined,
-      }).unref();
+      safeSpawn(exec, args, str(lc.cwd) || undefined);
     }
     return { ok: true };
   } catch (err) {
