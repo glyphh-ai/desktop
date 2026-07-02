@@ -219,6 +219,19 @@ export function openAppWindow(spec: AppWindowSpec): void {
   createAppWindow(spec, cascadeBounds());
 }
 
+/** Open (or move) a Glyphh app window at exact screen bounds — used to tile a
+ *  web/webview app into a layout cell. */
+export function openAppWindowAt(spec: AppWindowSpec, bounds: Electron.Rectangle): void {
+  const existing = windows.get(spec.slug);
+  if (existing && !existing.win.isDestroyed()) {
+    existing.win.setBounds(bounds);
+    if (existing.win.isMinimized()) existing.win.restore();
+    existing.win.focus();
+    return;
+  }
+  createAppWindow(spec, bounds);
+}
+
 export function focusAppWindow(slug: string): boolean {
   const entry = windows.get(slug);
   if (!entry || entry.win.isDestroyed()) return false;

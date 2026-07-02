@@ -343,6 +343,27 @@ export async function minimizeAll(): Promise<boolean> {
   return false;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Find the window matching `match` (process name or title, case-insensitive)
+ * and move it to `rect`. Polls briefly because a just-launched native app's
+ * window may not exist yet. Best-effort — returns false if never found.
+ */
+export async function positionAppWindow(match: string, rect: Rect, attempts = 8, delayMs = 300): Promise<boolean> {
+  const m = match.trim().toLowerCase();
+  if (!m || !osWindowsSupported()) return false;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const wins = await listWindows();
+      const w = wins.find((x) => x.proc.toLowerCase().includes(m) || x.title.toLowerCase().includes(m));
+      if (w) { await applyBounds([toTarget(w, rect)]); return true; }
+    } catch { /* retry */ }
+    await sleep(delayMs);
+  }
+  return false;
+}
+
 /** Even grid of N cells across the work area (cols = ceil(sqrt(N))). */
 function gridRects(n: number): Rect[] {
   const wa = workArea();

@@ -342,9 +342,9 @@ function renderLayoutsList() {
 
     card.querySelector(".crud-open-btn")!.addEventListener("click", (e) => {
       e.stopPropagation();
-      // Same path .dip <layout> takes — execCommand routes through
-      // commandParser → layout-manager + closes the help overlay.
-      void window.yo.execCommand(`dip ${layout.name}`);
+      // Hand off to the OS layout manager: real windows tiled across the
+      // display. Nothing renders inside the Glyphh client.
+      void window.yo.layoutsOpen(layout.name);
       closeHelp();
     });
 

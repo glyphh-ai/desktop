@@ -4,6 +4,7 @@ import { exportApp, importApp, localBundleDir } from "./yo-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
 import { openAppWindow } from "./app-window-manager";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch";
+import { openLayoutByName } from "./app-resolver";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -137,6 +138,14 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   } = deps;
 
   registerPanelAppsIpc();
+
+  // Open a saved layout at the OS level — real windows tiled across the display
+  // (nothing renders inside the Glyphh client). This is the hand-off the Layouts
+  // tab's "Open" button uses instead of the legacy in-window layout manager.
+  ipcMain.handle("layouts-open", async (_e, name: string) => {
+    try { return { ok: true, ...(await openLayoutByName(String(name), "screen")) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
 
   // IPC: layouts CRUD
   // Server-authoritative (yo-server /api/layouts) — refresh the local cache

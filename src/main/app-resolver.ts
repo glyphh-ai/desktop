@@ -8,12 +8,14 @@
  * OS windows — nothing renders inside the Glyphh client.
  */
 
+import { screen } from "electron";
 import { serverGetAuthed } from "./auth.js";
 import {
-  openAppWindow, openLayoutOnScreen, openLayoutInWindow,
+  openAppWindow, openAppWindowAt, openLayoutInWindow,
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
 } from "./app-window-manager.js";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
+import { positionAppWindow } from "./os-window-manager.js";
 
 export interface ServerApp {
   id: string;
@@ -121,10 +123,59 @@ export async function openLayoutByName(
   }
 
   const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
-  const resolve = makeCellResolver(apps);
-  const opened = mode === "screen"
-    ? openLayoutOnScreen(layout, resolve)
-    : openLayoutInWindow(layout, resolve);
+
+  if (mode === "window") {
+    const opened = openLayoutInWindow(layout, makeCellResolver(apps));
+    if (opened.length === 0) throw new Error(`layout "${layout.name}" has no resolvable apps`);
+    return { layout: layout.name, mode, apps: opened };
+  }
+
+  // "screen" mode — tile each cell as a real OS window. Web/webview apps become
+  // Glyphh windows placed at the cell rect; native apps (VS Code, Terminal…) are
+  // launched, then best-effort moved into place through the OS window layer.
+  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const colW = wa.width / layout.cols;
+  const rowH = wa.height / layout.rows;
+  const opened: string[] = [];
+
+  for (const cell of layout.cells) {
+    const bounds = {
+      x: Math.round(wa.x + cell.col * colW),
+      y: Math.round(wa.y + cell.row * rowH),
+      width: Math.round(cell.colSpan * colW),
+      height: Math.round(cell.rowSpan * rowH),
+    };
+    const key = cell.panelId.trim().toLowerCase();
+
+    const builtin = builtinSpec(key);
+    if (builtin) { openAppWindowAt(builtin, bounds); opened.push(builtin.slug); continue; }
+
+    const app = apps.find((a) => a.slug === key) || apps.find((a) => a.id === cell.panelId);
+    if (!app) continue;
+
+    const isBrowser = app.isBrowser !== false;
+    if (!isBrowser) {
+      // Native desktop app — launch it, then nudge its OS window to the cell.
+      const r = launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
+      if (!r.ok) continue;
+      const hint = (app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name;
+      void positionAppWindow(hint, bounds);
+      opened.push(app.slug);
+      continue;
+    }
+    if (app.browserTarget === "native") {
+      // Opens in the user's real Chrome; positioning a specific Chrome window
+      // isn't reliable, so just launch it.
+      launchInNativeChrome(String(app.url || ""));
+      opened.push(app.slug);
+      continue;
+    }
+    const url = String(app.url || "");
+    if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
+    openAppWindowAt({ slug: app.slug, name: app.name, url, forceWeb: !!app.forceWeb }, bounds);
+    opened.push(app.slug);
+  }
+
   if (opened.length === 0) throw new Error(`layout "${layout.name}" has no resolvable apps`);
   return { layout: layout.name, mode, apps: opened };
 }
