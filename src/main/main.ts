@@ -36,7 +36,6 @@ import path from "path";
 import fs from "fs";
 import { PanelManager } from "./panel-manager";
 import { TerminalManager, AgentSpawnConfig } from "./terminal";
-import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { writeAgentBriefing, ensureProjectClaudeMd, ensureProjectMcpJson, rewriteAllBriefings } from "./agent-briefing";
 import { CommandParser } from "./command-parser";
 import { SkillEngine } from "./skill-engine";
@@ -45,8 +44,7 @@ import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo
 import { CloudSync } from "./cloud-sync";
 import { initCapabilities, setOfferEnabled, getCapabilitiesStatus, cleanupCapabilities } from "./capability-sync";
 import { CypherBus } from "./cypher-bus";
-import { listAgents, getAgent, saveAgent, removeAgent, idAvailable, refreshAgentsFromServer, type AgentConfig as AgentRegistryConfig } from "./stores/agent-store-db";
-import { pushAgentProfile, deleteAgentProfile, syncAllAgents } from "./agent-sync";
+import { listAgents, getAgent, type AgentConfig as AgentRegistryConfig } from "./stores/agent-store-db";
 import { loadLLMConfig, saveLLMConfig, LLMConfig } from "./llm-config";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
@@ -97,12 +95,11 @@ import { registerCodeIndexIpc } from "./code-index/ipc";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
-import { SkillToolRouter } from "./skill-tool-router";
-import { SkillScheduler } from "./skill-scheduler";
 import { DataStore, closeDataStoreDb } from "./data-store";
 import { closeSubstrateDb } from "./substrate/store";
 import { registerSettingsIpc } from "./settings-ipc";
 import { registerSkillsIpc } from "./skills-ipc";
+import { SkillScheduler } from "./skill-scheduler";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerMarketplaceIpc } from "./marketplace-ipc";
 import { registerHomeIpc } from "./home-ipc";
@@ -151,7 +148,6 @@ function syncMcpExpose(): void {
 let mcpManager: McpManager | null = null;
 let dripManager: DripManager | null = null;
 let connectorManager: ConnectorManager | null = null;
-let skillToolRouter: SkillToolRouter | null = null;
 let skillScheduler: SkillScheduler | null = null;
 
 // ── DOM Picker script (injected into panel webContents) ─────
@@ -446,10 +442,9 @@ async function boot() {
     mainWindow?.webContents.send("mcp-changed");
   });
 
-  // Skill system — tool router, runner dependencies, scheduler
-  skillToolRouter = new SkillToolRouter();
-  skillToolRouter.setYoTools(listBuiltinYoTools());
-  skillToolRouter.setMcpManager(mcpManager);
+  // Skill runtime — the Skills UI is removed, but the engine still powers
+  // substrate yo.* tools, the yo/sup command chain, and the Schedules feature
+  // (via SkillScheduler, which runs skills with `schedule:` frontmatter).
   skillEngine.setMcpManager(mcpManager);
   skillScheduler = new SkillScheduler(skillEngine);
   skillScheduler.start();
@@ -660,11 +655,6 @@ async function boot() {
   // Terminal manager — pty processes for terminal panels
   terminalManager = new TerminalManager();
   terminalManager.init();
-
-  // Workbench terminal — multi-pty-per-panel bridge (wb-term:* IPC) for the
-  // yo://workbench Terminal slot, which hosts several terminals as tabs in one
-  // renderer.
-  registerWorkbenchTerminalIpc();
 
   // Cypher bus — canonical message bus for inter-agent communication
   const cypherBus = new CypherBus(
@@ -904,17 +894,10 @@ async function boot() {
   // Seed PanelManager configs from apps (apps are the source of truth)
   const terminalHtml = `file://${path.join(__dirname, "..", "renderer", "terminal.html")}`;
   const terminalPreload = path.join(__dirname, "terminal-preload.js");
-  const workbenchHtml = `file://${path.join(__dirname, "..", "renderer", "workbench.html")}`;
-  const workbenchPreload = path.join(__dirname, "workbench-preload.js");
   const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
-  // Slugs that map to home.html with ?section=<slug>. Dashboard shell (5a):
-  // Agents/Schedules/Layouts/Skills/Drips/Settings management moved to
-  // yo-platform (server-side) — "apps" is the only local section left, the
-  // Dashboard's Apps-tab webview container.
+  // Slugs that map to home.html with ?section=<slug>.
   const HOME_SECTION_SLUGS: Record<string, string> = {
     "yo://apps": "apps",
-    "yo://skills": "skills",
-    "yo://agents": "agents",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
     "yo://about": "about",
@@ -939,8 +922,6 @@ async function boot() {
       panelManager.addPanel(app.id, `${homeHtml}?section=${section}&dashboard=1`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
-    } else if (app.url === "yo://workbench") {
-      panelManager.addPanel(app.id, workbenchHtml, workbenchPreload);
     } else if (app.url === "yo://browser") {
       // Always open at the configured homepage (Appearance tab) — restoring
       // the last-visited URL here made the homepage setting a no-op.
@@ -1346,8 +1327,6 @@ async function boot() {
       panelManager.addPanel(instanceId, `${homeHtml}?section=${section}`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
-    } else if (app.url === "yo://workbench") {
-      panelManager.addPanel(instanceId, workbenchHtml, workbenchPreload);
     } else if (app.url === "yo://browser") {
       // New browser panels start at the configured homepage (Appearance tab).
       panelManager.addPanel(instanceId, browserHtmlUrl(resolveBrowserHome()), undefined, undefined, true);
@@ -1872,13 +1851,6 @@ async function boot() {
       }
     }
   });
-
-  // Pull the org's saved agents from the server into the local cache, then
-  // sync joinable agents' discovery profiles (a separate surface). Both
-  // fire-and-forget.
-  if (isAuthenticated()) {
-    void refreshAgentsFromServer().then(() => syncAllAgents(listAgents())).catch(() => {});
-  }
 
   // ── Register cypher-panel IPC handlers BEFORE restorePanels ──
   // (The cypher panel calls these during init; if they're not yet registered
@@ -2434,16 +2406,6 @@ async function boot() {
       instanceBindings.set(instanceId, { appId: baseId, folder });
     }
   }
-  // yo://agent (the in-app chat agent) was removed in the pivot. Clicking an
-  // agent now opens the developer Workbench (Files/Terminal/Monaco/Preview/Diff)
-  // seeded at the current working directory. Agents don't carry their own cwd
-  // in the config, so we open at the default folder; the Workbench will evolve
-  // to bind per-agent folders later.
-  ipcMain.handle("agents:open-as-app", (_e, _slug: string) => {
-    openFreshInternalApp("workbench");
-    return true;
-  });
-
   // Approval system, ask_user_question, and preview_url (wb-preview:*)
   // callback wiring removed — they only served the interactive chat agent's
   // (YoAgent) SDK MCP tools, which no longer exist. mcp-expose.ts's own
@@ -2462,6 +2424,9 @@ async function boot() {
     getMainWindow: () => mainWindow, panelManager, runStore,
   });
 
+  // Skills IPC — the Skills tab/section is removed, but these handlers still
+  // back the Schedules feature (skill schedule status/run/pause) and the
+  // dormant skill engine.
   registerSkillsIpc({
     skillEngine, mcpManager, appConnector, skillScheduler, canCreateSkill, listBuiltinYoTools,
     // Route the skill's SKILL.md through the shared file-open path
@@ -2518,8 +2483,6 @@ async function boot() {
 
   registerMarketplaceIpc({
     serverGetAuthed, serverPostAuthed,
-    listAgents, getAgent, saveAgent, removeAgent, idAvailable,
-    pushAgentProfile, deleteAgentProfile,
     setOfferEnabled, getCapabilitiesStatus,
   });
 

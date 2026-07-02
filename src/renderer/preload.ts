@@ -557,30 +557,11 @@ contextBridge.exposeInMainWorld("yo", {
   relayTokensRevoke: (id: string) => ipcRenderer.invoke("relay-tokens-revoke", id) as Promise<{ ok: boolean } | { error: string }>,
   relayInstallClaude: (token: string) => ipcRenderer.invoke("relay-install-claude", token) as Promise<{ ok: boolean; path: string } | { error: string }>,
 
-  // BYOK provider keys (Phase 1 of THE-PIVOT-BYOK).
-  // List returns *status only* — never plaintext. set/remove/test mutate.
-  providerKeysList: () => ipcRenderer.invoke("provider-keys-list") as Promise<Array<{
-    provider: string;
-    configured: boolean;
-    savedAt: string | null;
-    lastTested: string | null;
-    lastTestOk: boolean | null;
-    lastTestError: string | null;
-  }>>,
+  // BYOK provider key — the only surviving path is the Claude Code bootstrap
+  // gate (boot-gate-ui.ts) saving an Anthropic key. The Providers Settings
+  // panel (list/remove/test + per-provider model catalog) was removed.
   providerKeysSet: (provider: string, key: string) =>
     ipcRenderer.invoke("provider-keys-set", provider, key) as Promise<{ ok: boolean; error?: string }>,
-  providerKeysRemove: (provider: string) =>
-    ipcRenderer.invoke("provider-keys-remove", provider) as Promise<{ ok: boolean }>,
-  providerKeysTest: (provider: string) =>
-    ipcRenderer.invoke("provider-keys-test", provider) as Promise<{ ok: boolean; error?: string }>,
-  providerKeysTestPrompt: (provider: string, model?: string, prompt?: string) =>
-    ipcRenderer.invoke("provider-keys-test-prompt", provider, model, prompt) as Promise<{ ok: boolean; text?: string; model?: string; error?: string }>,
-  providerModelsGetAll: () =>
-    ipcRenderer.invoke("provider-models-get-all") as Promise<Record<string, { default: string; models: string[] }>>,
-  providerModelsSet: (provider: string, models: string[], def?: string) =>
-    ipcRenderer.invoke("provider-models-set", provider, models, def) as Promise<{ default: string; models: string[] }>,
-  providerModelsReset: (provider: string) =>
-    ipcRenderer.invoke("provider-models-reset", provider) as Promise<{ default: string; models: string[] }>,
 
   // Claude Code bootstrap (Phase 2 of THE-PIVOT-BYOK)
   // BYOK gate status — true when an Anthropic API key is configured.
@@ -597,20 +578,10 @@ contextBridge.exposeInMainWorld("yo", {
   capabilitiesSetEnabled: (enabled: boolean) => ipcRenderer.invoke("capabilities-set-enabled", enabled) as Promise<{ ok: boolean; enabled: boolean; derived_tier?: string; client_id?: string; error?: string }>,
   capabilitiesGetStatus: () => ipcRenderer.invoke("capabilities-get-status") as Promise<{ enabled: boolean; client_id: string; derived_tier: string | null; report: unknown }>,
 
-  // Agents Registry (local + remote definitions)
-  agentsList: () => ipcRenderer.invoke("agents-list") as Promise<unknown[]>,
-  agentsGet: (id: string) => ipcRenderer.invoke("agents-get", id) as Promise<unknown>,
-  agentsSave: (cfg: unknown) => ipcRenderer.invoke("agents-save", cfg) as Promise<unknown>,
-  agentsRemove: (id: string) => ipcRenderer.invoke("agents-remove", id) as Promise<boolean>,
-  agentsIdAvailable: (id: string) => ipcRenderer.invoke("agents-id-available", id) as Promise<boolean>,
-  /** Open a saved agent as a standalone panel (yo://agent?slug=<slug>). */
-  agentsOpenAsApp: (slug: string) => ipcRenderer.invoke("agents:open-as-app", slug) as Promise<boolean>,
-
   // yos wallet + rate cards
   yosBalance: () => ipcRenderer.invoke("yos-balance") as Promise<{ user_id: string; balance: number } | { error: string }>,
   yosRateCards: () => ipcRenderer.invoke("yos-rate-cards") as Promise<{ cards: Array<{ tier: string; yos_per_1k_input: number; yos_per_1k_output: number; yos_per_idle_minute: number }> } | { error: string }>,
   modelsList: () => ipcRenderer.invoke("models-list") as Promise<{ models: Array<{ provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number }> } | { error: string }>,
-  modelCatalog: () => ipcRenderer.invoke("model-catalog") as Promise<Array<{ provider: string; model: string; displayName: string; agentLoopCapable: boolean; maxContextTokens?: number; maxOutputTokens?: number }>>,
   yosBuyUrl: () => ipcRenderer.invoke("yos-buy-url") as Promise<{ url: string }>,
 
   // Marketplace + reservations

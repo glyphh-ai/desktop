@@ -4,9 +4,7 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning } from "./shared.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
-import { loadSkills, initSkillsEvents } from "./skills.js";
 import { loadApps, initApps, openNewAppForm } from "./apps.js";
-import { loadAgents, initAgents } from "./agents.js";
 import { loadSchedules, initSchedules, openScheduleByName } from "./schedules.js";
 import { loadSettings, initSettings } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
@@ -55,12 +53,6 @@ export function openNewAppDeepLink(data: { url?: string; name?: string; tabId?: 
 // ── Navigation ───────────────────────────────────────────
 
 export function resetEditors() {
-  const se = document.getElementById("skill-editor");
-  if (se && !se.classList.contains("hidden")) {
-    se.classList.add("hidden");
-    document.getElementById("skills-list")?.classList.remove("hidden");
-    document.getElementById("skills-toolbar")?.classList.remove("hidden");
-  }
   const le = document.getElementById("layout-editor");
   if (le && !le.classList.contains("hidden")) {
     le.classList.add("hidden");
@@ -119,11 +111,9 @@ export function loadActiveSection(explicit?: string) {
   // item breaks sections that have no `help-nav-item` (e.g. Schedules), which
   // would otherwise resolve to "guide" and never load.
   const sec = explicit || activeSection();
-  if (sec === "skills") loadSkills();
-  else if (sec === "drips") loadDrips();
+  if (sec === "drips") loadDrips();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "apps") loadApps();
-  else if (sec === "agents") void loadAgents();
   else if (sec === "schedules") void loadSchedules();
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
@@ -274,7 +264,5 @@ export function initHelp() {
   initApps();
   initLayoutsEvents();
   initDripsEvents();
-  initSkillsEvents();
-  initAgents();
   initSchedules();
 }

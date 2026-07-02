@@ -2,7 +2,6 @@
           <div class="settings-layout">
             <nav class="settings-nav">
               <button class="settings-nav-item active" data-sub="general">General</button>
-              <button class="settings-nav-item" data-sub="providers">Providers</button>
               <button class="settings-nav-item" data-sub="appearance">Appearance</button>
               <button class="settings-nav-item" data-sub="account">Account</button>
               <button class="settings-nav-item" data-sub="mcp">MCP Server</button>
@@ -46,19 +45,6 @@
                 <div class="settings-actions" style="margin-top:24px;">
                   <button id="settings-save" class="action-btn primary">Save</button>
                   <span id="settings-status"></span>
-                </div>
-              </div>
-
-              <!-- Providers: BYOK keys for direct provider access -->
-              <div class="settings-panel" data-sub="providers">
-                <h2>Providers</h2>
-                <p class="section-desc">
-                  Bring your own API keys. Keys are stored encrypted on the server and used to call
-                  providers directly. Removing a key disables that provider for read-only swarm agents
-                  and any feature that uses it.
-                </p>
-                <div id="provider-keys-list" class="settings-form" style="gap:12px;display:flex;flex-direction:column;">
-                  <!-- rows rendered by settings.ts -->
                 </div>
               </div>
 

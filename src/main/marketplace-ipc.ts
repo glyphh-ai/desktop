@@ -1,17 +1,8 @@
 import { ipcMain } from "electron";
-import type { AgentConfig as AgentRegistryConfig } from "./stores/agent-store-db";
-import { refreshAndListAgents, saveAgentSynced, removeAgentSynced } from "./stores/agent-store-db";
 
 interface MarketplaceIpcDeps {
   serverGetAuthed: <T = unknown>(path: string) => Promise<T>;
   serverPostAuthed: <T = unknown>(path: string, body: Record<string, unknown>) => Promise<T>;
-  listAgents: () => AgentRegistryConfig[];
-  getAgent: (id: string) => AgentRegistryConfig | null;
-  saveAgent: (cfg: AgentRegistryConfig) => AgentRegistryConfig;
-  removeAgent: (id: string) => boolean;
-  idAvailable: (id: string) => boolean;
-  pushAgentProfile: (cfg: AgentRegistryConfig) => Promise<void>;
-  deleteAgentProfile: (id: string) => Promise<void>;
   setOfferEnabled: (enabled: boolean) => Promise<unknown>;
   getCapabilitiesStatus: () => Promise<{ enabled?: boolean } | null>;
 }
@@ -19,21 +10,8 @@ interface MarketplaceIpcDeps {
 export function registerMarketplaceIpc(deps: MarketplaceIpcDeps): void {
   const {
     serverGetAuthed, serverPostAuthed,
-    listAgents, getAgent, saveAgent, removeAgent, idAvailable,
-    pushAgentProfile, deleteAgentProfile,
     setOfferEnabled, getCapabilitiesStatus,
   } = deps;
-
-  async function reconcileOfferEnabled(): Promise<void> {
-    const anyJoinable = listAgents().some((a) => (a as any).joinable === true);
-    const status = await getCapabilitiesStatus().catch(() => null);
-    const currentlyEnabled = !!status?.enabled;
-    if (anyJoinable && !currentlyEnabled) {
-      await setOfferEnabled(true).catch(() => {});
-    } else if (!anyJoinable && currentlyEnabled) {
-      await setOfferEnabled(false).catch(() => {});
-    }
-  }
 
   ipcMain.handle("capabilities-set-enabled", async (_e, enabled: boolean) => {
     return setOfferEnabled(!!enabled);
@@ -42,40 +20,11 @@ export function registerMarketplaceIpc(deps: MarketplaceIpcDeps): void {
     return getCapabilitiesStatus();
   });
 
-  // agents-list/save/remove sync the org-shared library (yo-server saved_agents,
-  // the same the platform Agents page reads). The joinable-profile push
-  // (pushAgentProfile/deleteAgentProfile) is a SEPARATE surface — published
-  // agents discoverable for cyphers — and stays wired alongside it.
-  ipcMain.handle("agents-list", async () => refreshAndListAgents());
-  ipcMain.handle("agents-get", async (_e, id: string) => getAgent(id));
-  ipcMain.handle("agents-save", async (_e, cfg: AgentRegistryConfig) => {
-    const saved = await saveAgentSynced(cfg);
-    void (saved.joinable
-      ? pushAgentProfile(saved)
-      : deleteAgentProfile(saved.id));
-    void reconcileOfferEnabled();
-    return saved;
-  });
-  ipcMain.handle("agents-remove", async (_e, id: string) => {
-    const ok = await removeAgentSynced(id);
-    if (ok) void deleteAgentProfile(id);
-    void reconcileOfferEnabled();
-    return ok;
-  });
-  ipcMain.handle("agents-id-available", async (_e, id: string) => idAvailable(id));
-
   ipcMain.handle("yos-balance", async () => ({ user_id: "", balance: 0 }));
   ipcMain.handle("yos-rate-cards", async () => ({ cards: [] }));
   ipcMain.handle("models-list", async () => {
     try { return await serverGetAuthed<{ models: Array<{ provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number }> }>("/api/models"); }
     catch (err) { return { error: err instanceof Error ? err.message : "fetch failed" }; }
-  });
-  // Admin-curated model catalog (active rows only) — the Agents form intersects
-  // this with configured BYOK providers, and gates the full agent loop on
-  // agentLoopCapable. Same source the platform Agents form uses.
-  ipcMain.handle("model-catalog", async () => {
-    try { return await serverGetAuthed<Array<{ provider: string; model: string; displayName: string; agentLoopCapable: boolean; maxContextTokens?: number; maxOutputTokens?: number }>>("/api/model-catalog"); }
-    catch { return []; }
   });
   ipcMain.handle("yos-buy-url", () => {
     const base = process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai";

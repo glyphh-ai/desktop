@@ -310,7 +310,10 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     }
   });
 
-  ipcMain.handle("provider-keys-list", () => providerKeys.listStatus());
+  // Providers Settings panel removed. The only surviving provider-key path is
+  // the Claude Code BYOK bootstrap gate (boot-gate-ui.ts), which saves an
+  // Anthropic key so cc-status flips true. provider-keys.ts also still backs
+  // the transcriber (Whisper) and cc-bootstrap.
   ipcMain.handle("provider-keys-set", async (_e, provider: string, key: string) => {
     try {
       await providerKeys.setKey(provider as providerKeysModule.ProviderId, key);
@@ -319,28 +322,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
       return { ok: false, error: err instanceof Error ? err.message : "save failed" };
     }
   });
-  ipcMain.handle("provider-keys-remove", async (_e, provider: string) => {
-    await providerKeys.removeKey(provider as providerKeysModule.ProviderId);
-    return { ok: true };
-  });
-  ipcMain.handle("provider-keys-test", (_e, provider: string) =>
-    providerKeys.testKey(provider as providerKeysModule.ProviderId));
-  ipcMain.handle("provider-keys-test-prompt", (_e, provider: string, model?: string, prompt?: string) =>
-    providerKeys.testPrompt(provider as providerKeysModule.ProviderId, model, prompt));
-
-  // Editable per-provider model catalog (source of truth for dropdowns/defaults).
-  {
-    const pm = require("./provider-models") as typeof import("./provider-models");
-    ipcMain.handle("provider-models-get-all", () => pm.getAllProviderModels());
-    ipcMain.handle("provider-models-set", (_e, provider: string, models: string[], def?: string) => {
-      pm.setProviderModels(provider, models, def);
-      return pm.getProviderModelConfig(provider);
-    });
-    ipcMain.handle("provider-models-reset", (_e, provider: string) => {
-      pm.resetProviderModels(provider);
-      return pm.getProviderModelConfig(provider);
-    });
-  }
 
   ipcMain.handle("cc-status", () => ccBootstrapStatus());
 

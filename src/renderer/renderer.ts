@@ -347,35 +347,15 @@ declare global {
       relayTokensRevoke: (id: string) => Promise<{ ok: boolean } | { error: string }>;
       relayInstallClaude: (token: string) => Promise<{ ok: boolean; path: string } | { error: string }>;
 
-      // BYOK provider keys (Phase 1 of THE-PIVOT-BYOK)
-      providerKeysList: () => Promise<Array<{
-        provider: string;
-        configured: boolean;
-        savedAt: string | null;
-        lastTested: string | null;
-        lastTestOk: boolean | null;
-        lastTestError: string | null;
-      }>>;
+      // BYOK provider key — only the Claude Code bootstrap gate path remains.
       providerKeysSet: (provider: string, key: string) => Promise<{ ok: boolean; error?: string }>;
-      providerKeysRemove: (provider: string) => Promise<{ ok: boolean }>;
-      providerKeysTest: (provider: string) => Promise<{ ok: boolean; error?: string }>;
-      providerKeysTestPrompt: (provider: string, model?: string, prompt?: string) => Promise<{ ok: boolean; text?: string; model?: string; error?: string }>;
-      providerModelsGetAll: () => Promise<Record<string, { default: string; models: string[] }>>;
-      providerModelsSet: (provider: string, models: string[], def?: string) => Promise<{ default: string; models: string[] }>;
-      providerModelsReset: (provider: string) => Promise<{ default: string; models: string[] }>;
 
-      // BYOK gate — Anthropic API key configured under Settings → Providers.
+      // BYOK gate — Anthropic API key saved via the Claude Code bootstrap gate.
       ccStatus: () => Promise<{ found: boolean; byokAnthropic: boolean }>;
       onCcShowModal: (callback: () => void) => () => void;
       // Capability Offer
       capabilitiesSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; enabled: boolean; derived_tier?: string; client_id?: string; error?: string }>;
       capabilitiesGetStatus: () => Promise<{ enabled: boolean; client_id: string; derived_tier: string | null; report: unknown }>;
-      // Agents
-      agentsList: () => Promise<unknown[]>;
-      agentsGet: (id: string) => Promise<unknown>;
-      agentsSave: (cfg: unknown) => Promise<unknown>;
-      agentsRemove: (id: string) => Promise<boolean>;
-      agentsIdAvailable: (id: string) => Promise<boolean>;
       // Vibes — persisted vibe-coding projects
       vibesList: () => Promise<Array<Record<string, unknown>>>;
       vibesGet: (id: string) => Promise<Record<string, unknown> | null>;
@@ -389,7 +369,6 @@ declare global {
       yosBalance: () => Promise<{ user_id: string; balance: number } | { error: string }>;
       yosRateCards: () => Promise<{ cards: Array<{ tier: string; yos_per_1k_input: number; yos_per_1k_output: number; yos_per_idle_minute: number }> } | { error: string }>;
       modelsList: () => Promise<{ models: Array<{ provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number }> } | { error: string }>;
-      modelCatalog: () => Promise<Array<{ provider: string; model: string; displayName: string; agentLoopCapable: boolean; maxContextTokens?: number; maxOutputTokens?: number }>>;
       yosBuyUrl: () => Promise<{ url: string }>;
       // Marketplace + reservations
       marketplaceAvailable: (opts?: { tier?: string; provider?: string; limit?: number }) => Promise<{ entries: Array<{ offer_handle: string; derived_tier: string; providers: string[]; pricing: { terms: string; tier: string; yos_per_1k_input?: number; yos_per_1k_output?: number } | null; last_seen_at: string }>; count: number; ts: string } | { error: string }>;
@@ -718,9 +697,9 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  type DashSlug = "apps" | "skills" | "agents" | "layouts" | "drips" | "settings" | "about";
+  type DashSlug = "apps" | "layouts" | "drips" | "settings" | "about";
   const setActive = (slug: DashSlug) => {
-    for (const s of ["apps", "skills", "agents", "layouts", "drips", "settings", "about"] as DashSlug[]) {
+    for (const s of ["apps", "layouts", "drips", "settings", "about"] as DashSlug[]) {
       document.getElementById(`dashboard-tab-${s}`)?.classList.toggle("active", slug === s);
     }
   };
@@ -733,8 +712,6 @@ function initDashboard(): void {
     });
   };
   wireTab("apps", "apps");
-  wireTab("skills", "skills");
-  wireTab("agents", "agents");
   wireTab("layouts", "layouts");
   wireTab("drips", "drips");
   wireTab("settings", "dashboard-settings");
