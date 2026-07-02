@@ -6,7 +6,8 @@
  * manages window chrome and session state display.
  */
 
-// Help overlay moved to yo://home app
+// Section content (Apps/Layouts/Drips/Skills/Settings/About) lives in the
+// home.html panels (home.ts); this shell owns the tab bar + browser chrome.
 import { showOnboarding } from "./onboarding.js";
 import { formatMarkdown } from "./format-markdown.js";
 import { initBootGate } from "./boot-gate-ui.js";
@@ -275,9 +276,6 @@ declare global {
       createFile: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
       mkdir: (dirPath: string) => Promise<{ ok: boolean; error?: string }>;
       deleteEntry: (targetPath: string) => Promise<{ ok: boolean; error?: string }>;
-      openHomeSection: (section: string, sub?: string) => void;
-      onGotoSection: (cb: (section: string, sub?: string) => void) => void;
-      getPendingSection: () => Promise<{ section: string; sub?: string } | null>;
       onYoAskRequest: (cb: (id: string, questions: Array<{
         question: string;
         header?: string;

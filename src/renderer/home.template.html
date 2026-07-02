@@ -16,14 +16,6 @@
     /* The nav lives in the app's left rail now — keep it in the DOM (its
        buttons still drive section switching) but hide the sidebar. */
     #help-nav { display: none !important; }
-    /* Dashboard tab scope (5a): Settings trimmed to General / Appearance / MCP,
-       no Account / Providers / Support / Docs sub-tabs. See home.ts. */
-    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="account"],
-    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="support"],
-    [data-home-scope="settings-flat"] .settings-nav-item[data-jump="docs"],
-    [data-home-scope="settings-flat"] .settings-nav-sep {
-      display: none !important;
-    }
   </style>
   <script src="monaco/loader.js"></script>
   <script>

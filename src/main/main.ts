@@ -560,32 +560,21 @@ async function boot() {
   const terminalHtml = `file://${path.join(__dirname, "..", "renderer", "terminal.html")}`;
   const terminalPreload = path.join(__dirname, "terminal-preload.js");
   const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
-  // Slugs that map to home.html with ?section=<slug>.
+  // Slugs that map to home.html with ?section=<slug>. Each system-app tab
+  // (Apps / Layouts / Drips / Skills / Settings / About) opens its section.
   const HOME_SECTION_SLUGS: Record<string, string> = {
     "yo://apps": "apps",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
     "yo://skills": "skills",
     "yo://about": "about",
-  };
-  // Dashboard shell (5a) — same section panels as above, plus &dashboard=1 so
-  // home.ts applies the trimmed-down [data-home-scope="settings-flat"] view.
-  const DASHBOARD_SECTION_SLUGS: Record<string, string> = {
     "yo://dashboard-settings": "settings",
   };
   for (const app of appConnector.list()) {
-    if (app.url === "yo://home") {
-      const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      // webviewTag: true so the <webview id="app-preview"> inside App detail can render
-      panelManager.addPanel(app.id, homeHtml, homePreload, undefined, true);
-    } else if (app.url && HOME_SECTION_SLUGS[app.url]) {
+    if (app.url && HOME_SECTION_SLUGS[app.url]) {
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
       panelManager.addPanel(app.id, `${homeHtml}?section=${section}`, homePreload, undefined, true);
-    } else if (app.url && DASHBOARD_SECTION_SLUGS[app.url]) {
-      const section = DASHBOARD_SECTION_SLUGS[app.url];
-      const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(app.id, `${homeHtml}?section=${section}&dashboard=1`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
@@ -862,7 +851,7 @@ async function boot() {
       if (lastView.rows) lastView.rows.forEach((r) => viewPanelIds.push(...r));
       if (lastView.grid?.cells) viewPanelIds.push(...lastView.grid.cells.map((c) => c.panelId));
       if (viewPanelIds.some((id) => resolveAppId(id) === "cypher")) {
-        lastView = { type: "panel", id: "home" };
+        lastView = { type: "panel", id: "apps" };
       }
     }
 
@@ -933,9 +922,9 @@ async function boot() {
         panelManager.switchTo(lastView.id, mainWindow);
       }
     } else if (mainWindow) {
-      // No persisted view — land on the first user app.
+      // No persisted view — land on the first user app, else the Apps panel.
       const firstApp = appConnector.list().find(a => a.url && !a.url.startsWith("yo://"));
-      panelManager.switchTo(firstApp?.id || "home", mainWindow);
+      panelManager.switchTo(firstApp?.id || "apps", mainWindow);
     }
 
     // Restore all saved tabs (not just those in the current view).
@@ -997,11 +986,8 @@ async function boot() {
 
   function createPanelForApp(instanceId: string, app: { id: string; url?: string; forceWeb?: boolean }): void {
     if (!app.url) return;
-    if (app.url === "yo://home") {
-      const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(instanceId, homeHtml, homePreload, undefined, true);
-    } else if (app.url && HOME_SECTION_SLUGS[app.url]) {
-      // System-app wrappers (yo://dashboard, yo://apps, …) reuse home.html
+    if (app.url && HOME_SECTION_SLUGS[app.url]) {
+      // System-app wrappers (yo://apps, yo://layouts, …) reuse home.html
       // with ?section=<slug>. home.ts reads the query on boot.
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
@@ -1653,37 +1639,6 @@ async function boot() {
 
     void shell.openPath(resolved);
   });
-
-  // Left-rail nav → open the home panel (Settings/Dashboard/Apps/…) at a given
-  // section. The home panel is a transient overlay: it does NOT create a tab,
-  // and clicking the same rail item again toggles it closed — sliding back to
-  // the previously active panel. `pendingHomeSection` covers the cold-start
-  // race: the home page grabs it on load via `home:get-pending-section`.
-  let pendingHomeSection: { section: string; sub?: string } | null = null;
-  let currentHomeSection: { section: string; sub?: string } | null = null;
-  ipcMain.on("open-home-section", (_e, section: string, sub?: string) => {
-    if (!mainWindow || typeof section !== "string") return;
-    const homeActive = panelManager.activePanelId === "home";
-    const sameSection = currentHomeSection?.section === section && currentHomeSection?.sub === sub;
-    // Toggle: re-clicking the active section slides the home panel back out.
-    if (homeActive && sameSection) {
-      currentHomeSection = null;
-      pendingHomeSection = null;
-      panelManager.switchBack(mainWindow);
-      sendSplitState();
-      sendTabState();
-      return;
-    }
-    currentHomeSection = { section, sub };
-    pendingHomeSection = { section, sub };
-    const homeApp = appConnector.get("home");
-    if (homeApp && !panelManager.hasPanel("home")) createPanelForApp("home", homeApp);
-    panelManager.switchTo("home", mainWindow);
-    sendSplitState();
-    sendTabState();
-    panelManager.getView("home")?.webContents.send("home:goto-section", section, sub);
-  });
-  ipcMain.handle("home:get-pending-section", () => pendingHomeSection);
 
   // yo-panel-open/-prefill/-dismiss-from-renderer removed with the panel.
   // The Schedules run-history "View run" hand-off (previously window.yo.openYoChat
