@@ -3,23 +3,45 @@
  */
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid, closeHelp } from "./shared.js";
+import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 
 
 let layoutsPage = 0;
 let allLayouts: Array<{ name: string; splits: Array<{ panelId: string; col?: number; row?: number; colSpan?: number; rowSpan?: number }> }> = [];
-// Map of app id → display name, so the grid builder labels cells with the
-// app's name rather than its raw id.
-let appNameById: Record<string, string> = {};
+// Map of app id → the server app (Apps tab, /api/panel-apps), so layout cards
+// can show each cell's real icon + name rather than a raw id.
+type LayoutApp = {
+  id: string;
+  name: string;
+  url?: string | null;
+  connection?: { accountId?: string; pipedreamSlug: string } | null;
+};
+let appById: Record<string, LayoutApp> = {};
+let allApps: LayoutApp[] = [];
 async function ensureAppNames(): Promise<void> {
   try {
-    const apps = await window.yo.appsListMountable();
-    const next: Record<string, string> = {};
-    for (const a of apps) next[a.id] = a.name;
-    appNameById = next;
+    // Apps come from the server (the Apps tab's list, /api/panel-apps) — the
+    // same source the Apps page shows. NOT the local internal-app registry.
+    const apps = await window.yo.panelAppsList();
+    const next: Record<string, LayoutApp> = {};
+    for (const a of apps) next[a.id] = { id: a.id, name: a.name, url: a.url, connection: a.connection };
+    appById = next;
+    allApps = Object.values(next);
   } catch { /* keep whatever we have */ }
 }
+function resolveApp(panelId: string): LayoutApp | undefined {
+  return appById[panelId] || appById[panelId.replace(/-\d+$/, "")];
+}
 function panelLabel(panelId: string): string {
-  return appNameById[panelId] || appNameById[panelId.replace(/-\d+$/, "")] || panelId;
+  return resolveApp(panelId)?.name || panelId;
+}
+/** One app-icon square for a layout card — identical icon resolution to the
+ *  Apps page (Pipedream catalog icon → favicon → initial), via the shared
+ *  appIconInner helper. */
+function panelIconHtml(panelId: string): string {
+  const app = resolveApp(panelId);
+  const name = app?.name || panelId;
+  return `<span class="layout-app-icon" title="${name}">${appIconInner(app || {}, name, "layout-app-initial")}</span>`;
 }
 const layoutsList = document.getElementById("layouts-list")!;
 const layoutEditor = document.getElementById("layout-editor")!;
@@ -43,7 +65,7 @@ const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSe
  *  requiresFolder). Shows/hides the folder-mode row accordingly. */
 async function refreshFolderModeRow(): Promise<void> {
   try {
-    const apps = await window.yo.appsListMountable();
+    const apps = await window.yo.panelAppsList();
     const byId = new Map(apps.map((a) => [a.id, a]));
     const folderRequired = builderCells.some((c) => {
       if (!c.panelId) return false;
@@ -191,9 +213,11 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
   renderGridPreview();
 
   type PickerOption = { id: string; label: string };
-  let apps: Array<{ id: string; name: string; url?: string }>;
+  // Server apps only — the exact list shown on the Apps page (/api/panel-apps),
+  // matching how apps.ts filters it (web apps with a URL, plus native apps).
+  let apps: Array<{ id: string; name: string }>;
   try {
-    apps = (await window.yo.appsListMountable()).filter((a: any) => a.url);
+    apps = (await window.yo.panelAppsList()).filter((a: any) => a.url || a.isBrowser === false);
   } catch {
     apps = [];
   }
@@ -268,6 +292,9 @@ async function loadLayouts() {
   document.getElementById("layouts-limit-msg")!.classList.add("hidden");
 
   renderLayoutsList();
+  // Async — re-renders once Pipedream catalog icons for connected apps land,
+  // exactly like the Apps page.
+  void primeConnectedIcons(allApps, renderLayoutsList);
 }
 
 function renderLayoutsList() {
@@ -290,11 +317,16 @@ function renderLayoutsList() {
   for (const layout of layouts) {
     const card = document.createElement("div");
     card.className = "crud-card";
-    const panels = layout.splits.map((s) => s.panelId).filter(Boolean).join(" | ");
+    const cellIds = layout.splits.map((s) => s.panelId).filter(Boolean);
+    const seen = new Set<string>();
+    const uniqueIds = cellIds.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
+    const iconsHtml = uniqueIds.map((id) => panelIconHtml(id)).join("");
+    const names = uniqueIds.map((id) => panelLabel(id)).join(", ");
     card.innerHTML = `
+      ${iconsHtml ? `<div class="layout-card-icons">${iconsHtml}</div>` : ""}
       <div class="crud-card-info">
         <span class="crud-card-name">${layout.name}</span>
-        <span class="crud-card-meta">${panels || "empty"}</span>
+        <span class="crud-card-meta">${names || "empty"}</span>
       </div>
       <div class="crud-card-actions">
         <button class="crud-card-btn crud-open-btn" title="Open layout">

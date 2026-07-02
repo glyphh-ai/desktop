@@ -6,6 +6,7 @@ import {
   paginate, renderPaginationBar, confirmAction, clearInvalid,
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
+import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 
 declare const Chart: any;
 
@@ -156,30 +157,6 @@ async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: str
   });
 }
 
-// Pipedream's catalog icon per connected app's pipedreamSlug — the saved-app
-// row doesn't carry an icon itself, so it's looked up from the connector
-// catalog once per unique slug and cached for the session. Mirrors the
-// platform Apps page (yo-platform/app/dashboard/apps/page.js).
-const connectedIconCache: Record<string, string | null> = {};
-
-async function loadConnectedIcons(): Promise<void> {
-  const slugs = [...new Set(
-    panelApps
-      .filter((a) => a.connection?.accountId && a.connection?.pipedreamSlug)
-      .map((a) => a.connection!.pipedreamSlug),
-  )].filter((slug) => !(slug in connectedIconCache));
-  if (slugs.length === 0) return;
-  await Promise.all(slugs.map(async (slug) => {
-    try {
-      const { apps } = await window.yo.connectorsGetApps(slug);
-      connectedIconCache[slug] = apps.find((a) => a.id === slug)?.icon || null;
-    } catch {
-      connectedIconCache[slug] = null;
-    }
-  }));
-  renderAppsList();
-}
-
 async function loadApps() {
   appDetail.classList.add("hidden");
   appAddForm.classList.add("hidden");
@@ -201,7 +178,7 @@ async function loadApps() {
 
   renderAppsList();
   // Async — re-renders once Pipedream catalog icons for connected apps land.
-  void loadConnectedIcons();
+  void primeConnectedIcons(panelApps, renderAppsList);
 }
 
 function renderAppsList() {
@@ -227,19 +204,6 @@ function renderAppsList() {
   appsList.innerHTML = "";
 
   for (const app of pageApps) {
-    const isInternal = app.url?.startsWith("yo://");
-    const hasUrl = app.url && !isInternal;
-    const faviconUrl = hasUrl
-      ? `https://www.google.com/s2/favicons?domain=${new URL(app.url!).hostname}&sz=64`
-      : "";
-    // Connected apps use Pipedream's own catalog icon; fall back to the web
-    // favicon (then the initial) when not connected or no catalog icon exists.
-    const connectedIcon = app.connection?.accountId && app.connection.pipedreamSlug
-      ? connectedIconCache[app.connection.pipedreamSlug] || ""
-      : "";
-    const iconUrl = connectedIcon || faviconUrl;
-    const initial = app.name.charAt(0).toUpperCase();
-
     const badges: string[] = [];
     if (app.mcp && !app.url) badges.push(`<span class="app-card-badge">MCP</span>`);
     if (app.connection?.accountId) badges.push(`<span class="app-card-badge badge-connection">API</span>`);
@@ -248,11 +212,7 @@ function renderAppsList() {
     card.className = "app-card";
     card.innerHTML = `
       ${badges.join("")}
-      <div class="app-card-icon">
-        ${iconUrl
-          ? `<img src="${iconUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="app-card-initial" style="display:none">${initial}</span>`
-          : `<span class="app-card-initial">${initial}</span>`}
-      </div>
+      <div class="app-card-icon">${appIconInner(app, app.name, "app-card-initial")}</div>
       <div class="app-card-name">${app.name}</div>
       <div class="app-card-id">${app.slug}</div>`;
 

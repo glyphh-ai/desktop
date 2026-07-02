@@ -203,22 +203,6 @@ const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKi
   { id: "about", name: "About", url: "yo://about", kind: "system" },
 ];
 
-// Default panel apps — seeded on first launch so the workspace isn't empty
-const DEFAULT_APPS: Array<{ id: string; name: string; url: string; forceWeb?: boolean; pipedreamSlug?: string }> = [
-  // LLMs (no Pipedream — UI-only)
-  { id: "chatgpt", name: "ChatGPT", url: "https://chatgpt.com" },
-  { id: "claude", name: "Claude", url: "https://claude.ai" },
-  { id: "gemini", name: "Gemini", url: "https://gemini.google.com" },
-  { id: "grok", name: "Grok", url: "https://grok.com" },
-  { id: "perplexity", name: "Perplexity", url: "https://perplexity.ai" },
-  // Productivity (panel + Pipedream API available)
-  { id: "gmail", name: "Gmail", url: "https://mail.google.com", pipedreamSlug: "gmail" },
-  { id: "calendar", name: "Google Calendar", url: "https://calendar.google.com", pipedreamSlug: "google_calendar" },
-  { id: "github", name: "GitHub", url: "https://github.com", pipedreamSlug: "github" },
-  { id: "slack", name: "Slack", url: "https://app.slack.com", forceWeb: true, pipedreamSlug: "slack" },
-  { id: "notion", name: "Notion", url: "https://notion.so", forceWeb: true, pipedreamSlug: "notion" },
-];
-
 // ── AppConnector ───────────────────────────────────────
 
 export class AppConnector {
@@ -361,27 +345,19 @@ export class AppConnector {
       }
     }
 
-    // Seed default panel apps only if none exist yet (fresh install)
-    const hasUserApps = [...this.apps.values()].some((a) => a.url && !a.url.startsWith("yo://"));
-    if (!hasUserApps) {
-      for (const def of DEFAULT_APPS) {
-        if (!this.apps.has(def.id)) {
-          this.add(def.id, def.name, def.url, def.forceWeb);
-        }
+    // Apps are server-authoritative now (the Apps tab reads /api/panel-apps).
+    // Any real-URL app still sitting in the local ~/yo/apps store is a stale
+    // seed from an older build — purge it (entry + file) so it stops showing
+    // up anywhere the local registry is read (e.g. the Layouts cell picker).
+    // Only the yo:// internal surfaces stay local: Browser, Terminal, and the
+    // system config pages (Apps/Layouts/Drips/Settings/About).
+    for (const [id, app] of [...this.apps]) {
+      if (app.url && !app.url.startsWith("yo://")) {
+        this.apps.delete(id);
+        try { fs.unlinkSync(path.join(this.appsDir, `${id}.json`)); } catch { /* ignore */ }
+        console.log(`[app-connector] purged local app (now server-authoritative): ${id}`);
       }
     }
-
-    // Ensure known Pipedream slugs are set on default apps
-    for (const def of DEFAULT_APPS) {
-      if (!def.pipedreamSlug) continue;
-      const app = this.apps.get(def.id);
-      if (app && !app.connection) {
-        app.connection = { pipedreamSlug: def.pipedreamSlug };
-        this.save(app);
-      }
-    }
-
-
   }
 
   /** Import a full app config (from exported JSON). Overwrites if same id exists. */

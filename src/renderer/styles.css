@@ -3228,6 +3228,38 @@ ol.docs-list li::before {
   line-height: 1;
 }
 
+/* Layout list card — a row of app-icon squares on the left, one per distinct
+   app in the layout, using the exact same icon as the Apps page. */
+.layout-card-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.layout-app-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.layout-app-icon img { width: 24px; height: 24px; display: block; border-radius: 6px; }
+.layout-app-initial {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--hover);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .crud-card-info {
   flex: 1;
   min-width: 0;

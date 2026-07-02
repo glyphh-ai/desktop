@@ -8,7 +8,7 @@
     "build": "npm run build:main && npm run build:renderer && npm run build:terminal && npm run build:monaco && npm run build:overlay",
     "build:main": "tsc",
     "build:overlay": "node scripts/build-overlay.js",
-    "build:renderer": "tsc -p src/renderer/tsconfig.json && shx cp src/renderer/index.html src/renderer/styles.css src/renderer/browser.html src/renderer/app-window.html src/renderer/layout-window.html dist/renderer/ && shx cp -r src/renderer/fonts dist/renderer/ && shx cp -r src/renderer/brand dist/renderer/ && node scripts/assemble-home.mjs",
+    "build:renderer": "tsc -p src/renderer/tsconfig.json && shx cp src/renderer/styles.css src/renderer/browser.html src/renderer/app-window.html src/renderer/layout-window.html dist/renderer/ && shx cp -r src/renderer/fonts dist/renderer/ && shx cp -r src/renderer/brand dist/renderer/ && node scripts/assemble-home.mjs",
     "build:terminal": "esbuild src/renderer/terminal-renderer.ts --bundle --outfile=dist/renderer/terminal-bundle.js --platform=browser && shx cp node_modules/@xterm/xterm/css/xterm.css src/renderer/terminal.html dist/renderer/",
     "build:monaco": "shx cp -r node_modules/monaco-editor/min/vs dist/renderer/monaco",
     "bench:code-index": "npm run build:main && node dist/main/code-index/benchmark.js",
