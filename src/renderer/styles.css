@@ -4366,6 +4366,7 @@ ol.docs-list li::before {
 .app-tab-right {
   display: none;
   flex-direction: column;
+  gap: 10px;
   overflow-y: auto;
 }
 
