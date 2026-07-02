@@ -20,6 +20,47 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+/** Escape a string for embedding inside an AppleScript double-quoted literal. */
+function appleEscape(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function runOsascript(lines: string[]): void {
+  const args = lines.flatMap((l) => ["-e", l]);
+  spawn("osascript", args, { detached: true, stdio: "ignore" }).unref();
+}
+
+/**
+ * macOS Terminal.app: open a new window or a new tab, cd to the configured
+ * working directory and run any init commands. Tab mode uses a Cmd+T keystroke
+ * (needs Accessibility permission); window mode uses AppleScript's `do script`,
+ * which always spawns a fresh window.
+ */
+function launchMacTerminal(lc: Record<string, unknown>, mode: string): void {
+  const cwd = str(lc.cwd);
+  const cmds: string[] = [];
+  if (cwd) cmds.push(`cd "${cwd}"`);
+  if (Array.isArray(lc.initCommands)) {
+    for (const c of lc.initCommands as unknown[]) { const s = str(c); if (s) cmds.push(s); }
+  }
+  const script = appleEscape(cmds.join("; "));
+  if (mode === "tab") {
+    runOsascript([
+      'tell application "Terminal" to activate',
+      'tell application "System Events" to keystroke "t" using command down',
+      'delay 0.15',
+      `tell application "Terminal" to do script "${script}" in front window`,
+    ]);
+  } else {
+    runOsascript([
+      'tell application "Terminal"',
+      'activate',
+      `do script "${script}"`,
+      'end tell',
+    ]);
+  }
+}
+
 /** Open a URL in the user's native Chrome, falling back to the OS default
  *  browser if Chrome isn't found. */
 export function launchInNativeChrome(url: string): LaunchResult {
@@ -56,6 +97,21 @@ export function launchNativeApp(
   const exec = str(execPath);
   if (!exec) return { ok: false, error: "Native app has no executable path" };
   const lc = launchConfig || {};
+
+  // macOS Terminal.app honors the window/tab choice + runs cwd/init commands
+  // via AppleScript. Other terminals / platforms fall through to `open`, which
+  // opens a new window (tab mode isn't controllable generically).
+  if (process.platform === "darwin" && archetype === "terminal") {
+    const appName = (exec.split("/").pop() || "").replace(/\.app$/, "");
+    if (appName === "Terminal") {
+      try {
+        launchMacTerminal(lc, str(lc.windowMode) === "tab" ? "tab" : "window");
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  }
 
   const pathArg =
     archetype === "terminal" ? str(lc.cwd) :

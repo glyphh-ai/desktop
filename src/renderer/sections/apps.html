@@ -58,6 +58,11 @@
               </select>
               <!-- Terminal archetype -->
               <div id="app-add-terminal-fields">
+                <label class="settings-label">Open as</label>
+                <select id="app-add-window-mode" class="settings-input">
+                  <option value="window">New window</option>
+                  <option value="tab">New tab</option>
+                </select>
                 <label class="settings-label">Shell</label>
                 <input id="app-add-shell" type="text" class="settings-input" placeholder="/bin/zsh" spellcheck="false" autocomplete="off" />
                 <label class="settings-label">Profile</label>
@@ -181,6 +186,11 @@
                     </select>
                     <!-- Terminal archetype -->
                     <div id="app-detail-terminal-fields">
+                      <label class="settings-label">Open as</label>
+                      <select id="app-detail-window-mode" class="settings-input">
+                        <option value="window">New window</option>
+                        <option value="tab">New tab</option>
+                      </select>
                       <label class="settings-label">Shell</label>
                       <input id="app-detail-shell" class="settings-input" placeholder="/bin/zsh" spellcheck="false" />
                       <label class="settings-label">Profile</label>
