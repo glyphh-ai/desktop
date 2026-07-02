@@ -808,6 +808,87 @@ body.account-locked #dl-btn-wrap {
 }
 .lockout-link:hover { color: var(--text); }
 
+/* ── Auth buttons — ported 1:1 from the platform (yo-platform globals.css)
+   so the client's login / create-account / forgot-password buttons match
+   it exactly. Primary = white resting, black text, accent→pink gradient
+   wipes in left→right on hover; secondary = dark surface + ring. The
+   onboarding forms already emit `btn btn-primary btn-lg btn-full` markup. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-full { width: 100%; }
+.btn-lg {
+  padding: 0.875rem 1.25rem;
+  font-size: 0.9375rem;
+  border-radius: 10px;
+}
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #ffffff;
+  color: #000;
+  border: none;
+  transition: color 220ms ease, opacity var(--transition);
+}
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  /* --grad-accent is only defined in the light theme; the auth screens run
+     dark by default, so fall back to the platform's gradient value so the
+     wipe resolves in every theme. */
+  background: var(--grad-accent, linear-gradient(to top right, #8c3bf2, #ec4899));
+  transform: translateX(-100%);
+  transition: none;
+}
+.btn-primary:hover:not(:disabled)::before,
+.btn-primary:active:not(:disabled)::before,
+.btn-primary:focus-visible:not(:disabled)::before {
+  transform: translateX(0);
+  transition: transform 280ms ease;
+}
+.btn-primary:disabled::before {
+  transform: translateX(0);
+  transition: none;
+}
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled),
+.btn-primary:focus-visible:not(:disabled) {
+  color: #000;
+}
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--white);
+  box-shadow: 0 0 0 1px var(--white);
+}
+.btn-secondary.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.btn-secondary.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger);
+  background: var(--danger-bg);
+}
+
 /* Lockout shares the old onboarding wordmark + button styling. These
    rules used to be global onboarding-* classes; the onboarding overlay
    was rebuilt on the platform auth-shell, so they're scoped here to the

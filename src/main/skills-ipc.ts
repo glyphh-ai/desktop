@@ -23,14 +23,26 @@ export function registerSkillsIpc(deps: SkillsIpcDeps): void {
     mcpManager,
     appConnector,
     skillScheduler,
-    canCreateSkill,
     listBuiltinYoTools,
     openSkillPath,
   } = deps;
 
-  // IPC: skills CRUD (legacy-compatible signatures)
-  ipcMain.handle("skills-list", () => skillEngine.listSkills());
-  ipcMain.handle("skills-list-detailed", () => skillEngine.listSkillsDetailed());
+  // Skills are authored only by the assistant (server-side, via the
+  // skill-builder system skill). The client is view/run-only — every authoring
+  // IPC returns this so the renderer surfaces a message instead of silently
+  // writing to a cache that never reaches the server.
+  const AUTHORING_DISABLED = "Skills are created by the assistant and can't be edited here.";
+
+  // IPC: skills read surface (server is the source of truth — refresh the local
+  // execution cache from /api/skills/tools before every list/get).
+  ipcMain.handle("skills-list", async () => {
+    await skillEngine.refreshFromServer();
+    return skillEngine.listSkills();
+  });
+  ipcMain.handle("skills-list-detailed", async () => {
+    await skillEngine.refreshFromServer();
+    return skillEngine.listSkillsDetailed();
+  });
   ipcMain.handle("mcp-tools-list", () => (mcpManager?.getAllTools() ?? []).map((t) => ({
     serverId: t.serverId,
     serverName: t.serverName,
@@ -39,7 +51,8 @@ export function registerSkillsIpc(deps: SkillsIpcDeps): void {
     description: t.description,
   })));
   ipcMain.handle("skills-read", (_e, name: string) => skillEngine.readSkill(name));
-  ipcMain.handle("skills-get", (_e, name: string) => {
+  ipcMain.handle("skills-get", async (_e, name: string) => {
+    await skillEngine.refreshFromServer();
     const s = skillEngine.getSkill(name);
     if (!s) return null;
     const hasRunner = skillEngine.hasRunner(name);
@@ -56,39 +69,11 @@ export function registerSkillsIpc(deps: SkillsIpcDeps): void {
       runnerSchedule,
     };
   });
-  ipcMain.handle("skills-write", (_e, name: string, prompt: string) => {
-    // Legacy signature: writes prompt only, preserves manifest if exists
-    const existing = skillEngine.getSkill(name);
-    if (existing) {
-      skillEngine.writeSkill(name, existing.manifest, prompt);
-      return true;
-    }
-    const gate = canCreateSkill(skillEngine.listSkills().length);
-    if (!gate.allowed) return { error: gate.reason };
-    skillEngine.writeSkill(name, { name, description: "" }, prompt);
-    return true;
-  });
-  ipcMain.handle("skills-write-full", (_e, name: string, manifest: any, prompt: string, runnerCode?: string | null) => {
-    const existing = skillEngine.getSkill(name);
-    if (!existing) {
-      const gate = canCreateSkill(skillEngine.listSkills().length);
-      if (!gate.allowed) return { error: gate.reason };
-    }
-    skillEngine.writeSkill(name, manifest, prompt);
-    // Persist SKILL.js alongside SKILL.md when the editor has runner code; if
-    // the caller passes null we explicitly remove an existing runner file.
-    if (typeof runnerCode === "string" && runnerCode.trim().length > 0) {
-      skillEngine.writeSkillFile(name, "SKILL.js", runnerCode);
-    } else if (runnerCode === null) {
-      skillEngine.deleteSkillFile(name, "SKILL.js");
-    }
-    skillScheduler?.refresh();
-    return true;
-  });
-  ipcMain.handle("skills-remove", (_e, name: string) => skillEngine.deleteSkill(name));
-  ipcMain.handle("skills-generate", (_e, name: string, description: string) =>
-    skillEngine.generatePrompt(name, description),
-  );
+  // Authoring is disabled in the client — the assistant owns skill creation.
+  ipcMain.handle("skills-write", () => ({ error: AUTHORING_DISABLED }));
+  ipcMain.handle("skills-write-full", () => ({ error: AUTHORING_DISABLED }));
+  ipcMain.handle("skills-remove", () => ({ error: AUTHORING_DISABLED }));
+  ipcMain.handle("skills-generate", () => "");
   ipcMain.handle("skills-available-tools", () => {
     const groups: Array<{ namespace: string; label: string; tools: Array<{ name: string; description: string }> }> = [];
     const yoTools = listBuiltinYoTools();
@@ -113,10 +98,8 @@ export function registerSkillsIpc(deps: SkillsIpcDeps): void {
   // File operations within a skill folder
   ipcMain.handle("skills-list-files", (_e, name: string) => skillEngine.listSkillFiles(name));
   ipcMain.handle("skills-read-file", (_e, name: string, rel: string) => skillEngine.readSkillFile(name, rel));
-  ipcMain.handle("skills-write-file", (_e, name: string, rel: string, content: string) =>
-    skillEngine.writeSkillFile(name, rel, content),
-  );
-  ipcMain.handle("skills-delete-file", (_e, name: string, rel: string) => skillEngine.deleteSkillFile(name, rel));
+  ipcMain.handle("skills-write-file", () => ({ error: AUTHORING_DISABLED }));
+  ipcMain.handle("skills-delete-file", () => ({ error: AUTHORING_DISABLED }));
   // Open a skill's SKILL.md via the shared file-open path (OS default app).
   ipcMain.handle("skills-open-in-editor", (_e, name: string) => {
     const safe = (name || "").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 64);
@@ -160,14 +143,7 @@ export function registerSkillsIpc(deps: SkillsIpcDeps): void {
     const buf = skillEngine.exportSkill(name);
     return buf ? buf.toString("base64") : null;
   });
-  ipcMain.handle("skills-import", (_e, base64: string, overwrite?: boolean) => {
-    try {
-      const buf = Buffer.from(base64, "base64");
-      return skillEngine.importSkill(buf, { overwrite });
-    } catch (err) {
-      return { imported: [], skipped: [], error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle("skills-import", () => ({ imported: [], skipped: [], error: AUTHORING_DISABLED }));
   // Scheduler
   ipcMain.handle("skills-schedule-status", () => skillScheduler?.status() ?? []);
   ipcMain.handle("skills-pause-schedule", (_e, name: string) => { skillScheduler?.pause(name); });

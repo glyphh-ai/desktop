@@ -197,6 +197,7 @@ const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKi
   { id: "term", name: "Terminal", url: "yo://terminal", requiresFolder: true },
   { id: "browser", name: "Browser", url: "yo://browser" },
   { id: "apps", name: "Apps", url: "yo://apps", kind: "system" },
+  { id: "skills", name: "Skills", url: "yo://skills", kind: "system" },
   { id: "dashboard-settings", name: "Settings", url: "yo://dashboard-settings", kind: "system" },
 ];
 

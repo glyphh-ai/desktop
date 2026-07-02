@@ -93,7 +93,6 @@ const CODE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 const COPY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
 const CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 const PLAY = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 4 20 12 6 20 6 4"/></svg>`;
-const TRASH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
 const KEBAB = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>`;
 const EXPORT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
 const INFO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
@@ -243,14 +242,11 @@ export class SkillContent {
       b.addEventListener("click", () => { menu.remove(); onClick(); });
       return b;
     };
+    // View/run-only: skills are authored by the assistant, so no Delete here —
+    // just Run and Export.
     const menu = el("div", { class: "ws-popover skill-kebab-menu open" }, [
       item(PLAY, "Run", false, () => { this.hideAll(); this.runConsole.root.classList.remove("hidden"); void this.runConsole.run(name); }),
       item(EXPORT, "Export", false, () => void this.exportSkill(name)),
-      item(TRASH, "Delete", true, async () => {
-        if (!(await this.deps.confirm(`Delete skill "${name}"?`))) return;
-        try { await window.yo.skillsRemove(name); } catch { /* best-effort */ }
-        this.deps.onChanged(); this.showEmpty();
-      }),
     ]);
     document.body.append(menu);
     const r = anchor.getBoundingClientRect();

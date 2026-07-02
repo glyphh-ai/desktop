@@ -704,8 +704,56 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
             <input id="app-add-name" type="text" class="settings-input" placeholder="e.g. Gmail" spellcheck="false" autocomplete="off" />
             <label class="settings-label">Slug <span class="settings-hint">— how you'll dip to it (.dip &lt;slug&gt;)</span></label>
             <input id="app-add-slug" type="text" class="settings-input" placeholder="auto" spellcheck="false" autocomplete="off" pattern="[a-z0-9-]+" />
-            <label class="settings-label">URL</label>
-            <input id="app-add-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" autocomplete="off" />
+            <label class="settings-label">Type</label>
+            <select id="app-add-type" class="settings-input">
+              <option value="browser">Browser app (web URL)</option>
+              <option value="native">Native app (desktop executable)</option>
+            </select>
+            <!-- Browser fields -->
+            <div id="app-add-browser-fields">
+              <label class="settings-label">URL</label>
+              <input id="app-add-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" autocomplete="off" />
+              <label class="settings-label">Open in</label>
+              <select id="app-add-browser-target" class="settings-input">
+                <option value="webview">Glyphh webview</option>
+                <option value="native">Native Chrome</option>
+              </select>
+            </div>
+            <!-- Native fields -->
+            <div id="app-add-native-fields" class="hidden">
+              <label class="settings-label">Application / executable path</label>
+              <div style="display:flex;gap:6px;">
+                <input id="app-add-exec-path" type="text" class="settings-input" placeholder="/Applications/Terminal.app" spellcheck="false" autocomplete="off" style="flex:1;" />
+                <button id="app-add-exec-browse" class="action-btn" type="button">Browse…</button>
+              </div>
+              <label class="settings-label">Archetype</label>
+              <select id="app-add-archetype" class="settings-input">
+                <option value="terminal">Terminal</option>
+                <option value="editor">Editor</option>
+                <option value="generic">Generic</option>
+              </select>
+              <!-- Terminal archetype -->
+              <div id="app-add-terminal-fields">
+                <label class="settings-label">Shell</label>
+                <input id="app-add-shell" type="text" class="settings-input" placeholder="/bin/zsh" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Profile</label>
+                <input id="app-add-profile" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Working directory</label>
+                <input id="app-add-cwd" type="text" class="settings-input" placeholder="~/projects" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Init commands <span style="color:var(--text-2);font-weight:400;">(one per line)</span></label>
+                <textarea id="app-add-init-commands" class="settings-input" rows="3" spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+              </div>
+              <!-- Editor archetype -->
+              <div id="app-add-editor-fields" class="hidden">
+                <label class="settings-label">Folder</label>
+                <input id="app-add-folder" type="text" class="settings-input" placeholder="~/projects/my-repo" spellcheck="false" autocomplete="off" />
+              </div>
+              <!-- Generic archetype -->
+              <div id="app-add-generic-fields" class="hidden">
+                <label class="settings-label">Args <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+                <input id="app-add-args" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+              </div>
+            </div>
             <!-- Force web mode + Do not record live on the app's detail screen
                  (where they persist); duplicating them here did nothing. -->
             <div class="settings-actions" style="margin-top:8px;">
@@ -771,16 +819,64 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                   <input id="app-detail-id" class="settings-input" spellcheck="false" style="font-family:var(--font-mono);font-size:12px;" />
                   <label class="settings-label">Name</label>
                   <input id="app-detail-name" class="settings-input" spellcheck="false" />
-                  <label class="settings-label">URL</label>
-                  <input id="app-detail-url" class="settings-input" spellcheck="false" placeholder="https://..." />
-                  <label class="settings-toggle" style="margin-top:4px;padding:8px 12px;">
-                    <input type="checkbox" id="app-detail-force-web" />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Force web mode</span>
-                      <span class="toggle-desc">Block native app redirects and desktop prompts</span>
+                  <label class="settings-label">Type</label>
+                  <select id="app-detail-type" class="settings-input">
+                    <option value="browser">Browser app (web URL)</option>
+                    <option value="native">Native app (desktop executable)</option>
+                  </select>
+                  <!-- Browser fields -->
+                  <div id="app-detail-browser-fields">
+                    <label class="settings-label">URL</label>
+                    <input id="app-detail-url" class="settings-input" spellcheck="false" placeholder="https://..." />
+                    <label class="settings-label">Open in</label>
+                    <select id="app-detail-browser-target" class="settings-input">
+                      <option value="webview">Glyphh webview</option>
+                      <option value="native">Native Chrome</option>
+                    </select>
+                    <label class="settings-toggle" style="margin-top:4px;padding:8px 12px;">
+                      <input type="checkbox" id="app-detail-force-web" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Force web mode</span>
+                        <span class="toggle-desc">Block native app redirects and desktop prompts</span>
+                      </div>
+                    </label>
+                  </div>
+                  <!-- Native fields -->
+                  <div id="app-detail-native-fields" class="hidden">
+                    <label class="settings-label">Application / executable path</label>
+                    <div style="display:flex;gap:6px;">
+                      <input id="app-detail-exec-path" class="settings-input" placeholder="/Applications/Terminal.app" spellcheck="false" style="flex:1;font-family:var(--font-mono);font-size:12px;" />
+                      <button id="app-detail-exec-browse" class="action-btn" type="button">Browse…</button>
                     </div>
-                  </label>
+                    <label class="settings-label">Archetype</label>
+                    <select id="app-detail-archetype" class="settings-input">
+                      <option value="terminal">Terminal</option>
+                      <option value="editor">Editor</option>
+                      <option value="generic">Generic</option>
+                    </select>
+                    <!-- Terminal archetype -->
+                    <div id="app-detail-terminal-fields">
+                      <label class="settings-label">Shell</label>
+                      <input id="app-detail-shell" class="settings-input" placeholder="/bin/zsh" spellcheck="false" />
+                      <label class="settings-label">Profile</label>
+                      <input id="app-detail-profile" class="settings-input" spellcheck="false" />
+                      <label class="settings-label">Working directory</label>
+                      <input id="app-detail-cwd" class="settings-input" placeholder="~/projects" spellcheck="false" />
+                      <label class="settings-label">Init commands <span style="color:var(--text-2);font-weight:400;">(one per line)</span></label>
+                      <textarea id="app-detail-init-commands" class="settings-input" rows="3" spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                    </div>
+                    <!-- Editor archetype -->
+                    <div id="app-detail-editor-fields" class="hidden">
+                      <label class="settings-label">Folder</label>
+                      <input id="app-detail-folder" class="settings-input" placeholder="~/projects/my-repo" spellcheck="false" />
+                    </div>
+                    <!-- Generic archetype -->
+                    <div id="app-detail-generic-fields" class="hidden">
+                      <label class="settings-label">Args <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+                      <input id="app-detail-args" class="settings-input" spellcheck="false" />
+                    </div>
+                  </div>
                   <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
                     <button id="app-detail-delete" class="action-btn danger">Delete</button>
                     <button id="app-detail-export" class="action-btn" title="Export this app as a .yoapp bundle">Export</button>

@@ -38,6 +38,73 @@ let currentAppId = "";
 let activeAppTab: "dashboard" | "connection" | "mcp" = "dashboard";
 let connectorSearchOffset = 0;
 
+// ── Browser ↔ Native helpers (pivot-mcp) ─────────────────
+// Apps are either web apps (isBrowser, url + browserTarget) or native desktop
+// apps (execPath + an archetype-specific launchConfig). These build/read the
+// launchConfig from the flat DOM fields, shared by the add + detail forms.
+type Archetype = "terminal" | "editor" | "generic";
+
+// Local mirror of preload.ts PanelAppInput — apps.ts is a standalone renderer
+// module and can't name the type declared in renderer.ts's `declare global`,
+// so it re-declares a structurally-identical alias for building patch bodies.
+type PanelAppInput = {
+  name?: string;
+  slug?: string;
+  url?: string | null;
+  forceWeb?: boolean;
+  isBrowser?: boolean;
+  browserTarget?: "webview" | "native";
+  execPath?: string | null;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
+};
+
+function readLaunchConfig(prefix: string, archetype: Archetype): Record<string, unknown> {
+  const val = (id: string) => (document.getElementById(`${prefix}-${id}`) as HTMLInputElement | HTMLTextAreaElement | null)?.value.trim() || "";
+  if (archetype === "terminal") {
+    const lc: Record<string, unknown> = {};
+    if (val("shell")) lc.shell = val("shell");
+    if (val("profile")) lc.profile = val("profile");
+    if (val("cwd")) lc.cwd = val("cwd");
+    const cmds = val("init-commands").split("\n").map((s) => s.trim()).filter(Boolean);
+    if (cmds.length) lc.initCommands = cmds;
+    return lc;
+  }
+  if (archetype === "editor") {
+    const lc: Record<string, unknown> = {};
+    if (val("folder")) lc.folder = val("folder");
+    return lc;
+  }
+  const lc: Record<string, unknown> = {};
+  const args = val("args") ? val("args").split(/\s+/) : [];
+  if (args.length) lc.args = args;
+  return lc;
+}
+
+function writeLaunchConfig(prefix: string, archetype: Archetype, lc: Record<string, unknown> | null | undefined): void {
+  const set = (id: string, v: string) => { const el = document.getElementById(`${prefix}-${id}`) as HTMLInputElement | HTMLTextAreaElement | null; if (el) el.value = v; };
+  const c = lc || {};
+  set("shell", typeof c.shell === "string" ? c.shell : "");
+  set("profile", typeof c.profile === "string" ? c.profile : "");
+  set("cwd", typeof c.cwd === "string" ? c.cwd : "");
+  set("init-commands", Array.isArray(c.initCommands) ? (c.initCommands as string[]).join("\n") : "");
+  set("folder", typeof c.folder === "string" ? c.folder : "");
+  set("args", Array.isArray(c.args) ? (c.args as string[]).join(" ") : "");
+}
+
+// Show only the archetype-specific field block that matches the selection.
+function toggleArchetypeFields(prefix: string, archetype: Archetype): void {
+  document.getElementById(`${prefix}-terminal-fields`)?.classList.toggle("hidden", archetype !== "terminal");
+  document.getElementById(`${prefix}-editor-fields`)?.classList.toggle("hidden", archetype !== "editor");
+  document.getElementById(`${prefix}-generic-fields`)?.classList.toggle("hidden", archetype !== "generic");
+}
+
+// Show the browser-vs-native field blocks for a given form prefix.
+function toggleTypeFields(prefix: string, isBrowser: boolean): void {
+  document.getElementById(`${prefix}-browser-fields`)?.classList.toggle("hidden", !isBrowser);
+  document.getElementById(`${prefix}-native-fields`)?.classList.toggle("hidden", isBrowser);
+}
+
 // Dashboard shell (5a): apps are server objects (yo-server's saved_apps),
 // not local ones — `id` is the server row's UUID (used for every write:
 // update/delete/connection/mcp/commands); `slug` is the human-readable
@@ -46,21 +113,31 @@ interface PanelApp {
   id: string;
   slug: string;
   name: string;
-  url?: string;
+  url?: string | null;
   forceWeb?: boolean;
+  // Browser ↔ Native model (pivot-mcp).
+  isBrowser?: boolean;
+  browserTarget?: "webview" | "native";
+  execPath?: string | null;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
   commands?: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
   mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
 }
 
 function toPanelApp(a: {
-  id: string; slug: string; name: string; url: string; forceWeb: boolean;
+  id: string; slug: string; name: string; url: string | null; forceWeb: boolean;
+  isBrowser?: boolean; browserTarget?: "webview" | "native"; execPath?: string | null;
+  appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
 }): PanelApp {
   return {
     id: a.id, slug: a.slug, name: a.name, url: a.url, forceWeb: a.forceWeb,
+    isBrowser: a.isBrowser, browserTarget: a.browserTarget, execPath: a.execPath,
+    appArchetype: a.appArchetype, launchConfig: a.launchConfig,
     commands: a.commands, connection: a.connection, mcp: a.mcp,
   };
 }
@@ -102,7 +179,10 @@ async function loadApps() {
 
   try {
     const apps = await window.yo.panelAppsList();
-    panelApps = apps.filter((a) => a.url).map(toPanelApp);
+    // Keep browser apps (have a url) and native apps (isBrowser === false).
+    // Legacy rows have neither field set but always carry a url, so the url
+    // check still covers them.
+    panelApps = apps.filter((a) => a.url || a.isBrowser === false).map(toPanelApp);
   } catch { panelApps = []; }
 
   document.getElementById("apps-limit-msg")!.classList.add("hidden");
@@ -172,7 +252,12 @@ function renderAppsList() {
     appsList.appendChild(card);
   }
 
-  appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
+  // Only add the pagination bar when there's more than one page — otherwise
+  // its empty div lands as a stray grid cell (a phantom line next to the
+  // app cards, since #apps-list is a CSS grid).
+  if (state.totalPages > 1) {
+    appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
+  }
 }
 
 // ── Tab switching ────────────────────────────────────────
@@ -226,16 +311,7 @@ async function loadConnectionTab() {
   const noToolsEl = document.getElementById("app-connection-no-tools")!;
   const browseEl = document.querySelector<HTMLElement>(".connection-browse")!;
 
-  // App connections (Pipedream) are a paid-tier feature — lock for Free users.
-  if (!(await window.yo.hasMcpAccess())) {
-    gate.classList.remove("hidden");
-    statusEl.innerHTML = "";
-    listEl.innerHTML = "";
-    toolsEl.innerHTML = "";
-    noToolsEl.classList.add("hidden");
-    browseEl.classList.add("hidden");
-    return;
-  }
+  // Connections are available to all tiers — no pay gate.
   gate.classList.add("hidden");
 
   // Left: this app's connection
@@ -582,6 +658,19 @@ async function openPanelAppDetail(app: PanelApp) {
   appDetailName.value = app.name;
   appDetailUrl.value = app.url || "";
   appForceWeb.checked = !!app.forceWeb;
+
+  // Browser ↔ Native fields (pivot-mcp). Legacy apps have isBrowser undefined
+  // but always carry a url, so they default to browser.
+  const isBrowser = app.isBrowser !== undefined ? app.isBrowser : true;
+  (document.getElementById("app-detail-type") as HTMLSelectElement).value = isBrowser ? "browser" : "native";
+  (document.getElementById("app-detail-browser-target") as HTMLSelectElement).value = app.browserTarget === "native" ? "native" : "webview";
+  (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
+  const detailArchetype = (app.appArchetype as Archetype) || "terminal";
+  (document.getElementById("app-detail-archetype") as HTMLSelectElement).value = detailArchetype;
+  writeLaunchConfig("app-detail", detailArchetype, app.launchConfig);
+  toggleTypeFields("app-detail", isBrowser);
+  toggleArchetypeFields("app-detail", detailArchetype);
+
   appConnectStatus.textContent = "";
   appMapCommand.classList.add("hidden");
   appDetailHeading.textContent = app.name;
@@ -785,7 +874,7 @@ function closeAppDetail() {
 }
 
 function reloadPanelApps(apps: Array<PanelApp>) {
-  panelApps = apps.filter((a) => a.url);
+  panelApps = apps.filter((a) => a.url || a.isBrowser === false);
 }
 
 // When a browser tab is "Create App"'d, the originating tab id is stashed here
@@ -853,16 +942,36 @@ function initApps() {
   // + New — opens the simple App add form (name → auto-slug → URL).
   // The old "Add App | Add MCP Server" dropdown is gone; the form
   // already lets the user wire MCP in the detail view after creating.
+  const addTypeSelect = document.getElementById("app-add-type") as HTMLSelectElement;
+  const addArchetypeSelect = document.getElementById("app-add-archetype") as HTMLSelectElement;
+  const addExecPath = document.getElementById("app-add-exec-path") as HTMLInputElement;
+
   document.getElementById("apps-add-btn")!.addEventListener("click", () => {
     addNameInput.value = "";
     addSlugInput.value = "";
     slugTouched = false;
     addUrlInput.value = "";
+    // Reset Browser ↔ Native fields to defaults (browser / webview / terminal).
+    addTypeSelect.value = "browser";
+    (document.getElementById("app-add-browser-target") as HTMLSelectElement).value = "webview";
+    addExecPath.value = "";
+    addArchetypeSelect.value = "terminal";
+    writeLaunchConfig("app-add", "terminal", null);
+    toggleTypeFields("app-add", true);
+    toggleArchetypeFields("app-add", "terminal");
     appFormError.classList.add("hidden");
     appsList.classList.add("hidden");
     appsToolbar.classList.add("hidden");
     appAddForm.classList.remove("hidden");
     addNameInput.focus();
+  });
+
+  // Add-form Browser ↔ Native + archetype toggles + Browse… button.
+  addTypeSelect.addEventListener("change", () => toggleTypeFields("app-add", addTypeSelect.value === "browser"));
+  addArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
+  document.getElementById("app-add-exec-browse")!.addEventListener("click", async () => {
+    const picked = await window.yo.pickExecutable();
+    if (picked) addExecPath.value = picked;
   });
 
   // MCP add form transport toggle
@@ -929,10 +1038,13 @@ function initApps() {
     const name = addNameInput.value.trim();
     const url = addUrlInput.value.trim();
     const slugInput = addSlugInput.value.trim();
+    const isBrowser = addTypeSelect.value === "browser";
+    const execPath = addExecPath.value.trim();
     if (!name) { addNameInput.classList.add("invalid"); clearInvalid(addNameInput); valid = false; }
-    if (!url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
+    if (isBrowser && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
+    if (!isBrowser && !execPath) { addExecPath.classList.add("invalid"); clearInvalid(addExecPath); valid = false; }
     if (!valid) {
-      appFormError.textContent = "Name and URL are required.";
+      appFormError.textContent = isBrowser ? "Name and URL are required." : "Name and executable path are required.";
       appFormError.classList.remove("hidden");
       return;
     }
@@ -958,7 +1070,10 @@ function initApps() {
       appFormError.classList.remove("hidden");
       return;
     }
-    const created = await window.yo.panelAppsCreate({ name, slug: id, url });
+    const archetype = addArchetypeSelect.value as Archetype;
+    const created = await window.yo.panelAppsCreate(isBrowser
+      ? { name, slug: id, isBrowser: true, url, browserTarget: (document.getElementById("app-add-browser-target") as HTMLSelectElement).value as "webview" | "native", execPath: null }
+      : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) });
     if (!created.ok || !created.app) {
       appFormError.textContent = created.error || "Failed to create app.";
       appFormError.classList.remove("hidden");
@@ -1013,18 +1128,41 @@ function initApps() {
     btn.addEventListener("click", () => switchAppTab(btn.dataset.tab!));
   });
 
+  // Detail-form Browser ↔ Native + archetype toggles + Browse… button.
+  const detailTypeSelect = document.getElementById("app-detail-type") as HTMLSelectElement;
+  const detailArchetypeSelect = document.getElementById("app-detail-archetype") as HTMLSelectElement;
+  const detailExecPath = document.getElementById("app-detail-exec-path") as HTMLInputElement;
+  detailTypeSelect.addEventListener("change", () => toggleTypeFields("app-detail", detailTypeSelect.value === "browser"));
+  detailArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-detail", detailArchetypeSelect.value as Archetype));
+  document.getElementById("app-detail-exec-browse")!.addEventListener("click", async () => {
+    const picked = await window.yo.pickExecutable();
+    if (picked) detailExecPath.value = picked;
+  });
+
   // Dashboard save
   document.getElementById("app-dash-save")!.addEventListener("click", async () => {
     if (!currentAppId) return;
     const newSlug = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    const patch: Partial<{ name: string; slug: string; url: string; forceWeb: boolean }> = {
+    const isBrowser = detailTypeSelect.value === "browser";
+    const patch: PanelAppInput = {
       forceWeb: appForceWeb.checked,
+      isBrowser,
     };
     if (newSlug) patch.slug = newSlug;
     const name = appDetailName.value.trim();
-    const url = appDetailUrl.value.trim();
     if (name) patch.name = name;
-    if (url) patch.url = url;
+    if (isBrowser) {
+      const url = appDetailUrl.value.trim();
+      if (url) patch.url = url;
+      patch.browserTarget = (document.getElementById("app-detail-browser-target") as HTMLSelectElement).value as "webview" | "native";
+      patch.execPath = null;
+    } else {
+      patch.url = null;
+      patch.execPath = detailExecPath.value.trim();
+      const archetype = detailArchetypeSelect.value as Archetype;
+      patch.appArchetype = archetype;
+      patch.launchConfig = readLaunchConfig("app-detail", archetype);
+    }
     await window.yo.panelAppsUpdate(currentAppId, patch);
 
     closeAppDetail();

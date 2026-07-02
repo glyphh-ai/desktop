@@ -23,7 +23,11 @@ function registerPanelAppsIpc(): void {
     try { return await serverGetAuthed<unknown[]>("/api/panel-apps"); }
     catch { return []; }
   });
-  ipcMain.handle("panel-apps-create", async (_e, input: { name: string; slug: string; url: string; forceWeb?: boolean }) => {
+  // input/patch are forwarded verbatim to the server, which validates and
+  // picks the fields it accepts (see saved-app-routes.ts readCreateInput).
+  // Typed as Record so the new Browser↔Native fields (isBrowser, browserTarget,
+  // execPath, appArchetype, launchConfig) pass straight through untouched.
+  ipcMain.handle("panel-apps-create", async (_e, input: Record<string, unknown>) => {
     try { return { ok: true, app: await serverPostAuthed("/api/panel-apps", input) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
@@ -210,11 +214,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // direct IPC call would otherwise still mutate them.
   const refuseIfInternal = (id: string) => appConnector.isInternal(id);
   ipcMain.handle("apps-remove", (_e, id: string) => refuseIfInternal(id) ? false : appConnector.remove(id));
-  // Pipedream + MCP are paid-tier features — block connecting/configuring them
-  // on the Free plan (removal stays allowed so users can clean up after a
-  // downgrade). hasMcpAccess() is the same gate used in mcp-manager/relay.
+  // Connections are available to all tiers — no pay gate. (MCP server config
+  // below stays gated.) refuseIfInternal still blocks editing built-in apps.
   ipcMain.handle("apps-set-connection", (_e, id: string, pipedreamSlug: string) =>
-    (refuseIfInternal(id) || !hasMcpAccess()) ? false : appConnector.setConnection(id, { pipedreamSlug }));
+    refuseIfInternal(id) ? false : appConnector.setConnection(id, { pipedreamSlug }));
   ipcMain.handle("apps-remove-connection", (_e, id: string) =>
     refuseIfInternal(id) ? false : appConnector.removeConnection(id));
   ipcMain.handle("apps-set-mcp", (_e, id: string, mcp: any) =>

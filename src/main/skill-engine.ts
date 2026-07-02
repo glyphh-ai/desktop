@@ -1,16 +1,24 @@
 /**
- * SkillEngine — folder-based skill storage and lifecycle execution.
+ * SkillEngine — server-authoritative skill storage and lifecycle execution.
  *
- * Skills live under ~/.claude/skills/<name>/ (extending claude's native
- * skill folder; claude can use SKILL.md when reasoning, yo runs SKILL.js
- * when present):
+ * The SERVER (yo-server's saved_skills) is the source of truth — skills are
+ * authored only by the assistant (via the skill-builder system skill), never
+ * hand-written in the client. `refreshFromServer()` fetches every skill the
+ * org's agent may invoke (GET /api/skills/tools) and MIRRORS it into
+ * ~/.claude/skills/<name>/ as a local EXECUTION CACHE, so the deterministic
+ * runner (skill-runner.ts) and scheduler (which read SKILL.js/SKILL.md off
+ * disk) keep working unchanged:
  *   - SKILL.md    (required): YAML frontmatter + prompt body
  *   - SKILL.js    (optional): deterministic JS runner — see skill-runner.ts
  *   - Any other files (arbitrary artifacts, templates, examples)
  *
+ * The cache is read-only from the user's perspective: writes/deletes/imports
+ * are disabled (see skills-ipc.ts). Deleting a skill on the server prunes its
+ * local folder on the next sync.
+ *
  * Dispatch in runSkill():
  *   - SKILL.js present → runs through SkillRunner (ctx.tools.call, ctx.claude, lifecycle hooks)
- *   - SKILL.js missing → falls back to prompt-mode (process() — SDK runs the .md body as system prompt)
+ *   - SKILL.js missing → the skill has no deterministic implementation and fails clearly
  */
 
 import fs from "fs";
@@ -22,6 +30,7 @@ import AdmZip from "adm-zip";
 
 import { LLMConfig } from "./llm-config";
 import { sdkComplete } from "./sdk-llm";
+import { serverGetAuthed } from "./auth";
 import type { McpManager } from "./mcp-manager";
 import {
   Skill,
@@ -37,55 +46,21 @@ const SKILL_MD = "SKILL.md";
 const SKILL_JS = "SKILL.js";
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
-// ── Built-in seeded skills ───────────────────────────────────
+// ── Server sync types ────────────────────────────────────────
 //
-// Shipped methodologies written to ~/.claude/skills/<name>/ on boot when
-// absent. Seeding never clobbers a user-edited copy (see seedBuiltinSkills).
+// The shape returned by yo-server's agent tool surface (GET /api/skills/tools
+// and /tools/:id/files). Skills are keyed by UUID on the server; the local
+// cache keys folders by (sanitized) name, so we keep a name→id map per sync.
 
-/** vibe-planner — yo's reusable build methodology (Vibe Phase 3). */
-const VIBE_PLANNER_PROMPT = `You are vibe-planner — yo's reusable build methodology. You turn a project goal into two artifacts a Claude Code coding agent will use to build the thing:
-
-1. plan.md — a concrete, ordered task checklist (GitHub-style checkboxes) that breaks the goal into small, verifiable build steps.
-2. CLAUDE.md — the methodology / rails the coding agent must follow while building THIS project.
-
-Your input is a JSON object (or plain text) describing the project: it may include "goal", "name", "description", and an optional "councilSynthesis". Treat the goal as the primary signal. If a "councilSynthesis" is provided, treat it as the agreed approach reached by a multi-LLM council debate on this goal — let it shape both the plan's task breakdown and the CLAUDE.md methodology (favor its recommended architecture, sequencing, and tradeoff calls). The synthesis is the *what/how*; you turn it into the concrete build steps.
-
-Return STRICT JSON ONLY — no prose, no markdown fences around the whole thing — matching exactly this schema:
-{ "plan": "<full markdown for plan.md>", "claudeMd": "<full markdown for CLAUDE.md>" }
-
-Requirements for "plan":
-- Start with a "# Plan" heading and a one-line restatement of the goal.
-- Group tasks under short ## phase headings (e.g. Scaffold, Core, UI, Verify, Ship) when it helps.
-- Every task is a "- [ ] " checkbox line, concrete and small enough to verify in one step.
-- Order tasks so each builds on the last; put a working skeleton / dev server early so there is always something to preview.
-- 8-20 tasks total. Be specific to the goal, not generic.
-
-Requirements for "claudeMd":
-- Start with a "# Methodology" heading naming the project.
-- Cover PROCESS: clarify the goal first if ambiguous; implement task-by-task against plan.md; after each task verify against the live preview / dev server before moving on; check the box in plan.md as each task completes and add follow-up tasks discovered along the way.
-- Cover CONVENTIONS: build in the code/ working directory; keep a dev server running for the preview; prefer small reversible commits; match existing patterns.
-- Cover PLAN UPKEEP: plan.md is the living source of truth — keep it checked off and append new tasks as scope is discovered.
-- Keep it concise but real — a usable default the user can edit per project.
-
-Output ONLY the JSON object.`;
-
-interface BuiltinSkill {
+interface ServerSkillSummary {
+  id: string;
   name: string;
-  manifest: SkillManifest;
-  prompt: string;
+  description?: string;
+  hasRunner: boolean;
+  hasApp: boolean;
+  isSystem: boolean;
+  updatedAt: string;
 }
-
-const BUILTIN_SKILLS: BuiltinSkill[] = [
-  {
-    name: "vibe-planner",
-    manifest: {
-      name: "vibe-planner",
-      description: "Turns a project goal into a plan.md task checklist + a CLAUDE.md build methodology for a vibe.",
-      type: "skill",
-    },
-    prompt: VIBE_PLANNER_PROMPT,
-  },
-];
 
 // Legacy fallback prompt when a skill has neither runner nor body.
 const DEFAULT_SKILL_PROMPT = `You are a context capture assistant.
@@ -109,6 +84,14 @@ export class SkillEngine {
   private onRunCompleteCb: ((run: SkillRun) => void) | null = null;
   private mcpManager: McpManager | null = null;
   private libraryDir: string;
+  // Server-mirror bookkeeping — name→server UUID for the last sync, plus a
+  // small debounce so rapid UI events don't hammer the API.
+  private nameToId: Map<string, string> = new Map();
+  // Names of hidden system skills (skill-builder, rpa-runner) — mirrored so the
+  // agent can RUN them, but excluded from the user-facing browse lists.
+  private systemNames: Set<string> = new Set();
+  private lastSyncAt = 0;
+  private syncing: Promise<void> | null = null;
 
   constructor() {
     this.skillsDir = path.join(os.homedir(), ".claude", "skills");
@@ -177,27 +160,96 @@ export class SkillEngine {
     return `---\n${fm.trim()}\n---\n\n${body.trim()}\n`;
   }
 
-  // ── Built-in seeding ─────────────────────────────────
+  // ── Server sync (source of truth → local execution cache) ─────
+  //
+  // Skills are authored only by the assistant, server-side. This mirrors every
+  // agent-available skill (system + org) into the local cache so the runner and
+  // scheduler can execute them off disk. Non-fatal on failure (offline / not
+  // yet authenticated): the existing cache is left in place.
+
+  /** Resolve a skill's server UUID from the last sync (null if unknown). */
+  serverIdForName(name: string): string | null {
+    return this.nameToId.get(this.sanitizeName(name)) ?? null;
+  }
 
   /**
-   * Write any bundled built-in skills (e.g. vibe-planner) to disk if they
-   * are absent. Never clobbers a user-edited copy — if SKILL.md already
-   * exists for the name, it is left untouched. Idempotent; safe at boot.
-   * Returns the names that were newly seeded.
+   * Fetch all agent-available skills from the server and mirror them into the
+   * local execution cache. Debounced (3s) unless forced. Coalesces concurrent
+   * callers onto one in-flight sync.
    */
-  seedBuiltinSkills(): string[] {
-    const seeded: string[] = [];
-    for (const b of BUILTIN_SKILLS) {
-      const mdPath = path.join(this.skillFolder(b.name), SKILL_MD);
-      if (fs.existsSync(mdPath)) continue;
-      if (this.writeSkill(b.name, { ...b.manifest }, b.prompt)) seeded.push(b.name);
+  async refreshFromServer(opts: { force?: boolean } = {}): Promise<void> {
+    if (this.syncing) return this.syncing;
+    if (!opts.force && Date.now() - this.lastSyncAt < 3000) return;
+    this.syncing = this.doSync()
+      .catch((err) => { console.log("[skills] server sync skipped:", err instanceof Error ? err.message : err); })
+      .finally(() => { this.syncing = null; this.lastSyncAt = Date.now(); });
+    return this.syncing;
+  }
+
+  private async doSync(): Promise<void> {
+    const summaries = await serverGetAuthed<ServerSkillSummary[]>("/api/skills/tools");
+    const seen = new Set<string>();
+    const nextMap = new Map<string, string>();
+    const nextSystem = new Set<string>();
+    for (const s of summaries) {
+      const name = this.sanitizeName(s.name);
+      if (!name) continue;
+      seen.add(name);
+      nextMap.set(name, s.id);
+      if (s.isSystem) nextSystem.add(name);
+      try { await this.mirrorSkill(s); } catch (err) {
+        console.log(`[skills] mirror "${name}" failed:`, err instanceof Error ? err.message : err);
+      }
     }
-    return seeded;
+    this.nameToId = nextMap;
+    this.systemNames = nextSystem;
+    // Deletions on the server propagate: drop local folders no longer present.
+    for (const local of this.allSkillNames()) {
+      if (!seen.has(local)) this.removeCacheFolder(local);
+    }
+    this.emitChange();
+  }
+
+  /** Mirror one server skill's files into its local cache folder, pruning any
+   *  stale local files the server no longer has. */
+  private async mirrorSkill(s: ServerSkillSummary): Promise<void> {
+    const files = await serverGetAuthed<string[]>(`/api/skills/tools/${s.id}/files`).catch(() => [] as string[]);
+    const folder = this.skillFolder(s.name);
+    fs.mkdirSync(folder, { recursive: true });
+    const wanted = new Set<string>();
+    for (const rel of files) {
+      const safe = this.safePath(folder, rel);
+      if (!safe) continue;
+      const encoded = rel.split("/").map(encodeURIComponent).join("/");
+      const res = await serverGetAuthed<{ relPath: string; content: string }>(
+        `/api/skills/tools/${s.id}/files/${encoded}`,
+      ).catch(() => null);
+      if (!res) continue;
+      fs.mkdirSync(path.dirname(safe), { recursive: true });
+      fs.writeFileSync(safe, res.content, "utf-8");
+      wanted.add(path.resolve(safe));
+    }
+    // Prune local files that are no longer part of the server skill.
+    for (const rel of this.listSkillFiles(s.name)) {
+      const abs = path.resolve(folder, rel);
+      if (!wanted.has(abs)) { try { fs.unlinkSync(abs); } catch {} }
+    }
+  }
+
+  /** Remove a cached skill folder (server-driven prune only — no server call). */
+  private removeCacheFolder(name: string): void {
+    const folder = this.skillFolder(name);
+    const resolved = path.resolve(folder);
+    if (!resolved.startsWith(path.resolve(this.skillsDir) + path.sep)) return;
+    fs.rmSync(folder, { recursive: true, force: true });
+    this.runHistory.delete(name);
   }
 
   // ── CRUD ─────────────────────────────────────────────
 
-  listSkills(): string[] {
+  /** Every skill folder on disk, including hidden system skills. Internal only
+   *  (cache pruning) — callers that browse should use listSkills(). */
+  private allSkillNames(): string[] {
     if (!fs.existsSync(this.skillsDir)) return [];
     const names: string[] = [];
     for (const entry of fs.readdirSync(this.skillsDir, { withFileTypes: true })) {
@@ -206,6 +258,13 @@ export class SkillEngine {
       if (fs.existsSync(mdPath)) names.push(entry.name);
     }
     return names.sort();
+  }
+
+  /** User-visible skills — excludes hidden system skills (skill-builder,
+   *  rpa-runner). getSkill()/runSkill() still resolve those by name so the
+   *  agent can invoke them; they're just kept out of the browse lists. */
+  listSkills(): string[] {
+    return this.allSkillNames().filter((n) => !this.systemNames.has(n));
   }
 
   listSkillsDetailed(): SkillSummary[] {

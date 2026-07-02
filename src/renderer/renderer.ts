@@ -30,13 +30,32 @@ type SavedPanelApp = {
   createdBy: string;
   name: string;
   slug: string;
-  url: string;
+  url: string | null;
   forceWeb: boolean;
+  // Browser ↔ Native model (pivot-mcp) — see preload.ts SavedPanelApp.
+  isBrowser?: boolean;
+  browserTarget?: "webview" | "native";
+  execPath?: string | null;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
   connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   createdAt: string;
   updatedAt: string;
+};
+
+// Mirrors preload.ts PanelAppInput — fields forwarded to /api/panel-apps.
+type PanelAppInput = {
+  name?: string;
+  slug?: string;
+  url?: string | null;
+  forceWeb?: boolean;
+  isBrowser?: boolean;
+  browserTarget?: "webview" | "native";
+  execPath?: string | null;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
 };
 
 declare global {
@@ -101,8 +120,8 @@ declare global {
       // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
       appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) => Promise<{ ok: boolean; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
-      panelAppsCreate: (input: { name: string; slug: string; url: string; forceWeb?: boolean }) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
-      panelAppsUpdate: (id: string, patch: Partial<{ name: string; slug: string; url: string; forceWeb: boolean }>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetConnection: (id: string, pipedreamSlug: string) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsRemoveConnection: (id: string) => Promise<{ ok: boolean; error?: string }>;
@@ -135,6 +154,7 @@ declare global {
       layoutsFolderRequired?: (name: string) => Promise<boolean>;
       layoutsDelete: (name: string) => Promise<boolean>;
       pickDirectory: () => Promise<string | null>;
+      pickExecutable: () => Promise<string | null>;
       // Grid resize
       gridDragEnd: (type: "col" | "row", index: number, fraction: number) => void;
       // Session
@@ -674,14 +694,19 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  const setActive = (slug: "apps" | "settings") => {
+  const setActive = (slug: "apps" | "skills" | "settings") => {
     document.getElementById("dashboard-tab-apps")?.classList.toggle("active", slug === "apps");
+    document.getElementById("dashboard-tab-skills")?.classList.toggle("active", slug === "skills");
     document.getElementById("dashboard-tab-settings")?.classList.toggle("active", slug === "settings");
   };
 
   document.getElementById("dashboard-tab-apps")?.addEventListener("click", () => {
     setActive("apps");
     openWorkspaceApp("apps");
+  });
+  document.getElementById("dashboard-tab-skills")?.addEventListener("click", () => {
+    setActive("skills");
+    openWorkspaceApp("skills");
   });
   document.getElementById("dashboard-tab-settings")?.addEventListener("click", () => {
     setActive("settings");

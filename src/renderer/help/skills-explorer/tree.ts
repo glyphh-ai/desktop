@@ -102,7 +102,7 @@ export function createSkillTree(opts: {
     setSkills(skills: SkillMeta[]) {
       rootEl.innerHTML = "";
       folders.clear();
-      if (!skills.length) { rootEl.append(el("div", { class: "skill-tree-empty", text: "No skills yet. Click + to create one." })); return; }
+      if (!skills.length) { rootEl.append(el("div", { class: "skill-tree-empty", text: "No skills yet. The assistant creates skills for you." })); return; }
       for (const s of skills) makeFolder(s);
       syncActive();
     },

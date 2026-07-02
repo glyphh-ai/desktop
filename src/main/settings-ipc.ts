@@ -251,6 +251,22 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     return result.filePaths[0];
   });
 
+  // Native-app exec-path picker (pivot-mcp). Analogous to pick-directory but
+  // for a single file. On macOS a .app is a bundle (a directory) — we do NOT
+  // pass treatPackageAsDirectory so the dialog returns the .app path itself
+  // as a file selection, which is exactly what we want as the executable path.
+  ipcMain.handle("pick-executable", async () => {
+    const mainWindow = getMainWindow();
+    if (!mainWindow || mainWindow.isDestroyed()) return null;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile"],
+      title: "Choose application or executable",
+      buttonLabel: "Select",
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
   ipcMain.handle("mcp-expose-start", async () => {
     if (!hasMcpAccess()) return { ok: false, error: "Exposing Glyphh as an MCP server requires a Pro plan." };
     const result = await mcpExpose.start();

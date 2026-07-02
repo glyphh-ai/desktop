@@ -13,13 +13,35 @@ export interface SavedPanelApp {
   createdBy: string;
   name: string;
   slug: string;
-  url: string;
+  url: string | null;
   forceWeb: boolean;
+  // Browser ↔ Native model (pivot-mcp). isBrowser=true (default) → web app
+  // with a url + browserTarget; false → native desktop app with execPath +
+  // an archetype-specific launchConfig.
+  isBrowser?: boolean;
+  browserTarget?: "webview" | "native";
+  execPath?: string | null;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
   connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   createdAt: string;
   updatedAt: string;
+}
+
+// Fields the create/update calls forward to /api/panel-apps. Kept as a named
+// type so preload + renderer stay in sync on the accepted keys.
+export interface PanelAppInput {
+  name?: string;
+  slug?: string;
+  url?: string | null;
+  forceWeb?: boolean;
+  isBrowser?: boolean;
+  browserTarget?: "webview" | "native";
+  execPath?: string | null;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
 }
 
 contextBridge.exposeInMainWorld("yo", {
@@ -99,6 +121,7 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("layouts-save-grid", grid) as Promise<boolean>,
   layoutsDelete: (name: string) => ipcRenderer.invoke("layouts-delete", name) as Promise<boolean>,
   pickDirectory: () => ipcRenderer.invoke("pick-directory") as Promise<string | null>,
+  pickExecutable: () => ipcRenderer.invoke("pick-executable") as Promise<string | null>,
 
   // Drips CRUD
   dripsList: () => ipcRenderer.invoke("drips-list") as Promise<Array<{ name: string; recipe: string }>>,
@@ -196,9 +219,9 @@ contextBridge.exposeInMainWorld("yo", {
   appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) =>
     ipcRenderer.invoke("app-window-open", spec) as Promise<{ ok: boolean; error?: string }>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
-  panelAppsCreate: (input: { name: string; slug: string; url: string; forceWeb?: boolean }) =>
+  panelAppsCreate: (input: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
-  panelAppsUpdate: (id: string, patch: Partial<{ name: string; slug: string; url: string; forceWeb: boolean }>) =>
+  panelAppsUpdate: (id: string, patch: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-update", id, patch) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsDelete: (id: string) => ipcRenderer.invoke("panel-apps-delete", id) as Promise<{ ok: boolean; error?: string }>,
   panelAppsSetConnection: (id: string, pipedreamSlug: string) =>

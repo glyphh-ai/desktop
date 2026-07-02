@@ -375,9 +375,10 @@ async function boot() {
 
   // Core services
   skillEngine = new SkillEngine();
-  // Seed bundled built-in skills (e.g. vibe-planner) if absent. Never
-  // clobbers a user-edited copy; safe + idempotent on every boot.
-  try { skillEngine.seedBuiltinSkills(); } catch (err) { console.log("[skills] seed failed:", (err as Error).message); }
+  // Skills are server-authoritative now (yo-server's saved_skills, authored by
+  // the assistant). Mirror them into the local execution cache on boot; the
+  // Skills tab re-syncs on open, so a pre-auth miss here is harmless.
+  void skillEngine.refreshFromServer({ force: true });
   // Broadcast a `skills-changed` event whenever anything touches the
   // skills directory — covers both the skillEngine API path (CRUD via
   // the Skills app) AND the agent writing skill files directly via its
@@ -904,6 +905,7 @@ async function boot() {
   // Dashboard's Apps-tab webview container.
   const HOME_SECTION_SLUGS: Record<string, string> = {
     "yo://apps": "apps",
+    "yo://skills": "skills",
   };
   // Dashboard shell (5a) — same section panels as above, plus &dashboard=1 so
   // home.ts applies the trimmed-down [data-home-scope="settings-flat"] view.
