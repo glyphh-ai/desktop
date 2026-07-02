@@ -612,13 +612,23 @@ async function boot() {
   // `.dip` window management needs anyway. Set the `overlayEnabled` pref to false
   // to opt out. `.dip` routes to the OS layout runner; `.drip` stays the effect.
   if (getPreference<boolean>("overlayEnabled", true)) {
+    // OS window control (.dip grid/split/min/exp) drives other apps through
+    // System Events, which needs Accessibility. Prompt once (no-op if already
+    // granted) so the user isn't left with a silently-failing command.
+    if (process.platform === "darwin") {
+      try { systemPreferences.isTrustedAccessibilityClient(true); } catch { /* noop */ }
+    }
     const overlayBin = app.isPackaged
       ? path.join(process.resourcesPath, "overlay", "keytap")
       : path.join(__dirname, "overlay", "keytap");
     const overlayTriggers = ".dip,.drip";
     startOverlay(
       async (cmd) => {
-        if (/^dip\b/.test(cmd)) { await runDip(cmd); return ""; }
+        if (/^dip\b/.test(cmd)) {
+          const r = await runDip(cmd);
+          if (!r.ok) console.error("[dip] failed:", r.error);
+          return "";
+        }
         return commandParser.execute(cmd);
       },
       () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } },

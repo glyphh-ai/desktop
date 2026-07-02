@@ -54,14 +54,28 @@ function workArea(): Rect {
 
 // ── process spawners ─────────────────────────────────────────────────────
 
-function run(cmd: string, args: string[]): Promise<string> {
+// Generous timeout: the FIRST call blocks on the macOS "control System Events"
+// Automation prompt until the user responds. If they miss it we don't want the
+// keytap spinner stuck forever — kill it and surface an error instead.
+function run(cmd: string, args: string[], timeoutMs = 15000): Promise<string> {
   return new Promise((resolve, reject) => {
-    let out = "", err = "";
+    let out = "", err = "", settled = false;
     const p = spawn(cmd, args);
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { p.kill("SIGKILL"); } catch { /* noop */ }
+      reject(new Error(`${cmd} timed out — grant Glyphh Accessibility + Automation permission (System Settings → Privacy & Security)`));
+    }, timeoutMs);
     p.stdout.on("data", (d) => { out += d.toString(); });
     p.stderr.on("data", (d) => { err += d.toString(); });
-    p.on("error", reject);
-    p.on("close", (code) => code === 0 ? resolve(out) : reject(new Error(err.trim() || `${cmd} exited ${code}`)));
+    p.on("error", (e) => { if (!settled) { settled = true; clearTimeout(timer); reject(e); } });
+    p.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      code === 0 ? resolve(out) : reject(new Error(err.trim() || `${cmd} exited ${code}`));
+    });
   });
 }
 
