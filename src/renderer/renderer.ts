@@ -718,9 +718,9 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  type DashSlug = "apps" | "skills" | "agents" | "layouts" | "drips" | "mcp" | "settings" | "about";
+  type DashSlug = "apps" | "skills" | "agents" | "layouts" | "drips" | "settings" | "about";
   const setActive = (slug: DashSlug) => {
-    for (const s of ["apps", "skills", "agents", "layouts", "drips", "mcp", "settings", "about"] as DashSlug[]) {
+    for (const s of ["apps", "skills", "agents", "layouts", "drips", "settings", "about"] as DashSlug[]) {
       document.getElementById(`dashboard-tab-${s}`)?.classList.toggle("active", slug === s);
     }
   };
@@ -737,7 +737,6 @@ function initDashboard(): void {
   wireTab("agents", "agents");
   wireTab("layouts", "layouts");
   wireTab("drips", "drips");
-  wireTab("mcp", "mcp");
   wireTab("settings", "dashboard-settings");
   wireTab("about", "about");
 

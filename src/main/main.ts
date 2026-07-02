@@ -909,7 +909,6 @@ async function boot() {
     "yo://agents": "agents",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
-    "yo://mcp": "mcp",
     "yo://about": "about",
   };
   // Dashboard shell (5a) — same section panels as above, plus &dashboard=1 so

@@ -550,135 +550,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
         <div class="help-section" data-section="skills">
           <div id="skills-explorer-host" class="skills-explorer-host"></div>
         </div>
-
-        <div class="help-section" data-section="mcp">
-                <h2>MCP Server</h2>
-                <p class="section-desc">Expose your saved agents and jammers to external LLM tools like Claude Desktop, Cursor, and Windsurf.</p>
-
-                <div id="mcp-pro-gate" class="hidden" style="padding:16px 0;">
-                  <p style="color:var(--text-2);font-size:13px;margin:0 0 10px;">MCP Server requires an Advanced subscription.</p>
-                  <button id="mcp-upgrade-btn" class="action-btn primary" style="font-size:12px;">Upgrade to Advanced</button>
-                </div>
-
-                <div id="mcp-section-wrap" class="settings-form">
-                  <h3 class="settings-subheading" style="margin:0 0 12px;">Local machine</h3>
-                  <p style="font-size:11px;color:var(--text-3);margin:0 0 16px;">Run a local MCP server on this machine and connect desktop tools (Claude Desktop, Cursor, Windsurf) to it directly.</p>
-
-                  <!-- Port -->
-                  <div style="margin-bottom:20px;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                      <label class="settings-label" style="margin:0;min-width:36px;">Port</label>
-                      <input id="mcp-expose-port" type="number" class="settings-input settings-input-sm" min="1024" max="65535" value="7860" style="width:90px;" />
-                      <button id="mcp-expose-port-save" class="action-btn" style="font-size:12px;">Save</button>
-                    </div>
-                    <span id="mcp-expose-status" style="font-size:12px;color:var(--text-2);"></span>
-                  </div>
-
-                  <!-- Access Tokens -->
-                  <div style="margin-bottom:20px;">
-                    <h3 class="settings-subheading" style="margin:0 0 6px;">Access Tokens</h3>
-                    <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">Generate a token for each external tool. Tokens are shown once — copy immediately.</p>
-                    <div id="mcp-expose-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-                      <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
-                      <div style="display:flex;gap:6px;align-items:center;">
-                        <code id="mcp-expose-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
-                        <button id="mcp-expose-copy-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
-                      </div>
-                    </div>
-                    <div id="mcp-expose-tokens" style="margin-bottom:10px;"></div>
-                    <div style="display:flex;gap:6px;align-items:center;">
-                      <input id="mcp-expose-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop, Cursor)" style="flex:1;font-size:12px;padding:5px 8px;" />
-                      <select id="mcp-expose-token-ttl" class="settings-input" style="width:auto;font-size:12px;padding:5px 8px;">
-                        <option value="7">7 days</option>
-                        <option value="30">30 days</option>
-                        <option value="90" selected>90 days</option>
-                        <option value="365">1 year</option>
-                        <option value="0">Never</option>
-                      </select>
-                      <button id="mcp-expose-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
-                    </div>
-                  </div>
-
-                  <!-- One-click Configure — writes directly into each tool's own config file (a fresh token + merged entry), instead of copy-pasting the example below. -->
-                  <div style="margin-bottom:20px;">
-                    <h3 class="settings-subheading" style="margin:0 0 6px;">Connect a Tool</h3>
-                    <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">One click generates a token and adds this MCP server to that tool's config. Restart the tool afterward.</p>
-                    <div id="mcp-configure-buttons" style="display:flex;flex-wrap:wrap;gap:8px;">
-                      <button class="action-btn" data-mcp-client="claude-desktop" style="font-size:12px;">Configure Claude Desktop</button>
-                      <button class="action-btn" data-mcp-client="cursor" style="font-size:12px;">Configure Cursor</button>
-                      <button class="action-btn" data-mcp-client="windsurf" style="font-size:12px;">Configure Windsurf</button>
-                      <button class="action-btn" data-mcp-client="codex-cli" style="font-size:12px;">Configure Codex CLI</button>
-                    </div>
-                    <div id="mcp-configure-status" style="font-size:11px;color:var(--text-2);margin-top:8px;"></div>
-                  </div>
-
-                  <!-- Example Config -->
-                  <div>
-                    <h3 class="settings-subheading" style="margin:0 0 6px;">Example Config</h3>
-                    <p style="font-size:11px;color:var(--text-3);margin:0 0 8px;">Add this to your Claude Desktop, Cursor, or Windsurf MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a generated token above.</p>
-                    <div style="position:relative;">
-                      <pre id="mcp-expose-config-example" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
-                      <button id="mcp-expose-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
-                    </div>
-                  </div>
-
-                  <!-- ── Remote Relay (org-admin only) ────────────────── -->
-                  <div id="relay-section" class="hidden">
-                    <hr style="border:none;border-top:1px solid var(--border-2);margin:24px 0;" />
-                    <div style="margin-bottom:8px;">
-                      <h3 class="settings-subheading" style="margin:0 0 4px;">Remote Relay</h3>
-                      <p style="font-size:12px;color:var(--text-2);margin:0 0 10px;">
-                        Let external LLMs (Claude code, Claude UI, ChatGPT) drive your Glyphh instance through the cloud — list and switch panels, click / type / read DOM, take screenshots. Your sign-in pairs this device to the relay; generate one or more <em>server tokens</em> below and paste them into your external tool's MCP config.
-                      </p>
-                      <label class="settings-toggle" style="margin-bottom:10px;">
-                        <input type="checkbox" id="relay-enabled-toggle" />
-                        <span class="toggle-switch"></span>
-                        <div class="toggle-info">
-                          <span class="toggle-title">Enable remote relay</span>
-                          <span class="toggle-desc">When on, your yo-client maintains a WebSocket to api.glyphh.ai</span>
-                        </div>
-                      </label>
-                      <span id="relay-status-text" style="font-size:11px;color:var(--text-3);margin-top:4px;display:inline-block;">Not connected.</span>
-
-                      <!-- Remote settings — only shown when the relay is enabled. -->
-                      <div id="relay-settings" class="hidden">
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Server tokens</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">One token per external tool. Tokens are shown <strong>once</strong> on creation — copy immediately.</p>
-                      <div id="relay-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-                        <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
-                        <div style="display:flex;gap:6px;align-items:center;">
-                          <code id="relay-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
-                          <button id="relay-copy-new-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
-                          <button id="relay-install-claude" class="action-btn" style="font-size:11px;padding:4px 12px;white-space:nowrap;" title="Write this token into ~/.claude.json so the claude CLI picks up the relay automatically">Install in Claude code</button>
-                        </div>
-                        <p id="relay-install-status" style="font-size:11px;color:var(--text-3);margin:6px 0 0;display:none;"></p>
-                      </div>
-                      <div id="relay-tokens-list" style="margin-bottom:10px;"></div>
-                      <div style="display:flex;gap:6px;align-items:center;">
-                        <input id="relay-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude code, ChatGPT)" style="flex:1;font-size:12px;padding:5px 8px;" />
-                        <button id="relay-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
-                      </div>
-
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">External tool config</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 6px;">Add this to the external tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a generated token above.</p>
-                      <div style="position:relative;">
-                        <pre id="relay-config-example" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
-                        <button id="relay-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
-                      </div>
-
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Or, for Claude code (CLI)</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 6px;">Run this in your terminal to register the relay with the <code>claude</code> CLI — replace <code style="color:var(--accent);">&lt;your-token&gt;</code>:</p>
-                      <div style="position:relative;">
-                        <pre id="relay-claude-cmd" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre-wrap;word-break:break-all;"></pre>
-                        <button id="relay-copy-claude-cmd" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
-                      </div>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-
         <!-- About — top-level dashboard tab (app version + updates). No policy
              copy here by design; wired by docs.ts loadAbout(). -->
         <div class="help-section" data-section="about">
@@ -1374,6 +1245,7 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
               <button class="settings-nav-item" data-sub="providers">Providers</button>
               <button class="settings-nav-item" data-sub="appearance">Appearance</button>
               <button class="settings-nav-item" data-sub="account">Account</button>
+              <button class="settings-nav-item" data-sub="mcp">MCP Server</button>
               <div class="settings-nav-sep"></div>
               <button class="settings-nav-item" data-sub="support">Support</button>
               <button class="settings-nav-item" data-jump="docs">Docs</button>
@@ -1511,7 +1383,133 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
 
               <!-- Advanced: Services, Voice, Relaunch -->
               <!-- MCP Server -->
-              <!-- MCP moved to its own top-level dashboard tab (data-section="mcp"). -->
+        <div class="settings-panel" data-sub="mcp">
+                <h2>MCP Server</h2>
+                <p class="section-desc">Expose your saved agents and jammers to external LLM tools like Claude Desktop, Cursor, and Windsurf.</p>
+
+                <div id="mcp-pro-gate" class="hidden" style="padding:16px 0;">
+                  <p style="color:var(--text-2);font-size:13px;margin:0 0 10px;">MCP Server requires an Advanced subscription.</p>
+                  <button id="mcp-upgrade-btn" class="action-btn primary" style="font-size:12px;">Upgrade to Advanced</button>
+                </div>
+
+                <div id="mcp-section-wrap" class="settings-form">
+                  <h3 class="settings-subheading" style="margin:0 0 12px;">Local machine</h3>
+                  <p style="font-size:11px;color:var(--text-3);margin:0 0 16px;">Run a local MCP server on this machine and connect desktop tools (Claude Desktop, Cursor, Windsurf) to it directly.</p>
+
+                  <!-- Port -->
+                  <div style="margin-bottom:20px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                      <label class="settings-label" style="margin:0;min-width:36px;">Port</label>
+                      <input id="mcp-expose-port" type="number" class="settings-input settings-input-sm" min="1024" max="65535" value="7860" style="width:90px;" />
+                      <button id="mcp-expose-port-save" class="action-btn" style="font-size:12px;">Save</button>
+                    </div>
+                    <span id="mcp-expose-status" style="font-size:12px;color:var(--text-2);"></span>
+                  </div>
+
+                  <!-- Access Tokens -->
+                  <div style="margin-bottom:20px;">
+                    <h3 class="settings-subheading" style="margin:0 0 6px;">Access Tokens</h3>
+                    <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">Generate a token for each external tool. Tokens are shown once — copy immediately.</p>
+                    <div id="mcp-expose-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
+                      <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
+                      <div style="display:flex;gap:6px;align-items:center;">
+                        <code id="mcp-expose-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
+                        <button id="mcp-expose-copy-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
+                      </div>
+                    </div>
+                    <div id="mcp-expose-tokens" style="margin-bottom:10px;"></div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                      <input id="mcp-expose-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop, Cursor)" style="flex:1;font-size:12px;padding:5px 8px;" />
+                      <select id="mcp-expose-token-ttl" class="settings-input" style="width:auto;font-size:12px;padding:5px 8px;">
+                        <option value="7">7 days</option>
+                        <option value="30">30 days</option>
+                        <option value="90" selected>90 days</option>
+                        <option value="365">1 year</option>
+                        <option value="0">Never</option>
+                      </select>
+                      <button id="mcp-expose-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
+                    </div>
+                  </div>
+
+                  <!-- One-click Configure — writes directly into each tool's own config file (a fresh token + merged entry), instead of copy-pasting the example below. -->
+                  <div style="margin-bottom:20px;">
+                    <h3 class="settings-subheading" style="margin:0 0 6px;">Connect a Tool</h3>
+                    <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">One click generates a token and adds this MCP server to that tool's config. Restart the tool afterward.</p>
+                    <div id="mcp-configure-buttons" style="display:flex;flex-wrap:wrap;gap:8px;">
+                      <button class="action-btn" data-mcp-client="claude-desktop" style="font-size:12px;">Configure Claude Desktop</button>
+                      <button class="action-btn" data-mcp-client="cursor" style="font-size:12px;">Configure Cursor</button>
+                      <button class="action-btn" data-mcp-client="windsurf" style="font-size:12px;">Configure Windsurf</button>
+                      <button class="action-btn" data-mcp-client="codex-cli" style="font-size:12px;">Configure Codex CLI</button>
+                    </div>
+                    <div id="mcp-configure-status" style="font-size:11px;color:var(--text-2);margin-top:8px;"></div>
+                  </div>
+
+                  <!-- Example Config -->
+                  <div>
+                    <h3 class="settings-subheading" style="margin:0 0 6px;">Example Config</h3>
+                    <p style="font-size:11px;color:var(--text-3);margin:0 0 8px;">Add this to your Claude Desktop, Cursor, or Windsurf MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a generated token above.</p>
+                    <div style="position:relative;">
+                      <pre id="mcp-expose-config-example" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
+                      <button id="mcp-expose-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
+                    </div>
+                  </div>
+
+                  <!-- ── Remote Relay (org-admin only) ────────────────── -->
+                  <div id="relay-section" class="hidden">
+                    <hr style="border:none;border-top:1px solid var(--border-2);margin:24px 0;" />
+                    <div style="margin-bottom:8px;">
+                      <h3 class="settings-subheading" style="margin:0 0 4px;">Remote Relay</h3>
+                      <p style="font-size:12px;color:var(--text-2);margin:0 0 10px;">
+                        Let external LLMs (Claude code, Claude UI, ChatGPT) drive your Glyphh instance through the cloud — list and switch panels, click / type / read DOM, take screenshots. Your sign-in pairs this device to the relay; generate one or more <em>server tokens</em> below and paste them into your external tool's MCP config.
+                      </p>
+                      <label class="settings-toggle" style="margin-bottom:10px;">
+                        <input type="checkbox" id="relay-enabled-toggle" />
+                        <span class="toggle-switch"></span>
+                        <div class="toggle-info">
+                          <span class="toggle-title">Enable remote relay</span>
+                          <span class="toggle-desc">When on, your yo-client maintains a WebSocket to api.glyphh.ai</span>
+                        </div>
+                      </label>
+                      <span id="relay-status-text" style="font-size:11px;color:var(--text-3);margin-top:4px;display:inline-block;">Not connected.</span>
+
+                      <!-- Remote settings — only shown when the relay is enabled. -->
+                      <div id="relay-settings" class="hidden">
+                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Server tokens</h4>
+                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">One token per external tool. Tokens are shown <strong>once</strong> on creation — copy immediately.</p>
+                      <div id="relay-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
+                        <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                          <code id="relay-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
+                          <button id="relay-copy-new-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
+                          <button id="relay-install-claude" class="action-btn" style="font-size:11px;padding:4px 12px;white-space:nowrap;" title="Write this token into ~/.claude.json so the claude CLI picks up the relay automatically">Install in Claude code</button>
+                        </div>
+                        <p id="relay-install-status" style="font-size:11px;color:var(--text-3);margin:6px 0 0;display:none;"></p>
+                      </div>
+                      <div id="relay-tokens-list" style="margin-bottom:10px;"></div>
+                      <div style="display:flex;gap:6px;align-items:center;">
+                        <input id="relay-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude code, ChatGPT)" style="flex:1;font-size:12px;padding:5px 8px;" />
+                        <button id="relay-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
+                      </div>
+
+                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">External tool config</h4>
+                      <p style="font-size:11px;color:var(--text-3);margin:0 0 6px;">Add this to the external tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a generated token above.</p>
+                      <div style="position:relative;">
+                        <pre id="relay-config-example" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
+                        <button id="relay-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
+                      </div>
+
+                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Or, for Claude code (CLI)</h4>
+                      <p style="font-size:11px;color:var(--text-3);margin:0 0 6px;">Run this in your terminal to register the relay with the <code>claude</code> CLI — replace <code style="color:var(--accent);">&lt;your-token&gt;</code>:</p>
+                      <div style="position:relative;">
+                        <pre id="relay-claude-cmd" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre-wrap;word-break:break-all;"></pre>
+                        <button id="relay-copy-claude-cmd" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
+                      </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
 
               <!-- Support — kept inside Settings so the left nav stays up -->
               <div class="settings-panel" data-sub="support">
