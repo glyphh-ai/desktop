@@ -119,6 +119,12 @@ declare global {
       // Dashboard shell (5a): server-authoritative Apps tab CRUD — see
       // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
       appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+      appLaunch: (spec: {
+        slug: string; name: string; url?: string | null; forceWeb?: boolean;
+        isBrowser?: boolean; browserTarget?: "webview" | "native";
+        execPath?: string | null; appArchetype?: string | null;
+        launchConfig?: Record<string, unknown> | null;
+      }) => Promise<{ ok: boolean; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;

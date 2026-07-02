@@ -218,6 +218,14 @@ contextBridge.exposeInMainWorld("yo", {
   // 5b Panel Manager: open a server app in its own native OS window.
   appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) =>
     ipcRenderer.invoke("app-window-open", spec) as Promise<{ ok: boolean; error?: string }>,
+  // Launch an app the way its config dictates (native exec / native Chrome /
+  // webview) — see the app-launch handler in apps-ipc.ts.
+  appLaunch: (spec: {
+    slug: string; name: string; url?: string | null; forceWeb?: boolean;
+    isBrowser?: boolean; browserTarget?: "webview" | "native";
+    execPath?: string | null; appArchetype?: string | null;
+    launchConfig?: Record<string, unknown> | null;
+  }) => ipcRenderer.invoke("app-launch", spec) as Promise<{ ok: boolean; error?: string }>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
   panelAppsCreate: (input: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,

@@ -3,6 +3,7 @@ import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./yo-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
 import { openAppWindow } from "./app-window-manager";
+import { launchNativeApp, launchInNativeChrome } from "./native-launch";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -16,6 +17,33 @@ function registerPanelAppsIpc(): void {
       return { ok: false, error: "App has no web URL" };
     }
     openAppWindow({ slug: String(spec.slug || spec.url), name: String(spec.name || spec.slug), url: spec.url, forceWeb: !!spec.forceWeb });
+    return { ok: true };
+  });
+
+  // Launch an app the way its config says to (Browser↔Native model):
+  //   - native app (isBrowser=false) → launch its executable + archetype config
+  //   - browser app, target "native" → open the URL in the user's real Chrome
+  //   - browser app, target "webview" (default) → Glyphh's own webview window
+  ipcMain.handle("app-launch", (_e, spec: {
+    slug: string; name: string; url?: string | null; forceWeb?: boolean;
+    isBrowser?: boolean; browserTarget?: "webview" | "native";
+    execPath?: string | null; appArchetype?: string | null;
+    launchConfig?: Record<string, unknown> | null;
+  }) => {
+    if (!spec) return { ok: false, error: "No app given" };
+    const isBrowser = spec.isBrowser !== false; // legacy rows default to browser
+    if (!isBrowser) {
+      return launchNativeApp(spec.execPath ?? "", spec.appArchetype, spec.launchConfig);
+    }
+    if (spec.browserTarget === "native") {
+      return launchInNativeChrome(String(spec.url || ""));
+    }
+    // webview (default) — Glyphh's own OS window over the shared session.
+    const url = String(spec.url || "");
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      return { ok: false, error: "App has no web URL" };
+    }
+    openAppWindow({ slug: String(spec.slug || url), name: String(spec.name || spec.slug), url, forceWeb: !!spec.forceWeb });
     return { ok: true };
   });
 

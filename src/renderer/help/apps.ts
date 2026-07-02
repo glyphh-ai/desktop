@@ -144,6 +144,18 @@ function toPanelApp(a: {
 
 let panelApps: PanelApp[] = [];
 
+/** Open an app the way its config dictates (Browser↔Native model): native apps
+ *  launch their executable, browser apps open in native Chrome or Glyphh's
+ *  webview window per browserTarget. Returns the launch result so callers can
+ *  surface an error. */
+async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: string }> {
+  return window.yo.appLaunch({
+    slug: app.slug, name: app.name, url: app.url, forceWeb: app.forceWeb,
+    isBrowser: app.isBrowser, browserTarget: app.browserTarget,
+    execPath: app.execPath, appArchetype: app.appArchetype, launchConfig: app.launchConfig,
+  });
+}
+
 // Pipedream's catalog icon per connected app's pipedreamSlug — the saved-app
 // row doesn't carry an icon itself, so it's looked up from the connector
 // catalog once per unique slug and cached for the session. Mirrors the
@@ -245,10 +257,9 @@ function renderAppsList() {
       <div class="app-card-id">${app.slug}</div>`;
 
     card.addEventListener("click", () => openPanelAppDetail(app));
-    // Double-click skips the editor and opens the app in its own window (5b).
-    card.addEventListener("dblclick", () => {
-      if (app.url) void window.yo.appWindowOpen({ slug: app.slug, name: app.name, url: app.url, forceWeb: app.forceWeb });
-    });
+    // Double-click skips the editor and opens the app per its config (5b) —
+    // webview window, native Chrome, or a native executable.
+    card.addEventListener("dblclick", () => { void launchPanelApp(app); });
     appsList.appendChild(card);
   }
 
@@ -1090,12 +1101,13 @@ function initApps() {
   // App detail back button
   document.getElementById("app-detail-close")!.addEventListener("click", () => closeAppDetail());
 
-  // App detail "Open app" — 5b Panel Manager: opens the app in its own
-  // native OS window straight from the server record.
-  document.getElementById("app-detail-open")!.addEventListener("click", () => {
+  // App detail "Open app" — opens the app per its config (webview window,
+  // native Chrome, or a native executable). Surfaces launch errors inline.
+  document.getElementById("app-detail-open")!.addEventListener("click", async () => {
     const app = panelApps.find((a) => a.id === currentAppId);
-    if (!app?.url) return;
-    void window.yo.appWindowOpen({ slug: app.slug, name: app.name, url: app.url, forceWeb: app.forceWeb });
+    if (!app) return;
+    const r = await launchPanelApp(app);
+    if (!r.ok && r.error) { appFormError.textContent = r.error; appFormError.classList.remove("hidden"); }
   });
 
   // Panel tab: "Pick Element" — start the element picker on the app preview.
