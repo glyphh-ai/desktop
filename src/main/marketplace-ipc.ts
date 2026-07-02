@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import type { AgentConfig as AgentRegistryConfig } from "./stores/agent-store-db";
+import { refreshAndListAgents, saveAgentSynced, removeAgentSynced } from "./stores/agent-store-db";
 
 interface MarketplaceIpcDeps {
   serverGetAuthed: <T = unknown>(path: string) => Promise<T>;
@@ -41,10 +42,14 @@ export function registerMarketplaceIpc(deps: MarketplaceIpcDeps): void {
     return getCapabilitiesStatus();
   });
 
-  ipcMain.handle("agents-list", async () => listAgents());
+  // agents-list/save/remove sync the org-shared library (yo-server saved_agents,
+  // the same the platform Agents page reads). The joinable-profile push
+  // (pushAgentProfile/deleteAgentProfile) is a SEPARATE surface — published
+  // agents discoverable for cyphers — and stays wired alongside it.
+  ipcMain.handle("agents-list", async () => refreshAndListAgents());
   ipcMain.handle("agents-get", async (_e, id: string) => getAgent(id));
   ipcMain.handle("agents-save", async (_e, cfg: AgentRegistryConfig) => {
-    const saved = saveAgent(cfg);
+    const saved = await saveAgentSynced(cfg);
     void (saved.joinable
       ? pushAgentProfile(saved)
       : deleteAgentProfile(saved.id));
@@ -52,7 +57,7 @@ export function registerMarketplaceIpc(deps: MarketplaceIpcDeps): void {
     return saved;
   });
   ipcMain.handle("agents-remove", async (_e, id: string) => {
-    const ok = removeAgent(id);
+    const ok = await removeAgentSynced(id);
     if (ok) void deleteAgentProfile(id);
     void reconcileOfferEnabled();
     return ok;

@@ -12,10 +12,85 @@
  */
 
 import { getLocalDb, decryptField } from "../local-db";
-import type { AgentConfig, AgentType, Guardrails, RemoteConfig } from "../agent-store";
+import { serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "../auth";
 
-// Re-export types so consumers can import from this module
-export type { AgentConfig, AgentType, Guardrails, RemoteConfig };
+// ── Agent identity types — single source of truth ──────────
+// (Formerly in the file-based agent-store.ts, now removed. This SQLite store
+// is the one and only agents registry.)
+
+export type AgentType = "local" | "remote";
+
+export interface Guardrails {
+  max_input_tokens_per_turn?: number;
+  max_output_tokens_per_turn?: number;
+  max_tokens_per_session?: number;
+  max_turns?: number;
+  rate_limit_rpm?: number;
+  auto_stop_idle_seconds?: number;
+}
+
+export interface RemoteConfig {
+  preferred_tier?: "premiere" | "standard" | "low" | "any";
+  preferred_providers?: string[];
+  default_idle_minutes?: number;
+  active_reservation_id?: string;
+  active_provider_handle?: string;
+}
+
+export interface AgentConfig {
+  id: string;             // slug
+  name: string;
+  type: AgentType;
+
+  role?: string;
+  systemPrompt?: string;
+
+  /** Public-facing identity. Falls back to identicon when avatar_url is unset. */
+  avatar_url?: string;
+  /** Short tagline shown in profile/leaderboard cards. */
+  bio?: string;
+
+  /** Apps this agent has access to (for tools and context). Slugs from ~/yo/apps/. */
+  apps?: string[];
+  /** Per-app tool/skill selection — which panel tools and MCP tools each app exposes. */
+  appConfigs?: Record<string, { allowAll?: boolean; panelTools?: string[]; mcpTools?: string[] }>;
+  /** Skills this agent can run. Names from the skill registry. */
+  skills?: string[];
+  /** Built-in tools the agent is allowed to call (read/write/shell/git/...). */
+  builtin_tools?: string[];
+  /** MCP server names the agent has access to. */
+  mcp_servers?: string[];
+
+  /** Model used by this agent (provider + name). Falls back to global llmConfig if unset. */
+  model_provider?: string;
+  model_name?: string;
+
+  /**
+   * How this agent runs inside a swarm:
+   *  - "full"     — a full agent loop (tools, files, multi-turn). Default.
+   *  - "readonly" — a one-shot model turn (debate / think, no tools).
+   */
+  mode?: "full" | "readonly";
+
+  /** If true, this agent is published to yo-server and discoverable for cyphers. */
+  joinable?: boolean;
+
+  remote?: RemoteConfig;
+  guardrails?: Guardrails;
+  tool_permissions?: {
+    shell?: "full" | "read" | "disabled";
+    file_system?: "full" | "read" | "disabled";
+    git?: "full" | "read" | "disabled";
+    browser?: "full" | "read" | "disabled";
+    mcp?: "full" | "read" | "disabled";
+  };
+
+  meta?: {
+    createdAt: string;
+    updatedAt: string;
+    description?: string;
+  };
+}
 
 // ── Row shape from SQLite ──────────────────────────────────
 
@@ -172,4 +247,116 @@ export function idAvailable(id: string): boolean {
   const db = getLocalDb();
   const row = db.prepare("SELECT 1 FROM agents WHERE id = ?").get(id);
   return !row;
+}
+
+// ── Server sync (yo-server /api/agents) ─────────────────────
+//
+// The SQLite table above is the local cache; identity round-trips through the
+// server's saved_agents.config JSONB blob (full fidelity — migration 070), so
+// agents sync cross-device and appear on the platform Agents page. Sync is
+// ADDITIVE — a server list is merged into the cache, never used to prune local
+// agents (a locally-created agent may not have synced yet); deletions propagate
+// only through removeAgentSynced().
+
+interface ServerAgent {
+  id: string;
+  name: string;
+  role: string | null;
+  systemPrompt: string | null;
+  modelProvider: string | null;
+  modelName: string | null;
+  mode: "full" | "readonly";
+  maxTurns: number | null;
+  maxTokensPerSession: number | null;
+  autoStopIdleSeconds: number | null;
+  config: AgentConfig | null;
+}
+
+const serverIds = new Map<string, string>();   // agent slug → server UUID
+
+function slugifyName(name: string): string {
+  const s = String(name).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  return /^[a-z0-9]/.test(s) ? s : `a-${s || "agent"}`;
+}
+
+/** Reconstruct a client AgentConfig from a server row — the config blob when
+ *  present (client-authored), else the flat subset (platform-authored). */
+function serverToConfig(a: ServerAgent): AgentConfig {
+  if (a.config && typeof a.config === "object") {
+    const c = { ...a.config } as AgentConfig;
+    if (!c.id) c.id = slugifyName(a.name);
+    return c;
+  }
+  return {
+    id: slugifyName(a.name),
+    name: a.name,
+    type: "local",
+    role: a.role ?? undefined,
+    systemPrompt: a.systemPrompt ?? undefined,
+    model_provider: a.modelProvider ?? undefined,
+    model_name: a.modelName ?? undefined,
+    mode: a.mode,
+  };
+}
+
+/** Map a client config to the server body (flat subset columns + full blob). */
+function configToBody(cfg: AgentConfig): Record<string, unknown> {
+  return {
+    name: cfg.name,
+    role: cfg.role ?? null,
+    systemPrompt: cfg.systemPrompt ?? null,
+    modelProvider: cfg.model_provider ?? null,
+    modelName: cfg.model_name ?? null,
+    mode: cfg.mode ?? "full",
+    maxTurns: cfg.guardrails?.max_turns ?? null,
+    maxTokensPerSession: cfg.guardrails?.max_tokens_per_session ?? null,
+    autoStopIdleSeconds: cfg.guardrails?.auto_stop_idle_seconds ?? null,
+    config: cfg,
+  };
+}
+
+/** Push one agent to the server (create or update, keyed by slug→UUID). */
+export async function pushAgentToServer(cfg: AgentConfig): Promise<void> {
+  const body = configToBody(cfg);
+  const id = serverIds.get(cfg.id);
+  const saved = id
+    ? await serverPatchAuthed<ServerAgent>(`/api/agents/${id}`, body)
+    : await serverPostAuthed<ServerAgent>("/api/agents", body);
+  serverIds.set(cfg.id, saved.id);
+}
+
+/** Pull agents from the server into the local cache (additive, non-fatal). */
+export async function refreshAgentsFromServer(): Promise<void> {
+  try {
+    const agents = await serverGetAuthed<ServerAgent[]>("/api/agents");
+    for (const a of agents) {
+      try {
+        const cfg = serverToConfig(a);
+        serverIds.set(cfg.id, a.id);
+        saveAgent(cfg);   // mirror into the SQLite cache
+      } catch { /* skip malformed */ }
+    }
+  } catch { /* offline / pre-auth — local cache stands */ }
+}
+
+/** Refresh from the server, then list — used by the agents-list IPC. */
+export async function refreshAndListAgents(): Promise<AgentConfig[]> {
+  await refreshAgentsFromServer();
+  return listAgents();
+}
+
+/** Save locally, then push to the server (awaited). Used by the Agents tab IPC. */
+export async function saveAgentSynced(cfg: AgentConfig): Promise<AgentConfig> {
+  const saved = saveAgent(cfg);
+  try { await pushAgentToServer(saved); } catch { /* stays cached; reconciles on next push */ }
+  return saved;
+}
+
+/** Delete locally and on the server. */
+export async function removeAgentSynced(id: string): Promise<boolean> {
+  const ok = removeAgent(id);
+  const uuid = serverIds.get(id);
+  serverIds.delete(id);
+  if (uuid) { try { await serverDeleteAuthed(`/api/agents/${uuid}`); } catch { /* best-effort */ } }
+  return ok;
 }

@@ -44,7 +44,7 @@ import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo
 import { CloudSync } from "./cloud-sync";
 import { initCapabilities, setOfferEnabled, getCapabilitiesStatus, cleanupCapabilities } from "./capability-sync";
 import { CypherBus } from "./cypher-bus";
-import { listAgents, getAgent, saveAgent, removeAgent, idAvailable, type AgentConfig as AgentRegistryConfig } from "./stores/agent-store-db";
+import { listAgents, getAgent, saveAgent, removeAgent, idAvailable, refreshAgentsFromServer, type AgentConfig as AgentRegistryConfig } from "./stores/agent-store-db";
 import { pushAgentProfile, deleteAgentProfile, syncAllAgents } from "./agent-sync";
 import { loadLLMConfig, saveLLMConfig, LLMConfig } from "./llm-config";
 import { LayoutManager } from "./layout-manager";
@@ -1862,8 +1862,12 @@ async function boot() {
     }
   });
 
-  // Sync all joinable agents to server on boot (fire-and-forget)
-  if (isAuthenticated()) void syncAllAgents(listAgents());
+  // Pull the org's saved agents from the server into the local cache, then
+  // sync joinable agents' discovery profiles (a separate surface). Both
+  // fire-and-forget.
+  if (isAuthenticated()) {
+    void refreshAgentsFromServer().then(() => syncAllAgents(listAgents())).catch(() => {});
+  }
 
   // ── Register cypher-panel IPC handlers BEFORE restorePanels ──
   // (The cypher panel calls these during init; if they're not yet registered

@@ -12,7 +12,7 @@
 
 import { isAuthenticated, serverPostAuthed } from "./auth";
 import { getOrCreateClientId } from "./capability-collector";
-import type { AgentConfig } from "./agent-store";
+import type { AgentConfig } from "./stores/agent-store-db";
 
 interface PublishResponse {
   ok: boolean;

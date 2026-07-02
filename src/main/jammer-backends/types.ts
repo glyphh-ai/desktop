@@ -13,7 +13,7 @@
  * interface, selected per-jammer by `AgentConfig.modelProvider`.
  */
 
-import type { Guardrails } from "../agent-store";
+import type { Guardrails } from "../stores/agent-store-db";
 
 /** Spawn config for one jammer. Lives here (not agent-runner) so backends can
  *  import it without a cycle; agent-runner re-exports it for compatibility. */

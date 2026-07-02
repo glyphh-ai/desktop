@@ -16,7 +16,7 @@ import os from "os";
 import { saveAgent } from "./agent-store-db";
 import { saveLayout } from "./layout-store-db";
 import { setPreference } from "./preferences-db";
-import type { AgentConfig } from "../agent-store";
+import type { AgentConfig } from "./agent-store-db";
 import type { GridLayout } from "../layout-manager";
 
 const YO_DIR = path.join(os.homedir(), "yo");

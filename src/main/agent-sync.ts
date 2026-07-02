@@ -14,7 +14,7 @@
 
 import { net } from "electron";
 import { isAuthenticated, getAuthToken } from "./auth";
-import type { AgentConfig } from "./agent-store";
+import type { AgentConfig } from "./stores/agent-store-db";
 
 const AUTH_SERVER =
   process.env.YO_AUTH_SERVER || "https://api.glyphh.ai";
