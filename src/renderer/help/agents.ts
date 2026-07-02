@@ -254,7 +254,9 @@ function updateModeGating(): void {
 
 async function loadAgentApps(): Promise<void> {
   if (appsCache.length === 0) {
-    try { appsCache = (await window.yo.appsList()).map((a) => ({ id: a.id, name: a.name })); }
+    // Server panel-apps (same source as the platform Agents form), keyed by
+    // slug so an agent's apps list is portable across client and web.
+    try { appsCache = (await window.yo.panelAppsList()).map((a) => ({ id: a.slug, name: a.name })); }
     catch { appsCache = []; }
   }
   renderPickList("apps");
