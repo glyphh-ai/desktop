@@ -1,4 +1,5 @@
 import { app, ipcMain, dialog } from "electron";
+import fs from "fs";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./yo-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
@@ -50,22 +51,32 @@ function registerPanelAppsIpc(): void {
 
   // Native-app icon: extract the OS icon for an executable / .app bundle as a
   // data URL (Apps page, Layouts cards, command overlay). Session-cached per
-  // path — getFileIcon hits the disk otherwise.
+  // path. getFileIcon runs on Chromium's worker pool — the renderer primes
+  // dozens of paths at once, so calls are SERIALIZED through a promise chain
+  // (parallel getFileIcon calls have crashed ThreadPoolForegroundWorker) and
+  // the path is validated to exist first.
   const fileIconCache = new Map<string, string>();
-  ipcMain.handle("app-file-icon", async (_e, execPath: string) => {
+  let fileIconChain: Promise<unknown> = Promise.resolve();
+  ipcMain.handle("app-file-icon", (_e, execPath: string) => {
     const p = String(execPath || "").trim();
     if (!p) return "";
     const hit = fileIconCache.get(p);
     if (hit !== undefined) return hit;
-    try {
-      const icon = await app.getFileIcon(p, { size: "large" });
-      const url = icon.isEmpty() ? "" : icon.toDataURL();
+    const next = fileIconChain.then(async () => {
+      const again = fileIconCache.get(p);
+      if (again !== undefined) return again;
+      let url = "";
+      try {
+        if (fs.existsSync(p)) {
+          const icon = await app.getFileIcon(p, { size: "large" });
+          url = icon.isEmpty() ? "" : icon.toDataURL();
+        }
+      } catch { url = ""; }
       fileIconCache.set(p, url);
       return url;
-    } catch {
-      fileIconCache.set(p, "");
-      return "";
-    }
+    });
+    fileIconChain = next.catch(() => "");
+    return next;
   });
 
   ipcMain.handle("panel-apps-list", async () => {

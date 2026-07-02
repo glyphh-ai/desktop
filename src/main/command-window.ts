@@ -22,6 +22,10 @@ function currentTheme(): string {
 
 let win: BrowserWindow | null = null;
 
+/** Executor for non-dip commands typed in the overlay (".drip <effect>" —
+ *  routed to the command parser). Injected by main.ts at registration. */
+let execFallback: ((cmd: string) => Promise<string> | string | void) | null = null;
+
 const HOTKEY = "CommandOrControl+Shift+Space";
 
 function overlayUrl(): string {
@@ -82,7 +86,8 @@ export function toggleCommandWindow(): void {
 }
 
 /** Register the overlay's IPC + global hotkey. Call once at startup. */
-export function registerCommandWindow(): void {
+export function registerCommandWindow(fallback?: (cmd: string) => Promise<string> | string | void): void {
+  execFallback = fallback ?? null;
   ipcMain.handle("command:open-app", async (_e, ref: string) => {
     hideCommandWindow();
     try {
@@ -102,11 +107,18 @@ export function registerCommandWindow(): void {
     }
   });
 
-  // Free-text ".dip" command from the overlay input — routed through the same
-  // runner the global keytap uses (open app/layout, grid/split/min/exp, …).
+  // Free-text command from the overlay input. ".drip <effect>" routes to the
+  // command parser (the full-screen effect); everything else goes through the
+  // .dip runner (open app/layout, grid/split/min/exp, …).
   ipcMain.handle("command:exec", async (_e, raw: string) => {
     hideCommandWindow();
-    return runDip(String(raw || ""));
+    const text = String(raw || "").trim();
+    if (/^\.?drip\b/i.test(text)) {
+      const cmd = text.replace(/^\./, "");
+      try { await execFallback?.(cmd); return { ok: true, message: "drip" }; }
+      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    }
+    return runDip(text);
   });
 
   // Running OS apps NOT managed by Glyphh — shown as a lighter section in the

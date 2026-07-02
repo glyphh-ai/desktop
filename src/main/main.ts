@@ -606,18 +606,19 @@ async function boot() {
   yoInterceptor.setYoChat(yoChat);
   commandParser.setYoChat(yoChat);
 
-  // Global keytap overlay (macOS): native CGEventTap helper intercepts dot-commands
-  // typed in ANY app so `.dip <…>` works from any text box. Enabled by default —
-  // it prompts once for macOS Accessibility / Input-Monitoring, which the OS-level
-  // `.dip` window management needs anyway. Set the `overlayEnabled` pref to false
-  // to opt out. `.dip` routes to the OS layout runner; `.drip` stays the effect.
-  if (getPreference<boolean>("overlayEnabled", true)) {
-    // OS window control (.dip grid/split/min/exp) drives other apps through
-    // System Events, which needs Accessibility. Prompt once (no-op if already
-    // granted) so the user isn't left with a silently-failing command.
-    if (process.platform === "darwin") {
-      try { systemPreferences.isTrustedAccessibilityClient(true); } catch { /* noop */ }
-    }
+  // OS window control (.dip grid/split/min/exp via the command overlay) drives
+  // other apps through System Events, which needs Accessibility. Prompt once
+  // (no-op if already granted) so commands don't silently fail.
+  if (process.platform === "darwin") {
+    try { systemPreferences.isTrustedAccessibilityClient(true); } catch { /* noop */ }
+  }
+
+  // Global keytap (macOS): native CGEventTap helper that intercepted dot-commands
+  // typed in ANY text box. RETIRED as a default — the caret spinner kept getting
+  // stranded (focus moves when windows open), so commands now live in the
+  // command overlay (Cmd+Shift+Space) instead. Opt back in with the
+  // `overlayEnabled` pref if you want the in-text-field triggers regardless.
+  if (getPreference<boolean>("overlayEnabled", false)) {
     const overlayBin = app.isPackaged
       ? path.join(process.resourcesPath, "overlay", "keytap")
       : path.join(__dirname, "overlay", "keytap");
@@ -638,8 +639,9 @@ async function boot() {
   }
 
   // Full-screen command overlay (apps + layouts launcher) + its global hotkey
-  // (Cmd+Shift+Space). Opens apps/layouts as real OS windows.
-  registerCommandWindow();
+  // (Cmd+Shift+Space). Opens apps/layouts as real OS windows; ".drip <effect>"
+  // typed in its command bar routes through the command parser.
+  registerCommandWindow((cmd) => commandParser.execute(cmd));
 
   // Give interceptor access to visible panel IDs (for multi-panel grab)
   yoInterceptor.setVisiblePanelsGetter(() => {
