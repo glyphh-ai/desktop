@@ -1225,18 +1225,18 @@ async function boot() {
     return instanceId;
   });
 
-  // Account gate — the heartbeat is the authoritative 14-day-trial check.
-  // When it reports the trial expired (or the account disabled) we lock the
-  // user out of the workspace: hide the panels and raise the lockout overlay
-  // in the renderer. Registered BEFORE initAuth so the first heartbeat (fired
-  // fire-and-forget inside initAuth) can never slip past us.
+  // Account gate — the heartbeat reports the account status. When it reports
+  // the account disabled (an admin action) we lock the user out of the
+  // workspace: hide the panels and raise the lockout overlay in the renderer.
+  // Registered BEFORE initAuth so the first heartbeat (fired fire-and-forget
+  // inside initAuth) can never slip past us.
   let accountLocked = false;
   setHeartbeatObserver((hb) => {
     // Tier may have changed (free <-> paid). The relay is paid-only, so
     // re-evaluate it on every heartbeat — this also starts it once the boot
     // heartbeat finally lands, and tears it down on a downgrade.
     reconnectRelay();
-    const locked = hb.status === "expired" || hb.status === "disabled";
+    const locked = hb.status === "disabled";
     if (locked === accountLocked) return;
     accountLocked = locked;
     // Set the lock on the panel manager FIRST and unconditionally (independent of
@@ -1254,9 +1254,9 @@ async function boot() {
     }
   });
 
-  // Lockout overlay's "I've upgraded" button — force a fresh heartbeat. If the
+  // Lockout overlay's "Refresh" button — force a fresh heartbeat. If the
   // account is active again the observer above fires "account-unlocked"; the
-  // renderer also uses the returned status to message a still-expired account.
+  // renderer also uses the returned status to message a still-inactive account.
   ipcMain.handle("recheck-account", async () => {
     const hb = await refreshHeartbeat();
     return { status: hb?.status ?? getAuthStatus().status };

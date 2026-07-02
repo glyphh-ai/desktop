@@ -46,7 +46,7 @@ export interface AccountInfo {
 }
 
 export interface HeartbeatResult {
-  status: "active" | "expired" | "disabled";
+  status: "active" | "disabled";
   tier: string;
   billingStatus: string;
   entitlements: Record<string, unknown>;
@@ -305,11 +305,11 @@ export function hasMcpAccess(): boolean {
 
 /**
  * Get auth status for the boot sequence.
- * Returns trial/account info without requiring a license key.
+ * Returns account info without requiring a license key.
  */
 export function getAuthStatus(): {
   authenticated: boolean;
-  status: "active" | "expired" | "disabled" | "unauthenticated";
+  status: "active" | "disabled" | "unauthenticated";
   tier?: string;
 } {
   if (!isAuthenticated()) {
@@ -544,8 +544,8 @@ async function fetchHeartbeat(): Promise<HeartbeatResult | null> {
   try {
     const result = await serverGetAuthed<HeartbeatResult>("/api/heartbeat");
     cachedHeartbeat = result;
-    // Notify the observer so the app can gate access when a trial ends or an
-    // account is disabled — the heartbeat is the authoritative trial check.
+    // Notify the observer so the app can gate access when an account is
+    // disabled — the heartbeat is the authoritative account-status check.
     try { heartbeatObserver?.(result); } catch { /* observer must not break the poll */ }
     return result;
   } catch {
@@ -555,8 +555,8 @@ async function fetchHeartbeat(): Promise<HeartbeatResult | null> {
 
 /**
  * Register an observer notified on every heartbeat result. Used to lock the
- * client out of the workspace the moment a trial expires (status "expired")
- * or an account is disabled.
+ * client out of the workspace the moment an account is disabled (status
+ * "disabled").
  */
 export function setHeartbeatObserver(cb: ((result: HeartbeatResult) => void) | null): void {
   heartbeatObserver = cb;

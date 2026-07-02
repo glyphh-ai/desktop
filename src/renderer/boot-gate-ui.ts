@@ -269,16 +269,16 @@ function dismissSplash(cb: BootGateCallbacks): void {
   scheduleSplashFinish(cb);
 }
 
-// ── Account lockout (trial expired / account disabled) ──────────────────────
+// ── Account lockout (admin-disabled account) ────────────────────────────────
 
 let accountLocked = false;
-let upgradeUrl = `${window.yo.platformUrl}/dashboard/billing`;
+let manageUrl = `${window.yo.platformUrl}/dashboard/billing`;
 
 /** Raise the full-window lockout gate. The user keeps the titlebar (so they
  *  can quit) but everything else is sealed until the account is active. */
 function showLockout(cb: BootGateCallbacks, info?: { status?: string; upgradeUrl?: string }): void {
   accountLocked = true;
-  if (info?.upgradeUrl) upgradeUrl = info.upgradeUrl;
+  if (info?.upgradeUrl) manageUrl = info.upgradeUrl;
 
   // Seal the workspace: panels are native BrowserViews that paint over HTML,
   // so they must be hidden for the overlay to actually cover anything.
@@ -294,14 +294,12 @@ function showLockout(cb: BootGateCallbacks, info?: { status?: string; upgradeUrl
   document.getElementById("onboarding-overlay")?.classList.add("hidden");
   document.getElementById("tutorial-overlay")?.classList.add("hidden");
 
-  const disabled = info?.status === "disabled";
   const titleEl = document.getElementById("lockout-title");
   const msgEl = document.getElementById("lockout-message");
-  if (titleEl) titleEl.textContent = disabled ? "Your account is inactive" : "Your free trial has ended";
+  if (titleEl) titleEl.textContent = "Your account is inactive";
   if (msgEl) {
-    msgEl.textContent = disabled
-      ? "This account has been deactivated. Reactivate your plan to get back into your workspace — your data is safe."
-      : "Upgrade to keep using Glyphh. Your workspace, agents, and settings are all saved — they'll be exactly where you left them.";
+    msgEl.textContent =
+      "This account has been deactivated. Reactivate your plan to get back into your workspace — your data is safe.";
   }
   const statusEl = document.getElementById("lockout-status");
   if (statusEl) statusEl.textContent = "";
@@ -380,11 +378,11 @@ export function initBootGate(cb: BootGateCallbacks): void {
     }
     dismissSplash(cb);
 
-    // Trial expired / account disabled → seal the workspace behind the lockout
-    // gate. No tutorial, no CC nudge — nothing until the account is active.
-    // (The heartbeat is usually still in flight at boot; the account-locked
-    // IPC below is the primary trigger — this catches an early heartbeat.)
-    if (data.authenticated && (data.status === "expired" || data.status === "disabled")) {
+    // Account disabled → seal the workspace behind the lockout gate. No
+    // tutorial, no CC nudge — nothing until the account is active. (The
+    // heartbeat is usually still in flight at boot; the account-locked IPC
+    // below is the primary trigger — this catches an early heartbeat.)
+    if (data.authenticated && data.status === "disabled") {
       showLockout(cb, { status: data.status });
       cb.onBootReady(data);
       return;
@@ -414,7 +412,7 @@ export function initBootGate(cb: BootGateCallbacks): void {
 
   // Lockout overlay buttons.
   document.getElementById("lockout-upgrade")?.addEventListener("click", () => {
-    window.yo.openExternal(upgradeUrl);
+    window.yo.openExternal(manageUrl);
   });
   document.getElementById("lockout-recheck")?.addEventListener("click", () => {
     const statusEl = document.getElementById("lockout-status");
@@ -426,7 +424,7 @@ export function initBootGate(cb: BootGateCallbacks): void {
       if (r.status === "active") {
         hideLockout(cb);
       } else if (statusEl) {
-        statusEl.textContent = "No active plan found yet. Once your upgrade goes through, try again.";
+        statusEl.textContent = "This account is still inactive. Once it's reactivated, try again.";
         statusEl.className = "onboarding-error";
       }
     }).catch(() => {

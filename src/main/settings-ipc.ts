@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, powerSaveBlocker } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme } from "electron";
 import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, serverGetAuthed, serverPatchAuthed } from "./auth";
 import type { LLMConfig } from "./llm-config";
 import type { SessionCache } from "./session-cache";
@@ -33,9 +33,6 @@ interface SettingsIpcDeps {
   getMainWindow: () => BrowserWindow | null;
   panelManager: PanelManager;
 }
-
-// Active power-save-blocker id for the "Keep awake" toggle (-1 = none).
-let keepAwakeBlockerId = -1;
 
 export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   const {
@@ -287,19 +284,4 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   });
 
   ipcMain.handle("cc-status", () => ccBootstrapStatus());
-
-  // Keep awake — block app suspension.
-  ipcMain.on("set-keep-awake", (_e, on: boolean) => { applyKeepAwake(!!on); });
-  // Apply the saved preference at startup.
-  applyKeepAwake(getPreference<boolean>("schedulesKeepAwake", false));
-  function applyKeepAwake(on: boolean): void {
-    setPreference("schedulesKeepAwake", on);
-    const active = keepAwakeBlockerId >= 0 && powerSaveBlocker.isStarted(keepAwakeBlockerId);
-    if (on && !active) {
-      keepAwakeBlockerId = powerSaveBlocker.start("prevent-app-suspension");
-    } else if (!on && active) {
-      powerSaveBlocker.stop(keepAwakeBlockerId);
-      keepAwakeBlockerId = -1;
-    }
-  }
 }

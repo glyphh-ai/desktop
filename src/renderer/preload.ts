@@ -348,8 +348,6 @@ contextBridge.exposeInMainWorld("yo", {
   // panel (YoAgent + yo-panel-ui-vscode.ts) that these IPC channels served is
   // gone; no renderer code calls them anymore.
 
-  setKeepAwake: (on: boolean) => ipcRenderer.send("set-keep-awake", on),
-
   // mcp__yo__ask_user_question — purple "Input required" card. Main fires
   // yo-ask-request with the questions; renderer replies via yo-ask-respond
   // with an array of selected labels (one per question, null = cancelled).

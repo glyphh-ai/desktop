@@ -320,7 +320,6 @@ declare global {
       mcpSetServerOverride: (serverId: string, override: string) => void;
       onMcpChanged: (cb: () => void) => void;
       onAppsChanged: (cb: () => void) => void;
-      setKeepAwake: (on: boolean) => void;
     };
   }
 }
