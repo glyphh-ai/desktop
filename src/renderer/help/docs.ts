@@ -59,6 +59,8 @@ function loadSupport() {
 }
 
 // ── About ─────────────────────────────────────────────────
+let aboutUpdateWired = false;
+
 async function loadAbout() {
   // Version from package.json via main process
   const versionEl = document.getElementById("about-version");
@@ -67,68 +69,69 @@ async function loadAbout() {
     versionEl.textContent = `Version ${ver}`;
   }
 
-  const updateBtn = document.getElementById("about-check-update") as HTMLButtonElement | null;
+  const checkBtn = document.getElementById("about-check-update") as HTMLButtonElement | null;
   const progressWrap = document.getElementById("about-progress");
   const progressFill = document.getElementById("about-progress-fill");
   const progressText = document.getElementById("about-progress-text");
-  const restartWrap = document.getElementById("about-restart");
-  const restartBtn = document.getElementById("about-restart-btn");
+  const prompt = document.getElementById("about-update-prompt");
+  const promptText = document.getElementById("about-update-prompt-text");
+  const relaunchBtn = document.getElementById("about-update-relaunch") as HTMLButtonElement | null;
 
-  if (updateBtn) {
-    updateBtn.addEventListener("click", async () => {
-      updateBtn.disabled = true;
-      updateBtn.textContent = "Checking...";
-      const ver = await window.yo.checkForUpdates();
-      if (ver) {
-        updateBtn.textContent = `Downloading v${ver}...`;
-      } else {
-        updateBtn.textContent = "You're up to date";
-        setTimeout(() => {
-          updateBtn.textContent = "Check for Updates";
-          updateBtn.disabled = false;
-        }, 3000);
-      }
-    });
-  }
+  // Reveal the bottom-right "Relaunch to Update" prompt for a known version.
+  const showPrompt = (version?: string) => {
+    if (promptText) promptText.textContent = version ? `Version ${version} is ready` : "An update is ready";
+    prompt?.classList.remove("hidden");
+  };
 
-  if (restartBtn) {
-    restartBtn.addEventListener("click", () => {
-      window.yo.updateInstall();
-    });
-  }
+  // On load: if the main process already has an update pending, show the prompt
+  // straight away (not only when a live event happens to arrive).
+  try {
+    const pending = await window.yo.getUpdateStatus();
+    if (pending?.version) showPrompt(pending.version);
+  } catch { /* not available */ }
 
-  window.yo.onUpdateStatus((info) => {
-    if (info.status === "available" && updateBtn) {
-      updateBtn.disabled = true;
-      updateBtn.textContent = `Downloading v${info.version}...`;
-    }
-    if (info.status === "downloading" && progressWrap && progressFill && progressText) {
-      progressWrap.classList.remove("hidden");
-      restartWrap?.classList.add("hidden");
-      progressFill.style.width = `${info.percent ?? 0}%`;
-      progressText.textContent = `Downloading... ${info.percent ?? 0}%`;
-    }
-    if (info.status === "ready") {
-      progressWrap?.classList.add("hidden");
-      if (restartWrap) restartWrap.classList.remove("hidden");
-      if (updateBtn) {
-        updateBtn.disabled = true;
-        updateBtn.textContent = `v${info.version} ready`;
-      }
+  // Wire listeners once — loadAbout() re-runs every time the tab opens.
+  if (aboutUpdateWired) return;
+  aboutUpdateWired = true;
+
+  checkBtn?.addEventListener("click", async () => {
+    checkBtn.disabled = true;
+    checkBtn.textContent = "Checking…";
+    const ver = await window.yo.checkForUpdates();
+    if (ver) {
+      // The update flow now takes over — its status events reveal the prompt.
+      checkBtn.textContent = `Downloading v${ver}…`;
+      showPrompt(ver);
+    } else {
+      checkBtn.textContent = "You're up to date";
+      setTimeout(() => { checkBtn.textContent = "Check for Updates"; checkBtn.disabled = false; }, 3000);
     }
   });
 
-  // Terms of Use
-  const termsEl = document.querySelector("#policy-terms .policy-content");
-  if (termsEl) termsEl.innerHTML = TERMS_OF_USE;
+  // Relaunch forces the update flow: main hides the panels, shows the updating
+  // splash, then quit + install + relaunch (docs: renderer.ts onUpdateStatus).
+  relaunchBtn?.addEventListener("click", () => {
+    relaunchBtn.disabled = true;
+    relaunchBtn.textContent = "Relaunching…";
+    window.yo.updateInstall();
+  });
 
-  // Privacy Policy
-  const privacyEl = document.querySelector("#policy-privacy .policy-content");
-  if (privacyEl) privacyEl.innerHTML = PRIVACY_POLICY;
-
-  // Refund Policy
-  const refundEl = document.querySelector("#policy-refund .policy-content");
-  if (refundEl) refundEl.innerHTML = REFUND_POLICY;
+  window.yo.onUpdateStatus((info) => {
+    if (info.status === "available") {
+      showPrompt(info.version);
+      if (checkBtn) { checkBtn.disabled = true; checkBtn.textContent = `Downloading v${info.version}…`; }
+    } else if (info.status === "downloading" && progressWrap && progressFill && progressText) {
+      progressWrap.classList.remove("hidden");
+      progressFill.style.width = `${info.percent ?? 0}%`;
+      progressText.textContent = `Downloading… ${info.percent ?? 0}%`;
+    } else if (info.status === "ready") {
+      progressWrap?.classList.add("hidden");
+      showPrompt(info.version);
+      if (checkBtn) { checkBtn.disabled = false; checkBtn.textContent = "Check for Updates"; }
+    } else if (info.status === "none") {
+      prompt?.classList.add("hidden");
+    }
+  });
 }
 
 const TERMS_OF_USE = `

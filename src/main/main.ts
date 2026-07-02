@@ -2027,99 +2027,81 @@ async function boot() {
   connectorManager?.init().catch((err) => console.error("[connectors]", err));
 
   // ── Auto-updater ───────────────────────────────────────────
+  // Updates download in the background but are NEVER installed on their own.
+  // The user applies them explicitly via "Relaunch to Update" (About page + a
+  // bottom-right prompt). No mid-session auto-restart, no install-on-quit —
+  // this replaces the old flow that could yank the app out from under the user.
   const autoUpdateEnabled = getPreference<boolean>("autoUpdate", true);
-
   autoUpdater.autoDownload = autoUpdateEnabled;
-  autoUpdater.autoInstallOnAppQuit = autoUpdateEnabled;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.logger = null;
 
-  // macOS has no install-on-quit — electron-updater's MacUpdater extends
-  // AppUpdater, not BaseUpdater, so autoInstallOnAppQuit is a no-op there.
-  // A downloaded update only applies when quitAndInstall() runs. Without
-  // that the app re-downloads the same update every launch and never moves
-  // off the old version (the "stuck downloading" loop). We auto-install a
-  // downloaded update during boot, bounded to ONE attempt per version so a
-  // failing install can never loop forever.
-  const appStartedAt = Date.now();
-  const updateAttempt = getPreference<{ version: string; tried: boolean } | null>(
-    "pendingUpdateInstall",
-    null,
-  );
-  // If a prior attempt's version is now <= the running version, the update
-  // applied (or was surpassed) — clear the marker. If it's still newer the
-  // install failed; keep the marker so we don't re-attempt that exact version.
-  if (updateAttempt && !isNewerVersion(updateAttempt.version, app.getVersion())) {
-    setPreference("pendingUpdateInstall", null);
-  }
+  // Latest update the feed has offered this session; `ready` once downloaded.
+  let pendingUpdate: { version: string; ready: boolean } | null = null;
+  // Set when the user hits "Relaunch to Update" before the download finishes —
+  // we then install the moment it lands.
+  let installWhenReady = false;
+
+  // Broadcast to EVERY renderer — the shell (splash) and panels like the About
+  // page are separate webContents, so both must hear update status to stay in
+  // sync. (The old code only messaged mainWindow, so the About panel was deaf.)
+  const broadcastUpdate = (payload: { status: string; version?: string; percent?: number; error?: string }) => {
+    for (const wc of webContents.getAllWebContents()) {
+      if (!wc.isDestroyed()) { try { wc.send("update-status", payload); } catch { /* window gone */ } }
+    }
+  };
+
+  // Reveal the shell splash (panels are BrowserViews layered over index.html)
+  // with an "Updating…" status, then quit + install + relaunch.
+  const doUpdateInstall = () => {
+    broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
+    if (mainWindow) panelManager.hideActive(mainWindow);
+    setTimeout(() => {
+      try { autoUpdater.quitAndInstall(false, true); }
+      catch (err) { console.error("[auto-update] quitAndInstall failed:", err); }
+    }, 1200);
+  };
+  // The About "Relaunch to Update" button invokes this via the update-install
+  // IPC. If the download is still in flight, show the updating splash now and
+  // install the moment it lands.
+  const requestUpdateInstall = () => {
+    if (pendingUpdate?.ready) { doUpdateInstall(); return; }
+    installWhenReady = true;
+    broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
+    if (mainWindow) panelManager.hideActive(mainWindow);
+    autoUpdater.checkForUpdates().catch(() => {});
+  };
 
   autoUpdater.on("update-available", (info: { version: string }) => {
-    mainWindow?.webContents.send("update-status", {
-      status: "available",
-      version: info.version,
-    });
+    if (!isNewerVersion(info.version, app.getVersion())) return;
+    pendingUpdate = { version: info.version, ready: false };
+    broadcastUpdate({ status: "available", version: info.version });
   });
-
   autoUpdater.on("download-progress", (progress: { percent: number }) => {
-    mainWindow?.webContents.send("update-status", {
-      status: "downloading",
-      percent: Math.round(progress.percent),
-    });
+    broadcastUpdate({ status: "downloading", percent: Math.round(progress.percent), version: pendingUpdate?.version });
   });
-
   autoUpdater.on("update-downloaded", (info: { version: string }) => {
-    mainWindow?.webContents.send("update-status", {
-      status: "ready",
-      version: info.version,
-    });
-    if (!autoUpdateEnabled) return;
-    // Don't re-attempt the exact version whose install already failed —
-    // leave the in-app "restart to update" button as the manual fallback.
-    if (updateAttempt?.tried && updateAttempt.version === info.version) return;
-    // Only auto-restart while still near boot, so we don't yank the app out
-    // from under someone mid-session. Past the window, the manual button
-    // (and the next launch) still apply it.
-    if (Date.now() - appStartedAt > 10 * 60 * 1000) return;
-    setPreference("pendingUpdateInstall", { version: info.version, tried: true });
-    // We're committing to the restart — tell the renderer so it holds the splash
-    // with a stand-by message rather than flashing the workspace for a moment.
-    mainWindow?.webContents.send("update-status", {
-      status: "restarting",
-      version: info.version,
-    });
-    // Let the splash paint the stand-by message before we restart into the update.
-    setTimeout(() => {
-      try {
-        autoUpdater.quitAndInstall(true, true);
-      } catch (err) {
-        console.error("[auto-update] quitAndInstall failed:", err);
-      }
-    }, 1500);
+    pendingUpdate = { version: info.version, ready: true };
+    broadcastUpdate({ status: "ready", version: info.version });
+    if (installWhenReady) doUpdateInstall();
   });
-
   autoUpdater.on("update-not-available", () => {
-    // Lets the boot-gate stop holding the splash — nothing to wait for.
-    mainWindow?.webContents.send("update-status", { status: "none" });
+    pendingUpdate = null;
+    broadcastUpdate({ status: "none" });
   });
-
   autoUpdater.on("error", (err: Error) => {
     console.error("[auto-update] error:", err.message);
-    mainWindow?.webContents.send("update-status", {
-      status: "error",
-      error: err.message,
-    });
+    broadcastUpdate({ status: "error", error: err.message });
   });
 
+  // The About page asks for the current state on load so it can show the prompt.
+  ipcMain.handle("get-update-status", () => pendingUpdate);
+
   if (autoUpdateEnabled) {
-    // Check early (small settle delay only) so that if an update is available
-    // its download is surfaced on the splash — the boot-gate holds the loading
-    // screen and shows a progress bar while an update is in flight.
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
-    }, 800);
+    setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 800);
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
   } else {
-    // Auto-update off — tell the splash there's nothing to wait for.
-    mainWindow?.webContents.send("update-status", { status: "none" });
+    broadcastUpdate({ status: "none" });
   }
 
   // ── Hot config sync (non-blocking, then periodic) ─
@@ -2207,9 +2189,7 @@ async function boot() {
   );
 
   // IPC: window controls
-  ipcMain.on("update-install", () => {
-    autoUpdater.quitAndInstall(false, true);
-  });
+  ipcMain.on("update-install", () => { requestUpdateInstall(); });
   ipcMain.handle("check-for-updates", async () => {
     // `checkForUpdates()` always resolves with the feed's *latest* version —
     // even when it equals the version we're running. Returning that blindly

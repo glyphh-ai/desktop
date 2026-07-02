@@ -236,6 +236,19 @@ body {
   transition: opacity 0.5s ease;
 }
 
+/* Update overlay reuses the splash layout — shown when the user relaunches to
+   apply an update (see renderer.ts onUpdateStatus "restarting"). */
+#updating-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#updating-overlay.hidden { display: none; }
+
 #splash.fade-out {
   opacity: 0;
   pointer-events: none;
@@ -5353,6 +5366,31 @@ select.settings-input {
   color: var(--text-bright);
   border-color: var(--border);
   cursor: default;
+}
+
+/* Secondary "Check for Updates" button spacing (uses the shared .btn styles). */
+.about-check-update { margin-top: 12px; }
+
+/* Bottom-right "Relaunch to Update" prompt on the About page. */
+.about-update-prompt {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.28);
+}
+.about-update-prompt.hidden { display: none; }
+.about-update-prompt-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .about-logo {

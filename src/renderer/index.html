@@ -35,6 +35,22 @@
     </div>
   </div>
 
+  <!-- Update overlay — shown full-screen when the user triggers "Relaunch to
+       Update". The main process hides panels first (they're BrowserViews over
+       this shell) so this becomes visible right before quit + install. -->
+  <div id="updating-overlay" class="hidden">
+    <div class="splash-content">
+      <div class="splash-logo">
+        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+      </div>
+      <div id="updating-label" class="splash-status">Updating…</div>
+      <div class="splash-update">
+        <div class="splash-update-bar"><div id="updating-fill" class="splash-update-fill"></div></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Onboarding gate — matches the yo-platform auth-shell look & feel. -->
   <div id="onboarding-overlay" class="hidden">
     <div class="auth-shell">

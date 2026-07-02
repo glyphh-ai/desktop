@@ -330,6 +330,7 @@ declare global {
       onUpdateStatus: (cb: (info: { status: string; version?: string; percent?: number; error?: string }) => void) => void;
       updateInstall: () => void;
       checkForUpdates: () => Promise<string | null>;
+      getUpdateStatus: () => Promise<{ version: string; ready: boolean } | null>;
       // MCP Expose
       mcpExposeStart: () => Promise<{ ok: boolean; error?: string }>;
       mcpExposeStop: () => Promise<void>;
@@ -653,6 +654,12 @@ const updateFill = document.getElementById("update-progress-fill")!;
 const updateAction = document.getElementById("update-action")!;
 const updateDismiss = document.getElementById("update-dismiss")!;
 
+// Full-screen updating overlay — shown once the user commits to relaunching
+// (main hides the panels first so this shell overlay is visible before quit).
+const updatingOverlay = document.getElementById("updating-overlay");
+const updatingLabel = document.getElementById("updating-label");
+const updatingFill = document.getElementById("updating-fill");
+
 window.yo.onUpdateStatus(({ status, version, percent, error }) => {
   if (status === "available") {
     updateMsg.textContent = `Downloading v${version}...`;
@@ -661,11 +668,21 @@ window.yo.onUpdateStatus(({ status, version, percent, error }) => {
     updateBar.classList.remove("hidden");
   } else if (status === "downloading") {
     updateFill.style.width = `${percent || 0}%`;
+    // If the user already hit relaunch, reflect the download on the overlay.
+    if (updatingOverlay && !updatingOverlay.classList.contains("hidden") && updatingFill) {
+      updatingFill.style.width = `${percent || 0}%`;
+    }
   } else if (status === "ready") {
     updateMsg.textContent = `v${version} ready — restart to update`;
     updateProgress.classList.add("hidden");
     updateAction.classList.remove("hidden");
     updateBar.classList.remove("hidden");
+  } else if (status === "restarting") {
+    // User committed to the update — take over the whole shell so they see a
+    // clean "Updating…" screen instead of a flash of the workspace.
+    if (updatingLabel) updatingLabel.textContent = version ? `Updating to v${version}…` : "Updating…";
+    if (updatingFill) updatingFill.style.width = "100%";
+    updatingOverlay?.classList.remove("hidden");
   } else if (status === "error") {
     updateMsg.textContent = `Update failed: ${error || "unknown error"}`;
   }

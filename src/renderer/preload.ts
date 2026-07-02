@@ -534,6 +534,9 @@ contextBridge.exposeInMainWorld("yo", {
   },
   updateInstall: () => ipcRenderer.send("update-install"),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates") as Promise<string | null>,
+  // Current pending update (null when none) — lets the About page show the
+  // "Relaunch to Update" prompt on load, not only when a live event arrives.
+  getUpdateStatus: () => ipcRenderer.invoke("get-update-status") as Promise<{ version: string; ready: boolean } | null>,
 
   // MCP Expose (pro feature — read-only capture store server)
   mcpExposeStart: () => ipcRenderer.invoke("mcp-expose-start") as Promise<{ ok: boolean; error?: string }>,
