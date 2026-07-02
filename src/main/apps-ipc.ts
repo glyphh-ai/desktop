@@ -139,8 +139,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   registerPanelAppsIpc();
 
   // IPC: layouts CRUD
-  ipcMain.handle("layouts-list", () =>
-    layoutManager.listLayouts().map((l) => ({
+  // Server-authoritative (yo-server /api/layouts) — refresh the local cache
+  // from the server before listing so the Layouts tab shows server truth.
+  ipcMain.handle("layouts-list", async () =>
+    (await layoutManager.refreshAndList()).map((l) => ({
       name: l.name,
       cols: l.cols,
       rows: l.rows,
