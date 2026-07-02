@@ -6,7 +6,7 @@ import {
   paginate, renderPaginationBar, confirmAction, clearInvalid,
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
-import { appIconInner, primeConnectedIcons } from "./app-icon.js";
+import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 
 declare const Chart: any;
 
@@ -180,8 +180,10 @@ async function loadApps() {
   document.getElementById("apps-limit-msg")!.classList.add("hidden");
 
   renderAppsList();
-  // Async — re-renders once Pipedream catalog icons for connected apps land.
+  // Async — re-renders once Pipedream catalog icons (connected apps) and OS
+  // file icons (native apps) land.
   void primeConnectedIcons(panelApps, renderAppsList);
+  void primeNativeIcons(panelApps, renderAppsList);
 }
 
 function renderAppsList() {

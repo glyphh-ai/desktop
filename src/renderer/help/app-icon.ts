@@ -1,15 +1,18 @@
 /**
- * Shared app-icon resolution — used by BOTH the Apps page (apps.ts) and the
- * Layouts list (layouts.ts) so an app shows the exact same icon everywhere.
+ * Shared app-icon resolution — used by the Apps page (apps.ts), the Layouts
+ * list (layouts.ts), and the command overlay so an app shows the exact same
+ * icon everywhere.
  *
  * Priority mirrors the platform Apps page:
  *   1. Pipedream catalog icon (for connected apps) — cached per slug
  *   2. Google favicon by hostname (for web apps with a URL)
- *   3. initial letter (fallback)
+ *   3. OS file icon of the executable (for native apps) — cached per path
+ *   4. initial letter (fallback)
  */
 
 type IconApp = {
   url?: string | null;
+  execPath?: string | null;
   connection?: { accountId?: string; pipedreamSlug: string } | null;
 };
 
@@ -17,6 +20,9 @@ type IconApp = {
 // row doesn't carry an icon itself, so it's looked up from the connector
 // catalog once per unique slug and cached for the session.
 export const connectedIconCache: Record<string, string | null> = {};
+
+// OS icon (data URL) per native app's execPath, via the app-file-icon IPC.
+export const nativeIconCache: Record<string, string> = {};
 
 /** Resolve the icon URL for an app ("" when only the initial fallback applies). */
 export function appIconUrl(app: IconApp): string {
@@ -29,7 +35,8 @@ export function appIconUrl(app: IconApp): string {
   const connectedIcon = app.connection?.accountId && app.connection.pipedreamSlug
     ? connectedIconCache[app.connection.pipedreamSlug] || ""
     : "";
-  return connectedIcon || favicon;
+  const nativeIcon = app.execPath ? nativeIconCache[app.execPath] || "" : "";
+  return connectedIcon || favicon || nativeIcon;
 }
 
 /** Inner markup (img + hidden initial fallback, or just the initial) for one
@@ -41,6 +48,23 @@ export function appIconInner(app: IconApp, name: string, initialClass: string): 
   return iconUrl
     ? `<img src="${iconUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="${initialClass}" style="display:none">${initial}</span>`
     : `<span class="${initialClass}">${initial}</span>`;
+}
+
+/** Fetch + cache the OS file icon for any native app (execPath) not already
+ *  cached. Calls onLoaded() once new icons land so the caller can re-render. */
+export async function primeNativeIcons(
+  apps: Array<{ execPath?: string | null }>,
+  onLoaded: () => void,
+): Promise<void> {
+  const paths = [...new Set(
+    apps.map((a) => (a.execPath || "").trim()).filter(Boolean),
+  )].filter((p) => !(p in nativeIconCache));
+  if (paths.length === 0) return;
+  await Promise.all(paths.map(async (p) => {
+    try { nativeIconCache[p] = (await window.yo.appFileIcon(p)) || ""; }
+    catch { nativeIconCache[p] = ""; }
+  }));
+  onLoaded();
 }
 
 /** Fetch + cache the Pipedream catalog icon for any connected app not already

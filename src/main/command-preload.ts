@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("yo", {
   layoutsList: () => ipcRenderer.invoke("layouts-list"),
   connectorsGetApps: (search?: string, offset?: number) =>
     ipcRenderer.invoke("connectors-get-apps", search, offset),
+  appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath),
 
   // Actions — open at the OS level via app-window-manager (see command-window).
   commandOpenApp: (ref: string) => ipcRenderer.invoke("command:open-app", ref),

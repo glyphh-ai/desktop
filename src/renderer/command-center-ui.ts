@@ -6,7 +6,7 @@
  * one opens it as real OS windows via the main process.
  */
 
-import { appIconInner, primeConnectedIcons } from "./help/app-icon.js";
+import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./help/app-icon.js";
 
 type App = {
   id: string;
@@ -14,6 +14,7 @@ type App = {
   slug?: string;
   url?: string | null;
   isBrowser?: boolean;
+  execPath?: string | null;
   connection?: { accountId?: string; pipedreamSlug: string } | null;
 };
 type Layout = {
@@ -169,8 +170,10 @@ async function refresh(): Promise<void> {
     layouts = l || [];
   } catch { apps = []; layouts = []; }
   renderAll();
-  // Pipedream catalog icons land async, then re-render — same as the Apps page.
+  // Pipedream catalog icons + native-app OS icons land async, then re-render —
+  // same as the Apps page.
   void primeConnectedIcons(apps, renderAll);
+  void primeNativeIcons(apps, renderAll);
   inputEl?.focus();
 }
 

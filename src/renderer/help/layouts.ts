@@ -3,7 +3,7 @@
  */
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid, closeHelp } from "./shared.js";
-import { appIconInner, primeConnectedIcons } from "./app-icon.js";
+import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 
 
 let layoutsPage = 0;
@@ -14,6 +14,7 @@ type LayoutApp = {
   id: string;
   name: string;
   url?: string | null;
+  execPath?: string | null;
   connection?: { accountId?: string; pipedreamSlug: string } | null;
 };
 let appById: Record<string, LayoutApp> = {};
@@ -24,7 +25,7 @@ async function ensureAppNames(): Promise<void> {
     // same source the Apps page shows. NOT the local internal-app registry.
     const apps = await window.yo.panelAppsList();
     const next: Record<string, LayoutApp> = {};
-    for (const a of apps) next[a.id] = { id: a.id, name: a.name, url: a.url, connection: a.connection };
+    for (const a of apps) next[a.id] = { id: a.id, name: a.name, url: a.url, execPath: a.execPath, connection: a.connection };
     appById = next;
     allApps = Object.values(next);
   } catch { /* keep whatever we have */ }
@@ -292,9 +293,10 @@ async function loadLayouts() {
   document.getElementById("layouts-limit-msg")!.classList.add("hidden");
 
   renderLayoutsList();
-  // Async — re-renders once Pipedream catalog icons for connected apps land,
-  // exactly like the Apps page.
+  // Async — re-renders once Pipedream catalog icons (connected apps) and OS
+  // file icons (native apps) land, exactly like the Apps page.
   void primeConnectedIcons(allApps, renderLayoutsList);
+  void primeNativeIcons(allApps, renderLayoutsList);
 }
 
 function renderLayoutsList() {

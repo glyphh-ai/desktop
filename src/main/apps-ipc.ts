@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from "electron";
+import { app, ipcMain, dialog } from "electron";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./yo-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
@@ -46,6 +46,26 @@ function registerPanelAppsIpc(): void {
     }
     openAppWindow({ slug: String(spec.slug || url), name: String(spec.name || spec.slug), url, forceWeb: !!spec.forceWeb });
     return { ok: true };
+  });
+
+  // Native-app icon: extract the OS icon for an executable / .app bundle as a
+  // data URL (Apps page, Layouts cards, command overlay). Session-cached per
+  // path — getFileIcon hits the disk otherwise.
+  const fileIconCache = new Map<string, string>();
+  ipcMain.handle("app-file-icon", async (_e, execPath: string) => {
+    const p = String(execPath || "").trim();
+    if (!p) return "";
+    const hit = fileIconCache.get(p);
+    if (hit !== undefined) return hit;
+    try {
+      const icon = await app.getFileIcon(p, { size: "large" });
+      const url = icon.isEmpty() ? "" : icon.toDataURL();
+      fileIconCache.set(p, url);
+      return url;
+    } catch {
+      fileIconCache.set(p, "");
+      return "";
+    }
   });
 
   ipcMain.handle("panel-apps-list", async () => {
