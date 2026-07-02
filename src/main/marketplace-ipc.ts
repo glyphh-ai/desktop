@@ -70,6 +70,13 @@ export function registerMarketplaceIpc(deps: MarketplaceIpcDeps): void {
     try { return await serverGetAuthed<{ models: Array<{ provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number }> }>("/api/models"); }
     catch (err) { return { error: err instanceof Error ? err.message : "fetch failed" }; }
   });
+  // Admin-curated model catalog (active rows only) — the Agents form intersects
+  // this with configured BYOK providers, and gates the full agent loop on
+  // agentLoopCapable. Same source the platform Agents form uses.
+  ipcMain.handle("model-catalog", async () => {
+    try { return await serverGetAuthed<Array<{ provider: string; model: string; displayName: string; agentLoopCapable: boolean; maxContextTokens?: number; maxOutputTokens?: number }>>("/api/model-catalog"); }
+    catch { return []; }
+  });
   ipcMain.handle("yos-buy-url", () => {
     const base = process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai";
     return { url: `${base}/dashboard/billing#yos` };

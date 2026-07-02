@@ -51,22 +51,39 @@ let appsCache: Array<{ id: string; name: string }> = [];
 let skillsCache: Array<{ name: string; description?: string }> = [];
 
 /**
- * Agent-loop models. An agent runs a *full agent loop* — Claude Code, Codex,
- * or Gemini CLI — selected by `model_provider`. NOT the Council one-shot
- * model catalog (window.yo.modelsList).
- *
- * Claude's list is the verified 4.x family. Codex / Gemini carry one sensible
- * default each for now; when those backends land (JAMMER-BACKENDS Phase 2/3)
- * this static list is replaced by querying each CLI for its real model list,
- * so the dropdown is always accurate and never hand-maintained.
+ * Model picker logic — mirrors the platform Agents form. The list is NOT
+ * hardcoded: it's the admin model catalog (window.yo.modelCatalog) intersected
+ * with the providers the user has a configured BYOK key for
+ * (window.yo.providerKeysList). Only models flagged `agentLoopCapable` can run
+ * the full agent loop (an SDK backend exists); the rest are one-shot only.
  */
-const AGENT_LOOP_MODELS: Array<{ group: string; provider: string; model: string; label: string }> = [
-  { group: "Claude Code", provider: "anthropic", model: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { group: "Claude Code", provider: "anthropic", model: "claude-opus-4-7", label: "Claude Opus 4.7" },
-  { group: "Claude Code", provider: "anthropic", model: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-  { group: "Codex (OpenAI)", provider: "openai", model: "gpt-5-codex", label: "GPT-5 Codex" },
-  { group: "Gemini (Google)", provider: "google", model: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-];
+const PROVIDER_GROUP_LABEL: Record<string, string> = {
+  anthropic: "Claude",
+  openai: "OpenAI",
+  google: "Google",
+  xai: "xAI",
+  perplexity: "Perplexity",
+};
+
+interface CatalogModel { provider: string; model: string; displayName: string; agentLoopCapable: boolean; }
+
+// Refreshed each time the editor opens (loadModelData).
+let catalogModels: CatalogModel[] = [];
+let configuredProviders = new Set<string>();
+
+async function loadModelData(): Promise<void> {
+  const [catalog, status] = await Promise.all([
+    window.yo.modelCatalog().catch(() => [] as CatalogModel[]),
+    window.yo.providerKeysList().catch(() => [] as Array<{ provider: string; configured: boolean }>),
+  ]);
+  catalogModels = catalog;
+  configuredProviders = new Set(status.filter((s) => s.configured).map((s) => s.provider));
+}
+
+/** Models offered in the picker: catalog rows whose provider has a BYOK key. */
+function availableModels(): CatalogModel[] {
+  return catalogModels.filter((m) => configuredProviders.has(m.provider));
+}
 
 // ── List ────────────────────────────────────────────────────
 
@@ -163,8 +180,9 @@ async function openEditor(agent: AgentDef | null): Promise<void> {
   $a<HTMLInputElement>("agent-guard-tokens").value = g.max_tokens_per_session != null ? String(g.max_tokens_per_session) : "";
   $a<HTMLInputElement>("agent-guard-idle").value = g.auto_stop_idle_seconds != null ? String(g.auto_stop_idle_seconds) : "";
 
-  populateModelSelector(current!.model_provider, current!.model_name);
+  await loadModelData();
   $a<HTMLSelectElement>("agent-mode").value = current!.mode || "full";
+  populateModelSelector(current!.model_provider, current!.model_name);
   ($a("agent-delete-btn") as HTMLElement).style.display = isNew ? "none" : "";
 
   await loadAgentApps();
@@ -173,24 +191,50 @@ async function openEditor(agent: AgentDef | null): Promise<void> {
 
 function populateModelSelector(provider?: string, model?: string): void {
   const sel = $a<HTMLSelectElement>("agent-model");
+  const models = availableModels();
   sel.innerHTML = `<option value="">Default (Claude Sonnet)</option>`;
-  const grouped = new Map<string, typeof AGENT_LOOP_MODELS>();
-  for (const m of AGENT_LOOP_MODELS) {
-    if (!grouped.has(m.group)) grouped.set(m.group, []);
-    grouped.get(m.group)!.push(m);
+
+  // No configured provider has a catalog model — point the user at Providers.
+  $a("agent-model-hint")?.classList.toggle("hidden", models.length > 0);
+
+  const grouped = new Map<string, CatalogModel[]>();
+  for (const m of models) {
+    const label = PROVIDER_GROUP_LABEL[m.provider] || m.provider;
+    if (!grouped.has(label)) grouped.set(label, []);
+    grouped.get(label)!.push(m);
   }
-  for (const [label, models] of grouped) {
+  for (const [label, ms] of grouped) {
     const group = document.createElement("optgroup");
     group.label = label;
-    for (const m of models) {
+    for (const m of ms) {
       const opt = document.createElement("option");
       opt.value = `${m.provider}::${m.model}`;
-      opt.textContent = m.label;
+      opt.textContent = m.displayName;
       group.appendChild(opt);
     }
     sel.appendChild(group);
   }
   sel.value = provider && model ? `${provider}::${model}` : "";
+  updateModeGating();
+}
+
+/** The full agent loop is only offered for models flagged agentLoopCapable (an
+ *  SDK backend exists). A non-capable model can only run one-shot; the Default
+ *  (no model) uses the built-in Claude backend, so the loop is allowed there. */
+function updateModeGating(): void {
+  const modelSel = $a<HTMLSelectElement>("agent-model");
+  const modeSel = $a<HTMLSelectElement>("agent-mode");
+  const fullOpt = modeSel.querySelector('option[value="full"]') as HTMLOptionElement | null;
+
+  const key = modelSel.value;
+  let loopOk = true;
+  if (key) {
+    const [p, m] = key.split("::");
+    loopOk = !!availableModels().find((x) => x.provider === p && x.model === m)?.agentLoopCapable;
+  }
+  if (fullOpt) { fullOpt.disabled = !loopOk; fullOpt.hidden = !loopOk; }
+  if (!loopOk && modeSel.value === "full") modeSel.value = "readonly";
+  $a("agent-mode-hint")?.classList.toggle("hidden", loopOk);
 }
 
 // ── Apps / Skills multi-pick ────────────────────────────────
@@ -341,6 +385,9 @@ function initAgents(): void {
   });
   $a("agent-apps-add").addEventListener("click", () => showPicker("apps"));
   $a("agent-skills-add").addEventListener("click", () => showPicker("skills"));
+  // Re-gate the Swarm mode when the model changes (full loop needs an
+  // agentLoopCapable model — an SDK backend).
+  $a("agent-model").addEventListener("change", () => updateModeGating());
 }
 
 export { loadAgents, initAgents };

@@ -389,6 +389,7 @@ declare global {
       yosBalance: () => Promise<{ user_id: string; balance: number } | { error: string }>;
       yosRateCards: () => Promise<{ cards: Array<{ tier: string; yos_per_1k_input: number; yos_per_1k_output: number; yos_per_idle_minute: number }> } | { error: string }>;
       modelsList: () => Promise<{ models: Array<{ provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number }> } | { error: string }>;
+      modelCatalog: () => Promise<Array<{ provider: string; model: string; displayName: string; agentLoopCapable: boolean; maxContextTokens?: number; maxOutputTokens?: number }>>;
       yosBuyUrl: () => Promise<{ url: string }>;
       // Marketplace + reservations
       marketplaceAvailable: (opts?: { tier?: string; provider?: string; limit?: number }) => Promise<{ entries: Array<{ offer_handle: string; derived_tier: string; providers: string[]; pricing: { terms: string; tier: string; yos_per_1k_input?: number; yos_per_1k_output?: number } | null; last_seen_at: string }>; count: number; ts: string } | { error: string }>;

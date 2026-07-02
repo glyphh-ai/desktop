@@ -1109,12 +1109,14 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
 
             <label class="settings-label">Model</label>
             <select id="agent-model" class="settings-input" style="width:auto;"></select>
+            <p id="agent-model-hint" class="field-hint hidden">No models available yet — add a provider key under the Providers tab to unlock models here.</p>
 
             <label class="settings-label">Swarm mode</label>
             <select id="agent-mode" class="settings-input" style="width:auto;">
               <option value="full">Full agent loop — tools, files, multi-turn</option>
               <option value="readonly">Read-only — one-shot turn, debate / think, no tools</option>
             </select>
+            <p id="agent-mode-hint" class="field-hint hidden">This model doesn't support the full agent loop yet — one-shot only.</p>
 
             <label class="settings-label">System prompt</label>
             <textarea id="agent-prompt" class="settings-input" rows="6" placeholder="Instructions for this agent..."></textarea>
