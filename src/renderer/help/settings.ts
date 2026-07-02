@@ -371,6 +371,8 @@ function initSettings() {
 
   function renderRelayConfig(): void {
     const relayUrl = `${window.yo.serverUrl}/mcp`;
+    const endpointEl = document.getElementById("relay-endpoint");
+    if (endpointEl) endpointEl.textContent = `POST ${relayUrl}`;
     if (relayConfigExample) {
       relayConfigExample.textContent = `{
   "mcpServers": {
