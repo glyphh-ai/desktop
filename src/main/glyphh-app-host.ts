@@ -29,7 +29,7 @@ import AdmZip from "adm-zip";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { serverPostAuthed } from "./auth.js";
+import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ export function isGlyphhAppBundle(zipPath: string): boolean {
  * Install a .yoapp glyphh-app bundle: extract it locally and create the
  * server app row. Returns { ok, name } or { ok:false, error }.
  */
-export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; error?: string }> {
+export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string }> {
   let zip: AdmZip;
   try { zip = new AdmZip(zipPath); } catch { return { ok: false, error: "Not a readable .yoapp bundle" }; }
   const entry = zip.getEntry("manifest.json");
@@ -95,17 +95,27 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   const entryPath = path.join(dir, manifest.entry);
   if (!fs.existsSync(entryPath)) return { ok: false, error: `Bundle entry not found after extract: ${manifest.entry}` };
 
-  // Register as a normal saved app — same rails as everything else.
+  // Register as a normal saved app — same rails as everything else. Re-import
+  // of the same slug UPDATES the existing row (so "update the app" works)
+  // instead of failing on the unique-slug constraint.
+  const fields = {
+    name: manifest.name,
+    slug: manifest.slug,
+    url: null,
+    isBrowser: false,
+    execPath: entryPath,
+    appArchetype: "glyphh-app",
+    launchConfig: { capabilities: manifest.capabilities, window: manifest.window ?? null },
+  };
   try {
-    await serverPostAuthed("/api/panel-apps", {
-      name: manifest.name,
-      slug: manifest.slug,
-      url: null,
-      isBrowser: false,
-      execPath: entryPath,
-      appArchetype: "glyphh-app",
-      launchConfig: { capabilities: manifest.capabilities, window: manifest.window ?? null },
-    });
+    const existing = await serverGetAuthed<Array<{ id: string; slug: string }>>("/api/panel-apps")
+      .then((apps) => apps.find((a) => a.slug === manifest.slug))
+      .catch(() => undefined);
+    if (existing) {
+      await serverPatchAuthed(`/api/panel-apps/${existing.id}`, fields);
+      return { ok: true, name: manifest.name, updated: true };
+    }
+    await serverPostAuthed("/api/panel-apps", fields);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
