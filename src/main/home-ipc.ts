@@ -12,7 +12,16 @@ import fs from "fs";
 import type { McpManager } from "./mcp-manager";
 import type { ConnectorManager } from "./connectors";
 import { reconnectRelay, getRelayStatus } from "./relay-client";
-import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, hasMcpAccess } from "./auth";
+import {
+  syncLocalMcpServer,
+  stopLocalMcpServer,
+  localMcpStatus,
+  localMcpGenToken,
+  localMcpListTokens,
+  localMcpRevokeToken,
+} from "./local-mcp-server";
+import { setPreference } from "./preferences";
+import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER } from "./auth";
 
 interface HomeIpcDeps {
   mcpManager: McpManager | null;
@@ -34,7 +43,6 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     catch (err) { return { error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("relay-tokens-create", async (_e, label: string) => {
-    if (!hasMcpAccess()) return { ok: false, error: "MCP relay tokens require a Pro plan." };
     try {
       return await serverPostAuthed<{ ok: boolean; id: string; token: string; expiresAt: string }>(
         "/api/mcp/tokens",
@@ -54,7 +62,6 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   // under mcpServers; everything else (other servers, projects, settings)
   // round-trips untouched. Returns the resolved path on success.
   ipcMain.handle("relay-install-claude", async (_e, token: string) => {
-    if (!hasMcpAccess()) return { error: "MCP requires a Pro plan." };
     if (!token || typeof token !== "string") return { error: "token is required" };
     const cfgPath = path.join(os.homedir(), ".claude.json");
     let existing: Record<string, unknown> = {};
@@ -82,6 +89,24 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       return { error: `Could not write ${cfgPath}: ${err instanceof Error ? err.message : String(err)}` };
     }
   });
+
+  // ── Local MCP server (127.0.0.1) — the no-cloud alternative to the relay ──
+  ipcMain.handle("local-mcp-set-enabled", async (_e, enabled: boolean) => {
+    setPreference("localMcpEnabled", !!enabled);
+    return await syncLocalMcpServer();
+  });
+  ipcMain.handle("local-mcp-status", () => localMcpStatus());
+  ipcMain.handle("local-mcp-set-port", async (_e, port: number) => {
+    const p = Number(port);
+    if (!Number.isInteger(p) || p < 1024 || p > 65535) return { ok: false, error: "Port must be 1024–65535." };
+    setPreference("localMcpPort", p);
+    // Bounce the server so the new port takes effect if it's running.
+    stopLocalMcpServer();
+    return await syncLocalMcpServer();
+  });
+  ipcMain.handle("local-mcp-tokens-list", () => localMcpListTokens());
+  ipcMain.handle("local-mcp-tokens-create", (_e, label: string) => localMcpGenToken(label));
+  ipcMain.handle("local-mcp-tokens-revoke", (_e, id: string) => { localMcpRevokeToken(id); return { ok: true }; });
 
   ipcMain.handle("mcp-get-servers", () => {
     if (!mcpManager) return [];

@@ -78,6 +78,7 @@ import { registerCommandWindow, disposeCommandWindow } from "./command-window";
 import { runDip } from "./dip-commands";
 import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay } from "./relay-client";
+import { syncLocalMcpServer } from "./local-mcp-server";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerCodeIndexIpc } from "./code-index/ipc";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
@@ -341,6 +342,10 @@ async function boot() {
   // Relay client — persistent WebSocket to yo-server so external MCP callers
   // can drive this instance. No-op until the user sets a client token.
   initRelayClient();
+
+  // Local MCP server — the no-cloud alternative. Starts only if the user has
+  // opted in (localMcpEnabled). Uses the same handler registry as the relay.
+  void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
   mcpManager.on("changed", () => {
     mainWindow?.webContents.send("mcp-changed");
   });

@@ -87,7 +87,7 @@ function readLaunchConfig(prefix: string, archetype: Archetype): Record<string, 
 function writeLaunchConfig(prefix: string, archetype: Archetype, lc: Record<string, unknown> | null | undefined): void {
   const set = (id: string, v: string) => { const el = document.getElementById(`${prefix}-${id}`) as HTMLInputElement | HTMLTextAreaElement | null; if (el) el.value = v; };
   const c = lc || {};
-  set("window-mode", c.windowMode === "tab" ? "tab" : "window");
+  set("window-mode", c.windowMode === "tab" ? "tab" : c.windowMode === "blank" ? "blank" : "window");
   set("shell", typeof c.shell === "string" ? c.shell : "");
   set("profile", typeof c.profile === "string" ? c.profile : "");
   set("cwd", typeof c.cwd === "string" ? c.cwd : "");

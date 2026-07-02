@@ -306,6 +306,14 @@ declare global {
       relayTokensRevoke: (id: string) => Promise<{ ok: boolean } | { error: string }>;
       relayInstallClaude: (token: string) => Promise<{ ok: boolean; path: string } | { error: string }>;
 
+      // Local MCP server (127.0.0.1)
+      localMcpSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
+      localMcpStatus: () => Promise<{ running: boolean; port: number }>;
+      localMcpSetPort: (port: number) => Promise<{ ok: boolean; error?: string }>;
+      localMcpTokensList: () => Promise<Array<{ id: string; label: string; createdAt: string; expiresAt: string }>>;
+      localMcpTokensCreate: (label: string) => Promise<{ id: string; label: string; token: string; createdAt: string; expiresAt: string }>;
+      localMcpTokensRevoke: (id: string) => Promise<{ ok: boolean }>;
+
       // BYOK provider key — only the Claude Code bootstrap gate path remains.
       providerKeysSet: (provider: string, key: string) => Promise<{ ok: boolean; error?: string }>;
 

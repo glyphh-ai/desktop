@@ -21,6 +21,7 @@
 
 import { WebSocket } from "ws";
 import { getAuthToken, isAuthenticated, hasMcpAccess } from "./auth.js";
+import { getPreference } from "./preferences.js";
 
 const AUTH_SERVER = process.env.YO_AUTH_SERVER || "https://api.glyphh.ai";
 
@@ -45,9 +46,11 @@ let backoffMs = 1_000;                            // grows on each failed attemp
 let started = false;
 
 function relayEnabled(): boolean {
-  // The relay (exposing Glyphh as an MCP server) is a paid-tier feature.
-  // No opt-in preference — it's the only MCP surface, so eligibility alone
-  // (active heartbeat + paid tier) decides.
+  // User-controlled opt-in (default on) gated by eligibility. The toggle lets
+  // a user who prefers the local MCP server — or no cloud at all — turn the
+  // cloud relay off without affecting the local server. "Disabled" in Settings
+  // now means the toggle is off, not that the account is ineligible.
+  if (getPreference<boolean>("relayEnabled", true) === false) return false;
   return hasMcpAccess();
 }
 
@@ -60,6 +63,19 @@ async function dispatch(method: string, params: unknown): Promise<{ ok: true; re
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * Invoke a registered relay handler directly, bypassing the WebSocket. The
+ * local MCP server uses this so it shares ONE handler registry with the cloud
+ * relay — every panels / rpa / apps tool behaves identically whether the call
+ * arrives over the cloud WS or the local 127.0.0.1 server. Throws on an
+ * unknown method or a handler error.
+ */
+export async function dispatchRelayMethod(method: string, params: unknown): Promise<unknown> {
+  const out = await dispatch(method, params);
+  if (!out.ok) throw new Error(out.error);
+  return out.result;
 }
 
 function scheduleReconnect(reason: string): void {

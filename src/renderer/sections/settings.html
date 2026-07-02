@@ -46,18 +46,6 @@
                   <button id="settings-save" class="action-btn primary">Save</button>
                   <span id="settings-status"></span>
                 </div>
-
-                <hr style="border:none;border-top:1px solid var(--border-2);margin:24px 0;" />
-                <h3 class="settings-subheading" style="margin:0 0 4px;">Glyphh Skills</h3>
-                <p style="font-size:12px;color:var(--text-2);margin:0 0 10px;">
-                  Export a skill that teaches your AI assistant to drive Glyphh through the MCP relay — open apps and layouts, run your installed apps' tools, and orchestrate tasks. Save it into that tool's skills or custom instructions, then connect the Glyphh endpoint in <strong>Settings &gt; MCP</strong>.
-                </p>
-                <div class="settings-actions" style="display:flex;gap:8px;">
-                  <button id="export-skill-claude" class="action-btn" data-provider="claude">Claude</button>
-                  <button id="export-skill-gemini" class="action-btn" data-provider="gemini">Gemini</button>
-                  <button id="export-skill-openai" class="action-btn" data-provider="openai">OpenAI</button>
-                </div>
-                <span id="export-skill-status" style="font-size:11px;color:var(--text-3);margin-top:8px;display:inline-block;"></span>
               </div>
 
               <!-- Appearance: Tabs, URL bar, Browser home -->
@@ -143,18 +131,21 @@
               <!-- MCP Server -->
         <div class="settings-panel" data-sub="mcp">
                 <h2>MCP Server</h2>
-                <p class="section-desc">Let external LLM tools — Claude, ChatGPT, Cursor — drive your Glyphh workspace over the cloud relay: open apps and layouts, click, type, read, and screenshot.</p>
-
-                <div id="mcp-pro-gate" class="hidden" style="padding:16px 0;">
-                  <p style="color:var(--text-2);font-size:13px;margin:0 0 10px;">MCP Server requires an Advanced subscription.</p>
-                  <button id="mcp-upgrade-btn" class="action-btn primary" style="font-size:12px;">Upgrade to Advanced</button>
-                </div>
+                <p class="section-desc">Let external LLM tools — Claude, ChatGPT, Cursor — drive your Glyphh workspace: open apps and layouts, click, type, read, and screenshot. Use the <strong>cloud relay</strong> (works anywhere your LLM runs) or a <strong>local server</strong> on this machine (lowest latency, no cloud).</p>
 
                 <div id="mcp-section-wrap" class="settings-form">
-                  <!-- ── MCP relay (org-admin only). Always on when eligible —
-                       the relay is the ONLY MCP surface, so there's no enable
-                       toggle; the status line reflects the live connection. ── -->
+                  <!-- ── Cloud relay (org-admin only). User-toggleable — off by
+                       preference, or connected/connecting when on. ── -->
                   <div id="relay-section" class="hidden">
+                    <h3 class="settings-subheading" style="margin:0 0 4px;">Cloud relay</h3>
+                    <label class="settings-toggle" style="margin-bottom:10px;">
+                      <input type="checkbox" id="relay-enabled-toggle" checked />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Enable cloud relay</span>
+                        <span class="toggle-desc">Connect this workspace to the Glyphh cloud so your LLM can reach it from anywhere. Turn off to use only the local server.</span>
+                      </div>
+                    </label>
                     <div style="margin-bottom:8px;">
                       <span id="relay-status-text" style="font-size:11px;color:var(--text-3);margin-top:4px;display:inline-block;">Not connected.</span>
 
@@ -200,6 +191,57 @@
                         <input id="relay-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude code, ChatGPT)" style="flex:1;font-size:12px;padding:5px 8px;" />
                         <button id="relay-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
                       </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- ── Local MCP server (this machine). Opt-in: runs a
+                       127.0.0.1 HTTP MCP server so a local LLM (Claude Desktop,
+                       Cursor, the claude CLI) connects directly — no cloud,
+                       lowest latency. Exposes the same tool surface as the
+                       relay. ── -->
+                  <div id="local-mcp-section" class="hidden" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border-2);">
+                    <h3 class="settings-subheading" style="margin:0 0 4px;">Local server</h3>
+                    <label class="settings-toggle" style="margin-bottom:10px;">
+                      <input type="checkbox" id="local-mcp-toggle" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Run a local MCP server</span>
+                        <span class="toggle-desc">Serve Glyphh's tools from this machine over 127.0.0.1 — direct, no cloud round-trip. Best for a local LLM on the same computer.</span>
+                      </div>
+                    </label>
+                    <span id="local-mcp-status" style="font-size:11px;color:var(--text-3);display:inline-block;margin-bottom:8px;">Stopped.</span>
+
+                    <div id="local-mcp-body">
+                      <!-- Port -->
+                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:16px 0 6px;">Port</h4>
+                      <div style="display:flex;gap:6px;align-items:center;">
+                        <input id="local-mcp-port" type="text" class="settings-input" value="7860" style="width:120px;font-size:12px;padding:5px 8px;" />
+                        <button id="local-mcp-port-save" class="action-btn" style="font-size:12px;">Save</button>
+                      </div>
+
+                      <!-- Config -->
+                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Config</h4>
+                      <p style="font-size:11px;color:var(--text-3);margin:0 0 6px;">Add this to the local tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a token generated below.</p>
+                      <div style="position:relative;">
+                        <pre id="local-mcp-config" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
+                        <button id="local-mcp-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
+                      </div>
+
+                      <!-- Tokens -->
+                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Access Tokens</h4>
+                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">Each local tool needs a token. Shown <strong>once</strong> on creation — copy immediately.</p>
+                      <div id="local-mcp-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
+                        <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                          <code id="local-mcp-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
+                          <button id="local-mcp-copy-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
+                        </div>
+                      </div>
+                      <div id="local-mcp-tokens-list" style="margin-bottom:10px;"></div>
+                      <div style="display:flex;gap:6px;align-items:center;">
+                        <input id="local-mcp-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop)" style="flex:1;font-size:12px;padding:5px 8px;" />
+                        <button id="local-mcp-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
                       </div>
                     </div>
                   </div>

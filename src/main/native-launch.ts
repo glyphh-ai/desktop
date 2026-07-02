@@ -44,12 +44,19 @@ function runOsascript(lines: string[]): void {
 }
 
 /**
- * macOS Terminal.app: open a new window or a new tab, cd to the configured
- * working directory and run any init commands. Tab mode uses a Cmd+T keystroke
- * (needs Accessibility permission); window mode uses AppleScript's `do script`,
- * which always spawns a fresh window.
+ * macOS Terminal.app: open a new window, a new tab, or nothing at all (just
+ * bring Terminal to the front as-is). Tab mode uses a Cmd+T keystroke (needs
+ * Accessibility permission); window mode uses AppleScript's `do script`, which
+ * always spawns a fresh window; blank mode only activates the app so the user
+ * lands on whatever window/tab is already open.
  */
 function launchMacTerminal(lc: Record<string, unknown>, mode: string): void {
+  // Blank — "just open the app, no new anything." Only activate Terminal; skip
+  // cwd / init commands so we don't disturb the current session.
+  if (mode === "blank") {
+    runOsascript(['tell application "Terminal" to activate']);
+    return;
+  }
   const cwd = str(lc.cwd);
   const cmds: string[] = [];
   if (cwd) cmds.push(`cd "${cwd}"`);
@@ -124,7 +131,7 @@ export function launchNativeApp(
     const appName = (exec.split("/").pop() || "").replace(/\.app$/, "");
     if (appName === "Terminal") {
       try {
-        launchMacTerminal(lc, str(lc.windowMode) === "tab" ? "tab" : "window");
+        launchMacTerminal(lc, str(lc.windowMode) || "window");
         return { ok: true };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };

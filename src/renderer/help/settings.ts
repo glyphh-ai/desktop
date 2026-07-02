@@ -218,16 +218,161 @@ function initSettings() {
     const allowed = role === "org_admin" || role === "super_admin";
     if (!allowed) return;                              // leave .hidden
     relaySection?.classList.remove("hidden");
+    // Enable/disable toggle — lets the user turn the cloud relay off (e.g. to
+    // use only the local server). Flips the pref, then bounces the WS.
+    const relayToggle = document.getElementById("relay-enabled-toggle") as HTMLInputElement | null;
+    if (relayToggle) {
+      relayToggle.checked = (await window.yo.getPreference("relayEnabled", true)) as boolean;
+      relayToggle.addEventListener("change", async () => {
+        await window.yo.setPreference("relayEnabled", relayToggle.checked);
+        await window.yo.relayReconnect();
+        void refreshRelayStatus();
+      });
+    }
     renderRelayConfig();
     void refreshRelayStatus();
     void refreshRelayTokens();
     setInterval(refreshRelayStatus, 3_000);
   })();
 
+  // ── Local MCP server (127.0.0.1) — the no-cloud alternative. Available to
+  // any user (it's purely local; no org/tier involved). ──
+  const localMcpSection = document.getElementById("local-mcp-section");
+  const localMcpToggle = document.getElementById("local-mcp-toggle") as HTMLInputElement | null;
+  const localMcpStatusEl = document.getElementById("local-mcp-status");
+  const localMcpBody = document.getElementById("local-mcp-body");
+  const localMcpPortInput = document.getElementById("local-mcp-port") as HTMLInputElement | null;
+  const localMcpConfigEl = document.getElementById("local-mcp-config");
+  const localMcpTokensListEl = document.getElementById("local-mcp-tokens-list");
+  const localMcpNewTokenBox = document.getElementById("local-mcp-new-token");
+  const localMcpNewTokenValue = document.getElementById("local-mcp-new-token-value");
+  const localMcpLabelInput = document.getElementById("local-mcp-token-label") as HTMLInputElement | null;
+
+  function renderLocalMcpConfig(port: number): void {
+    if (!localMcpConfigEl) return;
+    localMcpConfigEl.textContent = `{
+  "mcpServers": {
+    "glyphh-local": {
+      "type": "http",
+      "url": "http://127.0.0.1:${port}/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-token>"
+      }
+    }
+  }
+}`;
+  }
+
+  async function refreshLocalMcp(): Promise<void> {
+    const s = await window.yo.localMcpStatus();
+    if (localMcpStatusEl) {
+      localMcpStatusEl.textContent = s.running ? `Running on http://127.0.0.1:${s.port}` : "Stopped.";
+      localMcpStatusEl.style.color = s.running ? "var(--accent)" : "var(--text-3)";
+    }
+    if (localMcpPortInput && document.activeElement !== localMcpPortInput) localMcpPortInput.value = String(s.port);
+    renderLocalMcpConfig(s.port);
+  }
+
+  async function renderLocalMcpTokens(): Promise<void> {
+    if (!localMcpTokensListEl) return;
+    localMcpTokensListEl.innerHTML = "";
+    const tokens = await window.yo.localMcpTokensList();
+    if (!tokens.length) {
+      localMcpTokensListEl.innerHTML = `<div style="font-size:12px;color:var(--text-3);">No tokens yet — generate one below.</div>`;
+      return;
+    }
+    for (const t of tokens) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface-2);border:1px solid var(--border-2);border-radius:6px;margin-bottom:4px;font-size:12px;";
+      const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "";
+      const expires = t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : "";
+      row.innerHTML = `<span style="flex:1;color:var(--text);">${escapeHtmlLocal(t.label || "(unnamed)")}</span><span style="color:var(--text-3);font-size:11px;">${created} → ${expires}</span><button class="action-btn danger" data-revoke="${escapeHtmlLocal(t.id)}" style="font-size:11px;padding:3px 10px;">Revoke</button>`;
+      row.querySelector("[data-revoke]")!.addEventListener("click", async () => {
+        if (!(await confirmAction(`Revoke "${t.label || "this token"}"? Local tools using it will stop working.`))) return;
+        await window.yo.localMcpTokensRevoke(t.id);
+        void renderLocalMcpTokens();
+      });
+      localMcpTokensListEl.appendChild(row);
+    }
+  }
+
+  function setLocalMcpBodyVisible(on: boolean): void {
+    if (localMcpBody) localMcpBody.style.display = on ? "" : "none";
+  }
+
+  if (localMcpSection && localMcpToggle) {
+    localMcpSection.classList.remove("hidden");
+    void (async () => {
+      const enabled = (await window.yo.getPreference("localMcpEnabled", false)) as boolean;
+      localMcpToggle.checked = enabled;
+      setLocalMcpBodyVisible(enabled);
+      await refreshLocalMcp();
+      await renderLocalMcpTokens();
+    })();
+
+    localMcpToggle.addEventListener("change", async () => {
+      const on = localMcpToggle.checked;
+      setLocalMcpBodyVisible(on);
+      const res = await window.yo.localMcpSetEnabled(on);
+      if (!res.ok && res.error) {
+        if (localMcpStatusEl) {
+          localMcpStatusEl.textContent = res.error;
+          localMcpStatusEl.style.color = "#d44a4a";
+        }
+        localMcpToggle.checked = false;
+        setLocalMcpBodyVisible(false);
+        return;
+      }
+      await refreshLocalMcp();
+    });
+
+    document.getElementById("local-mcp-port-save")?.addEventListener("click", async () => {
+      const port = parseInt(localMcpPortInput?.value || "", 10);
+      const res = await window.yo.localMcpSetPort(port);
+      if (!res.ok && res.error) {
+        if (localMcpStatusEl) {
+          localMcpStatusEl.textContent = res.error;
+          localMcpStatusEl.style.color = "#d44a4a";
+        }
+        return;
+      }
+      await refreshLocalMcp();
+    });
+
+    document.getElementById("local-mcp-gen-token")?.addEventListener("click", async () => {
+      const label = localMcpLabelInput?.value.trim() || "default";
+      const res = await window.yo.localMcpTokensCreate(label);
+      if (localMcpLabelInput) localMcpLabelInput.value = "";
+      if (localMcpNewTokenBox && localMcpNewTokenValue) {
+        localMcpNewTokenValue.textContent = res.token;
+        localMcpNewTokenBox.classList.remove("hidden");
+      }
+      void renderLocalMcpTokens();
+    });
+
+    document.getElementById("local-mcp-copy-token")?.addEventListener("click", () => {
+      const val = localMcpNewTokenValue?.textContent || "";
+      window.yo.copyToClipboard(val);
+      const btn = document.getElementById("local-mcp-copy-token") as HTMLButtonElement;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    });
+
+    document.getElementById("local-mcp-copy-config")?.addEventListener("click", () => {
+      const val = localMcpConfigEl?.textContent || "";
+      window.yo.copyToClipboard(val);
+      const btn = document.getElementById("local-mcp-copy-config") as HTMLButtonElement;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    });
+  }
+
   // Expose the MCP refreshers so the MCP tab can refresh on open.
   mcpSectionRefresh = () => {
     void refreshRelayStatus();
     void refreshRelayTokens();
+    void refreshLocalMcp();
+    void renderLocalMcpTokens();
   };
 
   // Show URL Bar toggle removed — only the Browser panel shows a URL bar
@@ -259,26 +404,7 @@ function initSettings() {
     window.yo.relaunch();
   });
 
-  // Export a Glyphh skill for an external LLM (Claude / Gemini / OpenAI).
-  const exportSkillStatus = document.getElementById("export-skill-status");
-  for (const btn of Array.from(document.querySelectorAll<HTMLButtonElement>("[id^='export-skill-']"))) {
-    const provider = btn.dataset.provider;
-    if (!provider) continue;
-    btn.addEventListener("click", async () => {
-      if (exportSkillStatus) { exportSkillStatus.textContent = "Saving…"; exportSkillStatus.style.color = "var(--text-3)"; }
-      const res = await window.yo.exportGlyphhSkill(provider);
-      if (!exportSkillStatus) return;
-      if (res.ok) {
-        exportSkillStatus.textContent = `Saved ${res.path}`;
-        exportSkillStatus.style.color = "var(--text-2)";
-      } else if (res.error !== "Canceled") {
-        exportSkillStatus.textContent = `✗ ${res.error}`;
-        exportSkillStatus.style.color = "var(--danger)";
-      } else {
-        exportSkillStatus.textContent = "";
-      }
-    });
-  }
+  // (Glyphh Skill export moved to its own Skills page — see help/skills.ts.)
 
   // Manage Account — open the platform inside the app (a panel tab), the same
   // way the left-rail Platform button does (.dip <platformUrl>).
@@ -338,9 +464,7 @@ async function loadSettings() {
   toggleAutoUpdate.checked = await window.yo.getPreference("autoUpdate", true) as boolean;
 
   const mcpSectionWrap = document.getElementById("mcp-section-wrap")!;
-  const mcpProGate = document.getElementById("mcp-pro-gate")!;
   mcpSectionWrap.classList.remove("hidden");
-  mcpProGate.classList.add("hidden");
 
   // Timezone dropdown — same option list as the platform's Settings > Profile
   // page (Intl.supportedValuesOf), value read from the user's server profile

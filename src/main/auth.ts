@@ -287,20 +287,17 @@ export function getHeartbeatInfo(): HeartbeatResult | null {
 }
 
 /**
- * MCP (connecting servers + exposing Glyphh as an MCP server) and Pipedream
- * are paid-tier features — the Free plan excludes both. Gated client-side so
- * they're actually off, not just hidden. Defaults to false until the
- * heartbeat confirms an active paid plan; the heartbeat observer re-kicks
- * dependent features (relay, etc.) once it lands.
+ * MCP (connecting servers, the cloud relay, and the local MCP server) is
+ * available to any signed-in, active account — there is no pay gate. Access
+ * is denied only when not signed in, or when the heartbeat explicitly reports
+ * the account as disabled. It does NOT require the first heartbeat to have
+ * landed, so the relay/local server can come up immediately after sign-in.
  */
-const PAID_TIERS = new Set(["basic", "pro", "advanced", "cypher"]);
 export function hasMcpAccess(): boolean {
-  // Deny by default. Access is granted ONLY when there's an active heartbeat
-  // AND the tier is a known paid plan. No heartbeat, not signed in, account
-  // not active, "free", empty, null, or any unrecognized tier → no access.
+  if (!isAuthenticated()) return false;
   const hb = cachedHeartbeat;
-  if (!hb || hb.status !== "active") return false;
-  return PAID_TIERS.has(String(hb.tier || "").toLowerCase());
+  if (hb && hb.status !== "active") return false; // account explicitly disabled
+  return true;
 }
 
 /**
