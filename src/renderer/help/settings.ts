@@ -359,6 +359,9 @@ function initSettings() {
   // ── Remote Relay wiring (org-admin only) ──────────────────
   const relaySection = document.getElementById("relay-section");
   const relayEnabledToggle = document.getElementById("relay-enabled-toggle") as HTMLInputElement;
+  const relaySettings = document.getElementById("relay-settings");
+  // Remote settings (server tokens, config) only make sense once the relay is on.
+  const setRelaySettingsVisible = (on: boolean) => relaySettings?.classList.toggle("hidden", !on);
   const relayStatusText = document.getElementById("relay-status-text");
   const relayConfigExample = document.getElementById("relay-config-example");
   const relayTokensList = document.getElementById("relay-tokens-list");
@@ -451,6 +454,7 @@ function initSettings() {
 
   relayEnabledToggle.addEventListener("change", async () => {
     window.yo.setPreference("relayEnabled", relayEnabledToggle.checked);
+    setRelaySettingsVisible(relayEnabledToggle.checked);
     await window.yo.relayReconnect();
     void refreshRelayStatus();
   });
@@ -524,6 +528,7 @@ function initSettings() {
 
     const enabled = await window.yo.getPreference("relayEnabled", false) as boolean;
     relayEnabledToggle.checked = !!enabled;
+    setRelaySettingsVisible(!!enabled);
     renderRelayConfig();
     void refreshRelayStatus();
     void refreshRelayTokens();

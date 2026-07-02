@@ -640,6 +640,8 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                       </label>
                       <span id="relay-status-text" style="font-size:11px;color:var(--text-3);margin-top:4px;display:inline-block;">Not connected.</span>
 
+                      <!-- Remote settings — only shown when the relay is enabled. -->
+                      <div id="relay-settings" class="hidden">
                       <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Server tokens</h4>
                       <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">One token per external tool. Tokens are shown <strong>once</strong> on creation — copy immediately.</p>
                       <div id="relay-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
@@ -669,6 +671,7 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                       <div style="position:relative;">
                         <pre id="relay-claude-cmd" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre-wrap;word-break:break-all;"></pre>
                         <button id="relay-copy-claude-cmd" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
+                      </div>
                       </div>
                     </div>
                   </div>
