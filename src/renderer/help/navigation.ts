@@ -8,7 +8,7 @@ import { loadSkills, initSkillsEvents } from "./skills.js";
 import { loadApps, initApps, openNewAppForm } from "./apps.js";
 import { loadAgents, initAgents } from "./agents.js";
 import { loadSchedules, initSchedules, openScheduleByName } from "./schedules.js";
-import { loadSettings, initSettings } from "./settings.js";
+import { loadSettings, initSettings, loadProviders } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 
@@ -126,6 +126,7 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "agents") void loadAgents();
   else if (sec === "schedules") void loadSchedules();
   else if (sec === "settings") loadSettings();
+  else if (sec === "providers") loadProviders();
   else if (sec === "docs") loadDocs();
   else if (sec === "support") loadSupport();
   else if (sec === "about") loadAbout();

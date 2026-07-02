@@ -739,4 +739,8 @@ async function saveSettings() {
   }, 1000);
 }
 
+/** Providers is now its own top-level dashboard tab (data-section="providers").
+ *  navigation.ts calls this when that section opens. */
+export function loadProviders(): void { void renderProviderKeys(); }
+
 export { loadSettings, initSettings };

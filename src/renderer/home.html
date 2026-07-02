@@ -18,7 +18,6 @@
     #help-nav { display: none !important; }
     /* Dashboard tab scope (5a): Settings trimmed to General / Appearance / MCP,
        no Account / Providers / Support / Docs sub-tabs. See home.ts. */
-    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="providers"],
     [data-home-scope="settings-flat"] .settings-nav-item[data-sub="account"],
     [data-home-scope="settings-flat"] .settings-nav-item[data-sub="support"],
     [data-home-scope="settings-flat"] .settings-nav-item[data-jump="docs"],
@@ -575,6 +574,21 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
           <div class="about-update-prompt hidden" id="about-update-prompt">
             <span class="about-update-prompt-text" id="about-update-prompt-text">An update is ready</span>
             <button class="btn btn-primary" id="about-update-relaunch">Relaunch to Update</button>
+          </div>
+        </div>
+
+        <!-- Providers — BYOK keys, promoted from Settings to its own dashboard
+             tab. Rendered by settings.ts renderProviderKeys() into
+             #provider-keys-list; keys are server-backed (/api/provider-keys). -->
+        <div class="help-section" data-section="providers">
+          <h2>Providers</h2>
+          <p class="section-desc">
+            Bring your own API keys. Keys are stored encrypted on the server and used to call
+            providers directly. Removing a key disables that provider for read-only swarm agents
+            and any feature that uses it.
+          </p>
+          <div id="provider-keys-list" class="settings-form" style="gap:12px;display:flex;flex-direction:column;">
+            <!-- rows rendered by settings.ts -->
           </div>
         </div>
 
@@ -1239,7 +1253,6 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
           <div class="settings-layout">
             <nav class="settings-nav">
               <button class="settings-nav-item active" data-sub="general">General</button>
-              <button class="settings-nav-item" data-sub="providers">Providers</button>
               <button class="settings-nav-item" data-sub="appearance">Appearance</button>
               <button class="settings-nav-item" data-sub="account">Account</button>
               <button class="settings-nav-item" data-sub="mcp">MCP Server</button>
@@ -1286,18 +1299,7 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
                 </div>
               </div>
 
-              <!-- Providers: BYOK keys for direct provider access -->
-              <div class="settings-panel" data-sub="providers">
-                <h2>Providers</h2>
-                <p class="section-desc">
-                  Bring your own API keys. yo never sees these values — they live encrypted on this machine
-                  via the OS keychain and call providers directly. Removing a key disables that provider for
-                  read-only swarm agents and any feature that uses it.
-                </p>
-                <div id="provider-keys-list" class="settings-form" style="gap:12px;display:flex;flex-direction:column;">
-                  <!-- rows rendered by settings.ts -->
-                </div>
-              </div>
+              <!-- Providers moved to its own top-level dashboard tab (data-section="providers"). -->
 
               <!-- Appearance: Tabs, URL bar, Browser home -->
               <div class="settings-panel" data-sub="appearance">
