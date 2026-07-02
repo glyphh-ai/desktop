@@ -672,17 +672,20 @@ body {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  background: var(--accent);
+  background: #ffffff;
   color: #000;
-  border-color: var(--accent);
-  transition: color 220ms ease, border-color var(--transition), opacity var(--transition);
+  border: none;
+  transition: color 220ms ease, opacity var(--transition);
 }
 #onboarding-overlay .btn-primary::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: #ffffff;
+  /* Match the platform login button: white resting, purple→pink gradient
+     wipes in on hover. --grad-accent is light-theme-only, so fall back to
+     the platform's gradient value since the auth screens run dark. */
+  background: var(--grad-accent, linear-gradient(to top right, #8c3bf2, #ec4899));
   transform: translateX(-100%);
   transition: none;
 }
