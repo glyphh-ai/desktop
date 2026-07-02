@@ -219,6 +219,37 @@ export function openAppWindow(spec: AppWindowSpec): void {
   createAppWindow(spec, cascadeBounds());
 }
 
+/** Slide a Glyphh app window in from the left, ending full-screen (work area).
+ *  Used by `.dip <app>` / the command overlay so a single app opens big with a
+ *  quick left→right motion. Re-opening an app just brings it full-screen. */
+export function openAppWindowSlide(spec: AppWindowSpec): void {
+  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const target: Electron.Rectangle = { x: wa.x, y: wa.y, width: wa.width, height: wa.height };
+  const existing = windows.get(spec.slug);
+  if (existing && !existing.win.isDestroyed()) {
+    if (existing.win.isMinimized()) existing.win.restore();
+    existing.win.setBounds(target);
+    existing.win.focus();
+    return;
+  }
+  const start: Electron.Rectangle = { ...target, x: wa.x - wa.width };
+  const win = createAppWindow(spec, start);
+  animateSlideX(win, start.x, target.x, wa.y, wa.width, wa.height);
+}
+
+function animateSlideX(win: BrowserWindow, fromX: number, toX: number, y: number, w: number, h: number): void {
+  const steps = 14;
+  let i = 0;
+  const timer = setInterval(() => {
+    if (win.isDestroyed()) { clearInterval(timer); return; }
+    i++;
+    const t = Math.min(1, i / steps);
+    const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+    win.setBounds({ x: Math.round(fromX + (toX - fromX) * eased), y, width: w, height: h });
+    if (i >= steps) { clearInterval(timer); if (!win.isDestroyed()) win.setBounds({ x: toX, y, width: w, height: h }); }
+  }, 16);
+}
+
 /** Open (or move) a Glyphh app window at exact screen bounds — used to tile a
  *  web/webview app into a layout cell. */
 export function openAppWindowAt(spec: AppWindowSpec, bounds: Electron.Rectangle): void {

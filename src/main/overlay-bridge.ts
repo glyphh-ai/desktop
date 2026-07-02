@@ -87,10 +87,15 @@ async function handleLine(line: string): Promise<void> {
     // `dip min` / `dip exp` act on whatever window the user is currently in, so
     // stealing focus to the Glyphh window would target the wrong app.
     if (trigger === ".dip") {
+      // Clear the keytap spinner FIRST. Opening/arranging windows steals focus,
+      // and the spinner is cleared with a backspace to the focused field — do it
+      // now, while the source text box still has focus, so the ⠋ isn't left
+      // stranded there.
+      sendToHelper({ type: "done" });
+      await new Promise((r) => setTimeout(r, 120));
       const cmd = `dip${query ? " " + query : ""}`;
       try { await runCommandFn?.(cmd); }
       catch (e) { console.error("[overlay] command failed:", e); }
-      sendToHelper({ type: "done" });
       return;
     }
     // .drip → full-screen OS overlay over whatever app you're in: do NOT focus

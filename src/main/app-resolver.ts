@@ -11,7 +11,7 @@
 import { screen } from "electron";
 import { serverGetAuthed } from "./auth.js";
 import {
-  openAppWindow, openAppWindowAt, openLayoutInWindow,
+  openAppWindowAt, openAppWindowSlide, openLayoutInWindow,
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
 } from "./app-window-manager.js";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
@@ -78,18 +78,23 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   if (!key) throw new Error("app is required");
 
   const builtin = builtinSpec(key);
-  if (builtin) { openAppWindow(builtin); return { slug: builtin.slug, name: builtin.name }; }
+  if (builtin) { openAppWindowSlide(builtin); return { slug: builtin.slug, name: builtin.name }; }
 
   const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
-  const app = apps.find((a) => a.slug === key)
-    || apps.find((a) => a.name.toLowerCase() === key)
-    || apps.find((a) => a.id === ref.trim());
+  const app = apps.find((a) => a.id === ref.trim())
+    || apps.find((a) => a.slug === key)
+    || apps.find((a) => a.name.toLowerCase() === key);
   if (!app) throw new Error(`unknown app: ${ref} — use the app library slugs`);
 
-  const isBrowser = app.isBrowser !== false; // legacy rows default to browser
-  if (!isBrowser) {
+  // Native = explicitly flagged, or simply has an executable and no URL.
+  const isNative = app.isBrowser === false || (!!app.execPath && !app.url);
+  if (isNative) {
     const r = launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
     if (!r.ok) throw new Error(r.error || "failed to launch native app");
+    // Best-effort full-screen the launched OS window.
+    const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    const hint = (app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name;
+    void positionAppWindow(hint, { x: wa.x, y: wa.y, width: wa.width, height: wa.height });
     return { slug: app.slug, name: app.name };
   }
   if (app.browserTarget === "native") {
@@ -99,7 +104,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   }
   const url = String(app.url || "");
   if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("app has no web URL");
-  openAppWindow({ slug: app.slug, name: app.name, url, forceWeb: !!app.forceWeb });
+  openAppWindowSlide({ slug: app.slug, name: app.name, url, forceWeb: !!app.forceWeb });
   return { slug: app.slug, name: app.name };
 }
 
