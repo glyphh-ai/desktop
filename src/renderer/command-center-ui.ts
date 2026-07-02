@@ -107,7 +107,8 @@ function resolveCellApp(panelId: string): App | undefined {
 }
 
 function renderApps(): void {
-  const all = [...BUILTINS, ...apps].filter((a) => matchesQuery(a.name));
+  // Exactly the Apps page list (server /api/panel-apps) — no built-ins.
+  const all = apps.filter((a) => matchesQuery(a.name));
   const { items, page, totalPages } = paginate(all, appsPage, APPS_PER_PAGE);
   appsPage = page;
   appsEl.innerHTML = "";
