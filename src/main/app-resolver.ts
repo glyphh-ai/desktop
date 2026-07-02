@@ -150,13 +150,19 @@ export async function openLayoutByName(
     const builtin = builtinSpec(key);
     if (builtin) { openAppWindowAt(builtin, bounds); opened.push(builtin.slug); continue; }
 
-    const app = apps.find((a) => a.slug === key) || apps.find((a) => a.id === cell.panelId);
-    if (!app) continue;
+    const app = apps.find((a) => a.id === cell.panelId)
+      || apps.find((a) => a.slug === key)
+      || apps.find((a) => a.name.toLowerCase() === key);
+    if (!app) { console.error(`[layout] cell "${cell.panelId}" — no matching app in library`); continue; }
 
-    const isBrowser = app.isBrowser !== false;
-    if (!isBrowser) {
-      // Native desktop app — launch it, then nudge its OS window to the cell.
+    // Native = explicitly flagged native, OR simply has an executable and no
+    // URL (defensive: don't depend solely on the isBrowser flag).
+    const isNative = app.isBrowser === false || (!!app.execPath && !app.url);
+    if (isNative) {
+      // Launch by execPath (exactly what the working Apps → Open button does),
+      // then best-effort nudge its OS window into the cell.
       const r = launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
+      console.error(`[layout] native "${app.name}" execPath="${app.execPath}" → ok=${r.ok}${r.error ? " — " + r.error : ""}`);
       if (!r.ok) continue;
       const hint = (app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name;
       void positionAppWindow(hint, bounds);
@@ -171,7 +177,10 @@ export async function openLayoutByName(
       continue;
     }
     const url = String(app.url || "");
-    if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      console.error(`[layout] "${app.name}" — not native and no web URL, skipped`);
+      continue;
+    }
     openAppWindowAt({ slug: app.slug, name: app.name, url, forceWeb: !!app.forceWeb }, bounds);
     opened.push(app.slug);
   }
