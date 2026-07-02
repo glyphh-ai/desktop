@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glyphh — Home</title>
+  <link rel="icon" href="brand/glyphh-mark.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="monaco/editor/editor.main.css">
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; background: var(--bg); }
+    #home-root { position: absolute; inset: 0; overflow: hidden; }
+    /* Force overlay to fill the page and override any .hidden from help.ts */
+    #help-overlay { position: absolute !important; inset: 0 !important; display: block !important; background: var(--bg); }
+    #help-layout { position: absolute; inset: 0; }
+    /* The nav lives in the app's left rail now — keep it in the DOM (its
+       buttons still drive section switching) but hide the sidebar. */
+    #help-nav { display: none !important; }
+    /* Dashboard tab scope (5a): Settings trimmed to General / Appearance / MCP,
+       no Account / Providers / Support / Docs sub-tabs. See home.ts. */
+    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="account"],
+    [data-home-scope="settings-flat"] .settings-nav-item[data-sub="support"],
+    [data-home-scope="settings-flat"] .settings-nav-item[data-jump="docs"],
+    [data-home-scope="settings-flat"] .settings-nav-sep {
+      display: none !important;
+    }
+  </style>
+  <script src="monaco/loader.js"></script>
+  <script>
+    // Apply theme synchronously before anything renders (avoids flash).
+    // Reads from localStorage which the main renderer keeps in sync.
+    try {
+      var t = localStorage.getItem("yoTheme") || "dark";
+      var r = t === "system"
+        ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+        : t;
+      document.documentElement.setAttribute("data-theme", r);
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="home-root">
+    <div id="help-overlay">
+    <div id="help-layout">
+      <nav id="help-nav">
+        <div class="help-brand">
+          <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+          <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+        </div>
+        <div class="help-nav-group">
+          <button class="help-nav-item has-sub" data-section="docs">Docs</button>
+          <div class="help-nav-sub">
+            <button class="help-nav-sub-item" data-section="docs" data-sub="navigation">Navigation</button>
+            <button class="help-nav-sub-item" data-section="docs" data-sub="commands">Commands</button>
+            <button class="help-nav-sub-item" data-section="docs" data-sub="apps">Apps</button>
+            <button class="help-nav-sub-item" data-section="docs" data-sub="skills">Skills</button>
+            <button class="help-nav-sub-item" data-section="docs" data-sub="layouts">Layouts</button>
+            <button class="help-nav-sub-item" data-section="docs" data-sub="devspaces">Dev Spaces</button>
+
+            <button class="help-nav-sub-item" data-section="docs" data-sub="agent">Agent</button>
+            <button class="help-nav-sub-item" data-section="docs" data-sub="mcp">MCP</button>
+          </div>
+        </div>
+        <button class="help-nav-item" data-section="apps">Apps</button>
+        <button class="help-nav-item" data-section="agents">Agents</button>
+        <button class="help-nav-item" data-section="layouts">Layouts</button>
+        <button class="help-nav-item" data-section="drips">Drips</button>
+        <button class="help-nav-item" data-section="skills">Skills</button>
+        <!-- MCP merged into Apps -->
+        <div class="help-nav-group">
+          <button class="help-nav-item has-sub" data-section="settings">Settings</button>
+          <div class="help-nav-sub">
+            <button class="help-nav-sub-item" data-section="settings" data-sub="general">General</button>
+            <button class="help-nav-sub-item" data-section="settings" data-sub="appearance">Appearance</button>
+            <button class="help-nav-sub-item" data-section="settings" data-sub="account">Account</button>
+            <button class="help-nav-sub-item" data-section="settings" data-sub="mcp">MCP Server</button>
+          </div>
+        </div>
+        <div class="help-nav-spacer"></div>
+        <div class="help-nav-user">
+          <button class="help-nav-user-item" id="user-menu-platform">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            <span>Platform</span>
+          </button>
+          <button class="help-nav-user-item help-nav-user-danger" id="user-menu-logout">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </nav>
+      <main id="help-content">
+
+        <!-- Guide. NOT active by default — no section paints until home.ts's
+             gotoSection() activates the right one (?section=apps etc.). A
+             hardcoded active section here painted before home.js ran, which
+             flashed the guide behind the Apps page on every load. -->
+        <!--#include sections/guide.html -->
+
+        <!-- Docs -->
+        <!--#include sections/docs.html -->
+
+        <!-- Skills -->
+        <!-- Skills — file explorer (tree + preview), ported from v4 -->
+        <!--#include sections/skills.html -->
+        <!-- About — top-level dashboard tab (app version + updates). No policy
+             copy here by design; wired by docs.ts loadAbout(). -->
+        <!--#include sections/about.html -->
+
+        <!-- MCP section removed — merged into Apps tabs -->
+
+        <!-- Layouts -->
+        <!--#include sections/layouts.html -->
+
+        <!-- Drips -->
+        <!--#include sections/drips.html -->
+
+
+        <!-- Apps -->
+        <!--#include sections/apps.html -->
+
+
+        <!-- Connectors (Pipedream Connect — Pro only) -->
+
+        <!-- Agents -->
+        <!--#include sections/agents.html -->
+
+        <!-- Schedules -->
+        <!--#include sections/schedules.html -->
+
+        <!-- Settings -->
+        <!--#include sections/settings.html -->
+
+        <!-- Confirm modal -->
+        <div id="confirm-modal" class="confirm-overlay hidden">
+          <div class="confirm-box">
+            <p id="confirm-message"></p>
+            <div class="confirm-actions">
+              <button id="confirm-yes" class="action-btn danger">Delete</button>
+              <button id="confirm-no" class="action-btn">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+    </div>
+  </div>
+  <script type="module" src="home.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+        <div class="help-section" data-section="layouts">
+          <h2>Layouts</h2>
+          <p class="section-desc">Custom panel arrangements. Use <code>.dip &lt;name&gt;</code> to activate.</p>
+          <div id="layouts-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 5 layouts. <a id="layouts-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
+          <div id="layouts-toolbar" class="crud-toolbar">
+            <input id="layout-search" type="text" class="crud-search" placeholder="Search layouts..." spellcheck="false" autocomplete="off" />
+            <button id="layout-new-btn" class="action-btn primary">+ New</button>
+          </div>
+          <div id="layouts-list" class="crud-cards"></div>
+          <div id="layout-editor" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="layout-back-link">&larr; Layouts</a>
+              <div class="crud-spacer"></div>
+            </div>
+            <div id="layout-form-error" class="crud-form-error hidden"></div>
+            <label class="settings-label">Name</label>
+            <input id="layout-new-name" type="text" class="settings-input" placeholder="layout name" spellcheck="false" autocomplete="off" />
+
+            <label class="settings-label" style="margin-top:8px;">Grid</label>
+            <div id="layout-grid-builder" class="grid-builder">
+              <div class="grid-dims">
+                <label>Cols <select id="grid-cols">
+                  <option value="1">1</option>
+                  <option value="2" selected>2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select></label>
+                <span class="dim-sep">&times;</span>
+                <label>Rows <select id="grid-rows">
+                  <option value="1" selected>1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select></label>
+                <button id="grid-merge-right" class="action-btn" disabled>&rarr; Merge</button>
+                <button id="grid-merge-down" class="action-btn" disabled>&darr; Merge</button>
+                <button id="grid-split-btn" class="action-btn" disabled>Split</button>
+              </div>
+              <div id="grid-preview"></div>
+            </div>
+
+            <!-- Folder-binding mode — only meaningful when the layout contains
+                 a folder-bound app (Vibe, Spec, Terminal, Agent, …). -->
+            <div id="layout-folder-mode-row" class="hidden" style="margin-top:12px;">
+              <label class="settings-label">Folder binding</label>
+              <select id="layout-folder-mode" class="settings-input settings-input-md">
+                <option value="single">Single folder (one picker, all panels share)</option>
+                <option value="multi">Multi-folder (each panel picks its own)</option>
+              </select>
+              <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">
+                Layouts never bake in a folder. You pick one at load time.
+              </span>
+            </div>
+
+            <div class="settings-actions" style="margin-top:8px;">
+              <button id="layout-delete-btn" class="action-btn danger">Delete</button>
+              <div style="flex:1;"></div>
+              <button id="layout-cancel-btn" class="action-btn">Cancel</button>
+              <button id="layout-save-btn" class="action-btn primary">Save</button>
+            </div>
+          </div>
+        </div>

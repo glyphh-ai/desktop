@@ -1,0 +1,23 @@
+        <div class="help-section" data-section="about">
+          <div class="about-header">
+            <div class="about-logo">
+              <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+              <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+            </div>
+            <div class="about-version" id="about-version">Version 2.1.3</div>
+            <div class="about-copyright">&copy; 2026 Glyphh AI LLC. All rights reserved.</div>
+            <button class="btn btn-secondary about-check-update" id="about-check-update">Check for Updates</button>
+            <div class="about-progress hidden" id="about-progress">
+              <div class="about-progress-bar"><div class="about-progress-fill" id="about-progress-fill"></div></div>
+              <span class="about-progress-text" id="about-progress-text">Downloading...</span>
+            </div>
+          </div>
+
+          <!-- Bottom-right prompt — appears on load when an update is available;
+               forces the update flow (main hides panels + shows the updating
+               splash, then quit+install). See docs.ts loadAbout(). -->
+          <div class="about-update-prompt hidden" id="about-update-prompt">
+            <span class="about-update-prompt-text" id="about-update-prompt-text">An update is ready</span>
+            <button class="btn btn-primary" id="about-update-relaunch">Relaunch to Update</button>
+          </div>
+        </div>

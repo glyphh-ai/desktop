@@ -1,0 +1,368 @@
+        <div class="help-section" data-section="apps">
+          <h2>Apps</h2>
+          <p class="section-desc">Browse and connect apps.</p>
+
+          <!-- Upgrade gate (shown for non-Advanced when trying to connect) -->
+          <div id="apps-pro-gate" class="hidden" style="text-align:center;padding:32px 16px;">
+            <p style="color:var(--text-2);font-size:14px;margin-bottom:12px;">App connections require an Advanced subscription.</p>
+            <button id="apps-upgrade-btn" class="action-btn primary">Upgrade to Advanced</button>
+          </div>
+
+          <div id="apps-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 10 apps. <a id="apps-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
+          <div id="apps-toolbar" class="crud-toolbar">
+            <input id="app-search" type="text" class="crud-search" placeholder="Search apps..." spellcheck="false" autocomplete="off" />
+            <button id="apps-add-btn" class="action-btn primary">+ New</button>
+            <button id="apps-import-btn" class="action-btn" title="Import a .yoapp bundle">Import app</button>
+          </div>
+
+          <div id="apps-list" class="crud-cards"></div>
+
+          <!-- App add form -->
+          <div id="app-add-form" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="app-add-cancel">← Apps</a>
+              <div class="crud-spacer"></div>
+            </div>
+            <div id="app-form-error" class="crud-form-error hidden"></div>
+            <label class="settings-label">Name</label>
+            <input id="app-add-name" type="text" class="settings-input" placeholder="e.g. Gmail" spellcheck="false" autocomplete="off" />
+            <label class="settings-label">Slug <span class="settings-hint">— how you'll dip to it (.dip &lt;slug&gt;)</span></label>
+            <input id="app-add-slug" type="text" class="settings-input" placeholder="auto" spellcheck="false" autocomplete="off" pattern="[a-z0-9-]+" />
+            <label class="settings-label">Type</label>
+            <select id="app-add-type" class="settings-input">
+              <option value="browser">Browser app (web URL)</option>
+              <option value="native">Native app (desktop executable)</option>
+            </select>
+            <!-- Browser fields -->
+            <div id="app-add-browser-fields">
+              <label class="settings-label">URL</label>
+              <input id="app-add-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" autocomplete="off" />
+              <label class="settings-label">Open in</label>
+              <select id="app-add-browser-target" class="settings-input">
+                <option value="webview">Glyphh webview</option>
+                <option value="native">Native Chrome</option>
+              </select>
+            </div>
+            <!-- Native fields -->
+            <div id="app-add-native-fields" class="hidden">
+              <label class="settings-label">Application / executable path</label>
+              <div style="display:flex;gap:6px;">
+                <input id="app-add-exec-path" type="text" class="settings-input" placeholder="/Applications/Terminal.app" spellcheck="false" autocomplete="off" style="flex:1;" />
+                <button id="app-add-exec-browse" class="action-btn" type="button">Browse…</button>
+              </div>
+              <label class="settings-label">Archetype</label>
+              <select id="app-add-archetype" class="settings-input">
+                <option value="terminal">Terminal</option>
+                <option value="editor">Editor</option>
+                <option value="generic">Generic</option>
+              </select>
+              <!-- Terminal archetype -->
+              <div id="app-add-terminal-fields">
+                <label class="settings-label">Shell</label>
+                <input id="app-add-shell" type="text" class="settings-input" placeholder="/bin/zsh" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Profile</label>
+                <input id="app-add-profile" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Working directory</label>
+                <input id="app-add-cwd" type="text" class="settings-input" placeholder="~/projects" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Init commands <span style="color:var(--text-2);font-weight:400;">(one per line)</span></label>
+                <textarea id="app-add-init-commands" class="settings-input" rows="3" spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+              </div>
+              <!-- Editor archetype -->
+              <div id="app-add-editor-fields" class="hidden">
+                <label class="settings-label">Folder</label>
+                <input id="app-add-folder" type="text" class="settings-input" placeholder="~/projects/my-repo" spellcheck="false" autocomplete="off" />
+              </div>
+              <!-- Generic archetype -->
+              <div id="app-add-generic-fields" class="hidden">
+                <label class="settings-label">Args <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+                <input id="app-add-args" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+              </div>
+            </div>
+            <!-- Force web mode + Do not record live on the app's detail screen
+                 (where they persist); duplicating them here did nothing. -->
+            <div class="settings-actions" style="margin-top:8px;">
+              <button id="app-add-cancel-btn" class="action-btn">Cancel</button>
+              <button id="app-add-save" class="action-btn primary">Save</button>
+            </div>
+          </div>
+
+          <!-- MCP add form -->
+          <div id="mcp-add-form" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="mcp-add-cancel">← Apps</a>
+              <div class="crud-spacer"></div>
+            </div>
+            <div id="mcp-form-error" class="crud-form-error hidden"></div>
+            <label class="settings-label">Name</label>
+            <input id="mcp-add-name" type="text" class="settings-input" placeholder="My Server" spellcheck="false" autocomplete="off" />
+            <label class="settings-label">Transport</label>
+            <select id="mcp-add-transport" class="settings-input">
+              <option value="stdio">stdio (local process)</option>
+              <option value="sse">SSE (HTTP server)</option>
+            </select>
+            <div id="mcp-add-stdio-fields">
+              <label class="settings-label">Command</label>
+              <input id="mcp-add-command" type="text" class="settings-input" placeholder="npx -y @modelcontextprotocol/server-..." spellcheck="false" autocomplete="off" />
+              <label class="settings-label">Arguments <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+              <input id="mcp-add-args" type="text" class="settings-input" placeholder="--flag value" spellcheck="false" autocomplete="off" />
+              <label class="settings-label">Environment <span style="color:var(--text-2);font-weight:400;">(KEY=VALUE, one per line)</span></label>
+              <textarea id="mcp-add-env" class="settings-input" rows="3" placeholder="API_KEY=sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+            </div>
+            <div id="mcp-add-sse-fields" class="hidden">
+              <label class="settings-label">Server URL</label>
+              <input id="mcp-add-url" type="text" class="settings-input" placeholder="http://localhost:3000/sse" spellcheck="false" autocomplete="off" />
+            </div>
+            <div class="settings-actions" style="margin-top:8px;">
+              <button id="mcp-add-cancel-btn" class="action-btn">Cancel</button>
+              <button id="mcp-add-save" class="action-btn primary">Save</button>
+            </div>
+          </div>
+
+          <!-- App detail (tabbed) -->
+          <div id="app-detail" class="hidden">
+            <div class="crud-inline-header" style="padding:0 16px;">
+              <a class="crud-breadcrumb-back" id="app-detail-close">← Apps</a>
+              <span id="app-detail-heading" style="font-size:14px;font-weight:600;color:var(--text);margin-left:8px;"></span>
+              <span style="flex:1;"></span>
+              <button id="app-detail-open" class="action-btn primary" type="button" title="Open this app as a panel">Open app</button>
+            </div>
+
+            <div class="app-detail-tabs">
+              <button class="app-detail-tab" data-tab="dashboard">General</button>
+              <button class="app-detail-tab" data-tab="connection">Connection</button>
+              <button class="app-detail-tab" data-tab="mcp">MCP</button>
+            </div>
+
+            <div class="app-builder-split">
+              <!-- Left panel: swaps per tab -->
+              <div class="app-builder-controls">
+                <!-- Dashboard left: form, then (below it) the pick-elements /
+                     mapped-commands section that used to be its own "Panel" tab. -->
+                <div class="app-tab-left" data-tab="dashboard">
+                  <label class="settings-label">ID <span style="color:var(--text-3);font-weight:400;font-size:11px;">(used in commands like .sup, .dip)</span></label>
+                  <input id="app-detail-id" class="settings-input" spellcheck="false" style="font-family:var(--font-mono);font-size:12px;" />
+                  <label class="settings-label">Name</label>
+                  <input id="app-detail-name" class="settings-input" spellcheck="false" />
+                  <label class="settings-label">Type</label>
+                  <select id="app-detail-type" class="settings-input">
+                    <option value="browser">Browser app (web URL)</option>
+                    <option value="native">Native app (desktop executable)</option>
+                  </select>
+                  <!-- Browser fields -->
+                  <div id="app-detail-browser-fields">
+                    <label class="settings-label">URL</label>
+                    <input id="app-detail-url" class="settings-input" spellcheck="false" placeholder="https://..." />
+                    <label class="settings-label">Open in</label>
+                    <select id="app-detail-browser-target" class="settings-input">
+                      <option value="webview">Glyphh webview</option>
+                      <option value="native">Native Chrome</option>
+                    </select>
+                    <label class="settings-toggle" style="margin-top:4px;padding:8px 12px;">
+                      <input type="checkbox" id="app-detail-force-web" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Force web mode</span>
+                        <span class="toggle-desc">Block native app redirects and desktop prompts</span>
+                      </div>
+                    </label>
+                  </div>
+                  <!-- Native fields -->
+                  <div id="app-detail-native-fields" class="hidden">
+                    <label class="settings-label">Application / executable path</label>
+                    <div style="display:flex;gap:6px;">
+                      <input id="app-detail-exec-path" class="settings-input" placeholder="/Applications/Terminal.app" spellcheck="false" style="flex:1;font-family:var(--font-mono);font-size:12px;" />
+                      <button id="app-detail-exec-browse" class="action-btn" type="button">Browse…</button>
+                    </div>
+                    <label class="settings-label">Archetype</label>
+                    <select id="app-detail-archetype" class="settings-input">
+                      <option value="terminal">Terminal</option>
+                      <option value="editor">Editor</option>
+                      <option value="generic">Generic</option>
+                    </select>
+                    <!-- Terminal archetype -->
+                    <div id="app-detail-terminal-fields">
+                      <label class="settings-label">Shell</label>
+                      <input id="app-detail-shell" class="settings-input" placeholder="/bin/zsh" spellcheck="false" />
+                      <label class="settings-label">Profile</label>
+                      <input id="app-detail-profile" class="settings-input" spellcheck="false" />
+                      <label class="settings-label">Working directory</label>
+                      <input id="app-detail-cwd" class="settings-input" placeholder="~/projects" spellcheck="false" />
+                      <label class="settings-label">Init commands <span style="color:var(--text-2);font-weight:400;">(one per line)</span></label>
+                      <textarea id="app-detail-init-commands" class="settings-input" rows="3" spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                    </div>
+                    <!-- Editor archetype -->
+                    <div id="app-detail-editor-fields" class="hidden">
+                      <label class="settings-label">Folder</label>
+                      <input id="app-detail-folder" class="settings-input" placeholder="~/projects/my-repo" spellcheck="false" />
+                    </div>
+                    <!-- Generic archetype -->
+                    <div id="app-detail-generic-fields" class="hidden">
+                      <label class="settings-label">Args <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+                      <input id="app-detail-args" class="settings-input" spellcheck="false" />
+                    </div>
+                  </div>
+                  <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                    <button id="app-detail-delete" class="action-btn danger">Delete</button>
+                    <button id="app-detail-export" class="action-btn" title="Export this app as a .yoapp bundle">Export</button>
+                    <div style="flex:1;"></div>
+                    <button id="app-dash-cancel" class="action-btn">Cancel</button>
+                    <button id="app-dash-save" class="action-btn primary">Save</button>
+                  </div>
+
+                  <div class="app-detail-section-sep"></div>
+
+                  <div id="app-connect-status"></div>
+                  <div id="app-commands-list"></div>
+                  <div id="app-map-command" class="hidden">
+                    <div class="map-command-header">Map to Command</div>
+                    <div class="map-command-info">
+                      <span id="map-selector"></span>
+                      <span id="map-element-info"></span>
+                    </div>
+                    <div class="map-command-form">
+                      <select id="map-command-key">
+                        <option value="">Select command...</option>
+                        <option value="new">new</option>
+                        <option value="search">search</option>
+                        <option value="submit">submit</option>
+                        <option value="grab">grab</option>
+                        <option value="input">input</option>
+                        <option value="__custom__">+ custom command</option>
+                      </select>
+                      <input id="map-custom-key" type="text" placeholder="command name" class="hidden" spellcheck="false" />
+                      <select id="map-action">
+                        <option value="click">Click</option>
+                        <option value="extractText">Extract Text</option>
+                        <option value="extractHTML">Extract HTML</option>
+                        <option value="setValue">Set Value</option>
+                        <option value="custom">Custom Script</option>
+                      </select>
+                      <input id="map-description" type="text" placeholder="description" spellcheck="false" />
+                      <button id="map-save-btn" class="action-btn primary">Save</button>
+                      <button id="map-cancel-btn" class="action-btn">Cancel</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Connection left -->
+                <div class="app-tab-left" data-tab="connection">
+                  <div id="connection-upgrade-gate" class="hidden" style="text-align:center;padding:40px 16px;">
+                    <p style="color:var(--text-2);font-size:14px;margin:0 0 12px;">App connections (Pipedream) require a paid plan.</p>
+                    <button class="action-btn primary tab-upgrade-btn">Manage plan</button>
+                  </div>
+                  <div id="app-connection-status"></div>
+                  <div id="app-connected-list"></div>
+                  <div class="connection-browse">
+                    <input id="app-connector-search" type="text" class="settings-input" placeholder="Search apps to connect..." spellcheck="false" autocomplete="off" />
+                    <div id="app-connector-grid" class="connector-grid"></div>
+                    <button id="app-connector-load-more" class="connector-load-more hidden">Load more</button>
+                  </div>
+                </div>
+
+                <!-- MCP left -->
+                <div class="app-tab-left" data-tab="mcp">
+                  <div id="mcp-tab-upgrade-gate" class="hidden" style="text-align:center;padding:40px 16px;">
+                    <p style="color:var(--text-2);font-size:14px;margin:0 0 12px;">MCP servers require a Pro plan.</p>
+                    <button class="action-btn primary tab-upgrade-btn">Upgrade to Pro</button>
+                  </div>
+                  <div id="app-mcp-status-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                    <span id="app-mcp-status" class="mcp-status-badge status-disconnected">disconnected</span>
+                    <div style="flex:1;"></div>
+                    <button id="app-mcp-connect" class="action-btn primary" style="height:28px;font-size:12px;">Connect</button>
+                    <button id="app-mcp-disconnect" class="action-btn hidden" style="height:28px;font-size:12px;">Disconnect</button>
+                  </div>
+                  <label class="settings-label">Transport</label>
+                  <select id="app-mcp-transport" class="settings-input">
+                    <option value="stdio">stdio (local process)</option>
+                    <option value="sse">SSE (HTTP server)</option>
+                    <option value="streamable-http">Streamable HTTP (OAuth)</option>
+                  </select>
+                  <div id="app-mcp-stdio-fields">
+                    <label class="settings-label">Command</label>
+                    <input id="app-mcp-command" type="text" class="settings-input" placeholder="npx -y @modelcontextprotocol/server-..." spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Arguments <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+                    <input id="app-mcp-args" type="text" class="settings-input" placeholder="--flag value" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Environment <span style="color:var(--text-2);font-weight:400;">(KEY=VALUE, one per line)</span></label>
+                    <textarea id="app-mcp-env" class="settings-input" rows="3" placeholder="API_KEY=sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                  </div>
+                  <div id="app-mcp-sse-fields" class="hidden">
+                    <label class="settings-label">Server URL</label>
+                    <input id="app-mcp-url" type="text" class="settings-input" placeholder="http://localhost:3000/sse" spellcheck="false" autocomplete="off" />
+                    <span style="display:block;font-size:11px;color:var(--text-2);margin-top:-4px;">For Streamable HTTP, this is the MCP endpoint URL.</span>
+                  </div>
+                  <div id="app-mcp-oauth-fields" class="hidden">
+                    <label class="settings-label">OAuth Client ID</label>
+                    <input id="app-mcp-client-id" type="text" class="settings-input" placeholder="OAuth client id" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">OAuth Client Secret</label>
+                    <input id="app-mcp-client-secret" type="password" class="settings-input" placeholder="OAuth client secret" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Token URL</label>
+                    <input id="app-mcp-token-url" type="text" class="settings-input" placeholder="https://…/oauth/token" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Scope <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                    <input id="app-mcp-scope" type="text" class="settings-input" placeholder="scope (optional)" spellcheck="false" autocomplete="off" />
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+                    <label class="settings-label" style="margin:0;">All Tools</label>
+                    <select id="app-mcp-server-override" class="settings-input" style="flex:1;">
+                      <option value="default">Default</option>
+                      <option value="auto">Auto</option>
+                      <option value="ask">Ask</option>
+                    </select>
+                  </div>
+                  <div class="settings-actions" style="margin-top:12px;">
+                    <span id="app-mcp-save-status" style="flex:1;font-size:12px;color:var(--danger);"></span>
+                    <button id="app-mcp-save" class="action-btn primary">Save</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="app-builder-divider" id="app-builder-divider"></div>
+
+              <!-- Right panel: swaps per tab -->
+              <div class="app-builder-preview">
+                <!-- Dashboard right: the live app preview (was its own "Panel"
+                     tab) now sits beside the General form. -->
+                <div class="app-tab-right" data-tab="dashboard">
+                  <div class="preview-toolbar">
+                    <div style="flex:1;"></div>
+                    <button id="app-preview-refresh" class="preview-action preview-action-visible">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                      Refresh
+                    </button>
+                    <button id="app-pick-btn" class="action-btn primary" style="height:24px;font-size:11px;padding:0 10px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                      <span id="app-pick-label">Pick Element</span>
+                    </button>
+                  </div>
+                  <webview id="app-preview" partition="persist:yo" allowpopups></webview>
+                </div>
+
+                <!-- Connection right -->
+                <div class="app-tab-right" data-tab="connection">
+                  <div style="padding:12px 16px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Tools</h3>
+                    <div id="app-connection-tools"></div>
+                    <div id="app-connection-no-tools" class="help-item-empty">No tools available. Connect an app to see its tools.</div>
+                  </div>
+                </div>
+
+                <!-- MCP right -->
+                <div class="app-tab-right" data-tab="mcp">
+                  <div style="padding:12px 16px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Tools</h3>
+                    <table class="tool-table" id="app-mcp-tools-table">
+                      <thead>
+                        <tr>
+                          <th class="tool-th-name">Tool</th>
+                          <th class="tool-th-desc">Description</th>
+                          <th class="tool-th-perm">Permission</th>
+                        </tr>
+                      </thead>
+                      <tbody id="app-mcp-tools-body"></tbody>
+                    </table>
+                    <div id="app-mcp-no-tools" class="help-item-empty">No tools discovered. Connect the server first.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
