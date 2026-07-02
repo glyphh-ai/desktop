@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body {
+      margin: 0; height: 100%; background: transparent; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-user-select: none; user-select: none;
+    }
+    .card {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px;
+      background: rgba(16, 16, 20, 0.72);
+      backdrop-filter: blur(14px) saturate(130%);
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .ghost {
+      width: 72px; height: 72px; object-fit: contain;
+      opacity: 0.35;
+      filter: grayscale(1) brightness(2);
+      animation: pulse 2.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.25; transform: scale(0.97); }
+      50%      { opacity: 0.5;  transform: scale(1.03); }
+    }
+    .spinner {
+      color: #fff; font-size: 26px; line-height: 1;
+      font-family: "SF Mono", Menlo, monospace;
+      text-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+    }
+    .phrase {
+      color: rgba(255, 255, 255, 0.72); font-size: 13px; font-weight: 500;
+      letter-spacing: 0.01em; text-align: center; padding: 0 18px;
+      transition: opacity 0.25s;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="ghost" src="brand/glyphh-mark.png" alt="" />
+    <div id="spinner" class="spinner">⠋</div>
+    <div id="phrase" class="phrase"></div>
+  </div>
+  <script>
+    const FRAMES = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
+    const PHRASES = [
+      "Rearranging the furniture…",
+      "Negotiating with your windows…",
+      "Consulting the grid…",
+      "Herding pixels…",
+      "Summoning your workspace…",
+      "Aligning the glyphs…",
+      "Bribing the window manager…",
+      "Plotting coordinates…",
+      "Folding space…",
+      "Whispering to System Events…",
+      "Warming up the dip…",
+      "Convincing apps to behave…",
+    ];
+    const spinnerEl = document.getElementById("spinner");
+    const phraseEl = document.getElementById("phrase");
+    let f = 0;
+    setInterval(() => { spinnerEl.textContent = FRAMES[f = (f + 1) % FRAMES.length]; }, 80);
+    function pick() {
+      const next = PHRASES[Math.floor(Math.random() * PHRASES.length)];
+      if (next === phraseEl.textContent) return pick();
+      phraseEl.style.opacity = "0";
+      setTimeout(() => { phraseEl.textContent = next; phraseEl.style.opacity = "1"; }, 200);
+    }
+    phraseEl.textContent = PHRASES[Math.floor(Math.random() * PHRASES.length)];
+    setInterval(pick, 2600);
+  </script>
+</body>
+</html>

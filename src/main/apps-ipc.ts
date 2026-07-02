@@ -7,6 +7,7 @@ import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, ser
 import { openAppWindow } from "./app-window-manager";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch";
 import { openLayoutByName } from "./app-resolver";
+import { showThinking, hideThinking } from "./thinking-overlay";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -182,8 +183,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // (nothing renders inside the Glyphh client). This is the hand-off the Layouts
   // tab's "Open" button uses instead of the legacy in-window layout manager.
   ipcMain.handle("layouts-open", async (_e, name: string) => {
+    showThinking();
     try { return { ok: true, ...(await openLayoutByName(String(name), "screen")) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    finally { hideThinking(); }
   });
 
   // IPC: layouts CRUD

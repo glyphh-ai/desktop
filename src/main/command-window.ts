@@ -12,6 +12,7 @@ import path from "path";
 import { openAppByRef, openLayoutByName } from "./app-resolver.js";
 import { runDip } from "./dip-commands.js";
 import { listOsApps, focusOsApp } from "./os-window-manager.js";
+import { showThinking, hideThinking, disposeThinking } from "./thinking-overlay.js";
 import { getPreference } from "./stores/preferences-db";
 
 /** Resolve the active theme the same way the main window does. */
@@ -90,20 +91,26 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
   execFallback = fallback ?? null;
   ipcMain.handle("command:open-app", async (_e, ref: string) => {
     hideCommandWindow();
+    showThinking();
     try {
       const spec = await openAppByRef(String(ref));
       return { ok: true, app: spec.slug };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      hideThinking();
     }
   });
 
   ipcMain.handle("command:open-layout", async (_e, name: string) => {
     hideCommandWindow();
+    showThinking();
     try {
       return { ok: true, ...(await openLayoutByName(String(name), "screen")) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      hideThinking();
     }
   });
 
@@ -118,7 +125,9 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
       try { await execFallback?.(cmd); return { ok: true, message: "drip" }; }
       catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
     }
-    return runDip(text);
+    showThinking();
+    try { return await runDip(text); }
+    finally { hideThinking(); }
   });
 
   // Running OS apps NOT managed by Glyphh — shown as a lighter section in the
@@ -135,8 +144,10 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
 
   ipcMain.handle("command:focus-app", async (_e, proc: string) => {
     hideCommandWindow();
+    showThinking();
     try { await focusOsApp(String(proc)); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    finally { hideThinking(); }
   });
 
   ipcMain.on("command:close", () => hideCommandWindow());
@@ -149,6 +160,7 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
 /** Release the global hotkey (call on app quit). */
 export function disposeCommandWindow(): void {
   globalShortcut.unregister(HOTKEY);
+  disposeThinking();
   if (win && !win.isDestroyed()) win.destroy();
   win = null;
 }
