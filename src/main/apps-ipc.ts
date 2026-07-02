@@ -193,9 +193,11 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("layouts-delete", (_e, name: string) => layoutManager.deleteLayout(name));
 
   // IPC: Drips CRUD
-  ipcMain.handle("drips-list", () => dripManager?.listCustoms() ?? []);
-  ipcMain.handle("drips-save", (_e, name: string, recipe: string) => dripManager?.saveCustom(name, recipe) ?? "");
-  ipcMain.handle("drips-delete", (_e, name: string) => dripManager?.deleteCustom(name) ?? "");
+  // Server-authoritative (yo-server /api/drips) — list refreshes from the
+  // server; save/delete await the write so a subsequent list is consistent.
+  ipcMain.handle("drips-list", async () => (await dripManager?.refreshAndList()) ?? []);
+  ipcMain.handle("drips-save", async (_e, name: string, recipe: string) => (await dripManager?.saveCustomAsync(name, recipe)) ?? "");
+  ipcMain.handle("drips-delete", async (_e, name: string) => (await dripManager?.deleteCustomAsync(name)) ?? "");
   ipcMain.handle("drips-builtin-effects", () => {
     const { BUILTIN_EFFECTS } = require("./drip-manager");
     return BUILTIN_EFFECTS as string[];
