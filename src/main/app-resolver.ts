@@ -16,6 +16,7 @@ import {
 } from "./app-window-manager.js";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
 import { positionAppWindow } from "./os-window-manager.js";
+import { findInstalledApp, launchInstalledApp, normKey, isSubsequence } from "./installed-apps.js";
 
 export interface ServerApp {
   id: string;
@@ -54,6 +55,32 @@ export async function resolveAppSpec(ref: string): Promise<AppWindowSpec> {
   return { slug: app.slug, name: app.name, url: app.url, forceWeb: !!app.forceWeb };
 }
 
+/**
+ * Find a library app by ref with graceful fuzz — exact id/slug/name first,
+ * then normalized equality ("vscode" ≈ "VS Code"), then prefix, then
+ * substring. Prefix/substring tiers need ≥2 normalized chars so a stray
+ * single letter can't grab an arbitrary app.
+ */
+export function findLibraryApp(apps: ServerApp[], ref: string): ServerApp | undefined {
+  const raw = ref.trim();
+  const key = raw.toLowerCase();
+  const nk = normKey(raw);
+  return apps.find((a) => a.id === raw)
+    || apps.find((a) => a.slug === key)
+    || apps.find((a) => a.name.toLowerCase() === key)
+    || (nk
+      ? apps.find((a) => normKey(a.slug || "") === nk)
+        || apps.find((a) => normKey(a.name) === nk)
+        || (nk.length >= 2
+          ? apps.find((a) => normKey(a.slug || "").startsWith(nk))
+            || apps.find((a) => normKey(a.name).startsWith(nk))
+            || apps.find((a) => normKey(a.name).includes(nk))
+            || apps.find((a) => normKey(a.slug || "").includes(nk))
+            || (nk.length >= 4 ? apps.find((a) => isSubsequence(nk, normKey(a.name))) : undefined)
+          : undefined)
+      : undefined);
+}
+
 /** A panelId→spec resolver bound to a fetched app library (for layout cells). */
 export function makeCellResolver(apps: ServerApp[]): (panelId: string) => AppWindowSpec | null {
   return (panelId: string): AppWindowSpec | null => {
@@ -81,10 +108,20 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   if (builtin) { openAppWindowSlide(builtin); return { slug: builtin.slug, name: builtin.name }; }
 
   const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
-  const app = apps.find((a) => a.id === ref.trim())
-    || apps.find((a) => a.slug === key)
-    || apps.find((a) => a.name.toLowerCase() === key);
-  if (!app) throw new Error(`unknown app: ${ref} — use the app library slugs`);
+  const app = findLibraryApp(apps, ref);
+  if (!app) {
+    // Not in the library — fall back to any app installed on this machine
+    // (macOS: .app bundles in the standard folders). `open -a` launches a
+    // cold app or activates a running one; then best-effort full-screen it.
+    const installed = findInstalledApp(ref);
+    if (installed) {
+      launchInstalledApp(installed);
+      const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+      void positionAppWindow(installed.name, { x: wa.x, y: wa.y, width: wa.width, height: wa.height });
+      return { slug: normKey(installed.name), name: installed.name };
+    }
+    throw new Error(`unknown app: ${ref} — not in the app library or installed apps`);
+  }
 
   // Native = explicitly flagged, or simply has an executable and no URL.
   const isNative = app.isBrowser === false || (!!app.execPath && !app.url);
