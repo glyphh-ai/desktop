@@ -198,6 +198,9 @@ const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKi
   { id: "browser", name: "Browser", url: "yo://browser" },
   { id: "apps", name: "Apps", url: "yo://apps", kind: "system" },
   { id: "skills", name: "Skills", url: "yo://skills", kind: "system" },
+  { id: "agents", name: "Agents", url: "yo://agents", kind: "system" },
+  { id: "layouts", name: "Layouts", url: "yo://layouts", kind: "system" },
+  { id: "drips", name: "Drips", url: "yo://drips", kind: "system" },
   { id: "dashboard-settings", name: "Settings", url: "yo://dashboard-settings", kind: "system" },
   { id: "about", name: "About", url: "yo://about", kind: "system" },
 ];

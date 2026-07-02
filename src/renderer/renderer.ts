@@ -717,29 +717,27 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  const setActive = (slug: "apps" | "skills" | "settings" | "about") => {
-    document.getElementById("dashboard-tab-apps")?.classList.toggle("active", slug === "apps");
-    document.getElementById("dashboard-tab-skills")?.classList.toggle("active", slug === "skills");
-    document.getElementById("dashboard-tab-settings")?.classList.toggle("active", slug === "settings");
-    document.getElementById("dashboard-tab-about")?.classList.toggle("active", slug === "about");
+  type DashSlug = "apps" | "skills" | "agents" | "layouts" | "drips" | "settings" | "about";
+  const setActive = (slug: DashSlug) => {
+    for (const s of ["apps", "skills", "agents", "layouts", "drips", "settings", "about"] as DashSlug[]) {
+      document.getElementById(`dashboard-tab-${s}`)?.classList.toggle("active", slug === s);
+    }
   };
 
-  document.getElementById("dashboard-tab-apps")?.addEventListener("click", () => {
-    setActive("apps");
-    openWorkspaceApp("apps");
-  });
-  document.getElementById("dashboard-tab-skills")?.addEventListener("click", () => {
-    setActive("skills");
-    openWorkspaceApp("skills");
-  });
-  document.getElementById("dashboard-tab-settings")?.addEventListener("click", () => {
-    setActive("settings");
-    openWorkspaceApp("dashboard-settings");
-  });
-  document.getElementById("dashboard-tab-about")?.addEventListener("click", () => {
-    setActive("about");
-    openWorkspaceApp("about");
-  });
+  // Each tab opens its matching yo:// system-app panel (home.html?section=…).
+  const wireTab = (slug: DashSlug, appId: string) => {
+    document.getElementById(`dashboard-tab-${slug}`)?.addEventListener("click", () => {
+      setActive(slug);
+      openWorkspaceApp(appId);
+    });
+  };
+  wireTab("apps", "apps");
+  wireTab("skills", "skills");
+  wireTab("agents", "agents");
+  wireTab("layouts", "layouts");
+  wireTab("drips", "drips");
+  wireTab("settings", "dashboard-settings");
+  wireTab("about", "about");
 
   // Land on Apps by default — just the tab styling. Main already opened and
   // activated the "apps" panel directly at boot (openAppsPanelOnly() in

@@ -906,6 +906,9 @@ async function boot() {
   const HOME_SECTION_SLUGS: Record<string, string> = {
     "yo://apps": "apps",
     "yo://skills": "skills",
+    "yo://agents": "agents",
+    "yo://layouts": "layouts",
+    "yo://drips": "drips",
     "yo://about": "about",
   };
   // Dashboard shell (5a) — same section panels as above, plus &dashboard=1 so
