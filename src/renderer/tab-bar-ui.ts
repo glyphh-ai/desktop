@@ -1,5 +1,7 @@
 // tab-bar-ui.ts — Tab bar system extracted from renderer.ts
 
+import { yoConfirm } from "./yo-modal.js";
+
 type TabInfo = { id: string; name: string; favicon?: string; layoutFavicons?: string[]; pinned?: boolean; url?: string; kind?: string };
 
 // ── Internal-app icons for the `+` picker ─────────────────────────────────
@@ -103,7 +105,7 @@ export function initTabBar(deps: TabBarDeps): {
         const id = baseName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `app-${Date.now()}`;
         const result = await window.yo.appsAdd(id, baseName, url);
         if (result && typeof result === "object" && "error" in result) {
-          alert((result as { error: string }).error);
+          void yoConfirm({ title: "Couldn't add app", message: (result as { error: string }).error, confirmText: "OK", cancelText: "" });
         }
       });
       menu.appendChild(addBtn);

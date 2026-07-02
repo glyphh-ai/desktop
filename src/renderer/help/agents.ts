@@ -295,11 +295,17 @@ function showPicker(kind: "apps" | "skills"): void {
   const available = kind === "apps"
     ? appsCache.filter((a) => !selected.has(a.id)).map((a) => ({ key: a.id, label: a.name }))
     : skillsCache.filter((s) => !selected.has(s.name)).map((s) => ({ key: s.name, label: s.name }));
-  if (available.length === 0) { alert(`No more ${kind} to add.`); return; }
 
   const menu = document.createElement("div");
   menu.className = "skill-row-picker";
   menu.style.cssText = "position:fixed;z-index:1000;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px var(--shadow);max-height:240px;overflow-y:auto;width:240px;";
+  if (available.length === 0) {
+    // No native popup — show the empty state inline in the dropdown.
+    const empty = document.createElement("div");
+    empty.style.cssText = "padding:6px 12px;font-size:13px;color:var(--text-3);";
+    empty.textContent = `No more ${kind} to add.`;
+    menu.appendChild(empty);
+  }
   for (const opt of available) {
     const item = document.createElement("div");
     item.style.cssText = "padding:6px 12px;cursor:pointer;font-size:13px;";

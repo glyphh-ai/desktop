@@ -129,7 +129,8 @@ export function yoConfirm(opts: YoConfirmOpts): Promise<boolean> {
     confirmBtn.className = "yo-modal-btn yo-modal-btn-confirm" + (opts.danger ? " yo-modal-btn-danger" : "");
     confirmBtn.textContent = opts.confirmText ?? "Continue";
 
-    actions.appendChild(cancelBtn);
+    // An explicit empty cancelText makes this an OK-only info dialog (no Cancel).
+    if (opts.cancelText !== "") actions.appendChild(cancelBtn);
     actions.appendChild(confirmBtn);
     panel.appendChild(actions);
 

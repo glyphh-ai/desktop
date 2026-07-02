@@ -406,9 +406,9 @@ function initSettings() {
       <span style="color:var(--text-3);font-size:11px;">${created} → ${expires}</span>
       <button class="action-btn danger" data-revoke="${escapeHtmlLocal(t.id)}" style="font-size:11px;padding:3px 10px;">Revoke</button>`;
     row.querySelector("[data-revoke]")!.addEventListener("click", async () => {
-      if (!confirm(`Revoke "${t.label || "this token"}"? External tools using it will stop working.`)) return;
+      if (!(await confirmAction(`Revoke "${t.label || "this token"}"? External tools using it will stop working.`))) return;
       const res = await window.yo.relayTokensRevoke(t.id);
-      if ("error" in res) { alert(`Could not revoke: ${res.error}`); return; }
+      if ("error" in res) { flashRelayError(`Could not revoke: ${res.error}`); return; }
       void refreshRelayTokens();
     });
     return row;
@@ -416,6 +416,16 @@ function initSettings() {
 
   function escapeHtmlLocal(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  /** Transient inline error for the relay-token section — no native popups. */
+  function flashRelayError(msg: string): void {
+    if (!relayTokensList) return;
+    const el = document.createElement("div");
+    el.style.cssText = "font-size:12px;color:#d44a4a;margin-bottom:6px;";
+    el.textContent = msg;
+    relayTokensList.prepend(el);
+    setTimeout(() => el.remove(), 4000);
   }
 
   async function refreshRelayTokens(): Promise<void> {
@@ -443,7 +453,7 @@ function initSettings() {
   document.getElementById("relay-gen-token")!.addEventListener("click", async () => {
     const label = relayLabelInput.value.trim() || "default";
     const res = await window.yo.relayTokensCreate(label);
-    if ("error" in res) { alert(`Could not create token: ${res.error}`); return; }
+    if ("error" in res) { flashRelayError(`Could not create token: ${res.error}`); return; }
     relayLabelInput.value = "";
     if (relayNewTokenBox && relayNewTokenValue) {
       relayNewTokenValue.textContent = res.token;
