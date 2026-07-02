@@ -253,54 +253,37 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
 
             <div class="docs-panel" data-doc="mcp">
               <h3>MCP (Model Context Protocol)</h3>
-              <p>Glyphh supports MCP in two ways: as a <strong>server</strong> that exposes your saved agents and jammers to external tools, and as a way to configure <strong>local MCP servers</strong> for the agent to use.</p>
+              <p>Glyphh supports MCP in two ways: as a <strong>server</strong> — the cloud relay exposes your workspace to external LLM tools — and as a <strong>client</strong>, where your saved apps can attach their own MCP servers whose tools ride the same relay.</p>
 
-              <h4>Glyphh MCP Server</h4>
-              <p>Enable in <strong>Settings &gt; General &gt; MCP Server</strong>. This runs a local MCP server that lets external AI tools run and manage your saved agents, jammers, and swarms.</p>
-              <p>Use this when you want Claude Desktop, Cursor, Windsurf, or other MCP-compatible tools to drive Glyphh's agents. The server runs on your machine and uses bearer tokens for auth.</p>
+              <h4>The Glyphh relay</h4>
+              <p>Enable in <strong>Settings &gt; MCP &gt; Enable remote relay</strong>. Your signed-in device keeps a WebSocket to the Glyphh cloud, and external tools connect to a single endpoint:</p>
+              <pre class="docs-code">https://api.glyphh.ai/mcp</pre>
+              <p>Connected tools can open your apps and layouts as native windows and drive them — click, type, read the DOM, take screenshots. Everything executes on your machine; the relay only forwards commands from clients you've approved.</p>
 
-              <h4>Connecting from Claude Desktop</h4>
-              <p>Edit <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> (Claude Desktop's local config only accepts stdio servers, so we route through the community <code>mcp-remote</code> bridge):</p>
+              <h4>Connecting from Claude</h4>
+              <p>Add the endpoint in Claude's <strong>Connectors</strong> settings and approve the OAuth prompt — no token to copy. This is the recommended path for any OAuth-capable client.</p>
+
+              <h4>Clients without OAuth support (Cursor / Windsurf / others)</h4>
+              <p>Generate a token in <strong>Settings &gt; MCP</strong>, then add this to the tool's MCP config:</p>
               <pre class="docs-code">{
   "mcpServers": {
     "glyphh": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:7860/sse",
+      "args": ["-y", "mcp-remote", "https://api.glyphh.ai/mcp",
                "--header", "Authorization: Bearer YOUR_TOKEN"]
     }
   }
 }</pre>
-              <p>Replace <code>YOUR_TOKEN</code> with a token generated in Settings. The port defaults to 7860 but can be changed.</p>
-
-              <h4>Connecting from Cursor / Windsurf</h4>
-              <p>In your project's <code>.cursor/mcp.json</code> or MCP settings:</p>
-              <pre class="docs-code">{
-  "mcpServers": {
-    "glyphh": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:7860/sse",
-               "--header", "Authorization: Bearer YOUR_TOKEN"]
-    }
-  }
-}</pre>
-
-              <h4>Cloud vs Local tokens</h4>
-              <p>The Glyphh MCP Server runs <strong>locally</strong> on your machine. External tools connect to it over localhost. No data leaves your computer — the MCP server just gives other tools a way to search your captures using the same vector index the .yo agent uses.</p>
-              <p>The tokens generated in Settings are <strong>local access tokens</strong> — they authenticate MCP clients connecting to your local server. These are separate from your LLM API keys (Anthropic, OpenAI, etc.) which are used by the .yo agent to generate responses.</p>
-              <ul class="docs-list">
-                <li><strong>MCP tokens</strong> — authenticate external tools connecting to your local Glyphh server. Free, no API costs.</li>
-                <li><strong>LLM API keys</strong> — power the .yo agent's responses. Costs depend on your provider.</li>
-              </ul>
-              <p>When Claude Desktop or Cursor calls your Glyphh MCP server, the search is local (no LLM tokens spent). But if those tools then use the search results in a prompt, that prompt uses <em>their</em> configured LLM — and those tokens come from <em>your</em> API key in that tool.</p>
 
               <h4>Available MCP tools</h4>
               <p>When connected, external tools can use:</p>
               <ul class="docs-list">
-                <li><strong>search_captures</strong> — vector search across all your captured content</li>
-                <li><strong>search_notes</strong> — keyword search across saved notes</li>
-                <li><strong>read_note</strong> — read a specific note file</li>
-                <li><strong>get_session</strong> — get the current session context</li>
+                <li><strong>panels_open / panels_list / panels_switch / panels_close</strong> — open and manage your apps as native windows</li>
+                <li><strong>layouts_open</strong> — open a saved layout, tiled in one window or across the whole screen</li>
+                <li><strong>rpa_click / rpa_type / rpa_read / rpa_screenshot</strong> — drive an open app by CSS selector</li>
+                <li><strong>connector tools</strong> — call your connected apps' APIs</li>
               </ul>
+              <p>Tokens generated in Settings authenticate MCP clients to the relay. They're separate from any LLM API keys configured inside the external tool itself.</p>
             </div>
           </div>
         </div>

@@ -155,21 +155,14 @@ const TERMS_OF_USE = `
   <li>Resell, sublicense, or redistribute the Service without written permission</li>
 </ul>
 
-<p><strong>3.1 Cyphers and Distributed Agents ("Swarms")</strong></p>
-<p>The Service includes "cyphers" — collaborative gatherings in which multiple agents ("jammers") coordinate work. When you create or participate in a cypher, you additionally agree not to:</p>
+<p><strong>3.1 Remote Control ("MCP Relay")</strong></p>
+<p>The Service lets external tools you connect drive your workspace through the relay. You additionally agree not to:</p>
 <ul>
-  <li>Use a cypher, or coordinate jammers, to execute denial-of-service attacks, traffic floods, or any unsolicited high-volume requests against any third party or service</li>
-  <li>Use a cypher to perform credential stuffing, password spraying, brute-force authentication, account takeover, or any unauthorized access against any system</li>
-  <li>Use a cypher to perform vulnerability scanning, exploitation, lateral movement, privilege escalation, or other security-bypassing activities against systems you do not own or have explicit written authorization to test</li>
-  <li>Use a cypher to scrape, harvest, or exfiltrate personal information, copyrighted material, or proprietary data at scale, in violation of the source's terms or applicable law</li>
-  <li>Use a cypher's compute pool for cryptocurrency mining, token farming, or any unauthorized resource extraction ("cryptojacking")</li>
-  <li>Use a cypher to mass-impersonate real persons, brands, or institutions, or to operate sock-puppet or coordinated inauthentic accounts</li>
-  <li>Use a cypher to generate, store, or distribute child sexual abuse material (CSAM), instructions for synthesizing weapons capable of mass harm, or other content prohibited by law</li>
-  <li>Configure a cypher's setup steps to point at private, internal, or loopback network addresses, or at the Service's own infrastructure</li>
-  <li>Inject prompts, instructions, or hidden directives into messages, files, or work packages with the intent to subvert another jammer's instructions, extract its system prompt, or cause it to act outside its assigned role</li>
-  <li>Bypass, evade, or attempt to defeat the Service's sandbox, path-gate, firewall, rate limits, or any other safety controls</li>
+  <li>Use the relay to execute denial-of-service attacks, credential stuffing, unauthorized access attempts, or any activity against systems you do not own or have explicit written authorization to test</li>
+  <li>Use the relay to scrape, harvest, or exfiltrate personal information, copyrighted material, or proprietary data at scale, in violation of the source's terms or applicable law</li>
+  <li>Bypass, evade, or attempt to defeat the Service's rate limits or any other safety controls</li>
 </ul>
-<p>The Service automatically scans cypher goals, setup steps, and bus messages for the patterns above and may refuse, throttle, or revoke cyphers, jammers, and accounts that violate these rules. We may also report serious abuse to law enforcement and affected third parties.</p>
+<p>We may refuse, throttle, or revoke relay access and accounts that violate these rules, and may report serious abuse to law enforcement and affected third parties.</p>
 
 <p><strong>4. Intellectual Property</strong></p>
 <p>The Service, including all software, designs, trademarks, and content, is the intellectual property of Glyphh AI LLC. Your license grants a limited, non-exclusive, non-transferable, revocable right to use the Service for personal or internal business purposes only.</p>
