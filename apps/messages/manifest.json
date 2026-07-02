@@ -6,5 +6,20 @@
   "entry": "index.html",
   "description": "Text a phone number an iMessage or SMS through Messages.app.",
   "capabilities": ["messages.send"],
-  "window": { "width": 440, "height": 520 }
+  "window": { "width": 440, "height": 520 },
+  "tools": [
+    {
+      "name": "send_message",
+      "description": "Send an iMessage or SMS to a phone number, email, or iMessage handle via Messages.app.",
+      "capability": "messages.send",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": { "type": "string", "description": "Phone number, email, or iMessage handle" },
+          "body": { "type": "string", "description": "The message text to send" }
+        },
+        "required": ["to", "body"]
+      }
+    }
+  ]
 }

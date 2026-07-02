@@ -33,6 +33,14 @@ import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js"
 
 // ── manifest ────────────────────────────────────────────────
 
+/** An MCP tool an app exposes to the relay (see GLYPHH-APP-SPEC §3). */
+export interface GlyphhAppTool {
+  name: string;
+  description?: string;
+  capability: string;
+  inputSchema?: Record<string, unknown>;
+}
+
 export interface GlyphhAppManifest {
   manifestVersion: number;
   kind: "glyphh-app";
@@ -40,6 +48,7 @@ export interface GlyphhAppManifest {
   slug: string;
   entry: string;
   capabilities: string[];
+  tools?: GlyphhAppTool[];
   window?: { width?: number; height?: number };
   description?: string;
 }
@@ -58,6 +67,9 @@ export function readGlyphhAppManifest(json: string): GlyphhAppManifest | null {
   if (!m.name || !m.slug || !m.entry) return null;
   m.slug = String(m.slug).toLowerCase().replace(/[^a-z0-9_-]/g, "-");
   m.capabilities = Array.isArray(m.capabilities) ? m.capabilities.map(String) : [];
+  m.tools = Array.isArray(m.tools)
+    ? m.tools.filter((t) => t && typeof t.name === "string" && typeof t.capability === "string")
+    : [];
   return m;
 }
 
@@ -89,6 +101,10 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   const unknown = manifest.capabilities.filter((c) => !KNOWN_CAPABILITIES.has(c));
   if (unknown.length) return { ok: false, error: `Unknown capabilities: ${unknown.join(", ")}` };
 
+  // Every tool must reference a capability the app also declared.
+  const badTool = (manifest.tools || []).find((t) => !manifest.capabilities.includes(t.capability));
+  if (badTool) return { ok: false, error: `Tool "${badTool.name}" needs undeclared capability "${badTool.capability}"` };
+
   const dir = path.join(customAppsDir(), manifest.slug);
   fs.mkdirSync(dir, { recursive: true });
   zip.extractAllTo(dir, true);
@@ -105,7 +121,7 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     isBrowser: false,
     execPath: entryPath,
     appArchetype: "glyphh-app",
-    launchConfig: { capabilities: manifest.capabilities, window: manifest.window ?? null },
+    launchConfig: { capabilities: manifest.capabilities, tools: manifest.tools ?? [], window: manifest.window ?? null },
   };
   try {
     const existing = await serverGetAuthed<Array<{ id: string; slug: string }>>("/api/panel-apps")
@@ -239,6 +255,71 @@ end tell`);
   }
 }
 
+/**
+ * Run a host capability — the ONE place a capability is implemented, shared by
+ * the UI IPC path (window) and the MCP tool path (relay, headless). Callers
+ * enforce the capability grant BEFORE calling this.
+ */
+async function runCapability(method: string, args: Record<string, unknown>): Promise<unknown> {
+  if (process.platform !== "darwin") throw new Error("this capability is macOS-only for now");
+  if (method === "contacts.search") return contactsSearch(String(args.query || ""));
+  if (method === "messages.send") { await messagesSend(String(args.to || ""), String(args.body || "")); return { sent: true }; }
+  throw new Error(`unknown capability: ${method}`);
+}
+
+// ── Install from a base64 bundle (MCP app_install / apps.install) ────────────
+
+/** Install a .yoapp handed over as base64 (Claude deploying an app it built). */
+export async function installGlyphhAppBundleFromBase64(bundleBase64: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string }> {
+  const b64 = String(bundleBase64 || "").replace(/^data:[^,]*,/, "");
+  if (!b64) return { ok: false, error: "bundleBase64 is required" };
+  const tmp = path.join(os.tmpdir(), `glyphh-app-${process.pid}-${Buffer.from(b64).length}.yoapp`);
+  try {
+    fs.writeFileSync(tmp, Buffer.from(b64, "base64"));
+    return await installGlyphhAppBundle(tmp);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+  }
+}
+
+// ── Discovery + headless invocation (relay: apps.listTools / apps.callTool) ──
+
+interface AppRow {
+  slug: string;
+  name: string;
+  appArchetype?: string | null;
+  execPath?: string | null;
+  launchConfig?: { capabilities?: string[]; tools?: GlyphhAppTool[] } | null;
+}
+
+/** Every installed Glyphh app + the MCP tools it exposes (for app_list_tools). */
+export async function listInstalledAppTools(): Promise<Array<{ app: string; name: string; tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }>> {
+  const apps = await serverGetAuthed<AppRow[]>("/api/panel-apps").catch(() => []);
+  return apps
+    .filter((a) => isGlyphhAppRow(a))
+    .map((a) => ({
+      app: a.slug,
+      name: a.name,
+      tools: (a.launchConfig?.tools || []).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
+    }))
+    .filter((a) => a.tools.length > 0);
+}
+
+/** Run an installed app's declared MCP tool headlessly (for app_call_tool). */
+export async function callAppTool(appSlug: string, toolName: string, args: Record<string, unknown>): Promise<unknown> {
+  const key = String(appSlug || "").trim().toLowerCase();
+  const apps = await serverGetAuthed<AppRow[]>("/api/panel-apps").catch(() => []);
+  const app = apps.find((a) => isGlyphhAppRow(a) && a.slug.toLowerCase() === key);
+  if (!app) throw new Error(`unknown app: ${appSlug}`);
+  const tool = (app.launchConfig?.tools || []).find((t) => t.name === toolName);
+  if (!tool) throw new Error(`app "${appSlug}" has no tool "${toolName}"`);
+  const declared = app.launchConfig?.capabilities || [];
+  if (!declared.includes(tool.capability)) throw new Error(`tool "${toolName}" uses undeclared capability`);
+  return runCapability(tool.capability, args || {});
+}
+
 // ── IPC ─────────────────────────────────────────────────────
 
 let registered = false;
@@ -254,19 +335,8 @@ export function registerGlyphhAppHost(): void {
     if (!caps || !caps.has(m)) {
       return { ok: false, error: `capability not granted: ${m}` };
     }
-    if (process.platform !== "darwin") {
-      return { ok: false, error: "this capability is macOS-only for now" };
-    }
     try {
-      const a = (args || {}) as Record<string, unknown>;
-      if (m === "contacts.search") {
-        return { ok: true, result: await contactsSearch(String(a.query || "")) };
-      }
-      if (m === "messages.send") {
-        await messagesSend(String(a.to || ""), String(a.body || ""));
-        return { ok: true, result: { sent: true } };
-      }
-      return { ok: false, error: `unknown capability: ${m}` };
+      return { ok: true, result: await runCapability(m, (args || {}) as Record<string, unknown>) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

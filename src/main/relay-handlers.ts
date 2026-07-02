@@ -22,6 +22,7 @@ import {
   openAppWindow, focusAppWindow, closeAppWindow, listAppWindows, getAppWebContents,
 } from "./app-window-manager.js";
 import { resolveAppSpec, openLayoutByName } from "./app-resolver.js";
+import { listInstalledAppTools, callAppTool, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
 
 interface Deps {
   getMcpManager: () => McpManager | null;
@@ -201,5 +202,27 @@ export function installRelayHandlers(deps: Deps): void {
     if (!mm) throw new Error("MCP manager not initialized");
     const result = await mm.callToolDirect(serverId, name, p?.args || {});
     return { result };
+  });
+
+  // ── Installed Glyphh apps — discover, invoke, deploy (GLYPHH-APP-SPEC §5) ─
+  // Every installed app's declared MCP tools are discoverable + callable by any
+  // relay consumer (Claude, etc.), so a user's LLM tools can orchestrate them.
+
+  registerRelayHandler("apps.listTools", () => listInstalledAppTools());
+
+  registerRelayHandler("apps.callTool", async (params) => {
+    const p = params as { app?: string; tool?: string; args?: Record<string, unknown> } | null;
+    const app = String(p?.app || "");
+    const tool = String(p?.tool || "");
+    if (!app || !tool) throw new Error("apps.callTool requires { app, tool }");
+    return { result: await callAppTool(app, tool, p?.args || {}) };
+  });
+
+  registerRelayHandler("apps.install", async (params) => {
+    const p = params as { bundleBase64?: string } | null;
+    if (!p?.bundleBase64) throw new Error("apps.install requires { bundleBase64 }");
+    const r = await installGlyphhAppBundleFromBase64(String(p.bundleBase64));
+    if (!r.ok) throw new Error(r.error || "install failed");
+    return { installed: r.name, updated: !!r.updated };
   });
 }
