@@ -3142,11 +3142,18 @@ ol.docs-list li::before {
 .search-clear-btn svg { width: 10px; height: 10px; }
 
 /* App grid cards */
-#apps-list.app-grid {
+/* Apps tab: a flex column holding the card grid + a full-width pagination bar
+   below it (the bar must not be a grid cell). */
+.app-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+.app-list-wrap .app-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 140px));
   gap: 10px;
-  padding: 4px 0;
   align-content: start;
 }
 .app-card {
@@ -3338,8 +3345,35 @@ ol.docs-list li::before {
   position: relative; width: 150px; height: 94px; border-radius: 10px;
   background: var(--surface-2); border: 1px solid var(--border); overflow: hidden;
 }
-.cc-mini-cell { position: absolute; background: var(--hover); border: 1px solid var(--border-2); border-radius: 3px; }
+.cc-mini-cell {
+  position: absolute; background: var(--hover); border: 1px solid var(--border-2); border-radius: 3px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.cc-mini-ico { display: flex; align-items: center; justify-content: center; width: 60%; height: 60%; }
+.cc-mini-ico img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+.cc-mini-initial {
+  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
+  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px;
+}
 .cc-empty { color: var(--text-3); font-size: 13px; padding: 8px 0; }
+
+/* Command overlay input (auto-focused .dip command / filter bar). */
+.cc-input {
+  flex: 1;
+  height: 42px;
+  padding: 0 16px;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+}
+.cc-input:focus { border-color: var(--accent); }
+.cc-input::placeholder { color: var(--text-3); }
+.cc-header .cc-close { margin-left: 12px; }
+.cc-pager { display: flex; justify-content: center; margin: 6px 0 30px; }
+.cc-pager:empty { display: none; }
 
 .crud-card-info {
   flex: 1;

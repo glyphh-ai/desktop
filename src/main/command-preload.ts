@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("yo", {
   // Actions — open at the OS level via app-window-manager (see command-window).
   commandOpenApp: (ref: string) => ipcRenderer.invoke("command:open-app", ref),
   commandOpenLayout: (name: string) => ipcRenderer.invoke("command:open-layout", name),
+  commandExec: (text: string) => ipcRenderer.invoke("command:exec", text),
   commandClose: () => ipcRenderer.send("command:close"),
 
   // Main tells the overlay to rebuild its list (with the active theme) each

@@ -11,13 +11,16 @@
   <div id="command-center" class="command-center">
     <div class="cc-inner">
       <div class="cc-header">
-        <span class="cc-title">Open</span>
+        <input id="cc-input" class="cc-input" type="text" autocomplete="off" autocorrect="off"
+               spellcheck="false" placeholder="Type a layout or app, or a .dip command…" />
         <button id="cc-close" class="cc-close" title="Close (Esc)">&times;</button>
       </div>
       <div id="cc-apps" class="cc-apps"></div>
+      <div id="cc-apps-pager" class="cc-pager"></div>
       <div id="cc-layouts-wrap" class="cc-layouts-wrap hidden">
         <div class="cc-section-label">Layouts</div>
         <div id="cc-layouts" class="cc-layouts"></div>
+        <div id="cc-layouts-pager" class="cc-pager"></div>
       </div>
       <div id="cc-empty" class="cc-empty hidden">No apps yet — add one from the Apps tab.</div>
     </div>

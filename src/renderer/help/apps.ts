@@ -13,6 +13,7 @@ declare const Chart: any;
 // ── Apps (unified: apps + MCP + connections) ────────────
 
 let appsPage = 0;
+const APPS_PER_PAGE = 24;
 const appsList = document.getElementById("apps-list")!;
 const appDetail = document.getElementById("app-detail")!;
 const appAddForm = document.getElementById("app-add-form")!;
@@ -188,7 +189,7 @@ function renderAppsList() {
     ? panelApps.filter((a) => a.name.toLowerCase().includes(query) || (a.url || "").toLowerCase().includes(query))
     : panelApps;
 
-  appsList.className = "app-grid";
+  appsList.className = "app-list-wrap";
 
   if (panelApps.length === 0) {
     appsList.innerHTML = `<div class="crud-empty">No apps yet. Click "+ New" to add one.</div>`;
@@ -199,10 +200,14 @@ function renderAppsList() {
     return;
   }
 
-  const { items: pageApps, state } = paginate(filtered, appsPage);
+  const { items: pageApps, state } = paginate(filtered, appsPage, APPS_PER_PAGE);
   appsPage = state.page;
   appsList.innerHTML = "";
 
+  // Cards live in their own grid; the pagination bar is a sibling below it
+  // (appending the bar into the grid would make it a stray grid cell).
+  const grid = document.createElement("div");
+  grid.className = "app-grid";
   for (const app of pageApps) {
     const badges: string[] = [];
     if (app.mcp && !app.url) badges.push(`<span class="app-card-badge">MCP</span>`);
@@ -220,12 +225,10 @@ function renderAppsList() {
     // Double-click skips the editor and opens the app per its config (5b) —
     // webview window, native Chrome, or a native executable.
     card.addEventListener("dblclick", () => { void launchPanelApp(app); });
-    appsList.appendChild(card);
+    grid.appendChild(card);
   }
+  appsList.appendChild(grid);
 
-  // Only add the pagination bar when there's more than one page — otherwise
-  // its empty div lands as a stray grid cell (a phantom line next to the
-  // app cards, since #apps-list is a CSS grid).
   if (state.totalPages > 1) {
     appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
   }

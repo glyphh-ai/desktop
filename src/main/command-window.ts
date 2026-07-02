@@ -100,6 +100,32 @@ export function registerCommandWindow(): void {
     }
   });
 
+  // Free-text ".dip" command from the overlay input. Opens a layout or app
+  // (or several apps split by "|") at the OS level. Leading "dip"/".dip" is
+  // optional so both "dip email" and "email" work.
+  ipcMain.handle("command:exec", async (_e, raw: string) => {
+    hideCommandWindow();
+    const text = String(raw || "").trim().replace(/^\.?dip\s+/i, "").trim();
+    if (!text) return { ok: false, error: "empty command" };
+    try {
+      if (text.includes("|")) {
+        const opened: string[] = [];
+        for (const n of text.split("|").map((s) => s.trim()).filter(Boolean)) {
+          opened.push((await openAppByRef(n)).slug);
+        }
+        return { ok: true, apps: opened };
+      }
+      // Single token: try a layout first, then fall back to an app.
+      try {
+        return { ok: true, ...(await openLayoutByName(text, "screen")) };
+      } catch {
+        return { ok: true, app: (await openAppByRef(text)).slug };
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   ipcMain.on("command:close", () => hideCommandWindow());
   ipcMain.on("command:toggle", () => toggleCommandWindow());
 
