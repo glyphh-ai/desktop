@@ -18,6 +18,11 @@ const settingsBrowserHome = document.getElementById("settings-browser-home") as 
 const settingsBrowserHomeUrl = document.getElementById("settings-browser-home-url") as HTMLInputElement;
 const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!;
 
+// MCP is now its own top-level dashboard tab (data-section="mcp"). The relay
+// refreshers live inside initSettings' scope, so initSettings assigns this hook
+// and loadMcp() (called by navigation on section open) invokes it.
+let mcpSectionRefresh: () => void = () => {};
+
 async function refreshMcpExposeStatus() {
   const status = await window.yo.mcpExposeStatus();
   const port = status.port || parseInt(mcpExposePort.value, 10) || 7860;
@@ -525,6 +530,13 @@ function initSettings() {
     setInterval(refreshRelayStatus, 3_000);
   })();
 
+  // Expose the MCP refreshers so the MCP tab can refresh on open.
+  mcpSectionRefresh = () => {
+    void refreshMcpExposeStatus();
+    void refreshRelayStatus();
+    void refreshRelayTokens();
+  };
+
   // Show URL Bar toggle removed — only the Browser panel shows a URL bar
   // now; everything else (Agent, Plan, Workbench, internal yo://) doesn't.
 
@@ -661,8 +673,11 @@ async function saveSettings() {
   }, 1000);
 }
 
-/** Providers is now its own top-level dashboard tab (data-section="providers").
- *  navigation.ts calls this when that section opens. */
+/** Providers is a Settings sub-panel — rendered on nav click and here. */
 export function loadProviders(): void { void renderProviderKeys(); }
+
+/** MCP is its own top-level dashboard tab (data-section="mcp"). navigation.ts
+ *  calls this on section open to refresh relay + expose state. */
+export function loadMcp(): void { mcpSectionRefresh(); }
 
 export { loadSettings, initSettings };

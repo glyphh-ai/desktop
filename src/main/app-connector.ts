@@ -201,7 +201,7 @@ const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKi
   { id: "agents", name: "Agents", url: "yo://agents", kind: "system" },
   { id: "layouts", name: "Layouts", url: "yo://layouts", kind: "system" },
   { id: "drips", name: "Drips", url: "yo://drips", kind: "system" },
-  { id: "providers", name: "Providers", url: "yo://providers", kind: "system" },
+  { id: "mcp", name: "MCP", url: "yo://mcp", kind: "system" },
   { id: "dashboard-settings", name: "Settings", url: "yo://dashboard-settings", kind: "system" },
   { id: "about", name: "About", url: "yo://about", kind: "system" },
 ];
