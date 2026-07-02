@@ -276,13 +276,59 @@ function applyBounds(targets: Target[]): Promise<string> {
 
 const toTarget = (w: OsWindow, r: Rect): Target => ({ proc: w.proc, index: w.index, hwnd: w.hwnd, ...r });
 
-/** Tile every open window into an even grid across the work area. */
-export async function arrangeGrid(): Promise<number> {
+// Smallest cell we'll shrink a window to. Below this most apps hit their own
+// minimum size and overflow their cell, so we cap grid density here and page
+// (minimize) the overflow instead of producing a broken, overlapping grid.
+const MIN_CELL_W = 440;
+const MIN_CELL_H = 300;
+
+/**
+ * Tile open windows into an even grid across the work area, with cells no
+ * smaller than MIN_CELL — windows that don't fit on this "page" are minimized.
+ * Returns how many were gridded vs minimized.
+ */
+export async function arrangeGrid(): Promise<{ gridded: number; minimized: number }> {
   const wins = await listWindows();
-  if (wins.length === 0) return 0;
-  const rects = gridRects(wins.length);
-  await applyBounds(wins.map((w, i) => toTarget(w, rects[i])));
-  return wins.length;
+  if (wins.length === 0) return { gridded: 0, minimized: 0 };
+  const wa = workArea();
+
+  const maxCols = Math.max(1, Math.floor(wa.width / MIN_CELL_W));
+  const maxRows = Math.max(1, Math.floor(wa.height / MIN_CELL_H));
+  const perPage = maxCols * maxRows;
+  const count = Math.min(wins.length, perPage);
+
+  let cols = Math.min(maxCols, Math.ceil(Math.sqrt(count)));
+  let rows = Math.ceil(count / cols);
+  if (rows > maxRows) { rows = maxRows; cols = Math.min(maxCols, Math.ceil(count / rows)); }
+  const cellW = wa.width / cols;
+  const cellH = wa.height / rows;
+
+  const keep = wins.slice(0, count);
+  const overflow = wins.slice(count);
+
+  await applyBounds(keep.map((w, i) => {
+    const c = i % cols, r = Math.floor(i / cols);
+    return toTarget(w, { x: wa.x + c * cellW, y: wa.y + r * cellH, width: cellW, height: cellH });
+  }));
+  await minimizeWindows(overflow);
+  return { gridded: keep.length, minimized: overflow.length };
+}
+
+/** Minimize a specific set of windows (grid overflow). */
+async function minimizeWindows(wins: OsWindow[]): Promise<void> {
+  if (wins.length === 0) return;
+  // Descending index order so minimizing one doesn't reindex the next (macOS
+  // addresses windows by position within their process).
+  const ordered = wins.slice().sort((a, b) => b.index - a.index);
+  if (isMac) {
+    const body = ordered.map((w) =>
+      `try
+  tell application "System Events" to set value of attribute "AXMinimized" of window ${w.index} of process "${esc(w.proc)}" to true
+end try`).join("\n");
+    await osa(body || "return");
+  } else if (isWin) {
+    await ps(`${WIN_USER32}\n${ordered.map((w) => `[void][Win32]::ShowWindow([IntPtr]${w.hwnd}, 6)`).join("\n")}`);
+  }
 }
 
 /** Tile the first window of each named app side by side (columns). */
@@ -362,20 +408,4 @@ export async function positionAppWindow(match: string, rect: Rect, attempts = 8,
     await sleep(delayMs);
   }
   return false;
-}
-
-/** Even grid of N cells across the work area (cols = ceil(sqrt(N))). */
-function gridRects(n: number): Rect[] {
-  const wa = workArea();
-  const cols = Math.ceil(Math.sqrt(n));
-  const rows = Math.ceil(n / cols);
-  const cellW = wa.width / cols;
-  const cellH = wa.height / rows;
-  const rects: Rect[] = [];
-  for (let i = 0; i < n; i++) {
-    const c = i % cols;
-    const r = Math.floor(i / cols);
-    rects.push({ x: wa.x + c * cellW, y: wa.y + r * cellH, width: cellW, height: cellH });
-  }
-  return rects;
 }

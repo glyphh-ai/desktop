@@ -15,6 +15,7 @@
  *   dip exp                 toggle the focused window full ↔ its prior size
  */
 
+import { BrowserWindow } from "electron";
 import { openAppByRef, openLayoutByName } from "./app-resolver.js";
 import {
   arrangeGrid, arrangeSplit, expandAll, toggleExpandFocused,
@@ -24,6 +25,14 @@ import {
 export interface DipResult { ok: boolean; message?: string; error?: string }
 
 const norm = (s: string) => s.trim().toLowerCase();
+
+/** Minimize Glyphh's own windows too — the OS minimize-all can miss frameless
+ *  Electron windows (they expose no AX minimize attribute). */
+function minimizeGlyphhWindows(): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed() && w.isVisible() && w.isMinimizable()) w.minimize();
+  }
+}
 
 export async function runDip(input: string): Promise<DipResult> {
   // Strip an optional leading "dip" / ".dip".
@@ -40,8 +49,9 @@ export async function runDip(input: string): Promise<DipResult> {
       if (!osWindowsSupported()) return { ok: false, error: "window management isn't supported on this platform yet" };
 
       if (verb === "grid") {
-        const n = await arrangeGrid();
-        return { ok: true, message: `gridded ${n} window${n === 1 ? "" : "s"}` };
+        const r = await arrangeGrid();
+        const extra = r.minimized ? `, minimized ${r.minimized} that didn't fit` : "";
+        return { ok: true, message: `gridded ${r.gridded} window${r.gridded === 1 ? "" : "s"}${extra}` };
       }
       if (verb === "split") {
         const apps = rest.join(" ").split(/[|,]|\s+/).map((s) => s.trim()).filter(Boolean);
@@ -54,6 +64,7 @@ export async function runDip(input: string): Promise<DipResult> {
       const allWord = norm(rest[0] || "") === "all";
       if (verb === "minall" || (verb === "min" && allWord)) {
         await minimizeAll();
+        minimizeGlyphhWindows();
         return { ok: true, message: "minimized all windows" };
       }
       if (verb === "min") {
