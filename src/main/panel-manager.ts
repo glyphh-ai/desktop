@@ -182,8 +182,9 @@ export class PanelManager {
     });
   }
 
-  /** JS injected into forceWeb panels to suppress desktop-app redirects */
-  private static readonly FORCE_WEB_JS = `
+  /** JS injected into forceWeb panels to suppress desktop-app redirects.
+   *  Public: app-window-manager injects the same script into per-app windows. */
+  static readonly FORCE_WEB_JS = `
     (function() {
       if (window.__yoForceWeb) return;
       window.__yoForceWeb = true;
@@ -256,7 +257,7 @@ export class PanelManager {
    * Map a native protocol URL to the corresponding web client URL.
    * Returns null if no mapping exists (caller should just close the popup).
    */
-  private static nativeToWebUrl(nativeUrl: string, parentUrl: string): string | null {
+  static nativeToWebUrl(nativeUrl: string, parentUrl: string): string | null {
     try {
       const parsed = new URL(nativeUrl);
       const proto = parsed.protocol; // e.g. "slack:", "discord:", "msteams:"

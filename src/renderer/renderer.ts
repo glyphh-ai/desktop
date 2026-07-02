@@ -99,6 +99,7 @@ declare global {
       appsAdd: (id: string, name: string, url?: string) => Promise<unknown>;
       // Dashboard shell (5a): server-authoritative Apps tab CRUD — see
       // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
+      appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) => Promise<{ ok: boolean; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
       panelAppsCreate: (input: { name: string; slug: string; url: string; forceWeb?: boolean }) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: Partial<{ name: string; slug: string; url: string; forceWeb: boolean }>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;

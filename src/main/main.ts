@@ -853,8 +853,6 @@ async function boot() {
   // WebSocket itself was started earlier; handlers are looked up at request
   // time, so registering them here is fine.
   installRelayHandlers({
-    panelManager,
-    getMainWindow: () => mainWindow,
     getMcpManager: () => mcpManager,
   });
 

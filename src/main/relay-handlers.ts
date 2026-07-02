@@ -1,29 +1,63 @@
 /**
- * relay-handlers — panel management + RPA primitives exposed through the relay.
+ * relay-handlers — window management + RPA primitives exposed through the
+ * relay (the server-hosted MCP surface Claude and other LLMs call).
+ *
+ * 5b Panel Manager model: every "panel" is an app in its own native OS
+ * window (app-window-manager). Tools are keyed by app slug:
+ *   - panels.open  {app}         → open "browser" / "terminal" / a saved app
+ *   - panels.list                → open app windows
+ *   - panels.switch/close {app}  → focus / close an app's window
+ *   - layouts.open {name, mode}  → a server layout, either tiled inside one
+ *     window ("window") or as real OS windows tiling the screen ("screen")
+ *   - rpa.*  {app, ...}          → drive the app's webview by CSS selector
  *
  * Each handler returns plain JSON-serializable data; the relay-client wraps
- * thrown errors into `{ok:false,error}` frames automatically. Handlers that
- * target a panel always validate the panel exists and its webContents is
- * alive before doing work.
+ * thrown errors into `{ok:false,error}` frames automatically.
  */
 
-import type { BrowserWindow, WebContents } from "electron";
-import type { PanelManager } from "./panel-manager.js";
+import type { WebContents } from "electron";
 import type { McpManager } from "./mcp-manager.js";
 import { registerRelayHandler } from "./relay-client.js";
+import { serverGetAuthed } from "./auth.js";
+import {
+  openAppWindow, focusAppWindow, closeAppWindow, listAppWindows,
+  getAppWebContents, openLayoutInWindow, openLayoutOnScreen,
+  resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
+} from "./app-window-manager.js";
 
 interface Deps {
-  panelManager: PanelManager;
-  getMainWindow: () => BrowserWindow | null;
   getMcpManager: () => McpManager | null;
 }
 
-/** Pull a live webContents for a panel id, or throw a structured error. */
-function getLiveWc(pm: PanelManager, panelId: string): WebContents {
-  const wc = pm.getGuestOrWebContents(panelId);
-  if (!wc || wc.isDestroyed()) {
-    throw new Error(`panel not found or not loaded: ${panelId}`);
-  }
+interface ServerApp {
+  id: string;
+  slug: string;
+  name: string;
+  url: string;
+  forceWeb?: boolean;
+}
+
+/** Resolve an app reference (slug) to a window spec. "browser" and
+ *  "terminal" are built-in; everything else is the user's server app
+ *  library (/api/panel-apps), matched by slug then name. */
+async function resolveAppSpec(ref: string): Promise<AppWindowSpec> {
+  const key = ref.trim().toLowerCase();
+  if (!key) throw new Error("app is required");
+  if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
+  if (key === "terminal" || key === "term") return { slug: "terminal", name: "Terminal", url: "yo://terminal" };
+
+  const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
+  const app = apps.find((a) => a.slug === key)
+    || apps.find((a) => a.name.toLowerCase() === key)
+    || apps.find((a) => a.id === ref.trim());
+  if (!app?.url) throw new Error(`unknown app: ${ref} — use panels.list or the user's app library slugs`);
+  return { slug: app.slug, name: app.name, url: app.url, forceWeb: !!app.forceWeb };
+}
+
+/** Pull the live webview WebContents for an app, or throw. */
+function getLiveWc(app: string): WebContents {
+  const wc = getAppWebContents(app);
+  if (!wc) throw new Error(`app not open (or has no web view): ${app} — open it with panels.open first`);
   return wc;
 }
 
@@ -32,66 +66,82 @@ function jsLiteral(value: string): string {
   return JSON.stringify(value);
 }
 
+function appParam(params: unknown): string {
+  const p = params as { app?: string; panelId?: string; id?: string } | null;
+  return String(p?.app || p?.panelId || p?.id || "");
+}
+
 export function installRelayHandlers(deps: Deps): void {
-  const { panelManager, getMainWindow, getMcpManager } = deps;
+  const { getMcpManager } = deps;
 
-  // ── panels ──────────────────────────────────────────────
+  // ── panels — one native window per app ─────────────────
 
-  registerRelayHandler("panels.list", () => {
-    const ids = panelManager.getLoadedPanelIds();
-    const active = panelManager.activePanelId;
-    return ids.map((id) => {
-      const wc = panelManager.getWebContents(id);
-      const dead = !wc || wc.isDestroyed();
-      return {
-        id,
-        url: dead ? null : wc!.getURL(),
-        title: dead ? null : wc!.getTitle(),
-        active: id === active,
-      };
-    });
+  registerRelayHandler("panels.list", () => listAppWindows());
+
+  registerRelayHandler("panels.open", async (params) => {
+    const spec = await resolveAppSpec(appParam(params));
+    openAppWindow(spec);
+    return { app: spec.slug, name: spec.name, opened: true };
   });
 
   registerRelayHandler("panels.switch", (params) => {
-    const id = String((params as { id?: string } | null | undefined)?.id || "");
-    if (!id) throw new Error("panels.switch requires { id }");
-    const win = getMainWindow();
-    if (!win) throw new Error("main window not ready");
-    const ok = panelManager.switchTo(id, win);
-    if (!ok) throw new Error(`could not switch to panel: ${id}`);
-    return { id, switched: true };
+    const app = appParam(params);
+    if (!app) throw new Error("panels.switch requires { app }");
+    if (!focusAppWindow(app)) throw new Error(`app window not open: ${app}`);
+    return { app, switched: true };
   });
 
   registerRelayHandler("panels.close", (params) => {
-    const id = String((params as { id?: string } | null | undefined)?.id || "");
-    if (!id) throw new Error("panels.close requires { id }");
-    const win = getMainWindow();
-    if (!win) throw new Error("main window not ready");
-    panelManager.closePanel(id, win);
-    return { id, closed: true };
+    const app = appParam(params);
+    if (!app) throw new Error("panels.close requires { app }");
+    if (!closeAppWindow(app)) throw new Error(`app window not open: ${app}`);
+    return { app, closed: true };
   });
 
-  registerRelayHandler("panels.open", (params) => {
-    const p = params as { id?: string; url?: string; webviewTag?: boolean } | null;
-    const id = String(p?.id || "");
-    const url = String(p?.url || "");
-    if (!id || !url) throw new Error("panels.open requires { id, url }");
-    panelManager.addPanel(id, url, undefined, false, p?.webviewTag ?? false);
-    const win = getMainWindow();
-    if (win) panelManager.switchTo(id, win);
-    return { id, url, opened: true };
+  // ── layouts — server-defined grids of apps ─────────────
+
+  registerRelayHandler("layouts.open", async (params) => {
+    const p = params as { name?: string; mode?: string } | null;
+    const name = String(p?.name || "").trim();
+    if (!name) throw new Error("layouts.open requires { name }");
+    const mode = p?.mode === "screen" ? "screen" : "window";
+
+    const layouts = await serverGetAuthed<Array<LayoutSpec & { id: string }>>("/api/layouts");
+    const layout = layouts.find((l) => l.name.toLowerCase() === name.toLowerCase())
+      || layouts.find((l) => l.id === name);
+    if (!layout) {
+      const names = layouts.map((l) => l.name).join(", ") || "(none saved)";
+      throw new Error(`unknown layout: ${name} — saved layouts: ${names}`);
+    }
+
+    // Cells reference apps by slug (panelId). Resolve against the app
+    // library once; browser/terminal resolve as built-ins.
+    const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
+    const resolve = (panelId: string): AppWindowSpec | null => {
+      const key = panelId.toLowerCase();
+      if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
+      if (key === "terminal" || key === "term") return { slug: "terminal", name: "Terminal", url: "yo://terminal" };
+      const app = apps.find((a) => a.slug === key) || apps.find((a) => a.id === panelId);
+      return app?.url ? { slug: app.slug, name: app.name, url: app.url, forceWeb: !!app.forceWeb } : null;
+    };
+
+    const opened = mode === "screen"
+      ? openLayoutOnScreen(layout, resolve)
+      : openLayoutInWindow(layout, resolve);
+    if (opened.length === 0) throw new Error(`layout "${layout.name}" has no resolvable apps`);
+    return { layout: layout.name, mode, apps: opened };
   });
 
-  // ── rpa ─────────────────────────────────────────────────
+  // ── rpa — drive an app's webview ────────────────────────
 
   // Click an element matched by a CSS selector. Throws if the element doesn't
   // exist or isn't visible (offsetParent === null catches `display:none`).
   registerRelayHandler("rpa.click", async (params) => {
-    const p = params as { panelId?: string; selector?: string } | null;
-    const panelId = String(p?.panelId || "");
+    const p = params as { selector?: string } | null;
+    const app = appParam(params);
     const selector = String(p?.selector || "");
-    if (!panelId || !selector) throw new Error("rpa.click requires { panelId, selector }");
-    const wc = getLiveWc(panelManager, panelId);
+    if (!app || !selector) throw new Error("rpa.click requires { app, selector }");
+    const wc = getLiveWc(app);
     const result = await wc.executeJavaScript(`
       (function(){
         var el = document.querySelector(${jsLiteral(selector)});
@@ -110,12 +160,12 @@ export function installRelayHandlers(deps: Deps): void {
   // Set the value of an input/textarea and dispatch input/change so frameworks
   // pick up the new value. Falls back to focus + execCommand for editable divs.
   registerRelayHandler("rpa.type", async (params) => {
-    const p = params as { panelId?: string; selector?: string; text?: string } | null;
-    const panelId = String(p?.panelId || "");
+    const p = params as { selector?: string; text?: string } | null;
+    const app = appParam(params);
     const selector = String(p?.selector || "");
     const text = String(p?.text ?? "");
-    if (!panelId || !selector) throw new Error("rpa.type requires { panelId, selector, text }");
-    const wc = getLiveWc(panelManager, panelId);
+    if (!app || !selector) throw new Error("rpa.type requires { app, selector, text }");
+    const wc = getLiveWc(app);
     const result = await wc.executeJavaScript(`
       (function(){
         var el = document.querySelector(${jsLiteral(selector)});
@@ -143,12 +193,12 @@ export function installRelayHandlers(deps: Deps): void {
 
   // Read visible text or a specific attribute from a matched element.
   registerRelayHandler("rpa.read", async (params) => {
-    const p = params as { panelId?: string; selector?: string; attr?: string } | null;
-    const panelId = String(p?.panelId || "");
+    const p = params as { selector?: string; attr?: string } | null;
+    const app = appParam(params);
     const selector = String(p?.selector || "");
     const attr = p?.attr ? String(p.attr) : "";
-    if (!panelId || !selector) throw new Error("rpa.read requires { panelId, selector }");
-    const wc = getLiveWc(panelManager, panelId);
+    if (!app || !selector) throw new Error("rpa.read requires { app, selector }");
+    const wc = getLiveWc(app);
     const result = await wc.executeJavaScript(`
       (function(){
         var el = document.querySelector(${jsLiteral(selector)});
@@ -165,13 +215,11 @@ export function installRelayHandlers(deps: Deps): void {
     return { value: result.value };
   });
 
-  // Capture a screenshot of the panel's webContents as a base64 PNG.
-  // Note: Phase 2 returns base64; Phase 3 will switch to binary frames once
-  // the relay's wire format supports it (saves ~33% on transfer).
+  // Capture a screenshot of the app's webview as a base64 PNG.
   registerRelayHandler("rpa.screenshot", async (params) => {
-    const panelId = String((params as { panelId?: string } | null | undefined)?.panelId || "");
-    if (!panelId) throw new Error("rpa.screenshot requires { panelId }");
-    const wc = getLiveWc(panelManager, panelId);
+    const app = appParam(params);
+    if (!app) throw new Error("rpa.screenshot requires { app }");
+    const wc = getLiveWc(app);
     const image = await wc.capturePage();
     if (image.isEmpty()) throw new Error("capturePage returned empty image");
     return { dataUrl: image.toDataURL() };

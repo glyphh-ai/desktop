@@ -192,6 +192,9 @@ contextBridge.exposeInMainWorld("yo", {
   // Dashboard shell (5a): the Apps tab's data source. Every call here is a
   // main-process-mediated, JWT-authed request to yo-server's /api/panel-apps
   // (see panel-apps-* handlers in apps-ipc.ts) — no local mirror.
+  // 5b Panel Manager: open a server app in its own native OS window.
+  appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) =>
+    ipcRenderer.invoke("app-window-open", spec) as Promise<{ ok: boolean; error?: string }>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
   panelAppsCreate: (input: { name: string; slug: string; url: string; forceWeb?: boolean }) =>
     ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,

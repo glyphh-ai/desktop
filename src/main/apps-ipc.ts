@@ -2,6 +2,7 @@ import { ipcMain, dialog } from "electron";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./yo-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
+import { openAppWindow } from "./app-window-manager";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -9,6 +10,15 @@ import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, ser
  *  { ok: false, error } rather than throwing, so the renderer can show a
  *  message instead of crashing on a network hiccup. */
 function registerPanelAppsIpc(): void {
+  // 5b Panel Manager: open a server app in its own native OS window.
+  ipcMain.handle("app-window-open", (_e, spec: { slug: string; name: string; url: string; forceWeb?: boolean }) => {
+    if (!spec?.url || (!spec.url.startsWith("http://") && !spec.url.startsWith("https://"))) {
+      return { ok: false, error: "App has no web URL" };
+    }
+    openAppWindow({ slug: String(spec.slug || spec.url), name: String(spec.name || spec.slug), url: spec.url, forceWeb: !!spec.forceWeb });
+    return { ok: true };
+  });
+
   ipcMain.handle("panel-apps-list", async () => {
     try { return await serverGetAuthed<unknown[]>("/api/panel-apps"); }
     catch { return []; }
