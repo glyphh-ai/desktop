@@ -56,12 +56,10 @@ function initSettings() {
   });
 
 
-  // ── Remote Relay wiring (org-admin only) ──────────────────
+  // ── MCP relay wiring (org-admin only). The relay is the only MCP surface,
+  // so there is no enable toggle — it connects whenever the account is
+  // eligible, and this section just shows status + connection config. ──
   const relaySection = document.getElementById("relay-section");
-  const relayEnabledToggle = document.getElementById("relay-enabled-toggle") as HTMLInputElement;
-  const relaySettings = document.getElementById("relay-settings");
-  // Remote settings (server tokens, config) only make sense once the relay is on.
-  const setRelaySettingsVisible = (on: boolean) => relaySettings?.classList.toggle("hidden", !on);
   const relayStatusText = document.getElementById("relay-status-text");
   const relayConfigExample = document.getElementById("relay-config-example");
   const relayTokensList = document.getElementById("relay-tokens-list");
@@ -154,13 +152,6 @@ function initSettings() {
     for (const t of tokens) relayTokensList.appendChild(tokenRow(t));
   }
 
-  relayEnabledToggle.addEventListener("change", async () => {
-    window.yo.setPreference("relayEnabled", relayEnabledToggle.checked);
-    setRelaySettingsVisible(relayEnabledToggle.checked);
-    await window.yo.relayReconnect();
-    void refreshRelayStatus();
-  });
-
   document.getElementById("relay-gen-token")!.addEventListener("click", async () => {
     const label = relayLabelInput.value.trim() || "default";
     const res = await window.yo.relayTokensCreate(label);
@@ -227,10 +218,6 @@ function initSettings() {
     const allowed = role === "org_admin" || role === "super_admin";
     if (!allowed) return;                              // leave .hidden
     relaySection?.classList.remove("hidden");
-
-    const enabled = await window.yo.getPreference("relayEnabled", false) as boolean;
-    relayEnabledToggle.checked = !!enabled;
-    setRelaySettingsVisible(!!enabled);
     renderRelayConfig();
     void refreshRelayStatus();
     void refreshRelayTokens();

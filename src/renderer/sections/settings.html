@@ -139,26 +139,14 @@
                 </div>
 
                 <div id="mcp-section-wrap" class="settings-form">
-                  <!-- ── Remote Relay (org-admin only) ────────────────── -->
+                  <!-- ── MCP relay (org-admin only). Always on when eligible —
+                       the relay is the ONLY MCP surface, so there's no enable
+                       toggle; the status line reflects the live connection. ── -->
                   <div id="relay-section" class="hidden">
-                    <hr style="border:none;border-top:1px solid var(--border-2);margin:24px 0;" />
                     <div style="margin-bottom:8px;">
-                      <h3 class="settings-subheading" style="margin:0 0 4px;">Remote Relay</h3>
-                      <p style="font-size:12px;color:var(--text-2);margin:0 0 10px;">
-                        Let external LLMs (Claude code, Claude UI, ChatGPT) drive your Glyphh instance through the cloud — list and switch panels, click / type / read DOM, take screenshots. Your sign-in pairs this device to the relay; connect a client to the endpoint below and approve it (recommended), or generate a token for tools without OAuth support.
-                      </p>
-                      <label class="settings-toggle" style="margin-bottom:10px;">
-                        <input type="checkbox" id="relay-enabled-toggle" />
-                        <span class="toggle-switch"></span>
-                        <div class="toggle-info">
-                          <span class="toggle-title">Enable remote relay</span>
-                          <span class="toggle-desc">When on, your yo-client maintains a WebSocket to api.glyphh.ai</span>
-                        </div>
-                      </label>
                       <span id="relay-status-text" style="font-size:11px;color:var(--text-3);margin-top:4px;display:inline-block;">Not connected.</span>
 
-                      <!-- Remote settings — only shown when the relay is enabled. -->
-                      <div id="relay-settings" class="hidden">
+                      <div id="relay-settings">
 
                       <!-- MCP Endpoint -->
                       <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">MCP Endpoint</h4>
