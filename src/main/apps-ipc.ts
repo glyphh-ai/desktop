@@ -221,7 +221,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("apps-remove-connection", (_e, id: string) =>
     refuseIfInternal(id) ? false : appConnector.removeConnection(id));
   ipcMain.handle("apps-set-mcp", (_e, id: string, mcp: any) =>
-    (refuseIfInternal(id) || !hasMcpAccess()) ? false : appConnector.setMcp(id, mcp));
+    refuseIfInternal(id) ? false : appConnector.setMcp(id, mcp));
   ipcMain.handle("apps-remove-mcp", (_e, id: string) =>
     refuseIfInternal(id) ? false : appConnector.removeMcp(id));
   ipcMain.handle("apps-update-id", (_e, oldId: string, newId: string) => {

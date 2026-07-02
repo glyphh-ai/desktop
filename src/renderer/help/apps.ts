@@ -457,13 +457,9 @@ async function loadMcpTab() {
   const mcpGate = document.getElementById("mcp-tab-upgrade-gate")!;
   const statusRow = document.getElementById("app-mcp-status-row")!;
 
-  // MCP is a paid-tier feature — lock the whole tab for Free users.
+  // MCP is available to everyone — no pay gate. Keep the upgrade panel hidden
+  // and the tab's controls visible.
   const mcpSiblings = document.querySelectorAll<HTMLElement>(".app-tab-left[data-tab='mcp'] > :not(#mcp-tab-upgrade-gate)");
-  if (!(await window.yo.hasMcpAccess())) {
-    mcpGate.classList.remove("hidden");
-    mcpSiblings.forEach(el => el.classList.add("hidden"));
-    return;
-  }
   mcpGate.classList.add("hidden");
   mcpSiblings.forEach(el => el.classList.remove("hidden"));
 

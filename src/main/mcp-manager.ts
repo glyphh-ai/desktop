@@ -10,7 +10,6 @@ import { getPreference, setPreference } from "./preferences";
 import { EventEmitter } from "events";
 import type { AppConnector, McpConfig, McpOAuth } from "./app-connector";
 import { callConnectorTool, type ConnectorTool } from "./connector-tools-client";
-import { hasMcpAccess } from "./auth";
 
 export interface McpServerConfig {
   id: string;
@@ -310,10 +309,6 @@ export class McpManager extends EventEmitter {
     description: string;
     inputSchema: Record<string, unknown>;
   }> {
-    // MCP is a paid-tier feature — free users get no tools surfaced to the
-    // agent, relay, or skills. Checked here (not at connect time) so it
-    // re-evaluates dynamically once the heartbeat confirms the tier.
-    if (!hasMcpAccess()) return [];
     const tools: ReturnType<McpManager["getAllTools"]> = [];
     // Local MCP servers — talk directly via the client per connection.
     for (const entry of this.servers.values()) {
@@ -376,9 +371,6 @@ export class McpManager extends EventEmitter {
   }
 
   async callTool(qualifiedName: string, args: Record<string, unknown> = {}): Promise<string> {
-    // MCP + Pipedream are paid-tier features — refuse invocation on Free even
-    // if a tool name slips through discovery.
-    if (!hasMcpAccess()) return "MCP and Pipedream connectors require a Pro plan.";
     const match = qualifiedName.match(/^mcp__(.+?)__(.+)$/);
     if (!match) return `Invalid MCP tool name: ${qualifiedName}`;
 
