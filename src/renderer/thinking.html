@@ -8,14 +8,23 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       -webkit-user-select: none; user-select: none;
     }
-    .card {
+    /* Full-screen scrim — the window covers the whole display; this dims and
+       blurs everything underneath while the workspace rearranges. */
+    .scrim {
       position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(8, 8, 12, 0.55);
+      backdrop-filter: blur(10px) saturate(120%);
+    }
+    .card {
+      width: 260px; min-height: 210px;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 14px;
+      gap: 14px; padding: 26px 20px;
       background: rgba(16, 16, 20, 0.72);
       backdrop-filter: blur(14px) saturate(130%);
       border-radius: 20px;
       border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
     }
     .ghost {
       width: 72px; height: 72px; object-fit: contain;
@@ -40,10 +49,12 @@
   </style>
 </head>
 <body>
-  <div class="card">
-    <img class="ghost" src="brand/glyphh-mark.png" alt="" />
-    <div id="spinner" class="spinner">⠋</div>
-    <div id="phrase" class="phrase"></div>
+  <div class="scrim">
+    <div class="card">
+      <img class="ghost" src="brand/glyphh-mark.png" alt="" />
+      <div id="spinner" class="spinner">⠋</div>
+      <div id="phrase" class="phrase"></div>
+    </div>
   </div>
   <script>
     const FRAMES = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];

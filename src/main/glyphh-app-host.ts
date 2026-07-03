@@ -30,6 +30,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js";
+import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -129,9 +130,11 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       .catch(() => undefined);
     if (existing) {
       await serverPatchAuthed(`/api/panel-apps/${existing.id}`, fields);
+      invalidateServerCache("/api/panel-apps");
       return { ok: true, name: manifest.name, updated: true };
     }
     await serverPostAuthed("/api/panel-apps", fields);
+    invalidateServerCache("/api/panel-apps");
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -296,7 +299,7 @@ interface AppRow {
 
 /** Every installed Glyphh app + the MCP tools it exposes (for app_list_tools). */
 export async function listInstalledAppTools(): Promise<Array<{ app: string; name: string; tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }>> {
-  const apps = await serverGetAuthed<AppRow[]>("/api/panel-apps").catch(() => []);
+  const apps = await cachedServerGet<AppRow[]>("/api/panel-apps").catch(() => []);
   return apps
     .filter((a) => isGlyphhAppRow(a))
     .map((a) => ({
@@ -310,7 +313,7 @@ export async function listInstalledAppTools(): Promise<Array<{ app: string; name
 /** Run an installed app's declared MCP tool headlessly (for app_call_tool). */
 export async function callAppTool(appSlug: string, toolName: string, args: Record<string, unknown>): Promise<unknown> {
   const key = String(appSlug || "").trim().toLowerCase();
-  const apps = await serverGetAuthed<AppRow[]>("/api/panel-apps").catch(() => []);
+  const apps = await cachedServerGet<AppRow[]>("/api/panel-apps").catch(() => []);
   const app = apps.find((a) => isGlyphhAppRow(a) && a.slug.toLowerCase() === key);
   if (!app) throw new Error(`unknown app: ${appSlug}`);
   const tool = (app.launchConfig?.tools || []).find((t) => t.name === toolName);

@@ -17,7 +17,7 @@
  * app-window-preload) so the MCP relay's RPA tools can target apps by name.
  */
 
-import { BrowserWindow, ipcMain, screen, shell, webContents } from "electron";
+import { BrowserWindow, ipcMain, nativeTheme, screen, shell, webContents } from "electron";
 import path from "path";
 import { getPreference } from "./stores/preferences-db";
 import { PanelManager } from "./panel-manager";
@@ -155,6 +155,18 @@ function allowWebviewPopups(win: BrowserWindow): void {
   });
 }
 
+/** Themed window background — matches styles.css --bg so a freshly created
+ *  window paints as a themed tile instead of flashing white while its shell
+ *  page (and the webview content behind it) loads. */
+function themedBackground(): string {
+  const t = getPreference<string>("theme", "dark");
+  if (t === "light") return "#f5f5f5";
+  if (t === "purple") return "#140a1f";
+  if (t === "aurora") return "#0a0610";
+  if (t === "system") return nativeTheme.shouldUseDarkColors ? "#1a1a1c" : "#f5f5f5";
+  return "#1a1a1c"; // dark
+}
+
 function makeWindow(slug: string, spec: AppWindowSpec, fileUrl: string, opts: { preload?: string; webviewTag?: boolean }, bounds?: Electron.Rectangle): BrowserWindow {
   const win = new BrowserWindow({
     ...(bounds ?? {}),
@@ -162,6 +174,7 @@ function makeWindow(slug: string, spec: AppWindowSpec, fileUrl: string, opts: { 
     height: bounds?.height ?? DEFAULT_H,
     title: spec.name,
     show: false,
+    backgroundColor: themedBackground(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

@@ -75,6 +75,7 @@ import { usageTracker } from "./usage-tracker";
 import { promptLog } from "./prompt-log";
 import { startOverlay } from "./overlay-bridge";
 import { registerCommandWindow, disposeCommandWindow } from "./command-window";
+import { initThinkingOverlay } from "./thinking-overlay";
 import { runDip } from "./dip-commands";
 import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay } from "./relay-client";
@@ -638,6 +639,9 @@ async function boot() {
   // (Cmd+Shift+Space). Opens apps/layouts as real OS windows; ".drip <effect>"
   // typed in its command bar routes through the command parser.
   registerCommandWindow((cmd) => commandParser.execute(cmd));
+  // Pre-create the (hidden) thinking scrim so the first palette click shows it
+  // instantly instead of paying window-creation cost mid-operation.
+  initThinkingOverlay();
 
   // Give interceptor access to visible panel IDs (for multi-panel grab)
   yoInterceptor.setVisiblePanelsGetter(() => {

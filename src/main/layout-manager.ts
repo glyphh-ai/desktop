@@ -10,7 +10,8 @@ import path from "path";
 import os from "os";
 import { BrowserWindow } from "electron";
 import { PanelManager } from "./panel-manager";
-import { serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
+import { serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
+import { cachedServerGet, invalidateServerCache } from "./server-cache";
 
 // yo-server saved_layouts shape (saved-layout-service). Note the server model
 // stores cols/rows/cells/folderMode but NOT colWidths/rowHeights — fractional
@@ -314,6 +315,7 @@ export class LayoutManager {
     this.persist();
     const id = this.serverIds.get(name);
     this.serverIds.delete(name);
+    invalidateServerCache("/api/layouts");
     if (id) void serverDeleteAuthed(`/api/layouts/${id}`).catch(() => {});
     return true;
   }
@@ -331,7 +333,7 @@ export class LayoutManager {
    *  offline / pre-auth — the local cache stands in. */
   async refreshAndList(): Promise<GridLayout[]> {
     try {
-      const serverLayouts = await serverGetAuthed<ServerLayout[]>("/api/layouts");
+      const serverLayouts = await cachedServerGet<ServerLayout[]>("/api/layouts");
       this.serverIds.clear();
       for (const sl of serverLayouts) {
         this.serverIds.set(sl.name, sl.id);
@@ -373,6 +375,7 @@ export class LayoutManager {
       ? await serverPatchAuthed<ServerLayout>(`/api/layouts/${id}`, body)
       : await serverPostAuthed<ServerLayout>("/api/layouts", body);
     this.serverIds.set(grid.name, saved.id);
+    invalidateServerCache("/api/layouts");
   }
 
   /** Get a layout by name */

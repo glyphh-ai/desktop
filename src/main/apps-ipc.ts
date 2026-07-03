@@ -4,6 +4,7 @@ import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./yo-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
+import { cachedServerGet, invalidateServerCache } from "./server-cache";
 import { openAppWindow } from "./app-window-manager";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch";
 import { openLayoutByName } from "./app-resolver";
@@ -94,7 +95,7 @@ function registerPanelAppsIpc(): void {
   });
 
   ipcMain.handle("panel-apps-list", async () => {
-    try { return await serverGetAuthed<unknown[]>("/api/panel-apps"); }
+    try { return await cachedServerGet<unknown[]>("/api/panel-apps"); }
     catch { return []; }
   });
   // input/patch are forwarded verbatim to the server, which validates and
@@ -102,39 +103,39 @@ function registerPanelAppsIpc(): void {
   // Typed as Record so the new Browser↔Native fields (isBrowser, browserTarget,
   // execPath, appArchetype, launchConfig) pass straight through untouched.
   ipcMain.handle("panel-apps-create", async (_e, input: Record<string, unknown>) => {
-    try { return { ok: true, app: await serverPostAuthed("/api/panel-apps", input) }; }
+    try { const app = await serverPostAuthed("/api/panel-apps", input); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-update", async (_e, id: string, patch: Record<string, unknown>) => {
-    try { return { ok: true, app: await serverPatchAuthed(`/api/panel-apps/${id}`, patch) }; }
+    try { const app = await serverPatchAuthed(`/api/panel-apps/${id}`, patch); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-delete", async (_e, id: string) => {
-    try { await serverDeleteAuthed(`/api/panel-apps/${id}`); return { ok: true }; }
+    try { await serverDeleteAuthed(`/api/panel-apps/${id}`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-set-connection", async (_e, id: string, pipedreamSlug: string) => {
-    try { return { ok: true, app: await serverPatchAuthed(`/api/panel-apps/${id}/connection`, { pipedreamSlug }) }; }
+    try { const app = await serverPatchAuthed(`/api/panel-apps/${id}/connection`, { pipedreamSlug }); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-remove-connection", async (_e, id: string) => {
-    try { await serverDeleteAuthed(`/api/panel-apps/${id}/connection`); return { ok: true }; }
+    try { await serverDeleteAuthed(`/api/panel-apps/${id}/connection`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-set-mcp", async (_e, id: string, mcp: Record<string, unknown>) => {
-    try { return { ok: true, app: await serverPatchAuthed(`/api/panel-apps/${id}/mcp`, mcp) }; }
+    try { const app = await serverPatchAuthed(`/api/panel-apps/${id}/mcp`, mcp); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-remove-mcp", async (_e, id: string) => {
-    try { await serverDeleteAuthed(`/api/panel-apps/${id}/mcp`); return { ok: true }; }
+    try { await serverDeleteAuthed(`/api/panel-apps/${id}/mcp`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-set-command", async (_e, id: string, key: string, mapping: Record<string, unknown>) => {
-    try { return { ok: true, app: await serverPatchAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`, mapping) }; }
+    try { const app = await serverPatchAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`, mapping); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-remove-command", async (_e, id: string, key: string) => {
-    try { await serverDeleteAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`); return { ok: true }; }
+    try { await serverDeleteAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 }

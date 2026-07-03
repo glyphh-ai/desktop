@@ -89,9 +89,11 @@ export function toggleCommandWindow(): void {
 /** Register the overlay's IPC + global hotkey. Call once at startup. */
 export function registerCommandWindow(fallback?: (cmd: string) => Promise<string> | string | void): void {
   execFallback = fallback ?? null;
+  // Explicit palette clicks: scrim FIRST (immediate — instant feedback is the
+  // point), THEN hide the palette, so there's never a frame of bare desktop.
   ipcMain.handle("command:open-app", async (_e, ref: string) => {
+    showThinking({ immediate: true });
     hideCommandWindow();
-    showThinking();
     try {
       const spec = await openAppByRef(String(ref));
       return { ok: true, app: spec.slug };
@@ -103,8 +105,8 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
   });
 
   ipcMain.handle("command:open-layout", async (_e, name: string) => {
+    showThinking({ immediate: true });
     hideCommandWindow();
-    showThinking();
     try {
       return { ok: true, ...(await openLayoutByName(String(name), "screen")) };
     } catch (err) {
@@ -143,8 +145,8 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
   });
 
   ipcMain.handle("command:focus-app", async (_e, proc: string) => {
+    showThinking({ immediate: true });
     hideCommandWindow();
-    showThinking();
     try { await focusOsApp(String(proc)); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
     finally { hideThinking(); }

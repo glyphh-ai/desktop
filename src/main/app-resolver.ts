@@ -9,7 +9,7 @@
  */
 
 import { screen } from "electron";
-import { serverGetAuthed } from "./auth.js";
+import { cachedServerGet } from "./server-cache.js";
 import {
   openAppWindowAt, openAppWindowSlide, openLayoutInWindow,
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
@@ -48,7 +48,7 @@ export async function resolveAppSpec(ref: string): Promise<AppWindowSpec> {
   const builtin = builtinSpec(key);
   if (builtin) return builtin;
 
-  const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
+  const apps = await cachedServerGet<ServerApp[]>("/api/panel-apps");
   const app = apps.find((a) => a.slug === key)
     || apps.find((a) => a.name.toLowerCase() === key)
     || apps.find((a) => a.id === ref.trim());
@@ -108,7 +108,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   const builtin = builtinSpec(key);
   if (builtin) { openAppWindowSlide(builtin); return { slug: builtin.slug, name: builtin.name }; }
 
-  const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
+  const apps = await cachedServerGet<ServerApp[]>("/api/panel-apps");
   const app = findLibraryApp(apps, ref);
   if (!app) {
     // Not in the library — fall back to any app installed on this machine
@@ -164,15 +164,19 @@ export async function openLayoutByName(
   const key = name.trim().toLowerCase();
   if (!key) throw new Error("layout name is required");
 
-  const layouts = await serverGetAuthed<Array<LayoutSpec & { id: string }>>("/api/layouts");
+  // Fetch both in parallel (the apps list doesn't depend on the layout), and
+  // through the cache — the command palette fetched the same data seconds ago
+  // to render its list, so a click normally opens with zero network waits.
+  const [layouts, apps] = await Promise.all([
+    cachedServerGet<Array<LayoutSpec & { id: string }>>("/api/layouts"),
+    cachedServerGet<ServerApp[]>("/api/panel-apps"),
+  ]);
   const layout = layouts.find((l) => l.name.toLowerCase() === key)
     || layouts.find((l) => l.id === name);
   if (!layout) {
     const names = layouts.map((l) => l.name).join(", ") || "(none saved)";
     throw new Error(`unknown layout: ${name} — saved layouts: ${names}`);
   }
-
-  const apps = await serverGetAuthed<ServerApp[]>("/api/panel-apps");
 
   if (mode === "window") {
     const opened = openLayoutInWindow(layout, makeCellResolver(apps));
