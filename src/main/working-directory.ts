@@ -255,40 +255,8 @@ export function registerWorkingDirectoryIpc(deps: {
 
   // List local branches in a repo, with the current one. Used by the
   // Agent app's branch picker dropdown.
-  ipcMain.handle("files:git-branches", async (_e, root: string) => {
-    const result: { branches: string[]; current?: string; error?: string } = { branches: [] };
-    if (typeof root !== "string" || !root) return result;
-    try {
-      const list = await execFileP("git", ["branch", "--format=%(refname:short)"], { cwd: root });
-      result.branches = list.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
-      try {
-        const head = await execFileP("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: root });
-        const branch = head.stdout.trim();
-        if (branch && branch !== "HEAD") result.current = branch;
-      } catch { /* detached */ }
-    } catch (err) {
-      result.error = err instanceof Error ? err.message : String(err);
-    }
-    return result;
-  });
-
   // Switch branches. Fails if the working tree is dirty — git surfaces a
   // clear error, which the renderer can display.
-  ipcMain.handle("files:git-checkout", async (_e, root: string, branch: string) => {
-    if (typeof root !== "string" || !root || typeof branch !== "string" || !branch) {
-      return { ok: false, error: "Missing root or branch." };
-    }
-    try {
-      await execFileP("git", ["checkout", branch], { cwd: root });
-      return { ok: true, branch };
-    } catch (err) {
-      const msg = err instanceof Error
-        ? (err as Error & { stderr?: string }).stderr || err.message
-        : String(err);
-      return { ok: false, error: msg };
-    }
-  });
-
   // Set the current dir to an already-known path (e.g. picked from recents).
   ipcMain.handle("working-dir:set", (_e, dir: string) => {
     if (dir) setWorkingDirectory(dir);
@@ -341,66 +309,11 @@ export function registerWorkingDirectoryIpc(deps: {
 
   // Read a file's text contents. Cap to ~1MB to avoid blowing up the renderer
   // on accidental clicks into a giant binary.
-  ipcMain.handle("files:read-file", async (_e, filePath: string) => {
-    if (typeof filePath !== "string" || !filePath) return { content: "", error: "missing path" };
-    try {
-      const stat = await fs.stat(filePath);
-      if (stat.size > 1_000_000) {
-        return { content: "", error: `file too large (${(stat.size / 1024 / 1024).toFixed(1)}MB)` };
-      }
-      const content = await fs.readFile(filePath, "utf8");
-      return { content };
-    } catch (err) {
-      return { content: "", error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-
   // Write a text file, creating parent directories as needed. Used by the
   // Plan app to persist phase .md files into <cwd>/.yo/plan/.
-  ipcMain.handle("files:write-file", async (_e, filePath: string, content: string) => {
-    if (typeof filePath !== "string" || !filePath) return { ok: false, error: "missing path" };
-    try {
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, typeof content === "string" ? content : "", "utf8");
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-
   // Unified git diff of the working tree (staged + unstaged combined). The
   // Workbench Diff slot renders this; returns "" when the tree is clean.
   // Probes the dir first so a non-repo cwd gets a clean "not a git repo"
   // message instead of the noisy `git diff --no-index` usage dump that git
   // emits when the path isn't inside a work tree.
-  ipcMain.handle("files:git-diff", async (_e, root: string) => {
-    if (typeof root !== "string" || !root) return { text: "", error: "missing root" };
-    try {
-      const probe = await execFileP("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root });
-      if (probe.stdout.trim() !== "true") return { text: "", error: "not a git repo" };
-    } catch {
-      return { text: "", error: "not a git repo" };
-    }
-    try {
-      const { stdout } = await execFileP("git", ["diff", "HEAD"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
-      return { text: stdout };
-    } catch (err) {
-      // Initial commit (no HEAD) is a normal state — show staged + unstaged.
-      const msg = err instanceof Error
-        ? (err as Error & { stderr?: string }).stderr || err.message
-        : String(err);
-      if (/unknown revision|ambiguous argument 'HEAD'|bad revision/i.test(msg)) {
-        try {
-          const { stdout } = await execFileP("git", ["diff"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
-          return { text: stdout };
-        } catch (err2) {
-          const msg2 = err2 instanceof Error
-            ? (err2 as Error & { stderr?: string }).stderr || err2.message
-            : String(err2);
-          return { text: "", error: msg2.split("\n")[0] || "git error" };
-        }
-      }
-      return { text: "", error: msg.split("\n")[0] || "git error" };
-    }
-  });
 }

@@ -366,8 +366,8 @@ server registering per-user tools:
   immediately use the app's tools.
 
 Under the hood each forwards to the user's live yo-client over the relay
-WebSocket (`apps.listTools` / `apps.callTool` / `apps.install`), through the same
-injection firewall + online check every relay tool uses.
+WebSocket (`apps.listTools` / `apps.callTool` / `apps.install`), through the
+same online check every relay tool uses.
 
 ### Orchestration loop
 
@@ -401,8 +401,6 @@ adapts to whatever apps a given user has installed.
   native binaries. This is also what keeps marketplace distribution clean on
   macOS/Windows (Developer ID + notarization; direct distribution, not the
   Mac App Store).
-- **Injection firewall.** Every relay-forwarded call (including `app_call_tool`)
-  is scanned before it reaches the user's machine; a hit short-circuits.
 - **OS permissions still apply.** `messages.send` still triggers macOS's
   Automation prompt for Messages the first time — the host doesn't bypass the OS.
 

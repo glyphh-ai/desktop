@@ -39,18 +39,14 @@ import { TerminalManager, AgentSpawnConfig } from "./terminal";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
 import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, serverPostAuthed, serverGetAuthed, getAuthToken } from "./auth";
-import { CloudSync } from "./cloud-sync";
 import { loadLLMConfig, saveLLMConfig, LLMConfig } from "./llm-config";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
-import { canAddApp, canSaveLayout, canUseMcp, canUseSync, canUseVoice, getCurrentLimits } from "./entitlements";
+import { canAddApp, canSaveLayout, canUseMcp } from "./entitlements";
 import { executeCommand } from "./dom-bridge";
 import { getPreference, setPreference } from "./stores/preferences-db";
 import { YoInterceptor } from "./yo-interceptor";
 import { SessionCache } from "./session-cache";
-import { NoteStore } from "./note-store";
-import { Transcriber } from "./transcriber";
-import { VoiceRelay } from "./voice-relay";
 import { smartGrab } from "./smart-grab";
 import { resolveShellPath } from "./shell-path";
 import { autoUpdater } from "electron-updater";
@@ -66,10 +62,6 @@ function isNewerVersion(latest: string, current: string): boolean {
   }
   return false;
 }
-import { ConfigSync } from "./config-sync";
-import { reloadRemotePatterns } from "./firewall";
-import { usageTracker } from "./usage-tracker";
-import { promptLog } from "./prompt-log";
 import { startOverlay } from "./overlay-bridge";
 import { registerCommandWindow, disposeCommandWindow } from "./command-window";
 import { initOsWindowManager, disposeOsWindowManager } from "./os-window-manager";
@@ -80,7 +72,6 @@ import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay } from "./relay-client";
 import { syncLocalMcpServer } from "./local-mcp-server";
 import { installRelayHandlers } from "./relay-handlers";
-import { registerCodeIndexIpc } from "./code-index/ipc";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
@@ -102,10 +93,6 @@ let commandParser: CommandParser;
 let appConnector: AppConnector;
 
 let terminalManager: TerminalManager;
-let noteStore: NoteStore;
-let voiceRelay: VoiceRelay | null = null;
-let cloudSyncInstance: CloudSync | null = null;
-let configSync: ConfigSync | null = null;
 
 let mcpManager: McpManager | null = null;
 let dripManager: DripManager | null = null;
@@ -213,7 +200,7 @@ async function createWindow() {
     systemPreferences.askForMediaAccess("microphone").catch(() => {});
   }
 
-  // Allow microphone access in the main window renderer (for voice input)
+  // Media permission for the main window renderer
   const mainSes = mainWindow.webContents.session;
   mainSes.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === "media");
@@ -589,10 +576,7 @@ async function boot() {
   }
 
   // Note store + memory store (flat files with keyword search)
-  noteStore = new NoteStore();
 
-  // Transcriber — OpenAI Whisper API for voice input
-  const transcriber = new Transcriber();
 
   layoutManager = new LayoutManager(panelManager);
   commandParser = new CommandParser(panelManager, layoutManager, appConnector, session);
@@ -744,14 +728,6 @@ async function boot() {
 
   // Reminder registry
   const activeReminders = new Map<string, { message: string; fireAt: number; timer: ReturnType<typeof setTimeout> }>();
-
-  // Voice Relay — phone-to-desktop voice remote (Advanced tier, feature-flagged)
-  if (getPreference<boolean>("voiceRemoteFeature", false) && canUseVoice().allowed) {
-    voiceRelay = new VoiceRelay();
-    if (getPreference<boolean>("remoteEnabled", false)) {
-      voiceRelay.start();
-    }
-  }
 
   // Wire .yo conversational agent — slide-out panel
   const yoPanelWidth = () => getPreference<number>("yoPanelWidth", 380);
@@ -1289,11 +1265,6 @@ async function boot() {
   // Hard 3s timeout so splash never hangs if server is unreachable.
   await Promise.race([initAuth(), new Promise((r) => setTimeout(r, 3000))]);
 
-  // Lexical code index — code_search over the working directory.
-  if (!ipcMain.listenerCount("code-index:status")) {
-    registerCodeIndexIpc({ getWorkingDir: getWorkingDirectory });
-  }
-
   // Working directory — the single project folder the app is focused on.
   if (!ipcMain.listenerCount("working-dir:get")) {
     registerWorkingDirectoryIpc({
@@ -1357,10 +1328,6 @@ async function boot() {
   }
 
   // Start cloud sync if authenticated and tier allows it
-  if (authenticated && canUseSync().allowed) {
-    cloudSyncInstance = new CloudSync(noteStore);
-    cloudSyncInstance.start();
-  }
 
   // Initialize Pipedream connectors — always attempt so MCP tools are available.
   connectorManager?.init().catch((err) => console.error("[connectors]", err));
@@ -1442,18 +1409,6 @@ async function boot() {
   } else {
     broadcastUpdate({ status: "none" });
   }
-
-  // ── Hot config sync (non-blocking, then periodic) ─
-  configSync = new ConfigSync();
-  configSync.fetchAll((msg) => {
-    mainWindow?.webContents.send("splash-status", msg);
-  }).then(() => {
-    reloadRemotePatterns();
-  }).catch(() => {});
-  // Start periodic checks for future updates
-  configSync.start(() => {
-    reloadRemotePatterns();
-  });
 
   // Global hotkey: Cmd+Y / Ctrl+Y
   registerHotkey(mainWindow!);
@@ -1731,12 +1686,12 @@ async function boot() {
 
   // ── Extracted IPC modules ──────────────────────────────
   registerSettingsIpc({
-    getPreference, setPreference, getCurrentLimits, broadcastTheme,
+    getPreference, setPreference, broadcastTheme,
     serverGetAuthed, startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     llmConfig, saveLLMConfig, applyLLMConfig, fetchServerModels,
     session, sendSessionState,
-    transcriber, cloudSyncInstance, execCommand,
+    execCommand,
     getMainWindow: () => mainWindow, panelManager,
   });
 
@@ -1835,11 +1790,6 @@ async function boot() {
   // IPC: preferences
   ipcMain.on("set-preference", (_e, key: string, value: unknown) => {
     setPreference(key, value);
-    // Live-apply remote mode toggle
-    if (key === "remoteEnabled") {
-      if (value) voiceRelay?.start();
-      else voiceRelay?.stop();
-    }
     // Notify every panel/BrowserView so forms reading this pref (e.g. Settings →
     // Agent Defaults) update immediately when it's changed elsewhere (e.g. the
     // compaction modal in the right-rail .Yo agent).
@@ -2004,19 +1954,12 @@ function cleanupAll() {
       setPreference("openTabs", tabs.filter((t: string) => t !== "cypher"));
     }
   } catch {}
-  voiceRelay?.stop();
-  cloudSyncInstance?.stop();
-  cloudSyncInstance = null;
-  configSync?.stop();
-  configSync = null;
   terminalManager?.killAll();
   mcpManager?.disconnectAll();
   connectorManager?.cleanup();
   dripManager?.cleanup();
   closeLocalDb();
   closeDataStoreDb();
-  usageTracker.flush();
-  promptLog.flush();
   // Hard exit if anything keeps the process alive
   setTimeout(() => process.exit(0), 5000).unref();
 }

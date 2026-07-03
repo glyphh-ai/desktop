@@ -70,7 +70,6 @@ declare global {
       windowMaximize: () => void;
       panelsHide: () => void;
       panelsShow: () => void;
-      cmdPaletteOpen: () => void;
       capturePanels: () => Promise<Array<{ dataUrl: string; bounds: { x: number; y: number; width: number; height: number } }>>;
       panelsRefresh: (id?: string) => void;
       panelsZoom: (factor: number) => void;
@@ -164,8 +163,6 @@ declare global {
       userTimezoneGet: () => Promise<string | null>;
       userTimezoneSet: (tz: string) => Promise<{ ok: boolean; error?: string }>;
       logout: () => Promise<void>;
-      validateApiKey: () => Promise<{ valid: boolean }>;
-      getApiKey: () => Promise<null>;
       onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => void;
       onThemeChanged: (callback: (theme: string) => void) => void;
       onShowOnboarding: (callback: () => void) => void;
@@ -258,7 +255,6 @@ declare global {
       // Support
       submitSupportTicket: (ticket: { subject: string; description: string }) => Promise<{ ok: boolean; error?: string }>;
       // Voice transcription
-      transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>;
       // Files left rail
       filesRailResize: (width: number) => void;
       filesRailWidthSave: (width: number) => void;
@@ -276,16 +272,7 @@ declare global {
       }>) => void) => () => void;
       listDir: (dirPath: string) => Promise<Array<{ name: string; isDir: boolean }>>;
       openFile: (filePath: string) => void;
-      createFile: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
       mkdir: (dirPath: string) => Promise<{ ok: boolean; error?: string }>;
-      deleteEntry: (targetPath: string) => Promise<{ ok: boolean; error?: string }>;
-      onYoAskRequest: (cb: (id: string, questions: Array<{
-        question: string;
-        header?: string;
-        options: Array<{ label: string; description?: string; recommended?: boolean; preview?: string }>;
-        multiSelect?: boolean;
-      }>) => void) => void;
-      respondYoAsk: (id: string, answers: Array<string | null>) => void;
       // Connectors (Pipedream Connect)
       connectorsGetApps: (search?: string, offset?: number) => Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean }>;
       connectorsGetAccounts: () => Promise<Array<{ id: string; appSlug: string; appName: string; createdAt: string; healthy: boolean }>>;

@@ -5,13 +5,10 @@ import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgo
 import type { LLMConfig } from "./llm-config";
 import type { SessionCache } from "./session-cache";
 import type { PanelManager } from "./panel-manager";
-import type { CloudSync } from "./cloud-sync";
-import type { Transcriber } from "./transcriber";
 
 interface SettingsIpcDeps {
   getPreference: <T>(key: string, def?: T) => T;
   setPreference: (key: string, val: unknown) => void;
-  getCurrentLimits: () => unknown;
   broadcastTheme: (resolved: string) => void;
   serverGetAuthed: <T = unknown>(path: string) => Promise<T>;
   startAuthFlow: (mode: "register" | "login") => Promise<unknown>;
@@ -26,8 +23,6 @@ interface SettingsIpcDeps {
   fetchServerModels: () => Promise<Array<{ provider: string; model: string }>>;
   session: SessionCache;
   sendSessionState: () => void;
-  transcriber: Transcriber;
-  cloudSyncInstance: CloudSync | null;
   execCommand: (cmd: string, sourcePanelId?: string) => Promise<string>;
   getMainWindow: () => BrowserWindow | null;
   panelManager: PanelManager;
@@ -35,16 +30,13 @@ interface SettingsIpcDeps {
 
 export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   const {
-    getPreference, setPreference, getCurrentLimits, broadcastTheme,
+    getPreference, setPreference, broadcastTheme,
     serverGetAuthed, startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     llmConfig, saveLLMConfig, applyLLMConfig, fetchServerModels,
     session, sendSessionState,
-    transcriber, cloudSyncInstance,
     getMainWindow, panelManager,
   } = deps;
-
-  ipcMain.handle("get-entitlements", () => getCurrentLimits());
 
   ipcMain.handle("get-theme", () => getPreference<string>("theme", "dark"));
   ipcMain.handle("set-theme", (_e, theme: string) => {
@@ -79,62 +71,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("auth-complete-profile", (_e, data: { email: string; firstName: string; lastName: string; password: string; confirmPassword: string; orgName?: string }) => authCompleteProfile(data));
   ipcMain.handle("auth-login", (_e, email: string, password: string) => authLogin(email, password));
   ipcMain.handle("auth-forgot-password", (_e, email: string) => authForgotPassword(email));
-
-  ipcMain.handle("dev-flags", () => ({
-    cyphersEnabled: process.env.YO_CYPHERS_ENABLED === "1" || process.env.YO_CYPHERS_ENABLED === "true",
-    enableGhAuth: process.env.YO_ENABLE_GH_AUTH === "1" || process.env.YO_ENABLE_GH_AUTH === "true",
-  }));
-
-  ipcMain.handle("gh-app-install", async () => {
-    try {
-      const r = await serverGetAuthed<{ slug: string; installUrl: string }>("/api/github/app-info");
-      if (!r?.installUrl) return { ok: false, error: "GitHub App not configured" };
-
-      const installed = await new Promise<boolean>((resolve) => {
-        const win = new BrowserWindow({
-          width: 1024,
-          height: 720,
-          title: "Install yo-cypher on GitHub",
-          autoHideMenuBar: true,
-          webPreferences: {
-            contextIsolation: true,
-            nodeIntegration: false,
-            sandbox: true,
-          },
-        });
-
-        let resolved = false;
-        const finish = (val: boolean) => {
-          if (resolved) return;
-          resolved = true;
-          resolve(val);
-          try { if (!win.isDestroyed()) win.close(); } catch {}
-        };
-
-        const checkNav = (navUrl: string) => {
-          try {
-            const u = new URL(navUrl);
-            if (
-              u.searchParams.has("installation_id") ||
-              /\/settings\/installations\/\d+/.test(u.pathname)
-            ) {
-              finish(true);
-            }
-          } catch {}
-        };
-        win.webContents.on("will-redirect", (_e, navUrl) => checkNav(navUrl));
-        win.webContents.on("will-navigate", (_e, navUrl) => checkNav(navUrl));
-        win.webContents.on("did-navigate", (_e, navUrl) => checkNav(navUrl));
-        win.on("closed", () => finish(false));
-
-        win.loadURL(r.installUrl);
-      });
-
-      return { ok: true, installed };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : "unknown error" };
-    }
-  });
 
   ipcMain.handle("get-account-info", () => getAccountInfo());
 
@@ -188,7 +124,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("get-auth-status", () => getAuthStatus());
   ipcMain.handle("refresh-auth", async () => {
     const hb = await refreshHeartbeat();
-    if (hb) cloudSyncInstance?.resetAuth();
     return { tier: hb?.tier || "free", status: hb?.status || "unknown" };
   });
   ipcMain.handle("copy-to-clipboard", (_e, text: string) => {
@@ -200,8 +135,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     if (mainWindow) panelManager.hideActive(mainWindow);
     mainWindow?.webContents.send("show-onboarding");
   });
-  ipcMain.handle("validate-api-key", async () => ({ valid: true }));
-  ipcMain.handle("get-api-key", () => null);
 
   ipcMain.handle("get-llm-config", () => ({
     provider: llmConfig.provider,
@@ -255,17 +188,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
-  });
-
-  ipcMain.handle("transcribe-audio", async (_e, audioBuffer: ArrayBuffer) => {
-    try {
-      const float32 = new Float32Array(audioBuffer);
-      const text = await transcriber.transcribe(float32);
-      return { ok: true, text };
-    } catch (err: any) {
-      console.error("[transcribe]", err);
-      return { ok: false, error: err.message || "Transcription failed" };
-    }
   });
 
   // Export a provider-tailored Glyphh skill (Claude / Gemini / OpenAI) — a file

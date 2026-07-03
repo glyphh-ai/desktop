@@ -58,7 +58,6 @@ contextBridge.exposeInMainWorld("yo", {
   // Panel visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),
   panelsShow: () => ipcRenderer.send("panels-show"),
-  cmdPaletteOpen: () => ipcRenderer.send("cmd-palette-open"),
   capturePanels: () => ipcRenderer.invoke("capture-panels") as Promise<Array<{ dataUrl: string; bounds: { x: number; y: number; width: number; height: number } }>>,
   panelsRefresh: (id?: string) => ipcRenderer.send("panels-refresh", id),
   panelsZoom: (factor: number) => ipcRenderer.send("panels-zoom", factor),
@@ -253,8 +252,6 @@ contextBridge.exposeInMainWorld("yo", {
   userTimezoneGet: () => ipcRenderer.invoke("user-timezone-get") as Promise<string | null>,
   userTimezoneSet: (tz: string) => ipcRenderer.invoke("user-timezone-set", tz) as Promise<{ ok: boolean; error?: string }>,
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
-  validateApiKey: () => Promise.resolve({ valid: true }),
-  getApiKey: () => Promise.resolve(null),
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
@@ -306,7 +303,6 @@ contextBridge.exposeInMainWorld("yo", {
   },
 
   // LLM config
-  getLLMConfig: () => ipcRenderer.invoke("get-llm-config") as Promise<{ provider: string; model: string }>,
   getLLMPresets: () => ipcRenderer.invoke("get-llm-presets") as Promise<Record<string, { name: string; models: string[]; defaultModel: string }>>,
   saveLLMConfig: (config: { provider: string; model: string }) =>
     ipcRenderer.invoke("save-llm-config", config) as Promise<{ ok: boolean; error?: string }>,
@@ -356,26 +352,6 @@ contextBridge.exposeInMainWorld("yo", {
   submitSupportTicket: (ticket: { subject: string; description: string }) =>
     ipcRenderer.invoke("submit-support-ticket", ticket) as Promise<{ ok: boolean; error?: string }>,
 
-  // Voice transcription
-  transcribeAudio: (audioBuffer: ArrayBuffer) =>
-    ipcRenderer.invoke("transcribe-audio", audioBuffer) as Promise<{ ok: boolean; text?: string; error?: string }>,
-
-  // Yo agent panel bindings removed (pivot-mcp) — the interactive chat agent
-  // panel (YoAgent + yo-panel-ui-vscode.ts) that these IPC channels served is
-  // gone; no renderer code calls them anymore.
-
-  // mcp__yo__ask_user_question — purple "Input required" card. Main fires
-  // yo-ask-request with the questions; renderer replies via yo-ask-respond
-  // with an array of selected labels (one per question, null = cancelled).
-  onYoAskRequest: (cb: (id: string, questions: Array<{
-    question: string;
-    header?: string;
-    options: Array<{ label: string; description?: string; recommended?: boolean; preview?: string }>;
-    multiSelect?: boolean;
-  }>) => void) => {
-    ipcRenderer.on("yo-ask-request", (_e, id, questions) => cb(id, questions));
-  },
-  respondYoAsk: (id: string, answers: Array<string | null>) => ipcRenderer.send("yo-ask-respond", id, answers),
 
   // URL bar
   urlBarNavigate: (url: string) => ipcRenderer.send("url-bar-navigate", url),
@@ -428,14 +404,6 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("files:list-dir", dirPath) as Promise<Array<{ name: string; isDir: boolean }>>,
   gitInfo: (root: string) =>
     ipcRenderer.invoke("files:git-info", root) as Promise<{ isRepo: boolean; branch?: string; defaultBranch?: string }>,
-  gitRepos: (root: string) =>
-    ipcRenderer.invoke("files:git-repos", root) as Promise<Array<{ name: string; path: string; branch: string }>>,
-  createFile: (filePath: string) =>
-    ipcRenderer.invoke("files:create-file", filePath) as Promise<{ ok: boolean; error?: string }>,
-  mkdir: (dirPath: string) =>
-    ipcRenderer.invoke("files:mkdir", dirPath) as Promise<{ ok: boolean; error?: string }>,
-  deleteEntry: (targetPath: string) =>
-    ipcRenderer.invoke("files:delete", targetPath) as Promise<{ ok: boolean; error?: string }>,
   // Route a file to the app that handles its type (editor / browser / VS Code).
   openFile: (filePath: string) => ipcRenderer.send("file-open", filePath),
 
@@ -503,15 +471,6 @@ contextBridge.exposeInMainWorld("yo", {
   },
 
   // Workspace / context panel
-  workspaceGet: () => ipcRenderer.invoke("workspace-get") as Promise<string>,
-  workspaceSet: (name: string) => ipcRenderer.invoke("workspace-set", name) as Promise<void>,
-  workspaceList: () => ipcRenderer.invoke("workspace-list") as Promise<string[]>,
-  contextRecent: (workspace: string, limit?: number) =>
-    ipcRenderer.invoke("context-recent", workspace, limit ?? 50) as Promise<Array<{id: string; source: string; created: number; workspace?: string; snippet: string}>>,
-  contextSearch: (workspace: string, query: string, limit?: number) =>
-    ipcRenderer.invoke("context-search", workspace, query, limit ?? 20) as Promise<Array<{id: string; source: string; created: number; workspace?: string; snippet: string; score: number}>>,
-  contextRead: (id: string) =>
-    ipcRenderer.invoke("context-read", id) as Promise<string>,
   onContextUpdate: (cb: (entry: {id: string; source: string; created: number; workspace?: string}) => void) => {
     ipcRenderer.on("context-update", (_e, entry) => cb(entry));
   },

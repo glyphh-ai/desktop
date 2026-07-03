@@ -187,88 +187,6 @@ export class TerminalManager {
     ipcMain.on("terminal:resize", onFirstResize);
   }
 
-  // ── Multi-agent terminal (code workspace) ──────────────────
-  // Keyed by "wcId:agentName" — multiple PTYs share one webContents.
-
-  private agentProcesses = new Map<string, pty.IPty>();
-  private agentConfigs = new Map<string, AgentSpawnConfig>();
-
-  /** Register IPC handlers for multi-agent code workspace terminals. */
-  initCodeWorkspace(): void {
-    ipcMain.on("cw:terminal:write", (e, agent: string, data: string) => {
-      this.agentProcesses.get(`${e.sender.id}:${agent}`)?.write(data);
-    });
-    ipcMain.on("cw:terminal:resize", (e, agent: string, cols: number, rows: number) => {
-      const proc = this.agentProcesses.get(`${e.sender.id}:${agent}`);
-      if (proc) {
-        try { proc.resize(cols, rows); } catch { /* ignore */ }
-      }
-    });
-    ipcMain.on("cw:terminal:spawn", (e, agent: string) => {
-      const key = `${e.sender.id}:${agent}`;
-      const cfg = this.agentConfigs.get(key);
-      if (cfg) this.spawnWorkspaceAgent(e.sender, agent, cfg);
-    });
-  }
-
-  /** Register an agent config for a code workspace webContents. */
-  registerWorkspaceAgent(wc: WebContents, agent: string, config: AgentSpawnConfig): void {
-    this.agentConfigs.set(`${wc.id}:${agent}`, config);
-  }
-
-  /** Spawn a PTY for one agent inside a code workspace panel. */
-  spawnWorkspaceAgent(wc: WebContents, agent: string, config: AgentSpawnConfig): void {
-    const key = `${wc.id}:${agent}`;
-    const existing = this.agentProcesses.get(key);
-    if (existing) {
-      existing.kill();
-      this.agentProcesses.delete(key);
-    }
-
-    const env: Record<string, string> = {
-      ...(process.env as Record<string, string>),
-      PATH: getShellPath(),
-      YO_AGENT_NAME: config.name,
-      YO_AGENT_ROLE: config.role,
-      YO_WORKSPACE: config.workspace,
-    };
-
-    const proc = pty.spawn(config.command, config.args, {
-      name: "xterm-256color",
-      cols: 80,
-      rows: 24,
-      cwd: config.cwd,
-      env,
-    });
-
-    proc.onData((data) => {
-      if (wc.isDestroyed()) return;
-      wc.send("cw:terminal:data", agent, data);
-    });
-
-    proc.onExit(({ exitCode }) => {
-      if (wc.isDestroyed()) return;
-      wc.send("cw:terminal:exit", agent, exitCode);
-      this.agentProcesses.delete(key);
-      setTimeout(() => {
-        if (!wc.isDestroyed()) this.spawnWorkspaceAgent(wc, agent, config);
-      }, 500);
-    });
-
-    this.agentProcesses.set(key, proc);
-  }
-
-  /** Kill all agents for a specific webContents (workspace panel closed). */
-  killWorkspaceAgents(wcId: number): void {
-    for (const [key, proc] of this.agentProcesses) {
-      if (key.startsWith(`${wcId}:`)) {
-        proc.kill();
-        this.agentProcesses.delete(key);
-        this.agentConfigs.delete(key);
-      }
-    }
-  }
-
   /** Kill a pty process by webContents id. */
   kill(wcId: number): void {
     const proc = this.processes.get(wcId);
@@ -282,8 +200,5 @@ export class TerminalManager {
   killAll(): void {
     for (const [, proc] of this.processes) proc.kill();
     this.processes.clear();
-    for (const [, proc] of this.agentProcesses) proc.kill();
-    this.agentProcesses.clear();
-    this.agentConfigs.clear();
   }
 }

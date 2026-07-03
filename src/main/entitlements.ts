@@ -19,8 +19,6 @@ export function canSaveLayout(_currentCount?: number): GateResult { return ALLOW
 export function canUseMcp(): GateResult {
   return hasMcpAccess() ? ALLOWED : { allowed: false, reason: "MCP requires a Pro plan." };
 }
-export function canUseSync(): GateResult { return ALLOWED; }
-export function canUseVoice(): GateResult { return ALLOWED; }
 export function canUseCustomDrips(): GateResult { return ALLOWED; }
 
 export function getCurrentLimits() {
@@ -31,7 +29,6 @@ export function getCurrentLimits() {
     mcp: true,
     customLayouts: true,
     customDrips: true,
-    voice: true,
     sync: true,
   };
 }
