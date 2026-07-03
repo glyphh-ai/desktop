@@ -11,7 +11,7 @@ import { app, BrowserWindow, globalShortcut, ipcMain, nativeTheme, screen } from
 import path from "path";
 import { openAppByRef, openLayoutByName } from "./app-resolver.js";
 import { runDip } from "./dip-commands.js";
-import { listOsApps, focusOsApp } from "./os-window-manager.js";
+import { listOsApps, focusOsAppFullscreen, frontWindow, type OsWindow } from "./os-window-manager.js";
 import { showThinking, hideThinking, disposeThinking } from "./thinking-overlay.js";
 import { getPreference } from "./stores/preferences-db";
 
@@ -69,8 +69,20 @@ function coverCursorDisplay(w: BrowserWindow): void {
   w.setBounds(d.bounds);
 }
 
+// The window that was frontmost when the palette opened — `.dip exp` / `.dip
+// min` typed INTO the palette target this window. Without it they'd act on
+// whatever ends up focused after the palette hides (often Glyphh itself),
+// which read as "native apps don't respond to exp/min".
+let priorFront: OsWindow | null = null;
+
 export function showCommandWindow(): void {
   if (!win || win.isDestroyed()) win = createWindow();
+  // Capture BEFORE taking focus; skip our own windows (Glyphh was already
+  // frontmost when the hotkey fired from inside the app).
+  priorFront = null;
+  void frontWindow().then((f) => {
+    if (f && f.pid !== process.pid) priorFront = f;
+  }).catch(() => {});
   coverCursorDisplay(win);
   win.show();
   win.focus();
@@ -128,7 +140,9 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
       catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
     }
     showThinking();
-    try { return await runDip(text); }
+    // Pass the pre-palette front window so `.dip exp` / `.dip min` typed here
+    // act on the app the user was in, not on Glyphh (frontmost at exec time).
+    try { return await runDip(text, { focusTarget: priorFront }); }
     finally { hideThinking(); }
   });
 
@@ -147,7 +161,8 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
   ipcMain.handle("command:focus-app", async (_e, proc: string) => {
     showThinking({ immediate: true });
     hideCommandWindow();
-    try { await focusOsApp(String(proc)); return { ok: true }; }
+    // Focus AND land full-screen — same contract as opening a library app.
+    try { await focusOsAppFullscreen(String(proc)); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
     finally { hideThinking(); }
   });

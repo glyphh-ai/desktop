@@ -105,7 +105,7 @@ export async function listWindows(): Promise<OsWindow[]> {
   return [];
 }
 
-async function frontWindow(): Promise<OsWindow | null> {
+export async function frontWindow(): Promise<OsWindow | null> {
   try {
     if (isMac) return await macFront();
     if (isWin) return await winFront();
@@ -206,34 +206,44 @@ export async function expandAll(): Promise<number> {
   return wins.length;
 }
 
+/** Toggle a specific window between full-work-area and its prior bounds. */
+export async function toggleExpandWindow(w: OsWindow): Promise<boolean> {
+  const wa = workArea();
+  const isExpanded = Math.abs(w.x - wa.x) < 6 && Math.abs(w.y - wa.y) < 6
+    && Math.abs(w.width - wa.width) < 6 && Math.abs(w.height - wa.height) < 6;
+  const prior = priorBounds.get(w.proc);
+  let target: Rect;
+  if (isExpanded && prior) {
+    target = prior;
+    priorBounds.delete(w.proc);
+  } else {
+    priorBounds.set(w.proc, { x: w.x, y: w.y, width: w.width, height: w.height });
+    target = wa;
+  }
+  await applyBounds([toTarget(w, target)]);
+  return true;
+}
+
 /** Toggle the focused window between full-work-area and its prior bounds. */
 export async function toggleExpandFocused(): Promise<boolean> {
   const front = await frontWindow();
   if (!front) return false;
-  const wa = workArea();
-  const isExpanded = Math.abs(front.x - wa.x) < 6 && Math.abs(front.y - wa.y) < 6
-    && Math.abs(front.width - wa.width) < 6 && Math.abs(front.height - wa.height) < 6;
-  const prior = priorBounds.get(front.proc);
-  let target: Rect;
-  if (isExpanded && prior) {
-    target = prior;
-    priorBounds.delete(front.proc);
-  } else {
-    priorBounds.set(front.proc, { x: front.x, y: front.y, width: front.width, height: front.height });
-    target = wa;
-  }
-  await applyBounds([toTarget(front, target)]);
-  return true;
+  return toggleExpandWindow(front);
+}
+
+/** Minimize one specific window. */
+export async function minimizeWindow(id: string): Promise<boolean> {
+  try {
+    if (isMac) { await macMinimizeWin(id); return true; }
+    if (isWin) { await winMinimizeWins([id]); return true; }
+  } catch { /* window gone */ }
+  return false;
 }
 
 export async function minimizeFocused(): Promise<boolean> {
   const front = await frontWindow();
   if (!front) return false;
-  try {
-    if (isMac) { await macMinimizeWin(front.id); return true; }
-    if (isWin) { await winMinimizeWins([front.id]); return true; }
-  } catch { /* fall through */ }
-  return false;
+  return minimizeWindow(front.id);
 }
 
 export async function minimizeAll(): Promise<boolean> {
@@ -276,6 +286,29 @@ export async function focusOsApp(proc: string): Promise<boolean> {
     if (isWin) return await winFocusApp(name);
   } catch { /* not found */ }
   return false;
+}
+
+/**
+ * Bring a running app to the front AND land its window full-work-area — the
+ * command palette's "Running apps" click and typed-name open both use this,
+ * matching the full-screen contract of library apps.
+ */
+export async function focusOsAppFullscreen(proc: string): Promise<boolean> {
+  const name = proc.trim();
+  if (!name) return false;
+  try {
+    const w = (await listWindows()).find((x) => windowMatches(x, name));
+    if (w) {
+      const ok = await focusWindow(w.id);
+      if (ok) {
+        await setWindowBounds(w.id, workArea());
+        return true;
+      }
+    }
+  } catch { /* fall through */ }
+  // No enumerable window (e.g. all minimized on macOS) — plain app focus
+  // still unminimizes + activates.
+  return focusOsApp(name);
 }
 
 /**

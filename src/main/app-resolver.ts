@@ -17,7 +17,8 @@ import {
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
 import {
   positionAppWindow, focusWindow, setWindowBounds,
-  snapshotWindowIds, waitForAppWindow, type Rect as OsRect,
+  snapshotWindowIds, waitForAppWindow, listOsApps, focusOsAppFullscreen,
+  type Rect as OsRect,
 } from "./os-window-manager.js";
 import { findInstalledApp, launchInstalledApp, normKey, isSubsequence } from "./installed-apps.js";
 import { openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host.js";
@@ -207,7 +208,21 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
       void positionAppWindow(installed.name, { x: wa.x, y: wa.y, width: wa.width, height: wa.height });
       return { slug: normKey(installed.name), name: installed.name };
     }
-    throw new Error(`unknown app: ${ref} — not in the app library or installed apps`);
+    // Last resort: a RUNNING app whose process name matches (covers procs
+    // whose name differs from any installed .app, and Windows, where the
+    // installed-apps scan doesn't exist). Same tiers as findInstalledApp.
+    const running = await listOsApps().catch(() => [] as Array<{ proc: string; path: string }>);
+    const nk = normKey(ref);
+    const hit = running.find((a) => normKey(a.proc) === nk)
+      || (nk.length >= 2
+        ? running.find((a) => normKey(a.proc).startsWith(nk)) || running.find((a) => normKey(a.proc).includes(nk))
+        : undefined)
+      || (nk.length >= 4 ? running.find((a) => isSubsequence(nk, normKey(a.proc))) : undefined);
+    if (hit) {
+      await focusOsAppFullscreen(hit.proc);
+      return { slug: normKey(hit.proc), name: hit.proc };
+    }
+    throw new Error(`unknown app: ${ref} — not in the app library, installed apps, or running apps`);
   }
 
   // The Glyphh system app → focus our own window (nothing to launch).

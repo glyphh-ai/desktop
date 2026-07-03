@@ -10,19 +10,27 @@
  *   dip split a b c         tile those apps side by side (columns)
  *   dip grid                tile ALL open OS windows into a grid
  *   dip minAll              minimize every open window
- *   dip min                 minimize the focused window
+ *   dip min [app]           minimize the focused (or named) window
  *   dip expAll              expand every window to fill the screen
- *   dip exp                 toggle the focused window full ↔ its prior size
+ *   dip exp [app]           toggle the focused (or named) window full ↔ prior
  */
 
 import { BrowserWindow } from "electron";
 import { openAppByRef, openLayoutByName } from "./app-resolver.js";
 import {
-  arrangeGrid, arrangeSplit, expandAll, toggleExpandFocused,
-  minimizeAll, minimizeFocused, osWindowsSupported,
+  arrangeGrid, arrangeSplit, expandAll, toggleExpandFocused, toggleExpandWindow,
+  minimizeAll, minimizeFocused, minimizeWindow, osWindowsSupported,
+  listWindows, windowMatches, type OsWindow,
 } from "./os-window-manager.js";
 
 export interface DipResult { ok: boolean; message?: string; error?: string }
+
+export interface DipContext {
+  /** The window that was frontmost before the command surface (palette) took
+   *  focus — `min`/`exp` with no argument act on this instead of "focused"
+   *  (which would be Glyphh itself by the time the command runs). */
+  focusTarget?: OsWindow | null;
+}
 
 const norm = (s: string) => s.trim().toLowerCase();
 
@@ -34,7 +42,7 @@ function minimizeGlyphhWindows(): void {
   }
 }
 
-export async function runDip(input: string): Promise<DipResult> {
+export async function runDip(input: string, ctx?: DipContext): Promise<DipResult> {
   // Strip an optional leading "dip" / ".dip".
   const text = String(input || "").trim().replace(/^\.?dip\b\s*/i, "").trim();
   if (!text) return { ok: false, error: "usage: dip <app|layout|grid|split …|min|minAll|exp|expAll>" };
@@ -42,6 +50,10 @@ export async function runDip(input: string): Promise<DipResult> {
   const parts = text.split(/\s+/);
   const verb = norm(parts[0]);
   const rest = parts.slice(1);
+
+  /** Named window for "min <app>" / "exp <app>" — process-name matched. */
+  const namedWindow = async (name: string): Promise<OsWindow | null> =>
+    (await listWindows()).find((w) => windowMatches(w, name)) ?? null;
 
   try {
     // ── OS window arrangement verbs ──────────────────────────────
@@ -67,8 +79,19 @@ export async function runDip(input: string): Promise<DipResult> {
         minimizeGlyphhWindows();
         return { ok: true, message: "minimized all windows" };
       }
+      // "min <app>" / "exp <app>" — target the named app's window.
+      const namedArg = !allWord ? rest.join(" ").trim() : "";
       if (verb === "min") {
-        await minimizeFocused();
+        if (namedArg) {
+          const w = await namedWindow(namedArg);
+          if (!w) return { ok: false, error: `no open window matched "${namedArg}"` };
+          await minimizeWindow(w.id);
+          return { ok: true, message: `minimized ${w.proc}` };
+        }
+        // Bare "min": the window the user was in before the palette took
+        // focus; falls back to the live focused window (keytap-style calls).
+        if (ctx?.focusTarget) await minimizeWindow(ctx.focusTarget.id);
+        else await minimizeFocused();
         return { ok: true, message: "minimized" };
       }
       if (verb === "expall" || (verb === "exp" && allWord)) {
@@ -76,7 +99,14 @@ export async function runDip(input: string): Promise<DipResult> {
         return { ok: true, message: `expanded ${n} window${n === 1 ? "" : "s"}` };
       }
       // verb === "exp"
-      await toggleExpandFocused();
+      if (namedArg) {
+        const w = await namedWindow(namedArg);
+        if (!w) return { ok: false, error: `no open window matched "${namedArg}"` };
+        await toggleExpandWindow(w);
+        return { ok: true, message: `toggled expand on ${w.proc}` };
+      }
+      if (ctx?.focusTarget) await toggleExpandWindow(ctx.focusTarget);
+      else await toggleExpandFocused();
       return { ok: true, message: "toggled expand" };
     }
 

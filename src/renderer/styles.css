@@ -3285,7 +3285,7 @@ ol.docs-list li::before {
   overflow: auto;
 }
 .cc-inner { width: min(1200px, 92vw); padding: 64px 28px 48px; }
-.cc-header { display: flex; align-items: center; margin-bottom: 22px; }
+.cc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
 .cc-title { font-size: 18px; font-weight: 700; color: var(--text); }
 .cc-close {
   margin-left: auto; width: 30px; height: 30px; border-radius: 8px;
@@ -3294,7 +3294,7 @@ ol.docs-list li::before {
 }
 .cc-close:hover { color: var(--text); border-color: var(--accent); }
 .cc-apps {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 18px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 14px;
   margin-bottom: 32px;
 }
 .cc-card {
@@ -3317,6 +3317,39 @@ ol.docs-list li::before {
 .cc-card-name {
   font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.cc-card-slug {
+  font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: -4px;
+}
+
+/* ── Drip control: droplet button + effects dropdown (cc-header) ── */
+.cc-drip-wrap { position: relative; flex-shrink: 0; }
+.cc-drip-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 9px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-2); transition: color .12s, border-color .12s;
+}
+.cc-drip-btn:hover { color: var(--accent); border-color: var(--border-2); }
+.cc-drip-menu {
+  position: absolute; top: 40px; right: 0; z-index: 30;
+  min-width: 180px; max-height: 320px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 10px; padding: 6px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.4);
+}
+.cc-drip-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-3); padding: 6px 8px 4px;
+}
+.cc-drip-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: none; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--text); font-size: 12.5px; text-align: left;
+}
+.cc-drip-item:hover { background: var(--hover); }
+.cc-drip-emoji { width: 18px; text-align: center; }
 .cc-section-label {
   font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase;
   letter-spacing: .06em; margin-bottom: 12px;

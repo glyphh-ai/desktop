@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("yo", {
   // Data (same global ipcMain.handle channels the main window uses).
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list"),
   layoutsList: () => ipcRenderer.invoke("layouts-list"),
+  dripsList: () => ipcRenderer.invoke("drips-list"),
   connectorsGetApps: (search?: string, offset?: number) =>
     ipcRenderer.invoke("connectors-get-apps", search, offset),
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath),

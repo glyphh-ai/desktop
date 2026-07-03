@@ -28,6 +28,7 @@ type Layout = {
 interface OverlayApi {
   panelAppsList: () => Promise<App[]>;
   layoutsList: () => Promise<Layout[]>;
+  dripsList: () => Promise<Array<{ name: string; recipe: string }>>;
   commandOpenApp: (ref: string) => Promise<{ ok: boolean; error?: string }>;
   commandOpenLayout: (name: string) => Promise<{ ok: boolean; error?: string }>;
   commandExec: (text: string) => Promise<{ ok: boolean; error?: string }>;
@@ -127,7 +128,8 @@ function renderApps(): void {
     card.className = "cc-card";
     card.innerHTML = `
       <div class="cc-card-shot">${appIconInner(app, app.name, "cc-card-initial")}</div>
-      <span class="cc-card-name">${esc(app.name)}</span>`;
+      <span class="cc-card-name">${esc(app.name)}</span>
+      ${app.slug ? `<span class="cc-card-slug">${esc(app.slug)}</span>` : ""}`;
     card.addEventListener("click", () => { void api.commandOpenApp(app.id); });
     appsEl.appendChild(card);
   }
@@ -242,6 +244,64 @@ inputEl?.addEventListener("keydown", (e) => {
   }
 });
 
+// ── Drip control: a droplet button that expands a dropdown of effects ─────────
+// Built-in effects (static) + the user's saved drip presets (server-backed).
+const BUILTIN_DRIPS: Array<{ name: string; emoji: string }> = [
+  { name: "fireworks", emoji: "🎆" }, { name: "hearts", emoji: "❤️" },
+  { name: "confetti", emoji: "🎊" }, { name: "stars", emoji: "⭐" },
+  { name: "rain", emoji: "🌧️" }, { name: "bubbles", emoji: "🫧" },
+  { name: "sparkle", emoji: "✨" }, { name: "spiral", emoji: "🌀" },
+  { name: "wave", emoji: "🌊" }, { name: "matrix", emoji: "🟩" },
+  { name: "aurora", emoji: "🌌" }, { name: "nebula", emoji: "💜" },
+  { name: "plasma", emoji: "🔮" }, { name: "fireflies", emoji: "🪲" },
+  { name: "starfield", emoji: "🌠" },
+];
+
+const dripBtn = document.getElementById("cc-drip-btn");
+const dripMenu = document.getElementById("cc-drip-menu");
+let dripsLoaded = false;
+
+async function populateDripMenu(): Promise<void> {
+  if (!dripMenu || dripsLoaded) return;
+  dripsLoaded = true;
+  const custom = await api.dripsList().catch(() => [] as Array<{ name: string; recipe: string }>);
+  dripMenu.innerHTML = "";
+  const addRow = (label: string, cmd: string, emoji: string) => {
+    const row = document.createElement("button");
+    row.className = "cc-drip-item";
+    row.innerHTML = `<span class="cc-drip-emoji">${emoji}</span><span>${esc(label)}</span>`;
+    row.addEventListener("click", () => {
+      dripMenu!.classList.add("hidden");
+      void api.commandExec(`.drip ${cmd}`);
+    });
+    dripMenu!.appendChild(row);
+  };
+  if (custom.length > 0) {
+    const label = document.createElement("div");
+    label.className = "cc-drip-label";
+    label.textContent = "My drips";
+    dripMenu.appendChild(label);
+    for (const d of custom) addRow(d.name, d.name, "💧");
+    const label2 = document.createElement("div");
+    label2.className = "cc-drip-label";
+    label2.textContent = "Effects";
+    dripMenu.appendChild(label2);
+  }
+  for (const d of BUILTIN_DRIPS) addRow(d.name, d.name, d.emoji);
+}
+
+dripBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (!dripMenu) return;
+  void populateDripMenu();
+  dripMenu.classList.toggle("hidden");
+});
+// Any click outside the drip control collapses the menu.
+document.addEventListener("mousedown", (e) => {
+  const t = e.target as HTMLElement;
+  if (!t.closest(".cc-drip-wrap")) dripMenu?.classList.add("hidden");
+});
+
 document.getElementById("cc-close")?.addEventListener("click", () => close());
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
 // Click the darkened backdrop (not a card/input) to dismiss.
@@ -252,6 +312,9 @@ root.addEventListener("mousedown", (e) => {
 
 api.onCommandRefresh((theme) => {
   if (theme) document.documentElement.setAttribute("data-theme", theme);
+  // Re-fetch drip presets on next open (they're server-backed and editable).
+  dripsLoaded = false;
+  dripMenu?.classList.add("hidden");
   void refresh();
 });
 void refresh();
