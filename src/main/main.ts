@@ -76,6 +76,7 @@ import { promptLog } from "./prompt-log";
 import { startOverlay } from "./overlay-bridge";
 import { registerCommandWindow, disposeCommandWindow } from "./command-window";
 import { initOsWindowManager, disposeOsWindowManager } from "./os-window-manager";
+import { setMainWindowRef } from "./main-window-ref";
 import { initThinkingOverlay } from "./thinking-overlay";
 import { runDip } from "./dip-commands";
 import { McpManager } from "./mcp-manager";
@@ -206,6 +207,9 @@ async function createWindow() {
   });
 
   if (saved.maximized) mainWindow.maximize();
+  // Share the main-window handle with modules that can't import main.ts
+  // (app-resolver focuses it when the "Glyphh" system app is opened).
+  setMainWindowRef(mainWindow);
 
   // Request macOS mic entitlement (triggers OS permission dialog on first use)
   if (process.platform === "darwin") {

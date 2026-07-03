@@ -21,6 +21,24 @@ import {
 } from "./os-window-manager.js";
 import { findInstalledApp, launchInstalledApp, normKey, isSubsequence } from "./installed-apps.js";
 import { openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host.js";
+import { getMainWindowRef } from "./main-window-ref.js";
+
+/** The seeded "Glyphh" system app (archetype 'glyphh-self') — the palette's
+ *  permanent top-left card. Opening it focuses Glyphh's own window; its
+ *  install location is machine-specific so the server row carries no path. */
+function isGlyphhSelfRow(app: ServerApp): boolean {
+  return app.appArchetype === "glyphh-self" || app.slug === "glyphh";
+}
+
+function focusGlyphhSelf(rect?: { x: number; y: number; width: number; height: number }): boolean {
+  const win = getMainWindowRef();
+  if (!win) return false;
+  if (win.isMinimized()) win.restore();
+  if (rect) win.setBounds(rect);
+  win.show();
+  win.focus();
+  return true;
+}
 
 export interface ServerApp {
   id: string;
@@ -189,6 +207,12 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     throw new Error(`unknown app: ${ref} — not in the app library or installed apps`);
   }
 
+  // The Glyphh system app → focus our own window (nothing to launch).
+  if (isGlyphhSelfRow(app)) {
+    if (!focusGlyphhSelf()) throw new Error("Glyphh window unavailable");
+    return { slug: app.slug, name: app.name };
+  }
+
   // Installed Glyphh app (marketplace unit) → capability-scoped window.
   if (isGlyphhAppRow(app)) {
     const r = openGlyphhApp({ name: app.name, slug: app.slug, execPath: app.execPath, launchConfig: app.launchConfig });
@@ -273,6 +297,12 @@ export async function openLayoutByName(
       || apps.find((a) => a.slug === key)
       || apps.find((a) => a.name.toLowerCase() === key);
     if (!app) { console.error(`[layout] cell "${cell.panelId}" — no matching app in library`); continue; }
+
+    // The Glyphh system app → tile our own window into the cell.
+    if (isGlyphhSelfRow(app)) {
+      if (focusGlyphhSelf(bounds)) opened.push(app.slug);
+      continue;
+    }
 
     // Installed Glyphh app → its own capability-scoped window (no tiling).
     if (isGlyphhAppRow(app)) {

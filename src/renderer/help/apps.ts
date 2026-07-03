@@ -649,6 +649,9 @@ async function openPanelAppDetail(app: PanelApp) {
   appMapCommand.classList.add("hidden");
   appDetailHeading.textContent = app.name;
 
+  // The Glyphh system app can't be deleted (server enforces it) — don't offer.
+  document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
+
   // All tabs always visible
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
     btn.classList.remove("tab-hidden");

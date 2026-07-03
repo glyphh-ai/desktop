@@ -204,6 +204,8 @@ async function refresh(): Promise<void> {
     const [a, l] = await Promise.all([api.panelAppsList(), api.layoutsList()]);
     // Match the Apps page: web apps (have a url) + native apps (isBrowser false).
     apps = (a || []).filter((x) => x.url || x.isBrowser === false);
+    // The Glyphh system app is ALWAYS the first (top-left) card.
+    apps.sort((x, y) => Number((y.slug || "") === "glyphh") - Number((x.slug || "") === "glyphh"));
     layouts = l || [];
   } catch { apps = []; layouts = []; }
   renderAll();
