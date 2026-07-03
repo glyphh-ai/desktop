@@ -10626,18 +10626,16 @@ select:focus {
   text-decoration: underline;
 }
 
-/* ══ Apps page: My-apps / Marketplace tabs ══════════════════ */
-.apps-page-tabs {
-  display: flex; gap: 4px; margin: 6px 0 18px;
-  border-bottom: 1px solid var(--border-2);
-}
+/* ══ Apps page: My-apps / Marketplace tabs (button pills) ═══ */
+.apps-page-tabs { display: flex; gap: 8px; margin: 6px 0 18px; }
 .apps-page-tab {
-  padding: 8px 14px; border: none; background: transparent; cursor: pointer;
-  color: var(--text-3); font-size: 13.5px; font-weight: 600;
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 7px 16px; border-radius: 9px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  color: var(--text-2); font-size: 13px; font-weight: 600;
+  transition: background .12s, color .12s, border-color .12s;
 }
-.apps-page-tab:hover { color: var(--text); }
-.apps-page-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.apps-page-tab:hover { color: var(--text); border-color: var(--border-3, var(--border-2)); }
+.apps-page-tab.active { background: #fff; border-color: #fff; color: #111; }
 
 /* ── Marketplace storefront ─────────────────────────────── */
 .mkt-hero {
