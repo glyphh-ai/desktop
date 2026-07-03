@@ -8,7 +8,9 @@
  * OS windows — nothing renders inside the Glyphh client.
  */
 
-import { screen } from "electron";
+import { screen, app as electronApp } from "electron";
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
 import { cachedServerGet } from "./server-cache.js";
 import {
   openAppWindowAt, openAppWindowSlide, openLayoutInWindow,
@@ -16,13 +18,34 @@ import {
 } from "./app-window-manager.js";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
 import {
-  positionAppWindow, focusWindow, setWindowBounds,
+  positionAppWindow, focusWindow, setWindowBounds, listWindows,
   snapshotWindowIds, waitForAppWindow, listOsApps, focusOsAppFullscreen,
   type Rect as OsRect,
 } from "./os-window-manager.js";
 import { findInstalledApp, launchInstalledApp, normKey, isSubsequence } from "./installed-apps.js";
 import { openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host.js";
 import { getMainWindowRef } from "./main-window-ref.js";
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// ── Window-manager debug logging ─────────────────────────────────────
+// Writes to <userData logs>/window-debug.log AND the main-process console so a
+// native-window repro (which config's window gets opened/placed) is traceable.
+// Temporary diagnostics for the two-same-binary-configs (e.g. two Terminals) bug.
+let winDbgPath = "";
+function wlog(...parts: unknown[]): void {
+  const line = `[win-dbg ${new Date().toISOString()}] ` +
+    parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ");
+  console.error(line);
+  try {
+    if (!winDbgPath) winDbgPath = join(electronApp.getPath("logs"), "window-debug.log");
+    appendFileSync(winDbgPath, line + "\n");
+  } catch { /* logging must never throw */ }
+}
+/** Snapshot of the tracked map (app-id → window-id) for logging. */
+function trackedSnapshot(): Record<string, string> {
+  return Object.fromEntries([...nativeAppWindows.entries()]);
+}
 
 /** The seeded "Glyphh" system app (archetype 'glyphh-self') — the palette's
  *  permanent top-left card. Opening it focuses Glyphh's own window; its
@@ -86,14 +109,36 @@ const nativeOpenChains = new Map<string, Promise<void>>();
  */
 async function openNativeTracked(app: ServerApp, rect: OsRect, retileOnFocus: boolean): Promise<void> {
   const hint = (app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name;
+  wlog("openNativeTracked ENTER", { id: app.id, slug: app.slug, name: app.name, hint, exec: app.execPath, archetype: app.appArchetype, launchConfig: app.launchConfig, retileOnFocus, rect, map: trackedSnapshot() });
 
   const tracked = nativeAppWindows.get(app.id);
   if (tracked) {
-    if (await focusWindow(tracked)) {
-      if (retileOnFocus) await setWindowBounds(tracked, rect);
+    // Minimized windows are excluded from the on-screen list — detect that so
+    // we can re-apply bounds after the un-minimize animation (a single bounds
+    // write mid-genie-animation is dropped, leaving the window at its old size
+    // instead of full-screen).
+    const visible = (await listWindows().catch(() => []));
+    const trackedWin = visible.find((w) => w.id === tracked);
+    const wasMinimized = !trackedWin;
+    wlog("  tracked hit", { tracked, wasMinimized, trackedWin: trackedWin ? { proc: trackedWin.proc, title: trackedWin.title } : null });
+    const focused = await focusWindow(tracked);
+    wlog("  focusWindow(tracked)", { tracked, focused });
+    if (focused) {
+      if (retileOnFocus) {
+        await setWindowBounds(tracked, rect);
+        if (wasMinimized) {
+          // Re-apply as the unminimize settles so it lands full work-area.
+          await sleep(180); await setWindowBounds(tracked, rect);
+          await sleep(280); await setWindowBounds(tracked, rect);
+        }
+      }
+      wlog("  DONE via tracked-focus", { id: app.id, tracked });
       return;
     }
+    wlog("  focus FAILED — dropping tracked + relaunching", { id: app.id, tracked });
     nativeAppWindows.delete(app.id); // window was closed — relaunch below
+  } else {
+    wlog("  no tracked window for this config — will launch/adopt");
   }
 
   // Gate settles when the launch has been issued (or failed) — the adopt
@@ -105,17 +150,29 @@ async function openNativeTracked(app: ServerApp, rect: OsRect, retileOnFocus: bo
   const key = hint.toLowerCase();
   const prev = nativeOpenChains.get(key) ?? Promise.resolve();
   const task = prev.then(async () => {
-    const before = await snapshotWindowIds(hint);
+    // Windows already owned by OTHER configs of this same binary (e.g. the
+    // second Terminal). They must be excluded from adoption so this launch
+    // can never claim another config's window — critical when they're
+    // minimized, since a minimized window is absent from the CGWindowList
+    // snapshot and would otherwise look "new" if the launch surfaces it.
+    const ownedByOthers = new Set(
+      [...nativeAppWindows.entries()].filter(([id]) => id !== app.id).map(([, wid]) => wid),
+    );
+    const snap = await snapshotWindowIds(hint);
+    const before = new Set([...snap, ...ownedByOthers]);
+    wlog("  relaunch: snapshot", { id: app.id, hint, snapshot: [...snap], ownedByOthers: [...ownedByOthers] });
     const r = launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
-    if (!r.ok) { launchFailed(new Error(r.error || "failed to launch native app")); return; }
+    if (!r.ok) { wlog("  launch FAILED", { id: app.id, err: r.error }); launchFailed(new Error(r.error || "failed to launch native app")); return; }
     launched();
-    const w = await waitForAppWindow(hint, before);
-    if (!w) { console.error(`[app-resolver] no window appeared for "${app.name}" (${hint})`); return; }
+    const w = await waitForAppWindow(hint, before, { forbidden: ownedByOthers });
+    if (!w) { wlog("  no window appeared after launch", { id: app.id, hint }); console.error(`[app-resolver] no window appeared for "${app.name}" (${hint})`); return; }
+    wlog("  ADOPTED window", { id: app.id, slug: app.slug, adopted: w.id, proc: w.proc, title: w.title, map: trackedSnapshot() });
     nativeAppWindows.set(app.id, w.id);
     await setWindowBounds(w.id, rect);
     // Raise the placed window — without this a layout can tile windows that
     // stay buried under unrelated apps (bounds don't change z-order).
     await focusWindow(w.id);
+    wlog("  DONE via launch-adopt", { id: app.id, adopted: w.id });
   });
   nativeOpenChains.set(key, task.catch(() => {}));
   await launchGate;
@@ -197,6 +254,8 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
 
   const apps = await cachedServerGet<ServerApp[]>("/api/panel-apps");
   const app = findLibraryApp(apps, ref);
+  wlog("openAppByRef", { ref, resolved: app ? { id: app.id, slug: app.slug, name: app.name, exec: app.execPath } : null,
+    candidates: apps.filter((a) => (a.name + " " + (a.slug || "")).toLowerCase().includes(key)).map((a) => ({ id: a.id, slug: a.slug, name: a.name })) });
   if (!app) {
     // Not in the library — fall back to any app installed on this machine
     // (macOS: .app bundles in the standard folders). `open -a` launches a
@@ -314,6 +373,7 @@ export async function openLayoutByName(
     const app = apps.find((a) => a.id === cell.panelId)
       || apps.find((a) => a.slug === key)
       || apps.find((a) => a.name.toLowerCase() === key);
+    wlog("layout cell", { panelId: cell.panelId, cell: { row: cell.row, col: cell.col, rowSpan: cell.rowSpan, colSpan: cell.colSpan }, bounds, resolved: app ? { id: app.id, slug: app.slug, name: app.name } : null });
     if (!app) { console.error(`[layout] cell "${cell.panelId}" — no matching app in library`); continue; }
 
     // The Glyphh system app → tile our own window into the cell.

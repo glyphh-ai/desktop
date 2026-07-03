@@ -5,7 +5,7 @@ import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./glyphh-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
 import { cachedServerGet, invalidateServerCache } from "./server-cache";
-import { listMarketplace, installMarketplaceApp } from "./marketplace";
+import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 import { openAppWindow } from "./app-window-manager";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch";
 import { openLayoutByName } from "./app-resolver";
@@ -119,6 +119,10 @@ function registerPanelAppsIpc(): void {
     } catch {
       return { items: [], total: 0, page: 1, pageSize: 12, categories: [], featured: [], popular: [] };
     }
+  });
+  ipcMain.handle("marketplace-detail", async (_e, id: string) => {
+    try { return await getMarketplaceApp(String(id)); }
+    catch { return null; }
   });
   ipcMain.handle("marketplace-install", async (_e, id: string) => installMarketplaceApp(String(id)));
   // input/patch are forwarded verbatim to the server, which validates and

@@ -61,10 +61,28 @@ export interface MarketplaceApp {
   scope: "public" | "private";
   featured: boolean;       // sponsored strip
   popular: boolean;        // popular strip
+  connections: Array<{ name: string; slug: string }>;   // required connections (slug = Pipedream app id)
   version?: string;
   videoUrl?: string;
   mockups?: string[];
   installed: boolean;
+}
+
+/** Full detail payload for one marketplace app (Shopify-style listing page). */
+export interface MarketplaceAppDetail extends MarketplaceApp {
+  description: string;
+  highlights: string[];
+  worksWith: string[];
+  screenshots: Array<{ url: string; caption: string }>;
+  plans: Array<{ name: string; priceCredits: number; blurb?: string; features: string[] }>;
+  ratingBreakdown: Array<{ stars: number; count: number }>;
+  reviews: Array<{ author: string; location?: string; rating: number; date: string; body: string; usage?: string }>;
+  launchedAt: string;
+  updatedAt?: string;
+  website?: string;
+  dataAccess: string[];
+  languages: string[];
+  similar: MarketplaceApp[];
 }
 
 contextBridge.exposeInMainWorld("yo", {
@@ -169,6 +187,8 @@ contextBridge.exposeInMainWorld("yo", {
     categories: Array<{ id: string; label: string; count: number }>;
     featured: MarketplaceApp[]; popular: MarketplaceApp[];
   }>,
+  marketplaceDetail: (id: string) =>
+    ipcRenderer.invoke("marketplace-detail", id) as Promise<MarketplaceAppDetail | null>,
   marketplaceInstall: (id: string) =>
     ipcRenderer.invoke("marketplace-install", id) as Promise<{ ok: boolean; slug?: string; error?: string }>,
 

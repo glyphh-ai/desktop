@@ -52,7 +52,25 @@ type MarketplaceApp = {
   iconUrl?: string; developer: { name: string; verified: boolean };
   rating: number; ratingCount: number; priceCredits: number; category: string;
   scope: "public" | "private"; featured: boolean; popular: boolean;
+  connections: Array<{ name: string; slug: string }>;
   version?: string; videoUrl?: string; mockups?: string[]; installed: boolean;
+};
+
+// Mirrors preload.ts MarketplaceAppDetail — the full listing-page payload.
+type MarketplaceAppDetail = MarketplaceApp & {
+  description: string;
+  highlights: string[];
+  worksWith: string[];
+  screenshots: Array<{ url: string; caption: string }>;
+  plans: Array<{ name: string; priceCredits: number; blurb?: string; features: string[] }>;
+  ratingBreakdown: Array<{ stars: number; count: number }>;
+  reviews: Array<{ author: string; location?: string; rating: number; date: string; body: string; usage?: string }>;
+  launchedAt: string;
+  updatedAt?: string;
+  website?: string;
+  dataAccess: string[];
+  languages: string[];
+  similar: MarketplaceApp[];
 };
 
 // Mirrors preload.ts PanelAppInput — fields forwarded to /api/panel-apps.
@@ -115,6 +133,7 @@ declare global {
         categories: Array<{ id: string; label: string; count: number }>;
         featured: MarketplaceApp[]; popular: MarketplaceApp[];
       }>;
+      marketplaceDetail: (id: string) => Promise<MarketplaceAppDetail | null>;
       marketplaceInstall: (id: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;

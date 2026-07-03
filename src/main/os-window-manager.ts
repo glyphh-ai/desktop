@@ -306,9 +306,14 @@ export async function focusOsAppFullscreen(proc: string): Promise<boolean> {
       }
     }
   } catch { /* fall through */ }
-  // No enumerable window (e.g. all minimized on macOS) — plain app focus
-  // still unminimizes + activates.
-  return focusOsApp(name);
+  // No enumerable window — e.g. the app is MINIMIZED on macOS, which excludes
+  // it from the on-screen window list. Plain app focus unminimizes + activates,
+  // but that alone reopens the window at its old size/position. Once it's back
+  // on screen, poll for it and land it full work-area (same contract as an
+  // already-visible app), so a minimized app still opens full-screen.
+  const focused = await focusOsApp(name);
+  if (focused) await positionAppWindow(name, workArea());
+  return focused;
 }
 
 /**
@@ -360,15 +365,21 @@ export async function snapshotWindowIds(hint: string): Promise<Set<string>> {
  * Launches that reuse an existing window (Terminal tab/blank modes) never
  * produce a new id — after `graceMs` we fall back to the frontmost existing
  * match (enumeration is front-to-back), which is where the new tab landed.
+ *
+ * `opts.forbidden` — windows that must NEVER be adopted (e.g. owned by another
+ * config of the same binary). The reuse fallback skips these, so two Terminal
+ * configs can't collapse onto one window; if the only candidates are forbidden,
+ * this returns null rather than steal another config's window.
  */
 export async function waitForAppWindow(
   hint: string,
   excludeIds: Set<string>,
-  opts?: { timeoutMs?: number; graceMs?: number; pollMs?: number },
+  opts?: { timeoutMs?: number; graceMs?: number; pollMs?: number; forbidden?: Set<string> },
 ): Promise<OsWindow | null> {
   const timeoutMs = opts?.timeoutMs ?? 10_000;
   const graceMs = opts?.graceMs ?? 2_000;
   const pollMs = opts?.pollMs ?? 150;
+  const forbidden = opts?.forbidden ?? new Set<string>();
   const t0 = Date.now();
   let fallback: OsWindow | null = null;
   while (Date.now() - t0 < timeoutMs) {
@@ -376,7 +387,9 @@ export async function waitForAppWindow(
       const matches = (await listWindows()).filter((w) => windowMatches(w, hint));
       const fresh = matches.find((w) => !excludeIds.has(w.id));
       if (fresh) return fresh;
-      if (!fallback && matches.length > 0) fallback = matches[0];
+      // Reuse fallback: frontmost matching window that isn't owned by another
+      // config. Never latch a forbidden window (that's the cross-wiring bug).
+      if (!fallback) fallback = matches.find((w) => !forbidden.has(w.id)) ?? null;
       if (fallback && Date.now() - t0 >= graceMs) return fallback;
     } catch { /* retry */ }
     await sleep(pollMs);

@@ -246,6 +246,8 @@ type MktApp = Awaited<ReturnType<typeof window.yo.marketplaceList>>["items"][num
 
 const marketplaceLibraryPage = document.getElementById("apps-library-page")!;
 const marketplacePage = document.getElementById("apps-marketplace-page")!;
+const mktStoreEl = document.getElementById("mkt-store")!;
+const mktDetailEl = document.getElementById("mkt-detail")!;
 const mktSearchInput = document.getElementById("mkt-search") as HTMLInputElement;
 const mktSortSelect = document.getElementById("mkt-sort") as HTMLSelectElement;
 const mktCategoriesEl = document.getElementById("mkt-categories")!;
@@ -269,46 +271,63 @@ function escMkt(s: string): string {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-/** ★★★★☆ row for a rating (whole + half stars). */
-function stars(rating: number): string {
-  const full = Math.floor(rating);
-  const half = rating - full >= 0.5;
-  let out = "";
-  for (let i = 0; i < 5; i++) out += i < full ? "★" : (i === full && half ? "◐" : "☆");
-  return `<span class="mkt-stars">${out}</span>`;
+// Canonical domain per connection slug — feeds appIconInner's favicon fallback
+// so a real brand icon still shows if the Pipedream catalog icon isn't cached.
+const CONN_DOMAIN: Record<string, string> = {
+  slack: "slack.com", gmail: "mail.google.com", notion: "notion.so", github: "github.com",
+  linear: "linear.app", google_sheets: "sheets.google.com", hubspot: "hubspot.com",
+  stripe: "stripe.com", figma: "figma.com", google_calendar: "calendar.google.com",
+  snowflake: "snowflake.com", google_drive: "drive.google.com", google_slides: "slides.google.com",
+  okta: "okta.com", zendesk: "zendesk.com",
+};
+
+/** A single required-connection icon — identical to the Layouts row
+ *  (appIconInner, icon only, name on hover), just sized smaller. Resolution
+ *  order matches the rest of the app: Pipedream catalog icon → favicon → initial. */
+function mktConnChip(conn: { name: string; slug: string }): string {
+  const domain = CONN_DOMAIN[conn.slug];
+  const app = { url: domain ? `https://${domain}` : undefined, connection: { accountId: "mkt", pipedreamSlug: conn.slug } };
+  return `<span class="mkt-conn" title="${escMkt(conn.name)}">${appIconInner(app, conn.name, "mkt-conn-initial")}</span>`;
 }
 
-const verifiedBadge = `<svg class="mkt-verified" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" title="Verified developer"><path d="m9 12 2 2 4-4"/><path d="M12 2 4 5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V5l-8-3z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+/** Row of required-connection icons (icons only, like the Layouts card). */
+function mktConnRow(conns: Array<{ name: string; slug: string }>): string {
+  if (!conns || conns.length === 0) return "";
+  return `<div class="mkt-conns">${conns.map(mktConnChip).join("")}</div>`;
+}
+
+/** Pseudo-apps (connection-only) to hand to primeConnectedIcons so it fetches
+ *  the Pipedream catalog icon for every required-connection slug on screen. */
+function mktConnIconApps(conns: Array<{ slug: string }>): Array<{ connection: { accountId: string; pipedreamSlug: string } }> {
+  const slugs = new Set(conns.map((c) => c.slug));
+  return [...slugs].map((slug) => ({ connection: { accountId: "mkt", pipedreamSlug: slug } }));
+}
 
 function mktCard(app: MktApp, variant: "grid" | "row" | "featured"): HTMLElement {
   const card = document.createElement("div");
   card.className = `mkt-card mkt-card-${variant}`;
-  const price = app.priceCredits > 0 ? `${app.priceCredits} credits/mo` : "Free";
+  const price = app.priceCredits > 0 ? `${app.priceCredits} credits/mo` : "Free plan available";
   const icon = app.iconUrl ? `<img src="${escMkt(app.iconUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt((app.name || "?").charAt(0).toUpperCase())}</span>`;
   card.innerHTML = `
     <div class="mkt-card-top">
       <div class="mkt-card-icon">${icon}</div>
       <div class="mkt-card-head">
         <div class="mkt-card-name">${escMkt(app.name)}</div>
-        <div class="mkt-card-dev">${escMkt(app.developer.name)}${app.developer.verified ? verifiedBadge : ""}</div>
+        <div class="mkt-card-metaline">
+          ${app.featured ? `<span class="mkt-ad">Ad</span>` : ""}
+          <span class="mkt-rating"><b>${app.rating.toFixed(1)}</b> <span class="mkt-stars">★</span> <span class="mkt-rating-count">(${app.ratingCount.toLocaleString()})</span></span>
+          <span class="mkt-dot">•</span>
+          <span class="mkt-price">${escMkt(price)}</span>
+        </div>
       </div>
     </div>
     <div class="mkt-card-tagline">${escMkt(app.tagline)}</div>
-    <div class="mkt-card-meta">
-      <span class="mkt-rating">${stars(app.rating)} <b>${app.rating.toFixed(1)}</b> <span class="mkt-rating-count">(${app.ratingCount.toLocaleString()})</span></span>
-      <span class="mkt-price">${price}</span>
-    </div>
-    <button class="action-btn ${app.installed ? "" : "primary"} mkt-install" ${app.installed ? "disabled" : ""}>${app.installed ? "Installed" : "Install"}</button>`;
-  const btn = card.querySelector(".mkt-install") as HTMLButtonElement;
-  if (!app.installed) {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      btn.disabled = true; btn.textContent = "Installing…";
-      const res = await window.yo.marketplaceInstall(app.id);
-      if (res.ok) { btn.textContent = "Installed"; void loadMarketplace(); }
-      else { btn.disabled = false; btn.textContent = "Install"; btn.title = res.error || ""; flashMktNote(res.error || "Install failed"); }
-    });
-  }
+    ${mktConnRow(app.connections)}`;
+  // The whole card is a link into the detail page — no per-card Install button.
+  card.setAttribute("role", "link");
+  card.tabIndex = 0;
+  card.addEventListener("click", () => void openMktDetail(app.id));
+  card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openMktDetail(app.id); } });
   return card;
 }
 
@@ -338,16 +357,28 @@ function renderMktCategories(cats: Array<{ id: string; label: string; count: num
   for (const c of cats) mktCategoriesEl.appendChild(chip(c.id, c.label, c.count));
 }
 
+type MktRes = Awaited<ReturnType<typeof window.yo.marketplaceList>>;
+let lastMktRes: MktRes | null = null;
+
 async function loadMarketplace(): Promise<void> {
   mktListEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
-  let res: Awaited<ReturnType<typeof window.yo.marketplaceList>>;
   try {
-    res = await window.yo.marketplaceList({ scope: mktScope, category: mktCategory || undefined, q: mktQuery || undefined, sort: mktSort, page: mktPage });
+    lastMktRes = await window.yo.marketplaceList({ scope: mktScope, category: mktCategory || undefined, q: mktQuery || undefined, sort: mktSort, page: mktPage });
   } catch {
+    lastMktRes = null;
     mktListEl.innerHTML = `<div class="crud-empty">Marketplace unavailable right now.</div>`;
     return;
   }
+  renderMktStorefront(lastMktRes);
+  // Fetch the real Pipedream catalog icons for every required connection on
+  // screen, then re-render so chips swap from initials to the icons the Apps
+  // and Layouts pages use. primeConnectedIcons only re-fires for uncached
+  // slugs, so this can't loop.
+  const conns = [...lastMktRes.featured, ...lastMktRes.popular, ...lastMktRes.items].flatMap((a) => a.connections);
+  void primeConnectedIcons(mktConnIconApps(conns), () => { if (lastMktRes) renderMktStorefront(lastMktRes); });
+}
 
+function renderMktStorefront(res: MktRes): void {
   renderMktCategories(res.categories);
 
   // Strips only on the default view (no search / category / non-first page).
@@ -393,12 +424,228 @@ async function loadMarketplace(): Promise<void> {
   }
 }
 
+// ── App detail page (Shopify-style listing) ──────────────
+type MktDetail = NonNullable<Awaited<ReturnType<typeof window.yo.marketplaceDetail>>>;
+
+const MKT_CATEGORY_LABELS: Record<string, string> = {
+  productivity: "Productivity", communication: "Communication", developer: "Developer tools",
+  ai: "AI & automation", marketing: "Marketing & sales", finance: "Finance",
+  design: "Design", data: "Data & analytics",
+};
+const mktCheckIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4.5 4.5L19 7"/></svg>`;
+const mktDotIcon = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>`;
+
+/** 5-glyph star row for a rating (rounded). */
+function mktStarRow(rating: number): string {
+  const full = Math.max(0, Math.min(5, Math.round(rating)));
+  return `<span class="mkt-stars">${"★".repeat(full)}${"☆".repeat(5 - full)}</span>`;
+}
+
+/** Hide the detail page and return to the storefront grid. */
+function closeMktDetail(): void {
+  mktDetailEl.classList.add("hidden");
+  mktDetailEl.innerHTML = "";
+  mktStoreEl.classList.remove("hidden");
+  marketplacePage.scrollTop = 0;
+}
+
+/** Load + show the detail page for one app id. */
+async function openMktDetail(id: string): Promise<void> {
+  mktStoreEl.classList.add("hidden");
+  mktDetailEl.classList.remove("hidden");
+  mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Loading…</div>`;
+  mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
+  marketplacePage.scrollTop = 0;
+
+  let detail: MktDetail | null = null;
+  try { detail = await window.yo.marketplaceDetail(id); }
+  catch { detail = null; }
+  if (!detail) {
+    mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Couldn't load this app right now.</div>`;
+    mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
+    return;
+  }
+  renderMktDetail(detail);
+}
+
+function renderMktDetail(d: MktDetail): void {
+  const catLabel = MKT_CATEGORY_LABELS[d.category] || "Apps";
+  const priceLabel = d.priceCredits > 0 ? `From ${d.priceCredits} credits/mo` : "Free plan available";
+  const ctaNote = d.priceCredits > 0 ? "Free trial available" : "Free to install";
+  const total = d.ratingCount || d.ratingBreakdown.reduce((a, b) => a + b.count, 0) || 1;
+
+  const highlights = d.highlights.map((h) => `<li>${mktCheckIcon}<span>${escMkt(h)}</span></li>`).join("");
+  const paras = d.description.split("\n\n").map((p) => `<p>${escMkt(p)}</p>`).join("");
+
+  const plans = d.plans.map((p) => `
+    <div class="mkt-plan">
+      <div class="mkt-plan-name">${escMkt(p.name)}</div>
+      <div class="mkt-plan-price">${p.priceCredits > 0 ? `${p.priceCredits}<small> credits/mo</small>` : "Free"}</div>
+      ${p.blurb ? `<div class="mkt-plan-blurb">${escMkt(p.blurb)}</div>` : ""}
+      <ul class="mkt-plan-features">${p.features.map((f) => `<li>${mktCheckIcon}<span>${escMkt(f)}</span></li>`).join("")}</ul>
+    </div>`).join("");
+
+  const bars = d.ratingBreakdown.map((b) => {
+    const pct = Math.round((b.count / total) * 100);
+    return `<div class="mkt-bar-row"><span>${b.stars} star</span><div class="mkt-bar-track"><div class="mkt-bar-fill" style="width:${pct}%"></div></div><span class="pct">${pct}%</span></div>`;
+  }).join("");
+
+  const reviews = d.reviews.map((r) => `
+    <div class="mkt-review">
+      <div class="mkt-review-head">${mktStarRow(r.rating)}<span class="mkt-review-date">${escMkt(r.date)}</span></div>
+      <p class="mkt-review-body">${escMkt(r.body)}</p>
+      <div class="mkt-review-who"><b>${escMkt(r.author)}</b>${r.location ? ` · ${escMkt(r.location)}` : ""}${r.usage ? ` · ${escMkt(r.usage)}` : ""}</div>
+    </div>`).join("");
+
+  const works = d.worksWith.map((w) => `<li><span class="dot"></span>${escMkt(w)}</li>`).join("");
+  const dataAccess = d.dataAccess.map((a) => `<li>${mktDotIcon}<span>${escMkt(a)}</span></li>`).join("");
+
+  const installBtn = d.installed
+    ? `<button class="action-btn mkt-dt-install" disabled>Installed</button>`
+    : `<button class="action-btn primary mkt-dt-install">Install</button>`;
+
+  const icon = d.iconUrl ? `<img src="${escMkt(d.iconUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt((d.name || "?").charAt(0).toUpperCase())}</span>`;
+
+  mktDetailEl.innerHTML = `
+    <button class="mkt-back">‹ Back to marketplace</button>
+    <nav class="mkt-crumbs">Marketplace<span class="sep">›</span><a class="mkt-crumb-cat" href="#">${escMkt(catLabel)}</a><span class="sep">›</span><span class="cur">${escMkt(d.name)}</span></nav>
+
+    <header class="mkt-dt-hero">
+      <div class="mkt-dt-icon">${icon}</div>
+      <div class="mkt-dt-headmain">
+        <h1 class="mkt-dt-name">${escMkt(d.name)}</h1>
+        <p class="mkt-dt-tagline">${escMkt(d.tagline)}</p>
+        <div class="mkt-dt-metarow">
+          <span class="mkt-dt-dev">by <b>${escMkt(d.developer.name)}</b></span>
+          ${mktConnRow(d.connections)}
+        </div>
+        <div class="mkt-dt-statrow">${mktStarRow(d.rating)}<b>${d.rating.toFixed(1)}</b><span>(${d.ratingCount.toLocaleString()} reviews)</span><span class="mkt-dot">•</span><span>${escMkt(priceLabel)}</span></div>
+      </div>
+      <div class="mkt-dt-cta">
+        ${installBtn}
+        <div class="mkt-dt-price-note">${escMkt(ctaNote)}</div>
+      </div>
+    </header>
+
+    <div class="mkt-dt-body">
+      <div class="mkt-dt-main">
+        <section class="mkt-dt-section mkt-gallery">
+          <div class="mkt-gallery-main"><img id="mkt-shot-main" src="${escMkt(d.screenshots[0]?.url || "")}" alt="" /></div>
+          <div class="mkt-gallery-caption" id="mkt-shot-caption">${escMkt(d.screenshots[0]?.caption || "")}</div>
+          <div class="mkt-gallery-thumbs">
+            ${d.screenshots.map((s, i) => `<button class="mkt-thumb${i === 0 ? " active" : ""}" data-i="${i}"><img src="${escMkt(s.url)}" alt="" /></button>`).join("")}
+          </div>
+        </section>
+
+        <section class="mkt-dt-section">
+          <h3>Highlights</h3>
+          <ul class="mkt-highlights">${highlights}</ul>
+        </section>
+
+        <section class="mkt-dt-section mkt-dt-desc">
+          <h3>About ${escMkt(d.name)}</h3>
+          ${paras}
+        </section>
+
+        <section class="mkt-dt-section">
+          <h3>Pricing</h3>
+          <div class="mkt-plans">${plans}</div>
+          <div class="mkt-plans-note">All charges are billed in Glyphh compute credits. ${d.priceCredits > 0 ? "Free trial available." : ""}</div>
+        </section>
+
+        <section class="mkt-dt-section">
+          <h3>Reviews</h3>
+          <div class="mkt-reviews-summary">
+            <div class="mkt-reviews-score">
+              <div class="big">${d.rating.toFixed(1)}</div>
+              ${mktStarRow(d.rating)}
+              <div class="cnt">${d.ratingCount.toLocaleString()} reviews</div>
+            </div>
+            <div class="mkt-reviews-bars">${bars}</div>
+          </div>
+          <div class="mkt-review-list">${reviews}</div>
+        </section>
+
+        ${d.similar.length ? `<section class="mkt-dt-section"><h3>More apps like this</h3><div class="mkt-grid" id="mkt-similar"></div></section>` : ""}
+      </div>
+
+      <aside class="mkt-dt-side">
+        <div class="mkt-side-card">
+          <h4>Works with</h4>
+          <ul class="mkt-works">${works}</ul>
+        </div>
+        <div class="mkt-side-card">
+          <h4>Resources</h4>
+          <div class="mkt-side-row"><span>Developer</span><b>${escMkt(d.developer.name)}</b></div>
+          ${d.website ? `<div class="mkt-side-row"><span>Website</span><a class="mkt-ext" data-url="${escMkt(d.website)}" href="#">${escMkt(d.website.replace(/^https?:\/\//, ""))}</a></div>` : ""}
+          <div class="mkt-side-row"><span>Launched</span><b>${escMkt(d.launchedAt)}</b></div>
+          ${d.updatedAt ? `<div class="mkt-side-row"><span>Changelog</span><b>${escMkt(d.updatedAt)}</b></div>` : ""}
+          <div class="mkt-side-row"><span>Category</span><b>${escMkt(catLabel)}</b></div>
+          <div class="mkt-side-row"><span>Languages</span><b>${escMkt(d.languages.join(", "))}</b></div>
+          ${d.version ? `<div class="mkt-side-row"><span>Version</span><b>${escMkt(d.version)}</b></div>` : ""}
+        </div>
+        <div class="mkt-side-card">
+          <h4>Data access</h4>
+          <ul class="mkt-dataaccess">${dataAccess}</ul>
+        </div>
+      </aside>
+    </div>`;
+
+  // Wire interactions.
+  mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
+  mktDetailEl.querySelector(".mkt-crumb-cat")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    mktCategory = d.category; mktQuery = ""; mktPage = 1;
+    if (mktSearchInput) mktSearchInput.value = "";
+    closeMktDetail(); void loadMarketplace();
+  });
+  mktDetailEl.querySelector(".mkt-ext")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    const url = (e.currentTarget as HTMLElement).dataset.url;
+    if (url) void window.yo.execCommand(`dip ${url}`);
+  });
+
+  const mainImg = mktDetailEl.querySelector("#mkt-shot-main") as HTMLImageElement | null;
+  const cap = mktDetailEl.querySelector("#mkt-shot-caption") as HTMLElement | null;
+  for (const t of Array.from(mktDetailEl.querySelectorAll<HTMLButtonElement>(".mkt-thumb"))) {
+    t.addEventListener("click", () => {
+      const i = Number(t.dataset.i);
+      const s = d.screenshots[i];
+      if (!s || !mainImg) return;
+      mainImg.src = s.url;
+      if (cap) cap.textContent = s.caption;
+      mktDetailEl.querySelectorAll(".mkt-thumb").forEach((x) => x.classList.toggle("active", x === t));
+    });
+  }
+
+  const installEl = mktDetailEl.querySelector(".mkt-dt-install") as HTMLButtonElement | null;
+  if (installEl && !d.installed) {
+    installEl.addEventListener("click", async () => {
+      installEl.disabled = true; installEl.textContent = "Installing…";
+      const res = await window.yo.marketplaceInstall(d.id);
+      if (res.ok) { installEl.textContent = "Installed"; }
+      else { installEl.disabled = false; installEl.textContent = "Install"; flashMktNote(res.error || "Install failed"); }
+    });
+  }
+
+  const similarWrap = mktDetailEl.querySelector("#mkt-similar");
+  if (similarWrap) for (const a of d.similar) similarWrap.appendChild(mktCard(a, "grid"));
+
+  // Real connection icons for the hero chips + similar cards, then re-render
+  // (only if this detail is still on screen).
+  const conns = [...d.connections, ...d.similar.flatMap((s) => s.connections)];
+  void primeConnectedIcons(mktConnIconApps(conns), () => {
+    if (!mktDetailEl.classList.contains("hidden")) renderMktDetail(d);
+  });
+}
+
 /** Switch between the "My apps" library and the Marketplace storefront. */
 function switchAppsPage(page: "library" | "marketplace"): void {
   document.querySelectorAll<HTMLButtonElement>(".apps-page-tab").forEach((t) => t.classList.toggle("active", t.dataset.page === page));
   marketplaceLibraryPage.classList.toggle("hidden", page !== "library");
   marketplacePage.classList.toggle("hidden", page !== "marketplace");
-  if (page === "marketplace") void loadMarketplace();
+  // Marketplace is temporarily "Coming Soon" (storefront hidden in markup).
+  // To re-enable, restore: if (page === "marketplace") { closeMktDetail(); void loadMarketplace(); }
 }
 
 // ── Tab switching ────────────────────────────────────────
@@ -1177,6 +1424,14 @@ function initApps() {
   mktSortSelect?.addEventListener("change", () => {
     mktSort = (mktSortSelect.value as "popular" | "rating" | "newest") || "popular";
     mktPage = 1; void loadMarketplace();
+  });
+  // Refresh — reload the current storefront view.
+  const mktRefreshBtn = document.getElementById("mkt-refresh");
+  mktRefreshBtn?.addEventListener("click", async () => {
+    mktRefreshBtn.classList.add("spinning");
+    closeMktDetail();
+    await loadMarketplace();
+    mktRefreshBtn.classList.remove("spinning");
   });
 
   document.getElementById("apps-add-btn")!.addEventListener("click", () => {
