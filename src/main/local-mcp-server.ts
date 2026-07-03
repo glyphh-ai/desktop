@@ -204,8 +204,8 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "app_install",
-    "Install (or update) a Glyphh app on the user's machine from a .yoapp bundle so its tools become available. Pass the bundle as base64. Re-installing the same slug updates it in place.",
-    { bundleBase64: z.string().describe("The .yoapp bundle (a zip) as a base64 string") },
+    "Install (or update) a Glyphh app on the user's machine from a .glyphh bundle so its tools become available. Pass the bundle as base64. Re-installing the same slug updates it in place.",
+    { bundleBase64: z.string().describe("The .glyphh bundle (a zip) as a base64 string") },
     async ({ bundleBase64 }) => via("apps.install", { bundleBase64 }),
   );
 

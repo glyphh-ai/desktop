@@ -1,6 +1,6 @@
 /**
  * glyphh-app-host — runtime for installable "Glyphh apps" (the marketplace
- * unit). A Glyphh app is a .yoapp zip:
+ * unit). A Glyphh app is a .glyphh zip:
  *
  *   manifest.json   { manifestVersion, kind:"glyphh-app", name, slug, entry,
  *                     capabilities: ["contacts.search", "messages.send", …],
@@ -146,7 +146,7 @@ export function readGlyphhAppManifest(json: string): GlyphhAppManifest | null {
   return m;
 }
 
-/** Peek a .yoapp zip's manifest to see if it's a glyphh-app (vs a legacy app). */
+/** Peek a .glyphh zip's manifest to see if it's a glyphh-app (vs a legacy app). */
 export function isGlyphhAppBundle(zipPath: string): boolean {
   try {
     const entry = new AdmZip(zipPath).getEntry("manifest.json");
@@ -160,12 +160,12 @@ export function isGlyphhAppBundle(zipPath: string): boolean {
 // ── install ─────────────────────────────────────────────────
 
 /**
- * Install a .yoapp glyphh-app bundle: extract it locally and create the
+ * Install a .glyphh glyphh-app bundle: extract it locally and create the
  * server app row. Returns { ok, name } or { ok:false, error }.
  */
 export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string }> {
   let zip: AdmZip;
-  try { zip = new AdmZip(zipPath); } catch { return { ok: false, error: "Not a readable .yoapp bundle" }; }
+  try { zip = new AdmZip(zipPath); } catch { return { ok: false, error: "Not a readable .glyphh bundle" }; }
   const entry = zip.getEntry("manifest.json");
   if (!entry) return { ok: false, error: "Bundle has no manifest.json" };
   const manifest = readGlyphhAppManifest(entry.getData().toString("utf8"));
@@ -452,11 +452,11 @@ async function runCapability(
 
 // ── Install from a base64 bundle (MCP app_install / apps.install) ────────────
 
-/** Install a .yoapp handed over as base64 (Claude deploying an app it built). */
+/** Install a .glyphh handed over as base64 (Claude deploying an app it built). */
 export async function installGlyphhAppBundleFromBase64(bundleBase64: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string }> {
   const b64 = String(bundleBase64 || "").replace(/^data:[^,]*,/, "");
   if (!b64) return { ok: false, error: "bundleBase64 is required" };
-  const tmp = path.join(os.tmpdir(), `glyphh-app-${process.pid}-${Buffer.from(b64).length}.yoapp`);
+  const tmp = path.join(os.tmpdir(), `glyphh-app-${process.pid}-${Buffer.from(b64).length}.glyphh`);
   try {
     fs.writeFileSync(tmp, Buffer.from(b64, "base64"));
     return await installGlyphhAppBundle(tmp);

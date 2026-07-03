@@ -355,7 +355,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("apps-set-connected-slug", () => false);
 
   // ── yo app package (import / export) ──────────────────────
-  // Export an app to a .yoapp bundle. Web apps are manifest-only; bundled apps
+  // Export an app to a .glyphh bundle. Web apps are manifest-only; bundled apps
   // carry their code/ assets. (Static-build bundling for vibe output is a TODO;
   // exportApp already supports a bundledCodeDir arg for when that lands.)
   ipcMain.handle("app-export", async (_e, appId: string) => {
@@ -366,26 +366,26 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     const safeName = (app.name || app.id).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || app.id;
     const result = await dialog.showSaveDialog(win, {
       title: "Export app",
-      defaultPath: `${safeName}.yoapp`,
-      filters: [{ name: "yo app", extensions: ["yoapp"] }],
+      defaultPath: `${safeName}.glyphh`,
+      filters: [{ name: "Glyphh app", extensions: ["glyphh"] }],
     });
     if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
-    const dest = result.filePath.endsWith(".yoapp") ? result.filePath : `${result.filePath}.yoapp`;
+    const dest = result.filePath.endsWith(".glyphh") ? result.filePath : `${result.filePath}.glyphh`;
     // Multi-file / local apps (file:// url) export WITH their code folder; remote
     // web apps (http/yo://) are manifest-only.
     const codeDir = localBundleDir(app.url);
     return exportApp(appConnector, appId, dest, codeDir);
   });
 
-  // Import a .yoapp bundle. A glyphh-app bundle (marketplace unit) installs as
-  // a server saved-app; a legacy .yoapp registers into the local connector.
+  // Import a .glyphh bundle. A glyphh-app bundle (marketplace unit) installs as
+  // a server saved-app; a legacy .glyphh registers into the local connector.
   ipcMain.handle("app-import", async () => {
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
     const result = await dialog.showOpenDialog(win, {
       title: "Install app",
       properties: ["openFile"],
-      filters: [{ name: "Glyphh app", extensions: ["yoapp"] }],
+      filters: [{ name: "Glyphh app", extensions: ["glyphh"] }],
     });
     if (result.canceled || result.filePaths.length === 0) return { ok: false, error: "Canceled" };
     const file = result.filePaths[0];

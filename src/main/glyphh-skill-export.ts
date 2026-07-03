@@ -47,7 +47,7 @@ paste a token generated in Glyphh → Settings → MCP as a Bearer header.
 **Installed app tools (the marketplace)**
 - \`app_list_tools\` — discover the MCP tools the user's installed Glyphh apps expose: \`[{ app, name, tools: [{ name, description, inputSchema }] }]\`.
 - \`app_call_tool { app, tool, args }\` — run one of those tools headlessly (e.g. send a message, create an event). \`args\` must match the tool's inputSchema.
-- \`app_install { bundleBase64 }\` — install/update a .yoapp bundle so its tools become available.
+- \`app_install { bundleBase64 }\` — install/update a .glyphh bundle so its tools become available.
 
 **Connected accounts**
 - \`connector_list_tools\` / \`connector_call_tool { slug, name, args }\` — call the user's connected apps' APIs (Slack, GitHub, Notion, …).

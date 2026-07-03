@@ -1,11 +1,11 @@
 ---
 name: build-glyphh-app
-description: Author a Glyphh app — a portable .yoapp bundle with a UI window, an optional headless worker (per-app SQLite, cron schedules, notifications), and/or MCP tools that surface on the user's Glyphh relay so any LLM can orchestrate them. Use when a developer or user wants to build, package, or deploy a Glyphh app (e.g. "make a Glyphh app that…", "build an app that tracks X and reminds me", "expose Y as a tool for my Glyphh"), or to expose a machine capability as an MCP tool for the user's Glyphh.
+description: Author a Glyphh app — a portable .glyphh bundle with a UI window, an optional headless worker (per-app SQLite, cron schedules, notifications), and/or MCP tools that surface on the user's Glyphh relay so any LLM can orchestrate them. Use when a developer or user wants to build, package, or deploy a Glyphh app (e.g. "make a Glyphh app that…", "build an app that tracks X and reminds me", "expose Y as a tool for my Glyphh"), or to expose a machine capability as an MCP tool for the user's Glyphh.
 ---
 
 # Build a Glyphh App
 
-A **Glyphh app** is a `.yoapp` bundle (a zip: `manifest.json` + `index.html` +
+A **Glyphh app** is a `.glyphh` bundle (a zip: `manifest.json` + `index.html` +
 optional `worker.js` + assets) that installs like any other app AND can expose
 **MCP tools** the user's LLM tools (Claude Desktop, Cowork, Cursor) discover and
 call through the Glyphh relay. Full contract: `docs/GLYPHH-APP-SPEC.md` (v2).
@@ -125,9 +125,9 @@ apps can't invent capabilities.
    ```
    Schema creation must be idempotent and run from BOTH worker and UI (either
    may start first).
-3. **Package**: `npm run pack:apps` → `dist-apps/<name>.yoapp`.
+3. **Package**: `npm run pack:apps` → `dist-apps/<name>.glyphh`.
 4. **Install / deploy**:
-   - Locally: Apps page → Import → pick the `.yoapp`.
+   - Locally: Apps page → Import → pick the `.glyphh`.
    - Remotely (Claude deploying for a user over MCP): base64 the bundle and call
      the `app_install` relay tool with `{ bundleBase64 }`. Install warm-starts
      the worker, so its cron schedules arm immediately.

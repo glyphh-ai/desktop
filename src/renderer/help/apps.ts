@@ -1306,7 +1306,7 @@ function initApps() {
     closeAppDetail();
   });
 
-  // Export the current app as a .yoapp bundle (main shows the save dialog).
+  // Export the current app as a .glyphh bundle (main shows the save dialog).
   document.getElementById("app-detail-export")?.addEventListener("click", async () => {
     if (!currentAppId) return;
     const btn = document.getElementById("app-detail-export") as HTMLButtonElement;
@@ -1323,7 +1323,7 @@ function initApps() {
     }
   });
 
-  // Import a .yoapp bundle (main shows the open dialog) → reload the apps list.
+  // Import a .glyphh bundle (main shows the open dialog) → reload the apps list.
   document.getElementById("apps-import-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("apps-import-btn") as HTMLButtonElement;
     const prev = btn.textContent;

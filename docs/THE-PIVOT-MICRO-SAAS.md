@@ -40,7 +40,7 @@ presence (MCP apps). We don't compete there. Our quadrant:
 
 Claude building apps natively is not the threat — it's the **supply
 chain**. Claude is the build plane; Glyphh is the run plane. Flagship
-demo: Claude builds a `.yoapp` mid-conversation, `app_install`s it, the
+demo: Claude builds a `.glyphh` mid-conversation, `app_install`s it, the
 app appears with its schedule armed, and Claude uses its tools forever
 after. *Claude builds it; Glyphh keeps it alive.* When MCP-UI matures,
 adopt it as an additional surface: the app renders in chat AND lives

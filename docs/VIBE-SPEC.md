@@ -23,7 +23,7 @@ to the real tool, or their work is locked in. We avoid all four.
 **One pipeline, run from whichever app fits you:**
 ```
 SPEC.md   →   plan.md   →   Claude Code builds   →   preview   →   ship
-(intent,      (living        (the real agent,         (browser tab) (.yoapp / repo)
+(intent,      (living        (the real agent,         (browser tab) (.glyphh / repo)
  durable,      checklist      same in every app)
  reviewable)   it maintains)
 ```
@@ -86,7 +86,7 @@ intact), not from `os-overlay` (which deleted it).**
 ## Core concept: everything is a yo app
 - `council`, `vibe`, `home`, `browser` … are all **yo apps** (`INTERNAL_APPS` in `app-connector.ts`, `yo://<id>`).
 - **The output of a vibe is itself a yo app** — when a vibe finishes building something, the result is registered as a yo app the user can add to their apps list.
-- yo apps are a **standard, portable unit**: importable / exportable as a `.yoapp` bundle (manifest + assets/code). Marketplace later; for now local import/export + "add to my apps."
+- yo apps are a **standard, portable unit**: importable / exportable as a `.glyphh` bundle (manifest + assets/code). Marketplace later; for now local import/export + "add to my apps."
 
 ## The workspace (implementation) — reuse what exists, don't spawn a parallel agent
 - **Center — Yo Editor (revive).** Bring back `code-workspace.*` + `monaco.html` (the tabbed Monaco shell) + `files-ipc.ts` (tree, read/write) + `code-index/` (search). Tabs host: code files (Monaco), the **SPEC.md** editor (a custom view for the spec page type, not a plain buffer), and the **Spec checklist** (renders `plan.md` as tasks + live progress + start/stop controls). `cwd = vibeCodeDir(id)`.
@@ -122,7 +122,7 @@ On "plan with a council": `createCouncil(...)` → run → `summarizeCouncil(id)
 
 ## yo app package (import / export) — later phase
 - **Manifest** (extend the app-connector app shape): `{ id, name, url | entry(html), commands?, mcp?, capturePolicy, version, kind:"web"|"bundled" }`.
-- **Export**: zip the app's manifest + (for bundled) its `code/` build → `<name>.yoapp`.
+- **Export**: zip the app's manifest + (for bundled) its `code/` build → `<name>.glyphh`.
 - **Import**: unzip → register via `app-connector.add(...)` → appears in the user's apps.
 - **Vibe output → app**: on "ship", register the built project as a yo app (web: url to its server; bundled: its built assets), set `meta.outputAppId`. The user adds it to their apps list.
 
@@ -131,7 +131,7 @@ On "plan with a council": `createCouncil(...)` → run → `summarizeCouncil(id)
 2. **Vibe registry + rail** — `vibe-store.ts`, `vibe-ipc.ts` (list/get/create/delete + open), rail Vibes list, open-by-id binds the workspace to `~/yo/vibes/<id>/`.
 3. **vibe-planner skill** — generate `plan.md` + `CLAUDE.md` from a goal on create.
 4. **Council → vibe feed** — synthesis seeds the plan.
-5. **yo app import/export** — `.yoapp` bundle; vibe "ship" registers the output as an app.
+5. **yo app import/export** — `.glyphh` bundle; vibe "ship" registers the output as an app.
 
 ## Build order — spec-driven refactor (current work)
 Three sibling yo apps share one agent + spec + repo. **VS Code (`yo://vscode`) is already

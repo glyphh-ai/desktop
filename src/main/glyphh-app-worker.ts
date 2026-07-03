@@ -22,7 +22,7 @@ import { grantAppCaps, revokeAppCaps } from "./glyphh-app-grants.js";
 export interface AppWorkerSpec {
   slug: string;
   name: string;
-  /** Directory the .yoapp was extracted to (the entry html's dir). */
+  /** Directory the .glyphh was extracted to (the entry html's dir). */
   appDir: string;
   /** Worker script path relative to appDir (manifest `worker`). */
   workerFile: string;

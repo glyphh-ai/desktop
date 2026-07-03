@@ -1,8 +1,8 @@
 /**
- * yo-app-package — export/import a yo app as a portable `.yoapp` bundle.
+ * yo-app-package — export/import a yo app as a portable `.glyphh` bundle.
  *
  * Concept (VIBE-SPEC "yo app package"): everything is a yo app, and a yo app is
- * a portable unit. A `.yoapp` is just a zip:
+ * a portable unit. A `.glyphh` is just a zip:
  *   manifest.json            # YoAppManifest (the app-connector app shape + version/kind)
  *   code/…                   # (bundled apps only) the built static assets
  *
@@ -84,7 +84,7 @@ export interface ExportResult {
 }
 
 /**
- * Export an app to a `.yoapp` zip at destPath.
+ * Export an app to a `.glyphh` zip at destPath.
  *
  * bundledCodeDir lets a caller (e.g. a vibe Ship-as-static flow) point at a
  * local assets dir to bundle. When omitted, an app is exported as kind:"web"
@@ -163,7 +163,7 @@ function uniqueAppId(appConnector: AppConnector, base: string): string {
 }
 
 /**
- * Import a `.yoapp` bundle: unzip, read manifest.json, dedupe the id, extract
+ * Import a `.glyphh` bundle: unzip, read manifest.json, dedupe the id, extract
  * bundled code/ (if any) to ~/yo/apps/<id>/code, then register the app so it
  * shows up in the user's apps list. Returns the (possibly deduped) appId.
  */
@@ -173,7 +173,7 @@ export function importApp(appConnector: AppConnector, srcPath: string): ImportRe
   try {
     zip = new AdmZip(srcPath);
     const entry = zip.getEntry("manifest.json");
-    if (!entry) return { ok: false, error: "Not a valid .yoapp (missing manifest.json)" };
+    if (!entry) return { ok: false, error: "Not a valid .glyphh (missing manifest.json)" };
     manifest = JSON.parse(zip.readAsText(entry)) as YoAppManifest;
   } catch (err) {
     return { ok: false, error: `Could not read bundle: ${err instanceof Error ? err.message : String(err)}` };

@@ -1,4 +1,4 @@
-// Pack each Glyphh app under apps/<name>/ into dist-apps/<name>.yoapp — a zip
+// Pack each Glyphh app under apps/<name>/ into dist-apps/<name>.glyphh — a zip
 // with manifest.json + assets at the root (installed via the Apps page Import
 // button). Run: `node scripts/pack-apps.mjs`.
 
@@ -19,10 +19,10 @@ for (const name of readdirSync(SRC)) {
   if (!statSync(dir).isDirectory()) continue;
   const manifest = join(dir, "manifest.json");
   if (!existsSync(manifest)) { console.log(`skip ${name} — no manifest.json`); continue; }
-  const out = join(OUT, `${name}.yoapp`);
+  const out = join(OUT, `${name}.glyphh`);
   rmSync(out, { force: true });
   const files = readdirSync(dir); // manifest + assets, flat
   // -j: junk paths so everything lands at the zip root
   execFileSync("zip", ["-q", "-j", out, ...files.map((f) => join(dir, f))]);
-  console.log(`packed ${name}.yoapp (${files.length} files)`);
+  console.log(`packed ${name}.glyphh (${files.length} files)`);
 }

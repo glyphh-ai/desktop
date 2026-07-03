@@ -1,6 +1,6 @@
 /**
  * glyphh-app-services — host-implemented data/runtime services for Glyphh apps
- * (spec v2). These are the capabilities that turn a .yoapp from "a thin UI
+ * (spec v2). These are the capabilities that turn a .glyphh from "a thin UI
  * over one AppleScript" into a real local app:
  *
  *   db.exec          { sql, params? }            per-app SQLite, one statement

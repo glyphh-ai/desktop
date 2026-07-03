@@ -18,7 +18,7 @@ This document is the contract. Version: **2**.
 
 ## 1. Anatomy
 
-A Glyphh app ships as a `.yoapp` — a zip with the manifest and assets at the
+A Glyphh app ships as a `.glyphh` — a zip with the manifest and assets at the
 root:
 
 ```
@@ -360,7 +360,7 @@ server registering per-user tools:
   on the user's machine and returns its result — a capability passthrough for
   capability tools, a worker-handler invocation for handler tools.
 
-- **`app_install { name?, bundleBase64 }`** → installs a `.yoapp` bundle for the
+- **`app_install { name?, bundleBase64 }`** → installs a `.glyphh` bundle for the
   user (create/update the saved app + register its tools + warm-start its
   worker). This is how Claude **deploys** an app it built, so it can
   immediately use the app's tools.
@@ -409,7 +409,7 @@ adapts to whatever apps a given user has installed.
 ## 8. Building an app
 
 1. Author `manifest.json` + `index.html` (+ `worker.js`) under `apps/<name>/`.
-2. `npm run pack:apps` → `dist-apps/<name>.yoapp`.
+2. `npm run pack:apps` → `dist-apps/<name>.glyphh`.
 3. Install: Apps page → Import, **or** `app_install { bundleBase64 }` over MCP.
 
 The **`build-glyphh-app` skill** (`skills/build-glyphh-app/`) walks an LLM
