@@ -303,9 +303,6 @@ contextBridge.exposeInMainWorld("yo", {
   },
 
   // LLM config
-  getLLMPresets: () => ipcRenderer.invoke("get-llm-presets") as Promise<Record<string, { name: string; models: string[]; defaultModel: string }>>,
-  saveLLMConfig: (config: { provider: string; model: string }) =>
-    ipcRenderer.invoke("save-llm-config", config) as Promise<{ ok: boolean; error?: string }>,
 
   // Tabs
   tabList: () => ipcRenderer.invoke("tab-list") as Promise<{ tabs: Array<{ id: string; name: string; favicon?: string; layoutFavicons?: string[] }>; activeId: string; visible: boolean }>,
@@ -335,19 +332,6 @@ contextBridge.exposeInMainWorld("yo", {
   hasMcpAccess: () => ipcRenderer.invoke("has-mcp-access") as Promise<boolean>,
   openAccountDashboard: () => ipcRenderer.send("open-external", (process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai")),
   openBilling: () => ipcRenderer.send("open-external", (process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai") + "/dashboard/billing"),
-  /** Models the Glyphh agent can use (server-filtered for this user) + default. */
-  agentModels: () => ipcRenderer.invoke("agent-models") as Promise<{
-    models: Array<{ provider: string; model: string; display_name: string }>;
-    default_model: string | null;
-  }>,
-  /** Per-user credit balance + daily usage from the server. */
-  userUsage: (range?: { from?: string; to?: string; tz?: string }) => ipcRenderer.invoke("user-usage", range) as Promise<{
-    credits: { balance: number; grants: number; purchases: number; allowance?: number } | null;
-    days: Array<{ day: string; credits: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; requests: number }>;
-  }>,
-  /** Per-chat credit usage (credits in MICRO-credits), keyed by chat/run id. */
-  usageByChat: () => ipcRenderer.invoke("usage-by-chat") as Promise<{ byChat: Record<string, { credits: number; requests: number }> }>,
-
   // Support
   submitSupportTicket: (ticket: { subject: string; description: string }) =>
     ipcRenderer.invoke("submit-support-ticket", ticket) as Promise<{ ok: boolean; error?: string }>,

@@ -205,16 +205,6 @@ declare global {
       dripsDelete: (name: string) => Promise<string>;
       dripsPreview: (recipe: string) => Promise<string>;
       dripsBuiltinEffects: () => Promise<string[]>;
-      userUsage: (range?: { from?: string; to?: string; tz?: string }) => Promise<{
-        credits: { balance: number; grants: number; purchases: number; allowance?: number } | null;
-        days: Array<{ day: string; credits: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; requests: number }>;
-      }>;
-      usageByChat: () => Promise<{ byChat: Record<string, { credits: number; requests: number }> }>;
-      agentModels: () => Promise<{ models: Array<{ provider: string; model: string; display_name: string }>; default_model: string | null }>;
-      // LLM config
-      getLLMConfig: () => Promise<{ provider: string; model: string }>;
-      getLLMPresets: () => Promise<Record<string, { name: string; models: string[]; defaultModel: string }>>;
-      saveLLMConfig: (config: { provider: string; model: string }) => Promise<{ ok: boolean; error?: string }>;
       // Tabs
       tabList: () => Promise<{ tabs: TabInfo[]; activeId: string; visible: boolean }>;
       tabSwitch: (id: string) => void;

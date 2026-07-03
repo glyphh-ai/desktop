@@ -2,7 +2,6 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme } from "ele
 import fs from "fs";
 import { generateGlyphhSkill } from "./glyphh-skill-export";
 import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, serverGetAuthed, serverPatchAuthed } from "./auth";
-import type { LLMConfig } from "./llm-config";
 import type { SessionCache } from "./session-cache";
 import type { PanelManager } from "./panel-manager";
 
@@ -17,10 +16,6 @@ interface SettingsIpcDeps {
   getAuthStatus: () => unknown;
   refreshHeartbeat: () => Promise<{ tier?: string; status?: string } | null>;
   logout: () => void;
-  llmConfig: { provider: string; model: string };
-  saveLLMConfig: (config: LLMConfig) => void;
-  applyLLMConfig: (config: LLMConfig) => void;
-  fetchServerModels: () => Promise<Array<{ provider: string; model: string }>>;
   session: SessionCache;
   sendSessionState: () => void;
   execCommand: (cmd: string, sourcePanelId?: string) => Promise<string>;
@@ -33,7 +28,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     getPreference, setPreference, broadcastTheme,
     serverGetAuthed, startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
-    llmConfig, saveLLMConfig, applyLLMConfig, fetchServerModels,
     session, sendSessionState,
     getMainWindow, panelManager,
   } = deps;
@@ -95,31 +89,10 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
 
   // Per-user usage + credit balance, straight from the server (the proxy meters
   // this org/user). Replaces the old local UsageTracker numbers on the dashboard.
-  ipcMain.handle("user-usage", async (_e, range?: { from?: string; to?: string; tz?: string }) => {
-    const qs = new URLSearchParams();
-    if (range?.from) qs.set("from", range.from);
-    if (range?.to) qs.set("to", range.to);
-    if (range?.tz) qs.set("tz", range.tz);
-    const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    const [credits, usage] = await Promise.all([
-      serverGetAuthed<{ balance: number; grants: number; purchases: number }>("/api/billing/credits").catch(() => null),
-      serverGetAuthed<{ days: Array<Record<string, number | string>> }>(`/api/usage/daily${suffix}`).catch(() => ({ days: [] })),
-    ]);
-    return { credits, days: usage?.days || [] };
-  });
 
   // Per-CHAT credit usage — server returns { byChat: { <chatId>: { credits,
   // requests } } } with credits in MICRO-credits. Drives the per-chat credit
   // labels on the dashboard HOME landing.
-  ipcMain.handle("usage-by-chat", async () => serverGetAuthed("/api/usage/by-chat").catch(() => ({ byChat: {} })));
-
-  // Models the Glyphh agent can actually use — server-filtered for this user
-  // (Anthropic ∩ plan ∩ org ∩ user allow-lists), with a guaranteed-usable default.
-  ipcMain.handle("agent-models", async () => {
-    return serverGetAuthed<{ models: Array<{ provider: string; model: string; display_name: string }>; default_model: string | null }>(
-      "/api/models?proxy=1",
-    ).catch(() => ({ models: [], default_model: null }));
-  });
 
   ipcMain.handle("get-auth-status", () => getAuthStatus());
   ipcMain.handle("refresh-auth", async () => {
@@ -134,32 +107,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     logout();
     if (mainWindow) panelManager.hideActive(mainWindow);
     mainWindow?.webContents.send("show-onboarding");
-  });
-
-  ipcMain.handle("get-llm-config", () => ({
-    provider: llmConfig.provider,
-    model: llmConfig.model,
-  }));
-  ipcMain.handle("get-llm-presets", async () => {
-    const models = await fetchServerModels();
-    if (models.length === 0) {
-      return { anthropic: { name: "Anthropic", models: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"], defaultModel: "claude-sonnet-4-6" } };
-    }
-    const grouped: Record<string, { name: string; models: string[]; defaultModel: string }> = {};
-    for (const m of models) {
-      if (!grouped[m.provider]) grouped[m.provider] = { name: m.provider.charAt(0).toUpperCase() + m.provider.slice(1), models: [], defaultModel: "" };
-      grouped[m.provider].models.push(m.model);
-    }
-    if (grouped.anthropic) grouped.anthropic.defaultModel = "claude-sonnet-4-6";
-    for (const key of Object.keys(grouped)) {
-      if (!grouped[key].defaultModel) grouped[key].defaultModel = grouped[key].models[0];
-    }
-    return grouped;
-  });
-  ipcMain.handle("save-llm-config", async (_e, config: LLMConfig) => {
-    saveLLMConfig(config);
-    applyLLMConfig(config);
-    return { ok: true };
   });
 
   ipcMain.handle("pick-directory", async () => {

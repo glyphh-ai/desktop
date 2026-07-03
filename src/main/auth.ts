@@ -735,4 +735,3 @@ function serverWriteAuthed<T>(method: "POST" | "PATCH" | "PUT", endpoint: string
   });
 }
 
-// validateApiKey removed — use validateLLMConfig from llm-config.ts

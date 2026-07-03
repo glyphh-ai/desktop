@@ -38,15 +38,12 @@ export class YoInterceptor {
   private yoActiveWc: WebContents | null = null; // wc the current .yo conversation is in
   private modeColor = "#a855f7"; // current agent mode color (ask=purple, plan=violet, auto=green, bypass=red)
   private agentMode = "default";
-  private currentModel = "";
-  private availableModels: string[] = [];
   private theme = "dark";
   private lastAgentResult: (() => string) | null = null;
   private getFavicons: (() => Record<string, string>) | null = null;
   private getLayouts: (() => Array<{ name: string }>) | null = null;
   private getDripCustoms: (() => Array<{ name: string; recipe: string }>) | null = null;
   private modeChanger: ((mode: string) => void) | null = null;
-  private modelChanger: ((model: string) => void) | null = null;
   private wazSpawner: ((prompt: string) => void) | null = null;
 
   constructor(
@@ -64,13 +61,7 @@ export class YoInterceptor {
   setDripCustomsGetter(fn: () => Array<{ name: string; recipe: string }>): void { this.getDripCustoms = fn; }
   setLastAgentResult(fn: () => string): void { this.lastAgentResult = fn; }
   setModeChanger(fn: (mode: string) => void): void { this.modeChanger = fn; }
-  setModelChanger(fn: (model: string) => void): void { this.modelChanger = fn; }
   setWazSpawner(fn: (prompt: string) => void): void { this.wazSpawner = fn; }
-  setAvailableModels(models: string[]): void { this.availableModels = models; }
-  setCurrentModel(model: string): void {
-    this.currentModel = model;
-    this.pushToAll(`if(window.__yoSetModel)window.__yoSetModel(${JSON.stringify(model)})`);
-  }
   setModeColor(color: string): void { this.modeColor = color; }
   setAgentMode(mode: string): void {
     this.agentMode = mode;
@@ -320,9 +311,6 @@ window.addEventListener('beforeunload',function(e){
         break;
       case "set-mode":
         if (data.instruction && this.modeChanger) this.modeChanger(data.instruction);
-        break;
-      case "set-model":
-        if (data.instruction && this.modelChanger) this.modelChanger(data.instruction);
         break;
       case "cancel":
         this.opId++;

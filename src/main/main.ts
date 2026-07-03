@@ -39,7 +39,6 @@ import { TerminalManager, AgentSpawnConfig } from "./terminal";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
 import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, serverPostAuthed, serverGetAuthed, getAuthToken } from "./auth";
-import { loadLLMConfig, saveLLMConfig, LLMConfig } from "./llm-config";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
 import { canAddApp, canSaveLayout, canUseMcp } from "./entitlements";
@@ -268,32 +267,6 @@ async function boot() {
   }
 
   // Load LLM config (provider + model selection only)
-  let llmConfig = loadLLMConfig();
-
-  // Cached model list from server (model_rates table)
-  interface ServerModel { provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number; max_context_tokens?: number; max_output_tokens?: number }
-  let serverModelsCache: ServerModel[] = [];
-  let serverModelsFetchedAt = 0;
-  async function fetchServerModels(): Promise<ServerModel[]> {
-    if (serverModelsCache.length > 0 && Date.now() - serverModelsFetchedAt < 60_000) return serverModelsCache;
-    try {
-      const r = await serverGetAuthed<{ models: ServerModel[] }>("/api/models");
-      if (r.models?.length) {
-        serverModelsCache = r.models;
-        serverModelsFetchedAt = Date.now();
-      }
-    } catch { /* offline / not yet authed — keep cache or fallback */ }
-    return serverModelsCache;
-  }
-
-  function applyLLMConfig(config: LLMConfig) {
-    llmConfig = config;
-    yoInterceptor?.setCurrentModel(config.model);
-    const modelNames = serverModelsCache.length > 0
-      ? serverModelsCache.map((m) => m.model)
-      : ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
-    yoInterceptor?.setAvailableModels(modelNames);
-  }
 
   // ── yo-asset:// protocol — serves shared assets (Chart.js etc.) to vibe panels ──
   const rendererDir = path.join(__dirname, "..", "renderer");
@@ -365,12 +338,7 @@ async function boot() {
     const savedPerm = getAgentMode();
     yoInterceptor.setAgentMode(savedPerm);
   }
-  yoInterceptor.setCurrentModel(llmConfig.model);
   // Fetch active models from server and populate the interceptor + presets cache
-  void fetchServerModels().then((models) => {
-    const names = models.length > 0 ? models.map((m) => m.model) : ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
-    yoInterceptor.setAvailableModels(names);
-  });
   const initialTheme = getPreference<string>("theme", "dark");
   // Map themed ids (purple/aurora/custom) to a base mode nativeTheme accepts.
   nativeTheme.themeSource = initialTheme === "system" ? "system" : initialTheme === "light" ? "light" : "dark";
@@ -582,7 +550,6 @@ async function boot() {
   commandParser = new CommandParser(panelManager, layoutManager, appConnector, session);
   let restoring = false;
 
-  applyLLMConfig(llmConfig);
 
   // OS window control (.dip grid/split/min/exp, layout tiling) drives other
   // apps' windows through the native backends (macOS: bundled Swift AX helper;
@@ -750,17 +717,6 @@ async function boot() {
   // hooks are simply never wired).
   yoInterceptor.setFaviconsGetter(() => panelFavicons);
   yoInterceptor.setLayoutsGetter(() => layoutManager.listLayouts());
-
-  // Command palette model changer — still meaningful (feeds the model badge).
-  yoInterceptor.setModelChanger((model) => {
-    const cfg = loadLLMConfig();
-    cfg.model = model;
-    saveLLMConfig(cfg);
-    llmConfig = cfg;
-    applyLLMConfig(cfg);
-    yoInterceptor.setCurrentModel(model);
-    mainWindow?.webContents.send("llm-config-changed", { provider: cfg.provider, model: cfg.model });
-  });
 
   // Terminal yo/sup/dip — route through command parser, show result in terminal
   terminalManager.setCommandHandler(async (cmd, wc) => {
@@ -1689,7 +1645,6 @@ async function boot() {
     getPreference, setPreference, broadcastTheme,
     serverGetAuthed, startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
-    llmConfig, saveLLMConfig, applyLLMConfig, fetchServerModels,
     session, sendSessionState,
     execCommand,
     getMainWindow: () => mainWindow, panelManager,
