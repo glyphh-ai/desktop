@@ -48,7 +48,7 @@ import {
   connectorStatus, connectorTools, connectorCall,
 } from "./glyphh-app-services.js";
 import {
-  llmEmbed, llmChunk, llmComplete,
+  llmEmbed, llmChunk,
   vectorUpsert, vectorSearch, vectorDelete,
   graphCypher,
 } from "./glyphh-app-ai.js";
@@ -408,19 +408,22 @@ async function runCapability(
     case "connector.call":   return connectorCall(connectors, args);
     case "llm.embed":        return llmEmbed(args);
     case "llm.chunk":        return llmChunk(args);
-    case "llm.complete":     return llmComplete(args);
+    case "llm.complete": {
+      // One-shot completion = agent.run with no tools and a single turn.
+      // Same auth model: the APP's own config-var key, nothing Glyphh-level.
+      const app = await findAppRow(slug);
+      if (!app) throw new Error(`unknown app: ${slug}`);
+      const result = await agentRun(
+        slug, appName,
+        withAppApiKey(app, { ...args, tools: [], maxTurns: 1 }),
+        { tools: [], dispatch: () => Promise.reject(new Error("llm.complete has no tools")) }
+      );
+      return { text: result.text, usage: result.usage };
+    }
     case "agent.run": {
       const app = await findAppRow(slug);
       if (!app) throw new Error(`unknown app: ${slug}`);
-      // Key auto-pickup: a vendor provider with no explicit apiKey falls back
-      // to the app's config var named <PROVIDER>_API_KEY (Config Vars tab) —
-      // the app never has to touch the plaintext at all.
-      const provider = String(args.provider || "claude").toLowerCase();
-      if (provider !== "claude" && !args.apiKey) {
-        const fallback = secretValueFromRow(app.launchConfig as Record<string, unknown>, `${provider.toUpperCase()}_API_KEY`);
-        if (fallback) args = { ...args, apiKey: fallback };
-      }
-      return agentRun(slug, appName, args, {
+      return agentRun(slug, appName, withAppApiKey(app, args), {
         tools: (app.launchConfig?.tools || []).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
         // Re-enters callAppTool so every agent tool call is re-validated
         // against the app's declared tools/capabilities.
@@ -493,6 +496,16 @@ async function findAppRow(slug: string): Promise<AppRow | undefined> {
   const key = String(slug || "").trim().toLowerCase();
   const apps = await cachedServerGet<AppRow[]>("/api/panel-apps").catch(() => []);
   return apps.find((a) => isGlyphhAppRow(a) && a.slug.toLowerCase() === key);
+}
+
+/** Key auto-pickup for llm.complete / agent.run: with no explicit apiKey, use
+ *  the app's config var named <PROVIDER>_API_KEY (Config Vars tab). The key
+ *  is the APP's, held encrypted per-app — Glyphh has no key store of its own. */
+function withAppApiKey(app: AppRow, args: Record<string, unknown>): Record<string, unknown> {
+  if (args.apiKey) return args;
+  const provider = String(args.provider || "anthropic").toUpperCase();
+  const key = secretValueFromRow(app.launchConfig as Record<string, unknown>, `${provider}_API_KEY`);
+  return key ? { ...args, apiKey: key } : args;
 }
 
 /** Every installed Glyphh app + the MCP tools it exposes (for app_list_tools). */

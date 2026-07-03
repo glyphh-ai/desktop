@@ -6,7 +6,6 @@ import type { LLMConfig } from "./llm-config";
 import type { SessionCache } from "./session-cache";
 import type { PanelManager } from "./panel-manager";
 import type { CloudSync } from "./cloud-sync";
-import type * as providerKeysModule from "./provider-keys";
 import type { Transcriber } from "./transcriber";
 
 interface SettingsIpcDeps {
@@ -27,8 +26,6 @@ interface SettingsIpcDeps {
   fetchServerModels: () => Promise<Array<{ provider: string; model: string }>>;
   session: SessionCache;
   sendSessionState: () => void;
-  providerKeys: typeof providerKeysModule;
-  ccBootstrapStatus: () => unknown;
   transcriber: Transcriber;
   cloudSyncInstance: CloudSync | null;
   execCommand: (cmd: string, sourcePanelId?: string) => Promise<string>;
@@ -43,7 +40,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     llmConfig, saveLLMConfig, applyLLMConfig, fetchServerModels,
     session, sendSessionState,
-    providerKeys, ccBootstrapStatus,
     transcriber, cloudSyncInstance,
     getMainWindow, panelManager,
   } = deps;
@@ -271,21 +267,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
       return { ok: false, error: err.message || "Transcription failed" };
     }
   });
-
-  // Providers Settings panel removed. The only surviving provider-key path is
-  // the Claude Code BYOK bootstrap gate (boot-gate-ui.ts), which saves an
-  // Anthropic key so cc-status flips true. provider-keys.ts also still backs
-  // the transcriber (Whisper) and cc-bootstrap.
-  ipcMain.handle("provider-keys-set", async (_e, provider: string, key: string) => {
-    try {
-      await providerKeys.setKey(provider as providerKeysModule.ProviderId, key);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : "save failed" };
-    }
-  });
-
-  ipcMain.handle("cc-status", () => ccBootstrapStatus());
 
   // Export a provider-tailored Glyphh skill (Claude / Gemini / OpenAI) — a file
   // that teaches that LLM to drive Glyphh over the MCP relay. Shows a save

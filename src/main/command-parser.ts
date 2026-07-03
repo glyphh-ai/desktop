@@ -16,7 +16,6 @@ import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
 import { setPreference } from "./preferences";
-import type { YoChat } from "./yo-chat";
 export class CommandParser {
   private static readonly COMMAND_KEYWORDS = new Set(["sup", "dip", "drip", "peace", "waz"]);
 
@@ -27,7 +26,6 @@ export class CommandParser {
   private yoHistory: Array<{ role: string; content: string }> = [];
   private yoContext = ""; // assembled context from initial search
   private mainWindow: BrowserWindow | null = null;
-  private yoChat: YoChat | null = null;
   private grabber: ((activeOnly?: boolean) => Promise<string | null>) | null = null;
   private wcGetter: ((panelId: string) => WebContents | null) | null = null;
   private tabCloser: ((id: string) => void) | null = null;
@@ -56,10 +54,6 @@ export class CommandParser {
   }
 
   /** Set the LLM engine for inline processing. */
-  setYoChat(chat: YoChat): void {
-    this.yoChat = chat;
-  }
-
   /** Set the grabber callback — grabs content from visible panels. */
   setGrabber(fn: (activeOnly?: boolean) => Promise<string | null>): void {
     this.grabber = fn;
@@ -243,11 +237,9 @@ export class CommandParser {
       return "";
     }
 
-    // .sup . <prompt> → capture + process → return result for injection
-    let finalContent = content;
-    if (this.yoChat) {
-      finalContent = await this.yoChat.executeProcess(instruction, content);
-    }
+    // .sup . <prompt> used to LLM-process the capture; the in-app LLM is
+    // gone (agents live in apps), so the raw capture passes through.
+    const finalContent = content;
 
     const label = this.timestamp();
     this.session.capture("command-bar", finalContent, `${label}.md`, label);

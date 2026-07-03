@@ -23,7 +23,7 @@ import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, n
 
 // Stop Chromium from encrypting its own internal cookie/session storage via
 // the OS keychain ("Chrome Safe Storage" on macOS). This is separate from
-// anything our own code does (provider-keys.ts, auth.ts, app-connector.ts
+// anything our own code does (app-secrets.ts, auth.ts, app-connector.ts
 // all avoid safeStorage already) — it's Chromium's automatic behavior for
 // ANY persistent session partition (e.g. `persist:yo`, used by webviews and
 // browser tabs), and it's what was still triggering a keychain prompt on
@@ -47,9 +47,6 @@ import { canAddApp, canSaveLayout, canUseMcp, canUseSync, canUseVoice, getCurren
 import { executeCommand } from "./dom-bridge";
 import { getPreference, setPreference } from "./stores/preferences-db";
 import { YoInterceptor } from "./yo-interceptor";
-import { YoChat } from "./yo-chat";
-import * as providerKeysModule from "./provider-keys";
-import { bootstrapStatus as ccBootstrapStatus } from "./cc-bootstrap";
 import { SessionCache } from "./session-cache";
 import { NoteStore } from "./note-store";
 import { Transcriber } from "./transcriber";
@@ -304,7 +301,6 @@ async function boot() {
 
   function applyLLMConfig(config: LLMConfig) {
     llmConfig = config;
-    yoChat?.setLLMConfig(config);
     yoInterceptor?.setCurrentModel(config.model);
     const modelNames = serverModelsCache.length > 0
       ? serverModelsCache.map((m) => m.model)
@@ -602,11 +598,7 @@ async function boot() {
   commandParser = new CommandParser(panelManager, layoutManager, appConnector, session);
   let restoring = false;
 
-  // LLM engine for inline yo/sup execution
-  const yoChat = new YoChat(panelManager);
   applyLLMConfig(llmConfig);
-  yoInterceptor.setYoChat(yoChat);
-  commandParser.setYoChat(yoChat);
 
   // OS window control (.dip grid/split/min/exp, layout tiling) drives other
   // apps' windows through the native backends (macOS: bundled Swift AX helper;
@@ -783,7 +775,7 @@ async function boot() {
   yoInterceptor.setFaviconsGetter(() => panelFavicons);
   yoInterceptor.setLayoutsGetter(() => layoutManager.listLayouts());
 
-  // Command palette model changer — still meaningful (feeds skillEngine/yoChat).
+  // Command palette model changer — still meaningful (feeds the model badge).
   yoInterceptor.setModelChanger((model) => {
     const cfg = loadLLMConfig();
     cfg.model = model;
@@ -793,8 +785,6 @@ async function boot() {
     yoInterceptor.setCurrentModel(model);
     mainWindow?.webContents.send("llm-config-changed", { provider: cfg.provider, model: cfg.model });
   });
-
-  yoChat.setCommandCallback(execCommand);
 
   // Terminal yo/sup/dip — route through command parser, show result in terminal
   terminalManager.setCommandHandler(async (cmd, wc) => {
@@ -1746,7 +1736,6 @@ async function boot() {
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     llmConfig, saveLLMConfig, applyLLMConfig, fetchServerModels,
     session, sendSessionState,
-    providerKeys: providerKeysModule, ccBootstrapStatus,
     transcriber, cloudSyncInstance, execCommand,
     getMainWindow: () => mainWindow, panelManager,
   });

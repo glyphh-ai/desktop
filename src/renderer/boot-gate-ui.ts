@@ -139,68 +139,8 @@ function showTutorial(cb: BootGateCallbacks): void {
   goToStep(0);
 }
 
-// ── CC Bootstrap Modal ──────────────────────────────────────────────────────
-
-async function maybeShowCcBootstrapModal(cb: BootGateCallbacks): Promise<void> {
-  const modal = document.getElementById("cc-bootstrap-modal");
-  if (!modal) return;
-  if (accountLocked) return; // a locked account sees nothing but the gate
-  const status = await window.yo.ccStatus();
-  if (status.found) return;
-
-  const errEl = document.getElementById("cc-bootstrap-error")!;
-
-  // BrowserView panels are native and paint over HTML. Hide them while
-  // the modal is up so the gate is actually visible.
-  ccModalShowing = true;
-  cb.hidePanels();
-  modal.style.display = "flex";
-
-  const dismissModal = () => {
-    ccModalShowing = false;
-    modal.style.display = "none";
-    cb.showPanels();
-  };
-
-  // BYOK is the only path now. Paste an Anthropic API key, save it to the
-  // local encrypted store, dismiss the modal. ccStatus.found flips true on
-  // the next read.
-  const byokInput = document.getElementById("cc-bootstrap-byok-key") as HTMLInputElement | null;
-  const byokSaveBtn = document.getElementById("cc-bootstrap-byok-save") as HTMLButtonElement | null;
-  byokSaveBtn?.addEventListener("click", async () => {
-    const key = (byokInput?.value || "").trim();
-    if (!key) { errEl.textContent = "paste your Anthropic API key first"; return; }
-    if (!key.startsWith("sk-ant-")) { errEl.textContent = "that doesn't look like an Anthropic key (should start with sk-ant-)"; return; }
-    errEl.textContent = "";
-    byokSaveBtn.disabled = true;
-    byokSaveBtn.textContent = "Saving…";
-    try {
-      const result = await window.yo.providerKeysSet("anthropic", key);
-      if (!result?.ok) {
-        errEl.textContent = result?.error || "couldn't save the key — try again";
-        byokSaveBtn.disabled = false;
-        byokSaveBtn.textContent = "Save key";
-        return;
-      }
-      dismissModal();
-    } catch (err) {
-      errEl.textContent = err instanceof Error ? err.message : "couldn't save the key";
-      byokSaveBtn.disabled = false;
-      byokSaveBtn.textContent = "Save key";
-    }
-  });
-
-  document.getElementById("cc-bootstrap-quit")!.onclick = () => {
-    window.yo.windowClose();
-  };
-  // The "get one at console.anthropic.com/settings/keys" link must open
-  // in the user's default browser — anchor hrefs inside an Electron
-  // renderer otherwise navigate the renderer itself.
-  document.getElementById("cc-bootstrap-key-link")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    window.yo.openExternal("https://console.anthropic.com/settings/keys");
-  });
-}
+// The CC-bootstrap / BYOK key modal is gone: Glyphh has no in-app agent and
+// stores no LLM keys. Apps bring their own keys via per-app Config Vars.
 
 // ── Splash dismiss ──────────────────────────────────────────────────────────
 
@@ -395,13 +335,6 @@ export function initBootGate(cb: BootGateCallbacks): void {
       });
     }
 
-    // CC bootstrap (Phase 2 of THE-PIVOT-BYOK): nudge the user to log in to
-    // Claude Code if they haven't yet. Skip during onboarding — we don't want
-    // to layer two modals.
-    if (!data.needsOnboarding) {
-      setTimeout(() => { void maybeShowCcBootstrapModal(cb); }, 1200);
-    }
-
     cb.onBootReady(data);
   });
 
@@ -447,11 +380,6 @@ export function initBootGate(cb: BootGateCallbacks): void {
     cb.showOnboarding(true);
   });
 
-  // Triggered by main when an agent call hits ensureCcAuth() with no creds.
-  window.yo.onCcShowModal(() => {
-    void maybeShowCcBootstrapModal(cb);
-  });
-
   // After onboarding activation, show tutorial (first time only) or restore panels
   window.addEventListener("yo-onboarding-done", async () => {
     const seen = await window.yo.getPreference("hasSeenTutorial", false);
@@ -460,8 +388,5 @@ export function initBootGate(cb: BootGateCallbacks): void {
     } else {
       cb.showPanels();
     }
-    // Prompt for Claude Code login if creds are still missing — onBoot skipped
-    // this when needsOnboarding was true, so it has to fire here instead.
-    setTimeout(() => { void maybeShowCcBootstrapModal(cb); }, 1200);
   });
 }

@@ -90,7 +90,7 @@ function triggerReauth(): void {
 // hitting the macOS Keychain on every single boot (a user-visible OS prompt
 // on some setups) isn't worth it for this value. Provider API keys (the
 // actually sensitive, long-lived secret) live server-side entirely — see
-// provider-keys.ts — so this file never holds anything higher-value than a
+// app-secrets.ts — so this file never holds anything higher-value than a
 // session token.
 function secureWrite(filePath: string, data: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

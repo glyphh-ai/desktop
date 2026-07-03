@@ -1,16 +1,14 @@
 /**
- * SDK LLM — all LLM calls funneled through the Claude Agent SDK.
+ * SDK LLM — asar-safe spawn helpers for the Claude Agent SDK.
  *
- * Provides sdkComplete() for one-shot completions (no tools, no streaming).
- * Exports resolveAgentSdkBinary() and makeSpawnOverride() so every sdk.query()
- * call site uses the same asar-safe spawn path.
+ * Glyphh itself makes NO LLM calls (sdkComplete and every in-app agent
+ * surface were deleted); these helpers remain for dev tooling that spawns
+ * the agent SDK on the developer's own machine (code-index benchmarks).
  */
 
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { getShellPath } from "./shell-path";
-import { promptLog } from "./prompt-log";
 
 const dynamicImport = new Function("specifier", "return import(specifier)") as
   (specifier: string) => Promise<any>;
@@ -101,84 +99,7 @@ export function asarSafeQueryOptions(
   };
 }
 
-export interface CompletionResult {
-  text: string;
-  usage?: { input_tokens: number; output_tokens: number };
-}
-
-/**
- * One-shot completion via the Agent SDK. No tools, no streaming.
- */
-export async function sdkComplete(opts: {
-  system: string;
-  prompt: string;
-  model?: string;
-}): Promise<CompletionResult> {
-  const sdk = await ensureSDK();
-  const shellPath = getShellPath();
-  const startTs = Date.now();
-
-  // The subprocess authenticates as the user's own Claude Code login
-  // (~/.claude) — Glyphh holds no LLM keys and proxies nothing.
-  const gen = sdk.query({
-    prompt: opts.prompt,
-    options: {
-      model: opts.model || "claude-haiku-4-5-20251001",
-      maxTurns: 1,
-      ...asarSafeQueryOptions(),
-      systemPrompt: opts.system,
-      tools: [],
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      includePartialMessages: true,
-      env: {
-        ...process.env,
-        PATH: shellPath,
-        CLAUDE_AGENT_SDK_CLIENT_APP: "yosup/3.0.0",
-      },
-    },
-  });
-
-  let text = "";
-  let usage: { input_tokens: number; output_tokens: number } | undefined;
-
-  for await (const msg of gen) {
-    switch (msg.type) {
-      case "stream_event": {
-        const event = msg.event;
-        if (event?.type === "content_block_delta") {
-          const delta = (event as any).delta;
-          if (delta?.type === "text_delta" && delta.text) {
-            text += delta.text;
-          }
-        }
-        break;
-      }
-      case "result": {
-        if (msg.usage) {
-          usage = {
-            input_tokens: msg.usage.input_tokens || 0,
-            output_tokens: msg.usage.output_tokens || 0,
-          };
-        }
-        break;
-      }
-    }
-  }
-
-  promptLog.record({
-    id: `${startTs}-${Math.random().toString(36).slice(2, 8)}`,
-    startTs,
-    endTs: Date.now(),
-    prompt: opts.prompt.slice(0, 2000),
-    response: text.slice(0, 2000),
-    inputTokens: usage?.input_tokens || 0,
-    outputTokens: usage?.output_tokens || 0,
-    model: opts.model || "claude-sonnet-4-6",
-    provider: "anthropic",
-    mode: "process",
-    toolsUsed: [],
-  });
-
-  return { text, usage };
-}
+// sdkComplete (one-shot completions through the agent SDK) was deleted with
+// the rest of the in-app LLM surfaces — Glyphh makes no model calls of its
+// own. Only the asar-safe spawn helpers above remain (used by the code-index
+// benchmark, a dev tool that runs on the developer's own machine).

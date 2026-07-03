@@ -3,20 +3,18 @@
  *
  *   llm.embed        { text | texts, model? }     local embeddings (ONNX, on-device)
  *   llm.chunk        { text, maxChars?, overlap? } split text for embedding pipelines
- *   llm.complete     { prompt, system?, model? }  one-shot completion via the local
- *                                                 Claude Code subprocess (the user's
- *                                                 own Claude login — Glyphh holds no
- *                                                 LLM keys and proxies nothing)
  *   vector.upsert    { collection, items }        per-app vector store
  *   vector.search    { collection, query|vector, k?, filter? }
  *   vector.delete    { collection, id? }
  *   graph.cypher     { query, params? }           per-app knowledge graph (Kuzu,
  *                                                 embedded — real Cypher)
  *
- * Everything is on-device and slug-scoped like the other services: vectors in
- * ~/yo/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/. Embeddings
- * run locally via @huggingface/transformers + onnxruntime (already shipped);
- * the model downloads once to ~/yo/models.
+ * Everything here is ON-DEVICE and slug-scoped like the other services:
+ * vectors in ~/yo/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/.
+ * Embeddings run locally via @huggingface/transformers + onnxruntime
+ * (already shipped); the model downloads once to ~/yo/models. Glyphh itself
+ * makes no LLM calls — remote model access (llm.complete / agent.run) lives
+ * in glyphh-app-agent.ts and runs on the app's own config-var key.
  *
  * Vector search is exact cosine over Float32 blobs — at desktop scale
  * (≤ ~100k items) that's a few ms and beats shipping an ANN engine.
@@ -27,7 +25,6 @@ import kuzu from "kuzu";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { sdkComplete } from "./sdk-llm.js";
 import { appDataDir } from "./glyphh-app-services.js";
 
 // ── local embeddings (llm.embed) ────────────────────────────
@@ -106,24 +103,6 @@ export function llmChunk(args: Record<string, unknown>): { chunks: string[] } {
   }
   if (current) chunks.push(current);
   return { chunks };
-}
-
-// ── completion (llm.complete) ───────────────────────────────
-
-const MAX_PROMPT_CHARS = 100_000;
-
-/** One-shot completion via the local Claude Code subprocess, authenticated
- *  as the user's own Claude login (~/.claude) — the same path Glyphh's chat
- *  and firewall use. No proxy, no stored keys, nothing leaves the machine
- *  except the user's own Anthropic call. For multi-turn/tool-using runs,
- *  see agent.run (glyphh-app-agent.ts). */
-export async function llmComplete(args: Record<string, unknown>): Promise<{ text: string; usage?: { input_tokens: number; output_tokens: number } }> {
-  const prompt = String(args.prompt || "").trim();
-  if (!prompt) throw new Error("prompt is required");
-  if (prompt.length > MAX_PROMPT_CHARS) throw new Error(`prompt too long (max ${MAX_PROMPT_CHARS} chars)`);
-  const system = String(args.system || "You are a helpful assistant inside a Glyphh app. Answer concisely.");
-  const result = await sdkComplete({ system, prompt, model: args.model ? String(args.model) : undefined });
-  return { text: result.text, usage: result.usage };
 }
 
 // ── per-app vector store (vector.*) ─────────────────────────

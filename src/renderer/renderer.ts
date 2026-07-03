@@ -316,11 +316,8 @@ declare global {
       localMcpTokensRevoke: (id: string) => Promise<{ ok: boolean }>;
 
       // BYOK provider key — only the Claude Code bootstrap gate path remains.
-      providerKeysSet: (provider: string, key: string) => Promise<{ ok: boolean; error?: string }>;
 
       // BYOK gate — Anthropic API key saved via the Claude Code bootstrap gate.
-      ccStatus: () => Promise<{ found: boolean; byokAnthropic: boolean }>;
-      onCcShowModal: (callback: () => void) => () => void;
       // MCP Servers (custom user-configured)
       mcpGetServers: () => Promise<Array<{ config: { id: string; name: string; transport: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; enabled: boolean }; status: string; error?: string; tools: Array<{ name: string; description?: string }> }>>;
       mcpAddServer: (config: Record<string, unknown>) => Promise<void>;

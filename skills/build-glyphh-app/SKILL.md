@@ -34,20 +34,20 @@ Services (cross-platform):
 | `cron.list`     | `{ }`                          | `[{ id, cron, handler }]`                    |
 | `notify.send`   | `{ title, body }`              | `{ shown }` (click opens the app)            |
 
-AI & data services. Glyphh stores NO LLM keys and proxies nothing —
-`llm.complete` and `agent.run` (provider `"claude"`, the default) run the
-local Claude Code subprocess on the user's own Claude login; other vendors
-need an `apiKey` the app manages itself:
+AI & data services. Glyphh itself has NO LLM, NO key store, NO agent — apps
+are the only agentic surface, and every model call runs on the APP's key:
+the user sets `<PROVIDER>_API_KEY` on the app's Config Vars tab and the host
+injects it (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`):
 
 | capability | args | notes |
 |---|---|---|
 | `llm.embed` | `{ text \| texts, model? }` | local ONNX embeddings, 384-dim default, fully on-device |
 | `llm.chunk` | `{ text, maxChars?, overlap? }` | prep text for embedding |
-| `llm.complete` | `{ prompt, system?, model? }` | one-shot; user's Claude Code login, no key |
-| `agent.run` | `{ prompt, system?, provider?, tools?, maxTurns?, apiKey? }` | agentic loop over the APP'S OWN manifest tools; providers claude (no key) / anthropic / openai / google (app-supplied key) |
+| `llm.complete` | `{ prompt, system?, provider?, model? }` | one-shot; providers anthropic (default) / openai / google, key from config vars |
+| `agent.run` | `{ prompt, system?, provider?, tools?, maxTurns? }` | agentic loop over the APP'S OWN manifest tools; same providers/keys |
 | `vector.upsert/search/delete` | `{ collection, … }` | per-app store; text auto-embeds; exact cosine + metadata filter |
 | `graph.cypher` | `{ query, params? }` | per-app embedded Kuzu graph — real Cypher; schema-full (CREATE NODE/REL TABLE first) |
-| `secrets.get` / `secrets.list` | `{ key }` / `{ }` | per-app config vars the USER sets on the app's Config Vars tab — encrypted, write-once, machine-bound. How an app requires keys (e.g. OPENAI_API_KEY for agent.run, which auto-picks up `<PROVIDER>_API_KEY`). Check `secrets.list` and render a "set OPENAI_API_KEY in Config Vars" state when missing. |
+| `secrets.get` / `secrets.list` | `{ key }` / `{ }` | per-app config vars the USER sets on the app's Config Vars tab — encrypted, write-once, machine-bound. How an app requires keys: agent.run/llm.complete read `<PROVIDER>_API_KEY` automatically. Check `secrets.list` and render a "set ANTHROPIC_API_KEY in Config Vars" state when missing. |
 
 RAG-in-an-app is: `llm.chunk` → `vector.upsert` → `vector.search { query, k }`
 → `llm.complete` with the top chunks in the prompt. An agentic app is:

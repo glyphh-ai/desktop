@@ -18,7 +18,6 @@ import { WebContents } from "electron";
 import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
-import type { YoChat } from "./yo-chat";
 
 import crypto from "crypto";
 
@@ -29,7 +28,6 @@ export class YoInterceptor {
   /** Per-session nonce — injected into pages and validated on receipt. */
   private readonly sessionNonce = crypto.randomBytes(16).toString("hex");
   private commandHandler: ((input: string, sourcePanelId?: string) => Promise<string>) | null = null;
-  private yoChat: YoChat | null = null;
   private getVisiblePanelIds: (() => string[]) | null = null;
   private opId = 0; // incremented per operation; cancel bumps it to invalidate in-flight results
   private sessionNotifier: (() => void) | null = null;
@@ -56,7 +54,6 @@ export class YoInterceptor {
     private session: SessionCache,
   ) {}
 
-  setYoChat(chat: YoChat): void { this.yoChat = chat; }
   setCommandHandler(handler: (input: string, sourcePanelId?: string) => Promise<string>): void { this.commandHandler = handler; }
   setVisiblePanelsGetter(getter: () => string[]): void { this.getVisiblePanelIds = getter; }
   setSessionNotifier(fn: () => void): void { this.sessionNotifier = fn; }
@@ -521,42 +518,13 @@ window.addEventListener('beforeunload',function(e){
   }
 
   /**
-   * .yo . <prompt> — lightweight inline processing.
-   * Takes the last .sup capture from session, sends a single LLM call
-   * with the user's prompt, and injects the result directly into the
-   * current text area. No agent panel, no tools, no streaming.
+   * .yo . <prompt> — was inline LLM processing of the last capture. The
+   * in-app LLM (yo-chat) is deleted — Glyphh makes no model calls of its
+   * own; agentic behavior lives in installed apps (agent.run). The capture
+   * itself is still on the clipboard.
    */
-  private async handleYoDot(wc: WebContents, _appId: string, prompt: string): Promise<void> {
-    if (!this.yoChat) {
-      this.notify(wc, "Agent not ready.", "error");
-      return;
-    }
-
-    const context = this.session.get();
-    if (!context) {
-      this.notify(wc, "Nothing captured. Use .sup first.", "error");
-      return;
-    }
-
-    const myOp = ++this.opId;
-    this.notify(wc, "", "loading");
-
-    try {
-      const result = await this.yoChat.executeProcess(prompt, context);
-      if (this.opId !== myOp) return; // cancelled
-      await this.clearNotify(wc);
-
-      // Inject the result directly into the text area
-      try {
-        await wc.executeJavaScript(
-          `(function(){if(window.__yoInject){window.__yoInject(${JSON.stringify(result)});}})()`,
-        );
-      } catch {}
-    } catch (err) {
-      if (this.opId !== myOp) return;
-      await this.clearNotify(wc);
-      this.notify(wc, `Failed: ${err instanceof Error ? err.message : err}`, "error");
-    }
+  private async handleYoDot(wc: WebContents, _appId: string, _prompt: string): Promise<void> {
+    this.notify(wc, "Inline processing was removed — the capture is on your clipboard; agents live in apps now.", "error");
   }
 
   /** .yo > <prompt> — searched capture history; capture store is removed. */

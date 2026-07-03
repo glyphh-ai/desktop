@@ -195,8 +195,8 @@ OS permission prompts, and the security boundary.
 |--------------------|-------------------------------------------|----------------------------------|
 | `llm.embed`        | `{ text \| texts, model? }`               | `{ model, dim, vectors }`        |
 | `llm.chunk`        | `{ text, maxChars?, overlap? }`           | `{ chunks }`                     |
-| `llm.complete`     | `{ prompt, system?, model? }`             | `{ text, usage? }`               |
-| `agent.run`        | `{ prompt, system?, provider?, model?, tools?, maxTurns?, apiKey? }` | `{ text, turns, toolCalls, usage? }` |
+| `llm.complete`     | `{ prompt, system?, provider?, model? }`  | `{ text, usage? }`               |
+| `agent.run`        | `{ prompt, system?, provider?, model?, tools?, maxTurns? }` | `{ text, turns, toolCalls, usage? }` |
 | `vector.upsert`    | `{ collection, items, model? }`           | `{ upserted, collection }`       |
 | `vector.search`    | `{ collection, query \| vector, k?, filter? }` | `{ matches: [{ id, score, text?, metadata? }] }` |
 | `vector.delete`    | `{ collection, id? }`                     | `{ deleted }`                    |
@@ -204,31 +204,26 @@ OS permission prompts, and the security boundary.
 | `secrets.get`      | `{ key }`                                 | `{ value }`                      |
 | `secrets.list`     | `{ }`                                     | `[{ key, readable }]`            |
 
-**LLM auth model — Glyphh stores no LLM keys and proxies nothing.** There is
-no server proxy and no BYOK vault in the host. Intelligence reaches an app
-two ways:
+**LLM auth model — Glyphh has NO LLM, NO BYOK, NO agent of its own.**
+Installed apps are the only agentic surface, and every model call runs on a
+key that belongs to the app: the user sets `<PROVIDER>_API_KEY` on that
+app's **Config Vars** tab (encrypted, write-only — see below) and the host
+injects it per call. There is no global key store and Glyphh-level code
+never calls a model.
 
-- **`llm.complete`** — one-shot completion via the local **Claude Code
-  subprocess**, authenticated as the user's own Claude login (`~/.claude`) —
-  the same path Glyphh's chat and firewall use. Works for every user with a
-  Claude subscription; zero key handling; no tools, no streaming.
+- **`llm.complete`** — one-shot completion (no tools). Providers:
+  `"anthropic"` (default) / `"openai"` / `"google"` via the official vendor
+  SDKs (`@anthropic-ai/sdk`, `openai` Responses API, `@google/genai`).
 - **`agent.run`** — a real agentic loop: the model gets the **app's own
   manifest tools** and drives them, multi-turn (default 6, max 12 turns; 32
   tool calls max). Every tool call re-validates against the app's declared
-  tools. Providers:
-  - `"claude"` (default) — Claude Agent SDK subprocess on the user's Claude
-    login; the app's tools are exposed as an in-process MCP server. No key.
-  - `"anthropic"` / `"openai"` / `"google"` — the official vendor SDKs
-    (`@anthropic-ai/sdk`, `openai` Responses API, `@google/genai`), with an
-    `apiKey` the **app supplies per call**. An app that wants these vendors
-    asks its user for a key and keeps it in its own per-app storage — keys
-    never touch host state.
+  tools. Same three providers.
   - A manifest tool may not itself be backed by `agent.run` (no recursion) —
     install rejects it.
-  - **Key auto-pickup:** with no explicit `apiKey`, a vendor provider reads
-    the app's config var named `<PROVIDER>_API_KEY` (`OPENAI_API_KEY`,
-    `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) — so an agentic app usually needs
-    zero key-handling code.
+  - **Key pickup:** the host reads the app's config var named
+    `<PROVIDER>_API_KEY` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+    `GOOGLE_API_KEY`) — an agentic app needs zero key-handling code; it just
+    documents which var to set. Missing key → a clear error naming the var.
 
 ### Config vars (per-app secrets)
 

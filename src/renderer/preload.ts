@@ -483,19 +483,9 @@ contextBridge.exposeInMainWorld("yo", {
   // BYOK provider key — the only surviving path is the Claude Code bootstrap
   // gate (boot-gate-ui.ts) saving an Anthropic key. The Providers Settings
   // panel (list/remove/test + per-provider model catalog) was removed.
-  providerKeysSet: (provider: string, key: string) =>
-    ipcRenderer.invoke("provider-keys-set", provider, key) as Promise<{ ok: boolean; error?: string }>,
 
   // Claude Code bootstrap (Phase 2 of THE-PIVOT-BYOK)
   // BYOK gate status — true when an Anthropic API key is configured.
-  ccStatus: () => ipcRenderer.invoke("cc-status") as Promise<{
-    found: boolean; byokAnthropic: boolean;
-  }>,
-  onCcShowModal: (callback: () => void) => {
-    const handler = () => callback();
-    ipcRenderer.on("cc-show-modal", handler);
-    return () => ipcRenderer.removeListener("cc-show-modal", handler);
-  },
 
 
   // MCP Servers (custom user-configured servers — Advanced plan)

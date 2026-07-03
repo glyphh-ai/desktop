@@ -392,10 +392,10 @@
                     <pre style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2,#2c2c30);border:1px solid var(--border,#3a3a3f);border-radius:8px;padding:10px 12px;overflow-x:auto;margin:0 0 10px;">await glyphh.call("secrets.get", { key: "OPENAI_API_KEY" })
 // → { value: "sk-…" }   (only app code sees it, never the UI)</pre>
                     <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
-                      <code>agent.run</code> picks keys up automatically: a var named
-                      <code>OPENAI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code> / <code>GOOGLE_API_KEY</code>
-                      powers that provider with no code at all. Provider <code>"claude"</code> needs no key —
-                      it runs on your Claude Code login.
+                      <code>agent.run</code> and <code>llm.complete</code> pick keys up automatically: a var named
+                      <code>ANTHROPIC_API_KEY</code> / <code>OPENAI_API_KEY</code> / <code>GOOGLE_API_KEY</code>
+                      powers that provider with no code at all. Keys belong to the app — Glyphh has no key
+                      store and makes no model calls of its own.
                     </p>
                   </div>
                 </div>
