@@ -2814,6 +2814,17 @@ body.account-locked #dl-btn-wrap {
 .help-section[data-section="connections"] #conn-detail { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .help-section[data-section="connections"] #conn-detail.hidden { display: none !important; }
 
+/* The library page wrapper (added for the My apps | Marketplace tabs) must
+   pass the section's flex layout through — otherwise #app-detail's flex:1
+   sits in a plain block and the editor's split pane never fills the page
+   (right pane stops at its content instead of stretching). */
+.help-section[data-section="apps"].active > #apps-library-page:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 /* The Marketplace has no split-detail pane, so it must NOT be its own nested
    scroll container — otherwise its scrollbar lands 40px inside #help-content's
    right padding, leaving an empty gap to the scrollbar's right. Letting the
@@ -3263,26 +3274,22 @@ ol.docs-list li::before {
   align-items: center;
   flex-shrink: 0;
 }
-/* Overlapping stack of app-icon squares (layout list + layout/drip edit heads). */
-.layout-card-icons .layout-app-icon,
-.edit-head-icons .layout-app-icon,
-.edit-head-icons .drip-emoji-icon {
-  box-shadow: 0 0 0 2px var(--surface);
-}
+/* Overlapping stack of app-icon squares (layout list + layout/drip edit
+   heads). No rings/backgrounds — just the icons themselves, overlapped. */
 .layout-card-icons .layout-app-icon + .layout-app-icon,
 .edit-head-icons .layout-app-icon + .layout-app-icon,
 .edit-head-icons .drip-emoji-icon + .drip-emoji-icon {
   margin-left: -9px;
 }
-/* Drip emoji icon squares (drips list + drip edit head), overlapping stack. */
+/* Drip emoji icons (drips list + drip edit head), overlapping stack — no
+   chip background, just the emoji at the same sizes as connection icons. */
 .drip-emoji-icon {
-  width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;
+  width: 24px; height: 24px; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--surface-2); font-size: 14px; line-height: 1;
+  font-size: 18px; line-height: 1;
 }
-.edit-head .drip-emoji-icon { width: 40px; height: 40px; border-radius: 8px; font-size: 22px; }
+.edit-head .drip-emoji-icon { width: 40px; height: 40px; font-size: 26px; }
 .drip-card-icons { display: flex; align-items: center; flex-shrink: 0; margin-right: 4px; }
-.drip-card-icons .drip-emoji-icon { box-shadow: 0 0 0 2px var(--surface); }
 .drip-card-icons .drip-emoji-icon + .drip-emoji-icon { margin-left: -9px; }
 
 /* Icon sizes match the Connections page: 32px in the list tiles, 40px in the
@@ -3290,13 +3297,11 @@ ol.docs-list li::before {
 .app-card .layout-app-icon,
 .app-card .layout-app-icon img,
 .app-card .layout-app-initial { width: 32px; height: 32px; border-radius: 7px; }
-.app-card .drip-emoji-icon { width: 32px; height: 32px; border-radius: 7px; font-size: 18px; }
+.app-card .drip-emoji-icon { width: 32px; height: 32px; font-size: 22px; }
 .app-card .layout-card-icons,
 .app-card .drip-card-icons { margin-right: 0; }
 .app-card .layout-card-icons .layout-app-icon + .layout-app-icon,
 .app-card .drip-card-icons .drip-emoji-icon + .drip-emoji-icon { margin-left: -11px; }
-.app-card .layout-card-icons .layout-app-icon,
-.app-card .drip-card-icons .drip-emoji-icon { box-shadow: 0 0 0 2px var(--surface-3); }
 .edit-head .layout-app-icon,
 .edit-head .layout-app-icon img,
 .edit-head .layout-app-initial { width: 40px; height: 40px; border-radius: 8px; }
@@ -4391,6 +4396,10 @@ ol.docs-list li::before {
 .app-builder-controls .app-tab-left > .settings-label:first-child,
 .app-builder-controls > .edit-head + .settings-label,
 .app-builder-controls > .settings-label:first-child { margin-top: 4px; }
+/* The General tab panel is a flex column with a 10px gap, which ADDED to the
+   label margins — top-level fields sat 30px apart while nested (browser/
+   native) fields sat 20px. Kill the gap so margins alone set one rhythm. */
+.app-builder-controls .app-tab-left[data-tab="dashboard"] { gap: 0; }
 .app-detail-preview-wrap {
   border: 1px solid var(--border-2);
   border-radius: 6px;

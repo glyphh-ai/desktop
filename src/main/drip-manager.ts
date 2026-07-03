@@ -761,7 +761,11 @@ export class DripManager {
       frame: false, transparent: true, hasShadow: false, resizable: false,
       backgroundColor: "#00000000", skipTaskbar: true, show: false,
       ...(fullscreen ? { alwaysOnTop: true, focusable: false } : {}),
-      webPreferences: { contextIsolation: true, nodeIntegration: false },
+      // backgroundThrottling: false — stacked drips cover each other, and
+      // Chromium's occlusion tracker would throttle the covered overlays'
+      // requestAnimationFrame to ~1fps (the "first drip stalls when the
+      // second layers in" bug). Never throttle an effect overlay.
+      webPreferences: { contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
     });
     if (fullscreen) {
       overlay.setAlwaysOnTop(true, "screen-saver");
