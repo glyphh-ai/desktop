@@ -27,6 +27,8 @@ export interface AppWorkerSpec {
   /** Worker script path relative to appDir (manifest `worker`). */
   workerFile: string;
   capabilities: string[];
+  /** Connector app slugs the manifest declared (manifest `connectors`). */
+  connectors: string[];
 }
 
 interface WorkerHandle {
@@ -91,7 +93,7 @@ function startWorker(spec: AppWorkerSpec): WorkerHandle {
       preload: path.join(__dirname, "glyphh-app-worker-preload.js"),
     },
   });
-  grantAppCaps(win.webContents.id, spec.slug, spec.name, spec.capabilities);
+  grantAppCaps(win.webContents.id, spec.slug, spec.name, spec.capabilities, spec.connectors);
 
   const ready = new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {

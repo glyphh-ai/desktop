@@ -11,12 +11,21 @@ export interface AppGrant {
   slug: string;
   name: string;
   caps: Set<string>;
+  /** Connector app slugs (Pipedream) this app declared — the connector.*
+   *  capabilities can only reach these. */
+  connectors: Set<string>;
 }
 
 const grants = new Map<number, AppGrant>();
 
-export function grantAppCaps(webContentsId: number, slug: string, name: string, caps: Iterable<string>): void {
-  grants.set(webContentsId, { slug, name, caps: new Set(caps) });
+export function grantAppCaps(
+  webContentsId: number,
+  slug: string,
+  name: string,
+  caps: Iterable<string>,
+  connectors: Iterable<string> = []
+): void {
+  grants.set(webContentsId, { slug, name, caps: new Set(caps), connectors: new Set(connectors) });
 }
 
 export function revokeAppCaps(webContentsId: number): void {

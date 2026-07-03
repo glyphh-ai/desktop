@@ -34,6 +34,14 @@ Services (cross-platform):
 | `cron.list`     | `{ }`                          | `[{ id, cron, handler }]`                    |
 | `notify.send`   | `{ title, body }`              | `{ shown }` (click opens the app)            |
 
+Connections (scoped to the manifest's `connectors` list — see below):
+
+| capability         | args                         | returns                                        |
+|--------------------|------------------------------|------------------------------------------------|
+| `connector.status` | `{ }`                        | `[{ connector, connected, healthy }]`          |
+| `connector.tools`  | `{ connector? }`             | `[{ connector, name, description, inputSchema }]` |
+| `connector.call`   | `{ connector, tool, args? }` | `{ result }` (text)                            |
+
 Machine capabilities (macOS): `contacts.search { query }`,
 `messages.send { to, body }`.
 
@@ -63,9 +71,16 @@ apps can't invent capabilities.
 
 1. **Scaffold** under `apps/<name>/`: `manifest.json` with
    `manifestVersion: 2`, `kind: "glyphh-app"`, `name`, `slug` (`[a-z0-9_-]`),
-   `entry`, optional `worker`, `capabilities`, `tools`, `window`.
-   Every `tools[].capability` MUST be in `capabilities`; `tools[].handler`
-   requires `worker`.
+   `entry`, optional `worker`, `capabilities`, optional `connectors`, `tools`,
+   `window`. Every `tools[].capability` MUST be in `capabilities`;
+   `tools[].handler` requires `worker`; any `connector.*` capability requires a
+   non-empty `connectors` list (Pipedream app slugs, e.g.
+   `["salesforce", "netsuite"]` — declare ALL the connections the app
+   integrates; multi-connection pipeline apps are a first-class shape).
+   Connections are user-level: the user connects each account once in Glyphh;
+   the app is self-contained and never sees tokens. Have the UI check
+   `connector.status` and render a "Connect X in Glyphh" state rather than
+   failing on unconnected accounts.
 2. **Worker pattern** (if the app has logic/schedules):
    ```js
    async function call(m, a) { const r = await glyphh.call(m, a); if (!r.ok) throw new Error(r.error); return r.result; }

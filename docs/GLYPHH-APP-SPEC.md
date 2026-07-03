@@ -51,7 +51,13 @@ is restarted on the new code; its cron schedules survive).
 
   // Host capabilities this app is allowed to use. The host enforces this list
   // PER-APP: an app can only ever reach a capability it declared here. See §5.
-  "capabilities": ["db.exec", "cron.schedule", "notify.send", "messages.send"],
+  "capabilities": ["db.exec", "cron.schedule", "notify.send", "connector.call"],
+
+  // Connections this app integrates (Pipedream app slugs) — OPTIONAL. The
+  // connector.* capabilities are scoped to exactly this list. Connections are
+  // user-level: the user connects Salesforce ONCE in Glyphh and every app
+  // that declared it can use it. Apps never see tokens. See §5.
+  "connectors": ["salesforce", "netsuite"],
 
   // MCP tools this app exposes to the relay (optional). Each is backed by
   // EXACTLY ONE of:
@@ -76,6 +82,9 @@ Rules:
 - Every `tools[].capability` MUST appear in `capabilities`. Install rejects a
   tool whose capability wasn't declared.
 - An app declaring an unknown capability fails to install.
+- Declaring any `connector.*` capability requires a non-empty `connectors`
+  list. An app may declare any number of connectors — multi-connection
+  integration apps (Salesforce → NetSuite sync) are a first-class shape.
 - `inputSchema` is a JSON Schema object. It's what the LLM sees and what the
   host validates args against before running. For capability tools the args
   pass through 1:1; for handler tools the args arrive as the handler's argument.
@@ -164,6 +173,46 @@ OS permission prompts, and the security boundary.
   syntax. Max 20 schedules per app. Requires a manifest `worker`.
 - **`notify.send`** — OS notification; clicking it opens the app's UI.
 
+### Connections (the 3500-connector catalog)
+
+| capability         | args                             | returns                                        |
+|--------------------|----------------------------------|------------------------------------------------|
+| `connector.status` | `{ }`                            | `[{ connector, connected, healthy }]`          |
+| `connector.tools`  | `{ connector? }`                 | `[{ connector, name, description, inputSchema }]` |
+| `connector.call`   | `{ connector, tool, args? }`     | `{ result }` (text)                            |
+
+All three are scoped to the manifest's `connectors` list — an app can never
+reach a connection it didn't declare, even if the user has it connected.
+Auth is user-level and host-owned (Pipedream via yo-server): the app calls
+tools by name; it never touches tokens, and connecting/disconnecting accounts
+happens in Glyphh, not in apps.
+
+- **`connector.status`** — what the app should render before doing work: for
+  each declared connector, whether the user has connected an account. A
+  well-behaved app shows a "Connect Salesforce in Glyphh" state instead of
+  failing.
+- **`connector.tools`** — the live tool catalog for the app's connectors
+  (tools only appear for connected accounts).
+- **`connector.call`** — invoke one tool. Calls to unconnected connectors fail
+  with a clear error.
+
+The canonical multi-connection pattern — a cron-driven pipeline (e.g.
+Salesforce → NetSuite daily sync with churn scoring) — is a worker handler:
+
+```js
+glyphh.handle("nightly_sync", async () => {
+  const sfdc = await call("connector.call", { connector: "salesforce",
+    tool: "run-soql-query", args: { query: "SELECT …" } });
+  // …transform, join against local state…
+  await call("db.exec", { sql: "INSERT INTO accounts_snapshot …", params: […] });
+  await call("connector.call", { connector: "netsuite", tool: "upsert-record", args: { … } });
+  const risky = await call("db.exec", { sql: "SELECT name FROM churn_risk_view" });
+  if (risky.rows.length) await call("notify.send", { title: "Churn risk",
+    body: `${risky.rows.length} accounts need attention` });
+});
+// registered once: cron.schedule { id:"nightly", cron:"0 6 * * *", handler:"nightly_sync" }
+```
+
 ### Machine capabilities (macOS; Windows backends are follow-on)
 
 | capability          | args                         | returns                              |
@@ -224,6 +273,9 @@ adapts to whatever apps a given user has installed.
   and can rate-limit, prompt for, or revoke.
 - **Per-app isolation.** Data services are slug-scoped: your database, your
   schedules. No capability takes a path, a slug, or any cross-app reference.
+- **Connections are user-level, access is app-scoped.** Accounts (OAuth) live
+  in Glyphh and are shared across apps; each app reaches only the connectors
+  its manifest declared, and never sees credentials.
 - **Workers are sandboxed web content.** No Node, strict CSP (same-bundle
   scripts only, no network, no eval). Apps ship interpreted JS only — never
   native binaries. This is also what keeps marketplace distribution clean on

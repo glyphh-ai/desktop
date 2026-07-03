@@ -3,11 +3,20 @@
  * (spec v2). These are the capabilities that turn a .yoapp from "a thin UI
  * over one AppleScript" into a real local app:
  *
- *   db.exec        { sql, params? }            per-app SQLite, one statement
- *   cron.schedule  { id, cron, handler, args? } persisted; fires a worker handler
- *   cron.cancel    { id }
- *   cron.list      { }
- *   notify.send    { title, body }             OS notification; click opens the app
+ *   db.exec          { sql, params? }            per-app SQLite, one statement
+ *   cron.schedule    { id, cron, handler, args? } persisted; fires a worker handler
+ *   cron.cancel      { id }
+ *   cron.list        { }
+ *   notify.send      { title, body }             OS notification; click opens the app
+ *   connector.status { }                         declared connectors + connected?
+ *   connector.tools  { connector? }              tool catalog for declared connectors
+ *   connector.call   { connector, tool, args? }  invoke a connector tool (Pipedream via yo-server)
+ *
+ * connector.* is what turns apps into integrations: an app declares the
+ * connections it needs (manifest `connectors: ["salesforce","netsuite"]`) and
+ * the host scopes every connector.* call to that list. Auth stays user-level —
+ * the user connects Salesforce ONCE in Glyphh and every app that declared it
+ * can use it; the app never sees tokens.
  *
  * Isolation model: every service call carries the calling app's slug (from its
  * capability grant) and is scoped to that slug — an app's database lives in
@@ -26,6 +35,13 @@ import os from "os";
 import path from "path";
 import { initLocalDb } from "./local-db.js";
 import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
+import { serverGetAuthed } from "./auth.js";
+import {
+  getConnectorCatalog,
+  refreshConnectorCatalog,
+  getCatalogAge,
+  callConnectorTool,
+} from "./connector-tools-client.js";
 
 // ── wiring (injected by glyphh-app-host at startup) ─────────
 
@@ -201,6 +217,57 @@ export function resetAppSchedules(slug: string): void {
     }
   }
   initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ?").run(slug);
+}
+
+// ── connectors (connector.status / connector.tools / connector.call) ──
+//
+// `declared` is the manifest's `connectors` list, resolved from the caller's
+// grant — the only connectors these functions will ever touch for that app.
+
+const CATALOG_MAX_AGE_MS = 5 * 60_000;
+
+async function freshCatalog() {
+  if (getCatalogAge() > CATALOG_MAX_AGE_MS) await refreshConnectorCatalog();
+  return getConnectorCatalog();
+}
+
+function assertDeclaredConnector(declared: Set<string>, connector: string): string {
+  const c = String(connector || "").trim().toLowerCase();
+  if (!c) throw new Error("connector is required");
+  if (!declared.has(c)) throw new Error(`connector not declared in manifest: ${c}`);
+  return c;
+}
+
+/** Each declared connector + whether the user has a (healthy) account for it. */
+export async function connectorStatus(declared: Set<string>): Promise<Array<{ connector: string; connected: boolean; healthy: boolean }>> {
+  const res = await serverGetAuthed<{ ok: boolean; accounts?: Array<{ appSlug: string; healthy: boolean }> }>(
+    "/api/connectors/accounts"
+  ).catch(() => ({ ok: false as const, accounts: [] }));
+  const accounts = res.ok && res.accounts ? res.accounts : [];
+  return [...declared].map((connector) => {
+    const acct = accounts.find((a) => a.appSlug === connector);
+    return { connector, connected: !!acct, healthy: !!acct?.healthy };
+  });
+}
+
+/** Tool catalog for the app's declared connectors (optionally one of them). */
+export async function connectorTools(declared: Set<string>, args: Record<string, unknown>): Promise<Array<{ connector: string; name: string; description: string; inputSchema: Record<string, unknown> }>> {
+  const only = args.connector ? assertDeclaredConnector(declared, String(args.connector)) : null;
+  const catalog = await freshCatalog();
+  return catalog
+    .filter((t) => declared.has(t.slug) && (!only || t.slug === only))
+    .map((t) => ({ connector: t.slug, name: t.name, description: t.description, inputSchema: t.inputSchema }));
+}
+
+/** Invoke a connector tool. Auth lives in yo-server (Pipedream) — the app
+ *  never sees tokens, and can only reach connectors it declared. */
+export async function connectorCall(declared: Set<string>, args: Record<string, unknown>): Promise<{ result: string }> {
+  const connector = assertDeclaredConnector(declared, String(args.connector || ""));
+  const tool = String(args.tool || "").trim();
+  if (!tool) throw new Error("tool is required");
+  const toolArgs = args.args && typeof args.args === "object" ? (args.args as Record<string, unknown>) : {};
+  const result = await callConnectorTool(connector, tool, toolArgs);
+  return { result };
 }
 
 // ── notifications (notify.send) ─────────────────────────────

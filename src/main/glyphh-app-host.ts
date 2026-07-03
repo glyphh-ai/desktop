@@ -43,7 +43,10 @@ import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js"
 import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
-import { initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend } from "./glyphh-app-services.js";
+import {
+  initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend,
+  connectorStatus, connectorTools, connectorCall,
+} from "./glyphh-app-services.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -68,6 +71,11 @@ export interface GlyphhAppManifest {
    *  handlers via glyphh.handle(). Relative to the bundle root. */
   worker?: string;
   capabilities: string[];
+  /** Connector app slugs (Pipedream) this app integrates — e.g.
+   *  ["salesforce", "netsuite"]. connector.* capabilities are scoped to this
+   *  list. The user connects the accounts once in Glyphh; apps never see
+   *  tokens. */
+  connectors?: string[];
   tools?: GlyphhAppTool[];
   window?: { width?: number; height?: number };
   description?: string;
@@ -81,6 +89,9 @@ const KNOWN_CAPABILITIES = new Set([
   "cron.cancel",
   "cron.list",
   "notify.send",
+  "connector.status",
+  "connector.tools",
+  "connector.call",
 ]);
 
 /** AppleScript-backed capabilities that only exist on macOS. Everything else
@@ -99,6 +110,9 @@ export function readGlyphhAppManifest(json: string): GlyphhAppManifest | null {
   if (!m.name || !m.slug || !m.entry) return null;
   m.slug = String(m.slug).toLowerCase().replace(/[^a-z0-9_-]/g, "-");
   m.capabilities = Array.isArray(m.capabilities) ? m.capabilities.map(String) : [];
+  m.connectors = Array.isArray(m.connectors)
+    ? [...new Set(m.connectors.map((c) => String(c).trim().toLowerCase()).filter((c) => /^[a-z0-9_-]+$/.test(c)))]
+    : [];
   m.worker = typeof m.worker === "string" && m.worker.trim() ? m.worker.trim() : undefined;
   m.tools = Array.isArray(m.tools)
     ? m.tools.filter(
@@ -148,6 +162,11 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   if (handlerTool && !manifest.worker) {
     return { ok: false, error: `Tool "${handlerTool.name}" uses a handler but the manifest declares no worker` };
   }
+  // connector.* capabilities are meaningless without a connectors list (every
+  // call would fail the declared-connector check) — refuse loudly instead.
+  if (manifest.capabilities.some((c) => c.startsWith("connector.")) && !(manifest.connectors || []).length) {
+    return { ok: false, error: "connector.* capabilities require a non-empty `connectors` list in the manifest" };
+  }
 
   const dir = path.join(customAppsDir(), manifest.slug);
   fs.mkdirSync(dir, { recursive: true });
@@ -170,6 +189,7 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     appArchetype: "glyphh-app",
     launchConfig: {
       capabilities: manifest.capabilities,
+      connectors: manifest.connectors ?? [],
       tools: manifest.tools ?? [],
       window: manifest.window ?? null,
       worker: manifest.worker ?? null,
@@ -203,6 +223,7 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       appDir: dir,
       workerFile: manifest.worker,
       capabilities: manifest.capabilities,
+      connectors: manifest.connectors ?? [],
     }).catch((err) => console.error(`[glyphh-app] worker warm-start "${manifest.slug}" failed:`, err instanceof Error ? err.message : err));
   }
   return { ok: true, name: manifest.name, updated: updated || undefined };
@@ -241,8 +262,9 @@ export function openGlyphhApp(row: GlyphhAppRow): { ok: boolean; error?: string 
     return { ok: true };
   }
 
-  const lc = (row.launchConfig || {}) as { capabilities?: unknown; window?: { width?: number; height?: number } | null };
+  const lc = (row.launchConfig || {}) as { capabilities?: unknown; connectors?: unknown; window?: { width?: number; height?: number } | null };
   const caps = Array.isArray(lc.capabilities) ? lc.capabilities.map(String).filter((c) => KNOWN_CAPABILITIES.has(c)) : [];
+  const connectors = Array.isArray(lc.connectors) ? lc.connectors.map(String) : [];
   const win = new BrowserWindow({
     width: lc.window?.width || 460,
     height: lc.window?.height || 640,
@@ -254,7 +276,7 @@ export function openGlyphhApp(row: GlyphhAppRow): { ok: boolean; error?: string 
       preload: path.join(__dirname, "glyphh-app-preload.js"),
     },
   });
-  grantAppCaps(win.webContents.id, row.slug, row.name, caps);
+  grantAppCaps(win.webContents.id, row.slug, row.name, caps, connectors);
   void win.loadFile(entryPath);
   win.once("ready-to-show", () => win.show());
   win.on("closed", () => {
@@ -331,18 +353,27 @@ end tell`);
  * calling this; `slug`/`appName` identify the calling app so services
  * (db/cron/notify) stay scoped to it.
  */
-async function runCapability(slug: string, appName: string, method: string, args: Record<string, unknown>): Promise<unknown> {
+async function runCapability(
+  slug: string,
+  appName: string,
+  method: string,
+  args: Record<string, unknown>,
+  connectors: Set<string> = new Set()
+): Promise<unknown> {
   if (DARWIN_ONLY_CAPABILITIES.has(method) && process.platform !== "darwin") {
     throw new Error(`capability ${method} is macOS-only for now`);
   }
   switch (method) {
-    case "contacts.search": return contactsSearch(String(args.query || ""));
-    case "messages.send":   await messagesSend(String(args.to || ""), String(args.body || "")); return { sent: true };
-    case "db.exec":         return dbExec(slug, args);
-    case "cron.schedule":   return cronSchedule(slug, args);
-    case "cron.cancel":     return cronCancel(slug, args);
-    case "cron.list":       return cronList(slug);
-    case "notify.send":     return notifySend(slug, appName, args);
+    case "contacts.search":  return contactsSearch(String(args.query || ""));
+    case "messages.send":    await messagesSend(String(args.to || ""), String(args.body || "")); return { sent: true };
+    case "db.exec":          return dbExec(slug, args);
+    case "cron.schedule":    return cronSchedule(slug, args);
+    case "cron.cancel":      return cronCancel(slug, args);
+    case "cron.list":        return cronList(slug);
+    case "notify.send":      return notifySend(slug, appName, args);
+    case "connector.status": return connectorStatus(connectors);
+    case "connector.tools":  return connectorTools(connectors, args);
+    case "connector.call":   return connectorCall(connectors, args);
     default: throw new Error(`unknown capability: ${method}`);
   }
 }
@@ -371,7 +402,7 @@ interface AppRow {
   name: string;
   appArchetype?: string | null;
   execPath?: string | null;
-  launchConfig?: { capabilities?: string[]; tools?: GlyphhAppTool[]; worker?: string | null } | null;
+  launchConfig?: { capabilities?: string[]; connectors?: string[]; tools?: GlyphhAppTool[]; worker?: string | null } | null;
 }
 
 /** Saved-app row → the spec needed to run its worker (null if it has none). */
@@ -385,6 +416,7 @@ function workerSpecFromRow(row: AppRow): AppWorkerSpec | null {
     appDir: path.dirname(entryPath),
     workerFile,
     capabilities: (row.launchConfig?.capabilities || []).filter((c) => KNOWN_CAPABILITIES.has(c)),
+    connectors: row.launchConfig?.connectors || [],
   };
 }
 
@@ -424,7 +456,7 @@ export async function callAppTool(appSlug: string, toolName: string, args: Recor
 
   const declared = app.launchConfig?.capabilities || [];
   if (!tool.capability || !declared.includes(tool.capability)) throw new Error(`tool "${toolName}" uses undeclared capability`);
-  return runCapability(app.slug, app.name, tool.capability, args || {});
+  return runCapability(app.slug, app.name, tool.capability, args || {}, new Set(app.launchConfig?.connectors || []));
 }
 
 // ── IPC ─────────────────────────────────────────────────────
@@ -457,7 +489,7 @@ export function registerGlyphhAppHost(): void {
       return { ok: false, error: `capability not granted: ${m}` };
     }
     try {
-      return { ok: true, result: await runCapability(grant.slug, grant.name, m, (args || {}) as Record<string, unknown>) };
+      return { ok: true, result: await runCapability(grant.slug, grant.name, m, (args || {}) as Record<string, unknown>, grant.connectors) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
