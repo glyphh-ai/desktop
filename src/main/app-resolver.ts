@@ -112,6 +112,9 @@ async function openNativeTracked(app: ServerApp, rect: OsRect, retileOnFocus: bo
     if (!w) { console.error(`[app-resolver] no window appeared for "${app.name}" (${hint})`); return; }
     nativeAppWindows.set(app.id, w.id);
     await setWindowBounds(w.id, rect);
+    // Raise the placed window — without this a layout can tile windows that
+    // stay buried under unrelated apps (bounds don't change z-order).
+    await focusWindow(w.id);
   });
   nativeOpenChains.set(key, task.catch(() => {}));
   await launchGate;
@@ -224,11 +227,11 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   const isNative = app.isBrowser === false || (!!app.execPath && !app.url);
   if (isNative) {
     // Tracked open: re-opening focuses THIS app's own window (not whichever
-    // window of the shared binary happens to be first); a fresh launch adopts
-    // the new window and full-screens it. retileOnFocus=false — toggling back
-    // to an app must not blow away the user's manual window arrangement.
+    // window of the shared binary happens to be first). retileOnFocus=true —
+    // `.dip <app>` / a palette click always lands the app full-screen, the
+    // same contract web apps get from openAppWindowSlide's reuse path.
     const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-    await openNativeTracked(app, { x: wa.x, y: wa.y, width: wa.width, height: wa.height }, false);
+    await openNativeTracked(app, { x: wa.x, y: wa.y, width: wa.width, height: wa.height }, true);
     return { slug: app.slug, name: app.name };
   }
   if (app.browserTarget === "native") {

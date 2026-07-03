@@ -184,7 +184,10 @@ export async function arrangeSplit(appNames: string[]): Promise<number> {
   const wins = await listWindows();
   const picked: OsWindow[] = [];
   for (const n of names) {
-    const w = wins.find((x) => x.proc.toLowerCase().includes(n) || x.title.toLowerCase().includes(n));
+    // Process name first; title only as a last resort (titles reflect content
+    // — a Terminal running `claude` must not satisfy a "claude" split slot).
+    const w = wins.find((x) => windowMatches(x, n))
+      || wins.find((x) => x.title.toLowerCase().includes(n));
     if (w && !picked.includes(w)) picked.push(w);
   }
   if (picked.length === 0) return 0;
@@ -275,13 +278,21 @@ export async function focusOsApp(proc: string): Promise<boolean> {
   return false;
 }
 
-/** Does this window belong to the app named by `hint`? Matches process name
- *  in either direction ("Visual Studio Code" hint ↔ "Code" process) or title. */
+/**
+ * Does this window belong to the app named by `hint`? PROCESS NAME only, in
+ * either direction ("Visual Studio Code" hint ↔ "Code" process, ≥3 chars for
+ * the reverse so a short proc name can't swallow everything).
+ *
+ * Deliberately NOT title-based: titles reflect content, not identity — a
+ * Terminal running the `claude` CLI has "claude" in its title, and title
+ * matching made the Claude app adopt/position the Terminal window.
+ */
 export function windowMatches(w: OsWindow, hint: string): boolean {
   const m = hint.trim().toLowerCase();
   if (!m) return false;
   const p = w.proc.toLowerCase();
-  return p.includes(m) || m.includes(p) || w.title.toLowerCase().includes(m);
+  if (!p) return false;
+  return p.includes(m) || (p.length >= 3 && m.includes(p));
 }
 
 /** Bring one SPECIFIC window to front (unminimize + raise + activate). Fails

@@ -35,6 +35,57 @@ import Foundation
 @_silgen_name("_AXUIElementGetWindow")
 func _AXUIElementGetWindow(_ element: AXUIElement, _ identifier: inout CGWindowID) -> AXError
 
+// Private SkyLight APIs (the yabai focus mechanism): public activation is
+// "cooperative" on modern macOS and refuses to move focus away from the app
+// the user is actively using. _SLPSSetFrontProcessWithOptions with
+// kCPSUserGenerated makes WindowServer treat the switch as user-generated,
+// and the two SLPSPostEventRecordTo packets designate the key window.
+//
+// These live in the private SkyLight framework — resolved at runtime via
+// dlsym (no link-time dependency on a private framework, so the build stays
+// clean and a future symbol rename degrades gracefully to the AX fallback).
+typealias GetProcessForPIDFn = @convention(c) (pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> OSStatus
+typealias SetFrontFn = @convention(c) (UnsafeMutablePointer<ProcessSerialNumber>, UInt32, UInt32) -> CGError
+typealias PostEventFn = @convention(c) (UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError
+
+let kCPSUserGenerated: UInt32 = 0x200
+
+let skyLight: (get: GetProcessForPIDFn, setFront: SetFrontFn, post: PostEventFn)? = {
+  // The SLPS symbols are already in-process via AppKit's SkyLight dependency;
+  // GetProcessForPID (deprecated Process Manager) only lives in Carbon, which
+  // isn't loaded by default — dlopen it explicitly.
+  let RTLD_DEFAULT = UnsafeMutableRawPointer(bitPattern: -2)
+  guard let carbon = dlopen("/System/Library/Frameworks/Carbon.framework/Carbon", RTLD_LAZY),
+        let g = dlsym(carbon, "GetProcessForPID"),
+        let s = dlsym(RTLD_DEFAULT, "_SLPSSetFrontProcessWithOptions"),
+        let p = dlsym(RTLD_DEFAULT, "SLPSPostEventRecordTo") else { return nil }
+  return (unsafeBitCast(g, to: GetProcessForPIDFn.self),
+          unsafeBitCast(s, to: SetFrontFn.self),
+          unsafeBitCast(p, to: PostEventFn.self))
+}()
+
+/// Focus a specific window across apps the way yabai does. Returns true when
+/// the SkyLight path was applied (best-effort — no error surface beyond CGError).
+func skyLightFocus(pid: pid_t, wid: CGWindowID) -> Bool {
+  guard let sl = skyLight else { return false }
+  var psn = ProcessSerialNumber()
+  guard sl.get(pid, &psn) == noErr else { return false }
+  guard sl.setFront(&psn, UInt32(wid), kCPSUserGenerated) == .success else { return false }
+  // "Make key window" packets (see yabai window_manager_make_key_window).
+  var bytes = [UInt8](repeating: 0, count: 0xf8)
+  bytes[0x04] = 0xf8
+  bytes[0x3a] = 0x10
+  var w = UInt32(wid)
+  withUnsafeBytes(of: &w) { raw in
+    for i in 0..<4 { bytes[0x3c + i] = raw[i] }
+  }
+  bytes[0x08] = 0x01
+  _ = bytes.withUnsafeMutableBufferPointer { sl.post(&psn, $0.baseAddress!) }
+  bytes[0x08] = 0x02
+  _ = bytes.withUnsafeMutableBufferPointer { sl.post(&psn, $0.baseAddress!) }
+  return true
+}
+
 // ── AX handle cache ─────────────────────────────────────────────────────
 
 /// "pid:cgid" → AX window element. Populated on every list; consulted by
@@ -256,13 +307,29 @@ func handle(_ req: [String: Any]) -> (ok: Bool, data: Any?, error: String?) {
   // Glyphh Terminal configs each tracking their own window.
   case "focusWin":
     guard let key = req["win"] as? String, let el = resolveWindow(key) else { return (false, nil, "window not found") }
-    _ = axSetMinimized(el, false)
-    _ = AXUIElementSetAttributeValue(el, kAXMainAttribute as CFString, true as CFTypeRef)
-    let raised = AXUIElementPerformAction(el, kAXRaiseAction as CFString)
-    if let pidStr = key.split(separator: ":").first, let pid = pid_t(pidStr) {
-      NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateIgnoringOtherApps])
+    let parts = key.split(separator: ":")
+    guard parts.count == 2, let pid = pid_t(parts[0]), let wid = CGWindowID(parts[1]) else { return (false, nil, "bad window key") }
+    // yabai's field-proven order: unminimize (only when actually minimized),
+    // AX raise, then the SkyLight steal (setFront + make-key packets — these
+    // work even when another app is active, where public cooperative
+    // activation refuses). AX frontmost + activate only as fallback when the
+    // SkyLight symbols are unavailable. Note: nothing beats live user input —
+    // if the user is actively typing in another app the OS re-asserts it,
+    // which is correct; the real flow steals from Glyphh's own palette.
+    var minRef: CFTypeRef?
+    if AXUIElementCopyAttributeValue(el, kAXMinimizedAttribute as CFString, &minRef) == .success,
+       (minRef as? Bool) == true {
+      _ = axSetMinimized(el, false)
     }
-    return raised == .success ? (true, nil, nil) : (false, nil, "AX raise failed")
+    let raised = AXUIElementPerformAction(el, kAXRaiseAction as CFString)
+    let sky = skyLightFocus(pid: pid, wid: wid)
+    var fmErr = AXError.success
+    if !sky {
+      fmErr = AXUIElementSetAttributeValue(axApp(pid), kAXFrontmostAttribute as CFString, true as CFTypeRef)
+      NSRunningApplication(processIdentifier: pid)?.activate()
+    }
+    if sky || raised == .success || fmErr == .success { return (true, nil, nil) }
+    return (false, nil, "focus failed (raise=\(raised.rawValue) frontmost=\(fmErr.rawValue))")
 
   // Bring an app to front by name (case-insensitive contains) or pid,
   // restoring its first window if minimized.
@@ -278,6 +345,7 @@ func handle(_ req: [String: Any]) -> (ok: Bool, data: Any?, error: String?) {
     guard let app = target else { return (false, nil, "app not found") }
     let wins = axWindows(of: app.processIdentifier)
     if let first = wins.values.first { _ = axSetMinimized(first, false) }
+    _ = AXUIElementSetAttributeValue(axApp(app.processIdentifier), kAXFrontmostAttribute as CFString, true as CFTypeRef)
     app.activate(options: [.activateIgnoringOtherApps])
     return (true, ["pid": Int(app.processIdentifier)], nil)
 

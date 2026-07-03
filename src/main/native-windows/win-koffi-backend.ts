@@ -269,6 +269,10 @@ export async function winFocusApp(name: string): Promise<boolean> {
   if (!a) return false;
   const key = name.trim().toLowerCase();
   if (!key) return false;
-  const w = enumerate(a, true).find((x) => x.proc.toLowerCase().includes(key) || x.title.toLowerCase().includes(key));
+  // Process name first; title only as a last resort (titles reflect content,
+  // not identity — see os-window-manager.windowMatches).
+  const all = enumerate(a, true);
+  const w = all.find((x) => x.proc.toLowerCase().includes(key))
+    || all.find((x) => x.title.toLowerCase().includes(key));
   return w ? winFocusWindow(Number(w.id)) : false;
 }
