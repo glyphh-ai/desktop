@@ -30,11 +30,11 @@ import { screen } from "electron";
 import {
   initMacHelper, disposeMacHelper, macHelperAvailable,
   macList, macApps, macFront, macBounds, macMinimizeWin,
-  macMinimizeWins, macMinimizeAllWins, macFocusApp, macPerms,
+  macMinimizeWins, macMinimizeAllWins, macFocusApp, macFocusWin, macPerms,
 } from "./native-windows/mac-helper-backend";
 import {
   winBackendAvailable, winList, winApps, winFront, winBounds,
-  winMinimizeWins, winMinimizeAll as winMinimizeAllWins, winFocusApp,
+  winMinimizeWins, winMinimizeAll as winMinimizeAllWins, winFocusApp, winFocusWindow,
 } from "./native-windows/win-koffi-backend";
 
 export interface OsWindow {
@@ -275,24 +275,86 @@ export async function focusOsApp(proc: string): Promise<boolean> {
   return false;
 }
 
+/** Does this window belong to the app named by `hint`? Matches process name
+ *  in either direction ("Visual Studio Code" hint ↔ "Code" process) or title. */
+export function windowMatches(w: OsWindow, hint: string): boolean {
+  const m = hint.trim().toLowerCase();
+  if (!m) return false;
+  const p = w.proc.toLowerCase();
+  return p.includes(m) || m.includes(p) || w.title.toLowerCase().includes(m);
+}
+
+/** Bring one SPECIFIC window to front (unminimize + raise + activate). Fails
+ *  (false) when the window no longer exists — callers relaunch on that. */
+export async function focusWindow(id: string): Promise<boolean> {
+  try {
+    if (isMac) { await macFocusWin(id); return true; }
+    if (isWin) return await winFocusWindow(Number(id));
+  } catch { /* window gone */ }
+  return false;
+}
+
+/** Move/resize one specific window. */
+export async function setWindowBounds(id: string, rect: Rect): Promise<boolean> {
+  return (await applyBounds([{ win: id, ...rect }])) > 0;
+}
+
+/** Ids of the windows currently matching `hint` — snapshot BEFORE launching
+ *  an app so waitForAppWindow can spot the window the launch created. */
+export async function snapshotWindowIds(hint: string): Promise<Set<string>> {
+  try {
+    return new Set((await listWindows()).filter((w) => windowMatches(w, hint)).map((w) => w.id));
+  } catch { return new Set(); }
+}
+
+/**
+ * Wait for the window a just-launched app creates, by window-set diff: the
+ * first matching window whose id was NOT in `excludeIds` (the pre-launch
+ * snapshot). Handles single-binary/multi-config apps (two Terminal configs)
+ * and single-instance apps whose launcher pid exits (Chrome, VS Code).
+ *
+ * Launches that reuse an existing window (Terminal tab/blank modes) never
+ * produce a new id — after `graceMs` we fall back to the frontmost existing
+ * match (enumeration is front-to-back), which is where the new tab landed.
+ */
+export async function waitForAppWindow(
+  hint: string,
+  excludeIds: Set<string>,
+  opts?: { timeoutMs?: number; graceMs?: number; pollMs?: number },
+): Promise<OsWindow | null> {
+  const timeoutMs = opts?.timeoutMs ?? 10_000;
+  const graceMs = opts?.graceMs ?? 2_000;
+  const pollMs = opts?.pollMs ?? 150;
+  const t0 = Date.now();
+  let fallback: OsWindow | null = null;
+  while (Date.now() - t0 < timeoutMs) {
+    try {
+      const matches = (await listWindows()).filter((w) => windowMatches(w, hint));
+      const fresh = matches.find((w) => !excludeIds.has(w.id));
+      if (fresh) return fresh;
+      if (!fallback && matches.length > 0) fallback = matches[0];
+      if (fallback && Date.now() - t0 >= graceMs) return fallback;
+    } catch { /* retry */ }
+    await sleep(pollMs);
+  }
+  return fallback;
+}
+
 /**
  * Find the window matching `match` (process name or title, case-insensitive,
  * either direction) and move it to `rect`. Polls because a just-launched
  * native app's window may not exist yet — enumeration is now milliseconds,
  * so we poll fast and long enough to cover cold app starts (~10s).
- * Best-effort — returns false if never found.
+ * Best-effort — returns false if never found. (Used for installed-OS-app
+ * fallbacks with no saved-app identity; library apps go through the tracked
+ * flow in app-resolver instead.)
  */
 export async function positionAppWindow(match: string, rect: Rect, attempts = 50, delayMs = 200): Promise<boolean> {
   const m = match.trim().toLowerCase();
   if (!m || !osWindowsSupported()) return false;
   for (let i = 0; i < attempts; i++) {
     try {
-      const wins = await listWindows();
-      // Match either direction: "Visual Studio Code" hint ↔ "Code" process.
-      const w = wins.find((x) => {
-        const p = x.proc.toLowerCase();
-        return p.includes(m) || m.includes(p) || x.title.toLowerCase().includes(m);
-      });
+      const w = (await listWindows()).find((x) => windowMatches(x, match));
       if (w) {
         await applyBounds([toTarget(w, rect)]);
         return true;

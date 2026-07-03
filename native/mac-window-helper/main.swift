@@ -251,6 +251,19 @@ func handle(_ req: [String: Any]) -> (ok: Bool, data: Any?, error: String?) {
       "width": Int(size.width), "height": Int(size.height),
     ], nil)
 
+  // Bring one SPECIFIC window to front (unminimize + make main + raise +
+  // activate its app). Disambiguates apps that share a process — e.g. two
+  // Glyphh Terminal configs each tracking their own window.
+  case "focusWin":
+    guard let key = req["win"] as? String, let el = resolveWindow(key) else { return (false, nil, "window not found") }
+    _ = axSetMinimized(el, false)
+    _ = AXUIElementSetAttributeValue(el, kAXMainAttribute as CFString, true as CFTypeRef)
+    let raised = AXUIElementPerformAction(el, kAXRaiseAction as CFString)
+    if let pidStr = key.split(separator: ":").first, let pid = pid_t(pidStr) {
+      NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateIgnoringOtherApps])
+    }
+    return raised == .success ? (true, nil, nil) : (false, nil, "AX raise failed")
+
   // Bring an app to front by name (case-insensitive contains) or pid,
   // restoring its first window if minimized.
   case "focusApp":

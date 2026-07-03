@@ -144,6 +144,7 @@ export const macMinimizeWin = (win: string) => request<void>("minimize", { win }
 export const macMinimizeWins = (wins: string[]) => request<{ minimized: number }>("minimizeWins", { wins });
 export const macMinimizeAllWins = () => request<{ minimized: number }>("minimizeAll");
 export const macFocusApp = (name: string) => request<{ pid: number }>("focusApp", { name });
+export const macFocusWin = (win: string) => request<void>("focusWin", { win });
 export const macPerms = (prompt: boolean) => request<{ trusted: boolean }>("perms", { prompt });
 
 export function disposeMacHelper(): void {

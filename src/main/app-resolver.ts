@@ -15,7 +15,10 @@ import {
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
 } from "./app-window-manager.js";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
-import { positionAppWindow } from "./os-window-manager.js";
+import {
+  positionAppWindow, focusWindow, setWindowBounds,
+  snapshotWindowIds, waitForAppWindow, type Rect as OsRect,
+} from "./os-window-manager.js";
 import { findInstalledApp, launchInstalledApp, normKey, isSubsequence } from "./installed-apps.js";
 import { openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host.js";
 
@@ -32,6 +35,68 @@ export interface ServerApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+}
+
+// ── Native-app window tracking ──────────────────────────────────────────
+//
+// Two saved apps can point at the SAME binary with different configs (e.g.
+// two Terminal apps with different cwd/init commands). Process-name matching
+// can't tell their windows apart, so the window manager grabbed/focused the
+// wrong one when toggling. Instead, remember which OS window each saved app
+// row opened (pre-launch window-set diff → the window the launch created)
+// and drive THAT window on subsequent opens.
+const nativeAppWindows = new Map<string, string>(); // saved-app row id → OS window id
+
+// Launch+adopt chains, one per binary. Two same-binary launches in quick
+// succession (a layout with both Terminal configs) must not race: the second
+// snapshot has to include the window the first launch created, or both
+// waiters could adopt the same window. Different binaries run in parallel.
+const nativeOpenChains = new Map<string, Promise<void>>();
+
+/**
+ * Open a native library app with window identity:
+ *  - already tracked and its window still exists → focus it (retile to `rect`
+ *    only when the caller is a layout placing tiles)
+ *  - otherwise snapshot matching windows, launch, then adopt the NEW window
+ *    the launch created (window-set diff; grace-fallback to the frontmost
+ *    match for launches that reuse a window, e.g. Terminal tab/blank modes)
+ *    and position it.
+ * Resolves once the launch itself has been issued — adoption/positioning
+ * continues detached so callers (and the thinking scrim) aren't held through
+ * a cold app start.
+ */
+async function openNativeTracked(app: ServerApp, rect: OsRect, retileOnFocus: boolean): Promise<void> {
+  const hint = (app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name;
+
+  const tracked = nativeAppWindows.get(app.id);
+  if (tracked) {
+    if (await focusWindow(tracked)) {
+      if (retileOnFocus) await setWindowBounds(tracked, rect);
+      return;
+    }
+    nativeAppWindows.delete(app.id); // window was closed — relaunch below
+  }
+
+  // Gate settles when the launch has been issued (or failed) — the adopt
+  // phase after it stays detached.
+  let launched!: () => void;
+  let launchFailed!: (e: Error) => void;
+  const launchGate = new Promise<void>((res, rej) => { launched = res; launchFailed = rej; });
+
+  const key = hint.toLowerCase();
+  const prev = nativeOpenChains.get(key) ?? Promise.resolve();
+  const task = prev.then(async () => {
+    const before = await snapshotWindowIds(hint);
+    const r = launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
+    if (!r.ok) { launchFailed(new Error(r.error || "failed to launch native app")); return; }
+    launched();
+    const w = await waitForAppWindow(hint, before);
+    if (!w) { console.error(`[app-resolver] no window appeared for "${app.name}" (${hint})`); return; }
+    nativeAppWindows.set(app.id, w.id);
+    await setWindowBounds(w.id, rect);
+  });
+  nativeOpenChains.set(key, task.catch(() => {}));
+  await launchGate;
 }
 
 /** Built-in apps that aren't in the server library. */
@@ -134,12 +199,12 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   // Native = explicitly flagged, or simply has an executable and no URL.
   const isNative = app.isBrowser === false || (!!app.execPath && !app.url);
   if (isNative) {
-    const r = launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
-    if (!r.ok) throw new Error(r.error || "failed to launch native app");
-    // Best-effort full-screen the launched OS window.
+    // Tracked open: re-opening focuses THIS app's own window (not whichever
+    // window of the shared binary happens to be first); a fresh launch adopts
+    // the new window and full-screens it. retileOnFocus=false — toggling back
+    // to an app must not blow away the user's manual window arrangement.
     const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-    const hint = (app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name;
-    void positionAppWindow(hint, { x: wa.x, y: wa.y, width: wa.width, height: wa.height });
+    await openNativeTracked(app, { x: wa.x, y: wa.y, width: wa.width, height: wa.height }, false);
     return { slug: app.slug, name: app.name };
   }
   if (app.browserTarget === "native") {
@@ -220,13 +285,13 @@ export async function openLayoutByName(
     // URL (defensive: don't depend solely on the isBrowser flag).
     const isNative = app.isBrowser === false || (!!app.execPath && !app.url);
     if (isNative) {
-      // Launch by execPath (exactly what the working Apps → Open button does),
-      // then best-effort nudge its OS window into the cell.
-      const r = launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
-      console.error(`[layout] native "${app.name}" execPath="${app.execPath}" → ok=${r.ok}${r.error ? " — " + r.error : ""}`);
-      if (!r.ok) continue;
-      const hint = (app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name;
-      void positionAppWindow(hint, bounds);
+      // Tracked open: each saved app owns ITS window (two configs of the same
+      // binary get two distinct windows). retileOnFocus=true — a layout must
+      // land the window in its cell even if it was already open elsewhere.
+      // Fire-and-forget: same-binary launches serialize internally (adopt
+      // chain), and the layout handler shouldn't wait through app starts.
+      void openNativeTracked(app, bounds, true).catch((err) =>
+        console.error(`[layout] native "${app.name}" failed: ${err instanceof Error ? err.message : err}`));
       opened.push(app.slug);
       continue;
     }
