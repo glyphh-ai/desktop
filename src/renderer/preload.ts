@@ -44,6 +44,29 @@ export interface PanelAppInput {
   launchConfig?: Record<string, unknown> | null;
 }
 
+/** A marketplace listing (public catalog or org-private). Rich enough for a
+ *  Shopify-style storefront: developer identity, rating, media, price. */
+export interface MarketplaceApp {
+  id: string;
+  slug: string;
+  name: string;
+  tagline: string;
+  description?: string;
+  iconUrl?: string;
+  developer: { name: string; verified: boolean };
+  rating: number;          // 0–5
+  ratingCount: number;
+  priceCredits: number;    // 0 = free
+  category: string;        // category id
+  scope: "public" | "private";
+  featured: boolean;       // sponsored strip
+  popular: boolean;        // popular strip
+  version?: string;
+  videoUrl?: string;
+  mockups?: string[];
+  installed: boolean;
+}
+
 contextBridge.exposeInMainWorld("yo", {
   copyToClipboard: (text: string) => ipcRenderer.invoke("copy-to-clipboard", text),
   // Toggle the full-screen command overlay (also bound to a global hotkey).
@@ -135,15 +158,17 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.on("working-dir-changed", (_e, dir) => callback(dir));
   },
 
-  // Marketplace — install apps published to the public catalog or shared
-  // privately within the org. Server-backed (yo-server marketplace routes,
-  // pending); returns [] until those land, so the section degrades gracefully.
-  marketplaceList: (scope: "public" | "private") =>
-    ipcRenderer.invoke("marketplace-list", scope) as Promise<Array<{
-      id: string; slug: string; name: string; description?: string; iconUrl?: string;
-      scope: "public" | "private"; priceCredits: number; publisher?: string;
-      version?: string; installed: boolean;
-    }>>,
+  // Marketplace — Shopify-style catalog of installable apps (public catalog +
+  // org-private). Server routes are pending; until they land the main process
+  // serves a placeholder catalog so the UI is fully renderable (see apps-ipc).
+  marketplaceList: (params: {
+    scope: "public" | "private"; category?: string; q?: string;
+    sort?: "popular" | "rating" | "newest"; page?: number;
+  }) => ipcRenderer.invoke("marketplace-list", params) as Promise<{
+    items: MarketplaceApp[]; total: number; page: number; pageSize: number;
+    categories: Array<{ id: string; label: string; count: number }>;
+    featured: MarketplaceApp[]; popular: MarketplaceApp[];
+  }>,
   marketplaceInstall: (id: string) =>
     ipcRenderer.invoke("marketplace-install", id) as Promise<{ ok: boolean; slug?: string; error?: string }>,
 

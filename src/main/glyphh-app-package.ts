@@ -1,5 +1,5 @@
 /**
- * yo-app-package — export/import a yo app as a portable `.glyphh` bundle.
+ * glyphh-app-package — export/import a yo app as a portable `.glyphh` bundle.
  *
  * Concept (VIBE-SPEC "yo app package"): everything is a yo app, and a yo app is
  * a portable unit. A `.glyphh` is just a zip:

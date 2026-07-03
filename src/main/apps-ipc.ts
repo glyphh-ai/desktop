@@ -2,9 +2,10 @@ import { app, ipcMain, dialog } from "electron";
 import fs from "fs";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
-import { exportApp, importApp, localBundleDir } from "./yo-app-package";
+import { exportApp, importApp, localBundleDir } from "./glyphh-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
 import { cachedServerGet, invalidateServerCache } from "./server-cache";
+import { listMarketplace, installMarketplaceApp } from "./marketplace";
 import { openAppWindow } from "./app-window-manager";
 import { launchNativeApp, launchInNativeChrome } from "./native-launch";
 import { openLayoutByName } from "./app-resolver";
@@ -101,23 +102,25 @@ function registerPanelAppsIpc(): void {
   });
 
   // ── Marketplace ──────────────────────────────────────────────
-  // Public catalog + org-private shared apps. The yo-server marketplace
-  // routes are pending; until they land these degrade to empty / a clear
-  // error rather than throwing, so the client section renders today.
-  ipcMain.handle("marketplace-list", async (_e, scope: string) => {
-    const s = scope === "private" ? "private" : "public";
-    try { return await serverGetAuthed<unknown[]>(`/api/marketplace/apps?scope=${s}`); }
-    catch { return []; }
-  });
-  ipcMain.handle("marketplace-install", async (_e, id: string) => {
+  // Shopify-style catalog (public + org-private). Backed by marketplace.ts,
+  // which serves a placeholder catalog until the yo-server routes land.
+  ipcMain.handle("marketplace-list", async (_e, params: {
+    scope?: string; category?: string; q?: string; sort?: string; page?: number;
+  }) => {
+    const scope = params?.scope === "private" ? "private" : "public";
     try {
-      const app = await serverPostAuthed<{ slug?: string }>(`/api/marketplace/apps/${encodeURIComponent(id)}/install`, {});
-      invalidateServerCache("/api/panel-apps"); // it's now in the org library
-      return { ok: true, slug: app?.slug };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      return await listMarketplace({
+        scope,
+        category: params?.category,
+        q: params?.q,
+        sort: (params?.sort as "popular" | "rating" | "newest") || "popular",
+        page: params?.page,
+      });
+    } catch {
+      return { items: [], total: 0, page: 1, pageSize: 12, categories: [], featured: [], popular: [] };
     }
   });
+  ipcMain.handle("marketplace-install", async (_e, id: string) => installMarketplaceApp(String(id)));
   // input/patch are forwarded verbatim to the server, which validates and
   // picks the fields it accepts (see saved-app-routes.ts readCreateInput).
   // Typed as Record so the new Browser↔Native fields (isBrowser, browserTarget,

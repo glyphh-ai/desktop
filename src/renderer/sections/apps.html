@@ -1,5 +1,11 @@
         <div class="help-section" data-section="apps">
           <h2>Apps</h2>
+          <div class="apps-page-tabs">
+            <button class="apps-page-tab active" data-page="library">My apps</button>
+            <button class="apps-page-tab" data-page="marketplace">Marketplace</button>
+          </div>
+
+          <div id="apps-library-page" class="apps-page">
           <p class="section-desc">Browse and connect apps.</p>
 
           <!-- Upgrade gate (shown for non-Advanced when trying to connect) -->
@@ -16,22 +22,6 @@
           </div>
 
           <div id="apps-list" class="crud-cards"></div>
-
-          <!-- ── Marketplace: install apps published to the public catalog or
-               shared privately within your org. Hidden while the add/detail
-               forms are open (see apps.ts). ── -->
-          <div id="marketplace-section" class="marketplace-section">
-            <div class="marketplace-head">
-              <h3 class="marketplace-title">Marketplace</h3>
-              <div class="marketplace-tabs">
-                <button class="marketplace-tab active" data-scope="public">Public</button>
-                <button class="marketplace-tab" data-scope="private">Your organization</button>
-              </div>
-            </div>
-            <p class="section-desc marketplace-desc" data-scope="public">Apps published to the public Glyphh marketplace. Install into your library.</p>
-            <p class="section-desc marketplace-desc hidden" data-scope="private">Apps built and released within your organization, available only to your members.</p>
-            <div id="marketplace-list" class="crud-cards"></div>
-          </div>
 
           <!-- App add form -->
           <div id="app-add-form" class="crud-inline-form hidden">
@@ -434,6 +424,54 @@
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+          </div><!-- /apps-library-page -->
+
+          <!-- ══ MARKETPLACE PAGE ══ -->
+          <div id="apps-marketplace-page" class="apps-page hidden">
+            <div class="mkt-hero">
+              <div class="mkt-hero-copy">
+                <h3 class="mkt-hero-title">App marketplace</h3>
+                <p class="mkt-hero-sub">Install apps that give your AI new powers — published by developers or built inside your org.</p>
+              </div>
+              <div class="mkt-search-wrap">
+                <svg class="mkt-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input id="mkt-search" class="mkt-search" type="text" placeholder="Search apps, developers, categories…" spellcheck="false" autocomplete="off" />
+              </div>
+            </div>
+
+            <div class="mkt-scopebar">
+              <div class="mkt-scope-tabs">
+                <button class="mkt-scope active" data-scope="public">Public</button>
+                <button class="mkt-scope" data-scope="private">Your organization</button>
+              </div>
+              <select id="mkt-sort" class="mkt-sort settings-input">
+                <option value="popular">Most popular</option>
+                <option value="rating">Top rated</option>
+                <option value="newest">Newest</option>
+              </select>
+            </div>
+
+            <div id="mkt-categories" class="mkt-categories"></div>
+
+            <!-- Sponsored strip -->
+            <div id="mkt-featured" class="mkt-strip hidden">
+              <div class="mkt-strip-head"><h4>Sponsored</h4><span class="mkt-strip-tag">Ad</span></div>
+              <div id="mkt-featured-list" class="mkt-featured-grid"></div>
+            </div>
+
+            <!-- Popular strip -->
+            <div id="mkt-popular" class="mkt-strip hidden">
+              <div class="mkt-strip-head"><h4>Popular apps</h4></div>
+              <div id="mkt-popular-list" class="mkt-row"></div>
+            </div>
+
+            <!-- Main grid -->
+            <div class="mkt-strip">
+              <div class="mkt-strip-head"><h4 id="mkt-all-title">All apps</h4><span id="mkt-count" class="mkt-count"></span></div>
+              <div id="mkt-list" class="mkt-grid"></div>
+              <div id="mkt-pager" class="cc-pager"></div>
             </div>
           </div>
         </div>
