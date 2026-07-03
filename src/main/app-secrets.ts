@@ -3,8 +3,14 @@
  *
  * Each saved app can hold KEY=value secrets the user sets on the app's
  * "Config Vars" tab. Values are encrypted in the MAIN PROCESS with
- * safeStorage (OS keychain) BEFORE they leave the machine, then stored on
- * the server inside the app row's launchConfig.secrets:
+ * Electron safeStorage BEFORE they leave the machine, then stored on the
+ * server inside the app row's launchConfig.secrets. safeStorage rides the
+ * native vault on both shipping platforms — macOS Keychain and Windows
+ * DPAPI (user+machine bound, no setup required) — so this works identically
+ * on Mac and Windows; the `enc:false` plaintext fallback only exists for
+ * exotic Linux setups without a keyring, which Glyphh doesn't ship to.
+ *
+ * Row shape:
  *
  *   launchConfig.secrets = { "OPENAI_API_KEY": { v: "<ciphertext b64>", at: "<iso>" }, … }
  *

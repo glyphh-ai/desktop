@@ -233,12 +233,14 @@ two ways:
 ### Config vars (per-app secrets)
 
 Users set `KEY=value` pairs on the app's **Config Vars** tab (app → edit).
-The value is **encrypted in the main process with the OS keychain
-(safeStorage) before it leaves the machine** and stored on the server inside
-the app row — the server only ever sees ciphertext, and the UI can never
-display a value again after creation (key names + set-dates only; rotation is
-delete + re-add). Keys are env-var style (`[A-Z0-9_]`, one line); values are
-blobs up to 32 KB. Config vars survive app updates.
+The value is **encrypted in the main process before it leaves the machine**
+via Electron safeStorage — macOS Keychain on Mac, DPAPI on Windows (both
+built-in, zero setup; encryption is bound to the OS user account) — and
+stored on the server inside the app row. The server only ever sees
+ciphertext, and the UI can never display a value again after creation (key
+names + set-dates only; rotation is delete + re-add). Keys are env-var style
+(`[A-Z0-9_]`, one line); values are blobs up to 32 KB. Config vars survive
+app updates.
 
 Apps read their own vars — and only their own — via the `secrets.get`
 capability (declared in the manifest like any other):
