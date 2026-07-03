@@ -11,35 +11,6 @@ import path from "path";
 import os from "os";
 import { getShellPath } from "./shell-path";
 import { promptLog } from "./prompt-log";
-import { getAuthToken, AUTH_SERVER, ensureFreshToken } from "./auth";
-
-/**
- * Env that routes the SDK through the platform proxy — Anthropic models fronted
- * by platform keys and metered as credits — authenticated with the logged-in
- * session JWT (Bearer, via ANTHROPIC_AUTH_TOKEN). Returns {} when signed out so
- * callers can fall back to a BYOK key.
- *
- * Used by the Glyphh agent and its internal helpers (firewall, skills). The
- * user's swarm/cypher agents do NOT use this — they stay BYOK.
- */
-export function proxyAnthropicEnv(): Record<string, string> {
-  const token = getAuthToken();
-  if (!token) return {};
-  return {
-    ANTHROPIC_BASE_URL: `${AUTH_SERVER}/api/llm`,
-    ANTHROPIC_AUTH_TOKEN: token,
-  };
-}
-
-/** Merge proxy env into a base env, clearing any BYOK key when the proxy is on. */
-export function withProxyEnv(base: Record<string, string | undefined>): Record<string, string | undefined> {
-  const proxy = proxyAnthropicEnv();
-  if (proxy.ANTHROPIC_BASE_URL) {
-    Object.assign(base, proxy);
-    delete base.ANTHROPIC_API_KEY; // proxy bills credits; no direct key
-  }
-  return base;
-}
 
 const dynamicImport = new Function("specifier", "return import(specifier)") as
   (specifier: string) => Promise<any>;
@@ -146,11 +117,9 @@ export async function sdkComplete(opts: {
   const sdk = await ensureSDK();
   const shellPath = getShellPath();
   const startTs = Date.now();
-  // Top up the session token before the call so the SDK subprocess is spawned
-  // with a token that won't expire mid-request (it can't be refreshed once the
-  // process holds it in its env).
-  await ensureFreshToken();
 
+  // The subprocess authenticates as the user's own Claude Code login
+  // (~/.claude) — Glyphh holds no LLM keys and proxies nothing.
   const gen = sdk.query({
     prompt: opts.prompt,
     options: {
@@ -162,11 +131,11 @@ export async function sdkComplete(opts: {
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
-      env: withProxyEnv({
+      env: {
         ...process.env,
         PATH: shellPath,
         CLAUDE_AGENT_SDK_CLIENT_APP: "yosup/3.0.0",
-      }),
+      },
     },
   });
 

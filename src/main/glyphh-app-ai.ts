@@ -3,32 +3,27 @@
  *
  *   llm.embed        { text | texts, model? }     local embeddings (ONNX, on-device)
  *   llm.chunk        { text, maxChars?, overlap? } split text for embedding pipelines
- *   llm.complete     { prompt, system?, model? }  one-shot completion via the
- *                                                 user's Glyphh LLM (credits/BYOK)
+ *   llm.complete     { prompt, system?, model? }  one-shot completion via the local
+ *                                                 Claude Code subprocess (the user's
+ *                                                 own Claude login — Glyphh holds no
+ *                                                 LLM keys and proxies nothing)
  *   vector.upsert    { collection, items }        per-app vector store
  *   vector.search    { collection, query|vector, k?, filter? }
  *   vector.delete    { collection, id? }
- *   graph.upsertNode { id, label?, props? }       per-app property graph
- *   graph.upsertEdge { from, to, type, props? }
- *   graph.neighbors  { id, depth?, direction?, type? }
- *   graph.match      { label?, props?, limit? }
- *   graph.deleteNode { id }   graph.deleteEdge { from, to, type }
+ *   graph.cypher     { query, params? }           per-app knowledge graph (Kuzu,
+ *                                                 embedded — real Cypher)
  *
  * Everything is on-device and slug-scoped like the other services: vectors in
- * ~/yo/app-data/<slug>/vectors.sqlite, the graph in graph.sqlite. Embeddings
+ * ~/yo/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/. Embeddings
  * run locally via @huggingface/transformers + onnxruntime (already shipped);
- * the model downloads once to ~/yo/models. llm.complete is the ONE remote
- * call — it rides sdk-llm's platform proxy (credits) exactly like Glyphh's
- * own agent, so apps get intelligence without ever holding a key.
+ * the model downloads once to ~/yo/models.
  *
  * Vector search is exact cosine over Float32 blobs — at desktop scale
- * (≤ ~100k items) that's a few ms and beats shipping an ANN engine. The
- * graph is a property graph on SQLite with recursive-CTE traversal; the
- * capability surface is engine-agnostic so an embedded Cypher engine (Kuzu)
- * can replace the backend later without touching apps.
+ * (≤ ~100k items) that's a few ms and beats shipping an ANN engine.
  */
 
 import Database from "better-sqlite3";
+import kuzu from "kuzu";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -117,9 +112,11 @@ export function llmChunk(args: Record<string, unknown>): { chunks: string[] } {
 
 const MAX_PROMPT_CHARS = 100_000;
 
-/** One-shot completion through the user's Glyphh LLM (platform proxy /
- *  credits — same path as Glyphh's own agent). Apps never hold keys and
- *  never pick a vendor; the user's Glyphh config decides. */
+/** One-shot completion via the local Claude Code subprocess, authenticated
+ *  as the user's own Claude login (~/.claude) — the same path Glyphh's chat
+ *  and firewall use. No proxy, no stored keys, nothing leaves the machine
+ *  except the user's own Anthropic call. For multi-turn/tool-using runs,
+ *  see agent.run (glyphh-app-agent.ts). */
 export async function llmComplete(args: Record<string, unknown>): Promise<{ text: string; usage?: { input_tokens: number; output_tokens: number } }> {
   const prompt = String(args.prompt || "").trim();
   if (!prompt) throw new Error("prompt is required");
@@ -272,148 +269,53 @@ export function vectorDelete(slug: string, args: Record<string, unknown>): { del
   return { deleted: info.changes };
 }
 
-// ── per-app property graph (graph.*) ────────────────────────
+// ── per-app knowledge graph (graph.cypher — Kuzu, embedded) ──
+//
+// A real graph database, not a table dressed up as one: Kuzu is an embedded,
+// in-process graph engine that speaks Cypher (structured property graphs,
+// MATCH patterns, variable-length paths, shortest path, aggregations). Each
+// app gets its own database directory at ~/yo/app-data/<slug>/graph.kuzu.
+//
+// The app owns its schema — Kuzu is schema-full, so the first calls are DDL:
+//   graph.cypher { query: "CREATE NODE TABLE Account (name STRING, arr DOUBLE, PRIMARY KEY (name))" }
+//   graph.cypher { query: "CREATE REL TABLE Owns (FROM Account TO Account)" }
+//   graph.cypher { query: "MATCH (a:Account)-[:Owns*1..3]->(b) WHERE a.arr > $t RETURN b", params: { t: 100000 } }
 
-const graphDbs = new Map<string, Database.Database>();
+const graphDbs = new Map<string, InstanceType<typeof kuzu.Connection>>();
 
-function getGraphDb(slug: string): Database.Database {
+function getGraphConn(slug: string): InstanceType<typeof kuzu.Connection> {
   const existing = graphDbs.get(slug);
-  if (existing && existing.open) return existing;
+  if (existing) return existing;
   fs.mkdirSync(appDataDir(slug), { recursive: true });
-  const db = new Database(path.join(appDataDir(slug), "graph.sqlite"));
-  db.pragma("journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS nodes (
-      id TEXT PRIMARY KEY, label TEXT, props_json TEXT,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS edges (
-      src TEXT NOT NULL, dst TEXT NOT NULL, type TEXT NOT NULL, props_json TEXT,
-      PRIMARY KEY (src, dst, type)
-    );
-    CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges (dst);
-    CREATE INDEX IF NOT EXISTS idx_nodes_label ON nodes (label);
-  `);
-  graphDbs.set(slug, db);
-  return db;
+  const db = new kuzu.Database(path.join(appDataDir(slug), "graph.kuzu"));
+  const conn = new kuzu.Connection(db);
+  graphDbs.set(slug, conn);
+  return conn;
 }
 
-interface NodeOut { id: string; label?: string; props?: unknown }
-interface EdgeOut { from: string; to: string; type: string; props?: unknown }
+/** Run a Cypher statement against the app's own Kuzu graph. With `params`,
+ *  the statement is prepared and executed with $-parameters. Multi-statement
+ *  strings run in order; the LAST statement's rows are returned. */
+export async function graphCypher(slug: string, args: Record<string, unknown>): Promise<{ rows: unknown[] }> {
+  const query = String(args.query || "").trim();
+  if (!query) throw new Error("query is required");
+  const conn = getGraphConn(slug);
+  const params = args.params && typeof args.params === "object"
+    ? (args.params as Record<string, import("kuzu").KuzuValue>)
+    : null;
 
-function nodeOut(r: { id: string; label: string | null; props_json: string | null }): NodeOut {
-  return { id: r.id, label: r.label ?? undefined, props: r.props_json ? JSON.parse(r.props_json) : undefined };
-}
-function edgeOut(r: { src: string; dst: string; type: string; props_json: string | null }): EdgeOut {
-  return { from: r.src, to: r.dst, type: r.type, props: r.props_json ? JSON.parse(r.props_json) : undefined };
-}
-
-export function graphUpsertNode(slug: string, args: Record<string, unknown>): { upserted: true; id: string } {
-  const id = String(args.id || "").trim();
-  if (!id) throw new Error("id is required");
-  const label = args.label != null ? String(args.label) : null;
-  const props = args.props && typeof args.props === "object" ? JSON.stringify(args.props) : null;
-  getGraphDb(slug).prepare(`
-    INSERT INTO nodes (id, label, props_json, updated_at) VALUES (?, ?, ?, datetime('now'))
-    ON CONFLICT (id) DO UPDATE SET
-      label = COALESCE(excluded.label, nodes.label),
-      props_json = COALESCE(excluded.props_json, nodes.props_json),
-      updated_at = excluded.updated_at
-  `).run(id, label, props);
-  return { upserted: true, id };
-}
-
-export function graphUpsertEdge(slug: string, args: Record<string, unknown>): { upserted: true } {
-  const src = String(args.from || "").trim();
-  const dst = String(args.to || "").trim();
-  const type = String(args.type || "").trim();
-  if (!src || !dst || !type) throw new Error("from, to, and type are required");
-  const db = getGraphDb(slug);
-  // Auto-create endpoint nodes so bulk edge loads don't need a node pass first.
-  const touch = db.prepare("INSERT INTO nodes (id) VALUES (?) ON CONFLICT (id) DO NOTHING");
-  touch.run(src);
-  touch.run(dst);
-  const props = args.props && typeof args.props === "object" ? JSON.stringify(args.props) : null;
-  db.prepare(`
-    INSERT INTO edges (src, dst, type, props_json) VALUES (?, ?, ?, ?)
-    ON CONFLICT (src, dst, type) DO UPDATE SET props_json = excluded.props_json
-  `).run(src, dst, type, props);
-  return { upserted: true };
-}
-
-/** Traverse from a node up to `depth` hops (default 1, max 5), optionally
- *  restricted by edge type and direction ("out" | "in" | "both"). */
-export function graphNeighbors(slug: string, args: Record<string, unknown>): { nodes: NodeOut[]; edges: EdgeOut[] } {
-  const id = String(args.id || "").trim();
-  if (!id) throw new Error("id is required");
-  const depth = Math.max(1, Math.min(5, Number(args.depth) || 1));
-  const direction = args.direction === "in" ? "in" : args.direction === "both" ? "both" : "out";
-  const type = args.type != null ? String(args.type) : null;
-  const db = getGraphDb(slug);
-
-  // Iterative BFS with prepared per-hop statements (clearer than a recursive
-  // CTE once direction/type options enter the picture, and equally fast at
-  // these depths).
-  const ids = new Set<string>([id]);
-  let frontier = [id];
-  const outStmt = db.prepare(`SELECT dst AS next FROM edges WHERE src = ?${type ? " AND type = ?" : ""}`);
-  const inStmt = db.prepare(`SELECT src AS next FROM edges WHERE dst = ?${type ? " AND type = ?" : ""}`);
-  for (let hop = 0; hop < depth && frontier.length; hop++) {
-    const nextFrontier: string[] = [];
-    for (const cur of frontier) {
-      const rows: Array<{ next: string }> = [];
-      if (direction !== "in") rows.push(...(type ? outStmt.all(cur, type) : outStmt.all(cur)) as Array<{ next: string }>);
-      if (direction !== "out") rows.push(...(type ? inStmt.all(cur, type) : inStmt.all(cur)) as Array<{ next: string }>);
-      for (const r of rows) {
-        if (!ids.has(r.next)) { ids.add(r.next); nextFrontier.push(r.next); }
-      }
-    }
-    frontier = nextFrontier;
+  let result: any;
+  if (params) {
+    const prepared = await conn.prepare(query);
+    result = await conn.execute(prepared, params);
+  } else {
+    result = await conn.query(query);
   }
 
-  const idList = [...ids];
-  const ph = idList.map(() => "?").join(",");
-  const nodes = (db.prepare(`SELECT id, label, props_json FROM nodes WHERE id IN (${ph})`).all(...idList) as
-    Array<{ id: string; label: string | null; props_json: string | null }>).map(nodeOut);
-  const edges = (db.prepare(`SELECT src, dst, type, props_json FROM edges WHERE src IN (${ph}) AND dst IN (${ph})`)
-    .all(...idList, ...idList) as Array<{ src: string; dst: string; type: string; props_json: string | null }>).map(edgeOut);
-  return { nodes, edges };
-}
-
-/** Find nodes by label and/or exact prop values. */
-export function graphMatch(slug: string, args: Record<string, unknown>): { nodes: NodeOut[] } {
-  const limit = Math.max(1, Math.min(500, Number(args.limit) || 100));
-  const label = args.label != null ? String(args.label) : null;
-  const props = args.props && typeof args.props === "object" ? (args.props as Record<string, unknown>) : null;
-  const db = getGraphDb(slug);
-  const where: string[] = [];
-  const params: unknown[] = [];
-  if (label) { where.push("label = ?"); params.push(label); }
-  if (props) {
-    for (const [key, val] of Object.entries(props)) {
-      where.push("json_extract(props_json, ?) = ?");
-      params.push(`$.${key}`, val as string | number);
-    }
+  const results: any[] = Array.isArray(result) ? result : [result];
+  try {
+    return { rows: await results[results.length - 1].getAll() };
+  } finally {
+    for (const r of results) { try { r.close(); } catch { /* already closed */ } }
   }
-  const sql = `SELECT id, label, props_json FROM nodes${where.length ? " WHERE " + where.join(" AND ") : ""} LIMIT ?`;
-  const rows = db.prepare(sql).all(...params, limit) as Array<{ id: string; label: string | null; props_json: string | null }>;
-  return { nodes: rows.map(nodeOut) };
-}
-
-export function graphDeleteNode(slug: string, args: Record<string, unknown>): { deleted: boolean } {
-  const id = String(args.id || "").trim();
-  if (!id) throw new Error("id is required");
-  const db = getGraphDb(slug);
-  db.prepare("DELETE FROM edges WHERE src = ? OR dst = ?").run(id, id);
-  const info = db.prepare("DELETE FROM nodes WHERE id = ?").run(id);
-  return { deleted: info.changes > 0 };
-}
-
-export function graphDeleteEdge(slug: string, args: Record<string, unknown>): { deleted: boolean } {
-  const src = String(args.from || "").trim();
-  const dst = String(args.to || "").trim();
-  const type = String(args.type || "").trim();
-  if (!src || !dst || !type) throw new Error("from, to, and type are required");
-  const info = getGraphDb(slug).prepare("DELETE FROM edges WHERE src = ? AND dst = ? AND type = ?").run(src, dst, type);
-  return { deleted: info.changes > 0 };
 }

@@ -50,8 +50,9 @@ import {
 import {
   llmEmbed, llmChunk, llmComplete,
   vectorUpsert, vectorSearch, vectorDelete,
-  graphUpsertNode, graphUpsertEdge, graphNeighbors, graphMatch, graphDeleteNode, graphDeleteEdge,
+  graphCypher,
 } from "./glyphh-app-ai.js";
+import { agentRun } from "./glyphh-app-agent.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -100,15 +101,11 @@ const KNOWN_CAPABILITIES = new Set([
   "llm.embed",
   "llm.chunk",
   "llm.complete",
+  "agent.run",
   "vector.upsert",
   "vector.search",
   "vector.delete",
-  "graph.upsertNode",
-  "graph.upsertEdge",
-  "graph.neighbors",
-  "graph.match",
-  "graph.deleteNode",
-  "graph.deleteEdge",
+  "graph.cypher",
 ]);
 
 /** AppleScript-backed capabilities that only exist on macOS. Everything else
@@ -186,6 +183,12 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   // call would fail the declared-connector check) — refuse loudly instead.
   if (manifest.capabilities.some((c) => c.startsWith("connector.")) && !(manifest.connectors || []).length) {
     return { ok: false, error: "connector.* capabilities require a non-empty `connectors` list in the manifest" };
+  }
+  // A manifest tool backed by agent.run would let the agent call itself
+  // (agent → tool → agent → …). Keep the loop non-recursive.
+  const recursiveTool = (manifest.tools || []).find((t) => t.capability === "agent.run");
+  if (recursiveTool) {
+    return { ok: false, error: `Tool "${recursiveTool.name}" cannot expose agent.run as a tool` };
   }
 
   const dir = path.join(customAppsDir(), manifest.slug);
@@ -397,15 +400,20 @@ async function runCapability(
     case "llm.embed":        return llmEmbed(args);
     case "llm.chunk":        return llmChunk(args);
     case "llm.complete":     return llmComplete(args);
+    case "agent.run": {
+      const app = await findAppRow(slug);
+      if (!app) throw new Error(`unknown app: ${slug}`);
+      return agentRun(slug, appName, args, {
+        tools: (app.launchConfig?.tools || []).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
+        // Re-enters callAppTool so every agent tool call is re-validated
+        // against the app's declared tools/capabilities.
+        dispatch: (tool, targs) => callAppTool(slug, tool, targs),
+      });
+    }
     case "vector.upsert":    return vectorUpsert(slug, args);
     case "vector.search":    return vectorSearch(slug, args);
     case "vector.delete":    return vectorDelete(slug, args);
-    case "graph.upsertNode": return graphUpsertNode(slug, args);
-    case "graph.upsertEdge": return graphUpsertEdge(slug, args);
-    case "graph.neighbors":  return graphNeighbors(slug, args);
-    case "graph.match":      return graphMatch(slug, args);
-    case "graph.deleteNode": return graphDeleteNode(slug, args);
-    case "graph.deleteEdge": return graphDeleteEdge(slug, args);
+    case "graph.cypher":     return graphCypher(slug, args);
     default: throw new Error(`unknown capability: ${method}`);
   }
 }

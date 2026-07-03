@@ -72,6 +72,9 @@ asarUnpack:
   # koffi ships prebuilt .node binaries (Windows user32 window control) —
   # native modules must live outside the asar.
   - node_modules/koffi/**/*
+  # kuzu (embedded graph DB behind the apps' graph.cypher capability) ships a
+  # prebuilt N-API binary.
+  - node_modules/kuzu/**/*
 
 publish:
   provider: github

@@ -34,19 +34,24 @@ Services (cross-platform):
 | `cron.list`     | `{ }`                          | `[{ id, cron, handler }]`                    |
 | `notify.send`   | `{ title, body }`              | `{ shown }` (click opens the app)            |
 
-AI & data services (on-device except `llm.complete`, which rides the user's
-Glyphh LLM — apps never hold API keys):
+AI & data services. Glyphh stores NO LLM keys and proxies nothing —
+`llm.complete` and `agent.run` (provider `"claude"`, the default) run the
+local Claude Code subprocess on the user's own Claude login; other vendors
+need an `apiKey` the app manages itself:
 
 | capability | args | notes |
 |---|---|---|
-| `llm.embed` | `{ text \| texts, model? }` | local ONNX embeddings, 384-dim default |
+| `llm.embed` | `{ text \| texts, model? }` | local ONNX embeddings, 384-dim default, fully on-device |
 | `llm.chunk` | `{ text, maxChars?, overlap? }` | prep text for embedding |
-| `llm.complete` | `{ prompt, system?, model? }` | one-shot completion, user's credits |
+| `llm.complete` | `{ prompt, system?, model? }` | one-shot; user's Claude Code login, no key |
+| `agent.run` | `{ prompt, system?, provider?, tools?, maxTurns?, apiKey? }` | agentic loop over the APP'S OWN manifest tools; providers claude (no key) / anthropic / openai / google (app-supplied key) |
 | `vector.upsert/search/delete` | `{ collection, … }` | per-app store; text auto-embeds; exact cosine + metadata filter |
-| `graph.upsertNode/upsertEdge/neighbors/match/deleteNode/deleteEdge` | see spec | per-app property graph, ≤5-hop traversal |
+| `graph.cypher` | `{ query, params? }` | per-app embedded Kuzu graph — real Cypher; schema-full (CREATE NODE/REL TABLE first) |
 
 RAG-in-an-app is: `llm.chunk` → `vector.upsert` → `vector.search { query, k }`
-→ `llm.complete` with the top chunks in the prompt.
+→ `llm.complete` with the top chunks in the prompt. An agentic app is:
+declare good tools, then `agent.run { prompt: goal }` — the model drives the
+app's own tools (never expose agent.run itself as a tool; install rejects it).
 
 Connections (scoped to the manifest's `connectors` list — see below):
 

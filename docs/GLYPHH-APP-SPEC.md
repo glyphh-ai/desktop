@@ -195,37 +195,58 @@ OS permission prompts, and the security boundary.
 |--------------------|-------------------------------------------|----------------------------------|
 | `llm.embed`        | `{ text \| texts, model? }`               | `{ model, dim, vectors }`        |
 | `llm.chunk`        | `{ text, maxChars?, overlap? }`           | `{ chunks }`                     |
-| `llm.complete`     | `{ prompt, system?, model? }`             | `{ text, usage? }` (remote)      |
+| `llm.complete`     | `{ prompt, system?, model? }`             | `{ text, usage? }`               |
+| `agent.run`        | `{ prompt, system?, provider?, model?, tools?, maxTurns?, apiKey? }` | `{ text, turns, toolCalls, usage? }` |
 | `vector.upsert`    | `{ collection, items, model? }`           | `{ upserted, collection }`       |
 | `vector.search`    | `{ collection, query \| vector, k?, filter? }` | `{ matches: [{ id, score, text?, metadata? }] }` |
 | `vector.delete`    | `{ collection, id? }`                     | `{ deleted }`                    |
-| `graph.upsertNode` | `{ id, label?, props? }`                  | `{ upserted, id }`               |
-| `graph.upsertEdge` | `{ from, to, type, props? }`              | `{ upserted }`                   |
-| `graph.neighbors`  | `{ id, depth?, direction?, type? }`       | `{ nodes, edges }`               |
-| `graph.match`      | `{ label?, props?, limit? }`              | `{ nodes }`                      |
-| `graph.deleteNode` | `{ id }` / `graph.deleteEdge { from, to, type }` | `{ deleted }`             |
+| `graph.cypher`     | `{ query, params? }`                      | `{ rows }`                       |
+
+**LLM auth model — Glyphh stores no LLM keys and proxies nothing.** There is
+no server proxy and no BYOK vault in the host. Intelligence reaches an app
+two ways:
+
+- **`llm.complete`** — one-shot completion via the local **Claude Code
+  subprocess**, authenticated as the user's own Claude login (`~/.claude`) —
+  the same path Glyphh's chat and firewall use. Works for every user with a
+  Claude subscription; zero key handling; no tools, no streaming.
+- **`agent.run`** — a real agentic loop: the model gets the **app's own
+  manifest tools** and drives them, multi-turn (default 6, max 12 turns; 32
+  tool calls max). Every tool call re-validates against the app's declared
+  tools. Providers:
+  - `"claude"` (default) — Claude Agent SDK subprocess on the user's Claude
+    login; the app's tools are exposed as an in-process MCP server. No key.
+  - `"anthropic"` / `"openai"` / `"google"` — the official vendor SDKs
+    (`@anthropic-ai/sdk`, `openai` Responses API, `@google/genai`), with an
+    `apiKey` the **app supplies per call**. An app that wants these vendors
+    asks its user for a key and keeps it in its own per-app storage — keys
+    never touch host state.
+  - A manifest tool may not itself be backed by `agent.run` (no recursion) —
+    install rejects it.
 
 - **`llm.embed`** — local embeddings (ONNX via transformers.js; default model
   `Xenova/all-MiniLM-L6-v2`, 384-dim). The model downloads once to
   `~/yo/models` on first use — expect the first call to take longer. Batch up
-  to 64 texts.
-- **`llm.complete`** — the one remote AI call: a one-shot completion through
-  the **user's** Glyphh LLM (platform proxy / credits, same path as Glyphh's
-  own agent). Apps never hold keys and never pick a vendor. No tools, no
-  streaming — for agentic loops, orchestrate the app's tools from Claude via
-  the relay instead.
+  to 64 texts. Fully on-device.
 - **`vector.*`** — per-app vector store (`~/yo/app-data/<slug>/vectors.sqlite`).
   `items: [{ id, text?, vector?, metadata? }]` — text is embedded
   automatically with the collection's model (pinned at creation). Search is
   exact cosine (normalized dot product); `filter` is exact-match on metadata
   keys. Typical pipeline: `llm.chunk` → `vector.upsert { items }` →
   `vector.search { query }`.
-- **`graph.*`** — per-app property graph (`graph.sqlite`): labeled nodes and
-  typed, directed edges, both with JSON props. `graph.neighbors` traverses up
-  to 5 hops with direction (`out`/`in`/`both`) and edge-type filters;
-  `graph.upsertEdge` auto-creates endpoint nodes for bulk loads. The surface
-  is engine-agnostic — an embedded Cypher engine can replace the backend
-  without changing apps.
+- **`graph.cypher`** — a real knowledge graph: each app gets its own embedded
+  **Kuzu** database (`~/yo/app-data/<slug>/graph.kuzu`) speaking full Cypher —
+  property graphs, MATCH patterns, variable-length paths (`-[:Owns*1..3]->`),
+  shortest path, aggregations. Kuzu is schema-full; the app's first calls are
+  DDL:
+  ```
+  graph.cypher { query: "CREATE NODE TABLE Account (name STRING, arr DOUBLE, PRIMARY KEY (name))" }
+  graph.cypher { query: "CREATE REL TABLE Owns (FROM Account TO Account)" }
+  graph.cypher { query: "MATCH (a:Account)-[:Owns*1..2]->(b) WHERE a.arr > $t RETURN b.name",
+                 params: { t: 100000 } }
+  ```
+  `params` are Cypher `$`-parameters (prepared). Multi-statement strings run
+  in order; the last statement's rows come back.
 
 ### Connections (the 3500-connector catalog)
 
