@@ -47,6 +47,11 @@ import {
   initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend,
   connectorStatus, connectorTools, connectorCall,
 } from "./glyphh-app-services.js";
+import {
+  llmEmbed, llmChunk, llmComplete,
+  vectorUpsert, vectorSearch, vectorDelete,
+  graphUpsertNode, graphUpsertEdge, graphNeighbors, graphMatch, graphDeleteNode, graphDeleteEdge,
+} from "./glyphh-app-ai.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -92,6 +97,18 @@ const KNOWN_CAPABILITIES = new Set([
   "connector.status",
   "connector.tools",
   "connector.call",
+  "llm.embed",
+  "llm.chunk",
+  "llm.complete",
+  "vector.upsert",
+  "vector.search",
+  "vector.delete",
+  "graph.upsertNode",
+  "graph.upsertEdge",
+  "graph.neighbors",
+  "graph.match",
+  "graph.deleteNode",
+  "graph.deleteEdge",
 ]);
 
 /** AppleScript-backed capabilities that only exist on macOS. Everything else
@@ -374,6 +391,18 @@ async function runCapability(
     case "connector.status": return connectorStatus(connectors);
     case "connector.tools":  return connectorTools(connectors, args);
     case "connector.call":   return connectorCall(connectors, args);
+    case "llm.embed":        return llmEmbed(args);
+    case "llm.chunk":        return llmChunk(args);
+    case "llm.complete":     return llmComplete(args);
+    case "vector.upsert":    return vectorUpsert(slug, args);
+    case "vector.search":    return vectorSearch(slug, args);
+    case "vector.delete":    return vectorDelete(slug, args);
+    case "graph.upsertNode": return graphUpsertNode(slug, args);
+    case "graph.upsertEdge": return graphUpsertEdge(slug, args);
+    case "graph.neighbors":  return graphNeighbors(slug, args);
+    case "graph.match":      return graphMatch(slug, args);
+    case "graph.deleteNode": return graphDeleteNode(slug, args);
+    case "graph.deleteEdge": return graphDeleteEdge(slug, args);
     default: throw new Error(`unknown capability: ${method}`);
   }
 }

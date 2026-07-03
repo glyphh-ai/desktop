@@ -34,6 +34,20 @@ Services (cross-platform):
 | `cron.list`     | `{ }`                          | `[{ id, cron, handler }]`                    |
 | `notify.send`   | `{ title, body }`              | `{ shown }` (click opens the app)            |
 
+AI & data services (on-device except `llm.complete`, which rides the user's
+Glyphh LLM — apps never hold API keys):
+
+| capability | args | notes |
+|---|---|---|
+| `llm.embed` | `{ text \| texts, model? }` | local ONNX embeddings, 384-dim default |
+| `llm.chunk` | `{ text, maxChars?, overlap? }` | prep text for embedding |
+| `llm.complete` | `{ prompt, system?, model? }` | one-shot completion, user's credits |
+| `vector.upsert/search/delete` | `{ collection, … }` | per-app store; text auto-embeds; exact cosine + metadata filter |
+| `graph.upsertNode/upsertEdge/neighbors/match/deleteNode/deleteEdge` | see spec | per-app property graph, ≤5-hop traversal |
+
+RAG-in-an-app is: `llm.chunk` → `vector.upsert` → `vector.search { query, k }`
+→ `llm.complete` with the top chunks in the prompt.
+
 Connections (scoped to the manifest's `connectors` list — see below):
 
 | capability         | args                         | returns                                        |

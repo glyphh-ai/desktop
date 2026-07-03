@@ -173,6 +173,44 @@ OS permission prompts, and the security boundary.
   syntax. Max 20 schedules per app. Requires a manifest `worker`.
 - **`notify.send`** — OS notification; clicking it opens the app's UI.
 
+### AI & data services (cross-platform, on-device unless noted)
+
+| capability         | args                                      | returns                          |
+|--------------------|-------------------------------------------|----------------------------------|
+| `llm.embed`        | `{ text \| texts, model? }`               | `{ model, dim, vectors }`        |
+| `llm.chunk`        | `{ text, maxChars?, overlap? }`           | `{ chunks }`                     |
+| `llm.complete`     | `{ prompt, system?, model? }`             | `{ text, usage? }` (remote)      |
+| `vector.upsert`    | `{ collection, items, model? }`           | `{ upserted, collection }`       |
+| `vector.search`    | `{ collection, query \| vector, k?, filter? }` | `{ matches: [{ id, score, text?, metadata? }] }` |
+| `vector.delete`    | `{ collection, id? }`                     | `{ deleted }`                    |
+| `graph.upsertNode` | `{ id, label?, props? }`                  | `{ upserted, id }`               |
+| `graph.upsertEdge` | `{ from, to, type, props? }`              | `{ upserted }`                   |
+| `graph.neighbors`  | `{ id, depth?, direction?, type? }`       | `{ nodes, edges }`               |
+| `graph.match`      | `{ label?, props?, limit? }`              | `{ nodes }`                      |
+| `graph.deleteNode` | `{ id }` / `graph.deleteEdge { from, to, type }` | `{ deleted }`             |
+
+- **`llm.embed`** — local embeddings (ONNX via transformers.js; default model
+  `Xenova/all-MiniLM-L6-v2`, 384-dim). The model downloads once to
+  `~/yo/models` on first use — expect the first call to take longer. Batch up
+  to 64 texts.
+- **`llm.complete`** — the one remote AI call: a one-shot completion through
+  the **user's** Glyphh LLM (platform proxy / credits, same path as Glyphh's
+  own agent). Apps never hold keys and never pick a vendor. No tools, no
+  streaming — for agentic loops, orchestrate the app's tools from Claude via
+  the relay instead.
+- **`vector.*`** — per-app vector store (`~/yo/app-data/<slug>/vectors.sqlite`).
+  `items: [{ id, text?, vector?, metadata? }]` — text is embedded
+  automatically with the collection's model (pinned at creation). Search is
+  exact cosine (normalized dot product); `filter` is exact-match on metadata
+  keys. Typical pipeline: `llm.chunk` → `vector.upsert { items }` →
+  `vector.search { query }`.
+- **`graph.*`** — per-app property graph (`graph.sqlite`): labeled nodes and
+  typed, directed edges, both with JSON props. `graph.neighbors` traverses up
+  to 5 hops with direction (`out`/`in`/`both`) and edge-type filters;
+  `graph.upsertEdge` auto-creates endpoint nodes for bulk loads. The surface
+  is engine-agnostic — an embedded Cypher engine can replace the backend
+  without changing apps.
+
 ### Connections (the 3500-connector catalog)
 
 | capability         | args                             | returns                                        |
