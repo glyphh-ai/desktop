@@ -75,6 +75,7 @@ import { usageTracker } from "./usage-tracker";
 import { promptLog } from "./prompt-log";
 import { startOverlay } from "./overlay-bridge";
 import { registerCommandWindow, disposeCommandWindow } from "./command-window";
+import { initOsWindowManager, disposeOsWindowManager } from "./os-window-manager";
 import { initThinkingOverlay } from "./thinking-overlay";
 import { runDip } from "./dip-commands";
 import { McpManager } from "./mcp-manager";
@@ -603,9 +604,11 @@ async function boot() {
   yoInterceptor.setYoChat(yoChat);
   commandParser.setYoChat(yoChat);
 
-  // OS window control (.dip grid/split/min/exp via the command overlay) drives
-  // other apps through System Events, which needs Accessibility. Prompt once
-  // (no-op if already granted) so commands don't silently fail.
+  // OS window control (.dip grid/split/min/exp, layout tiling) drives other
+  // apps' windows through the native backends (macOS: bundled Swift AX helper;
+  // Windows: koffi→user32). Pre-spawn the helper and prompt for Accessibility
+  // once (no-op if already granted) so commands don't silently fail.
+  initOsWindowManager();
   if (process.platform === "darwin") {
     try { systemPreferences.isTrustedAccessibilityClient(true); } catch { /* noop */ }
   }
@@ -2000,6 +2003,7 @@ function cleanupAll() {
   cleanedUp = true;
   globalShortcut.unregisterAll();
   disposeCommandWindow();
+  disposeOsWindowManager();
   cleanupAuthTimers();
   try {
     const tabs = getPreference<string[]>("openTabs", []);

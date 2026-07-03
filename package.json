@@ -1,11 +1,11 @@
 {
   "name": "glyphh",
   "version": "5.1.5",
-  "description": "Glyphh — Your AI workspace.",
+  "description": "Glyphh \u2014 Your AI workspace.",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "npm run build && ELECTRON_RUN_AS_NODE= electron .",
-    "build": "npm run build:main && npm run build:renderer && npm run build:terminal && npm run build:monaco && npm run build:overlay",
+    "build": "npm run build:helper && npm run build:main && npm run build:renderer && npm run build:terminal && npm run build:monaco && npm run build:overlay",
     "build:main": "tsc",
     "build:overlay": "node scripts/build-overlay.js",
     "pack:apps": "node scripts/pack-apps.mjs",
@@ -17,7 +17,8 @@
     "start": "electron .",
     "postinstall": "electron-rebuild",
     "package:mac": "electron-builder --mac",
-    "package:win": "electron-builder --win"
+    "package:win": "electron-builder --win",
+    "build:helper": "bash scripts/build-mac-helper.sh"
   },
   "repository": {
     "type": "git",
@@ -59,6 +60,7 @@
     "dotenv": "^17.4.2",
     "electron-updater": "^6.8.3",
     "js-yaml": "^4.1.1",
+    "koffi": "^3.1.0",
     "marked": "^14.0.0",
     "monaco-editor": "^0.55.1",
     "node-cron": "^4.2.1",

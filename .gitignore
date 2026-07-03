@@ -10,3 +10,4 @@ release/
 # chat history, etc). Per-developer state — never committed.
 .yo/
 dist-apps/
+native/mac-window-helper/build/

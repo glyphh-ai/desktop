@@ -5,6 +5,15 @@ copyright: Copyright © 2026 Glyphh AI
 
 mac:
   category: public.app-category.developer-tools
+  # Native window-control helper (Swift, universal arm64+x86_64) — CGWindowList
+  # enumeration + AX positioning for .dip / layout tiling. extraResources puts
+  # it in Contents/Resources; binaries signs it with the app's Hardened Runtime
+  # so notarization passes.
+  extraResources:
+    - from: native/mac-window-helper/build/glyphh-window-helper
+      to: glyphh-window-helper
+  binaries:
+    - Contents/Resources/glyphh-window-helper
   # Build both Apple Silicon (arm64) and Intel (x64) so users on
   # 2019/2020-era Intel Macs can run Glyphh. ${arch} in artifactName keeps
   # the two variants from colliding on filename.
@@ -60,6 +69,9 @@ asarUnpack:
   - node_modules/better-sqlite3/**/*
   - node_modules/node-pty/**/*
   - node_modules/onnxruntime-node/**/*
+  # koffi ships prebuilt .node binaries (Windows user32 window control) —
+  # native modules must live outside the asar.
+  - node_modules/koffi/**/*
 
 publish:
   provider: github
