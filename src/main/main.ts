@@ -521,6 +521,7 @@ async function boot() {
   // (Apps / Layouts / Drips / Skills / Settings / About) opens its section.
   const HOME_SECTION_SLUGS: Record<string, string> = {
     "yo://apps": "apps",
+    "yo://connections": "connections",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
     "yo://skills": "skills",

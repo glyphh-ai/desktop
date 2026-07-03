@@ -25,7 +25,7 @@ async function ensureAppNames(): Promise<void> {
     // same source the Apps page shows. NOT the local internal-app registry.
     const apps = await window.yo.panelAppsList();
     const next: Record<string, LayoutApp> = {};
-    for (const a of apps) next[a.id] = { id: a.id, name: a.name, url: a.url, execPath: a.execPath, connection: a.connection };
+    for (const a of apps) next[a.id] = { id: a.id, name: a.name, url: a.url, execPath: a.execPath };
     appById = next;
     allApps = Object.values(next);
   } catch { /* keep whatever we have */ }
@@ -43,6 +43,17 @@ function panelIconHtml(panelId: string): string {
   const app = resolveApp(panelId);
   const name = app?.name || panelId;
   return `<span class="layout-app-icon" title="${name}">${appIconInner(app || {}, name, "layout-app-initial")}</span>`;
+}
+
+/** Shared edit-form header: the layout's app-icon list + its name. */
+function renderLayoutHead(layout: { name: string; splits: Array<{ panelId: string }> } | null): void {
+  const head = document.getElementById("layout-detail-head");
+  if (!head) return;
+  if (!layout) { head.innerHTML = `<div class="edit-head-name">New layout</div>`; return; }
+  const seen = new Set<string>();
+  const ids = layout.splits.map((s) => s.panelId).filter(Boolean).filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
+  head.innerHTML = `<div class="edit-head-icons">${ids.map((id) => panelIconHtml(id)).join("")}</div><div class="edit-head-name"></div>`;
+  head.querySelector(".edit-head-name")!.textContent = layout.name;
 }
 const layoutsList = document.getElementById("layouts-list")!;
 const layoutEditor = document.getElementById("layout-editor")!;
@@ -303,6 +314,13 @@ function renderLayoutsList() {
   const query = layoutSearchInput.value.trim().toLowerCase();
   const filtered = query ? allLayouts.filter((l) => l.name.toLowerCase().includes(query)) : allLayouts;
 
+  // Same tile grid as the Apps/Connections pages (.app-list-wrap .app-grid).
+  // Preserve the hidden state — async icon re-renders must not pop the list
+  // back over an open editor.
+  const wasHidden = layoutsList.classList.contains("hidden") || !layoutEditor.classList.contains("hidden");
+  layoutsList.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
+  layoutsList.innerHTML = "";
+
   if (allLayouts.length === 0) {
     layoutsList.innerHTML = `<div class="crud-empty">No layouts yet. Click "+ New" to create one.</div>`;
     return;
@@ -314,60 +332,31 @@ function renderLayoutsList() {
 
   const { items: layouts, state } = paginate(filtered, layoutsPage);
   layoutsPage = state.page;
-  layoutsList.innerHTML = "";
 
+  const grid = document.createElement("div");
+  grid.className = "app-grid";
   for (const layout of layouts) {
-    const card = document.createElement("div");
-    card.className = "crud-card";
     const cellIds = layout.splits.map((s) => s.panelId).filter(Boolean);
     const seen = new Set<string>();
     const uniqueIds = cellIds.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
-    const iconsHtml = uniqueIds.map((id) => panelIconHtml(id)).join("");
-    const names = uniqueIds.map((id) => panelLabel(id)).join(", ");
+    const iconsHtml = uniqueIds.map((id) => panelIconHtml(id)).join("")
+      || `<span class="layout-app-icon"><span class="layout-app-initial">▦</span></span>`;
+
+    const card = document.createElement("div");
+    card.className = "app-card";
     card.innerHTML = `
-      ${iconsHtml ? `<div class="layout-card-icons">${iconsHtml}</div>` : ""}
-      <div class="crud-card-info">
-        <span class="crud-card-name">${layout.name}</span>
-        <span class="crud-card-meta">${names || "empty"}</span>
-      </div>
-      <div class="crud-card-actions">
-        <button class="crud-card-btn crud-open-btn" title="Open layout">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13"/><polyline points="13 6 19 12 13 18"/></svg>
-        </button>
-        <button class="crud-card-btn crud-edit-btn" title="Edit">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-        </button>
-        <button class="crud-card-btn danger crud-delete-btn" title="Delete">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-        </button>
-      </div>`;
-
-    card.querySelector(".crud-open-btn")!.addEventListener("click", (e) => {
-      e.stopPropagation();
-      // Hand off to the OS layout manager: real windows tiled across the
-      // display. Nothing renders inside the Glyphh client.
-      void window.yo.layoutsOpen(layout.name);
-      closeHelp();
-    });
-
-    card.querySelector(".crud-edit-btn")!.addEventListener("click", (e) => {
-      e.stopPropagation();
-      editLayout(layout.name);
-    });
-
-    card.querySelector(".crud-delete-btn")!.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const confirmed = await confirmAction(`Delete layout "${layout.name}"?`);
-      if (!confirmed) return;
-      await window.yo.layoutsDelete(layout.name);
-      loadLayouts();
-    });
-
+      <div class="layout-card-icons">${iconsHtml}</div>
+      <div class="app-card-name"></div>
+      <div class="app-card-id">${uniqueIds.length} app${uniqueIds.length === 1 ? "" : "s"}</div>`;
+    card.querySelector(".app-card-name")!.textContent = layout.name;
     card.addEventListener("click", () => editLayout(layout.name));
-    layoutsList.appendChild(card);
+    grid.appendChild(card);
   }
+  layoutsList.appendChild(grid);
 
-  layoutsList.appendChild(renderPaginationBar(state, (p) => { layoutsPage = p; renderLayoutsList(); }));
+  if (state.totalPages > 1) {
+    layoutsList.appendChild(renderPaginationBar(state, (p) => { layoutsPage = p; renderLayoutsList(); }));
+  }
 }
 
 async function editLayout(name: string) {
@@ -386,16 +375,28 @@ async function editLayout(name: string) {
         cell.rowSpan = s.rowSpan ?? 1;
       }
     }
+    // Drop the freshly-initialized 1×1 cells that a merged cell's span now
+    // covers — saved layouts only store merged cells by their top-left, so
+    // without this the leftovers render stacked underneath the merged cell.
+    for (let i = builderCells.length - 1; i >= 0; i--) {
+      const c = builderCells[i];
+      const covered = builderCells.some((o) => o !== c &&
+        c.col >= o.col && c.col < o.col + o.colSpan &&
+        c.row >= o.row && c.row < o.row + o.rowSpan);
+      if (covered) builderCells.splice(i, 1);
+    }
   } else {
     builderCols = 2;
     builderRows = 1;
     initBuilderCells();
   }
+  renderLayoutHead(layout ?? null);
   gridColsSelect.value = String(builderCols);
   gridRowsSelect.value = String(builderRows);
   folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
+  document.getElementById("layout-open-btn")?.classList.remove("hidden");
   layoutFormError.classList.add("hidden");
 
   layoutGridBuilder.classList.remove("hidden");
@@ -408,6 +409,7 @@ async function editLayout(name: string) {
 
 async function newLayout() {
   editingLayoutName = null;
+  renderLayoutHead(null);
   builderCols = 2;
   builderRows = 1;
   initBuilderCells();
@@ -416,6 +418,7 @@ async function newLayout() {
   folderModeSelect.value = "single";
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
+  document.getElementById("layout-open-btn")?.classList.add("hidden");
   layoutFormError.classList.add("hidden");
   layoutGridBuilder.classList.remove("hidden");
   renderGridPreview();
@@ -486,6 +489,12 @@ export function initLayoutsEvents() {
   document.getElementById("layout-cancel-btn")!.addEventListener("click", cancelLayout);
   document.getElementById("layout-back-link")!.addEventListener("click", cancelLayout);
   document.getElementById("layout-delete-btn")!.addEventListener("click", deleteLayout);
+  // Open the layout being edited — real OS windows tiled across the display.
+  document.getElementById("layout-open-btn")!.addEventListener("click", () => {
+    if (!editingLayoutName) return;
+    void window.yo.layoutsOpen(editingLayoutName);
+    closeHelp();
+  });
   layoutSearchInput.addEventListener("input", () => { layoutsPage = 0; renderLayoutsList(); });
 
   // Grid builder dimension controls

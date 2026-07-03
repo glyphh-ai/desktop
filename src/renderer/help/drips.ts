@@ -109,9 +109,39 @@ async function loadDrips() {
   renderDripsList();
 }
 
+// Representative emoji per built-in effect — used for the drip's icon stack.
+const EFFECT_EMOJI: Record<string, string> = {
+  fireworks: "🎆", hearts: "❤️", confetti: "🎊", stars: "⭐", rain: "🌧️",
+  bubbles: "🫧", sparkle: "✨", spiral: "🌀", emoji: "😀", wave: "👋",
+  thumbsup: "👍", peace: "✌️", cat: "🐱", matrix: "🟩", aurora: "🌌",
+  nebula: "🌌", plasma: "🔮", fireflies: "✨", starfield: "🌟",
+};
+/** The distinct effect emojis in a recipe (numbers/opacity tokens skipped). */
+function dripEmojis(recipe: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of (recipe || "").trim().split(/\s+/)) {
+    if (!t || !isNaN(Number(t)) || seen.has(t)) continue;
+    seen.add(t);
+    out.push(EFFECT_EMOJI[t] || "✨");
+  }
+  return out;
+}
+/** Overlapping emoji-square stack for a drip (list rows + edit head). */
+function dripIconsHtml(recipe: string): string {
+  const emojis = dripEmojis(recipe);
+  const shown = emojis.length ? emojis.slice(0, 4) : ["✨"];
+  return shown.map((e) => `<span class="drip-emoji-icon">${e}</span>`).join("");
+}
+
 function renderDripsList() {
   const query = dripSearchInput.value.trim().toLowerCase();
   const filtered = query ? allDrips.filter((d) => d.name.toLowerCase().includes(query)) : allDrips;
+
+  // Same tile grid as the Apps/Connections pages (.app-list-wrap .app-grid).
+  const wasHidden = dripsListEl.classList.contains("hidden") || !dripEditor.classList.contains("hidden");
+  dripsListEl.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
+  dripsListEl.innerHTML = "";
 
   if (allDrips.length === 0) {
     dripsListEl.innerHTML = `<div class="crud-empty">No custom drips yet. Click "+ New" to create one.</div>`;
@@ -124,51 +154,26 @@ function renderDripsList() {
 
   const { items, state } = paginate(filtered, dripsPage);
   dripsPage = state.page;
-  dripsListEl.innerHTML = "";
 
+  const grid = document.createElement("div");
+  grid.className = "app-grid";
   for (const drip of items) {
     const card = document.createElement("div");
-    card.className = "crud-card";
+    card.className = "app-card";
     card.innerHTML = `
-      <div class="crud-card-info">
-        <span class="crud-card-name">${drip.name}</span>
-        <span class="crud-card-meta">${drip.recipe}</span>
-      </div>
-      <div class="crud-card-actions">
-        <button class="crud-card-btn crud-play-btn" title="Play">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        </button>
-        <button class="crud-card-btn crud-edit-btn" title="Edit">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-        </button>
-        <button class="crud-card-btn danger crud-delete-btn" title="Delete">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-        </button>
-      </div>`;
-
-    card.querySelector(".crud-play-btn")!.addEventListener("click", (e) => {
-      e.stopPropagation();
-      window.yo.dripsPreview(drip.recipe);
-    });
-
-    card.querySelector(".crud-edit-btn")!.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openDripEditor(drip.name, drip.recipe);
-    });
-
-    card.querySelector(".crud-delete-btn")!.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const confirmed = await confirmAction(`Delete drip "${drip.name}"?`);
-      if (!confirmed) return;
-      await window.yo.dripsDelete(drip.name);
-      loadDrips();
-    });
-
+      <div class="drip-card-icons">${dripIconsHtml(drip.recipe)}</div>
+      <div class="app-card-name"></div>
+      <div class="app-card-id"></div>`;
+    card.querySelector(".app-card-name")!.textContent = drip.name;
+    card.querySelector(".app-card-id")!.textContent = drip.recipe;
     card.addEventListener("click", () => openDripEditor(drip.name, drip.recipe));
-
-    dripsListEl.appendChild(card);
+    grid.appendChild(card);
   }
-  dripsListEl.appendChild(renderPaginationBar(state, (p) => { dripsPage = p; renderDripsList(); }));
+  dripsListEl.appendChild(grid);
+
+  if (state.totalPages > 1) {
+    dripsListEl.appendChild(renderPaginationBar(state, (p) => { dripsPage = p; renderDripsList(); }));
+  }
 }
 
 function openDripEditor(name: string, recipe: string) {
@@ -176,6 +181,13 @@ function openDripEditor(name: string, recipe: string) {
   dripNameInput.value = name;
   dripDeleteBtn.style.display = name ? "" : "none";
   dripFormError.classList.add("hidden");
+
+  // Shared edit-form header: the drip's emoji stack + its name.
+  const dripHead = document.getElementById("drip-detail-head");
+  if (dripHead) {
+    dripHead.innerHTML = `<div class="edit-head-icons">${dripIconsHtml(recipe)}</div><div class="edit-head-name"></div>`;
+    dripHead.querySelector(".edit-head-name")!.textContent = name || "New drip";
+  }
 
   if (recipe) {
     parseRecipeIntoBuilder(recipe);

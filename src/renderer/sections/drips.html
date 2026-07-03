@@ -14,8 +14,10 @@
             <div class="crud-inline-header">
               <a class="crud-breadcrumb-back" id="drip-back-link">&larr; Drips</a>
               <div class="crud-spacer"></div>
+              <button id="drip-preview-btn" class="action-btn primary" type="button" title="Play this drip">&#9654; Play</button>
             </div>
             <div id="drip-form-error" class="crud-form-error hidden"></div>
+            <div id="drip-detail-head" class="edit-head"></div>
             <label class="settings-label">Name</label>
             <input type="text" id="drip-name" class="settings-input" placeholder="preset name" spellcheck="false" autocomplete="off" />
 
@@ -38,9 +40,6 @@
             <label class="settings-label" style="margin-top:8px;">Recipe preview</label>
             <code id="drip-recipe-preview" style="display:block;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text-2);font-size:12px;font-family:var(--font-mono);">&mdash;</code>
 
-            <div style="margin-top:8px;">
-              <button id="drip-preview-btn" class="action-btn">&#9654; Play</button>
-            </div>
             <div class="settings-actions" style="margin-top:8px;">
               <button id="drip-delete-btn" class="action-btn danger">Delete</button>
               <div style="flex:1;"></div>

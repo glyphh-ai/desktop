@@ -3,7 +3,7 @@ import fs from "fs";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./glyphh-app-package";
-import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
+import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverPutAuthed, serverDeleteAuthed } from "./auth";
 import { cachedServerGet, invalidateServerCache } from "./server-cache";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 import { openAppWindow } from "./app-window-manager";
@@ -141,12 +141,31 @@ function registerPanelAppsIpc(): void {
     try { await serverDeleteAuthed(`/api/panel-apps/${id}`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("panel-apps-set-connection", async (_e, id: string, pipedreamSlug: string) => {
-    try { const app = await serverPatchAuthed(`/api/panel-apps/${id}/connection`, { pipedreamSlug }); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
+  // Replace the set of Connections an app uses (first-class Connections model).
+  ipcMain.handle("panel-apps-set-connections", async (_e, id: string, connectionIds: string[]) => {
+    try { const app = await serverPutAuthed(`/api/panel-apps/${id}/connections`, { connectionIds }); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("panel-apps-remove-connection", async (_e, id: string) => {
-    try { await serverDeleteAuthed(`/api/panel-apps/${id}/connection`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
+
+  // ── Connections (first-class connected accounts) ─────────────
+  ipcMain.handle("connections-list", async () => {
+    try { const r = await serverGetAuthed<{ connections: unknown[] }>("/api/connections"); return { ok: true, connections: r.connections || [] }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
+  });
+  ipcMain.handle("connection-rename", async (_e, id: string, label: string) => {
+    try { const r = await serverPatchAuthed(`/api/connections/${id}`, { label }); return { ok: true, connection: (r as { connection: unknown }).connection }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("connection-tools-list", async (_e, id: string) => {
+    try { const r = await serverGetAuthed<{ tools: unknown[] }>(`/api/connections/${id}/tools`); return { ok: true, tools: r.tools || [] }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }; }
+  });
+  ipcMain.handle("connection-tools-set", async (_e, id: string, hiddenTools: string[]) => {
+    try { const r = await serverPatchAuthed(`/api/connections/${id}/tools`, { hiddenTools }); return { ok: true, connection: (r as { connection: unknown }).connection }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("connection-disconnect", async (_e, id: string) => {
+    try { const r = await serverDeleteAuthed<{ ok?: boolean }>(`/api/connections/${id}`); return { ok: r?.ok !== false }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-set-mcp", async (_e, id: string, mcp: Record<string, unknown>) => {

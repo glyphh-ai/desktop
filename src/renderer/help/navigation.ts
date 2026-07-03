@@ -8,6 +8,7 @@ import { loadApps, initApps, openNewAppForm } from "./apps.js";
 import { loadSettings, initSettings } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSkills, initSkills } from "./skills.js";
+import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 
 const overlay = getHelpOverlay();
@@ -114,6 +115,7 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "skills") loadSkills();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "apps") loadApps();
+  else if (sec === "connections") void loadConnections();
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
   else if (sec === "support") loadSupport();
@@ -257,6 +259,7 @@ export function initHelp() {
   // Initialize all section event handlers
   initSettings();
   initApps();
+  initConnections();
   initLayoutsEvents();
   initDripsEvents();
   initSkills();

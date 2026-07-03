@@ -134,15 +134,16 @@
           <div id="app-detail" class="hidden">
             <div class="crud-inline-header" style="padding:0 16px;">
               <a class="crud-breadcrumb-back" id="app-detail-close">← Apps</a>
-              <span id="app-detail-heading" style="font-size:14px;font-weight:600;color:var(--text);margin-left:8px;"></span>
+              <span id="app-detail-heading" class="hidden"></span>
               <span style="flex:1;"></span>
               <button id="app-detail-open" class="action-btn primary" type="button" title="Open this app as a panel">Open app</button>
             </div>
 
+            <!-- Title under the breadcrumb (icon + name + slug), like the Connections form -->
+            <div id="app-detail-head" class="edit-head" style="padding:0 16px;margin-top:12px;"></div>
+
             <div class="app-detail-tabs">
               <button class="app-detail-tab" data-tab="dashboard">General</button>
-              <button class="app-detail-tab" data-tab="connection">Connection</button>
-              <button class="app-detail-tab" data-tab="mcp">MCP</button>
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
             </div>
 

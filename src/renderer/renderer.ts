@@ -31,6 +31,7 @@ type SavedPanelApp = {
   createdBy: string;
   name: string;
   slug: string;
+  system: boolean;
   url: string | null;
   forceWeb: boolean;
   // Browser ↔ Native model (pivot-mcp) — see preload.ts SavedPanelApp.
@@ -39,11 +40,16 @@ type SavedPanelApp = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+  connectionIds: string[];
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   createdAt: string;
   updatedAt: string;
+};
+
+type Connection = {
+  id: string; accountId: string; appSlug: string; appName: string;
+  label: string | null; healthy: boolean; hiddenTools: string[]; createdAt: string;
 };
 
 // Mirrors preload.ts MarketplaceApp — a marketplace listing.
@@ -139,8 +145,12 @@ declare global {
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      panelAppsSetConnection: (id: string, pipedreamSlug: string) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
-      panelAppsRemoveConnection: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      panelAppsSetConnections: (id: string, connectionIds: string[]) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      connectionsList: () => Promise<{ ok: boolean; error?: string; connections: Connection[] }>;
+      connectionRename: (id: string, label: string) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
+      connectionToolsList: (id: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;
+      connectionToolsSet: (id: string, hiddenTools: string[]) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
+      connectionDisconnect: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsRemoveMcp: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
@@ -589,9 +599,9 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  type DashSlug = "apps" | "layouts" | "drips" | "skills" | "settings" | "about";
+  type DashSlug = "apps" | "connections" | "layouts" | "drips" | "skills" | "settings" | "about";
   const setActive = (slug: DashSlug) => {
-    for (const s of ["apps", "layouts", "drips", "skills", "settings", "about"] as DashSlug[]) {
+    for (const s of ["apps", "connections", "layouts", "drips", "skills", "settings", "about"] as DashSlug[]) {
       document.getElementById(`dashboard-tab-${s}`)?.classList.toggle("active", slug === s);
     }
   };
@@ -604,6 +614,7 @@ function initDashboard(): void {
     });
   };
   wireTab("apps", "apps");
+  wireTab("connections", "connections");
   wireTab("layouts", "layouts");
   wireTab("drips", "drips");
   wireTab("skills", "skills");

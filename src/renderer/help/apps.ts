@@ -37,8 +37,7 @@ const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
 let currentAppId = "";
-let activeAppTab: "dashboard" | "connection" | "mcp" | "config" = "dashboard";
-let connectorSearchOffset = 0;
+let activeAppTab: "dashboard" | "config" = "dashboard";
 
 // ── Browser ↔ Native helpers (pivot-mcp) ─────────────────
 // Apps are either web apps (isBrowser, url + browserTarget) or native desktop
@@ -117,6 +116,7 @@ interface PanelApp {
   id: string;
   slug: string;
   name: string;
+  system?: boolean;
   url?: string | null;
   forceWeb?: boolean;
   // Browser ↔ Native model (pivot-mcp).
@@ -126,23 +126,23 @@ interface PanelApp {
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
   commands?: Record<string, { selector: string; action: string; description?: string; text?: string }>;
-  connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+  connectionIds?: string[];
   mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
 }
 
 function toPanelApp(a: {
-  id: string; slug: string; name: string; url: string | null; forceWeb: boolean;
+  id: string; slug: string; name: string; system?: boolean; url: string | null; forceWeb: boolean;
   isBrowser?: boolean; browserTarget?: "webview" | "native"; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
-  connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+  connectionIds: string[];
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
 }): PanelApp {
   return {
-    id: a.id, slug: a.slug, name: a.name, url: a.url, forceWeb: a.forceWeb,
+    id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url, forceWeb: a.forceWeb,
     isBrowser: a.isBrowser, browserTarget: a.browserTarget, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig,
-    commands: a.commands, connection: a.connection, mcp: a.mcp,
+    commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
 
@@ -174,15 +174,16 @@ async function loadApps() {
     // Keep browser apps (have a url) and native apps (isBrowser === false).
     // Legacy rows have neither field set but always carry a url, so the url
     // check still covers them.
-    panelApps = apps.filter((a) => a.url || a.isBrowser === false).map(toPanelApp);
+    // Hide seeded system apps (Glyphh) — they aren't user-managed.
+    panelApps = apps.filter((a) => !a.system && (a.url || a.isBrowser === false)).map(toPanelApp);
   } catch { panelApps = []; }
 
   document.getElementById("apps-limit-msg")!.classList.add("hidden");
 
   renderAppsList();
-  // Async — re-renders once Pipedream catalog icons (connected apps) and OS
-  // file icons (native apps) land.
-  void primeConnectedIcons(panelApps, renderAppsList);
+  // Async — re-renders once OS file icons (native apps) land. Apps no longer
+  // carry a Pipedream connection (Connections are their own tab now), so their
+  // icon comes from the url favicon or the executable icon.
   void primeNativeIcons(panelApps, renderAppsList);
 }
 
@@ -214,8 +215,6 @@ function renderAppsList() {
   grid.className = "app-grid";
   for (const app of pageApps) {
     const badges: string[] = [];
-    if (app.mcp && !app.url) badges.push(`<span class="app-card-badge">MCP</span>`);
-    if (app.connection?.accountId) badges.push(`<span class="app-card-badge badge-connection">API</span>`);
 
     const card = document.createElement("div");
     card.className = "app-card";
@@ -662,8 +661,6 @@ function switchAppTab(tab: string) {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
   if (tab === "dashboard") loadPanelTab();
-  if (tab === "connection") loadConnectionTab();
-  if (tab === "mcp") loadMcpTab();
   if (tab === "config") void loadConfigVarsTab();
 }
 
@@ -755,356 +752,10 @@ function loadPanelTab() {
   refreshCommands();
 }
 
-// ── Connection tab ───────────────────────────────────────
-
-async function loadConnectionTab() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-
-  const gate = document.getElementById("connection-upgrade-gate")!;
-  const statusEl = document.getElementById("app-connection-status")!;
-  const listEl = document.getElementById("app-connected-list")!;
-  const toolsEl = document.getElementById("app-connection-tools")!;
-  const noToolsEl = document.getElementById("app-connection-no-tools")!;
-  const browseEl = document.querySelector<HTMLElement>(".connection-browse")!;
-
-  // Connections are available to all tiers — no pay gate.
-  gate.classList.add("hidden");
-
-  // Left: this app's connection
-  listEl.innerHTML = "";
-  const isConnected = !!app.connection?.accountId;
-
-  if (app.connection && isConnected) {
-    // Connected — show status + disconnect, hide browse grid
-    browseEl.classList.add("hidden");
-    statusEl.innerHTML = `
-      <div class="connection-status">
-        <span class="connection-status-dot connected"></span>
-        <div class="connection-status-info">
-          <div class="connection-status-name">${app.connection.pipedreamSlug}</div>
-          <div class="connection-status-meta">Connected${app.connection.healthy === false ? " (unhealthy)" : ""}</div>
-        </div>
-        <button class="action-btn danger" id="app-conn-disconnect" style="height:28px;font-size:12px;">Disconnect</button>
-      </div>`;
-
-    document.getElementById("app-conn-disconnect")?.addEventListener("click", async () => {
-      if (!app.connection?.accountId) return;
-      const btn = document.getElementById("app-conn-disconnect") as HTMLButtonElement;
-      btn.disabled = true;
-      btn.textContent = "Disconnecting...";
-      await window.yo.connectorsDisconnect(app.connection.accountId);
-      // Also remove the connection from the app so it clears properly
-      await window.yo.panelAppsRemoveConnection(app.id);
-      const apps = await window.yo.panelAppsList();
-      reloadPanelApps(apps.map(toPanelApp));
-      loadConnectionTab();
-    });
-  } else {
-    // Not connected — show browse grid to pick an app
-    statusEl.innerHTML = "";
-    browseEl.classList.remove("hidden");
-    connectorSearchOffset = 0;
-    const searchInput = document.getElementById("app-connector-search") as HTMLInputElement;
-    if (searchInput) searchInput.value = "";
-    loadConnectorGrid();
-  }
-
-  // Right: tools for this app's connection
-  toolsEl.innerHTML = "";
-  noToolsEl.classList.add("hidden");
-  if (isConnected && app.connection?.pipedreamSlug) {
-    await loadConnectionTools(app.connection.pipedreamSlug);
-  } else {
-    noToolsEl.textContent = "Connect an app to see its tools.";
-    noToolsEl.classList.remove("hidden");
-  }
-}
-
-async function loadConnectionTools(slug: string) {
-  const toolsEl = document.getElementById("app-connection-tools")!;
-  const noToolsEl = document.getElementById("app-connection-no-tools")!;
-  toolsEl.innerHTML = "";
-  noToolsEl.textContent = "Loading tools…";
-  noToolsEl.classList.remove("hidden");
-
-  // Tools come from yo-server's flat connector catalog (keyed by pipedream
-  // app slug), surfaced via connectors-list-tools. Filter to this app's slug.
-  let tools: Array<{ slug: string; name: string; description: string }> = [];
-  try {
-    tools = await window.yo.connectorsListTools();
-  } catch (err) {
-    console.error("[connection-tools] list failed:", err);
-  }
-  const appTools = tools.filter((t) => t.slug === slug);
-
-  if (appTools.length === 0) {
-    noToolsEl.textContent = "No tools available for this app yet.";
-    noToolsEl.classList.remove("hidden");
-    return;
-  }
-
-  noToolsEl.classList.add("hidden");
-  for (const tool of appTools) {
-    const row = document.createElement("div");
-    row.className = "crud-card";
-    row.innerHTML = `
-      <div class="crud-card-info">
-        <span class="crud-card-name" style="font-family:var(--font-mono);font-size:11px;">${tool.name}</span>
-        <span class="crud-card-meta">${tool.description || ""}</span>
-      </div>`;
-    toolsEl.appendChild(row);
-  }
-}
-
-async function loadConnectorGrid(search?: string) {
-  const grid = document.getElementById("app-connector-grid")!;
-  const loadMore = document.getElementById("app-connector-load-more")!;
-
-  try {
-    const { apps, hasMore } = await window.yo.connectorsGetApps(search, connectorSearchOffset);
-    if (connectorSearchOffset === 0) grid.innerHTML = "";
-
-    for (const app of apps) {
-      const card = document.createElement("div");
-      card.className = "connector-card";
-      const initial = app.name.charAt(0).toUpperCase();
-      card.innerHTML = `
-        ${app.icon
-          ? `<img class="connector-card-icon" src="${app.icon}" onerror="this.outerHTML='<span class=\\'connector-card-initial\\'>${initial}</span>'" />`
-          : `<span class="connector-card-initial">${initial}</span>`}
-        <div class="connector-card-info">
-          <div class="connector-card-name">${app.name}</div>
-        </div>`;
-      card.addEventListener("click", async () => {
-        const nameEl = card.querySelector(".connector-card-name")!;
-        nameEl.textContent = "Connecting...";
-        // Set the pipedream slug on the current app FIRST so syncAccountsToApps can find it
-        const currentApp = panelApps.find((a) => a.id === currentAppId);
-        if (currentApp) {
-          await window.yo.panelAppsSetConnection(currentApp.id, app.id);
-        }
-        const result = await window.yo.connectorsConnect(app.id);
-        if (!result.ok) {
-          nameEl.textContent = result.error || "Connection failed";
-          // Remove the connection we just set since connect failed
-          if (currentApp) await window.yo.panelAppsRemoveConnection(currentApp.id);
-          setTimeout(() => { nameEl.textContent = app.name; }, 3000);
-          return;
-        }
-        const allApps = await window.yo.panelAppsList();
-        reloadPanelApps(allApps.map(toPanelApp));
-        loadConnectionTab();
-      });
-      grid.appendChild(card);
-    }
-
-    loadMore.classList.toggle("hidden", !hasMore);
-  } catch {
-    if (connectorSearchOffset === 0) grid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Could not load apps. Check your connection.</div>`;
-  }
-}
-
-// ── MCP tab ──────────────────────────────────────────────
-
-async function loadMcpTab() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-
-  const mcpGate = document.getElementById("mcp-tab-upgrade-gate")!;
-  const statusRow = document.getElementById("app-mcp-status-row")!;
-
-  // MCP is available to everyone — no pay gate. Keep the upgrade panel hidden
-  // and the tab's controls visible.
-  const mcpSiblings = document.querySelectorAll<HTMLElement>(".app-tab-left[data-tab='mcp'] > :not(#mcp-tab-upgrade-gate)");
-  mcpGate.classList.add("hidden");
-  mcpSiblings.forEach(el => el.classList.remove("hidden"));
-
-  const statusBadge = document.getElementById("app-mcp-status")!;
-  const connectBtn = document.getElementById("app-mcp-connect") as HTMLButtonElement;
-  const disconnectBtn = document.getElementById("app-mcp-disconnect") as HTMLButtonElement;
-  const transportSelect = document.getElementById("app-mcp-transport") as HTMLSelectElement;
-  const commandInput = document.getElementById("app-mcp-command") as HTMLInputElement;
-  const argsInput = document.getElementById("app-mcp-args") as HTMLInputElement;
-  const envInput = document.getElementById("app-mcp-env") as HTMLTextAreaElement;
-  const urlInput = document.getElementById("app-mcp-url") as HTMLInputElement;
-
-  if (!app.mcp) {
-    statusBadge.className = "mcp-status-badge status-disconnected";
-    statusBadge.textContent = "not configured";
-    connectBtn.classList.add("hidden");
-    disconnectBtn.classList.add("hidden");
-    transportSelect.value = "stdio";
-    commandInput.value = "";
-    argsInput.value = "";
-    envInput.value = "";
-    urlInput.value = "";
-    (document.getElementById("app-mcp-client-id") as HTMLInputElement).value = "";
-    const secretReset = document.getElementById("app-mcp-client-secret") as HTMLInputElement;
-    secretReset.value = "";
-    secretReset.placeholder = "OAuth client secret";
-    (document.getElementById("app-mcp-token-url") as HTMLInputElement).value = "";
-    (document.getElementById("app-mcp-scope") as HTMLInputElement).value = "";
-    updateMcpFields();
-
-    const toolsTable = document.getElementById("app-mcp-tools-table")!;
-    const noTools = document.getElementById("app-mcp-no-tools")!;
-    toolsTable.classList.add("hidden");
-    noTools.classList.remove("hidden");
-    noTools.textContent = "Configure and save an MCP server to discover tools.";
-    return;
-  }
-
-  // Get live status from MCP manager
-  const servers = await window.yo.mcpGetServers();
-  const server = servers.find((s) => s.config.id === currentAppId);
-  const status = server?.status || "disconnected";
-
-  statusBadge.className = `mcp-status-badge status-${status}`;
-  statusBadge.textContent = status + (server?.error ? `: ${server.error}` : "");
-  connectBtn.classList.toggle("hidden", status === "connected" || status === "connecting");
-  disconnectBtn.classList.toggle("hidden", status !== "connected");
-
-  // Populate config form
-  transportSelect.value = app.mcp.transport;
-  commandInput.value = app.mcp.command || "";
-  argsInput.value = (app.mcp.args || []).join(" ");
-  envInput.value = app.mcp.env ? Object.entries(app.mcp.env).map(([k, v]) => `${k}=${v}`).join("\n") : "";
-  urlInput.value = app.mcp.url || "";
-
-  // OAuth fields. Never populate the secret into the DOM — only hint that one
-  // is saved so the user knows they can leave it blank to keep it.
-  const oauth = app.mcp.oauth;
-  (document.getElementById("app-mcp-client-id") as HTMLInputElement).value = oauth?.clientId || "";
-  (document.getElementById("app-mcp-token-url") as HTMLInputElement).value = oauth?.tokenUrl || "";
-  (document.getElementById("app-mcp-scope") as HTMLInputElement).value = oauth?.scope || "";
-  const secretInput = document.getElementById("app-mcp-client-secret") as HTMLInputElement;
-  secretInput.value = "";
-  secretInput.placeholder = oauth ? "•••••• (saved — re-enter to change)" : "OAuth client secret";
-  updateMcpFields();
-
-  // Tools table (right panel)
-  const toolsBody = document.getElementById("app-mcp-tools-body")!;
-  const toolsTable = document.getElementById("app-mcp-tools-table")!;
-  const noTools = document.getElementById("app-mcp-no-tools")!;
-  const tools = server?.tools || [];
-
-  if (tools.length === 0) {
-    toolsTable.classList.add("hidden");
-    noTools.classList.remove("hidden");
-  } else {
-    toolsTable.classList.remove("hidden");
-    noTools.classList.add("hidden");
-    toolsBody.innerHTML = "";
-
-    for (const tool of tools) {
-      const tr = document.createElement("tr");
-      tr.className = "tool-row";
-      const currentOverride = await window.yo.mcpGetToolOverride(currentAppId, tool.name);
-      tr.innerHTML = `
-        <td class="tool-td-name">${tool.name}</td>
-        <td class="tool-td-desc">${tool.description || ""}</td>
-        <td class="tool-td-perm">
-          <select class="tool-perm-select" data-tool="${tool.name}">
-            <option value="default"${currentOverride === "default" ? " selected" : ""}>Default</option>
-            <option value="auto"${currentOverride === "auto" ? " selected" : ""}>Auto</option>
-            <option value="ask"${currentOverride === "ask" ? " selected" : ""}>Ask</option>
-          </select>
-        </td>`;
-      toolsBody.appendChild(tr);
-    }
-
-    toolsBody.querySelectorAll<HTMLSelectElement>(".tool-perm-select").forEach(sel => {
-      sel.addEventListener("change", () => {
-        window.yo.mcpSetToolOverride(currentAppId, sel.dataset.tool!, sel.value);
-      });
-    });
-  }
-}
-
-function updateMcpFields() {
-  const transport = (document.getElementById("app-mcp-transport") as HTMLSelectElement).value;
-  document.getElementById("app-mcp-stdio-fields")!.classList.toggle("hidden", transport !== "stdio");
-  // The URL field is shared by SSE and streamable-http.
-  document.getElementById("app-mcp-sse-fields")!.classList.toggle("hidden", transport !== "sse" && transport !== "streamable-http");
-  document.getElementById("app-mcp-oauth-fields")!.classList.toggle("hidden", transport !== "streamable-http");
-}
-
-async function saveMcpConfig() {
-  const transport = (document.getElementById("app-mcp-transport") as HTMLSelectElement).value as "stdio" | "sse" | "streamable-http";
-  const statusEl = document.getElementById("app-mcp-save-status")!;
-
-  const app = panelApps.find((a) => a.id === currentAppId);
-
-  const config: Record<string, unknown> = { transport, enabled: false };
-  if (transport === "stdio") {
-    const command = (document.getElementById("app-mcp-command") as HTMLInputElement).value.trim();
-    if (!command) { statusEl.textContent = "Command required"; return; }
-    config.command = command;
-    const args = (document.getElementById("app-mcp-args") as HTMLInputElement).value.trim();
-    if (args) config.args = args.split(/\s+/);
-    const envText = (document.getElementById("app-mcp-env") as HTMLTextAreaElement).value.trim();
-    if (envText) {
-      const env: Record<string, string> = {};
-      for (const line of envText.split("\n")) {
-        const eq = line.indexOf("=");
-        if (eq > 0) env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
-      }
-      config.env = env;
-    }
-  } else if (transport === "streamable-http") {
-    const url = (document.getElementById("app-mcp-url") as HTMLInputElement).value.trim();
-    if (!url) { statusEl.textContent = "URL required"; return; }
-    config.url = url;
-
-    const clientId = (document.getElementById("app-mcp-client-id") as HTMLInputElement).value.trim();
-    const clientSecret = (document.getElementById("app-mcp-client-secret") as HTMLInputElement).value.trim();
-    const tokenUrl = (document.getElementById("app-mcp-token-url") as HTMLInputElement).value.trim();
-    const scope = (document.getElementById("app-mcp-scope") as HTMLInputElement).value.trim();
-
-    // The client secret never reaches the renderer (apps-ipc redacts it). A
-    // blank secret means "keep the one already on disk" — the main process
-    // preserves it (see app-connector preserveOAuthSecret). So a previously
-    // configured server can be edited without re-typing the secret.
-    const hadOauth = !!app?.mcp?.oauth;
-    const anyOauth = clientId || clientSecret || tokenUrl || hadOauth;
-    if (anyOauth) {
-      if (!clientId || !tokenUrl) {
-        statusEl.textContent = "client id and token URL are required for OAuth";
-        return;
-      }
-      if (!clientSecret && !hadOauth) {
-        statusEl.textContent = "client secret is required for OAuth";
-        return;
-      }
-      // clientSecret may be "" here when editing — main keeps the saved value.
-      const oauth: Record<string, string> = { clientId, clientSecret, tokenUrl };
-      if (scope) oauth.scope = scope;
-      config.oauth = oauth;
-    }
-    // No oauth fields → valid unauthenticated streamable-http server (url only).
-  } else {
-    const url = (document.getElementById("app-mcp-url") as HTMLInputElement).value.trim();
-    if (!url) { statusEl.textContent = "URL required"; return; }
-    config.url = url;
-  }
-
-  await window.yo.panelAppsSetMcp(currentAppId, config);
-  if (app?.mcp) {
-    await window.yo.mcpUpdateServer(currentAppId, config);
-  } else {
-    await window.yo.mcpAddServer({ id: currentAppId, name: app?.name || currentAppId, ...config });
-  }
-  if (app) app.mcp = config as any;
-  statusEl.textContent = "Saved";
-  setTimeout(() => { statusEl.textContent = ""; loadMcpTab(); }, 1000);
-}
-
 
 async function openPanelAppDetail(app: PanelApp) {
   currentAppId = app.id;
   panelLoaded = false;
-  connectorSearchOffset = 0;
 
   // Populate dashboard fields
   appDetailId.value = app.slug;
@@ -1126,7 +777,11 @@ async function openPanelAppDetail(app: PanelApp) {
 
   appConnectStatus.textContent = "";
   appMapCommand.classList.add("hidden");
-  appDetailHeading.textContent = app.name;
+  // Shared edit header: icon + name + slug (the header title span is now blank).
+  appDetailHeading.textContent = "";
+  document.getElementById("app-detail-head")!.innerHTML =
+    `<div class="app-card-icon">${appIconInner(app, app.name, "app-card-initial")}</div>` +
+    `<div class="edit-head-name">${escMkt(app.name)}<span class="edit-head-slug">${escMkt(app.slug)}</span></div>`;
 
   // The Glyphh system app can't be deleted (server enforces it) — don't offer.
   document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
@@ -1330,7 +985,7 @@ function closeAppDetail() {
 }
 
 function reloadPanelApps(apps: Array<PanelApp>) {
-  panelApps = apps.filter((a) => a.url || a.isBrowser === false);
+  panelApps = apps.filter((a) => !a.system && (a.url || a.isBrowser === false));
 }
 
 // When a browser tab is "Create App"'d, the originating tab id is stashed here
@@ -1710,67 +1365,7 @@ function initApps() {
     }
   });
 
-  // MCP tab: transport toggle, save, connect, disconnect
-  document.getElementById("app-mcp-transport")!.addEventListener("change", updateMcpFields);
-  document.getElementById("app-mcp-save")!.addEventListener("click", saveMcpConfig);
-
-  document.getElementById("app-mcp-connect")!.addEventListener("click", async () => {
-    if (!currentAppId) return;
-    const btn = document.getElementById("app-mcp-connect") as HTMLButtonElement;
-    btn.disabled = true;
-    btn.textContent = "Connecting...";
-    const result = await window.yo.mcpConnectServer(currentAppId);
-    btn.disabled = false;
-    btn.textContent = "Connect";
-    if (result.ok) loadMcpTab();
-    else {
-      const badge = document.getElementById("app-mcp-status")!;
-      badge.className = "mcp-status-badge status-error";
-      badge.textContent = `error: ${result.error}`;
-    }
-  });
-
-  document.getElementById("app-mcp-disconnect")!.addEventListener("click", async () => {
-    if (!currentAppId) return;
-    await window.yo.mcpDisconnectServer(currentAppId);
-    loadMcpTab();
-  });
-
-  document.getElementById("app-mcp-server-override")!.addEventListener("change", (e) => {
-    if (!currentAppId) return;
-    window.yo.mcpSetServerOverride(currentAppId, (e.target as HTMLSelectElement).value);
-    loadMcpTab();
-  });
-
-  // Connection tab: connector search
-  document.getElementById("app-connector-search")!.addEventListener("input", (e) => {
-    connectorSearchOffset = 0;
-    loadConnectorGrid((e.target as HTMLInputElement).value.trim() || undefined);
-  });
-
-  document.getElementById("app-connector-load-more")!.addEventListener("click", () => {
-    connectorSearchOffset += 20;
-    const search = (document.getElementById("app-connector-search") as HTMLInputElement).value.trim() || undefined;
-    loadConnectorGrid(search);
-  });
-
   appSearchInput.addEventListener("input", () => { appsPage = 0; renderAppsList(); });
-
-  // MCP changed event — refresh MCP tab if viewing
-  window.yo.onMcpChanged(() => {
-    if (!appDetail.classList.contains("hidden") && activeAppTab === "mcp" && currentAppId) {
-      loadMcpTab();
-    }
-  });
-
-  // Connectors changed event — refresh connection tab if viewing
-  window.yo.onConnectorsChanged(async () => {
-    if (!appDetail.classList.contains("hidden") && activeAppTab === "connection" && currentAppId) {
-      const apps = await window.yo.panelAppsList();
-      reloadPanelApps(apps.map(toPanelApp));
-      loadConnectionTab();
-    }
-  });
 
   // Apps dir changed on disk (e.g. an app dropped into ~/yo/apps) — refresh the
   // registry list live when it's the visible view, so new apps appear without a

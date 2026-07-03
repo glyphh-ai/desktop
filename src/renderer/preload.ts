@@ -13,6 +13,7 @@ export interface SavedPanelApp {
   createdBy: string;
   name: string;
   slug: string;
+  system: boolean;               // seeded system app (Glyphh) — hidden from the Apps list, undeletable
   url: string | null;
   forceWeb: boolean;
   // Browser ↔ Native model (pivot-mcp). isBrowser=true (default) → web app
@@ -23,11 +24,23 @@ export interface SavedPanelApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+  connectionIds: string[];       // ids of first-class Connections this app uses
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A first-class Connection — one connected Pipedream account. */
+export interface Connection {
+  id: string;
+  accountId: string;
+  appSlug: string;
+  appName: string;
+  label: string | null;
+  healthy: boolean;
+  hiddenTools: string[];
+  createdAt: string;
 }
 
 // Fields the create/update calls forward to /api/panel-apps. Kept as a named
@@ -244,10 +257,19 @@ contextBridge.exposeInMainWorld("yo", {
   panelAppsUpdate: (id: string, patch: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-update", id, patch) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsDelete: (id: string) => ipcRenderer.invoke("panel-apps-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  panelAppsSetConnection: (id: string, pipedreamSlug: string) =>
-    ipcRenderer.invoke("panel-apps-set-connection", id, pipedreamSlug) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
-  panelAppsRemoveConnection: (id: string) =>
-    ipcRenderer.invoke("panel-apps-remove-connection", id) as Promise<{ ok: boolean; error?: string }>,
+  panelAppsSetConnections: (id: string, connectionIds: string[]) =>
+    ipcRenderer.invoke("panel-apps-set-connections", id, connectionIds) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
+  // First-class Connections (connected accounts + per-connection tool exposure).
+  connectionsList: () =>
+    ipcRenderer.invoke("connections-list") as Promise<{ ok: boolean; error?: string; connections: Connection[] }>,
+  connectionRename: (id: string, label: string) =>
+    ipcRenderer.invoke("connection-rename", id, label) as Promise<{ ok: boolean; connection?: Connection; error?: string }>,
+  connectionToolsList: (id: string) =>
+    ipcRenderer.invoke("connection-tools-list", id) as Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>,
+  connectionToolsSet: (id: string, hiddenTools: string[]) =>
+    ipcRenderer.invoke("connection-tools-set", id, hiddenTools) as Promise<{ ok: boolean; connection?: Connection; error?: string }>,
+  connectionDisconnect: (id: string) =>
+    ipcRenderer.invoke("connection-disconnect", id) as Promise<{ ok: boolean; error?: string }>,
   panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) =>
     ipcRenderer.invoke("panel-apps-set-mcp", id, mcp) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsRemoveMcp: (id: string) =>
