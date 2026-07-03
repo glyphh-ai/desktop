@@ -1,12 +1,13 @@
 {
   "name": "glyphh",
   "version": "5.1.5",
-  "description": "Glyphh \u2014 Your AI workspace.",
+  "description": "Glyphh — Your AI workspace.",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "npm run build && ELECTRON_RUN_AS_NODE= electron .",
-    "build": "npm run build:helper && npm run build:main && npm run build:renderer && npm run build:terminal && npm run build:monaco && npm run build:overlay",
+    "build": "npm run build:helper && npm run build:main && npm run build:renderer && npm run build:terminal && npm run build:monaco && npm run build:overlay && npm run build:app-libs",
     "build:main": "tsc",
+    "build:app-libs": "node scripts/build-app-libs.mjs",
     "build:overlay": "node scripts/build-overlay.js",
     "pack:apps": "node scripts/pack-apps.mjs",
     "build:renderer": "tsc -p src/renderer/tsconfig.json && shx cp src/renderer/styles.css src/renderer/browser.html src/renderer/app-window.html src/renderer/layout-window.html src/renderer/command-center.html src/renderer/thinking.html dist/renderer/ && shx cp -r src/renderer/fonts dist/renderer/ && shx cp -r src/renderer/brand dist/renderer/ && node scripts/assemble-home.mjs",
@@ -53,6 +54,7 @@
     "@xyflow/react": "^12.10.2",
     "adm-zip": "^0.5.17",
     "better-sqlite3": "^12.11.1",
+    "chart.js": "^4.5.1",
     "cytoscape": "^3.33.3",
     "cytoscape-dagre": "^2.5.0",
     "dagre": "^0.8.5",

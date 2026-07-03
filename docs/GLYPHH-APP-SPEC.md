@@ -100,6 +100,22 @@ install anchor and always required).
   overlay). The UI talks to the host through `window.glyphh.call(method, args)`,
   where `method` is a declared capability. This is the human path.
 
+  The host publishes shared UI libraries to `~/yo/custom-apps/_libs/`
+  (refreshed each startup, versioned with Glyphh), so apps get rich
+  visualization without vendoring or the network:
+
+  ```html
+  <script src="../_libs/chart.js"></script>  <!-- window.Chart   (Chart.js 4) -->
+  <script src="../_libs/three.js"></script>  <!-- window.THREE   (three.js)   -->
+  <script src="../_libs/flow.js"></script>   <!-- window.GlyphhFlow (React Flow) -->
+  ```
+
+  `GlyphhFlow.renderFlow(el, { nodes, edges, onChange, minimap })` is a
+  vanilla facade over React Flow — node/edge canvases with drag, connect,
+  and pan/zoom, no React knowledge required (`GlyphhFlow.React` /
+  `GlyphhFlow.ReactFlow` are exported for custom node types). Slugs starting
+  with `_` are reserved for host dirs like `_libs`.
+
 - **Worker** (`worker`) — the app's own logic running **headless** in a hidden,
   sandboxed window (no Node, no DOM anyone sees, strict CSP — no network, no
   eval). It registers named handlers; the host invokes them for tool calls and
@@ -233,6 +249,25 @@ happens in Glyphh, not in apps.
   (tools only appear for connected accounts).
 - **`connector.call`** — invoke one tool. Calls to unconnected connectors fail
   with a clear error.
+
+#### Finding connectors and their tools (for LLM authors)
+
+The catalog is **Pipedream's app directory** — ~3,500 connectable apps.
+`connectors` entries in the manifest are Pipedream app slugs:
+
+- Browse apps + slugs: https://pipedream.com/apps (the slug is the URL path
+  segment, e.g. `salesforce_rest_api`, `netsuite`, `slack`, `google_sheets`,
+  `hubspot`, `stripe`).
+- Tool names/args per app: https://mcp.pipedream.com — each app's MCP tool
+  list is what `connector.call` invokes.
+
+Static docs drift, so treat them as orientation and the live surface as
+truth: at build time call the relay's `connector_list_tools` to see the
+user's actual connected apps and tool schemas; inside the app, call
+`connector.tools` (declared connectors only — tools appear once the user
+connects the account) and gate UI on `connector.status`. If you're unsure of
+a slug, resolve it against `connector.status` output before shipping the
+manifest.
 
 The canonical multi-connection pattern — a cron-driven pipeline (e.g.
 Salesforce → NetSuite daily sync with churn scoring) — is a worker handler:

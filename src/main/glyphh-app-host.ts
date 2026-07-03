@@ -126,6 +126,9 @@ export function readGlyphhAppManifest(json: string): GlyphhAppManifest | null {
   if (m?.kind !== "glyphh-app") return null;
   if (!m.name || !m.slug || !m.entry) return null;
   m.slug = String(m.slug).toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  // Leading-underscore slugs are reserved for host dirs under custom-apps/
+  // (e.g. _libs, the shared UI-library bundles apps load relatively).
+  if (m.slug.startsWith("_")) return null;
   m.capabilities = Array.isArray(m.capabilities) ? m.capabilities.map(String) : [];
   m.connectors = Array.isArray(m.connectors)
     ? [...new Set(m.connectors.map((c) => String(c).trim().toLowerCase()).filter((c) => /^[a-z0-9_-]+$/.test(c)))]
@@ -492,12 +495,36 @@ export async function callAppTool(appSlug: string, toolName: string, args: Recor
 
 let registered = false;
 
+/**
+ * Publish the host-provided UI libraries (Chart.js, three.js, React Flow —
+ * built by scripts/build-app-libs.mjs into dist/renderer/app-libs) to
+ * ~/yo/custom-apps/_libs/ so every installed app can load them with a
+ * relative <script src="../_libs/<name>.js">. Copied (not symlinked) so app
+ * pages never reach into the install dir, and refreshed on every startup so
+ * they track the running Glyphh version.
+ */
+function syncAppLibs(): void {
+  try {
+    const src = path.join(__dirname, "..", "renderer", "app-libs");
+    if (!fs.existsSync(src)) return;
+    const dst = path.join(customAppsDir(), "_libs");
+    fs.mkdirSync(dst, { recursive: true });
+    for (const file of fs.readdirSync(src)) {
+      fs.copyFileSync(path.join(src, file), path.join(dst, file));
+    }
+  } catch (err) {
+    console.error("[glyphh-app] app-libs sync failed:", err instanceof Error ? err.message : err);
+  }
+}
+
 /** Register the glyphh-app IPC surface (idempotent; call once at startup).
  *  Also wires app services (per-app db, cron re-arm, notifications) — cron
  *  schedules persisted by installed apps come back to life here. */
 export function registerGlyphhAppHost(): void {
   if (registered) return;
   registered = true;
+
+  syncAppLibs();
 
   initAppServices({
     resolveApp: async (slug) => {

@@ -72,6 +72,12 @@ apps can't invent capabilities.
 1. **UI** (`entry: index.html`) — window the user opens. Talks to the host via
    `window.glyphh.call("<capability>", args)` → `{ ok, result } | { ok:false, error }`.
    Self-contained (inline CSS/JS), no external network unless needed.
+   For rich visuals, host-provided libraries are available via relative
+   script tags (no vendoring, no CDN):
+   `<script src="../_libs/chart.js"></script>` → `window.Chart` (Chart.js 4);
+   `../_libs/three.js` → `window.THREE`; `../_libs/flow.js` →
+   `window.GlyphhFlow` — `GlyphhFlow.renderFlow(el, { nodes, edges, onChange })`
+   gives a drag/connect/zoom node-canvas (React Flow) with zero React code.
 2. **Worker** (`worker: worker.js`) — headless app logic in a sandboxed hidden
    context (no Node, no network, 60s per invoke). Registers handlers:
    `glyphh.handle("name", async (args) => result)`. Handlers back MCP tools and
@@ -95,6 +101,12 @@ apps can't invent capabilities.
    the app is self-contained and never sees tokens. Have the UI check
    `connector.status` and render a "Connect X in Glyphh" state rather than
    failing on unconnected accounts.
+   **Finding slugs/tools**: the catalog is Pipedream's app directory
+   (~3,500 apps) — browse https://pipedream.com/apps for slugs and
+   https://mcp.pipedream.com for each app's MCP tools. Docs drift; the live
+   truth is the relay's `connector_list_tools` (what THIS user has connected,
+   with exact tool schemas) and `connector.tools` inside the app. Verify a
+   slug against `connector.status` before shipping the manifest.
 2. **Worker pattern** (if the app has logic/schedules):
    ```js
    async function call(m, a) { const r = await glyphh.call(m, a); if (!r.ok) throw new Error(r.error); return r.result; }
