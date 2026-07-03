@@ -115,6 +115,25 @@ const MIGRATIONS: Migration[] = [
     version: 3,
     sql: `ALTER TABLE agents ADD COLUMN system_prompt TEXT;`,
   },
+  {
+    // Persisted cron schedules for installed Glyphh apps (spec v2 —
+    // cron.schedule/cancel/list capabilities). Keyed per app so an app can
+    // only ever see/replace its own schedules; re-armed at boot by
+    // glyphh-app-services.armAllSchedules().
+    version: 4,
+    sql: `
+      CREATE TABLE IF NOT EXISTS app_schedules (
+        app_slug TEXT NOT NULL,
+        id TEXT NOT NULL,
+        cron TEXT NOT NULL,
+        handler TEXT NOT NULL,
+        args_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (app_slug, id)
+      );
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

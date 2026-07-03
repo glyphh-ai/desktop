@@ -1,0 +1,71 @@
+{
+  "manifestVersion": 2,
+  "kind": "glyphh-app",
+  "name": "Keep in Touch",
+  "slug": "keep-in-touch",
+  "entry": "index.html",
+  "worker": "worker.js",
+  "description": "Personal CRM — never let someone you care about go quiet. Daily nudge, one-tap check-ins.",
+  "window": { "width": 500, "height": 680 },
+  "capabilities": [
+    "db.exec",
+    "cron.schedule",
+    "cron.cancel",
+    "cron.list",
+    "notify.send",
+    "contacts.search",
+    "messages.send"
+  ],
+  "tools": [
+    {
+      "name": "add_person",
+      "description": "Add (or update) a person to keep in touch with. cadence_days is how often to reach out (default 14). handle is their phone number, email, or iMessage handle.",
+      "handler": "add_person",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Person's name" },
+          "handle": { "type": "string", "description": "Phone number, email, or iMessage handle" },
+          "cadence_days": { "type": "integer", "description": "Reach out every N days (default 14)" },
+          "notes": { "type": "string", "description": "Optional context — how you know them, what to ask about" }
+        },
+        "required": ["name", "handle"]
+      }
+    },
+    {
+      "name": "list_people",
+      "description": "List everyone being kept in touch with: name, handle, cadence, notes, last touch, and whether they're due.",
+      "handler": "list_people",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "due_today",
+      "description": "People who are due (or overdue) for a check-in right now, most overdue first.",
+      "handler": "due_today",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "log_touch",
+      "description": "Record that the user reached out to a person (resets their cadence clock). Use after a call, text, or meetup happened outside the app.",
+      "handler": "log_touch",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "name": { "type": "string", "description": "Person's name (as stored)" } },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "send_checkin",
+      "description": "Send a check-in text to a stored person via Messages and log the touch. body is the message text to send.",
+      "handler": "send_checkin",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Person's name (as stored)" },
+          "body": { "type": "string", "description": "Message text to send them" }
+        },
+        "required": ["name", "body"]
+      }
+    }
+  ]
+}

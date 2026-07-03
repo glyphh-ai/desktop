@@ -1,78 +1,106 @@
 ---
 name: build-glyphh-app
-description: Author a Glyphh app — a portable .yoapp bundle with a UI window and/or MCP tools that surface on the user's Glyphh relay so any LLM can orchestrate them. Use when a developer or user wants to build, package, or deploy a Glyphh app (e.g. "make a Glyphh app that…", "build an app to send messages / create calendar events"), or to expose a machine capability as an MCP tool for the user's Glyphh.
+description: Author a Glyphh app — a portable .yoapp bundle with a UI window, an optional headless worker (per-app SQLite, cron schedules, notifications), and/or MCP tools that surface on the user's Glyphh relay so any LLM can orchestrate them. Use when a developer or user wants to build, package, or deploy a Glyphh app (e.g. "make a Glyphh app that…", "build an app that tracks X and reminds me", "expose Y as a tool for my Glyphh"), or to expose a machine capability as an MCP tool for the user's Glyphh.
 ---
 
 # Build a Glyphh App
 
 A **Glyphh app** is a `.yoapp` bundle (a zip: `manifest.json` + `index.html` +
-assets) that installs like any other app AND can expose **MCP tools** the user's
-LLM tools (Claude Desktop, Cowork, Cursor) discover and call through the Glyphh
-relay. Full contract: `docs/GLYPHH-APP-SPEC.md`.
+optional `worker.js` + assets) that installs like any other app AND can expose
+**MCP tools** the user's LLM tools (Claude Desktop, Cowork, Cursor) discover and
+call through the Glyphh relay. Full contract: `docs/GLYPHH-APP-SPEC.md` (v2).
 
 ## When to use
 
 - The user wants a small UI to do a machine task (send a text, create an event).
-- The user wants that task exposed as an MCP **tool** so Claude can orchestrate
+- The user wants a **real app**: its own local database, scheduled background
+  work, notifications — a habit tracker, a personal CRM, a watcher.
+- The user wants any of that exposed as MCP **tools** so Claude can orchestrate
   it (`app_call_tool`), not just click it.
-- Both — an app usually ships a UI *and* a tool over the same capability.
 
 ## What you can build on
 
-Apps never touch the OS directly. They call **host capabilities** the host
-implements and gates per-app. Only declared capabilities are reachable.
+Apps never touch the OS or a database engine directly. They call **host
+capabilities** the host implements and gates per-app. Only declared
+capabilities are reachable.
 
-Current capabilities (macOS):
+Services (cross-platform):
 
-| capability        | args               | returns                       |
-|-------------------|--------------------|-------------------------------|
-| `messages.send`   | `{ to, body }`     | `{ sent: true }`              |
-| `contacts.search` | `{ query }`        | `[{ name, value }]`           |
+| capability      | args                           | returns                                      |
+|-----------------|--------------------------------|----------------------------------------------|
+| `db.exec`       | `{ sql, params? }`             | `{ rows }` or `{ changes, lastInsertRowid }` |
+| `cron.schedule` | `{ id, cron, handler, args? }` | `{ scheduled, id }` (persisted upsert)       |
+| `cron.cancel`   | `{ id }`                       | `{ cancelled }`                              |
+| `cron.list`     | `{ }`                          | `[{ id, cron, handler }]`                    |
+| `notify.send`   | `{ title, body }`              | `{ shown }` (click opens the app)            |
+
+Machine capabilities (macOS): `contacts.search { query }`,
+`messages.send { to, body }`.
+
+`db.exec` is the app's OWN SQLite file (`~/yo/app-data/<slug>/data.sqlite`) —
+one statement per call, `?` params. No ATTACH/PRAGMA/VACUUM. No cross-app data.
 
 If the app needs a capability that doesn't exist yet, it must be added to the
-host first (`src/main/glyphh-app-host.ts` `runCapability` + `KNOWN_CAPABILITIES`)
-and documented in the spec — apps can't invent capabilities.
+host first (`src/main/glyphh-app-host.ts` `runCapability` + `KNOWN_CAPABILITIES`,
+services in `src/main/glyphh-app-services.ts`) and documented in the spec —
+apps can't invent capabilities.
+
+## The three surfaces
+
+1. **UI** (`entry: index.html`) — window the user opens. Talks to the host via
+   `window.glyphh.call("<capability>", args)` → `{ ok, result } | { ok:false, error }`.
+   Self-contained (inline CSS/JS), no external network unless needed.
+2. **Worker** (`worker: worker.js`) — headless app logic in a sandboxed hidden
+   context (no Node, no network, 60s per invoke). Registers handlers:
+   `glyphh.handle("name", async (args) => result)`. Handlers back MCP tools and
+   cron firings. Register handlers synchronously at top level; async setup in
+   an IIFE. Keep it stateless — state lives in `db.exec`.
+3. **Tools** (`tools[]`) — each backed by exactly ONE of `capability`
+   (1:1 passthrough) or `handler` (runs in the worker; requires `worker`).
+   Write `description` + `inputSchema` for an LLM deciding whether to call it.
 
 ## Steps
 
-1. **Scaffold** under `apps/<name>/`:
-   - `manifest.json` — set `kind:"glyphh-app"`, `name`, `slug` (`[a-z0-9_-]`),
-     `entry:"index.html"`, `capabilities`, and (for the agent path) `tools`.
-     Every `tools[].capability` MUST be in `capabilities`.
-   - `index.html` — self-contained UI. Talk to the host via
-     `window.glyphh.call("<capability>", args)` → `{ ok, result }` / `{ ok:false, error }`.
-     Keep it dependency-free (inline CSS/JS); no external network unless needed.
-
-2. **Declare tools** (optional but the point of the marketplace). Each tool:
-   ```json
-   { "name": "send_message",
-     "description": "…for the LLM…",
-     "capability": "messages.send",
-     "inputSchema": { "type":"object", "properties": {…}, "required": [...] } }
+1. **Scaffold** under `apps/<name>/`: `manifest.json` with
+   `manifestVersion: 2`, `kind: "glyphh-app"`, `name`, `slug` (`[a-z0-9_-]`),
+   `entry`, optional `worker`, `capabilities`, `tools`, `window`.
+   Every `tools[].capability` MUST be in `capabilities`; `tools[].handler`
+   requires `worker`.
+2. **Worker pattern** (if the app has logic/schedules):
+   ```js
+   async function call(m, a) { const r = await glyphh.call(m, a); if (!r.ok) throw new Error(r.error); return r.result; }
+   glyphh.handle("my_tool", async (args) => { /* db.exec, messages.send, … */ });
+   glyphh.handle("tick", async () => { /* cron target: query, notify.send */ });
+   (async () => {           // idempotent setup on every worker start
+     await call("db.exec", { sql: "CREATE TABLE IF NOT EXISTS …" });
+     await call("cron.schedule", { id: "tick", cron: "0 9 * * *", handler: "tick" });
+   })();
    ```
-   The tool's `inputSchema` IS the capability's argument shape (1:1 passthrough
-   in v1). Write the description for an LLM deciding whether to call it.
-
+   Schema creation must be idempotent and run from BOTH worker and UI (either
+   may start first).
 3. **Package**: `npm run pack:apps` → `dist-apps/<name>.yoapp`.
-
 4. **Install / deploy**:
    - Locally: Apps page → Import → pick the `.yoapp`.
    - Remotely (Claude deploying for a user over MCP): base64 the bundle and call
-     the `app_install` relay tool with `{ bundleBase64 }`.
+     the `app_install` relay tool with `{ bundleBase64 }`. Install warm-starts
+     the worker, so its cron schedules arm immediately.
+5. **Verify**: `app_list_tools` shows the app + tools; `app_call_tool
+   { app, tool, args }` runs them headlessly.
 
-5. **Verify the tool surface**: `app_list_tools` should now show the app + its
-   tools; `app_call_tool { app, tool, args }` runs it headlessly.
+## Reference apps
 
-## Reference: the Send Message app
-
-`apps/messages/` is the canonical example — a phone-number + message UI over
-`messages.send`, plus a `send_message` MCP tool. Copy its shape.
+- **`apps/keep-in-touch/`** — canonical v2: personal CRM. Per-app SQLite,
+  daily cron → notification, Contacts autocomplete, Messages send, five
+  handler-backed tools. Copy its shape for any "track things + remind me" app.
+- **`apps/messages/`** — canonical v1: thin UI + capability-passthrough tool.
 
 ## Guardrails
 
-- Keep `slug` stable — it's the `.dip` key and the tool namespace; re-install
-  updates in place.
+- Keep `slug` stable — it's the `.dip` key, the tool namespace, and the data
+  directory; re-install updates in place (data and schedules survive).
 - Don't request capabilities the app doesn't use — the manifest is the security
   contract users read before installing.
-- The UI and the tool run the SAME capability; don't duplicate logic in JS —
-  keep the app thin and let the host do the privileged work.
+- UI and tools should share logic by sharing the DATABASE, not by duplicating
+  business rules in two scripts; keep derived state in SQL views/queries.
+- Cron: re-register on every worker start (it's an upsert). Use handler names
+  that read as verbs; cap runtime well under the 60s invoke timeout.

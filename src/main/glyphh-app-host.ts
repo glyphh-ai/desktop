@@ -18,9 +18,19 @@
  * manifest's capability list per-window — an app can never call a capability
  * it didn't declare at install time.
  *
- * v1 capabilities (macOS, AppleScript-backed):
- *   contacts.search { query }  → [{ name, value }] phone/email rows
- *   messages.send  { to, body } → sends via Messages (iMessage, SMS fallback)
+ * v2 adds the headless side: a `worker` script (hidden sandboxed window, see
+ * glyphh-app-worker.ts) whose named handlers back MCP tools and cron firings,
+ * plus host services (per-app SQLite, cron, notifications — see
+ * glyphh-app-services.ts).
+ *
+ * Capabilities:
+ *   contacts.search { query }        → [{ name, value }]           (macOS)
+ *   messages.send   { to, body }     → { sent: true }              (macOS)
+ *   db.exec         { sql, params? } → { rows | changes, lastInsertRowid }
+ *   cron.schedule   { id, cron, handler, args? } → { scheduled, id }
+ *   cron.cancel     { id }           → { cancelled }
+ *   cron.list       { }              → [{ id, cron, handler, args? }]
+ *   notify.send     { title, body }  → { shown }
  */
 
 import { BrowserWindow, ipcMain } from "electron";
@@ -31,14 +41,20 @@ import os from "os";
 import path from "path";
 import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js";
 import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
+import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
+import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
+import { initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend } from "./glyphh-app-services.js";
 
 // ── manifest ────────────────────────────────────────────────
 
-/** An MCP tool an app exposes to the relay (see GLYPHH-APP-SPEC §3). */
+/** An MCP tool an app exposes to the relay (see GLYPHH-APP-SPEC §3). Backed by
+ *  exactly one of: a host `capability` (v1, 1:1 passthrough) or a worker
+ *  `handler` (v2, app logic runs headless in the app's worker). */
 export interface GlyphhAppTool {
   name: string;
   description?: string;
-  capability: string;
+  capability?: string;
+  handler?: string;
   inputSchema?: Record<string, unknown>;
 }
 
@@ -48,13 +64,28 @@ export interface GlyphhAppManifest {
   name: string;
   slug: string;
   entry: string;
+  /** Headless script (v2) — runs in a hidden sandboxed window, registers
+   *  handlers via glyphh.handle(). Relative to the bundle root. */
+  worker?: string;
   capabilities: string[];
   tools?: GlyphhAppTool[];
   window?: { width?: number; height?: number };
   description?: string;
 }
 
-const KNOWN_CAPABILITIES = new Set(["contacts.search", "messages.send"]);
+const KNOWN_CAPABILITIES = new Set([
+  "contacts.search",
+  "messages.send",
+  "db.exec",
+  "cron.schedule",
+  "cron.cancel",
+  "cron.list",
+  "notify.send",
+]);
+
+/** AppleScript-backed capabilities that only exist on macOS. Everything else
+ *  (db/cron/notify) is cross-platform. */
+const DARWIN_ONLY_CAPABILITIES = new Set(["contacts.search", "messages.send"]);
 
 function customAppsDir(): string {
   return path.join(os.homedir(), "yo", "custom-apps");
@@ -68,8 +99,15 @@ export function readGlyphhAppManifest(json: string): GlyphhAppManifest | null {
   if (!m.name || !m.slug || !m.entry) return null;
   m.slug = String(m.slug).toLowerCase().replace(/[^a-z0-9_-]/g, "-");
   m.capabilities = Array.isArray(m.capabilities) ? m.capabilities.map(String) : [];
+  m.worker = typeof m.worker === "string" && m.worker.trim() ? m.worker.trim() : undefined;
   m.tools = Array.isArray(m.tools)
-    ? m.tools.filter((t) => t && typeof t.name === "string" && typeof t.capability === "string")
+    ? m.tools.filter(
+        (t) =>
+          t &&
+          typeof t.name === "string" &&
+          // exactly one backing: a host capability OR a worker handler
+          (typeof t.capability === "string") !== (typeof t.handler === "string")
+      )
     : [];
   return m;
 }
@@ -102,15 +140,23 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   const unknown = manifest.capabilities.filter((c) => !KNOWN_CAPABILITIES.has(c));
   if (unknown.length) return { ok: false, error: `Unknown capabilities: ${unknown.join(", ")}` };
 
-  // Every tool must reference a capability the app also declared.
-  const badTool = (manifest.tools || []).find((t) => !manifest.capabilities.includes(t.capability));
+  // Every capability-backed tool must reference a capability the app also
+  // declared; every handler-backed tool needs the manifest to ship a worker.
+  const badTool = (manifest.tools || []).find((t) => t.capability && !manifest.capabilities.includes(t.capability));
   if (badTool) return { ok: false, error: `Tool "${badTool.name}" needs undeclared capability "${badTool.capability}"` };
+  const handlerTool = (manifest.tools || []).find((t) => t.handler);
+  if (handlerTool && !manifest.worker) {
+    return { ok: false, error: `Tool "${handlerTool.name}" uses a handler but the manifest declares no worker` };
+  }
 
   const dir = path.join(customAppsDir(), manifest.slug);
   fs.mkdirSync(dir, { recursive: true });
   zip.extractAllTo(dir, true);
   const entryPath = path.join(dir, manifest.entry);
   if (!fs.existsSync(entryPath)) return { ok: false, error: `Bundle entry not found after extract: ${manifest.entry}` };
+  if (manifest.worker && !fs.existsSync(path.join(dir, manifest.worker))) {
+    return { ok: false, error: `Bundle worker not found after extract: ${manifest.worker}` };
+  }
 
   // Register as a normal saved app — same rails as everything else. Re-import
   // of the same slug UPDATES the existing row (so "update the app" works)
@@ -122,29 +168,49 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     isBrowser: false,
     execPath: entryPath,
     appArchetype: "glyphh-app",
-    launchConfig: { capabilities: manifest.capabilities, tools: manifest.tools ?? [], window: manifest.window ?? null },
+    launchConfig: {
+      capabilities: manifest.capabilities,
+      tools: manifest.tools ?? [],
+      window: manifest.window ?? null,
+      worker: manifest.worker ?? null,
+    },
   };
+  let updated = false;
   try {
     const existing = await serverGetAuthed<Array<{ id: string; slug: string }>>("/api/panel-apps")
       .then((apps) => apps.find((a) => a.slug === manifest.slug))
       .catch(() => undefined);
     if (existing) {
       await serverPatchAuthed(`/api/panel-apps/${existing.id}`, fields);
-      invalidateServerCache("/api/panel-apps");
-      return { ok: true, name: manifest.name, updated: true };
+      updated = true;
+    } else {
+      await serverPostAuthed("/api/panel-apps", fields);
     }
-    await serverPostAuthed("/api/panel-apps", fields);
     invalidateServerCache("/api/panel-apps");
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-  return { ok: true, name: manifest.name };
+
+  // (Re)install: kill any running worker so the next invoke runs the new
+  // code, then warm-start it so the app can (re-)register its cron schedules
+  // immediately — without this, a freshly deployed background app would sit
+  // dead until something else invoked it.
+  stopAppWorker(manifest.slug);
+  if (manifest.worker) {
+    void ensureAppWorker({
+      slug: manifest.slug,
+      name: manifest.name,
+      appDir: dir,
+      workerFile: manifest.worker,
+      capabilities: manifest.capabilities,
+    }).catch((err) => console.error(`[glyphh-app] worker warm-start "${manifest.slug}" failed:`, err instanceof Error ? err.message : err));
+  }
+  return { ok: true, name: manifest.name, updated: updated || undefined };
 }
 
 // ── run ─────────────────────────────────────────────────────
 
 const windows = new Map<string, BrowserWindow>();          // slug → window
-const grantedCaps = new Map<number, Set<string>>();        // webContents id → capabilities
 
 export interface GlyphhAppRow {
   name: string;
@@ -188,13 +254,13 @@ export function openGlyphhApp(row: GlyphhAppRow): { ok: boolean; error?: string 
       preload: path.join(__dirname, "glyphh-app-preload.js"),
     },
   });
-  grantedCaps.set(win.webContents.id, new Set(caps));
+  grantAppCaps(win.webContents.id, row.slug, row.name, caps);
   void win.loadFile(entryPath);
   win.once("ready-to-show", () => win.show());
   win.on("closed", () => {
     if (windows.get(row.slug) === win) windows.delete(row.slug);
   });
-  win.webContents.on("destroyed", () => grantedCaps.delete(win.webContents.id));
+  win.webContents.on("destroyed", () => revokeAppCaps(win.webContents.id));
   windows.set(row.slug, win);
   return { ok: true };
 }
@@ -259,15 +325,26 @@ end tell`);
 }
 
 /**
- * Run a host capability — the ONE place a capability is implemented, shared by
- * the UI IPC path (window) and the MCP tool path (relay, headless). Callers
- * enforce the capability grant BEFORE calling this.
+ * Run a host capability — the ONE place capability calls are dispatched,
+ * shared by the UI IPC path (window), the worker path (headless app logic),
+ * and the MCP tool path (relay). Callers enforce the capability grant BEFORE
+ * calling this; `slug`/`appName` identify the calling app so services
+ * (db/cron/notify) stay scoped to it.
  */
-async function runCapability(method: string, args: Record<string, unknown>): Promise<unknown> {
-  if (process.platform !== "darwin") throw new Error("this capability is macOS-only for now");
-  if (method === "contacts.search") return contactsSearch(String(args.query || ""));
-  if (method === "messages.send") { await messagesSend(String(args.to || ""), String(args.body || "")); return { sent: true }; }
-  throw new Error(`unknown capability: ${method}`);
+async function runCapability(slug: string, appName: string, method: string, args: Record<string, unknown>): Promise<unknown> {
+  if (DARWIN_ONLY_CAPABILITIES.has(method) && process.platform !== "darwin") {
+    throw new Error(`capability ${method} is macOS-only for now`);
+  }
+  switch (method) {
+    case "contacts.search": return contactsSearch(String(args.query || ""));
+    case "messages.send":   await messagesSend(String(args.to || ""), String(args.body || "")); return { sent: true };
+    case "db.exec":         return dbExec(slug, args);
+    case "cron.schedule":   return cronSchedule(slug, args);
+    case "cron.cancel":     return cronCancel(slug, args);
+    case "cron.list":       return cronList(slug);
+    case "notify.send":     return notifySend(slug, appName, args);
+    default: throw new Error(`unknown capability: ${method}`);
+  }
 }
 
 // ── Install from a base64 bundle (MCP app_install / apps.install) ────────────
@@ -294,7 +371,27 @@ interface AppRow {
   name: string;
   appArchetype?: string | null;
   execPath?: string | null;
-  launchConfig?: { capabilities?: string[]; tools?: GlyphhAppTool[] } | null;
+  launchConfig?: { capabilities?: string[]; tools?: GlyphhAppTool[]; worker?: string | null } | null;
+}
+
+/** Saved-app row → the spec needed to run its worker (null if it has none). */
+function workerSpecFromRow(row: AppRow): AppWorkerSpec | null {
+  const workerFile = row.launchConfig?.worker;
+  const entryPath = String(row.execPath || "");
+  if (!workerFile || !entryPath) return null;
+  return {
+    slug: row.slug,
+    name: row.name,
+    appDir: path.dirname(entryPath),
+    workerFile,
+    capabilities: (row.launchConfig?.capabilities || []).filter((c) => KNOWN_CAPABILITIES.has(c)),
+  };
+}
+
+async function findAppRow(slug: string): Promise<AppRow | undefined> {
+  const key = String(slug || "").trim().toLowerCase();
+  const apps = await cachedServerGet<AppRow[]>("/api/panel-apps").catch(() => []);
+  return apps.find((a) => isGlyphhAppRow(a) && a.slug.toLowerCase() === key);
 }
 
 /** Every installed Glyphh app + the MCP tools it exposes (for app_list_tools). */
@@ -310,36 +407,57 @@ export async function listInstalledAppTools(): Promise<Array<{ app: string; name
     .filter((a) => a.tools.length > 0);
 }
 
-/** Run an installed app's declared MCP tool headlessly (for app_call_tool). */
+/** Run an installed app's declared MCP tool headlessly (for app_call_tool).
+ *  Capability tools pass straight through to the host; handler tools run the
+ *  app's own logic in its worker. */
 export async function callAppTool(appSlug: string, toolName: string, args: Record<string, unknown>): Promise<unknown> {
-  const key = String(appSlug || "").trim().toLowerCase();
-  const apps = await cachedServerGet<AppRow[]>("/api/panel-apps").catch(() => []);
-  const app = apps.find((a) => isGlyphhAppRow(a) && a.slug.toLowerCase() === key);
+  const app = await findAppRow(appSlug);
   if (!app) throw new Error(`unknown app: ${appSlug}`);
   const tool = (app.launchConfig?.tools || []).find((t) => t.name === toolName);
   if (!tool) throw new Error(`app "${appSlug}" has no tool "${toolName}"`);
+
+  if (tool.handler) {
+    const spec = workerSpecFromRow(app);
+    if (!spec) throw new Error(`tool "${toolName}" needs a worker but the app has none — re-install it`);
+    return invokeAppWorkerHandler(spec, tool.handler, args || {});
+  }
+
   const declared = app.launchConfig?.capabilities || [];
-  if (!declared.includes(tool.capability)) throw new Error(`tool "${toolName}" uses undeclared capability`);
-  return runCapability(tool.capability, args || {});
+  if (!tool.capability || !declared.includes(tool.capability)) throw new Error(`tool "${toolName}" uses undeclared capability`);
+  return runCapability(app.slug, app.name, tool.capability, args || {});
 }
 
 // ── IPC ─────────────────────────────────────────────────────
 
 let registered = false;
 
-/** Register the glyphh-app IPC surface (idempotent; call once at startup). */
+/** Register the glyphh-app IPC surface (idempotent; call once at startup).
+ *  Also wires app services (per-app db, cron re-arm, notifications) — cron
+ *  schedules persisted by installed apps come back to life here. */
 export function registerGlyphhAppHost(): void {
   if (registered) return;
   registered = true;
 
+  initAppServices({
+    resolveApp: async (slug) => {
+      const row = await findAppRow(slug);
+      return row ? workerSpecFromRow(row) : null;
+    },
+    openApp: (slug) => {
+      void findAppRow(slug).then((row) => {
+        if (row) openGlyphhApp({ name: row.name, slug: row.slug, execPath: row.execPath, launchConfig: row.launchConfig as Record<string, unknown> | null });
+      });
+    },
+  });
+
   ipcMain.handle("glyphh-app:call", async (event, method: string, args: unknown) => {
-    const caps = grantedCaps.get(event.sender.id);
+    const grant = getAppGrant(event.sender.id);
     const m = String(method || "");
-    if (!caps || !caps.has(m)) {
+    if (!grant || !grant.caps.has(m)) {
       return { ok: false, error: `capability not granted: ${m}` };
     }
     try {
-      return { ok: true, result: await runCapability(m, (args || {}) as Record<string, unknown>) };
+      return { ok: true, result: await runCapability(grant.slug, grant.name, m, (args || {}) as Record<string, unknown>) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
