@@ -10636,6 +10636,8 @@ select:focus {
 }
 .apps-page-tab:hover { color: var(--text); border-color: var(--border-3, var(--border-2)); }
 .apps-page-tab.active { background: #fff; border-color: #fff; color: #111; }
+/* Page title sits under the tabs (library page only), with breathing room. */
+.apps-page-heading { margin-top: 20px; }
 
 /* ── Marketplace storefront ─────────────────────────────── */
 .mkt-hero {
