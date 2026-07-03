@@ -184,6 +184,10 @@ async function loadApps() {
   // file icons (native apps) land.
   void primeConnectedIcons(panelApps, renderAppsList);
   void primeNativeIcons(panelApps, renderAppsList);
+
+  // Marketplace lives below the library, in the list view only.
+  marketplaceSection.classList.remove("hidden");
+  void loadMarketplace();
 }
 
 function renderAppsList() {
@@ -236,6 +240,64 @@ function renderAppsList() {
   if (state.totalPages > 1) {
     appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
   }
+}
+
+// ── Marketplace ──────────────────────────────────────────
+// Public catalog + org-private shared apps, installable into the library.
+// Server routes are pending; marketplaceList() returns [] until they land, so
+// this renders a clear empty state today (see apps-ipc.ts / preload.ts).
+const marketplaceSection = document.getElementById("marketplace-section")!;
+const marketplaceListEl = document.getElementById("marketplace-list")!;
+let marketplaceScope: "public" | "private" = "public";
+
+function escMkt(s: string): string {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function loadMarketplace(): Promise<void> {
+  marketplaceListEl.className = "app-list-wrap";
+  marketplaceListEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
+  let items: Awaited<ReturnType<typeof window.yo.marketplaceList>> = [];
+  try { items = await window.yo.marketplaceList(marketplaceScope); } catch { items = []; }
+  renderMarketplace(items);
+}
+
+function renderMarketplace(items: Awaited<ReturnType<typeof window.yo.marketplaceList>>): void {
+  marketplaceListEl.innerHTML = "";
+  if (items.length === 0) {
+    marketplaceListEl.innerHTML = marketplaceScope === "public"
+      ? `<div class="crud-empty">No public marketplace apps yet — check back soon.</div>`
+      : `<div class="crud-empty">Your organization hasn't published any apps yet. Publish from your CI, then release them here.</div>`;
+    return;
+  }
+  const grid = document.createElement("div");
+  grid.className = "app-grid";
+  for (const app of items) {
+    const card = document.createElement("div");
+    card.className = "app-card marketplace-card";
+    const price = app.priceCredits > 0 ? `${app.priceCredits} credits` : "Free";
+    const icon = app.iconUrl
+      ? `<img src="${escMkt(app.iconUrl)}" alt="" />`
+      : `<span class="app-card-initial">${escMkt((app.name || "?").charAt(0).toUpperCase())}</span>`;
+    card.innerHTML = `
+      <span class="app-card-badge">${app.scope === "public" ? "Public" : "Org"}</span>
+      <div class="app-card-icon">${icon}</div>
+      <div class="app-card-name">${escMkt(app.name)}</div>
+      <div class="app-card-id">${escMkt(app.publisher || app.slug)}</div>
+      <div class="marketplace-card-meta">${price}${app.version ? ` · v${escMkt(app.version)}` : ""}</div>
+      <button class="action-btn ${app.installed ? "" : "primary"} marketplace-install" ${app.installed ? "disabled" : ""}>${app.installed ? "Installed" : "Install"}</button>`;
+    const btn = card.querySelector(".marketplace-install") as HTMLButtonElement;
+    if (!app.installed) {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true; btn.textContent = "Installing…";
+        const res = await window.yo.marketplaceInstall(app.id);
+        if (res.ok) { btn.textContent = "Installed"; void loadApps(); }
+        else { btn.disabled = false; btn.textContent = "Install"; btn.title = res.error || "Install failed"; }
+      });
+    }
+    grid.appendChild(card);
+  }
+  marketplaceListEl.appendChild(grid);
 }
 
 // ── Tab switching ────────────────────────────────────────
@@ -729,6 +791,7 @@ async function openPanelAppDetail(app: PanelApp) {
   // Show detail, hide grid
   appsList.classList.add("hidden");
   appsToolbar.classList.add("hidden");
+  marketplaceSection.classList.add("hidden");
   appAddForm.classList.add("hidden");
   mcpAddForm.classList.add("hidden");
   appDetail.classList.remove("hidden");
@@ -992,6 +1055,18 @@ function initApps() {
   const addArchetypeSelect = document.getElementById("app-add-archetype") as HTMLSelectElement;
   const addExecPath = document.getElementById("app-add-exec-path") as HTMLInputElement;
 
+  // Marketplace Public / Your-organization tabs.
+  for (const tab of Array.from(document.querySelectorAll<HTMLButtonElement>(".marketplace-tab"))) {
+    tab.addEventListener("click", () => {
+      const scope = tab.dataset.scope === "private" ? "private" : "public";
+      if (scope === marketplaceScope) return;
+      marketplaceScope = scope;
+      document.querySelectorAll<HTMLButtonElement>(".marketplace-tab").forEach((t) => t.classList.toggle("active", t === tab));
+      document.querySelectorAll<HTMLElement>(".marketplace-desc").forEach((d) => d.classList.toggle("hidden", d.dataset.scope !== scope));
+      void loadMarketplace();
+    });
+  }
+
   document.getElementById("apps-add-btn")!.addEventListener("click", () => {
     addNameInput.value = "";
     addSlugInput.value = "";
@@ -1008,6 +1083,7 @@ function initApps() {
     appFormError.classList.add("hidden");
     appsList.classList.add("hidden");
     appsToolbar.classList.add("hidden");
+    marketplaceSection.classList.add("hidden");
     appAddForm.classList.remove("hidden");
     addNameInput.focus();
   });

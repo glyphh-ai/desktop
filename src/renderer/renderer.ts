@@ -98,6 +98,12 @@ declare global {
         execPath?: string | null; appArchetype?: string | null;
         launchConfig?: Record<string, unknown> | null;
       }) => Promise<{ ok: boolean; error?: string }>;
+      marketplaceList: (scope: "public" | "private") => Promise<Array<{
+        id: string; slug: string; name: string; description?: string; iconUrl?: string;
+        scope: "public" | "private"; priceCredits: number; publisher?: string;
+        version?: string; installed: boolean;
+      }>>;
+      marketplaceInstall: (id: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;

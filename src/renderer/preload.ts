@@ -135,6 +135,18 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.on("working-dir-changed", (_e, dir) => callback(dir));
   },
 
+  // Marketplace — install apps published to the public catalog or shared
+  // privately within the org. Server-backed (yo-server marketplace routes,
+  // pending); returns [] until those land, so the section degrades gracefully.
+  marketplaceList: (scope: "public" | "private") =>
+    ipcRenderer.invoke("marketplace-list", scope) as Promise<Array<{
+      id: string; slug: string; name: string; description?: string; iconUrl?: string;
+      scope: "public" | "private"; priceCredits: number; publisher?: string;
+      version?: string; installed: boolean;
+    }>>,
+  marketplaceInstall: (id: string) =>
+    ipcRenderer.invoke("marketplace-install", id) as Promise<{ ok: boolean; slug?: string; error?: string }>,
+
   // Apps CRUD
   appsList: () => ipcRenderer.invoke("apps-list") as Promise<Array<{
     id: string; name: string; url?: string; connected: boolean; connectedSlug?: string;

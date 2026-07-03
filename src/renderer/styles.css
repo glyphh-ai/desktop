@@ -10625,3 +10625,31 @@ select:focus {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* ── Apps → Marketplace section ─────────────────────────── */
+.marketplace-section {
+  margin-top: 30px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-2);
+}
+.marketplace-head {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 6px;
+}
+.marketplace-title { font-size: 15px; font-weight: 650; color: var(--text); margin: 0; }
+.marketplace-tabs { display: flex; gap: 4px; }
+.marketplace-tab {
+  padding: 5px 12px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid transparent;
+  color: var(--text-3); font-size: 12.5px; font-weight: 500;
+}
+.marketplace-tab:hover { color: var(--text); }
+.marketplace-tab.active {
+  background: var(--surface-2); border-color: var(--border-2); color: var(--text);
+}
+.marketplace-desc { margin-top: 0; }
+.marketplace-card-meta {
+  font-size: 11px; color: var(--text-3); margin: 2px 0 8px;
+}
+.marketplace-card .marketplace-install {
+  width: 100%; justify-content: center; font-size: 12px; margin-top: auto;
+}

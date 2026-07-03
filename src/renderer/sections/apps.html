@@ -17,6 +17,22 @@
 
           <div id="apps-list" class="crud-cards"></div>
 
+          <!-- ── Marketplace: install apps published to the public catalog or
+               shared privately within your org. Hidden while the add/detail
+               forms are open (see apps.ts). ── -->
+          <div id="marketplace-section" class="marketplace-section">
+            <div class="marketplace-head">
+              <h3 class="marketplace-title">Marketplace</h3>
+              <div class="marketplace-tabs">
+                <button class="marketplace-tab active" data-scope="public">Public</button>
+                <button class="marketplace-tab" data-scope="private">Your organization</button>
+              </div>
+            </div>
+            <p class="section-desc marketplace-desc" data-scope="public">Apps published to the public Glyphh marketplace. Install into your library.</p>
+            <p class="section-desc marketplace-desc hidden" data-scope="private">Apps built and released within your organization, available only to your members.</p>
+            <div id="marketplace-list" class="crud-cards"></div>
+          </div>
+
           <!-- App add form -->
           <div id="app-add-form" class="crud-inline-form hidden">
             <div class="crud-inline-header">
