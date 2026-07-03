@@ -10,7 +10,16 @@
  */
 
 import * as providerKeys from "./provider-keys";
-import { ProviderNotConfiguredError } from "./provider-adapters/agent-adapter";
+
+/** Thrown when the user hasn't saved a key for this provider. (Lived in
+ *  provider-adapters/agent-adapter.ts until the BYOK inference client was
+ *  deleted — transcription was its last consumer.) */
+export class ProviderNotConfiguredError extends Error {
+  constructor(public provider: string) {
+    super(`provider "${provider}" not configured — add an API key`);
+    this.name = "ProviderNotConfiguredError";
+  }
+}
 
 export class Transcriber {
   async transcribe(audio: Float32Array): Promise<string> {
