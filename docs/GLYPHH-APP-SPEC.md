@@ -201,6 +201,8 @@ OS permission prompts, and the security boundary.
 | `vector.search`    | `{ collection, query \| vector, k?, filter? }` | `{ matches: [{ id, score, text?, metadata? }] }` |
 | `vector.delete`    | `{ collection, id? }`                     | `{ deleted }`                    |
 | `graph.cypher`     | `{ query, params? }`                      | `{ rows }`                       |
+| `secrets.get`      | `{ key }`                                 | `{ value }`                      |
+| `secrets.list`     | `{ }`                                     | `[{ key, readable }]`            |
 
 **LLM auth model — Glyphh stores no LLM keys and proxies nothing.** There is
 no server proxy and no BYOK vault in the host. Intelligence reaches an app
@@ -223,6 +225,33 @@ two ways:
     never touch host state.
   - A manifest tool may not itself be backed by `agent.run` (no recursion) —
     install rejects it.
+  - **Key auto-pickup:** with no explicit `apiKey`, a vendor provider reads
+    the app's config var named `<PROVIDER>_API_KEY` (`OPENAI_API_KEY`,
+    `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) — so an agentic app usually needs
+    zero key-handling code.
+
+### Config vars (per-app secrets)
+
+Users set `KEY=value` pairs on the app's **Config Vars** tab (app → edit).
+The value is **encrypted in the main process with the OS keychain
+(safeStorage) before it leaves the machine** and stored on the server inside
+the app row — the server only ever sees ciphertext, and the UI can never
+display a value again after creation (key names + set-dates only; rotation is
+delete + re-add). Keys are env-var style (`[A-Z0-9_]`, one line); values are
+blobs up to 32 KB. Config vars survive app updates.
+
+Apps read their own vars — and only their own — via the `secrets.get`
+capability (declared in the manifest like any other):
+
+```js
+const { value } = await call("secrets.get", { key: "OPENAI_API_KEY" });
+```
+
+`secrets.list` returns key names plus `readable` (safeStorage is
+machine-bound, so a var set on another machine exists but won't decrypt — the
+user re-enters it here; apps should surface that state, not crash). This is
+how an app *requires* keys from its user: declare `secrets.get`, document the
+keys it expects, and gate features on their presence.
 
 - **`llm.embed`** — local embeddings (ONNX via transformers.js; default model
   `Xenova/all-MiniLM-L6-v2`, 384-dim). The model downloads once to

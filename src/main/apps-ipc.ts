@@ -10,6 +10,7 @@ import { launchNativeApp, launchInNativeChrome } from "./native-launch";
 import { openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host";
+import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -138,6 +139,13 @@ function registerPanelAppsIpc(): void {
     try { await serverDeleteAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
+
+  // Per-app config vars (encrypted secrets — app-secrets.ts). List returns key
+  // names + set-dates ONLY; there is deliberately no handler that returns a
+  // decrypted value to a renderer — plaintext exists once, at creation.
+  ipcMain.handle("app-secrets-list", async (_e, id: string) => listAppSecrets(id));
+  ipcMain.handle("app-secrets-set", async (_e, id: string, key: string, value: string) => setAppSecret(id, key, value));
+  ipcMain.handle("app-secrets-delete", async (_e, id: string, key: string) => deleteAppSecret(id, key));
 }
 
 /** Strip the MCP OAuth client secret before any app config crosses IPC to the

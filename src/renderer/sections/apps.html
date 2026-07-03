@@ -137,6 +137,7 @@
               <button class="app-detail-tab" data-tab="dashboard">General</button>
               <button class="app-detail-tab" data-tab="connection">Connection</button>
               <button class="app-detail-tab" data-tab="mcp">MCP</button>
+              <button class="app-detail-tab" data-tab="config">Config Vars</button>
             </div>
 
             <div class="app-builder-split">
@@ -325,6 +326,24 @@
                     <button id="app-mcp-save" class="action-btn primary">Save</button>
                   </div>
                 </div>
+                <!-- Config Vars left: add form + list. Values are write-only —
+                     encrypted on this machine before upload; shown in plain
+                     text exactly once, here, while being typed. -->
+                <div class="app-tab-left" data-tab="config">
+                  <div id="config-var-error" class="crud-form-error hidden"></div>
+                  <label class="settings-label">Key</label>
+                  <input id="config-var-key" type="text" class="settings-input" placeholder="OPENAI_API_KEY" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
+                  <label class="settings-label">Value <span style="color:var(--text-2);font-weight:400;">— visible only now; encrypted on save and never shown again</span></label>
+                  <textarea id="config-var-value" class="settings-input" rows="4" placeholder="sk-…" spellcheck="false" autocomplete="off" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                  <div class="settings-actions" style="margin-top:8px;">
+                    <span id="config-var-status" style="flex:1;font-size:12px;color:var(--ok,#22c55e);"></span>
+                    <button id="config-var-add" class="action-btn primary">Save var</button>
+                  </div>
+
+                  <div class="app-detail-section-sep"></div>
+
+                  <div id="config-var-list"></div>
+                </div>
               </div>
 
               <div class="app-builder-divider" id="app-builder-divider"></div>
@@ -354,6 +373,30 @@
                     <h3 class="settings-subheading" style="margin:0 0 8px;">Tools</h3>
                     <div id="app-connection-tools"></div>
                     <div id="app-connection-no-tools" class="help-item-empty">No tools available. Connect an app to see its tools.</div>
+                  </div>
+                </div>
+
+                <!-- Config Vars right: how apps consume these -->
+                <div class="app-tab-right" data-tab="config">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">How apps use config vars</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      Config vars are per-app secrets: the key is visible below, the value is
+                      <strong>encrypted on this machine</strong> before it's stored and can never be
+                      viewed again — not here, not by the server. Delete and re-add a var to rotate it.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      A Glyphh app that declares the <code>secrets.get</code> capability reads its own vars at
+                      runtime — e.g. an agentic app fetching the key it needs:
+                    </p>
+                    <pre style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2,#2c2c30);border:1px solid var(--border,#3a3a3f);border-radius:8px;padding:10px 12px;overflow-x:auto;margin:0 0 10px;">await glyphh.call("secrets.get", { key: "OPENAI_API_KEY" })
+// → { value: "sk-…" }   (only app code sees it, never the UI)</pre>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      <code>agent.run</code> picks keys up automatically: a var named
+                      <code>OPENAI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code> / <code>GOOGLE_API_KEY</code>
+                      powers that provider with no code at all. Provider <code>"claude"</code> needs no key —
+                      it runs on your Claude Code login.
+                    </p>
                   </div>
                 </div>
 

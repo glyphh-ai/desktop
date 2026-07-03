@@ -47,6 +47,7 @@ need an `apiKey` the app manages itself:
 | `agent.run` | `{ prompt, system?, provider?, tools?, maxTurns?, apiKey? }` | agentic loop over the APP'S OWN manifest tools; providers claude (no key) / anthropic / openai / google (app-supplied key) |
 | `vector.upsert/search/delete` | `{ collection, … }` | per-app store; text auto-embeds; exact cosine + metadata filter |
 | `graph.cypher` | `{ query, params? }` | per-app embedded Kuzu graph — real Cypher; schema-full (CREATE NODE/REL TABLE first) |
+| `secrets.get` / `secrets.list` | `{ key }` / `{ }` | per-app config vars the USER sets on the app's Config Vars tab — encrypted, write-once, machine-bound. How an app requires keys (e.g. OPENAI_API_KEY for agent.run, which auto-picks up `<PROVIDER>_API_KEY`). Check `secrets.list` and render a "set OPENAI_API_KEY in Config Vars" state when missing. |
 
 RAG-in-an-app is: `llm.chunk` → `vector.upsert` → `vector.search { query, k }`
 → `llm.complete` with the top chunks in the prompt. An agentic app is:

@@ -200,6 +200,14 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("panel-apps-set-command", id, key, mapping) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsRemoveCommand: (id: string, key: string) =>
     ipcRenderer.invoke("panel-apps-remove-command", id, key) as Promise<{ ok: boolean; error?: string }>,
+  // Per-app config vars (encrypted secrets). List never includes values —
+  // a value is visible only in the form where it's typed, at creation.
+  appSecretsList: (id: string) =>
+    ipcRenderer.invoke("app-secrets-list", id) as Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string }>; error?: string }>,
+  appSecretsSet: (id: string, key: string, value: string) =>
+    ipcRenderer.invoke("app-secrets-set", id, key, value) as Promise<{ ok: boolean; error?: string }>,
+  appSecretsDelete: (id: string, key: string) =>
+    ipcRenderer.invoke("app-secrets-delete", id, key) as Promise<{ ok: boolean; error?: string }>,
   // yo app package (import / export)
   appImport: () => ipcRenderer.invoke("app-import") as Promise<{ ok: boolean; appId?: string; error?: string }>,
   appExport: (appId: string) => ipcRenderer.invoke("app-export", appId) as Promise<{ ok: boolean; path?: string; error?: string }>,

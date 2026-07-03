@@ -37,7 +37,7 @@ const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
 let currentAppId = "";
-let activeAppTab: "dashboard" | "connection" | "mcp" = "dashboard";
+let activeAppTab: "dashboard" | "connection" | "mcp" | "config" = "dashboard";
 let connectorSearchOffset = 0;
 
 // ── Browser ↔ Native helpers (pivot-mcp) ─────────────────
@@ -254,6 +254,75 @@ function switchAppTab(tab: string) {
   if (tab === "dashboard") loadPanelTab();
   if (tab === "connection") loadConnectionTab();
   if (tab === "mcp") loadMcpTab();
+  if (tab === "config") void loadConfigVarsTab();
+}
+
+// ── Config Vars tab (per-app encrypted secrets) ──────────
+//
+// Values are write-only: typed once into the form, encrypted in the main
+// process, and never returned to any renderer again — the list shows key
+// names and set-dates only.
+
+async function loadConfigVarsTab() {
+  const listEl = document.getElementById("config-var-list")!;
+  const res = await window.yo.appSecretsList(currentAppId);
+  listEl.innerHTML = "";
+  if (!res.ok) {
+    listEl.innerHTML = `<div class="inline-empty">Couldn't load config vars.</div>`;
+    return;
+  }
+  const secrets = res.secrets || [];
+  if (!secrets.length) {
+    listEl.innerHTML = `<div class="inline-empty">No config vars yet. Keys like OPENAI_API_KEY let this app use services on your behalf — the value is encrypted and can never be viewed again.</div>`;
+    return;
+  }
+  for (const s of secrets) {
+    const row = document.createElement("div");
+    row.className = "config-var-row";
+    const keyEl = document.createElement("span");
+    keyEl.className = "config-var-key";
+    keyEl.textContent = s.key;
+    const valEl = document.createElement("span");
+    valEl.className = "config-var-masked";
+    valEl.textContent = "••••••••";
+    valEl.title = "Encrypted — set " + (s.at ? new Date(s.at).toLocaleDateString() : "earlier") + "; values can't be viewed again";
+    const del = document.createElement("button");
+    del.className = "action-btn danger";
+    del.style.cssText = "height:24px;font-size:11px;padding:0 10px;";
+    del.textContent = "Delete";
+    del.addEventListener("click", async () => {
+      if (!(await confirmAction(`Delete config var ${s.key}? Apps that need it will stop working until it's re-added.`))) return;
+      await window.yo.appSecretsDelete(currentAppId, s.key);
+      void loadConfigVarsTab();
+    });
+    row.append(keyEl, valEl, del);
+    listEl.appendChild(row);
+  }
+}
+
+function wireConfigVarsForm() {
+  const keyEl = document.getElementById("config-var-key") as HTMLInputElement;
+  const valueEl = document.getElementById("config-var-value") as HTMLTextAreaElement;
+  const errEl = document.getElementById("config-var-error")!;
+  const statusEl = document.getElementById("config-var-status")!;
+  document.getElementById("config-var-add")!.addEventListener("click", async () => {
+    errEl.classList.add("hidden");
+    statusEl.textContent = "";
+    const key = keyEl.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    const value = valueEl.value;
+    const res = await window.yo.appSecretsSet(currentAppId, key, value);
+    if (!res.ok) {
+      errEl.textContent = res.error || "Couldn't save";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    // The one and only moment the plaintext existed in the UI — clear it.
+    keyEl.value = "";
+    valueEl.value = "";
+    statusEl.textContent = `${key} saved — value encrypted; it can't be viewed again.`;
+    setTimeout(() => { if (statusEl.textContent?.startsWith(key)) statusEl.textContent = ""; }, 6000);
+    void loadConfigVarsTab();
+  });
 }
 
 
@@ -1105,6 +1174,9 @@ function initApps() {
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
     btn.addEventListener("click", () => switchAppTab(btn.dataset.tab!));
   });
+
+  // Config Vars tab: add-form wiring (list loads on tab switch).
+  wireConfigVarsForm();
 
   // Detail-form Browser ↔ Native + archetype toggles + Browse… button.
   const detailTypeSelect = document.getElementById("app-detail-type") as HTMLSelectElement;

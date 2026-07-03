@@ -53,6 +53,7 @@ import {
   graphCypher,
 } from "./glyphh-app-ai.js";
 import { agentRun } from "./glyphh-app-agent.js";
+import { secretValueFromRow, secretKeysFromRow } from "./app-secrets.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -106,6 +107,8 @@ const KNOWN_CAPABILITIES = new Set([
   "vector.search",
   "vector.delete",
   "graph.cypher",
+  "secrets.get",
+  "secrets.list",
 ]);
 
 /** AppleScript-backed capabilities that only exist on macOS. Everything else
@@ -220,10 +223,16 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   };
   let updated = false;
   try {
-    const existing = await serverGetAuthed<Array<{ id: string; slug: string }>>("/api/panel-apps")
+    const existing = await serverGetAuthed<Array<{ id: string; slug: string; launchConfig?: Record<string, unknown> | null }>>("/api/panel-apps")
       .then((apps) => apps.find((a) => a.slug === manifest.slug))
       .catch(() => undefined);
     if (existing) {
+      // Config vars (launchConfig.secrets) are USER data, not bundle data —
+      // they must survive app updates, which otherwise replace launchConfig.
+      const secrets = existing.launchConfig?.secrets;
+      if (secrets && typeof secrets === "object") {
+        (fields.launchConfig as Record<string, unknown>).secrets = secrets;
+      }
       await serverPatchAuthed(`/api/panel-apps/${existing.id}`, fields);
       updated = true;
     } else {
@@ -403,12 +412,32 @@ async function runCapability(
     case "agent.run": {
       const app = await findAppRow(slug);
       if (!app) throw new Error(`unknown app: ${slug}`);
+      // Key auto-pickup: a vendor provider with no explicit apiKey falls back
+      // to the app's config var named <PROVIDER>_API_KEY (Config Vars tab) —
+      // the app never has to touch the plaintext at all.
+      const provider = String(args.provider || "claude").toLowerCase();
+      if (provider !== "claude" && !args.apiKey) {
+        const fallback = secretValueFromRow(app.launchConfig as Record<string, unknown>, `${provider.toUpperCase()}_API_KEY`);
+        if (fallback) args = { ...args, apiKey: fallback };
+      }
       return agentRun(slug, appName, args, {
         tools: (app.launchConfig?.tools || []).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
         // Re-enters callAppTool so every agent tool call is re-validated
         // against the app's declared tools/capabilities.
         dispatch: (tool, targs) => callAppTool(slug, tool, targs),
       });
+    }
+    case "secrets.get": {
+      const app = await findAppRow(slug);
+      const key = String(args.key || "").trim();
+      if (!key) throw new Error("key is required");
+      const value = secretValueFromRow(app?.launchConfig as Record<string, unknown> | undefined, key);
+      if (value == null) throw new Error(`config var not set: ${key} — the user sets it on the app's Config Vars tab`);
+      return { value };
+    }
+    case "secrets.list": {
+      const app = await findAppRow(slug);
+      return secretKeysFromRow(app?.launchConfig as Record<string, unknown> | undefined);
     }
     case "vector.upsert":    return vectorUpsert(slug, args);
     case "vector.search":    return vectorSearch(slug, args);
