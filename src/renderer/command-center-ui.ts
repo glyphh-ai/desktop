@@ -127,9 +127,11 @@ function renderApps(): void {
     const card = document.createElement("button");
     card.className = "cc-card";
     card.innerHTML = `
-      <div class="cc-card-shot">${appIconInner(app, app.name, "cc-card-initial")}</div>
-      <span class="cc-card-name">${esc(app.name)}</span>
-      ${app.slug ? `<span class="cc-card-slug">${esc(app.slug)}</span>` : ""}`;
+      <div class="cc-card-shot">
+        ${appIconInner(app, app.name, "cc-card-initial")}
+        ${app.slug ? `<span class="cc-card-slug">${esc(app.slug)}</span>` : ""}
+      </div>
+      <span class="cc-card-name">${esc(app.name)}</span>`;
     card.addEventListener("click", () => { void api.commandOpenApp(app.id); });
     appsEl.appendChild(card);
   }

@@ -3306,7 +3306,8 @@ ol.docs-list li::before {
 .cc-card-shot {
   aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden;
   background: var(--surface-2); border: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px;
   box-shadow: 0 8px 28px rgba(0,0,0,.25);
 }
 .cc-card-shot img { width: 46px; height: 46px; object-fit: contain; border-radius: 10px; }
@@ -3317,10 +3318,11 @@ ol.docs-list li::before {
 .cc-card-name {
   font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Slug inside the tile, right under the icon — what you'd type to open it. */
 .cc-card-slug {
-  font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono);
+  font-size: 10px; color: var(--text-3); font-family: var(--font-mono);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  margin-top: -4px;
+  max-width: 90%;
 }
 
 /* ── Drip control: droplet button + effects dropdown (cc-header) ── */
