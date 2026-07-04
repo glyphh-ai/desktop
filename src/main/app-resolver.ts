@@ -19,10 +19,10 @@ import {
 import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
 import {
   positionAppWindow, focusWindow, setWindowBounds, listWindows,
-  snapshotWindowIds, waitForAppWindow, listOsApps, focusOsAppFullscreen,
+  snapshotWindowIds, waitForAppWindow,
   type Rect as OsRect,
 } from "./os-window-manager.js";
-import { findInstalledApp, launchInstalledApp, normKey, isSubsequence } from "./installed-apps.js";
+import { normKey, isSubsequence } from "./installed-apps.js";
 import { openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host.js";
 import { getMainWindowRef } from "./main-window-ref.js";
 
@@ -257,31 +257,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   wlog("openAppByRef", { ref, resolved: app ? { id: app.id, slug: app.slug, name: app.name, exec: app.execPath } : null,
     candidates: apps.filter((a) => (a.name + " " + (a.slug || "")).toLowerCase().includes(key)).map((a) => ({ id: a.id, slug: a.slug, name: a.name })) });
   if (!app) {
-    // Not in the library — fall back to any app installed on this machine
-    // (macOS: .app bundles in the standard folders). `open -a` launches a
-    // cold app or activates a running one; then best-effort full-screen it.
-    const installed = findInstalledApp(ref);
-    if (installed) {
-      launchInstalledApp(installed);
-      const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-      void positionAppWindow(installed.name, { x: wa.x, y: wa.y, width: wa.width, height: wa.height });
-      return { slug: normKey(installed.name), name: installed.name };
-    }
-    // Last resort: a RUNNING app whose process name matches (covers procs
-    // whose name differs from any installed .app, and Windows, where the
-    // installed-apps scan doesn't exist). Same tiers as findInstalledApp.
-    const running = await listOsApps().catch(() => [] as Array<{ proc: string; path: string }>);
-    const nk = normKey(ref);
-    const hit = running.find((a) => normKey(a.proc) === nk)
-      || (nk.length >= 2
-        ? running.find((a) => normKey(a.proc).startsWith(nk)) || running.find((a) => normKey(a.proc).includes(nk))
-        : undefined)
-      || (nk.length >= 4 ? running.find((a) => isSubsequence(nk, normKey(a.proc))) : undefined);
-    if (hit) {
-      await focusOsAppFullscreen(hit.proc);
-      return { slug: normKey(hit.proc), name: hit.proc };
-    }
-    throw new Error(`unknown app: ${ref} — not in the app library, installed apps, or running apps`);
+    throw new Error(`unknown app: ${ref} — not in the app library`);
   }
 
   // The Glyphh system app → focus our own window (nothing to launch).

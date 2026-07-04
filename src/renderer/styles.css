@@ -4392,7 +4392,28 @@ ol.docs-list li::before {
 /* Uniform vertical spacing for EVERY field in the edit forms (app editor +
    connection editor), including the nested Type/native sub-fields — 20px above
    each label, 6px below (label→input gap). First field sits snug to the top. */
-.app-builder-controls .settings-label { margin-top: 20px; margin-bottom: 6px; }
+.app-builder-controls .settings-label,
+.app-builder-preview .settings-label { margin-top: 20px; margin-bottom: 6px; }
+/* Conditional field groups (Type→browser/native, archetype, MCP transport,
+   OIDC…) are plain block wrappers toggled with .hidden. As blocks, the first
+   label's 20px top margin COLLAPSES through the wrapper edge and renders as a
+   ~4px gap — the fields look jammed even though the margin computes at 20px.
+   Laying the wrappers out as flex columns (same as the parent .app-tab-left)
+   preserves every child margin. :not(.hidden) keeps the id selector from
+   overriding the .hidden toggle. */
+#app-add-browser-fields:not(.hidden), #app-add-native-fields:not(.hidden),
+#app-add-terminal-fields:not(.hidden), #app-add-editor-fields:not(.hidden),
+#app-add-generic-fields:not(.hidden),
+#app-detail-browser-fields:not(.hidden), #app-detail-native-fields:not(.hidden),
+#app-detail-terminal-fields:not(.hidden), #app-detail-editor-fields:not(.hidden),
+#app-detail-generic-fields:not(.hidden),
+#app-mcp-oauth-fields:not(.hidden), #app-mcp-sse-fields:not(.hidden),
+#app-mcp-stdio-fields:not(.hidden),
+#mcp-add-sse-fields:not(.hidden), #mcp-add-stdio-fields:not(.hidden),
+#proxy-oidc-fields:not(.hidden), #proxy-visibility-wrap:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+}
 .app-builder-controls .app-tab-left > .settings-label:first-child,
 .app-builder-controls > .edit-head + .settings-label,
 .app-builder-controls > .settings-label:first-child { margin-top: 4px; }
@@ -5348,6 +5369,11 @@ ol.docs-list li::before {
 }
 
 .settings-label {
+  /* <label> is inline by default and inline boxes IGNORE vertical margins —
+     the 20px form rhythm silently vanished in any block container (labels
+     only worked inside flex columns, which blockify their items). Block
+     display makes the margins real everywhere. */
+  display: block;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-2);

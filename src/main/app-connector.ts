@@ -265,6 +265,9 @@ export class AppConnector {
       try {
         const app = decryptJson<AppConfig>(fs.readFileSync(path.join(this.appsDir, file)));
         if (!app?.id) continue;
+        // Same rule as loadAll(): only MCP rows may enter from disk — apps
+        // are server-authoritative, so a dropped-in json file is not an app.
+        if (!app.mcp) continue;
         onDisk.add(app.id);
         const prev = this.apps.get(app.id);
         if (!prev || JSON.stringify(prev) !== JSON.stringify(app)) {
@@ -275,10 +278,11 @@ export class AppConnector {
         // Skip corrupt / mid-write files — the next watcher tick re-reads them.
       }
     }
-    // Drop user apps whose backing file was deleted. Never drop internal apps:
-    // they're re-seeded from INTERNAL_APPS and may be momentarily mid-rewrite.
+    // Drop MCP rows whose backing file was deleted. Only mcp rows are
+    // disk-backed now — everything else is in-memory (internal seeds) or
+    // server-authoritative, so a missing file says nothing about them.
     for (const [id, app] of [...this.apps]) {
-      if (!onDisk.has(id) && !app.internal) {
+      if (!onDisk.has(id) && !app.internal && app.mcp) {
         this.apps.delete(id);
         changed = true;
       }
@@ -614,6 +618,13 @@ export class AppConnector {
 
   private save(app: AppConfig): void {
     if (app.internal) return;
+    // Server DB owns apps — only MCP server config persists locally. A row
+    // without mcp stays in-memory (and is purged from disk if a stale file
+    // exists) so filesystem rows can never re-enter the app registry.
+    if (!app.mcp) {
+      try { fs.unlinkSync(path.join(this.appsDir, `${app.id}.json`)); } catch { /* no file — fine */ }
+      return;
+    }
     const secret = app.mcp?.oauth?.clientSecret;
     const toWrite: AppConfig = secret
       ? { ...app, mcp: { ...app.mcp!, oauth: { ...app.mcp!.oauth!, clientSecret: encryptSecretField(secret) } } }
@@ -649,9 +660,18 @@ export class AppConnector {
     if (!fs.existsSync(this.appsDir)) return;
     for (const file of fs.readdirSync(this.appsDir)) {
       if (!file.endsWith(".json")) continue;
+      const full = path.join(this.appsDir, file);
       try {
-        const app = this.readAppFile(path.join(this.appsDir, file));
-        if (app?.id) this.apps.set(app.id, app);
+        const app = this.readAppFile(full);
+        // Apps live in the server DB. The ONLY thing this local store still
+        // persists is MCP server config (machine-local until MCP moves
+        // server-side). Anything else on disk is a stale row from an older
+        // build — delete the file so it can never surface as an app again.
+        if (app?.id && app.mcp) {
+          this.apps.set(app.id, app);
+        } else {
+          try { fs.unlinkSync(full); console.log(`[app-connector] purged stale local app file: ${file}`); } catch { /* ignore */ }
+        }
       } catch {
         // skip corrupt files
       }

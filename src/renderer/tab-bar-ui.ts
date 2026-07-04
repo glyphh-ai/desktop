@@ -315,10 +315,10 @@ export function initTabBar(deps: TabBarDeps): {
 
     if (tabNewMenu) { closeTabNewMenu(); return; }
 
-    // Use appsListAll so system-kind apps (Dashboard, Apps, Agents, …)
-    // appear in the panel `+` picker — they're hidden from the Apps
-    // registry + Layouts builder but mountable ad-hoc here.
-    const apps = await (window.yo as any).appsListAll?.() ?? await window.yo.appsList();
+    // Server library, including system-kind apps (Dashboard, Apps, Agents, …)
+    // — they're hidden from the Apps registry + Layouts builder but mountable
+    // ad-hoc here.
+    const apps = await window.yo.panelAppsList();
     const appsWithUrl = apps.filter((a: any) => a.url);
 
     if (appsWithUrl.length === 0) {
