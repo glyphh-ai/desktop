@@ -45,7 +45,18 @@ function getEmbedder(model: string): Promise<any> {
     p = (async () => {
       const tf = await dynamicImport("@huggingface/transformers");
       tf.env.cacheDir = path.join(os.homedir(), "yo", "models");
-      return tf.pipeline("feature-extraction", model);
+      try {
+        return await tf.pipeline("feature-extraction", model);
+      } catch (err) {
+        // onnxruntime-node ships no prebuilt binding for some platforms
+        // (notably darwin/x64 since 1.20) — fall back to the WASM backend,
+        // which transformers bundles via onnxruntime-web. Slower, works
+        // everywhere.
+        if (/onnxruntime_binding|Cannot find module/.test(String(err))) {
+          return await tf.pipeline("feature-extraction", model, { device: "wasm" });
+        }
+        throw err;
+      }
     })();
     p.catch(() => embedders.delete(model)); // failed load shouldn't poison retries
     embedders.set(model, p);

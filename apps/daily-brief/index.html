@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Daily Brief</title>
+<style>
+  :root {
+    --bg-0: #0b0e1a;
+    --bg-1: #101527;
+    --card: rgba(255, 255, 255, 0.045);
+    --card-edge: rgba(255, 255, 255, 0.08);
+    --text: #eef1f8;
+    --text-2: #a7aec4;
+    --text-3: #6b7390;
+    --accent: #6d8dff;
+    --accent-2: #b06dff;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(109, 141, 255, 0.16), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(176, 109, 255, 0.12), transparent 60%),
+      linear-gradient(180deg, var(--bg-0), var(--bg-1));
+    min-height: 100%;
+    padding: 26px 30px 40px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── header ── */
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .mark {
+    width: 34px; height: 34px; border-radius: 10px; flex: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center; font-size: 17px;
+    box-shadow: 0 4px 18px rgba(109, 141, 255, 0.35);
+  }
+  h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+  .date { color: var(--text-3); font-size: 13px; margin-top: 1px; }
+  .spacer { flex: 1; }
+  .btn {
+    border: 1px solid var(--card-edge); background: var(--card); color: var(--text);
+    padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border: none; box-shadow: 0 4px 16px rgba(109, 141, 255, 0.3);
+  }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* ── status pills ── */
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 600; color: var(--text-2);
+    background: var(--card); border: 1px solid var(--card-edge);
+    padding: 5px 11px; border-radius: 999px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+  .dot.on { background: var(--good); box-shadow: 0 0 6px rgba(74, 222, 128, 0.6); }
+  .dot.off { background: var(--bad); }
+
+  /* ── hero ── */
+  .hero {
+    background: linear-gradient(135deg, rgba(109,141,255,0.13), rgba(176,109,255,0.09));
+    border: 1px solid rgba(109, 141, 255, 0.22);
+    border-radius: var(--radius); padding: 22px 24px; margin-bottom: 18px;
+    animation: rise 0.4s ease both;
+  }
+  .hero h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.015em; margin-bottom: 10px; }
+  .hero .summary { color: var(--text-2); font-size: 13.5px; max-width: 76ch; }
+  .hero .summary p + p { margin-top: 8px; }
+  .hero .meta { margin-top: 12px; font-size: 11.5px; color: var(--text-3); }
+
+  /* ── cards grid ── */
+  .grid { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--card-edge);
+    border-radius: var(--radius); padding: 16px 18px; min-height: 120px;
+    animation: rise 0.4s ease both;
+  }
+  .card:nth-child(2) { animation-delay: 0.05s; }
+  .card:nth-child(3) { animation-delay: 0.1s; }
+  .card h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-3); margin-bottom: 12px; display: flex; align-items: center; gap: 7px;
+  }
+  .item { padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.05); }
+  .item:first-of-type { border-top: none; }
+  .item .t { font-weight: 600; font-size: 13px; }
+  .item .s { color: var(--text-2); font-size: 12.5px; margin-top: 2px; }
+  .item .m { color: var(--text-3); font-size: 11.5px; margin-top: 2px; }
+  .urgent {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+    color: #fecaca; background: rgba(248, 113, 113, 0.16); border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 5px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px;
+  }
+  .time {
+    font-variant-numeric: tabular-nums; color: var(--accent);
+    font-weight: 650; font-size: 12px; margin-right: 8px;
+  }
+  .empty { color: var(--text-3); font-size: 12.5px; padding: 8px 0; }
+
+  /* ── search ── */
+  .search-card { background: var(--card); border: 1px solid var(--card-edge); border-radius: var(--radius); padding: 18px; }
+  .search-row { display: flex; gap: 10px; }
+  .search-row input {
+    flex: 1; background: rgba(0,0,0,0.25); border: 1px solid var(--card-edge);
+    border-radius: 10px; color: var(--text); padding: 11px 14px; font-size: 13.5px; outline: none;
+  }
+  .search-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109,141,255,0.15); }
+  .search-row input::placeholder { color: var(--text-3); }
+  #results { margin-top: 6px; }
+  .kind {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 1px 7px; border-radius: 5px; margin-right: 8px;
+  }
+  .kind.news  { color: #bfdbfe; background: rgba(109, 141, 255, 0.16); }
+  .kind.email { color: #fde68a; background: rgba(251, 191, 36, 0.14); }
+  .kind.event { color: #bbf7d0; background: rgba(74, 222, 128, 0.13); }
+
+  .banner {
+    background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.25);
+    color: #fde68a; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 16px;
+  }
+  .banner ul { margin-left: 18px; }
+  #loading { color: var(--text-3); font-size: 13px; padding: 30px 0; text-align: center; }
+  .spin {
+    display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--text-3); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="mark">☀️</div>
+    <div>
+      <h1>Daily Brief</h1>
+      <div class="date" id="date"></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="search-focus">Search ⌘K</button>
+    <button class="btn primary" id="generate">Generate now</button>
+  </header>
+
+  <div class="pills" id="pills"></div>
+  <div id="banner"></div>
+  <div id="loading"><span class="spin"></span>Loading your brief…</div>
+
+  <div id="content" style="display:none">
+    <section class="hero">
+      <h2 id="headline"></h2>
+      <div class="summary" id="summary"></div>
+      <div class="meta" id="meta"></div>
+    </section>
+
+    <div class="grid">
+      <div class="card"><h3>📰 Top News</h3><div id="news"></div></div>
+      <div class="card"><h3>📬 Inbox</h3><div id="emails"></div></div>
+      <div class="card"><h3>📅 Today</h3><div id="events"></div></div>
+    </div>
+
+    <div class="search-card">
+      <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-3);margin-bottom:12px">🔍 Ask your brief anything</h3>
+      <div class="search-row">
+        <input id="q" placeholder='Try "emails about invoices", "news on the economy", "when is my next meeting"…' />
+        <button class="btn" id="go">Search</button>
+      </div>
+      <div id="results"></div>
+    </div>
+  </div>
+
+<script>
+/* Daily Brief UI.
+ * Mirrors worker.js generateBrief() — the UI has the same capability bridge
+ * but cannot invoke worker handlers. Keep the two copies in sync.
+ * Without the glyphh bridge (plain browser), renders demo data. */
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const BRIDGE = typeof window.glyphh !== "undefined" && window.glyphh && window.glyphh.call;
+
+async function call(method, args) {
+  const res = await window.glyphh.call(method, args);
+  if (!res.ok) throw new Error(res.error);
+  return res.result;
+}
+
+/* ─────────── pipeline (mirror of worker.js) ─────────── */
+const FOX_FEEDS = [
+  "https://moxie.foxnews.com/google-publisher/latest.xml",
+  "https://moxie.foxnews.com/google-publisher/politics.xml",
+];
+const SYS_PROMPT =
+  "You are a sharp, neutral morning-brief editor. You are given raw source dumps " +
+  "(news feed items, email metadata, calendar events — some may be missing). " +
+  "Respond with ONLY a JSON object, no markdown fence, matching exactly: " +
+  '{"headline": string (one punchy line for the day), ' +
+  '"summary_md": string (2-3 short paragraphs: news first, then inbox, then the day ahead), ' +
+  '"news": [{"title": string, "summary": string}] (top stories, max 8), ' +
+  '"emails": [{"from": string, "subject": string, "gist": string, "urgent": boolean}] (max 10, most important first), ' +
+  '"events": [{"time": string, "title": string, "location": string}] (chronological, max 10)}. ' +
+  "Omit sections you have no data for by using empty arrays. Be concrete and brief.";
+
+function parseJsonLoose(text) {
+  if (!text) return null;
+  const raw = String(text).trim();
+  const attempt = (s) => { try { return JSON.parse(s); } catch { return null; } };
+  return attempt(raw)
+    || attempt(raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""))
+    || attempt(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+}
+async function ensureSchema() {
+  await call("db.exec", { sql: "CREATE TABLE IF NOT EXISTS briefs (date TEXT PRIMARY KEY, created_at TEXT NOT NULL, json TEXT NOT NULL)" });
+}
+async function pickProvider() {
+  try {
+    const keys = await call("secrets.list", {});
+    const has = (k) => keys.some((x) => x.key === k && x.readable);
+    if (has("ANTHROPIC_API_KEY")) return "anthropic";
+    if (has("OPENAI_API_KEY")) return "openai";
+    if (has("GOOGLE_API_KEY")) return "google";
+  } catch {}
+  return null;
+}
+async function gatherSources() {
+  const sources = { news: null, gmail: null, calendar: null };
+  const problems = [];
+  const status = await call("connector.status", {});
+  const by = {}; for (const s of status) by[s.connector] = s;
+  if (by.gmail && by.gmail.connected) {
+    try {
+      const r = await call("connector.call", { connector: "gmail", tool: "gmail-find-email",
+        args: { q: "in:inbox newer_than:1d", maxResults: 20, format: "metadata" } });
+      sources.gmail = String(r.result || r).slice(0, 9000);
+    } catch (e) { problems.push("Gmail fetch failed: " + e.message); }
+  } else problems.push("Gmail is not connected (connect it in Glyphh → Connections).");
+  if (by.google_calendar && by.google_calendar.connected) {
+    try {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(start.getTime() + 36 * 3600 * 1000);
+      const r = await call("connector.call", { connector: "google_calendar", tool: "google_calendar-list-events",
+        args: { timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: true, orderBy: "startTime", maxResults: 30 } });
+      sources.calendar = String(r.result || r).slice(0, 9000);
+    } catch (e) { problems.push("Calendar fetch failed: " + e.message); }
+  } else problems.push("Google Calendar is not connected (connect it in Glyphh → Connections).");
+  if (by.rss && by.rss.connected) {
+    try {
+      const tools = await call("connector.tools", { connector: "rss" });
+      const tool = tools.find((t) => /merge|fetch|items|feed/i.test(t.name));
+      if (!tool) throw new Error("the rss connector exposes no feed-fetch tool");
+      const props = (tool.inputSchema && tool.inputSchema.properties) || {};
+      const key = Object.keys(props).find((k) => /url|feed/i.test(k)) || "feedUrls";
+      const wantsArray = props[key] && props[key].type === "array";
+      const r = await call("connector.call", { connector: "rss", tool: tool.name,
+        args: { [key]: wantsArray ? FOX_FEEDS : FOX_FEEDS[0] } });
+      sources.news = String(r.result || r).slice(0, 12000);
+    } catch (e) { problems.push("Fox News fetch failed: " + e.message); }
+  } else problems.push("RSS is not connected — connect the RSS app in Glyphh → Connections to get Fox News.");
+  return { sources, problems };
+}
+function mechanicalBrief(sources, problems) {
+  return {
+    headline: "Daily Brief (unsummarized)",
+    summary_md: "No LLM key is configured, so today's sources are shown raw. Set ANTHROPIC_API_KEY (or OPENAI_API_KEY / GOOGLE_API_KEY) on this app's Config Vars tab for real summaries.",
+    news: sources.news ? [{ title: "Raw Fox News feed", summary: sources.news.slice(0, 1500) }] : [],
+    emails: sources.gmail ? [{ from: "(raw)", subject: "Raw Gmail results", gist: sources.gmail.slice(0, 1500), urgent: false }] : [],
+    events: sources.calendar ? [{ time: "", title: "Raw calendar results", location: sources.calendar.slice(0, 1500) }] : [],
+    problems,
+  };
+}
+async function generateBrief() {
+  await ensureSchema();
+  const dateKey = new Date().toISOString().slice(0, 10);
+  const { sources, problems } = await gatherSources();
+  const provider = await pickProvider();
+  let brief = null;
+  if (provider && (sources.news || sources.gmail || sources.calendar)) {
+    const prompt = `Build my morning brief for ${dateKey}.\n\n── FOX NEWS FEED ──\n${sources.news || "(unavailable)"}\n\n── GMAIL (last 24h, metadata) ──\n${sources.gmail || "(unavailable)"}\n\n── GOOGLE CALENDAR (today) ──\n${sources.calendar || "(unavailable)"}`;
+    try {
+      const res = await call("llm.complete", { provider, system: SYS_PROMPT, prompt });
+      brief = parseJsonLoose(res.text);
+    } catch (e) { problems.push(`Summarization failed (${provider}): ` + e.message); }
+  } else if (!provider) {
+    problems.push("No LLM key set — add ANTHROPIC_API_KEY on the Config Vars tab for real summaries.");
+  }
+  if (!brief) brief = mechanicalBrief(sources, problems);
+  brief.date = dateKey;
+  brief.generated_at = new Date().toISOString();
+  brief.problems = problems;
+  await call("db.exec", {
+    sql: "INSERT INTO briefs (date, created_at, json) VALUES (?, ?, ?) ON CONFLICT (date) DO UPDATE SET created_at = excluded.created_at, json = excluded.json",
+    params: [dateKey, brief.generated_at, JSON.stringify(brief)],
+  });
+  const items = [];
+  const push = (kind, text, title) => items.push({ id: `${dateKey}:${kind}:${items.length}`, text, metadata: { kind, date: dateKey, title: String(title || "").slice(0, 200) } });
+  for (const n of brief.news || []) push("news", `${n.title}. ${n.summary || ""}`, n.title);
+  for (const e of brief.emails || []) push("email", `Email from ${e.from}: ${e.subject}. ${e.gist || ""}`, e.subject);
+  for (const ev of brief.events || []) push("event", `Calendar event: ${ev.title} ${ev.time || ""} ${ev.location || ""}`, ev.title);
+  if (items.length) { try { await call("vector.upsert", { collection: "brief-items", items }); } catch {} }
+  return brief;
+}
+
+/* ─────────── rendering ─────────── */
+function render(brief) {
+  $("loading").style.display = "none";
+  $("content").style.display = "";
+  $("headline").textContent = brief.headline || "Your day at a glance";
+  $("summary").innerHTML = String(brief.summary_md || "")
+    .split(/\n{2,}|\n/).filter(Boolean)
+    .map((p) => `<p>${esc(p).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</p>`).join("");
+  $("meta").textContent = brief.generated_at ? `Generated ${new Date(brief.generated_at).toLocaleString()}` : "";
+
+  const list = (el, rows, fn, emptyMsg) => {
+    $(el).innerHTML = rows && rows.length ? rows.map(fn).join("") : `<div class="empty">${emptyMsg}</div>`;
+  };
+  list("news", brief.news, (n) =>
+    `<div class="item"><div class="t">${esc(n.title)}</div><div class="s">${esc(n.summary || "")}</div></div>`,
+    "No news today — connect the RSS app to get Fox News here.");
+  list("emails", brief.emails, (e) =>
+    `<div class="item"><div class="t">${esc(e.subject)}${e.urgent ? '<span class="urgent">urgent</span>' : ""}</div><div class="s">${esc(e.gist || "")}</div><div class="m">from ${esc(e.from)}</div></div>`,
+    "Inbox is clear (or Gmail isn't connected).");
+  list("events", brief.events, (ev) =>
+    `<div class="item"><div class="t"><span class="time">${esc(ev.time || "")}</span>${esc(ev.title)}</div>${ev.location ? `<div class="m">${esc(ev.location)}</div>` : ""}</div>`,
+    "Nothing on the calendar today.");
+
+  const probs = (brief.problems || []).filter(Boolean);
+  $("banner").innerHTML = probs.length
+    ? `<div class="banner"><b>Heads up</b><ul>${probs.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>` : "";
+}
+
+async function renderPills() {
+  if (!BRIDGE) return;
+  try {
+    const status = await call("connector.status", {});
+    const provider = await pickProvider();
+    const nice = { gmail: "Gmail", google_calendar: "Calendar", rss: "Fox News (RSS)" };
+    $("pills").innerHTML = status.map((s) =>
+      `<span class="pill"><span class="dot ${s.connected ? "on" : "off"}"></span>${esc(nice[s.connector] || s.connector)}</span>`
+    ).join("") + `<span class="pill"><span class="dot ${provider ? "on" : "off"}"></span>AI ${provider ? `(${provider})` : "key needed"}</span>`;
+  } catch { /* pills are cosmetic */ }
+}
+
+async function loadLatest() {
+  if (!BRIDGE) { render(DEMO); renderDemoPills(); return; }
+  await ensureSchema();
+  const { rows } = await call("db.exec", { sql: "SELECT json FROM briefs ORDER BY date DESC LIMIT 1" });
+  if (rows.length) render(JSON.parse(rows[0].json));
+  else {
+    $("loading").innerHTML = "No brief yet — hit <b>Generate now</b> to build your first one.";
+  }
+  renderPills();
+}
+
+/* search */
+async function doSearch() {
+  const q = $("q").value.trim();
+  if (!q) return;
+  $("results").innerHTML = `<div class="empty"><span class="spin"></span>Searching…</div>`;
+  try {
+    let matches;
+    if (BRIDGE) {
+      const res = await call("vector.search", { collection: "brief-items", query: q, k: 8 });
+      matches = res.matches;
+    } else {
+      matches = DEMO_MATCHES;
+    }
+    $("results").innerHTML = matches.length
+      ? matches.map((m) => {
+          const kind = (m.metadata && m.metadata.kind) || "news";
+          const date = (m.metadata && m.metadata.date) || "";
+          return `<div class="item"><div class="t"><span class="kind ${esc(kind)}">${esc(kind)}</span>${esc((m.metadata && m.metadata.title) || "")}</div><div class="s">${esc(m.text || "")}</div><div class="m">${esc(date)} · relevance ${(m.score ?? 0).toFixed(2)}</div></div>`;
+        }).join("")
+      : `<div class="empty">Nothing matched — briefs index new items each morning.</div>`;
+  } catch (e) {
+    $("results").innerHTML = `<div class="empty">Search failed: ${esc(e.message)}</div>`;
+  }
+}
+
+/* wiring */
+$("date").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+$("go").addEventListener("click", doSearch);
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+$("search-focus").addEventListener("click", () => $("q").focus());
+document.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); $("q").focus(); } });
+$("generate").addEventListener("click", async () => {
+  const btn = $("generate");
+  btn.disabled = true; btn.textContent = "Generating…";
+  try {
+    if (BRIDGE) render(await generateBrief());
+    else render(DEMO);
+  } catch (e) {
+    $("banner").innerHTML = `<div class="banner">Generate failed: ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "Generate now";
+    renderPills();
+  }
+});
+
+/* demo data (plain-browser preview only) */
+const DEMO = {
+  headline: "Markets steady, three meetings, two emails need answers",
+  summary_md: "Futures point higher after yesterday's rally, with the debt-ceiling vote dominating coverage.\n\nYour inbox has 2 items needing action: the Acme contract redlines and the Q3 planning doc. The rest is newsletters.\n\nLight afternoon: focus block until the 2pm standup, then the vendor call at 4.",
+  news: [
+    { title: "Debt-ceiling vote heads to the floor", summary: "House leadership says it has the votes after late concessions." },
+    { title: "Fed officials split on next cut", summary: "Two governors signal patience while markets price a March move." },
+    { title: "Storm system moves up the East Coast", summary: "Flight delays expected through Thursday at hub airports." },
+  ],
+  emails: [
+    { from: "legal@acme.com", subject: "Acme contract — redlines attached", gist: "They accepted the liability cap; two open items on IP.", urgent: true },
+    { from: "sarah@glyphh.ai", subject: "Q3 planning doc", gist: "Needs your numbers by Friday.", urgent: false },
+  ],
+  events: [
+    { time: "2:00 PM", title: "Team standup", location: "Zoom" },
+    { time: "4:00 PM", title: "Vendor call — Pipedream", location: "Meet" },
+  ],
+  problems: [],
+  generated_at: new Date().toISOString(),
+};
+const DEMO_MATCHES = [
+  { metadata: { kind: "email", date: "2026-07-04", title: "Acme contract — redlines attached" }, text: "Email from legal@acme.com: Acme contract — redlines attached. They accepted the liability cap.", score: 0.91 },
+  { metadata: { kind: "news", date: "2026-07-04", title: "Debt-ceiling vote heads to the floor" }, text: "Debt-ceiling vote heads to the floor. House leadership says it has the votes.", score: 0.78 },
+];
+function renderDemoPills() {
+  $("pills").innerHTML = ["Gmail", "Calendar", "Fox News (RSS)"].map((n) =>
+    `<span class="pill"><span class="dot on"></span>${n}</span>`).join("") +
+    `<span class="pill"><span class="dot on"></span>AI (anthropic)</span>`;
+}
+
+loadLatest();
+</script>
+</body>
+</html>

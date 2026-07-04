@@ -1,0 +1,60 @@
+{
+  "manifestVersion": 2,
+  "kind": "glyphh-app",
+  "name": "Daily Brief",
+  "slug": "daily-brief",
+  "entry": "index.html",
+  "worker": "worker.js",
+  "description": "Your morning in one glance — top Fox News stories, inbox highlights, and today's calendar, summarized daily and searchable in plain English.",
+  "window": { "width": 1020, "height": 780 },
+
+  "capabilities": [
+    "db.exec",
+    "cron.schedule",
+    "notify.send",
+    "connector.status",
+    "connector.tools",
+    "connector.call",
+    "llm.complete",
+    "llm.embed",
+    "vector.upsert",
+    "vector.search",
+    "secrets.list"
+  ],
+
+  "connectors": ["gmail", "google_calendar", "rss"],
+
+  "tools": [
+    {
+      "name": "generate_brief",
+      "description": "Build today's brief now: fetch Fox News headlines, recent Gmail, and today's Google Calendar events, summarize them with the configured LLM, index everything for natural-language search, and return the brief.",
+      "handler": "generate_brief",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "get_brief",
+      "description": "Return the stored daily brief — today's by default, or a specific date (YYYY-MM-DD).",
+      "handler": "get_brief",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "description": "YYYY-MM-DD; omit for the latest brief" }
+        }
+      }
+    },
+    {
+      "name": "search_brief",
+      "description": "Natural-language search across everything the briefs have indexed: news stories, emails, and calendar events. Returns the best-matching items with kind, date, and score.",
+      "handler": "search_brief",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "What to look for, in plain English" },
+          "kind": { "type": "string", "enum": ["news", "email", "event"], "description": "Optionally restrict to one kind" },
+          "k": { "type": "integer", "description": "Max results (default 8)" }
+        },
+        "required": ["query"]
+      }
+    }
+  ]
+}
