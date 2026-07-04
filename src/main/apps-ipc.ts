@@ -12,6 +12,7 @@ import { openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host";
 import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
+import { invalidateProxyCache } from "./app-proxy-stream";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -166,6 +167,26 @@ function registerPanelAppsIpc(): void {
   });
   ipcMain.handle("connection-disconnect", async (_e, id: string) => {
     try { const r = await serverDeleteAuthed<{ ok?: boolean }>(`/api/connections/${id}`); return { ok: r?.ok !== false }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
+  // ── App proxies (public <slug>.glyphh.app tunnels) ─────────────
+  // CRUD passes straight through to the server; every mutation drops the
+  // stream handler's slug→target cache so edits take effect immediately.
+  ipcMain.handle("app-proxies-list", async () => {
+    try { const r = await serverGetAuthed<{ proxies: unknown[] }>("/api/apps/proxies"); return { ok: true, proxies: r.proxies || [] }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), proxies: [] }; }
+  });
+  ipcMain.handle("app-proxy-create", async (_e, body: Record<string, unknown>) => {
+    try { const proxy = await serverPostAuthed("/api/apps/proxies", body); invalidateProxyCache(); return { ok: true, proxy }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("app-proxy-update", async (_e, id: string, body: Record<string, unknown>) => {
+    try { const proxy = await serverPatchAuthed(`/api/apps/proxies/${id}`, body); invalidateProxyCache(); return { ok: true, proxy }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("app-proxy-delete", async (_e, id: string) => {
+    try { await serverDeleteAuthed(`/api/apps/proxies/${id}`); invalidateProxyCache(); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-set-mcp", async (_e, id: string, mcp: Record<string, unknown>) => {

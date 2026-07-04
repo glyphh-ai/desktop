@@ -43,6 +43,25 @@ export interface Connection {
   createdAt: string;
 }
 
+/** One public <slug>.glyphh.app tunnel (server AppProxyRow, sanitized). */
+export interface AppProxyRow {
+  id: string;
+  org_id: string;
+  user_id: string;
+  slug: string;
+  target: string;
+  visibility: "private" | "org" | "public";
+  status: "active" | "flagged" | "disabled";
+  auth_mode: "public" | "glyphh" | "oidc" | "app_managed";
+  auth_config: {
+    issuer?: string; clientId?: string; scopes?: string[];
+    allowedDomains?: string[]; hasClientSecret?: boolean;
+  } | null;
+  label: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Fields the create/update calls forward to /api/panel-apps. Kept as a named
 // type so preload + renderer stay in sync on the accepted keys.
 export interface PanelAppInput {
@@ -275,6 +294,15 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("connection-tools-set", id, hiddenTools) as Promise<{ ok: boolean; connection?: Connection; error?: string }>,
   connectionDisconnect: (id: string) =>
     ipcRenderer.invoke("connection-disconnect", id) as Promise<{ ok: boolean; error?: string }>,
+  // App proxies — public <slug>.glyphh.app tunnels to locally-running apps.
+  appProxiesList: () =>
+    ipcRenderer.invoke("app-proxies-list") as Promise<{ ok: boolean; error?: string; proxies: AppProxyRow[] }>,
+  appProxyCreate: (body: Record<string, unknown>) =>
+    ipcRenderer.invoke("app-proxy-create", body) as Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>,
+  appProxyUpdate: (id: string, body: Record<string, unknown>) =>
+    ipcRenderer.invoke("app-proxy-update", id, body) as Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>,
+  appProxyDelete: (id: string) =>
+    ipcRenderer.invoke("app-proxy-delete", id) as Promise<{ ok: boolean; error?: string }>,
   panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) =>
     ipcRenderer.invoke("panel-apps-set-mcp", id, mcp) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsRemoveMcp: (id: string) =>

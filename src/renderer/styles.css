@@ -10950,3 +10950,20 @@ select:focus {
 .app-req-conn-status.missing { color: #f87171; background: rgba(248, 113, 113, .12); }
 .app-req-conns-warn { margin-top: 8px; font-size: 12px; line-height: 1.5; color: #f87171; }
 .app-req-conns-warn a { color: var(--text); text-decoration: underline; cursor: pointer; }
+
+/* ── Public URLs (app proxy tunnels) ── */
+.proxy-url-preview {
+  margin-top: 6px; font-size: 12px; font-family: var(--font-mono); color: var(--text-2);
+}
+.proxy-field-hint { margin-top: 6px; font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
+.proxy-field-hint code {
+  background: var(--surface-2); padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; font-family: var(--font-mono); color: var(--text); user-select: all;
+}
+
+/* Hide the page-level chrome while the proxy editor is open — same treatment
+   as the app/connection editors. */
+.help-section[data-section="apps"]:has(#proxy-editor:not(.hidden)) .apps-page-tabs,
+.help-section[data-section="apps"]:has(#proxy-editor:not(.hidden)) #apps-proxies-page > .section-desc {
+  display: none !important;
+}

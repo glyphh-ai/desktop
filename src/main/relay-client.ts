@@ -22,6 +22,7 @@
 import { WebSocket } from "ws";
 import { getAuthToken, isAuthenticated, hasMcpAccess } from "./auth.js";
 import { getPreference } from "./preferences.js";
+import { handleStreamFrame, abortAllStreams } from "./app-proxy-stream.js";
 
 const AUTH_SERVER = process.env.YO_AUTH_SERVER || "https://api.glyphh.ai";
 
@@ -113,6 +114,16 @@ function connect(): void {
     let frame: { type?: string; reqId?: string; method?: string; params?: unknown };
     try { frame = JSON.parse(raw.toString()); }
     catch { return; }
+
+    // HTTP app-proxy stream frames (see app-proxy-stream.ts) — a public
+    // request to <slug>.glyphh.app streaming through this client.
+    if (typeof frame.type === "string" && frame.type.startsWith("stream_") && typeof frame.reqId === "string") {
+      handleStreamFrame(frame, (out) => {
+        try { ws.send(JSON.stringify(out)); } catch { /* socket closed mid-stream */ }
+      });
+      return;
+    }
+
     if (frame.type !== "request" || typeof frame.reqId !== "string" || typeof frame.method !== "string") return;
     const out = await dispatch(frame.method, frame.params);
     const responseFrame = { type: "response", reqId: frame.reqId, ...out };
@@ -121,6 +132,7 @@ function connect(): void {
 
   ws.on("close", (code, reasonBuf) => {
     socket = null;
+    abortAllStreams();               // don't leave local app requests dangling
     const reason = reasonBuf ? reasonBuf.toString() : "";
     if (code === 1000 && reason === "replaced") {
       // A newer connection from the same user took over — don't reconnect.

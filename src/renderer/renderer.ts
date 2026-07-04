@@ -52,6 +52,16 @@ type Connection = {
   label: string | null; healthy: boolean; hiddenTools: string[]; createdAt: string;
 };
 
+// Mirrors preload.ts AppProxyRow — a public <slug>.glyphh.app tunnel.
+type AppProxyRow = {
+  id: string; org_id: string; user_id: string; slug: string; target: string;
+  visibility: "private" | "org" | "public";
+  status: "active" | "flagged" | "disabled";
+  auth_mode: "public" | "glyphh" | "oidc" | "app_managed";
+  auth_config: { issuer?: string; clientId?: string; scopes?: string[]; allowedDomains?: string[]; hasClientSecret?: boolean } | null;
+  label: string | null; created_at: string; updated_at: string;
+};
+
 // Mirrors preload.ts MarketplaceApp — a marketplace listing.
 type MarketplaceApp = {
   id: string; slug: string; name: string; tagline: string; description?: string;
@@ -151,6 +161,11 @@ declare global {
       connectionToolsList: (id: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;
       connectionToolsSet: (id: string, hiddenTools: string[]) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
       connectionDisconnect: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      // App proxies — public <slug>.glyphh.app tunnels
+      appProxiesList: () => Promise<{ ok: boolean; error?: string; proxies: AppProxyRow[] }>;
+      appProxyCreate: (body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
+      appProxyUpdate: (id: string, body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
+      appProxyDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsRemoveMcp: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;

@@ -682,10 +682,12 @@ function renderMktDetail(d: MktDetail): void {
 }
 
 /** Switch between the "My apps" library and the Marketplace storefront. */
-function switchAppsPage(page: "library" | "marketplace"): void {
+function switchAppsPage(page: "library" | "marketplace" | "proxies"): void {
   document.querySelectorAll<HTMLButtonElement>(".apps-page-tab").forEach((t) => t.classList.toggle("active", t.dataset.page === page));
   marketplaceLibraryPage.classList.toggle("hidden", page !== "library");
   marketplacePage.classList.toggle("hidden", page !== "marketplace");
+  document.getElementById("apps-proxies-page")?.classList.toggle("hidden", page !== "proxies");
+  if (page === "proxies") { closeProxyEditor(false); void loadProxies(); }
   // Marketplace is temporarily "Coming Soon" (storefront hidden in markup).
   // To re-enable, restore: if (page === "marketplace") { closeMktDetail(); void loadMarketplace(); }
 }
@@ -1058,7 +1060,216 @@ export function openNewAppForm(url = "", name = "", tabId: string | null = null)
   nameInput.focus();
 }
 
+// ── Public URLs (app proxy tunnels — APP-PROXY-UI-SPEC) ────────────────────
+
+type ProxyRow = Awaited<ReturnType<typeof window.yo.appProxiesList>>["proxies"][number];
+
+const APP_DOMAIN = "glyphh.app";
+const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+let allProxies: ProxyRow[] = [];
+let editingProxyId: string | null = null;
+
+const proxyEl = (id: string) => document.getElementById(id)!;
+const proxyInput = (id: string) => document.getElementById(id) as HTMLInputElement;
+const proxySelect = (id: string) => document.getElementById(id) as HTMLSelectElement;
+
+function proxyUrl(slug: string): string { return `https://${slug || "<name>"}.${APP_DOMAIN}`; }
+
+async function loadProxies(): Promise<void> {
+  const res = await window.yo.appProxiesList();
+  allProxies = res.ok ? res.proxies : [];
+  renderProxiesList(res.ok ? undefined : res.error);
+}
+
+function renderProxiesList(loadError?: string): void {
+  const list = proxyEl("proxies-list");
+  // Same tile grid as the Apps/Connections/Layouts pages. Preserve the hidden
+  // state so a re-render never pops the list over an open editor.
+  const wasHidden = list.classList.contains("hidden") || !proxyEl("proxy-editor").classList.contains("hidden");
+  list.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
+  list.innerHTML = "";
+
+  if (loadError) { list.innerHTML = `<div class="crud-empty">${escMkt(loadError)}</div>`; return; }
+  if (!allProxies.length) {
+    list.innerHTML = `<div class="crud-empty">No public URLs yet. Click "+ New" to expose a local app.</div>`;
+    return;
+  }
+  const query = (document.getElementById("proxy-search") as HTMLInputElement | null)?.value.trim().toLowerCase() || "";
+  const filtered = query
+    ? allProxies.filter((p) => p.slug.includes(query) || (p.label || "").toLowerCase().includes(query) || p.target.toLowerCase().includes(query))
+    : allProxies;
+  if (!filtered.length) { list.innerHTML = `<div class="crud-empty">No public URLs matching "${escMkt(query)}"</div>`; return; }
+
+  const grid = document.createElement("div");
+  grid.className = "app-grid";
+  for (const p of filtered) {
+    const card = document.createElement("div");
+    card.className = "app-card";
+    card.innerHTML = `
+      <div class="app-card-icon"><span class="app-card-initial">🌐</span></div>
+      <div class="app-card-name"></div>
+      <div class="app-card-id"></div>`;
+    card.querySelector(".app-card-name")!.textContent = p.label || p.slug;
+    card.querySelector(".app-card-id")!.textContent =
+      `${p.slug}.${APP_DOMAIN}${p.status !== "active" ? ` · ${p.status}` : ""}`;
+    card.addEventListener("click", () => openProxyEditor(p));
+    grid.appendChild(card);
+  }
+  list.appendChild(grid);
+}
+
+function proxyEditorHead(slug: string): void {
+  proxyEl("proxy-detail-head").innerHTML =
+    `<div class="app-card-icon"><span class="app-card-initial">🌐</span></div>` +
+    `<div class="edit-head-name">${escMkt(slug || "New public URL")}<span class="edit-head-slug">${escMkt(proxyUrl(slug))}</span></div>`;
+}
+
+/** Show/hide the mode-dependent field blocks + warnings. */
+function syncProxyAuthFields(): void {
+  const mode = proxySelect("proxy-auth-mode").value;
+  proxyEl("proxy-visibility-wrap").classList.toggle("hidden", mode !== "glyphh");
+  proxyEl("proxy-oidc-fields").classList.toggle("hidden", mode !== "oidc");
+  proxyEl("proxy-public-warn").classList.toggle("hidden", mode !== "public");
+}
+
+function openProxyEditor(p: ProxyRow | null): void {
+  editingProxyId = p?.id ?? null;
+  proxyEl("proxy-form-error").classList.add("hidden");
+  proxyInput("proxy-slug").value = p?.slug || "";
+  proxyInput("proxy-slug").disabled = !!p;             // slug is immutable after create
+  proxyInput("proxy-target").value = p?.target || "";
+  proxySelect("proxy-auth-mode").value = p?.auth_mode || "glyphh";
+  proxySelect("proxy-visibility").value = p?.visibility || "private";
+  proxyInput("proxy-oidc-issuer").value = p?.auth_config?.issuer || "";
+  proxyInput("proxy-oidc-client-id").value = p?.auth_config?.clientId || "";
+  proxyInput("proxy-oidc-secret").value = "";
+  proxyEl("proxy-oidc-secret-hint").classList.toggle("hidden", !p?.auth_config?.hasClientSecret);
+  proxyInput("proxy-oidc-scopes").value = (p?.auth_config?.scopes || []).join(" ");
+  proxyInput("proxy-oidc-domains").value = (p?.auth_config?.allowedDomains || []).join(", ");
+  proxyInput("proxy-label").value = p?.label || "";
+  proxyEl("proxy-delete-btn").style.display = p ? "" : "none";
+  const openLink = proxyEl("proxy-open-link") as HTMLAnchorElement;
+  openLink.classList.toggle("hidden", !p);
+  if (p) openLink.href = proxyUrl(p.slug);
+  proxyEl("proxy-copy-btn").classList.toggle("hidden", !p);
+  const toggleBtn = proxyEl("proxy-toggle-btn");
+  // Owners can flip active↔disabled; "flagged" is admin-only, so hide there.
+  toggleBtn.classList.toggle("hidden", !p || p.status === "flagged");
+  toggleBtn.textContent = p?.status === "disabled" ? "Enable" : "Disable";
+  proxyEditorHead(p?.slug || "");
+  syncProxySlugPreview();
+  syncProxyAuthFields();
+
+  proxyEl("proxies-list").classList.add("hidden");
+  proxyEl("proxies-toolbar").classList.add("hidden");
+  proxyEl("proxy-editor").classList.remove("hidden");
+  if (!p) proxyInput("proxy-slug").focus();
+}
+
+function closeProxyEditor(reload = true): void {
+  proxyEl("proxy-editor").classList.add("hidden");
+  proxyEl("proxies-list").classList.remove("hidden");
+  proxyEl("proxies-toolbar").classList.remove("hidden");
+  editingProxyId = null;
+  if (reload) void loadProxies();
+}
+
+function syncProxySlugPreview(): void {
+  const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
+  proxyEl("proxy-url-preview").textContent = proxyUrl(slug);
+  proxyEl("proxy-oidc-callback").textContent = `${proxyUrl(slug)}/__glyphh/oidc/callback`;
+  proxyEditorHead(slug);
+}
+
+function proxyFormError(msg: string): void {
+  const el = proxyEl("proxy-form-error");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+async function saveProxy(): Promise<void> {
+  proxyEl("proxy-form-error").classList.add("hidden");
+  const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
+  const target = proxyInput("proxy-target").value.trim();
+  const authMode = proxySelect("proxy-auth-mode").value;
+  const visibility = proxySelect("proxy-visibility").value;
+  const label = proxyInput("proxy-label").value.trim();
+
+  if (!editingProxyId && !SLUG_RE.test(slug)) { proxyFormError("Subdomain must be 1–63 lowercase letters, digits, or hyphens (no leading/trailing hyphen)."); return; }
+  if (!/^https?:\/\//i.test(target)) { proxyFormError("Target must start with http:// or https://."); return; }
+
+  let authConfig: Record<string, unknown> | undefined;
+  if (authMode === "oidc") {
+    const issuer = proxyInput("proxy-oidc-issuer").value.trim();
+    const clientId = proxyInput("proxy-oidc-client-id").value.trim();
+    const clientSecret = proxyInput("proxy-oidc-secret").value;
+    const hadSecret = !proxyEl("proxy-oidc-secret-hint").classList.contains("hidden");
+    if (!/^https:\/\//i.test(issuer)) { proxyFormError("OIDC issuer must be an https:// URL."); return; }
+    if (!clientId) { proxyFormError("OIDC client ID is required."); return; }
+    if (!clientSecret && !hadSecret) { proxyFormError("OIDC client secret is required."); return; }
+    const scopes = proxyInput("proxy-oidc-scopes").value.trim().split(/[\s,]+/).filter(Boolean);
+    const allowedDomains = proxyInput("proxy-oidc-domains").value.split(",").map((s) => s.trim()).filter(Boolean);
+    authConfig = {
+      issuer, clientId,
+      ...(clientSecret ? { clientSecret } : {}),   // blank on edit = keep stored secret
+      ...(scopes.length ? { scopes } : {}),
+      ...(allowedDomains.length ? { allowedDomains } : {}),
+    };
+  }
+
+  const res = editingProxyId
+    ? await window.yo.appProxyUpdate(editingProxyId, { target, visibility, label: label || null, authMode, ...(authConfig ? { authConfig } : {}) })
+    : await window.yo.appProxyCreate({ slug, target, visibility, label: label || undefined, authMode, ...(authConfig ? { authConfig } : {}) });
+
+  if (!res.ok) {
+    proxyFormError(/taken/i.test(res.error || "") ? "That subdomain is already taken — pick another." : (res.error || "Save failed"));
+    return;
+  }
+  closeProxyEditor();
+}
+
+async function deleteProxy(): Promise<void> {
+  if (!editingProxyId) return;
+  const p = allProxies.find((x) => x.id === editingProxyId);
+  const confirmed = await confirmAction(`Delete ${proxyUrl(p?.slug || "")}? Visitors will get "not found" immediately.`);
+  if (!confirmed) return;
+  await window.yo.appProxyDelete(editingProxyId);
+  closeProxyEditor();
+}
+
+function initProxiesPage(): void {
+  document.getElementById("proxy-new-btn")?.addEventListener("click", () => openProxyEditor(null));
+  document.getElementById("proxy-back-link")?.addEventListener("click", () => closeProxyEditor());
+  document.getElementById("proxy-cancel-btn")?.addEventListener("click", () => closeProxyEditor());
+  document.getElementById("proxy-save-btn")?.addEventListener("click", () => { void saveProxy(); });
+  document.getElementById("proxy-delete-btn")?.addEventListener("click", () => { void deleteProxy(); });
+  document.getElementById("proxy-auth-mode")?.addEventListener("change", syncProxyAuthFields);
+  document.getElementById("proxy-search")?.addEventListener("input", () => renderProxiesList());
+  document.getElementById("proxy-copy-btn")?.addEventListener("click", () => {
+    const p = allProxies.find((x) => x.id === editingProxyId);
+    if (p) window.yo.copyToClipboard(proxyUrl(p.slug));
+  });
+  document.getElementById("proxy-toggle-btn")?.addEventListener("click", async () => {
+    const p = allProxies.find((x) => x.id === editingProxyId);
+    if (!p || p.status === "flagged") return;
+    const res = await window.yo.appProxyUpdate(p.id, { status: p.status === "disabled" ? "active" : "disabled" });
+    if (res.ok && res.proxy) {
+      const idx = allProxies.findIndex((x) => x.id === p.id);
+      if (idx >= 0) allProxies[idx] = res.proxy;
+      proxyEl("proxy-toggle-btn").textContent = res.proxy.status === "disabled" ? "Enable" : "Disable";
+    }
+  });
+  const slugInput = proxyInput("proxy-slug");
+  slugInput?.addEventListener("input", () => {
+    const lower = slugInput.value.toLowerCase();
+    if (slugInput.value !== lower) slugInput.value = lower;
+    syncProxySlugPreview();
+  });
+}
+
 function initApps() {
+  initProxiesPage();
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
   document.querySelectorAll<HTMLElement>(".tab-upgrade-btn").forEach((btn) => {
@@ -1117,9 +1328,12 @@ function initApps() {
   const addArchetypeSelect = document.getElementById("app-add-archetype") as HTMLSelectElement;
   const addExecPath = document.getElementById("app-add-exec-path") as HTMLInputElement;
 
-  // Apps page tabs: My apps ↔ Marketplace.
+  // Apps page tabs: My apps ↔ Marketplace ↔ Public URLs.
   for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".apps-page-tab"))) {
-    t.addEventListener("click", () => switchAppsPage(t.dataset.page === "marketplace" ? "marketplace" : "library"));
+    t.addEventListener("click", () => {
+      const page = t.dataset.page;
+      switchAppsPage(page === "marketplace" || page === "proxies" ? page : "library");
+    });
   }
   // Marketplace scope (Public / Your organization).
   for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".mkt-scope"))) {
