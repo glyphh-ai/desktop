@@ -56,7 +56,10 @@ void (async () => {
   const def = ((await window.yo.getPreference?.("homeStartupSection", "")) as string) || "";
   const lastSec = ((await window.yo.getPreference?.("homeLastSection", "")) as string) || "";
   const lastSub = ((await window.yo.getPreference?.("homeLastSub", "")) as string) || "";
-  const sec = def || lastSec || "dashboard";
+  let sec = def || lastSec || "dashboard";
+  // A remembered section may have been removed since (e.g. the old Skills
+  // page) — fall back rather than landing on a blank pane.
+  if (!document.querySelector(`.help-section[data-section="${sec}"]`)) sec = "dashboard";
   gotoSection(sec, sec === lastSec ? (lastSub || undefined) : undefined);
 })();
 

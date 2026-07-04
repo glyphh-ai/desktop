@@ -1,20 +1,11 @@
 /**
- * Skills section — export a Glyphh Skill for an external LLM (Claude / Gemini /
- * OpenAI) so it can drive Glyphh over the MCP relay. Promoted out of
- * Settings > General into its own page with a polished layout.
- *
- * There's no server round-trip here: the page is static (an explainer + three
- * export buttons), so loadSkills just clears stale status; initSkills wires the
- * buttons once.
+ * Glyphh Skill export — teach an external LLM (Claude / Gemini / OpenAI) to
+ * drive Glyphh over the MCP relay. The buttons live on Settings › MCP (no
+ * standalone Skills page); Claude installs straight into ~/.claude/skills,
+ * the others save a file to paste into custom instructions.
  */
 
-/** Called when the Skills section opens — clear any stale export status. */
-export function loadSkills(): void {
-  const status = document.getElementById("export-skill-status");
-  if (status) { status.textContent = ""; status.style.color = "var(--text-3)"; }
-}
-
-/** Wire the export buttons + the "Settings › MCP" deep-link. Called once at init. */
+/** Wire the export buttons. Called once at init. */
 export function initSkills(): void {
   const status = document.getElementById("export-skill-status");
   for (const btn of Array.from(document.querySelectorAll<HTMLButtonElement>("[id^='export-skill-']"))) {
@@ -35,9 +26,4 @@ export function initSkills(): void {
       }
     });
   }
-  // Deep-link to Settings › MCP by clicking the (hidden but live) nav sub-item,
-  // avoiding a circular import of navigation's gotoSection.
-  document.getElementById("skills-goto-mcp")?.addEventListener("click", () => {
-    document.querySelector<HTMLButtonElement>('.help-nav-sub-item[data-section="settings"][data-sub="mcp"]')?.click();
-  });
 }

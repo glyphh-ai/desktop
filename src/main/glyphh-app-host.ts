@@ -163,7 +163,7 @@ export function isGlyphhAppBundle(zipPath: string): boolean {
  * Install a .glyphh glyphh-app bundle: extract it locally and create the
  * server app row. Returns { ok, name } or { ok:false, error }.
  */
-export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string }> {
+export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] }> {
   let zip: AdmZip;
   try { zip = new AdmZip(zipPath); } catch { return { ok: false, error: "Not a readable .glyphh bundle" }; }
   const entry = zip.getEntry("manifest.json");
@@ -239,6 +239,12 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       await serverPostAuthed("/api/panel-apps", fields);
     }
     invalidateServerCache("/api/panel-apps");
+    // Tell every open window the app library changed so the Apps page
+    // re-fetches — without this, an app installed over the MCP relay
+    // doesn't appear until the user manually reloads.
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send("panel-apps-changed");
+    }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -258,7 +264,7 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       connectors: manifest.connectors ?? [],
     }).catch((err) => console.error(`[glyphh-app] worker warm-start "${manifest.slug}" failed:`, err instanceof Error ? err.message : err));
   }
-  return { ok: true, name: manifest.name, updated: updated || undefined };
+  return { ok: true, name: manifest.name, updated: updated || undefined, connectors: manifest.connectors ?? [] };
 }
 
 // ── run ─────────────────────────────────────────────────────
@@ -453,7 +459,7 @@ async function runCapability(
 // ── Install from a base64 bundle (MCP app_install / apps.install) ────────────
 
 /** Install a .glyphh handed over as base64 (Claude deploying an app it built). */
-export async function installGlyphhAppBundleFromBase64(bundleBase64: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string }> {
+export async function installGlyphhAppBundleFromBase64(bundleBase64: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] }> {
   const b64 = String(bundleBase64 || "").replace(/^data:[^,]*,/, "");
   if (!b64) return { ok: false, error: "bundleBase64 is required" };
   const tmp = path.join(os.tmpdir(), `glyphh-app-${process.pid}-${Buffer.from(b64).length}.glyphh`);

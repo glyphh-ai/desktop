@@ -126,6 +126,19 @@
                 <h2>MCP Server</h2>
                 <p class="section-desc">Let external LLM tools — Claude, ChatGPT, Cursor — drive your Glyphh workspace: open apps and layouts, click, type, read, and screenshot. Use the <strong>cloud relay</strong> (works anywhere your LLM runs) or a <strong>local server</strong> on this machine (lowest latency, no cloud).</p>
 
+                <!-- Glyphh Skill — teaches the connected assistant how to drive
+                     this workspace. Claude installs straight into
+                     ~/.claude/skills; Gemini/ChatGPT save a file to paste into
+                     custom instructions. -->
+                <h3 class="settings-subheading" style="margin:4px 0 4px;">Glyphh Skill</h3>
+                <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">Teach your assistant to drive Glyphh over MCP. Claude installs directly into <code>~/.claude/skills</code>; Gemini and ChatGPT export a file you paste into custom instructions.</p>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:18px;">
+                  <button id="export-skill-claude" class="action-btn primary" data-provider="claude">Install for Claude</button>
+                  <button id="export-skill-gemini" class="action-btn" data-provider="gemini">Export for Gemini</button>
+                  <button id="export-skill-openai" class="action-btn" data-provider="openai">Export for ChatGPT</button>
+                  <span id="export-skill-status" style="font-size:11px;color:var(--text-3);"></span>
+                </div>
+
                 <div id="mcp-section-wrap" class="settings-form">
                   <!-- ── Cloud relay (org-admin only). User-toggleable — off by
                        preference, or connected/connecting when on. ── -->

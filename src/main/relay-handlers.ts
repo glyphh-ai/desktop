@@ -22,7 +22,10 @@ import {
   openAppWindow, focusAppWindow, closeAppWindow, listAppWindows, getAppWebContents,
 } from "./app-window-manager.js";
 import { resolveAppSpec, openLayoutByName } from "./app-resolver.js";
-import { listInstalledAppTools, callAppTool, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
+import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
+import { connectorStatus } from "./glyphh-app-services.js";
+import fs from "fs";
+import os from "os";
 
 interface Deps {
   getMcpManager: () => McpManager | null;
@@ -219,10 +222,43 @@ export function installRelayHandlers(deps: Deps): void {
   });
 
   registerRelayHandler("apps.install", async (params) => {
-    const p = params as { bundleBase64?: string } | null;
-    if (!p?.bundleBase64) throw new Error("apps.install requires { bundleBase64 }");
-    const r = await installGlyphhAppBundleFromBase64(String(p.bundleBase64));
+    const p = params as { bundleBase64?: string; path?: string; url?: string } | null;
+    let r: { ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] };
+    if (p?.path) {
+      // Preferred: the bundle is already on this machine — read it directly
+      // instead of round-tripping megabytes of base64 through the LLM.
+      const filePath = p.path.replace(/^~(?=$|\/)/, os.homedir());
+      if (!fs.existsSync(filePath)) throw new Error(`bundle not found: ${filePath}`);
+      r = await installGlyphhAppBundle(filePath);
+    } else if (p?.url) {
+      const res = await fetch(p.url);
+      if (!res.ok) throw new Error(`bundle download failed: HTTP ${res.status}`);
+      r = await installGlyphhAppBundleFromBase64(Buffer.from(await res.arrayBuffer()).toString("base64"));
+    } else if (p?.bundleBase64) {
+      r = await installGlyphhAppBundleFromBase64(String(p.bundleBase64));
+    } else {
+      throw new Error("apps.install requires { path } (a .glyphh on this machine), { url }, or { bundleBase64 }");
+    }
     if (!r.ok) throw new Error(r.error || "install failed");
-    return { installed: r.name, updated: !!r.updated };
+
+    // Surface missing required connections in the install result so the
+    // caller (Claude etc.) tells the user immediately — the app's tools WILL
+    // fail until those accounts are connected in Glyphh → Connections.
+    let missing: string[] = [];
+    if (r.connectors?.length) {
+      try {
+        const status = await connectorStatus(new Set(r.connectors));
+        missing = status.filter((s) => !s.connected).map((s) => s.connector);
+      } catch { /* status unknown — don't block the install result */ }
+    }
+    return {
+      installed: r.name,
+      updated: !!r.updated,
+      requiredConnections: r.connectors ?? [],
+      ...(missing.length ? {
+        missingConnections: missing,
+        warning: `This app will NOT work until these accounts are connected in Glyphh → Connections: ${missing.join(", ")}. Tell the user to connect them.`,
+      } : {}),
+    };
   });
 }

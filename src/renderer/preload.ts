@@ -174,6 +174,11 @@ contextBridge.exposeInMainWorld("yo", {
   onOpenNewApp: (callback: (data: { url?: string; name?: string; tabId?: string }) => void) => {
     ipcRenderer.on("open-new-app", (_e, data) => callback(data));
   },
+  // Fired by main whenever the saved-app library changes server-side (e.g. an
+  // app was installed over the MCP relay) — the Apps page re-fetches.
+  onPanelAppsChanged: (callback: () => void) => {
+    ipcRenderer.on("panel-apps-changed", () => callback());
+  },
   convertTabToApp: (tabId: string, appId: string) =>
     ipcRenderer.send("convert-tab-to-app", tabId, appId),
   // Open a file from a yo-panel file link — main hands it to the OS default app.

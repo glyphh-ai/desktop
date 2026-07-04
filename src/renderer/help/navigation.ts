@@ -7,7 +7,7 @@ import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps, openNewAppForm } from "./apps.js";
 import { loadSettings, initSettings } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
-import { loadSkills, initSkills } from "./skills.js";
+import { initSkills } from "./skills.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 
@@ -112,7 +112,6 @@ export function loadActiveSection(explicit?: string) {
   // item can resolve to "guide" for sections with no `help-nav-item`.
   const sec = explicit || activeSection();
   if (sec === "drips") loadDrips();
-  else if (sec === "skills") loadSkills();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "apps") loadApps();
   else if (sec === "connections") void loadConnections();

@@ -19,6 +19,9 @@
             <input id="app-search" type="text" class="crud-search" placeholder="Search apps..." spellcheck="false" autocomplete="off" />
             <button id="apps-add-btn" class="action-btn primary">+ New</button>
             <button id="apps-import-btn" class="action-btn" title="Import a .glyphh bundle">Import app</button>
+            <button id="apps-refresh-btn" class="action-btn" title="Refresh app list" aria-label="Refresh app list" style="padding:6px 9px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+            </button>
           </div>
 
           <div id="apps-list" class="crud-cards"></div>
@@ -219,6 +222,17 @@
                     <div id="app-detail-generic-fields" class="hidden">
                       <label class="settings-label">Args <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
                       <input id="app-detail-args" class="settings-input" spellcheck="false" />
+                    </div>
+                  </div>
+                  <!-- Required connections — declared by an installed Glyphh
+                       app's manifest. Shows per-connector connected status and
+                       warns loudly when any are missing. -->
+                  <div id="app-req-conns" class="hidden">
+                    <label class="settings-label">Required connections</label>
+                    <div id="app-req-conns-list"></div>
+                    <div id="app-req-conns-warn" class="app-req-conns-warn hidden">
+                      This app will <strong>not work</strong> until the accounts above are connected.
+                      <a id="app-req-conns-goto" href="#">Open Connections</a>
                     </div>
                   </div>
                   <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">

@@ -273,7 +273,7 @@ function escMkt(s: string): string {
 // Canonical domain per connection slug — feeds appIconInner's favicon fallback
 // so a real brand icon still shows if the Pipedream catalog icon isn't cached.
 const CONN_DOMAIN: Record<string, string> = {
-  slack: "slack.com", gmail: "mail.google.com", notion: "notion.so", github: "github.com",
+  slack: "slack.com", slack_v2: "slack.com", gmail: "mail.google.com", notion: "notion.so", github: "github.com",
   linear: "linear.app", google_sheets: "sheets.google.com", hubspot: "hubspot.com",
   stripe: "stripe.com", figma: "figma.com", google_calendar: "calendar.google.com",
   snowflake: "snowflake.com", google_drive: "drive.google.com", google_slides: "slides.google.com",
@@ -300,6 +300,49 @@ function mktConnRow(conns: Array<{ name: string; slug: string }>): string {
 function mktConnIconApps(conns: Array<{ slug: string }>): Array<{ connection: { accountId: string; pipedreamSlug: string } }> {
   const slugs = new Set(conns.map((c) => c.slug));
   return [...slugs].map((slug) => ({ connection: { accountId: "mkt", pipedreamSlug: slug } }));
+}
+
+// Pretty display name for a connector slug ("slack_v2" → "Slack").
+const CONN_LABEL: Record<string, string> = {
+  slack_v2: "Slack", gmail: "Gmail", google_calendar: "Google Calendar",
+  google_sheets: "Google Sheets", google_drive: "Google Drive",
+};
+function connLabel(slug: string): string {
+  return CONN_LABEL[slug] || slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** "Required connections" block on the app editor — one row per connector the
+ *  installed app's manifest declares, with live connected/not-connected status.
+ *  The app's tools call these accounts; missing ones mean the app WILL fail,
+ *  so the warning line under the list says exactly that. */
+async function renderRequiredConnections(app: PanelApp): Promise<void> {
+  const wrap = document.getElementById("app-req-conns");
+  const list = document.getElementById("app-req-conns-list");
+  const warn = document.getElementById("app-req-conns-warn");
+  if (!wrap || !list || !warn) return;
+  const required = ((app.launchConfig?.connectors as string[] | undefined) || []).filter(Boolean);
+  if (!required.length) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+
+  let connected = new Set<string>();
+  try {
+    const res = await window.yo.connectionsList();
+    connected = new Set((res.connections || []).map((c) => c.appSlug));
+  } catch { /* status unknown — render everything as missing */ }
+
+  const render = () => {
+    list.innerHTML = required.map((slug) => {
+      const ok = connected.has(slug);
+      return `<div class="app-req-conn-row">
+        ${mktConnChip({ name: connLabel(slug), slug })}
+        <span class="app-req-conn-name">${escMkt(connLabel(slug))}</span>
+        <span class="app-req-conn-status ${ok ? "ok" : "missing"}">${ok ? "Connected" : "Not connected"}</span>
+      </div>`;
+    }).join("");
+  };
+  render();
+  warn.classList.toggle("hidden", required.every((s) => connected.has(s)));
+  primeConnectedIcons(mktConnIconApps(required.map((slug) => ({ slug }))), render);
 }
 
 function mktCard(app: MktApp, variant: "grid" | "row" | "featured"): HTMLElement {
@@ -786,6 +829,9 @@ async function openPanelAppDetail(app: PanelApp) {
   // The Glyphh system app can't be deleted (server enforces it) — don't offer.
   document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
 
+  // Required connections (installed Glyphh apps) — status + missing warning.
+  void renderRequiredConnections(app);
+
   // All tabs always visible
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
     btn.classList.remove("tab-hidden");
@@ -1017,6 +1063,20 @@ function initApps() {
   // the same way Settings → Account → Manage Account does.
   document.querySelectorAll<HTMLElement>(".tab-upgrade-btn").forEach((btn) => {
     btn.addEventListener("click", () => { void window.yo.execCommand(`dip ${window.yo.platformUrl}`); });
+  });
+
+  // Manual refresh + live refresh when the app library changes server-side
+  // (e.g. an app installed over the MCP relay while this page is open).
+  document.getElementById("apps-refresh-btn")?.addEventListener("click", () => { void loadApps(); });
+  window.yo.onPanelAppsChanged?.(() => {
+    // Don't stomp an open editor — the list re-fetches next time it shows.
+    if (appDetail.classList.contains("hidden")) void loadApps();
+  });
+
+  // "Open Connections" from the required-connections warning.
+  document.getElementById("app-req-conns-goto")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    document.querySelector<HTMLButtonElement>('.help-nav-item[data-section="connections"]')?.click();
   });
 
   const addNameInput = document.getElementById("app-add-name") as HTMLInputElement;

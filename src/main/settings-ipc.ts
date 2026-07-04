@@ -1,5 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme } from "electron";
 import fs from "fs";
+import os from "os";
+import path from "path";
 import { generateGlyphhSkill } from "./glyphh-skill-export";
 import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, serverGetAuthed, serverPatchAuthed } from "./auth";
 import type { SessionCache } from "./session-cache";
@@ -138,11 +140,28 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   });
 
   // Export a provider-tailored Glyphh skill (Claude / Gemini / OpenAI) — a file
-  // that teaches that LLM to drive Glyphh over the MCP relay. Shows a save
-  // dialog and writes it.
+  // that teaches that LLM to drive Glyphh over the MCP relay.
+  //
+  // Claude has a canonical on-disk skill location (~/.claude/skills/<name>/
+  // SKILL.md, picked up by Claude Code + Desktop), so that export installs
+  // there directly — no save dialog. Gemini/OpenAI have no standard location
+  // (their file is pasted into custom instructions), so those still ask.
   ipcMain.handle("export-glyphh-skill", async (_e, provider: string) => {
     const p = provider === "gemini" || provider === "openai" ? provider : "claude";
     const { filename, content } = generateGlyphhSkill(p as "claude" | "gemini" | "openai");
+
+    if (p === "claude") {
+      try {
+        const dir = path.join(os.homedir(), ".claude", "skills", "glyphh");
+        fs.mkdirSync(dir, { recursive: true });
+        const dest = path.join(dir, "SKILL.md");
+        fs.writeFileSync(dest, content, "utf8");
+        return { ok: true, path: dest };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
     const result = await dialog.showSaveDialog(win, {

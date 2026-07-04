@@ -524,7 +524,6 @@ async function boot() {
     "yo://connections": "connections",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
-    "yo://skills": "skills",
     "yo://about": "about",
     "yo://dashboard-settings": "settings",
   };

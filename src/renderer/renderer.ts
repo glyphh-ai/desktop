@@ -221,6 +221,7 @@ declare global {
       onExecCommandFromPalette: (callback: (cmd: string) => void) => void;
       createAppFromTab: (tabId: string, url: string, name: string) => void;
       onOpenNewApp: (callback: (data: { url?: string; name?: string; tabId?: string }) => void) => void;
+      onPanelAppsChanged: (callback: () => void) => void;
       convertTabToApp: (tabId: string, appId: string) => void;
       openInEditor: (filePath: string) => void;
       getWorkingDir: () => Promise<string | null>;
@@ -599,9 +600,9 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  type DashSlug = "apps" | "connections" | "layouts" | "drips" | "skills" | "settings" | "about";
+  type DashSlug = "apps" | "connections" | "layouts" | "drips" | "settings" | "about";
   const setActive = (slug: DashSlug) => {
-    for (const s of ["apps", "connections", "layouts", "drips", "skills", "settings", "about"] as DashSlug[]) {
+    for (const s of ["apps", "connections", "layouts", "drips", "settings", "about"] as DashSlug[]) {
       document.getElementById(`dashboard-tab-${s}`)?.classList.toggle("active", slug === s);
     }
   };
@@ -617,7 +618,6 @@ function initDashboard(): void {
   wireTab("connections", "connections");
   wireTab("layouts", "layouts");
   wireTab("drips", "drips");
-  wireTab("skills", "skills");
   wireTab("settings", "dashboard-settings");
   wireTab("about", "about");
 
