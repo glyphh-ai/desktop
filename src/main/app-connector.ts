@@ -39,15 +39,6 @@ export interface CommandMapping {
   guide?: CommandGuide;
 }
 
-export type CapturePolicyType = "append" | "versioned" | "deduplicate" | "incremental" | "sliding-window" | "manual";
-
-export interface CapturePolicy {
-  type: CapturePolicyType;
-  maxVersions?: number;    // versioned: keep last N ingestions (default 3)
-  windowHours?: number;    // sliding-window: prune entries older than N hours (default 24)
-  minDeltaChars?: number;  // incremental: minimum new chars to store (default 50)
-}
-
 // ── Panel tab: UI-driven interaction via DOM ──
 export interface PanelConfig {
   commands: Record<string, CommandMapping>;
@@ -98,8 +89,6 @@ export interface AppConfig {
   // ── Dashboard ──
   url?: string;
   forceWeb?: boolean;
-  doNotRecord?: boolean;
-  capturePolicy?: CapturePolicy;
   meta?: {
     description: string;
     category?: string;
@@ -109,8 +98,7 @@ export interface AppConfig {
   /** Where this app shows up. Defaults to "user" (registry + layouts + `+`). */
   kind?: AppKind;
   /** True if the app ships with .Yo (everything in INTERNAL_APPS). Internal
-   *  apps are NEVER captured (isDoNotRecord returns true), are HIDDEN from
-   *  the Apps registry (no CRUD — can't edit, rename, delete, or change
+   *  apps are HIDDEN from the Apps registry (no CRUD — can't edit, rename, delete, or change
    *  URL), and stay visible in the `+` picker, `.dip`, and Layouts. The
    *  `kind: "system"` flag separately controls Layouts visibility. */
   internal?: boolean;
@@ -193,120 +181,30 @@ export const CATEGORY_COMMANDS: Record<string, Array<{ key: string; description:
 
 // Internal apps — these use yo:// protocol.
 // `kind: "system"` apps are hidden from the Apps registry + Layouts builder.
-const NO_CAPTURE: CapturePolicy = { type: "manual" };
 // Every entry here gets `internal: true` applied below — they all ship
 // with .Yo and must never be CRUD-able in the Apps registry, never
 // captured, etc. `kind: "system"` is a separate axis controlling whether
 // the app appears in Layouts (rail surfaces don't; user-mountable
 // internal apps like Agent/Vibe/Spec do).
-const INTERNAL_APPS: Array<{ id: string; name: string; url: string; capturePolicy?: CapturePolicy; kind?: AppKind; requiresFolder?: boolean }> = [
-  // Boot-time fallback shown when there's no panel state to restore.
-  // Settings — opened from the header gear; no longer in the left rail.
-  { id: "home", name: "Settings", url: "yo://home", capturePolicy: NO_CAPTURE, kind: "system" },
-  { id: "workbench", name: "Workbench", url: "yo://workbench", capturePolicy: NO_CAPTURE, requiresFolder: true },
-  // VS Code panel — auto-detected. If the `code` CLI is on PATH, VSCodeServer
-  // spawns `code serve-web` and the panel loads its localhost URL. Otherwise
-  // the panel shows a "install VS Code" hint.
-  { id: "vscode", name: "VS Code", url: "yo://vscode", capturePolicy: NO_CAPTURE, requiresFolder: true },
+// Dashboard shell (5a): Agents/Schedules/Layouts/Skills/Drips/Settings/Home
+// are no longer local internal apps — that management UI is server-side
+// (yo-platform's Build/Manage pages) now, not a local panel. Only real local
+// execution surfaces stay: Browser and Terminal, plus the Dashboard's own
+// Apps/Settings tabs (which aren't the old left-rail CRUD pages — "apps" is
+// the Apps-tab webview container, "dashboard-settings" is the trimmed
+// General/Appearance/MCP settings panel).
+const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKind; requiresFolder?: boolean }> = [
   { id: "term", name: "Terminal", url: "yo://terminal", requiresFolder: true },
   { id: "browser", name: "Browser", url: "yo://browser" },
-
-  // Left-rail surfaces — every section becomes its own mountable system app.
-  // Slug = panel id, so `.dip apps` and the panel id "apps" match naturally.
-  // Reuses home.html scoped to a single section via ?section=<slug>.
-  // Hidden from the Apps registry + Layouts builder; visible in `+` and `.dip`.
-  { id: "dashboard",  name: "Dashboard",  url: "yo://dashboard",  capturePolicy: NO_CAPTURE, kind: "system" },
-  { id: "apps",       name: "Apps",       url: "yo://apps",       capturePolicy: NO_CAPTURE, kind: "system" },
-  { id: "agents",     name: "Agents",     url: "yo://agents",     capturePolicy: NO_CAPTURE, kind: "system" },
-  { id: "schedules",  name: "Schedules",  url: "yo://schedules",  capturePolicy: NO_CAPTURE, kind: "system" },
-  { id: "layouts",    name: "Layouts",    url: "yo://layouts",    capturePolicy: NO_CAPTURE, kind: "system" },
-  { id: "skills",     name: "Skills",     url: "yo://skills",     capturePolicy: NO_CAPTURE, kind: "system" },
-  { id: "drips",      name: "Drips",      url: "yo://drips",      capturePolicy: NO_CAPTURE, kind: "system" },
-  { id: "settings",   name: "Settings",   url: "yo://settings",   capturePolicy: NO_CAPTURE, kind: "system" },
+  { id: "apps", name: "Apps", url: "yo://apps", kind: "system" },
+  { id: "connections", name: "Connections", url: "yo://connections", kind: "system" },
+  { id: "layouts", name: "Layouts", url: "yo://layouts", kind: "system" },
+  { id: "drips", name: "Drips", url: "yo://drips", kind: "system" },
+  // "skills" removed — the Glyphh Skill export lives on Settings › MCP now
+  // (and "skills" is in REMOVED_IDS below, so stale rows purge on boot).
+  { id: "dashboard-settings", name: "Settings", url: "yo://dashboard-settings", kind: "system" },
+  { id: "about", name: "About", url: "yo://about", kind: "system" },
 ];
-
-// Default panel apps — seeded on first launch so the workspace isn't empty
-const DEFAULT_APPS: Array<{ id: string; name: string; url: string; forceWeb?: boolean; pipedreamSlug?: string }> = [
-  // LLMs (no Pipedream — UI-only)
-  { id: "chatgpt", name: "ChatGPT", url: "https://chatgpt.com" },
-  { id: "claude", name: "Claude", url: "https://claude.ai" },
-  { id: "gemini", name: "Gemini", url: "https://gemini.google.com" },
-  { id: "grok", name: "Grok", url: "https://grok.com" },
-  { id: "perplexity", name: "Perplexity", url: "https://perplexity.ai" },
-  // Productivity (panel + Pipedream API available)
-  { id: "gmail", name: "Gmail", url: "https://mail.google.com", pipedreamSlug: "gmail" },
-  { id: "calendar", name: "Google Calendar", url: "https://calendar.google.com", pipedreamSlug: "google_calendar" },
-  { id: "github", name: "GitHub", url: "https://github.com", pipedreamSlug: "github" },
-  { id: "slack", name: "Slack", url: "https://app.slack.com", forceWeb: true, pipedreamSlug: "slack" },
-  { id: "notion", name: "Notion", url: "https://notion.so", forceWeb: true, pipedreamSlug: "notion" },
-];
-
-// Domains that default to doNotRecord — banking, health, finance, passwords
-const DO_NOT_RECORD_DOMAINS = [
-  // Banking
-  "chase.com", "bankofamerica.com", "wellsfargo.com", "citi.com", "citibank.com",
-  "usbank.com", "capitalone.com", "ally.com", "discover.com", "tdbank.com",
-  "pnc.com", "schwab.com", "fidelity.com", "vanguard.com", "etrade.com",
-  "merilledge.com", "ameriprise.com", "regions.com", "suntrust.com", "truist.com",
-  "marcus.com", "sofi.com", "chime.com",
-  // Payments / Fintech
-  "paypal.com", "venmo.com", "zelle.com", "stripe.com/dashboard", "square.com",
-  "robinhood.com", "coinbase.com", "binance.com", "kraken.com",
-  // Health / Insurance
-  "myuhc.com", "anthem.com", "cigna.com", "aetna.com", "humana.com",
-  "bcbs.com", "medicare.gov", "mychart.com", "epic.com",
-  // Password managers
-  "vault.bitwarden.com", "my.1password.com", "lastpass.com", "dashlane.com",
-  // Tax / Government
-  "irs.gov", "turbotax.intuit.com", "hrblock.com", "ssa.gov",
-];
-
-// Conversational apps — multiple grabs of the same window should diff, not duplicate
-const CONVERSATIONAL_DOMAINS = [
-  "chatgpt.com", "claude.ai", "gemini.google.com", "grok.com", "perplexity.ai",
-  "app.slack.com", "discord.com", "teams.microsoft.com", "messages.google.com",
-  "web.whatsapp.com", "messenger.com",
-];
-
-// Feed/dashboard apps — content is ephemeral, keep a sliding window
-const EPHEMERAL_DOMAINS = [
-  "youtube.com", "twitter.com", "x.com", "reddit.com", "news.ycombinator.com",
-  "linkedin.com/feed",
-];
-
-// Document apps — static content, deduplicate
-const DOCUMENT_DOMAINS = [
-  "docs.google.com", "sheets.google.com", "slides.google.com",
-  "notion.so", "notebooklm.google.com", "figma.com",
-  "mail.google.com", "outlook.live.com", "calendar.google.com",
-];
-
-function inferCapturePolicy(source: string, url?: string): CapturePolicy {
-  const domain = url || source;
-
-  // Code file sources from the sup hook (e.g. "help.ts", "main.ts")
-  if (/\.\w{1,5}$/.test(source) && !source.includes("/")) {
-    return { type: "versioned", maxVersions: 3 };
-  }
-
-  if (CONVERSATIONAL_DOMAINS.some((d) => domain.includes(d))) {
-    return { type: "deduplicate" };
-  }
-
-  if (EPHEMERAL_DOMAINS.some((d) => domain.includes(d))) {
-    return { type: "sliding-window", windowHours: 48 };
-  }
-
-  if (DOCUMENT_DOMAINS.some((d) => domain.includes(d))) {
-    return { type: "deduplicate" };
-  }
-
-  // MCP / external pushes
-  if (source === "cloud-sync") return { type: "append" };
-
-  // Default: deduplicate is safe for unknown sources
-  return { type: "deduplicate" };
-}
 
 // ── AppConnector ───────────────────────────────────────
 
@@ -416,9 +314,13 @@ export class AppConnector {
       }
     }
 
-    // Apps removed from the product entirely (Agent / Plan / Ada panels) —
-    // purge unconditionally; these ids aren't real apps any more.
-    const REMOVED_IDS = ["agent", "plan", "ada", "adal"];
+    // Apps removed from the product entirely (Agent / Plan / Ada panels, and
+    // — Dashboard shell (5a) — the left-rail CRUD pages now server-side on
+    // yo-platform) — purge unconditionally; these ids aren't real apps any more.
+    const REMOVED_IDS = [
+      "agent", "plan", "ada", "adal", "workbench", "vscode",
+      "home", "agents", "schedules", "layouts", "skills", "drips", "settings",
+    ];
     for (const id of REMOVED_IDS) {
       if (this.apps.has(id)) {
         this.apps.delete(id);
@@ -432,7 +334,6 @@ export class AppConnector {
         const app = this.add(def.id, def.name, def.url);
         app.internal = true;
         let dirty = true; // we just set internal
-        if (def.capturePolicy) { app.capturePolicy = def.capturePolicy; dirty = true; }
         if (def.kind) { app.kind = def.kind; dirty = true; }
         if (def.requiresFolder) { app.requiresFolder = def.requiresFolder; dirty = true; }
         if (dirty) this.save(app);
@@ -441,34 +342,25 @@ export class AppConnector {
         let dirty = false;
         if (app.url !== def.url) { app.url = def.url; dirty = true; }
         if (!app.internal) { app.internal = true; dirty = true; }
-        if (def.capturePolicy && app.capturePolicy?.type !== def.capturePolicy.type) { app.capturePolicy = def.capturePolicy; dirty = true; }
         if (def.kind && app.kind !== def.kind) { app.kind = def.kind; dirty = true; }
         if (def.requiresFolder && app.requiresFolder !== def.requiresFolder) { app.requiresFolder = def.requiresFolder; dirty = true; }
         if (dirty) this.save(app);
       }
     }
 
-    // Seed default panel apps only if none exist yet (fresh install)
-    const hasUserApps = [...this.apps.values()].some((a) => a.url && !a.url.startsWith("yo://"));
-    if (!hasUserApps) {
-      for (const def of DEFAULT_APPS) {
-        if (!this.apps.has(def.id)) {
-          this.add(def.id, def.name, def.url, def.forceWeb);
-        }
+    // Apps are server-authoritative now (the Apps tab reads /api/panel-apps).
+    // Any real-URL app still sitting in the local ~/yo/apps store is a stale
+    // seed from an older build — purge it (entry + file) so it stops showing
+    // up anywhere the local registry is read (e.g. the Layouts cell picker).
+    // Only the yo:// internal surfaces stay local: Browser, Terminal, and the
+    // system config pages (Apps/Layouts/Drips/Settings/About).
+    for (const [id, app] of [...this.apps]) {
+      if (app.url && !app.url.startsWith("yo://")) {
+        this.apps.delete(id);
+        try { fs.unlinkSync(path.join(this.appsDir, `${id}.json`)); } catch { /* ignore */ }
+        console.log(`[app-connector] purged local app (now server-authoritative): ${id}`);
       }
     }
-
-    // Ensure known Pipedream slugs are set on default apps
-    for (const def of DEFAULT_APPS) {
-      if (!def.pipedreamSlug) continue;
-      const app = this.apps.get(def.id);
-      if (app && !app.connection) {
-        app.connection = { pipedreamSlug: def.pipedreamSlug };
-        this.save(app);
-      }
-    }
-
-
   }
 
   /** Import a full app config (from exported JSON). Overwrites if same id exists. */
@@ -480,7 +372,6 @@ export class AppConnector {
       connected: Object.keys(config.commands || {}).length > 0,
       commands: config.commands || {},
       ...(config.forceWeb ? { forceWeb: config.forceWeb } : {}),
-      ...(config.doNotRecord ? { doNotRecord: config.doNotRecord } : {}),
       ...(config.meta ? { meta: config.meta } : {}),
     };
     this.apps.set(app.id, app);
@@ -495,12 +386,6 @@ export class AppConnector {
       name,
       connected: false,
       commands: {},
-      // Privacy-first default: every new app starts with capture OFF. The
-      // user must explicitly enable it from the app's detail panel, which
-      // also prompts a warning modal about plain-text local storage of
-      // captured content. Internal apps (yo://...) override this back to
-      // their own policy in the INTERNAL_APPS seed loop.
-      doNotRecord: true,
       ...(url ? { url } : {}),
       ...(forceWeb ? { forceWeb } : {}),
     };
@@ -543,62 +428,12 @@ export class AppConnector {
     return true;
   }
 
-  updateDoNotRecord(id: string, doNotRecord: boolean): boolean {
-    const app = this.apps.get(id);
-    if (!app) return false;
-    if (doNotRecord) {
-      app.doNotRecord = true;
-    } else {
-      delete app.doNotRecord;
-    }
-    this.save(app);
-    return true;
-  }
-
-  /** Check if a panel/URL should be excluded from recording. */
-  isDoNotRecord(panelId: string): boolean {
-    // Resolve "<id>-2" / "<id>-3" instance suffixes back to the base app id
-    // so e.g. a second Browser panel still respects the base app's policy.
-    const baseId = panelId.replace(/-\d+$/, "");
-    const app = this.apps.get(panelId) || this.apps.get(baseId);
-    // Internal apps (everything in INTERNAL_APPS) are never captured.
-    if (app?.internal) return true;
-    if (app?.doNotRecord) return true;
-    // Domain blocklist against panel URL.
-    if (app?.url) return DO_NOT_RECORD_DOMAINS.some((d) => app.url!.includes(d));
-    return false;
-  }
-
   /** True when the app ships with .Yo (INTERNAL_APPS). Hides it from the
-   *  Apps registry (no CRUD), suppresses capture, but it still mounts. */
+   *  Apps registry (no CRUD), but it still mounts. */
   isInternal(id: string): boolean {
     const baseId = id.replace(/-\d+$/, "");
     const app = this.apps.get(id) || this.apps.get(baseId);
     return !!app?.internal;
-  }
-
-  /** Check if a panel is a conversational app (chat, messaging). */
-  isConversational(panelId: string): boolean {
-    const app = this.apps.get(panelId);
-    const domain = app?.url || panelId;
-    return CONVERSATIONAL_DOMAINS.some((d) => domain.includes(d));
-  }
-
-  /** Get the capture policy for a source. Falls back to smart defaults. */
-  getCapturePolicy(source: string): CapturePolicy {
-    const app = this.apps.get(source);
-    if (app?.capturePolicy) return app.capturePolicy;
-    if (app?.doNotRecord) return { type: "manual" };
-    return inferCapturePolicy(source, app?.url);
-  }
-
-  /** Update an app's capture policy */
-  updateCapturePolicy(id: string, policy: CapturePolicy): boolean {
-    const app = this.apps.get(id);
-    if (!app) return false;
-    app.capturePolicy = policy;
-    this.save(app);
-    return true;
   }
 
   /** Update an app's ID (renames file and map entry) */
@@ -766,13 +601,48 @@ export class AppConnector {
   }
 
   // ── Persistence ─────────────────────────────────────
+  //
+  // Internal apps (INTERNAL_APPS) are never written to disk — they're
+  // static, fully re-derivable from code on every boot, and used to get
+  // needlessly persisted as individually safeStorage-encrypted files. That
+  // meant every boot decrypted ~15 files with nothing sensitive in them,
+  // hitting the OS keychain every single launch.
+  //
+  // User app files are plain JSON. The one genuinely sensitive field — a
+  // custom MCP server's OAuth client secret — is encrypted individually
+  // (only when actually present), not the whole file.
 
   private save(app: AppConfig): void {
+    if (app.internal) return;
+    const secret = app.mcp?.oauth?.clientSecret;
+    const toWrite: AppConfig = secret
+      ? { ...app, mcp: { ...app.mcp!, oauth: { ...app.mcp!.oauth!, clientSecret: encryptSecretField(secret) } } }
+      : app;
     fs.writeFileSync(
       path.join(this.appsDir, `${app.id}.json`),
-      encryptJson(app),
+      JSON.stringify(toWrite, null, 2),
       { mode: 0o600 },
     );
+  }
+
+  /** Read one app file — plain JSON (current format), with a one-time
+   *  fallback to the legacy whole-file-encrypted format (self-migrates: the
+   *  next save() call rewrites it as plain JSON with only the secret field
+   *  encrypted, so the legacy path only ever runs once per file). */
+  private readAppFile(filePath: string): AppConfig | null {
+    const raw = fs.readFileSync(filePath);
+    try {
+      const app = JSON.parse(raw.toString("utf-8")) as AppConfig;
+      const secret = app.mcp?.oauth?.clientSecret;
+      if (secret) app.mcp = { ...app.mcp!, oauth: { ...app.mcp!.oauth!, clientSecret: decryptSecretField(secret) } };
+      return app;
+    } catch {
+      // Legacy whole-file-encrypted format — decrypt once via safeStorage,
+      // then immediately rewrite in the new plain format.
+      const legacy = decryptJson<AppConfig>(raw);
+      if (legacy) { try { this.save(legacy); } catch { /* best-effort */ } }
+      return legacy;
+    }
   }
 
   private loadAll(): void {
@@ -780,11 +650,27 @@ export class AppConnector {
     for (const file of fs.readdirSync(this.appsDir)) {
       if (!file.endsWith(".json")) continue;
       try {
-        const app = decryptJson<AppConfig>(fs.readFileSync(path.join(this.appsDir, file)));
+        const app = this.readAppFile(path.join(this.appsDir, file));
         if (app?.id) this.apps.set(app.id, app);
       } catch {
         // skip corrupt files
       }
     }
+  }
+}
+
+/** Encrypt just the OAuth client secret string (base64-encoded ciphertext) —
+ *  not the whole app config. Only touches safeStorage when an app actually
+ *  has a custom MCP server with a client secret configured, which is rare. */
+function encryptSecretField(plaintext: string): string {
+  return encryptJson(plaintext).toString("base64");
+}
+
+function decryptSecretField(value: string): string {
+  try {
+    const decoded = decryptJson<string>(Buffer.from(value, "base64"));
+    return typeof decoded === "string" ? decoded : value;
+  } catch {
+    return value;
   }
 }

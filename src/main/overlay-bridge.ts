@@ -1,8 +1,7 @@
 // overlay-bridge.ts — supervises the native keytap helper (protocol v3) and routes
 // the dot-commands it intercepts (anywhere in the OS) into the right destination.
-// The UX is now mostly INLINE: the helper shows a braille spinner at the caret while
-// we work, and we reply telling it what to do. The slide-out agent panel
-// (overlay-prompt.ts) is opened ONLY when an inline `.yo` needs more information.
+// The UX is mostly INLINE: the helper shows a braille spinner at the caret while
+// we work, and we reply telling it what to do.
 //
 // The helper (src/main/overlay/keytap.swift, compiled to dist/main/overlay/keytap)
 // talks newline-delimited JSON over stdio:
@@ -13,22 +12,11 @@
 //   .dip / .drip  → focus main window, run through the command parser, then {done}.
 //   .sup          → run through the command parser, paste a short confirmation that
 //                   auto-deletes after ~2s ({ephemeral}).
-//   .yo / .peace  → run ONE-SHOT via yoAgent.runForResult with a disambiguation
-//                   directive. Normal answer → {result} pasted inline. If the answer
-//                   begins with NEEDS_INPUT: → open the slide-out panel seeded with
-//                   the query and reply {panel}.
+//   .yo / .peace  → REMOVED along with the interactive chat agent (YoAgent). These
+//                   triggers now no-op with {done}; they relied on a one-shot LLM
+//                   call + slide-out chat panel (overlay-prompt.ts, also removed).
 import { spawn, ChildProcess } from "child_process";
 import * as fs from "fs";
-import type { YoAgent } from "./yo-agent";
-import { openAgentPanel, wireAgentPanel } from "./overlay-prompt";
-
-// Prepended to the query for inline `.yo` one-shot runs. The agent either returns
-// only the text to insert, or exactly "NEEDS_INPUT: <question>" if it truly can't proceed.
-const DIRECTIVE =
-  "You are invoked inline from anywhere in the OS; your answer is pasted straight into the user's text field. " +
-  "If you can answer or perform the request, reply with ONLY the text to insert — concise, plain text, no preamble. " +
-  "ONLY if you genuinely cannot proceed without more information, reply with exactly: NEEDS_INPUT: <one short question>.\n\n" +
-  "Request: ";
 
 let proc: ChildProcess | null = null;
 let stopped = false;
@@ -41,7 +29,6 @@ let focusMainFn: (() => void) | null = null;
 let triggersEnv = ".drip";
 
 export function startOverlay(
-  yoAgent: YoAgent,
   runCommand: (cmd: string) => Promise<string> | void,
   focusMain: () => void,
   binPath: string,
@@ -56,11 +43,10 @@ export function startOverlay(
   runCommandFn = runCommand;
   focusMainFn = focusMain;
   triggersEnv = triggers || ".drip";
-  wireAgentPanel(yoAgent);
-  spawnHelper(yoAgent, binPath);
+  spawnHelper(binPath);
 }
 
-function spawnHelper(yoAgent: YoAgent, binPath: string): void {
+function spawnHelper(binPath: string): void {
   proc = spawn(binPath, [], {
     stdio: ["pipe", "pipe", "inherit"],
     env: { ...process.env, YO_OVERLAY_TRIGGERS: triggersEnv },
@@ -72,7 +58,7 @@ function spawnHelper(yoAgent: YoAgent, binPath: string): void {
     while ((nl = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, nl);
       buf = buf.slice(nl + 1);
-      if (line.trim()) void handleLine(line, yoAgent);
+      if (line.trim()) void handleLine(line);
     }
   });
   proc.on("exit", (code) => {
@@ -81,7 +67,7 @@ function spawnHelper(yoAgent: YoAgent, binPath: string): void {
     // Crash-loop guard: back off and cap restarts.
     if (restarts++ < 5) {
       console.error(`[overlay] helper exited (${code}); restarting (${restarts})`);
-      setTimeout(() => { if (!stopped) spawnHelper(yoAgent, binPath); }, 1000);
+      setTimeout(() => { if (!stopped) spawnHelper(binPath); }, 1000);
     } else {
       console.error("[overlay] helper keeps exiting; giving up.");
     }
@@ -89,22 +75,27 @@ function spawnHelper(yoAgent: YoAgent, binPath: string): void {
   proc.on("error", (err) => console.error("[overlay] helper spawn error:", err));
 }
 
-async function handleLine(line: string, yoAgent: YoAgent): Promise<void> {
+async function handleLine(line: string): Promise<void> {
   let msg: { type?: string; trigger?: string; query?: string; x?: number; y?: number; app?: string };
   try { msg = JSON.parse(line); } catch { return; }
   if (msg.type !== "run") return;
   const trigger = msg.trigger || ".yo";
   const query = (msg.query || "").trim();
-  const app = msg.app || "";
 
   try {
-    // .dip → switch apps: bring yo to the front, run through the parser, clear spinner.
+    // .dip → run the OS layout command. Do NOT focus Glyphh — commands like
+    // `dip min` / `dip exp` act on whatever window the user is currently in, so
+    // stealing focus to the Glyphh window would target the wrong app.
     if (trigger === ".dip") {
-      focusMainFn?.();
+      // Clear the keytap spinner FIRST. Opening/arranging windows steals focus,
+      // and the spinner is cleared with a backspace to the focused field — do it
+      // now, while the source text box still has focus, so the ⠋ isn't left
+      // stranded there.
+      sendToHelper({ type: "done" });
+      await new Promise((r) => setTimeout(r, 120));
       const cmd = `dip${query ? " " + query : ""}`;
       try { await runCommandFn?.(cmd); }
       catch (e) { console.error("[overlay] command failed:", e); }
-      sendToHelper({ type: "done" });
       return;
     }
     // .drip → full-screen OS overlay over whatever app you're in: do NOT focus
@@ -128,15 +119,8 @@ async function handleLine(line: string, yoAgent: YoAgent): Promise<void> {
       return;
     }
 
-    // .yo (and .peace → treat as .yo) → one-shot agent run with disambiguation.
-    const r = await yoAgent.runForResult(DIRECTIVE + query);
-    const text = (r.error ? "" : r.text).trim();
-    if (text.startsWith("NEEDS_INPUT:")) {
-      openAgentPanel(query, app);
-      sendToHelper({ type: "panel" });
-    } else {
-      sendToHelper({ type: "result", text });
-    }
+    // .yo / .peace → the chat agent that powered these was removed. No-op.
+    sendToHelper({ type: "done" });
   } catch (e) {
     console.error("[overlay] run handling failed:", e);
     sendToHelper({ type: "done" });

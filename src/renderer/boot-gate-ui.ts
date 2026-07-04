@@ -139,68 +139,8 @@ function showTutorial(cb: BootGateCallbacks): void {
   goToStep(0);
 }
 
-// ── CC Bootstrap Modal ──────────────────────────────────────────────────────
-
-async function maybeShowCcBootstrapModal(cb: BootGateCallbacks): Promise<void> {
-  const modal = document.getElementById("cc-bootstrap-modal");
-  if (!modal) return;
-  if (accountLocked) return; // a locked account sees nothing but the gate
-  const status = await window.yo.ccStatus();
-  if (status.found) return;
-
-  const errEl = document.getElementById("cc-bootstrap-error")!;
-
-  // BrowserView panels are native and paint over HTML. Hide them while
-  // the modal is up so the gate is actually visible.
-  ccModalShowing = true;
-  cb.hidePanels();
-  modal.style.display = "flex";
-
-  const dismissModal = () => {
-    ccModalShowing = false;
-    modal.style.display = "none";
-    cb.showPanels();
-  };
-
-  // BYOK is the only path now. Paste an Anthropic API key, save it to the
-  // local encrypted store, dismiss the modal. ccStatus.found flips true on
-  // the next read.
-  const byokInput = document.getElementById("cc-bootstrap-byok-key") as HTMLInputElement | null;
-  const byokSaveBtn = document.getElementById("cc-bootstrap-byok-save") as HTMLButtonElement | null;
-  byokSaveBtn?.addEventListener("click", async () => {
-    const key = (byokInput?.value || "").trim();
-    if (!key) { errEl.textContent = "paste your Anthropic API key first"; return; }
-    if (!key.startsWith("sk-ant-")) { errEl.textContent = "that doesn't look like an Anthropic key (should start with sk-ant-)"; return; }
-    errEl.textContent = "";
-    byokSaveBtn.disabled = true;
-    byokSaveBtn.textContent = "Saving…";
-    try {
-      const result = await window.yo.providerKeysSet("anthropic", key);
-      if (!result?.ok) {
-        errEl.textContent = result?.error || "couldn't save the key — try again";
-        byokSaveBtn.disabled = false;
-        byokSaveBtn.textContent = "Save key";
-        return;
-      }
-      dismissModal();
-    } catch (err) {
-      errEl.textContent = err instanceof Error ? err.message : "couldn't save the key";
-      byokSaveBtn.disabled = false;
-      byokSaveBtn.textContent = "Save key";
-    }
-  });
-
-  document.getElementById("cc-bootstrap-quit")!.onclick = () => {
-    window.yo.windowClose();
-  };
-  // The "get one at console.anthropic.com/settings/keys" link must open
-  // in the user's default browser — anchor hrefs inside an Electron
-  // renderer otherwise navigate the renderer itself.
-  document.getElementById("cc-bootstrap-key-link")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    window.yo.openExternal("https://console.anthropic.com/settings/keys");
-  });
-}
+// The CC-bootstrap / BYOK key modal is gone: Glyphh has no in-app agent and
+// stores no LLM keys. Apps bring their own keys via per-app Config Vars.
 
 // ── Splash dismiss ──────────────────────────────────────────────────────────
 
@@ -269,16 +209,16 @@ function dismissSplash(cb: BootGateCallbacks): void {
   scheduleSplashFinish(cb);
 }
 
-// ── Account lockout (trial expired / account disabled) ──────────────────────
+// ── Account lockout (admin-disabled account) ────────────────────────────────
 
 let accountLocked = false;
-let upgradeUrl = `${window.yo.platformUrl}/dashboard/billing`;
+let manageUrl = `${window.yo.platformUrl}/dashboard/billing`;
 
 /** Raise the full-window lockout gate. The user keeps the titlebar (so they
  *  can quit) but everything else is sealed until the account is active. */
 function showLockout(cb: BootGateCallbacks, info?: { status?: string; upgradeUrl?: string }): void {
   accountLocked = true;
-  if (info?.upgradeUrl) upgradeUrl = info.upgradeUrl;
+  if (info?.upgradeUrl) manageUrl = info.upgradeUrl;
 
   // Seal the workspace: panels are native BrowserViews that paint over HTML,
   // so they must be hidden for the overlay to actually cover anything.
@@ -294,14 +234,12 @@ function showLockout(cb: BootGateCallbacks, info?: { status?: string; upgradeUrl
   document.getElementById("onboarding-overlay")?.classList.add("hidden");
   document.getElementById("tutorial-overlay")?.classList.add("hidden");
 
-  const disabled = info?.status === "disabled";
   const titleEl = document.getElementById("lockout-title");
   const msgEl = document.getElementById("lockout-message");
-  if (titleEl) titleEl.textContent = disabled ? "Your account is inactive" : "Your free trial has ended";
+  if (titleEl) titleEl.textContent = "Your account is inactive";
   if (msgEl) {
-    msgEl.textContent = disabled
-      ? "This account has been deactivated. Reactivate your plan to get back into your workspace — your data is safe."
-      : "Upgrade to keep using Glyphh. Your workspace, agents, and settings are all saved — they'll be exactly where you left them.";
+    msgEl.textContent =
+      "This account has been deactivated. Reactivate your plan to get back into your workspace — your data is safe.";
   }
   const statusEl = document.getElementById("lockout-status");
   if (statusEl) statusEl.textContent = "";
@@ -380,11 +318,11 @@ export function initBootGate(cb: BootGateCallbacks): void {
     }
     dismissSplash(cb);
 
-    // Trial expired / account disabled → seal the workspace behind the lockout
-    // gate. No tutorial, no CC nudge — nothing until the account is active.
-    // (The heartbeat is usually still in flight at boot; the account-locked
-    // IPC below is the primary trigger — this catches an early heartbeat.)
-    if (data.authenticated && (data.status === "expired" || data.status === "disabled")) {
+    // Account disabled → seal the workspace behind the lockout gate. No
+    // tutorial, no CC nudge — nothing until the account is active. (The
+    // heartbeat is usually still in flight at boot; the account-locked IPC
+    // below is the primary trigger — this catches an early heartbeat.)
+    if (data.authenticated && data.status === "disabled") {
       showLockout(cb, { status: data.status });
       cb.onBootReady(data);
       return;
@@ -397,13 +335,6 @@ export function initBootGate(cb: BootGateCallbacks): void {
       });
     }
 
-    // CC bootstrap (Phase 2 of THE-PIVOT-BYOK): nudge the user to log in to
-    // Claude Code if they haven't yet. Skip during onboarding — we don't want
-    // to layer two modals.
-    if (!data.needsOnboarding) {
-      setTimeout(() => { void maybeShowCcBootstrapModal(cb); }, 1200);
-    }
-
     cb.onBootReady(data);
   });
 
@@ -414,7 +345,7 @@ export function initBootGate(cb: BootGateCallbacks): void {
 
   // Lockout overlay buttons.
   document.getElementById("lockout-upgrade")?.addEventListener("click", () => {
-    window.yo.openExternal(upgradeUrl);
+    window.yo.openExternal(manageUrl);
   });
   document.getElementById("lockout-recheck")?.addEventListener("click", () => {
     const statusEl = document.getElementById("lockout-status");
@@ -426,7 +357,7 @@ export function initBootGate(cb: BootGateCallbacks): void {
       if (r.status === "active") {
         hideLockout(cb);
       } else if (statusEl) {
-        statusEl.textContent = "No active plan found yet. Once your upgrade goes through, try again.";
+        statusEl.textContent = "This account is still inactive. Once it's reactivated, try again.";
         statusEl.className = "onboarding-error";
       }
     }).catch(() => {
@@ -449,11 +380,6 @@ export function initBootGate(cb: BootGateCallbacks): void {
     cb.showOnboarding(true);
   });
 
-  // Triggered by main when an agent call hits ensureCcAuth() with no creds.
-  window.yo.onCcShowModal(() => {
-    void maybeShowCcBootstrapModal(cb);
-  });
-
   // After onboarding activation, show tutorial (first time only) or restore panels
   window.addEventListener("yo-onboarding-done", async () => {
     const seen = await window.yo.getPreference("hasSeenTutorial", false);
@@ -462,8 +388,5 @@ export function initBootGate(cb: BootGateCallbacks): void {
     } else {
       cb.showPanels();
     }
-    // Prompt for Claude Code login if creds are still missing — onBoot skipped
-    // this when needsOnboarding was true, so it has to fire here instead.
-    setTimeout(() => { void maybeShowCcBootstrapModal(cb); }, 1200);
   });
 }

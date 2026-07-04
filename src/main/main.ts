@@ -20,43 +20,34 @@ try {
 }
 
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeTheme, net, protocol, session as electronSession, shell, systemPreferences, webContents } from "electron";
+
+// Stop Chromium from encrypting its own internal cookie/session storage via
+// the OS keychain ("Chrome Safe Storage" on macOS). This is separate from
+// anything our own code does (app-secrets.ts, auth.ts, app-connector.ts
+// all avoid safeStorage already) — it's Chromium's automatic behavior for
+// ANY persistent session partition (e.g. `persist:yo`, used by webviews and
+// browser tabs), and it's what was still triggering a keychain prompt on
+// every launch. In an unsigned/dev build, macOS can't remember the "Always
+// Allow" grant across relaunches (the app's signature changes each build),
+// so it re-prompts every single time. Must be set before app is ready.
+app.commandLine.appendSwitch("use-mock-keychain");
+
 import path from "path";
 import fs from "fs";
 import { PanelManager } from "./panel-manager";
 import { TerminalManager, AgentSpawnConfig } from "./terminal";
-import { writeAgentBriefing, ensureProjectClaudeMd, ensureProjectMcpJson, rewriteAllBriefings } from "./agent-briefing";
 import { CommandParser } from "./command-parser";
-import { SkillEngine } from "./skill-engine";
 import { registerHotkey } from "./hotkey";
-import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, serverPostAuthed, serverGetAuthed, getAuthToken, hasMcpAccess } from "./auth";
-import { CloudSync } from "./cloud-sync";
-import { initCapabilities, setOfferEnabled, getCapabilitiesStatus, cleanupCapabilities } from "./capability-sync";
-import { CypherBus } from "./cypher-bus";
-import { listAgents, getAgent, saveAgent, removeAgent, idAvailable, type AgentConfig as AgentRegistryConfig } from "./stores/agent-store-db";
-import { pushAgentProfile, deleteAgentProfile, syncAllAgents } from "./agent-sync";
-import { loadLLMConfig, saveLLMConfig, LLMConfig } from "./llm-config";
+import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, serverPostAuthed, serverGetAuthed, getAuthToken } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
-import { canAddApp, canCreateSkill, canSaveLayout, canUseMcp, canUseSync, canUseVoice, getCurrentLimits } from "./entitlements";
+import { canAddApp, canSaveLayout, canUseMcp } from "./entitlements";
 import { executeCommand } from "./dom-bridge";
 import { getPreference, setPreference } from "./stores/preferences-db";
 import { YoInterceptor } from "./yo-interceptor";
-import { YoChat } from "./yo-chat";
-import * as providerKeysModule from "./provider-keys";
-import { bootstrapStatus as ccBootstrapStatus } from "./cc-bootstrap";
 import { SessionCache } from "./session-cache";
-import { NoteStore } from "./note-store";
-import { MemoryStore } from "./memory-store";
-import { Transcriber } from "./transcriber";
-import { VoiceRelay } from "./voice-relay";
 import { smartGrab } from "./smart-grab";
-import { scanPanel, formatScan } from "./dom-scanner";
 import { resolveShellPath } from "./shell-path";
-import { VSCodeServer } from "./vscode-server";
-import { WorkspaceManager } from "./workspace-manager";
-import { EventLog } from "./event-log";
-// WorkspaceMcpServer removed — workspace tools merged into McpExpose
-import { InboxRouter } from "./inbox-router";
 import { autoUpdater } from "electron-updater";
 
 /** True if semver `latest` is strictly newer than `current` (major.minor.patch). */
@@ -70,88 +61,41 @@ function isNewerVersion(latest: string, current: string): boolean {
   }
   return false;
 }
-import { ConfigSync } from "./config-sync";
-import { reloadRemotePatterns } from "./firewall";
-import { usageTracker } from "./usage-tracker";
-import { usageQueue } from "./usage-queue";
-import { promptLog } from "./prompt-log";
-import { Embedder } from "./embedder";
-import { CaptureStore } from "./capture-store";
-import { YoAgent } from "./yo-agent";
-import { ActionGrabber } from "./action-grabber";
-import { AgentRunner, AgentConfig } from "./agent-runner";
-import { McpExpose, ghRequest } from "./mcp-expose";
+import { startOverlay } from "./overlay-bridge";
+import { registerCommandWindow, disposeCommandWindow } from "./command-window";
+import { initOsWindowManager, disposeOsWindowManager } from "./os-window-manager";
+import { setMainWindowRef } from "./main-window-ref";
+import { initThinkingOverlay } from "./thinking-overlay";
+import { runDip } from "./dip-commands";
 import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay } from "./relay-client";
+import { syncLocalMcpServer } from "./local-mcp-server";
 import { installRelayHandlers } from "./relay-handlers";
-import { registerWorkbenchTerminalIpc } from "./wb-terminal";
-import { registerAgentDefaultsIpc } from "./agent-defaults";
-import { registerCodeIndexIpc } from "./code-index/ipc";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
-import { startOverlay } from "./overlay-bridge";
 import { ConnectorManager } from "./connectors";
-import { SkillToolRouter } from "./skill-tool-router";
-import { SkillScheduler } from "./skill-scheduler";
-import { DataStore, closeDataStoreDb } from "./data-store";
-import { closeSubstrateDb } from "./substrate/store";
+import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc } from "./settings-ipc";
-import { registerSkillsIpc } from "./skills-ipc";
 import { registerAppsIpc } from "./apps-ipc";
-import { registerCapturesIpc } from "./captures-ipc";
-import { registerMarketplaceIpc } from "./marketplace-ipc";
+import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
-import { registerCanvasIpc } from "./canvas-ipc";
-import { buildSubstrateDeps } from "./substrate-deps";
-import { createCypherSession } from "./cypher-session";
 import { initLocalDb, closeLocalDb } from "./local-db";
 import { migrateFromFiles } from "./stores/migrate-from-files";
-import { setSubstrateToolDeps, listBuiltinYoTools } from "./substrate/tools";
 import { getAgentMode } from "./action-gate";
-import * as threadStore from "./cypher-thread-store";
 
 
 let mainWindow: BrowserWindow | null = null;
 let panelManager: PanelManager;
 let layoutManager: LayoutManager;
 let commandParser: CommandParser;
-let skillEngine: SkillEngine;
 let appConnector: AppConnector;
 
 let terminalManager: TerminalManager;
-let agentRunner: AgentRunner;
-let noteStore: NoteStore;
-let voiceRelay: VoiceRelay | null = null;
-let cloudSyncInstance: CloudSync | null = null;
-let configSync: ConfigSync | null = null;
-let embedder: Embedder | null = null;
-let mcpExpose: McpExpose | null = null;
-let inboxRouter: InboxRouter | null = null;
 
-/** Start/stop the local MCP-expose server to match the tier — exposing Glyphh
- *  as an MCP server is paid-only. Safe to call repeatedly (boot + heartbeat). */
-function syncMcpExpose(): void {
-  const me = mcpExpose;
-  if (!me) return;
-  const shouldRun = hasMcpAccess();
-  if (shouldRun && !me.isRunning) {
-    me.start().then((r) => {
-      if (r.ok) console.log("[mcp-expose] started (paid tier)");
-      else console.error("[mcp-expose] failed to start:", r.error);
-    }).catch(() => {});
-  } else if (!shouldRun && me.isRunning) {
-    me.stop();
-    console.log("[mcp-expose] stopped (not a paid tier)");
-  }
-}
 let mcpManager: McpManager | null = null;
-let wazManager: import("./waz-manager").WazManager | null = null;
 let dripManager: DripManager | null = null;
-let actionGrabber: ActionGrabber | null = null;
 let connectorManager: ConnectorManager | null = null;
-let skillToolRouter: SkillToolRouter | null = null;
-let skillScheduler: SkillScheduler | null = null;
 
 // ── DOM Picker script (injected into panel webContents) ─────
 const PICKER_SCRIPT = `(function(){
@@ -246,13 +190,16 @@ async function createWindow() {
   });
 
   if (saved.maximized) mainWindow.maximize();
+  // Share the main-window handle with modules that can't import main.ts
+  // (app-resolver focuses it when the "Glyphh" system app is opened).
+  setMainWindowRef(mainWindow);
 
   // Request macOS mic entitlement (triggers OS permission dialog on first use)
   if (process.platform === "darwin") {
     systemPreferences.askForMediaAccess("microphone").catch(() => {});
   }
 
-  // Allow microphone access in the main window renderer (for voice input)
+  // Media permission for the main window renderer
   const mainSes = mainWindow.webContents.session;
   mainSes.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === "media");
@@ -316,40 +263,10 @@ async function boot() {
   initLocalDb();
   const migrationResult = migrateFromFiles();
   if (migrationResult.migrated) {
-    console.log(`[local-db] migrated from files: ${migrationResult.agents} agents, ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs`);
+    console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs`);
   }
 
   // Load LLM config (provider + model selection only)
-  let llmConfig = loadLLMConfig();
-
-  // Cached model list from server (model_rates table)
-  interface ServerModel { provider: string; model: string; display_name: string; yos_per_1k_input: number; yos_per_1k_output: number; max_context_tokens?: number; max_output_tokens?: number }
-  let serverModelsCache: ServerModel[] = [];
-  let serverModelsFetchedAt = 0;
-  async function fetchServerModels(): Promise<ServerModel[]> {
-    if (serverModelsCache.length > 0 && Date.now() - serverModelsFetchedAt < 60_000) return serverModelsCache;
-    try {
-      const r = await serverGetAuthed<{ models: ServerModel[] }>("/api/models");
-      if (r.models?.length) {
-        serverModelsCache = r.models;
-        serverModelsFetchedAt = Date.now();
-      }
-    } catch { /* offline / not yet authed — keep cache or fallback */ }
-    return serverModelsCache;
-  }
-
-  function applyLLMConfig(config: LLMConfig) {
-    llmConfig = config;
-    yoChat?.setLLMConfig(config);
-    skillEngine?.setLLMConfig(config);
-    yoAgent?.setLLMConfig(config);
-    wazManager?.setLLMConfig(config);
-    yoInterceptor?.setCurrentModel(config.model);
-    const modelNames = serverModelsCache.length > 0
-      ? serverModelsCache.map((m) => m.model)
-      : ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
-    yoInterceptor?.setAvailableModels(modelNames);
-  }
 
   // ── yo-asset:// protocol — serves shared assets (Chart.js etc.) to vibe panels ──
   const rendererDir = path.join(__dirname, "..", "renderer");
@@ -376,82 +293,7 @@ async function boot() {
   );
 
   // Core services
-  skillEngine = new SkillEngine();
-  // Seed bundled built-in skills (e.g. vibe-planner) if absent. Never
-  // clobbers a user-edited copy; safe + idempotent on every boot.
-  try { skillEngine.seedBuiltinSkills(); } catch (err) { console.log("[skills] seed failed:", (err as Error).message); }
-  // Broadcast a `skills-changed` event whenever anything touches the
-  // skills directory — covers both the skillEngine API path (CRUD via
-  // the Skills app) AND the agent writing skill files directly via its
-  // Write tool. Renderer subscribes via window.yo.onSkillsChanged.
-  let skillsBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
-  const broadcastSkillsChanged = () => {
-    if (skillsBroadcastTimer) clearTimeout(skillsBroadcastTimer);
-    skillsBroadcastTimer = setTimeout(() => {
-      try { mainWindow?.webContents.send("skills-changed"); } catch { /* */ }
-      for (const wc of panelManager?.getAllWebContents() ?? []) {
-        try { wc.send("skills-changed"); } catch { /* */ }
-      }
-    }, 120);
-  };
-  skillEngine.onChange(broadcastSkillsChanged);
-  try {
-    fs.watch(skillEngine.getSkillsDir(), { recursive: true, persistent: false }, () => {
-      broadcastSkillsChanged();
-    });
-  } catch (err) {
-    // recursive isn't supported on Linux without polling — fall back
-    // silently; the skillEngine.onChange path still fires for in-app CRUD.
-    console.warn("[skills-watch] could not watch", skillEngine.getSkillsDir(), err);
-  }
   appConnector = new AppConnector();
-
-  // Embedder + capture store
-  embedder = new Embedder();
-  embedder.init().catch((err) => console.error("[embedder]", err));
-
-  const captureStore = new CaptureStore();
-  captureStore.setEmbedder(embedder);
-  captureStore.setPolicyResolver((source) =>
-    // Swarm output accumulates — every agent message is kept, not deduped.
-    source.startsWith("swarm/")
-      ? { type: "append" }
-      : appConnector.getCapturePolicy(source));
-
-  const dataStore = new DataStore();
-
-  // Workspace registry — { slug, name, rootDir } per workspace, persisted to
-  // ~/yo/workspaces.json. Single source of truth for the active workspace.
-  // On first init, migrates from the legacy `activeWorkspace` preference and
-  // ensures a "default" workspace bound to the user's home dir.
-  const workspaceManager = new WorkspaceManager();
-  workspaceManager.init();
-
-  // Every component that writes to captureStore needs this to tag entries so
-  // capture-store search / listeners scope correctly.
-  const workspaceGetter = (): string => workspaceManager.getActiveSlug();
-
-  // Phase 3: workspace event log + MCP server. The server is started on-demand
-  // when the first code-terminal launches (no need to bind a port if no agent
-  // is running). EventLog is the canonical writer for events.jsonl.
-  const eventLog = new EventLog((slug) => workspaceManager.workspaceDir(slug));
-  // Phase 4: orchestrator-mediated push. Watches each workspace's events.jsonl
-  // and drains subscription-matched events into per-agent inbox files.
-  inboxRouter = new InboxRouter(workspaceManager, eventLog);
-
-  // Action-driven capture — grabs content on blur/navigate + polls chat panels
-  actionGrabber = new ActionGrabber();
-  actionGrabber.setCaptureStore(captureStore);
-  actionGrabber.setAppConnector(appConnector);
-
-  // MCP expose — exposes Glyphh as a local MCP server. This is a paid-tier
-  // feature, so it is NOT started here unconditionally; the heartbeat observer
-  // starts it once the tier is confirmed paid (and stops it on downgrade).
-  mcpExpose = new McpExpose();
-  mcpExpose.setCaptureStore(captureStore);
-  mcpExpose.setWorkspaceGetter(workspaceGetter);
-  mcpExpose.setWorkspaceBackend(eventLog, workspaceManager);
-  syncMcpExpose();
 
   // MCP Manager — always init so tools are ready when the agent needs them.
   // Tier gates apply at the UI level (add/connect), not at boot.
@@ -462,183 +304,12 @@ async function boot() {
   // Relay client — persistent WebSocket to yo-server so external MCP callers
   // can drive this instance. No-op until the user sets a client token.
   initRelayClient();
+
+  // Local MCP server — the no-cloud alternative. Starts only if the user has
+  // opted in (localMcpEnabled). Uses the same handler registry as the relay.
+  void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
   mcpManager.on("changed", () => {
     mainWindow?.webContents.send("mcp-changed");
-  });
-
-  // Skill system — tool router, runner dependencies, scheduler
-  skillToolRouter = new SkillToolRouter();
-  skillToolRouter.setYoTools(listBuiltinYoTools());
-  skillToolRouter.setMcpManager(mcpManager);
-  skillEngine.setMcpManager(mcpManager);
-  skillScheduler = new SkillScheduler(skillEngine);
-  skillScheduler.start();
-
-  // Tool registry deps — provides dependencies to substrate/tools.ts
-  setSubstrateToolDeps({
-    captureStore: { search: (q, n) => captureStore.search(q, n) },
-    sessionCache: { get: () => session.get() },
-    noteStore: {
-      search: (q, n) => noteStore.search(q, n),
-      write: (title, content, source) => noteStore.write(title, content, source),
-    },
-    memoryStore: { save: (content, category) => memoryStore.save(content, category as any) },
-    skillEngine: {
-      process: (content, skillName) => skillEngine.process(content, skillName),
-      listSkillsDetailed: () => skillEngine.listSkillsDetailed(),
-      getSkill: (name) => { const s = skillEngine.getSkill(name); return s ? { manifest: s.manifest as any, prompt: s.prompt, folderPath: s.folderPath } : null; },
-      writeSkill: (name, manifest, prompt) => skillEngine.writeSkill(name, manifest as any, prompt),
-      deleteSkill: (name) => skillEngine.deleteSkill(name),
-      readSkillFile: (name, rel) => skillEngine.readSkillFile(name, rel),
-      writeSkillFile: (name, rel, content) => skillEngine.writeSkillFile(name, rel, content),
-      listSkillFiles: (name) => skillEngine.listSkillFiles(name),
-      runSkill: (name, input, opts) => skillEngine.runSkill(name, input, opts),
-      getRunHistory: (name) => skillEngine.getRunHistory(name) as any,
-      hasRunner: (name) => skillEngine.hasRunner(name),
-    },
-    dripManager: {
-      listCustoms: () => dripManager!.listCustoms(),
-      saveCustom: (name: string, recipe: string) => dripManager!.saveCustom(name, recipe),
-      deleteCustom: (name: string) => dripManager!.deleteCustom(name),
-      listBuiltinEffects: () => BUILTIN_EFFECTS.slice(),
-    },
-    layoutManager: {
-      listLayouts: () => layoutManager.listLayouts() as any,
-      getLayout: (name: string) => layoutManager.getLayout(name) as any,
-      saveLayout: (grid: any) => layoutManager.saveLayout(grid),
-      deleteLayout: (name: string) => layoutManager.deleteLayout(name),
-    },
-    dataStore: {
-      get: (ns, key) => dataStore.get(ns, key),
-      set: (ns, key, val) => dataStore.set(ns, key, val),
-      delete: (ns, key) => dataStore.delete(ns, key),
-      list: (ns, prefix?, limit?) => dataStore.list(ns, prefix, limit),
-      query: (ns, filter, limit?) => dataStore.query(ns, filter, limit),
-      keys: (ns) => dataStore.keys(ns),
-      count: (ns) => dataStore.count(ns),
-      clear: (ns) => dataStore.clear(ns),
-      listNamespaces: () => dataStore.listNamespaces(),
-    },
-    mcpRouter: (() => {
-      const shortToQualified = new Map<string, string>();
-      return {
-        resolveAll: () => {
-          if (!mcpManager) {
-            console.warn("[mcp-router] mcpManager not available");
-            return [];
-          }
-          shortToQualified.clear();
-          const allTools = mcpManager.getAllTools();
-          if (allTools.length === 0) {
-            const servers = mcpManager.getServerStates();
-            const summary = servers.map(s => `${s.config.id}: ${s.status}`).join(", ");
-            if (servers.length > 0) {
-              console.warn(`[mcp-router] 0 tools resolved. Server states: ${summary}`);
-            }
-          }
-          return allTools.map((t) => {
-            const short = `${t.serverId.replace(/-/g, "_")}__${t.name.replace(/-/g, "_")}`;
-            shortToQualified.set(short, t.qualifiedName);
-            return { name: short, description: t.description || "", input_schema: t.inputSchema };
-          });
-        },
-        callMcp: (name: string, input: Record<string, unknown>) => {
-          const qualified = shortToQualified.get(name) || name;
-          return mcpManager!.callTool(qualified, input);
-        },
-        hasTool: (name: string) => shortToQualified.has(name),
-      };
-    })(),
-    workspace: {
-      teamStatus: () => {
-        const wsSlug = workspaceGetter();
-        const ws = workspaceManager.get(wsSlug);
-        if (!ws) return `Unknown workspace: ${wsSlug}`;
-        const agents = workspaceManager.listAgents(wsSlug);
-        const status = eventLog.teamStatus(wsSlug, agents);
-        return JSON.stringify({
-          workspace: ws.slug,
-          rootDir: ws.rootDir,
-          agents: status.map((s) => ({ ...s, lastPostAt: s.lastPostTs ? new Date(s.lastPostTs).toISOString() : null })),
-        }, null, 2);
-      },
-      readLog: (filter: Record<string, unknown>) => {
-        const wsSlug = workspaceGetter();
-        const events = eventLog.read(wsSlug, {
-          tags: Array.isArray(filter.tags) ? filter.tags as string[] : undefined,
-          from: Array.isArray(filter.from) ? filter.from as string[] : undefined,
-          to: typeof filter.to === "string" ? filter.to : undefined,
-          since: typeof filter.since === "number" ? filter.since : undefined,
-          until: typeof filter.until === "number" ? filter.until : undefined,
-          kinds: Array.isArray(filter.kinds) ? filter.kinds as any : undefined,
-          limit: typeof filter.limit === "number" ? filter.limit : undefined,
-        });
-        return JSON.stringify({ count: events.length, events }, null, 2);
-      },
-      postTo: (agent: string, body: string, kind?: string) => {
-        const wsSlug = workspaceGetter();
-        const evt = eventLog.append(wsSlug, {
-          from: ".yo",
-          to: agent,
-          tags: [`to:${agent}`],
-          kind: (kind as any) || "post",
-          body,
-        });
-        return JSON.stringify({ sent: true, ts: evt.ts });
-      },
-      post: (body: string, tags?: string[], kind?: string) => {
-        const wsSlug = workspaceGetter();
-        const evt = eventLog.append(wsSlug, {
-          from: ".yo",
-          tags: tags || ["broadcast"],
-          kind: (kind as any) || "post",
-          body,
-        });
-        return JSON.stringify({ sent: true, ts: evt.ts });
-      },
-      readAgent: (name: string, kind?: string) => {
-        const wsSlug = workspaceGetter();
-        if (kind === "log") {
-          const events = eventLog.read(wsSlug, { from: [name] });
-          return JSON.stringify({ agent: name, events }, null, 2);
-        }
-        const text = eventLog.readScratchpad(wsSlug, name);
-        return text || `(${name} has no scratchpad yet)`;
-      },
-      broadcastAndWait: async (body: string, tags: string[], kind: string | undefined, timeoutMs: number) => {
-        const wsSlug = workspaceGetter();
-        const evt = eventLog.append(wsSlug, {
-          from: ".yo",
-          tags,
-          kind: (kind as any) || "question",
-          body,
-        });
-        const sentTs = evt.ts;
-        const deadline = Date.now() + timeoutMs;
-        const pollInterval = 2000;
-        const responses: Array<{ from: string; body: string; ts: number; kind: string }> = [];
-        const seenTs = new Set<number>();
-
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, pollInterval));
-          const recent = eventLog.read(wsSlug, { since: sentTs, limit: 50 });
-          for (const r of recent) {
-            if (r.from === ".yo" || r.from === "user") continue;
-            if (r.ts <= sentTs) continue;
-            if (seenTs.has(r.ts)) continue;
-            seenTs.add(r.ts);
-            responses.push({ from: r.from, body: r.body, ts: r.ts, kind: r.kind });
-          }
-        }
-
-        return JSON.stringify({
-          broadcast: { body, ts: sentTs },
-          responses,
-          waitedMs: Date.now() - sentTs,
-          timedOut: responses.length === 0,
-        }, null, 2);
-      },
-    },
   });
 
   // Pipedream Connectors — managed OAuth connections (Advanced tier)
@@ -649,121 +320,25 @@ async function boot() {
     mainWindow?.webContents.send("connectors-changed");
   });
 
-  // Yo agent — capture search + format assistant
-  const yoAgent = new YoAgent();
-  yoAgent.setCaptureStore(captureStore);
-  yoAgent.setWorkspaceGetter(workspaceGetter);
-  yoAgent.setSkillEngine(skillEngine);
-  yoAgent.setAppsProvider(() => appConnector.list().map((a) => ({ id: a.id, name: a.name })));
-
-  // Run prompt-mode skills/tasks through the full agent (tools + MCP) so
-  // tasks like "read my email and summarize" actually work.
-  skillEngine.setAgenticRunner((prompt) => yoAgent.runForResult(prompt));
-
-  // Persist every completed task run as a `type: run` chat (Activity + history).
-  skillEngine.onRunComplete((run) => {
-    try {
-      yoAgent.saveRunChat({
-        skillName: run.skillName,
-        trigger: run.trigger,
-        output: run.output,
-        error: run.error,
-        startedAt: run.startedAt,
-        instructions: skillEngine.getSkill(run.skillName)?.prompt,
-      });
-      mainWindow?.webContents.send("runs-changed");
-    } catch {}
-  });
-
-  // Waz manager — disposable agent popup windows (.waz command)
-  const { WazManager } = await import("./waz-manager");
-  wazManager = new WazManager();
-  wazManager.setCaptureStore(captureStore);
-  wazManager.setWorkspaceGetter(workspaceGetter);
-  wazManager.setSkillEngine(skillEngine);
-
   // Terminal manager — pty processes for terminal panels
   terminalManager = new TerminalManager();
   terminalManager.init();
 
-  // Cypher bus — canonical message bus for inter-agent communication
-  const cypherBus = new CypherBus(
-    (wsSlug) => {
-      const map = getPreference<Record<string, string>>("workspaceCypher", {});
-      return map[wsSlug] ?? null;
-    },
-    eventLog,
-  );
-
-  // Track jammer preview panels so we can clean them up on cypher wrap/leave
-  const jammerPreviewPanels = new Set<string>();
-
-  // React to local bus events — local side-effects only (preview panels).
-  // Swarm activity itself streams into the yo panel; see the forwarder below.
-  cypherBus.onPost((_wsSlug, event) => {
-    // Handle preview_url — create a browser panel for the jammer's URL
-    if (event.kind === "preview_url" && event.meta?.url && mainWindow && !mainWindow.isDestroyed()) {
-      const url = String(event.meta.url);
-      const panelId = `jammer-preview-${event.from}`;
-      const title = String(event.meta.title || `Preview: ${event.from}`);
-      console.log(`[jammer-preview] opening panel="${panelId}" url="${url}" title="${title}"`);
-      if (!panelManager.hasPanel(panelId)) {
-        panelManager.addPanel(panelId, url);
-      }
-      panelManager.switchTo(panelId, mainWindow);
-      jammerPreviewPanels.add(panelId);
-    }
-  });
-
-  // Record substantive swarm output into the capture store, so a swarm's
-  // findings / reports are searchable and available to the yo agent as
-  // context later (via search_captures). Coordination chatter and telemetry
-  // are skipped — only messages that carry real content.
-  const SWARM_CAPTURE_KINDS = new Set([
-    "complete_task", "report_status", "artifact", "post", "post_to",
-  ]);
-  cypherBus.onPost((wsSlug, event) => {
-    if (!SWARM_CAPTURE_KINDS.has(event.kind)) return;
-    const body = (event.body || "").trim();
-    if (body.length < 40) return; // skip trivial acks
-    const header = `[swarm · ${event.from}${event.to ? ` → ${event.to}` : ""} · ${event.kind}]`;
-    void captureStore.ingest(`swarm/${event.from}`, `${header}\n${body}`, wsSlug)
-      .catch(() => { /* capture is best-effort */ });
-  });
-
-  agentRunner = new AgentRunner();
-  agentRunner.setBus(cypherBus);
-  agentRunner.setUsagePoster((cypherId, agentId, inputTokens, outputTokens) => {
-    serverPostAuthed(`/api/cyphers/${encodeURIComponent(cypherId)}/events`, {
-      kind: "usage",
-      by_agent_id: agentId,
-      payload: { input_tokens: inputTokens, output_tokens: outputTokens, description: `turn by ${agentId}` },
-    }).catch((err) => console.warn("[usage-poster] failed:", err instanceof Error ? err.message : err));
-  });
-  mcpExpose.setBus(cypherBus);
-
   // Session cache — in-memory yo/sup content store
   const session = new SessionCache();
   session.setOnCapture(() => {});
-  session.setOnRawCapture((appId, content) => {
-    const ws = getPreference<string>("activeWorkspace", "default");
-    captureStore.ingest(appId, content, ws).catch(() => {});
-  });
 
   // yo/dip/drip interceptor — injected into ALL app panels
-  const yoInterceptor = new YoInterceptor(appConnector, skillEngine, session);
+  const yoInterceptor = new YoInterceptor(appConnector, session);
   {
     // `agentMode` holds the permission (default/plan/acceptEdits/bypassPermissions).
+    // Previously also set on yoAgent (the now-removed chat agent); the panel's
+    // permission dropdown is gone too, so this just feeds the interceptor's
+    // (currently-unread) mode field for now.
     const savedPerm = getAgentMode();
-    yoAgent.setMode(savedPerm);
     yoInterceptor.setAgentMode(savedPerm);
   }
-  yoInterceptor.setCurrentModel(llmConfig.model);
   // Fetch active models from server and populate the interceptor + presets cache
-  void fetchServerModels().then((models) => {
-    const names = models.length > 0 ? models.map((m) => m.model) : ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
-    yoInterceptor.setAvailableModels(names);
-  });
   const initialTheme = getPreference<string>("theme", "dark");
   // Map themed ids (purple/aurora/custom) to a base mode nativeTheme accepts.
   nativeTheme.themeSource = initialTheme === "system" ? "system" : initialTheme === "light" ? "light" : "dark";
@@ -785,12 +360,6 @@ async function boot() {
     for (const wc of panelManager.getAllWebContents()) {
       wc.send("theme-changed", resolved);
     }
-    // Canvas window frames (titlebar/URL bar) are separate BrowserViews — they
-    // also listen for "theme-changed", so they recolor live instead of needing
-    // a close/reopen.
-    for (const wc of panelManager.getChromeWebContents()) {
-      wc.send("theme-changed", resolved);
-    }
   }
 
   // Live apps reload — watch ~/yo/apps so an app dropped on disk (e.g. a
@@ -810,7 +379,6 @@ async function boot() {
   // Track code-terminal panels (Phase 2): panel id → spawn config used when
   // the panel's webContents finishes loading.
   const panelIdToAgentConfig = new Map<string, AgentSpawnConfig>();
-  const cwWcWorkspace = new Map<number, string>(); // cypher webContents.id → workspace slug
 
   panelManager = new PanelManager((id, wc) => {
     const baseAppId = resolveAppId(id);
@@ -852,14 +420,9 @@ async function boot() {
         };
         childWc.on("did-navigate", (_e: unknown, url: string) => {
           trackChild(url);
-          actionGrabber?.onPanelNavigate(id).catch(() => {});
         });
         childWc.on("did-navigate-in-page", (_e: unknown, url: string, isMainFrame: boolean) => {
           if (isMainFrame) trackChild(url);
-          actionGrabber?.onInPageNavigate(id).catch(() => {});
-        });
-        childWc.on("did-finish-load", () => {
-          actionGrabber?.onPageLoad(id).catch(() => {});
         });
         childWc.on("page-favicon-updated" as any, (_e: unknown, favicons: string[]) => {
           if (favicons?.length) {
@@ -884,14 +447,9 @@ async function boot() {
       };
       wc.on("did-navigate", (_e: unknown, url: string) => {
         trackDirect(url);
-        actionGrabber?.onPanelNavigate(id).catch(() => {});
       });
       wc.on("did-navigate-in-page", (_e: unknown, url: string, isMainFrame: boolean) => {
         if (isMainFrame) trackDirect(url);
-        actionGrabber?.onInPageNavigate(id).catch(() => {});
-      });
-      wc.on("did-finish-load", () => {
-        actionGrabber?.onPageLoad(id).catch(() => {});
       });
       wc.on("page-favicon-updated" as any, (_e: unknown, favicons: string[]) => {
         if (favicons?.length) {
@@ -905,12 +463,6 @@ async function boot() {
     }
   });
 
-  // Wire action grabber to panel manager for webContents access + polling
-  actionGrabber.setWebContentsGetter((id) => panelManager.getGuestOrWebContents(id));
-  actionGrabber.setPanelIdGetter(() => panelManager.getLoadedPanelIds());
-  actionGrabber.setWorkspaceGetter(() => getPreference<string>("activeWorkspace", "default"));
-  actionGrabber.startPolling();
-
   // Persist zoom when changed via keyboard shortcut in panels
   panelManager.setOnZoomChange((factor) => {
     setPreference("zoom", factor);
@@ -920,8 +472,6 @@ async function boot() {
   // WebSocket itself was started earlier; handlers are looked up at request
   // time, so registering them here is fine.
   installRelayHandlers({
-    panelManager,
-    getMainWindow: () => mainWindow,
     getMcpManager: () => mcpManager,
   });
 
@@ -934,9 +484,11 @@ async function boot() {
   };
 
   function resolveBrowserHome(): string {
-    const pref = getPreference<string>("browserHomepage", "google");
-    if (pref === "custom") return getPreference<string>("browserHomepageUrl", "");
-    return BROWSER_HOMES[pref] || BROWSER_HOMES.google;
+    // Default matches the Appearance tab's select (claude) — was "google",
+    // which isn't even an option there, so the setting read as broken.
+    const pref = getPreference<string>("browserHomepage", "claude");
+    if (pref === "custom") return getPreference<string>("browserHomepageUrl", "") || BROWSER_HOMES.claude;
+    return BROWSER_HOMES[pref] || BROWSER_HOMES.claude;
   }
 
   function browserHtmlUrl(initialUrl?: string): string {
@@ -964,138 +516,82 @@ async function boot() {
   // Seed PanelManager configs from apps (apps are the source of truth)
   const terminalHtml = `file://${path.join(__dirname, "..", "renderer", "terminal.html")}`;
   const terminalPreload = path.join(__dirname, "terminal-preload.js");
-  const workbenchHtml = `file://${path.join(__dirname, "..", "renderer", "workbench.html")}`;
-  const workbenchPreload = path.join(__dirname, "workbench-preload.js");
   const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
-  // VS Code embed — spawns `code serve-web` and the yo://vscode panel loads
-  // its localhost URL. The server defaults ON when the `code` CLI is on
-  // PATH, OFF otherwise. An explicit `enableVscodeServer` preference wins
-  // when set so the user can override either way.
-  const vscodeServer = new VSCodeServer();
-  const vscodePref = getPreference<boolean | undefined>("enableVscodeServer", undefined);
-  const enableVscode = vscodePref ?? vscodeServer.available;
-  if (enableVscode && vscodeServer.available) {
-    vscodeServer.start(getWorkingDirectory()).catch((err) => {
-      console.log("[vscode-server] failed to start:", err?.message || err);
-    });
-  }
-  function vscodePanelUrl(): string {
-    if (enableVscode && vscodeServer.available) return VSCodeServer.expectedUrl();
-    // No-CLI fallback page: a tiny status card pointing users to install VS Code.
-    const reason = !enableVscode
-      ? "VS Code Server is disabled."
-      : "VS Code CLI not found on this machine.";
-    return `data:text/html,${encodeURIComponent(`<html><head><style>
-        body{background:#0a0a0a;color:#999;font-family:-apple-system,system-ui,sans-serif;
-          display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-        .card{text-align:center;max-width:420px;padding:40px}
-        h2{color:#ddd;font-size:18px;font-weight:600;margin:0 0 12px}
-        p{font-size:14px;line-height:1.6;margin:8px 0}
-        .reason{color:#777;font-size:13px;margin-bottom:16px}
-        a{color:#a855f7;text-decoration:none;font-weight:500}
-        a:hover{text-decoration:underline}
-        .steps{text-align:left;margin:16px 0;padding:0;list-style:none}
-        .steps li{padding:6px 0;font-size:13px;color:#888}
-        .steps li::before{content:"→ ";color:#a855f7}
-        code{font-family:"SF Mono","Fira Code",monospace;font-size:12px;
-          background:#151515;padding:2px 6px;border-radius:4px;color:#ccc}
-      </style></head><body><div class="card">
-        <h2>VS Code Server</h2>
-        <p class="reason">${reason}</p>
-        <ul class="steps">
-          <li>Install <a href="https://code.visualstudio.com/" target="_blank">Visual Studio Code</a></li>
-          <li>Run <code>Shell Command: Install 'code' in PATH</code> from the VS Code command palette</li>
-          <li>Restart Glyphh</li>
-        </ul>
-      </div></body></html>`)}`;
-  }
-  // Slugs that map to home.html with ?section=<slug>. Each gets its own panel
-  // so users can mount, e.g., a standalone Drips or Agents browser inside any
-  // layout (or via .dip <slug>).
+  // Slugs that map to home.html with ?section=<slug>. Each system-app tab
+  // (Apps / Layouts / Drips / Skills / Settings / About) opens its section.
   const HOME_SECTION_SLUGS: Record<string, string> = {
-    "yo://dashboard": "dashboard",
-    "yo://apps":      "apps",
-    "yo://agents":    "agents",
-    "yo://schedules": "schedules",
-    "yo://layouts":   "layouts",
-    "yo://skills":    "skills",
-    "yo://drips":     "drips",
-    "yo://settings":  "settings",
+    "yo://apps": "apps",
+    "yo://connections": "connections",
+    "yo://layouts": "layouts",
+    "yo://drips": "drips",
+    "yo://about": "about",
+    "yo://dashboard-settings": "settings",
   };
   for (const app of appConnector.list()) {
-    if (app.url === "yo://home") {
-      const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      // webviewTag: true so the <webview id="app-preview"> inside App detail can render
-      panelManager.addPanel(app.id, homeHtml, homePreload, undefined, true);
-    } else if (app.url && HOME_SECTION_SLUGS[app.url]) {
+    if (app.url && HOME_SECTION_SLUGS[app.url]) {
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
       panelManager.addPanel(app.id, `${homeHtml}?section=${section}`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
-    } else if (app.url === "yo://workbench") {
-      panelManager.addPanel(app.id, workbenchHtml, workbenchPreload);
-    } else if (app.url === "yo://vscode") {
-      panelManager.addPanel(app.id, vscodePanelUrl());
     } else if (app.url === "yo://browser") {
-      const savedBrowserUrls = getPreference<Record<string, string>>("browserTabUrls", {});
-      const browserUrl = savedBrowserUrls[app.id] || resolveBrowserHome();
-      panelManager.addPanel(app.id, browserHtmlUrl(browserUrl), undefined, undefined, true);
+      // Always open at the configured homepage (Appearance tab) — restoring
+      // the last-visited URL here made the homepage setting a no-op.
+      panelManager.addPanel(app.id, browserHtmlUrl(resolveBrowserHome()), undefined, undefined, true);
     } else {
       panelManager.addPanel(app.id, app.url!, undefined, app.forceWeb);
     }
   }
 
   // Note store + memory store (flat files with keyword search)
-  noteStore = new NoteStore();
-  const memoryStore = new MemoryStore();
 
-  // Transcriber — OpenAI Whisper API for voice input
-  const transcriber = new Transcriber();
 
   layoutManager = new LayoutManager(panelManager);
-  commandParser = new CommandParser(panelManager, skillEngine, layoutManager, appConnector, session);
+  commandParser = new CommandParser(panelManager, layoutManager, appConnector, session);
   let restoring = false;
 
-  // LLM engine for inline yo/sup execution
-  const yoChat = new YoChat(panelManager);
-  applyLLMConfig(llmConfig);
-  yoInterceptor.setYoChat(yoChat);
-  yoInterceptor.setCaptureStore(captureStore);
-  commandParser.setYoChat(yoChat);
 
-  // Global keytap overlay (macOS): native CGEventTap helper intercepts dot-commands
-  // typed in ANY app and shows an inline braille spinner at the caret while we work.
-  // DISABLED by default — spawning the helper triggers the macOS Accessibility /
-  // Input-Monitoring permission prompt on launch, which we don't want yet. Flip the
-  // `overlayEnabled` pref to turn it back on. When enabled, `overlayAgentEnabled`
-  // further controls whether the .yo/.dip/.sup agent triggers are live (vs. .drip only).
+  // OS window control (.dip grid/split/min/exp, layout tiling) drives other
+  // apps' windows through the native backends (macOS: bundled Swift AX helper;
+  // Windows: koffi→user32). Pre-spawn the helper and prompt for Accessibility
+  // once (no-op if already granted) so commands don't silently fail.
+  initOsWindowManager();
+  if (process.platform === "darwin") {
+    try { systemPreferences.isTrustedAccessibilityClient(true); } catch { /* noop */ }
+  }
+
+  // Global keytap (macOS): native CGEventTap helper that intercepted dot-commands
+  // typed in ANY text box. RETIRED as a default — the caret spinner kept getting
+  // stranded (focus moves when windows open), so commands now live in the
+  // command overlay (Cmd+Shift+Space) instead. Opt back in with the
+  // `overlayEnabled` pref if you want the in-text-field triggers regardless.
   if (getPreference<boolean>("overlayEnabled", false)) {
     const overlayBin = app.isPackaged
       ? path.join(process.resourcesPath, "overlay", "keytap")
       : path.join(__dirname, "overlay", "keytap");
-    const overlayTriggers = getPreference<boolean>("overlayAgentEnabled", false)
-      ? ".yo,.dip,.sup,.drip,.peace"
-      : ".drip";
+    const overlayTriggers = ".dip,.drip";
     startOverlay(
-      yoAgent,
-      (cmd) => commandParser.execute(cmd),
+      async (cmd) => {
+        if (/^dip\b/.test(cmd)) {
+          const r = await runDip(cmd);
+          if (!r.ok) console.error("[dip] failed:", r.error);
+          return "";
+        }
+        return commandParser.execute(cmd);
+      },
       () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } },
       overlayBin,
       overlayTriggers,
     );
   }
 
-  // Wire yo agent dependencies
-  yoAgent.setSessionCache(session);
-  yoAgent.setMemoryStore(memoryStore);
-  yoAgent.setNoteStore(noteStore);
-
-  // Wire waz manager dependencies
-  wazManager.setSessionCache(session);
-  wazManager.setMemoryStore(memoryStore);
-  wazManager.setNoteStore(noteStore);
-
+  // Full-screen command overlay (apps + layouts launcher) + its global hotkey
+  // (Cmd+Shift+Space). Opens apps/layouts as real OS windows; ".drip <effect>"
+  // typed in its command bar routes through the command parser.
+  registerCommandWindow((cmd) => commandParser.execute(cmd));
+  // Pre-create the (hidden) thinking scrim so the first palette click shows it
+  // instantly instead of paying window-creation cost mid-operation.
+  initThinkingOverlay();
 
   // Give interceptor access to visible panel IDs (for multi-panel grab)
   yoInterceptor.setVisiblePanelsGetter(() => {
@@ -1149,10 +645,6 @@ async function boot() {
   // Wire command callbacks for interceptor + chat (both need dip routing)
   const callbacks = { openYoPanel: null as ((query: string) => void) | null };
 
-  // Canvas controller — assigned once its IPC is registered below.
-  // Declared here so execCommand / inset handling can reach it.
-  let canvasApi: ReturnType<typeof registerCanvasIpc> | null = null;
-
   const execCommand = async (cmd: string, sourcePanelId?: string) => {
     // .waz is now handled by commandParser.execute (so chained forms like
     // `.dip gmail .waz new <prompt>` work too); the inline shim that used
@@ -1169,31 +661,20 @@ async function boot() {
     const gridInfo = layoutManager.getGridInfo();
     mainWindow?.webContents.send("split-state", gridInfo);
     sendSessionState();
-    // Track every panel in the layout FIRST — a layout can open apps that
-    // weren't previously open, and canvas-mode arrangeToGrid only lays out
-    // panels that are tracked tabs. Doing this before arranging means those new
-    // windows actually appear in the grid.
+    // Track every panel in the layout — a layout can open apps that weren't
+    // previously open.
     if (gridInfo) {
       for (const id of gridInfo.panelIds) ensureTab(id);
-    }
-    // In canvas mode, a dipped layout arranges the free windows to its grid
-    // instead of attaching fixed grid views.
-    if (gridInfo && canvasApi?.isCanvasMode()) {
-      canvasApi.arrangeToGrid(gridInfo);
     }
     // Sync tab state (dip commands change active panel / open grids)
     if (gridInfo) {
       setPreference("suspendedLayout", null);
-      // The per-cell URL bar belongs to the fixed grid — skip it in canvas mode,
-      // where each window carries its own chrome (and a top inset would shift all
-      // the free windows down).
-      if (!canvasApi?.isCanvasMode()) {
-        // Show it whenever the grid has a browser, regardless of which cell is
-        // focused. Set once on entry so the browser cell is editable from paint.
-        const showBar = layoutManager.gridHasBrowser();
-        panelManager.setTopInset(showBar ? URL_BAR_HEIGHT : 0);
-        mainWindow?.webContents.send("url-bar-force", showBar);
-      }
+      // Show the per-cell URL bar whenever the grid has a browser, regardless
+      // of which cell is focused. Set once on entry so the browser cell is
+      // editable from paint.
+      const showBar = layoutManager.gridHasBrowser();
+      panelManager.setTopInset(showBar ? URL_BAR_HEIGHT : 0);
+      mainWindow?.webContents.send("url-bar-force", showBar);
     } else if (panelManager.activePanelId) {
       ensureTab(panelManager.activePanelId);
     }
@@ -1215,14 +696,6 @@ async function boot() {
   // Reminder registry
   const activeReminders = new Map<string, { message: string; fireAt: number; timer: ReturnType<typeof setTimeout> }>();
 
-  // Voice Relay — phone-to-desktop voice remote (Advanced tier, feature-flagged)
-  if (getPreference<boolean>("voiceRemoteFeature", false) && canUseVoice().allowed) {
-    voiceRelay = new VoiceRelay();
-    if (getPreference<boolean>("remoteEnabled", false)) {
-      voiceRelay.start();
-    }
-  }
-
   // Wire .yo conversational agent — slide-out panel
   const yoPanelWidth = () => getPreference<number>("yoPanelWidth", 380);
 
@@ -1230,62 +703,20 @@ async function boot() {
   panelManager.setOnInsetChange(() => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (panelManager.isHidden) return; // don't re-show during splash/overlay
-    // Re-attaching views during a canvas drag/resize would break the chrome
-    // view's mouse capture — skip until the gesture ends (it re-syncs then).
-    if (panelManager.canvasInteracting) return;
-    if (canvasApi?.isCanvasMode()) {
-      canvasApi.applyCanvas();
-    } else if (layoutManager.hasSplit) {
+    if (layoutManager.hasSplit) {
       layoutManager.restoreSplit(mainWindow);
     } else {
       panelManager.resizeViews(mainWindow);
     }
   });
 
-  // Panel opener — called by interceptor or Cmd+> when user types .yo <query>
-  const openYoPanel = (query: string, _sourcePanelId?: string) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.webContents.send("yo-panel-open", query);
-    panelManager.setRightInset(yoPanelWidth());
-    mainWindow.webContents.focus();
-  };
-  yoInterceptor.setPanelOpener(openYoPanel);
-  yoInterceptor.setLastAgentResult(() => yoAgent.getLastResponse());
-  wazManager.setThemeFn(() => {
-    const t = getPreference<string>("theme", "dark");
-    return t === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : t;
-  });
-  yoInterceptor.setWazSpawner((prompt) => wazManager?.spawn(prompt));
-  // Same hook on the command-parser path so chained .waz works
-  // (e.g. `.dip gmail .waz new <prompt>`).
-  commandParser.setWazSpawner((prompt) => wazManager?.spawn(prompt));
+  // Panel opener / .waz spawner / mode changer removed with the interactive
+  // chat agent (YoAgent) and its popup variant (.waz) — see yo-agent.ts /
+  // waz-manager.ts deletion notes. `.yo`, `set-mode`, and `.waz` command
+  // dispatches in yo-interceptor.ts now no-op gracefully (their callback
+  // hooks are simply never wired).
   yoInterceptor.setFaviconsGetter(() => panelFavicons);
   yoInterceptor.setLayoutsGetter(() => layoutManager.listLayouts());
-
-  // Command palette mode/model changers
-  yoInterceptor.setModeChanger((mode) => {
-    yoAgent.setMode(mode as any);
-    setPreference("agentMode", mode);
-    mainWindow?.webContents.send("agent-mode-changed", mode);
-    yoInterceptor.setAgentMode(mode);
-  });
-  yoAgent.onModeChange((mode) => {
-    setPreference("agentMode", mode);
-    mainWindow?.webContents.send("agent-mode-changed", mode);
-    yoInterceptor.setAgentMode(mode);
-  });
-  yoInterceptor.setModelChanger((model) => {
-    const cfg = loadLLMConfig();
-    cfg.model = model;
-    saveLLMConfig(cfg);
-    llmConfig = cfg;
-    applyLLMConfig(cfg);
-    yoInterceptor.setCurrentModel(model);
-    mainWindow?.webContents.send("llm-config-changed", { provider: cfg.provider, model: cfg.model });
-  });
-  callbacks.openYoPanel = openYoPanel;
-
-  yoChat.setCommandCallback(execCommand);
 
   // Terminal yo/sup/dip — route through command parser, show result in terminal
   terminalManager.setCommandHandler(async (cmd, wc) => {
@@ -1322,6 +753,21 @@ async function boot() {
     });
   }
 
+  // Dashboard shell (5a): boot lands directly on the Apps panel instead of
+  // restoring the previous session's grid/split/tabs. restorePanels() below
+  // used to recreate every panel from the last session before the renderer's
+  // initDashboard() swapped over to the Apps tab — each restored BrowserView
+  // paints/loads independently, which looked like every screen flashing on
+  // launch. Kept restorePanels() defined (unused) rather than deleted, in
+  // case per-app windows (5b) want to resurrect a "reopen last session" option.
+  function openAppsPanelOnly() {
+    const appsApp = appConnector.get("apps");
+    if (appsApp?.url && mainWindow) {
+      createPanelForApp("apps", appsApp);
+      panelManager.switchTo("apps", mainWindow);
+    }
+  }
+
   // Restore panels from last view (or default to claude)
   function restorePanels() {
     let lastView = getPreference<{ type: string; id?: string; panels?: string[]; name?: string; rows?: string[][]; grid?: import("./layout-manager").GridLayout }>("lastView", null!);
@@ -1338,7 +784,7 @@ async function boot() {
       if (lastView.rows) lastView.rows.forEach((r) => viewPanelIds.push(...r));
       if (lastView.grid?.cells) viewPanelIds.push(...lastView.grid.cells.map((c) => c.panelId));
       if (viewPanelIds.some((id) => resolveAppId(id) === "cypher")) {
-        lastView = { type: "panel", id: "home" };
+        lastView = { type: "panel", id: "apps" };
       }
     }
 
@@ -1409,9 +855,9 @@ async function boot() {
         panelManager.switchTo(lastView.id, mainWindow);
       }
     } else if (mainWindow) {
-      // No persisted view — land on the first user app.
+      // No persisted view — land on the first user app, else the Apps panel.
       const firstApp = appConnector.list().find(a => a.url && !a.url.startsWith("yo://"));
-      panelManager.switchTo(firstApp?.id || "home", mainWindow);
+      panelManager.switchTo(firstApp?.id || "apps", mainWindow);
     }
 
     // Restore all saved tabs (not just those in the current view).
@@ -1450,9 +896,6 @@ async function boot() {
   function sendSplitState() {
     const gridInfo = layoutManager.getGridInfo();
     mainWindow?.webContents.send("split-state", gridInfo);
-    // Canvas mode: keep the free windows matching the grid when it changes
-    // (e.g. dragging a layout divider re-flows the windows live).
-    if (gridInfo && canvasApi?.isCanvasMode()) canvasApi.arrangeToGrid(gridInfo);
   }
 
   // ── Tab management ─────────���───────────────────────────────
@@ -1476,25 +919,17 @@ async function boot() {
 
   function createPanelForApp(instanceId: string, app: { id: string; url?: string; forceWeb?: boolean }): void {
     if (!app.url) return;
-    if (app.url === "yo://home") {
-      const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(instanceId, homeHtml, homePreload, undefined, true);
-    } else if (app.url && HOME_SECTION_SLUGS[app.url]) {
-      // System-app wrappers (yo://dashboard, yo://apps, …) reuse home.html
+    if (app.url && HOME_SECTION_SLUGS[app.url]) {
+      // System-app wrappers (yo://apps, yo://layouts, …) reuse home.html
       // with ?section=<slug>. home.ts reads the query on boot.
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
       panelManager.addPanel(instanceId, `${homeHtml}?section=${section}`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
-    } else if (app.url === "yo://workbench") {
-      panelManager.addPanel(instanceId, workbenchHtml, workbenchPreload);
-    } else if (app.url === "yo://vscode") {
-      panelManager.addPanel(instanceId, vscodePanelUrl());
     } else if (app.url === "yo://browser") {
-      const savedBrowserUrls = getPreference<Record<string, string>>("browserTabUrls", {});
-      const browserUrl = savedBrowserUrls[instanceId] || resolveBrowserHome();
-      panelManager.addPanel(instanceId, browserHtmlUrl(browserUrl), undefined, undefined, true);
+      // New browser panels start at the configured homepage (Appearance tab).
+      panelManager.addPanel(instanceId, browserHtmlUrl(resolveBrowserHome()), undefined, undefined, true);
     } else {
       panelManager.addPanel(instanceId, app.url!, undefined, app.forceWeb);
     }
@@ -1511,30 +946,10 @@ async function boot() {
     return app?.name || id;
   }
 
-  /** Brand favicon URL for an agent-<slug> panel based on its model. Pulls
-   *  the same Google S2 favicons used in model-badges.ts so the tab matches
-   *  the in-app .Sup <Brand> header. Returns null when the panel isn't an
-   *  agent panel or the brand has no mark. */
-  function agentPanelFavicon(id: string): string | null {
-    if (!id.startsWith("agent-")) return null;
-    const slug = id.slice("agent-".length);
-    const cfg = getAgent(slug);
-    const model = (cfg?.model_name || "").toLowerCase();
-    let brand = "generic";
-    if (!model || model.startsWith("claude")) brand = "anthropic";
-    else if (model.startsWith("gpt") || model.startsWith("codex")) brand = "openai";
-    else if (model.startsWith("gemini")) brand = "google";
-    else if (model.startsWith("grok")) brand = "xai";
-    else if (model.startsWith("pplx")) brand = "perplexity";
-    const hosts: Record<string, string> = {
-      anthropic: "claude.ai",
-      openai: "chatgpt.com",
-      google: "gemini.google.com",
-      xai: "grok.com",
-      perplexity: "perplexity.ai",
-    };
-    const host = hosts[brand];
-    return host ? `https://www.google.com/s2/favicons?domain=${host}&sz=64` : null;
+  /** The agent registry (and agent-<slug> panels) were removed, so there is no
+   *  longer an agent-panel favicon to resolve. Kept as a no-op for callers. */
+  function agentPanelFavicon(_id: string): string | null {
+    return null;
   }
 
   function buildTabState() {
@@ -1644,8 +1059,6 @@ async function boot() {
       url: panelUrls[panelId] || "",
       favicon: panelFavicons[panelId] || "",
     });
-    // Canvas mode: keep the window's own URL bar (in its chrome view) in sync.
-    if (canvasApi?.isCanvasMode()) canvasApi.refreshChrome(panelId);
   }
 
   function ensureTab(id: string | null | undefined) {
@@ -1660,49 +1073,6 @@ async function boot() {
     setPreference("openTabs", [...new Set(openTabs)]);
   }
 
-  // Panel interaction + layout tools — wired via substrate-deps.ts
-  // Agent-convened council: auto-fill members from configured providers if the
-  // agent didn't pick any, open the Council app, convene, and let the panel run.
-  const { getDefaultModel: getDefaultProviderModel } = require("./provider-models") as typeof import("./provider-models");
-
-  /**
-   * Shared council member-builder. Fills members from explicit picks, falling
-   * back to the user's configured providers (Settings → Providers) at their
-   * default model with a generic distinct-perspective startup prompt. Returns
-   * fewer than 2 members when not enough providers are configured — callers
-   * must guard on `members.length >= 2`. Reused by the agent-convened council
-   * and the Phase-4 council-backed vibe planner.
-   */
-  setSubstrateToolDeps(buildSubstrateDeps({
-    mainWindow,
-    panelManager,
-    appConnector,
-    openTabs,
-    getTabBrowserCounter: () => tabBrowserCounter,
-    setTabBrowserCounter: (n) => { tabBrowserCounter = n; },
-    ensureTab,
-    scanPanel,
-    formatScan,
-    smartGrab,
-    executeCommand,
-    browserHtmlUrl,
-    execCommand,
-    swarmCreate: runSwarm,
-    spawnBackground: runBackground,
-    agentRegistry: {
-      list: () => listAgents().map((a) => ({
-        id: a.id,
-        name: a.name,
-        role: a.role,
-        mode: a.mode,
-      })),
-      get: (id: string) => {
-        const a = getAgent(id);
-        return a ? { id: a.id, name: a.name, role: a.role } : null;
-      },
-    },
-  }));
-
   // NOTE: The Workbench Preview slot used to render as a native BrowserView
   // overlay managed here (wb-preview:mount/bounds/navigate/reload/close). That
   // approach was replaced by an in-DOM <iframe> inside the workbench renderer,
@@ -1713,10 +1083,6 @@ async function boot() {
   // Hook into panel focus events — add tab when panel becomes active
   let lastFocusedPanel: string | null = null;
   panelManager.setOnPanelFocused((id: string) => {
-    // Action capture: previous panel just lost focus — capture it
-    if (lastFocusedPanel && lastFocusedPanel !== id) {
-      actionGrabber?.onPanelBlur(lastFocusedPanel).catch(() => {});
-    }
     lastFocusedPanel = id;
 
     ensureTab(id);
@@ -1738,10 +1104,6 @@ async function boot() {
     }
     sendTabState();
     sendUrlUpdate();
-    // Canvas mode: clicking into an app's content raises its window to the front.
-    if (canvasApi?.isCanvasMode()) {
-      ipcMain.emit("canvas-focus", {} as Electron.IpcMainEvent, id);
-    }
   });
 
   // When a browser panel's webview guest attaches, focus it so clicks pass through
@@ -1783,10 +1145,6 @@ async function boot() {
       persistTabs();
       sendSplitState();
       sendTabState();
-      // Canvas mode: refresh the free-window layout (and push fresh canvas-state)
-      // so the closed window's chrome is cleared — including the last one, which
-      // has no switchTo to trigger it.
-      if (canvasApi?.isCanvasMode()) canvasApi.applyCanvas();
     },
     () => [...openTabs],
     (url: string) => {
@@ -1811,23 +1169,18 @@ async function boot() {
     return instanceId;
   });
 
-  // Swarms are spawned by the yo agent (create_swarm), not opened as a panel.
-  commandParser.setCypherOpener(async () => false);
-
-  // Account gate — the heartbeat is the authoritative 14-day-trial check.
-  // When it reports the trial expired (or the account disabled) we lock the
-  // user out of the workspace: hide the panels and raise the lockout overlay
-  // in the renderer. Registered BEFORE initAuth so the first heartbeat (fired
-  // fire-and-forget inside initAuth) can never slip past us.
+  // Account gate — the heartbeat reports the account status. When it reports
+  // the account disabled (an admin action) we lock the user out of the
+  // workspace: hide the panels and raise the lockout overlay in the renderer.
+  // Registered BEFORE initAuth so the first heartbeat (fired fire-and-forget
+  // inside initAuth) can never slip past us.
   let accountLocked = false;
   setHeartbeatObserver((hb) => {
-    // Tier may have changed (free <-> paid). The relay + the local MCP-expose
-    // server are paid-only, so re-evaluate both on every heartbeat — this also
-    // starts them once the boot heartbeat finally lands, and tears them down on
-    // a downgrade.
+    // Tier may have changed (free <-> paid). The relay is paid-only, so
+    // re-evaluate it on every heartbeat — this also starts it once the boot
+    // heartbeat finally lands, and tears it down on a downgrade.
     reconnectRelay();
-    syncMcpExpose();
-    const locked = hb.status === "expired" || hb.status === "disabled";
+    const locked = hb.status === "disabled";
     if (locked === accountLocked) return;
     accountLocked = locked;
     // Set the lock on the panel manager FIRST and unconditionally (independent of
@@ -1845,9 +1198,9 @@ async function boot() {
     }
   });
 
-  // Lockout overlay's "I've upgraded" button — force a fresh heartbeat. If the
+  // Lockout overlay's "Refresh" button — force a fresh heartbeat. If the
   // account is active again the observer above fires "account-unlocked"; the
-  // renderer also uses the returned status to message a still-expired account.
+  // renderer also uses the returned status to message a still-inactive account.
   ipcMain.handle("recheck-account", async () => {
     const hb = await refreshHeartbeat();
     return { status: hb?.status ?? getAuthStatus().status };
@@ -1867,213 +1220,6 @@ async function boot() {
   // Initialize auth — restore session, schedule refresh, start heartbeat.
   // Hard 3s timeout so splash never hangs if server is unreachable.
   await Promise.race([initAuth(), new Promise((r) => setTimeout(r, 3000))]);
-
-  // Resume capability publishing if the user had "Offer Usage" on
-  void initCapabilities();
-
-  // Broadcast a sub-agent lifecycle event to every panel — any open Workbench
-  // Sub-Agents view picks it up. Single source used by the Task tool (via
-  // yoAgent.onSubAgent) AND the local swarm / call_agent path (via the bus
-  // below), so both kinds of sub-agent stream into the same panel.
-  // Replayable per-agent event log so a Workbench opened AFTER an agent started
-  // can fetch a snapshot and reconstruct the live stream (late-join). The store
-  // inside the workbench already survives view open/close within a window, but a
-  // window that didn't exist when the spawn was broadcast missed it entirely —
-  // this log is what the new window replays. Keyed by sub-agent id; the spawn is
-  // always kept at index 0, finished agents are dropped so only running ones
-  // replay, and the tail is bounded so a long transcript can't grow unbounded.
-  const liveSubAgentLog = new Map<string, any[]>();
-  const SUBAGENT_LOG_CAP = 4000;
-  const broadcastSubAgent = (evt: {
-    id: string;
-    kind: "spawn" | "text" | "token" | "tool" | "tool_result" | "result" | "error";
-    source?: "task" | "yo-agent";
-    name?: string;
-    description?: string;
-    text?: string;
-    toolId?: string;
-    toolName?: string;
-    toolInput?: unknown;
-    toolOutput?: string;
-  }): void => {
-    if (evt.kind === "spawn") {
-      liveSubAgentLog.set(evt.id, [evt]);
-    } else {
-      const log = liveSubAgentLog.get(evt.id);
-      if (log) {
-        log.push(evt);
-        // Bound memory: always keep the spawn (index 0) + most recent events.
-        if (log.length > SUBAGENT_LOG_CAP) log.splice(1, log.length - SUBAGENT_LOG_CAP);
-        // Terminal event: stop retaining so only still-running agents replay.
-        if (evt.kind === "result" || evt.kind === "error") liveSubAgentLog.delete(evt.id);
-      }
-    }
-    for (const pwc of panelManager.getAllWebContents()) {
-      try { pwc.send("subagent:event", evt); } catch { /* noop */ }
-    }
-  };
-  // Snapshot of every sub-agent still running, as ordered event logs. A Workbench
-  // replays these on mount so its Sub-Agents view attaches to in-flight agents
-  // regardless of whether the window was open when they spawned.
-  if (!ipcMain.listenerCount("subagent:list-running")) {
-    ipcMain.handle("subagent:list-running", () => Array.from(liveSubAgentLog.values()).map((log) => log.slice()));
-  }
-
-  // Detached background agents the yo agent spawned via spawn_background. We
-  // accumulate each one's streamed transcript (agent_result on the bus only
-  // carries a "completed N turns" summary, not the agent's actual output), and
-  // when it finishes we hand that transcript back to the yo conversation as a
-  // follow-up turn so the agent can act on the result. Keyed by agent id.
-  const backgroundSpawns = new Map<string, { name: string; transcript: string }>();
-  // Push the live count of in-flight background agents to the yo panel so it can
-  // show a persistent "N running" indicator (the main turn spinner clears as
-  // soon as the spawning turn ends, even while detached agents keep working).
-  const notifyBgCount = (): void => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("yo-panel-bg-count", backgroundSpawns.size);
-    }
-  };
-
-  // Render a bus event as a one-line transcript fragment for the Sub-Agents
-  // panel. Mirrors the inline feed's vocabulary (thinking / tool / status /
-  // coordination) but flattened to plain text since the panel streams a
-  // monospace transcript per agent.
-  const busEventToTranscript = (event: { kind: string; to?: string; body: string; meta?: Record<string, unknown> }): string | null => {
-    const body = (event.body || "").trim();
-    switch (event.kind) {
-      case "agent_thinking": return body ? `${body}\n` : null;
-      case "agent_tool_use": {
-        const tool = typeof event.meta?.tool_name === "string" ? event.meta.tool_name : "tool";
-        return `\n→ ${tool}${body ? ` ${body}` : ""}\n`;
-      }
-      case "status": return body ? `· ${body}\n` : null;
-      case "assign_task": return `\n⇢ assigned${event.to ? ` to ${event.to}` : ""}: ${body}\n`;
-      case "accept_task": return `✓ accepted: ${body}\n`;
-      case "complete_task": return `✓ completed: ${body}\n`;
-      case "request_review": return `⊙ review requested: ${body}\n`;
-      case "report_status": return `· ${body}\n`;
-      default: return body ? `${body}\n` : null;
-    }
-  };
-
-  // Forward local swarm bus events into the yo panel as inline activity.
-  // The bus is in-process — this is the single, immediate source (no server
-  // round-trip, no SSE replay, no duplicates).
-  const DRIP_MIN_INTERVAL_MS = 1500;
-  let lastDripRenderAt = 0;
-  cypherBus.onPost((_wsSlug, event) => {
-    // Drip effects play as a window-level overlay, not a feed row.
-    if (event.kind === "drip") {
-      const now = Date.now();
-      if (now - lastDripRenderAt >= DRIP_MIN_INTERVAL_MS) {
-        lastDripRenderAt = now;
-        const recipe = typeof event.meta?.recipe === "string" ? event.meta.recipe : "fireworks";
-        try { dripManager?.execute([recipe]); } catch { /* ignore */ }
-      }
-      return;
-    }
-    // Everything else → the yo panel, rendered inline with the conversation.
-    const activity = {
-      from: event.from,
-      to: event.to,
-      kind: event.kind,
-      body: event.body,
-      tags: event.tags,
-      ts: Date.now(),
-      meta: event.meta,
-    };
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("yo-panel-swarm-activity", activity);
-    }
-    // Also stream the agent's activity into the Workbench Sub-Agents panel,
-    // keyed by `swarm:<agentId>` so it lands in the tab spawned by runSwarm.
-    // This is what makes call_agent / create_swarm visible in the panel — the
-    // SDK's forwardSubagentText only covers the native Task tool.
-    if (event.from) {
-      const subId = `swarm:${event.from}`;
-      const bg = backgroundSpawns.get(event.from);
-      if (event.kind === "agent_result") {
-        // Hand-back text: a full-loop agent's result body is just a turn-count
-        // summary ("Completed turn (N turns…)"), so its real output is the
-        // streamed transcript. A read-only agent's full output IS the body.
-        const body = (event.body || "").trim();
-        const isTurnSummary = /^Completed turn/i.test(body);
-        const transcript = bg ? bg.transcript.trim() : "";
-        const final = isTurnSummary ? transcript : (body || transcript);
-        // Avoid duplicating text in the panel: if we already streamed deltas
-        // (transcript non-empty), the result line adds nothing — just close it.
-        const panelText = transcript ? undefined : (busEventToTranscript(event) || undefined);
-        broadcastSubAgent({ id: subId, kind: "result", text: panelText });
-        if (bg) {
-          backgroundSpawns.delete(event.from);
-          notifyBgCount();
-          const summary = final.slice(-6000) || "(the agent produced no text output)";
-          mainWindow?.webContents.send("yo-panel-background-result", {
-            id: event.from, name: bg.name, ok: true, text: summary,
-          });
-        }
-      } else if (event.kind === "agent_error") {
-        broadcastSubAgent({ id: subId, kind: "error", text: event.body || undefined });
-        if (bg) {
-          backgroundSpawns.delete(event.from);
-          notifyBgCount();
-          mainWindow?.webContents.send("yo-panel-background-result", {
-            id: event.from, name: bg.name, ok: false, text: event.body || "the agent failed",
-          });
-        }
-      } else {
-        const frag = busEventToTranscript(event);
-        if (frag) {
-          broadcastSubAgent({ id: subId, kind: "token", text: frag });
-          if (bg) bg.transcript += frag;
-        }
-      }
-    }
-    // Persist into the active chat record so the thread restores in full.
-    yoAgent.appendSwarmEntry("swarm", JSON.stringify(activity));
-  });
-
-  // Sync all joinable agents to server on boot (fire-and-forget)
-  if (isAuthenticated()) void syncAllAgents(listAgents());
-
-  // ── Register cypher-panel IPC handlers BEFORE restorePanels ──
-  // (The cypher panel calls these during init; if they're not yet registered
-  //  we get "No handler registered" errors.)
-  if (!ipcMain.listenerCount("cypher-workspace-path")) {
-    ipcMain.handle("cypher-workspace-path", (_e, cypherId: string) => {
-      const base = path.join(os.homedir(), ".yo", "cyphers", cypherId, "jammers");
-      try { if (fs.existsSync(base)) return base; } catch {}
-      return null;
-    });
-  }
-  if (!ipcMain.listenerCount("cypher-list-dir")) {
-    ipcMain.handle("cypher-list-dir", (_e, dirPath: string) => {
-      try {
-        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-        return entries
-          .filter((e) => !e.name.startsWith("."))
-          .map((e) => ({ name: e.name, isDir: e.isDirectory() }))
-          .sort((a, b) => {
-            if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-            return a.name.localeCompare(b.name);
-          });
-      } catch { return []; }
-    });
-  }
-  if (!ipcMain.listenerCount("cypher-read-file")) {
-    ipcMain.handle("cypher-read-file", (_e, filePath: string) => {
-      try {
-        const buf = fs.readFileSync(filePath);
-        const isBinary = buf.includes(0);
-        if (isBinary) return { content: buf.toString("base64"), binary: true };
-        return { content: buf.toString("utf-8"), binary: false };
-      } catch { return { content: "", binary: false }; }
-    });
-  }
-  // Lexical code index — code_search over the working directory.
-  if (!ipcMain.listenerCount("code-index:status")) {
-    registerCodeIndexIpc({ getWorkingDir: getWorkingDirectory });
-  }
 
   // Working directory — the single project folder the app is focused on.
   if (!ipcMain.listenerCount("working-dir:get")) {
@@ -2104,60 +1250,6 @@ async function boot() {
     });
   }
 
-  if (!ipcMain.listenerCount("cypher-gh-tree")) {
-    ipcMain.handle("cypher-gh-tree", async () => {
-      return mcpExpose?.getRepoTree() ?? null;
-    });
-  }
-  if (!ipcMain.listenerCount("cypher-gh-file")) {
-    ipcMain.handle("cypher-gh-file", async (_e, filePath: string) => {
-      return mcpExpose?.getRepoFile(filePath) ?? null;
-    });
-  }
-  if (!ipcMain.listenerCount("cypher-project-info")) {
-    ipcMain.handle("cypher-project-info", async (_e, cypherId: string) => {
-      try {
-        const r = await serverGetAuthed<{ project?: { gh_project_url?: string }; linked_repos?: string[] }>(
-          `/api/projects/by-cypher/${encodeURIComponent(cypherId)}`,
-        );
-        return {
-          gh_project_url: (r as any)?.project?.gh_project_url || null,
-          linked_repos: (r as any)?.linked_repos || [],
-        };
-      } catch { return null; }
-    });
-  }
-  if (!ipcMain.listenerCount("cypher-project-board")) {
-    ipcMain.handle("cypher-project-board", async (_e, cypherId: string) => {
-      try {
-        const r = await serverGetAuthed<{ project?: { id: string }; items?: Array<{ id: string; title: string; status: string; assignee_user_id?: string; pr_url?: string | null }> }>(
-          `/api/projects/by-cypher/${encodeURIComponent(cypherId)}?with=items`,
-        );
-        return { items: (r as any)?.items || [] };
-      } catch { return { items: [] }; }
-    });
-  }
-  if (!ipcMain.listenerCount("cypher-item-detail")) {
-    ipcMain.handle("cypher-item-detail", async (_e, cypherId: string, itemId: string) => {
-      try {
-        const projR = await serverGetAuthed<{ project?: { slug: string } }>(`/api/projects/by-cypher/${encodeURIComponent(cypherId)}`);
-        const slug = projR?.project?.slug;
-        if (!slug) return null;
-        return await serverGetAuthed(`/api/projects/${encodeURIComponent(slug)}/items/${encodeURIComponent(itemId)}/detail`);
-      } catch { return null; }
-    });
-  }
-  if (!ipcMain.listenerCount("cypher-open-jammer-preview")) {
-    ipcMain.on("cypher-open-jammer-preview", (_e, agentId: string, url: string) => {
-      if (!mainWindow || mainWindow.isDestroyed()) return;
-      const panelId = `jammer-preview-${agentId}`;
-      if (!panelManager.hasPanel(panelId)) {
-        panelManager.addPanel(panelId, url);
-      }
-      panelManager.switchTo(panelId, mainWindow);
-      jammerPreviewPanels.add(panelId);
-    });
-  }
   if (!ipcMain.listenerCount("get-preference")) {
     ipcMain.handle("get-preference", (_e, key: string, defaultVal: unknown) => {
       return getPreference(key, defaultVal);
@@ -2182,7 +1274,7 @@ async function boot() {
   // Only restore panels if not gated by onboarding
   if (!needsOnboarding) {
     restoring = true;
-    restorePanels();
+    openAppsPanelOnly();
     restoring = false;
     panelsReady = true;
     // Hide panels during splash — renderer will show them after splash dismisses
@@ -2192,127 +1284,87 @@ async function boot() {
   }
 
   // Start cloud sync if authenticated and tier allows it
-  if (authenticated && canUseSync().allowed) {
-    cloudSyncInstance = new CloudSync(noteStore);
-    cloudSyncInstance.setCaptureStore(captureStore);
-    cloudSyncInstance.setWorkspaceGetter(workspaceGetter);
-    cloudSyncInstance.start();
-  }
-
-  // Usage queue — durable write-ahead log for usage reporting
-  usageQueue.setTokenGetter(getAuthToken);
-  usageQueue.start();
 
   // Initialize Pipedream connectors — always attempt so MCP tools are available.
   connectorManager?.init().catch((err) => console.error("[connectors]", err));
 
   // ── Auto-updater ───────────────────────────────────────────
+  // Updates download in the background but are NEVER installed on their own.
+  // The user applies them explicitly via "Relaunch to Update" (About page + a
+  // bottom-right prompt). No mid-session auto-restart, no install-on-quit —
+  // this replaces the old flow that could yank the app out from under the user.
   const autoUpdateEnabled = getPreference<boolean>("autoUpdate", true);
-
   autoUpdater.autoDownload = autoUpdateEnabled;
-  autoUpdater.autoInstallOnAppQuit = autoUpdateEnabled;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.logger = null;
 
-  // macOS has no install-on-quit — electron-updater's MacUpdater extends
-  // AppUpdater, not BaseUpdater, so autoInstallOnAppQuit is a no-op there.
-  // A downloaded update only applies when quitAndInstall() runs. Without
-  // that the app re-downloads the same update every launch and never moves
-  // off the old version (the "stuck downloading" loop). We auto-install a
-  // downloaded update during boot, bounded to ONE attempt per version so a
-  // failing install can never loop forever.
-  const appStartedAt = Date.now();
-  const updateAttempt = getPreference<{ version: string; tried: boolean } | null>(
-    "pendingUpdateInstall",
-    null,
-  );
-  // If a prior attempt's version is now <= the running version, the update
-  // applied (or was surpassed) — clear the marker. If it's still newer the
-  // install failed; keep the marker so we don't re-attempt that exact version.
-  if (updateAttempt && !isNewerVersion(updateAttempt.version, app.getVersion())) {
-    setPreference("pendingUpdateInstall", null);
-  }
+  // Latest update the feed has offered this session; `ready` once downloaded.
+  let pendingUpdate: { version: string; ready: boolean } | null = null;
+  // Set when the user hits "Relaunch to Update" before the download finishes —
+  // we then install the moment it lands.
+  let installWhenReady = false;
+
+  // Broadcast to EVERY renderer — the shell (splash) and panels like the About
+  // page are separate webContents, so both must hear update status to stay in
+  // sync. (The old code only messaged mainWindow, so the About panel was deaf.)
+  const broadcastUpdate = (payload: { status: string; version?: string; percent?: number; error?: string }) => {
+    for (const wc of webContents.getAllWebContents()) {
+      if (!wc.isDestroyed()) { try { wc.send("update-status", payload); } catch { /* window gone */ } }
+    }
+  };
+
+  // Reveal the shell splash (panels are BrowserViews layered over index.html)
+  // with an "Updating…" status, then quit + install + relaunch.
+  const doUpdateInstall = () => {
+    broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
+    if (mainWindow) panelManager.hideActive(mainWindow);
+    setTimeout(() => {
+      try { autoUpdater.quitAndInstall(false, true); }
+      catch (err) { console.error("[auto-update] quitAndInstall failed:", err); }
+    }, 1200);
+  };
+  // The About "Relaunch to Update" button invokes this via the update-install
+  // IPC. If the download is still in flight, show the updating splash now and
+  // install the moment it lands.
+  const requestUpdateInstall = () => {
+    if (pendingUpdate?.ready) { doUpdateInstall(); return; }
+    installWhenReady = true;
+    broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
+    if (mainWindow) panelManager.hideActive(mainWindow);
+    autoUpdater.checkForUpdates().catch(() => {});
+  };
 
   autoUpdater.on("update-available", (info: { version: string }) => {
-    mainWindow?.webContents.send("update-status", {
-      status: "available",
-      version: info.version,
-    });
+    if (!isNewerVersion(info.version, app.getVersion())) return;
+    pendingUpdate = { version: info.version, ready: false };
+    broadcastUpdate({ status: "available", version: info.version });
   });
-
   autoUpdater.on("download-progress", (progress: { percent: number }) => {
-    mainWindow?.webContents.send("update-status", {
-      status: "downloading",
-      percent: Math.round(progress.percent),
-    });
+    broadcastUpdate({ status: "downloading", percent: Math.round(progress.percent), version: pendingUpdate?.version });
   });
-
   autoUpdater.on("update-downloaded", (info: { version: string }) => {
-    mainWindow?.webContents.send("update-status", {
-      status: "ready",
-      version: info.version,
-    });
-    if (!autoUpdateEnabled) return;
-    // Don't re-attempt the exact version whose install already failed —
-    // leave the in-app "restart to update" button as the manual fallback.
-    if (updateAttempt?.tried && updateAttempt.version === info.version) return;
-    // Only auto-restart while still near boot, so we don't yank the app out
-    // from under someone mid-session. Past the window, the manual button
-    // (and the next launch) still apply it.
-    if (Date.now() - appStartedAt > 10 * 60 * 1000) return;
-    setPreference("pendingUpdateInstall", { version: info.version, tried: true });
-    // We're committing to the restart — tell the renderer so it holds the splash
-    // with a stand-by message rather than flashing the workspace for a moment.
-    mainWindow?.webContents.send("update-status", {
-      status: "restarting",
-      version: info.version,
-    });
-    // Let the splash paint the stand-by message before we restart into the update.
-    setTimeout(() => {
-      try {
-        autoUpdater.quitAndInstall(true, true);
-      } catch (err) {
-        console.error("[auto-update] quitAndInstall failed:", err);
-      }
-    }, 1500);
+    pendingUpdate = { version: info.version, ready: true };
+    broadcastUpdate({ status: "ready", version: info.version });
+    if (installWhenReady) doUpdateInstall();
   });
-
   autoUpdater.on("update-not-available", () => {
-    // Lets the boot-gate stop holding the splash — nothing to wait for.
-    mainWindow?.webContents.send("update-status", { status: "none" });
+    pendingUpdate = null;
+    broadcastUpdate({ status: "none" });
   });
-
   autoUpdater.on("error", (err: Error) => {
     console.error("[auto-update] error:", err.message);
-    mainWindow?.webContents.send("update-status", {
-      status: "error",
-      error: err.message,
-    });
+    broadcastUpdate({ status: "error", error: err.message });
   });
+
+  // The About page asks for the current state on load so it can show the prompt.
+  ipcMain.handle("get-update-status", () => pendingUpdate);
 
   if (autoUpdateEnabled) {
-    // Check early (small settle delay only) so that if an update is available
-    // its download is surfaced on the splash — the boot-gate holds the loading
-    // screen and shows a progress bar while an update is in flight.
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
-    }, 800);
+    setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 800);
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
   } else {
-    // Auto-update off — tell the splash there's nothing to wait for.
-    mainWindow?.webContents.send("update-status", { status: "none" });
+    broadcastUpdate({ status: "none" });
   }
-
-  // ── Hot config sync (non-blocking, then periodic) ─
-  configSync = new ConfigSync();
-  configSync.fetchAll((msg) => {
-    mainWindow?.webContents.send("splash-status", msg);
-  }).then(() => {
-    reloadRemotePatterns();
-  }).catch(() => {});
-  // Start periodic checks for future updates
-  configSync.start(() => {
-    reloadRemotePatterns();
-  });
 
   // Global hotkey: Cmd+Y / Ctrl+Y
   registerHotkey(mainWindow!);
@@ -2387,9 +1439,7 @@ async function boot() {
   );
 
   // IPC: window controls
-  ipcMain.on("update-install", () => {
-    autoUpdater.quitAndInstall(false, true);
-  });
+  ipcMain.on("update-install", () => { requestUpdateInstall(); });
   ipcMain.handle("check-for-updates", async () => {
     // `checkForUpdates()` always resolves with the feed's *latest* version —
     // even when it equals the version we're running. Returning that blindly
@@ -2443,9 +1493,7 @@ async function boot() {
   ipcMain.on("panels-show", () => {
     if (!mainWindow || !panelsReady) return;
     panelManager.hidden = false;
-    if (canvasApi?.isCanvasMode()) {
-      canvasApi.applyCanvas();
-    } else if (layoutManager.hasSplit) {
+    if (layoutManager.hasSplit) {
       layoutManager.restoreSplit(mainWindow);
     } else {
       panelManager.showActive(mainWindow);
@@ -2463,93 +1511,12 @@ async function boot() {
           view.webContents.reload();
         }
       }
-      // Always open the yo panel on launch, regardless of whether it was
-      // open when the app last closed.
-      mainWindow.webContents.send("yo-panel-open", "");
     }
 
   });
 
-  // IPC: Command palette — toggle the injected overlay on the active panel
-  ipcMain.on("cmd-palette-open", () => {
-    // Cmd+. now opens the yo agent panel
-    mainWindow?.webContents.send("yo-panel-open", "");
-  });
-
-  // IPC: Yo panel commands — route through command parser
-  ipcMain.on("yo-panel-send", async (_e, message: string) => {
-    const trimmed = message.trim();
-
-    // Route dot-commands (.dip, .drip, .sup) through command parser
-    if (trimmed.startsWith(".")) {
-      const firstWord = trimmed.slice(1).split(/\s+/)[0]?.toLowerCase();
-      if (firstWord && ["dip", "drip", "sup", "waz"].includes(firstWord)) {
-        try {
-          const result = await execCommand(trimmed.slice(1));
-          mainWindow?.webContents.send("yo-panel-done", result || "done.");
-          // A `.dip` switch focuses the new BrowserView, stealing keyboard focus
-          // from the yo input. Hand it back once the slide settles.
-          if (firstWord === "dip") {
-            setTimeout(() => {
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.focus();
-                mainWindow.webContents.send("yo-panel-refocus");
-              }
-            }, 300);
-          }
-        } catch (err: any) {
-          mainWindow?.webContents.send("yo-panel-error", err?.message || String(err));
-        }
-        return;
-      }
-
-    }
-
-    const wc = mainWindow?.webContents;
-    if (!wc || mainWindow!.isDestroyed()) return;
-
-    // `compact` / `/compact [extra]` → manual compaction. The CC binary
-    // interprets the /compact slash command; we fold in the user's saved
-    // custom compaction prompt (Settings → Agent Defaults) plus any inline
-    // instructions so the summary is shaped how they want.
-    let agentMessage = trimmed;
-    if (/^\/?compact(\s|$)/i.test(trimmed)) {
-      // Inline instructions (e.g. from the compaction modal) take precedence;
-      // otherwise fall back to the saved default compaction prompt.
-      const extra = trimmed.replace(/^\/?compact\s*/i, "").trim();
-      const saved = getPreference<string>("compactPrompt", "");
-      const instructions = extra || saved.trim();
-      agentMessage = instructions ? `/compact ${instructions}` : "/compact";
-    }
-
-    // Everything goes to the yo agent (in swarm mode it defaults to create_swarm).
-    yoAgent.send(agentMessage, {
-      onText: (delta) => {
-        wc.send("yo-panel-token", delta);
-      },
-      onToolUse: (id, name, input) => {
-        wc.send("yo-panel-tool-use", id, name, input);
-      },
-      onToolResult: (id, detail) => {
-        wc.send("yo-panel-tool-result", id, detail);
-      },
-      onToolProgress: (id, status) => wc.send("yo-panel-tool-progress", id, status),
-      onSubAgent: (evt) => {
-        // Broadcast to every panel so any open Workbench Sub-Agents
-        // view picks it up (multiple workbenches in a layout all see it).
-        broadcastSubAgent(evt);
-      },
-      onDone: (fullText) => {
-        wc.send("yo-panel-done", fullText);
-      },
-      onError: (err) => wc.send("yo-panel-error", err),
-      onContextUsage: (used, window) => wc.send("yo-context-usage", { used, window }),
-    });
-  });
-
-  ipcMain.on("yo-panel-stop", () => {
-    yoAgent.abort();
-  });
+  // yo-panel-send/-stop/cmd-palette-open removed with the interactive chat
+  // agent panel (YoAgent + yo-panel-ui-vscode.ts).
 
   // Open a file from a yo-panel file link — defers to the OS default app.
   ipcMain.on("open-in-editor", (_e, filePath: string) => {
@@ -2585,84 +1552,11 @@ async function boot() {
     void shell.openPath(resolved);
   });
 
-  // Left-rail nav → open the home panel (Settings/Dashboard/Apps/…) at a given
-  // section. The home panel is a transient overlay: it does NOT create a tab,
-  // and clicking the same rail item again toggles it closed — sliding back to
-  // the previously active panel. `pendingHomeSection` covers the cold-start
-  // race: the home page grabs it on load via `home:get-pending-section`.
-  let pendingHomeSection: { section: string; sub?: string } | null = null;
-  let currentHomeSection: { section: string; sub?: string } | null = null;
-  ipcMain.on("open-home-section", (_e, section: string, sub?: string) => {
-    if (!mainWindow || typeof section !== "string") return;
-    const homeActive = panelManager.activePanelId === "home";
-    const sameSection = currentHomeSection?.section === section && currentHomeSection?.sub === sub;
-    // Toggle: re-clicking the active section slides the home panel back out.
-    if (homeActive && sameSection) {
-      currentHomeSection = null;
-      pendingHomeSection = null;
-      panelManager.switchBack(mainWindow);
-      sendSplitState();
-      sendTabState();
-      return;
-    }
-    currentHomeSection = { section, sub };
-    pendingHomeSection = { section, sub };
-    const homeApp = appConnector.get("home");
-    if (homeApp && !panelManager.hasPanel("home")) createPanelForApp("home", homeApp);
-    panelManager.switchTo("home", mainWindow);
-    sendSplitState();
-    sendTabState();
-    panelManager.getView("home")?.webContents.send("home:goto-section", section, sub);
-  });
-  ipcMain.handle("home:get-pending-section", () => pendingHomeSection);
-
-  // Renderer-initiated panel open (Cmd+> or .yo command)
-  ipcMain.on("yo-panel-open-from-renderer", (_e, query: string) => {
-    yoAgent.clear();
-    panelManager.setRightInset(yoPanelWidth());
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.focus();
-    }
-    if (query) openYoPanel(query);
-  });
-
-  // Open the yo panel and PREFILL its input without sending (e.g. Skills'
-  // "Create with .Yo" hands over a partial prompt for the user to finish).
-  ipcMain.on("yo-panel-prefill-from-renderer", (_e, text: string) => {
-    yoAgent.clear();
-    openYoPanel("");
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.focus();
-      mainWindow.webContents.send("yo-panel-prefill", text);
-    }
-  });
-
-  ipcMain.on("yo-panel-dismiss", () => {
-    yoAgent.clear();
-    mainWindow?.webContents.send("yo-panel-close");
-    panelManager.setRightInset(0);
-  });
-
-  // Open the yo panel and load a specific chat/run by id (e.g. clicking a
-  // schedule's run history opens that run as a normal chat in the panel).
-  ipcMain.on("yo-open-chat-from-renderer", (_e, id: string) => {
-    openYoPanel("");
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.focus();
-      mainWindow.webContents.send("yo-panel-load-chat", id);
-    }
-  });
-
-  // IPC: Yo panel resize
-  ipcMain.on("yo-panel-resize", (_e, width: number) => {
-    panelManager.setRightInset(width);
-  });
-  ipcMain.on("yo-panel-width-save", (_e, width: number) => {
-    setPreference("yoPanelWidth", width);
-  });
-  ipcMain.handle("yo-panel-get-width", () => {
-    return getPreference<number>("yoPanelWidth", 380);
-  });
+  // yo-panel-open/-prefill/-dismiss-from-renderer removed with the panel.
+  // The Schedules run-history "View run" hand-off (previously window.yo.openYoChat
+  // -> "yo-open-chat-from-renderer") was also removed from the renderer side
+  // (src/renderer/help/schedules.ts) since there's no surface left to open a
+  // run's transcript INTO. No handler is registered for that channel anymore.
 
   // IPC: Files left rail resize + width persistence
   ipcMain.on("files-rail-resize", (_e, width: number) => {
@@ -2675,22 +1569,8 @@ async function boot() {
     return getPreference<number>("filesRailWidth", 240);
   });
 
-  // IPC: Agent permission mode (default/plan/acceptEdits/bypassPermissions).
-  ipcMain.handle("get-agent-mode", () => ({
-    perm: yoAgent.getMode(),
-  }));
-  ipcMain.on("set-agent-mode", (_e, mode: string) => {
-    yoAgent.setMode(mode as any);
-    setPreference("agentMode", mode);
-    mainWindow?.webContents.send("agent-mode-changed", mode);
-    yoInterceptor.setAgentMode(mode);
-  });
-
-  // Council + Vibe apps removed. Multi-agent work is now done by the
-  // right-rail Yo invoking saved agents via the mcp__yo__call_agent tool,
-  // with each invocation surfacing in the Workbench Sub-Agents view.
-  registerWorkbenchTerminalIpc();
-  registerAgentDefaultsIpc();
+  // get-agent-mode/set-agent-mode removed — they only fed the (now removed)
+  // chat panel's permission dropdown (default/plan/acceptEdits/bypassPermissions).
 
   /** Per-instance (app, folder) bindings. Lets recents:open reuse an
    *  already-open Vibe/Spec/etc panel that's bound to the same folder
@@ -2754,147 +1634,21 @@ async function boot() {
       instanceBindings.set(instanceId, { appId: baseId, folder });
     }
   }
-  // yo://agent removed — the right-rail Yo is the only chat surface now.
-  // The agents:open-as-app channel becomes a no-op so renderers don't
-  // crash if they still try to call it.
-  ipcMain.handle("agents:open-as-app", () => false);
-
-  // Approval system — pending approvals map + IPC
-  const pendingApprovals = new Map<string, (approved: boolean) => void>();
-  let approvalCounter = 0;
-
-  yoAgent.setApprovalCallback(async (toolName, input) => {
-    const id = `approval-${++approvalCounter}`;
-    const { TOOL_LABELS } = require("./action-gate");
-    let toolLabel = TOOL_LABELS[toolName] || toolName;
-    const mcpMatch = toolName.match(/^mcp__[^_]+__(.+)$/);
-    if (mcpMatch) toolLabel = TOOL_LABELS[mcpMatch[1]] || mcpMatch[1].replace(/_/g, " ");
-    mainWindow?.webContents.send("approval-request", id, toolName, toolLabel, input);
-    return new Promise<boolean>((resolve) => {
-      pendingApprovals.set(id, resolve);
-      setTimeout(() => {
-        if (pendingApprovals.has(id)) {
-          pendingApprovals.delete(id);
-          resolve(false);
-        }
-      }, 60000);
-    });
-  });
-
-  ipcMain.on("approval-respond", (_e, id: string, approved: boolean) => {
-    const resolve = pendingApprovals.get(id);
-    if (resolve) {
-      pendingApprovals.delete(id);
-      resolve(approved);
-    }
-  });
-
-  // ExitPlanMode means the agent has finished planning and the user wants to
-  // proceed. The SDK exits its own plan-mode state, but our `agentMode` pref
-  // (which `gate()` consults) stays "plan" until something rewrites it. That
-  // left subsequent Edit/Write calls in the same turn returning "skip" with
-  // a "stale plan-mode permission" — the bug Chris reported. Drop the mode
-  // back to "default" the moment the SDK fires the ExitPlanMode tool so the
-  // gate releases in lockstep with the SDK.
-  yoAgent.onToolUseSeen?.((toolName) => {
-    if (toolName === "ExitPlanMode" && yoAgent.getMode() === "plan") {
-      yoAgent.setMode("default");
-      setPreference("agentMode", "default");
-      mainWindow?.webContents.send("agent-mode-changed", "default");
-      yoInterceptor.setAgentMode("default");
-    }
-  });
-
-  // ── ask_user_question — purple "Input required" card ──
-  // Mirrors approvals but for multi-choice questions. The MCP tool blocks
-  // until the user picks an option (or cancels) in the Yo panel.
-  const pendingAsks = new Map<string, (answers: Array<string | null>) => void>();
-  let askCounter = 0;
-  yoAgent.setAskCallback(async (questions) => {
-    const id = `ask-${++askCounter}`;
-    mainWindow?.webContents.send("yo-ask-request", id, questions);
-    return new Promise<Array<string | null>>((resolve) => {
-      pendingAsks.set(id, resolve);
-      // No timeout — questions can be answered whenever the user gets back.
-    });
-  });
-  ipcMain.on("yo-ask-respond", (_e, id: string, answers: Array<string | null>) => {
-    const resolve = pendingAsks.get(id);
-    if (resolve) {
-      pendingAsks.delete(id);
-      resolve(Array.isArray(answers) ? answers : []);
-    }
-  });
-
-  // ── preview_url tool wiring ──
-  // Broadcast the URL to every Workbench panel. The first one whose Preview
-  // slot is open (or the user's selected default Preview) accepts and
-  // confirms by replying via wb-preview:accepted. The tool resolves true if
-  // any accepted; false otherwise so the agent can tell the user to add a
-  // Preview slot.
-  const pendingPreview = new Map<string, (ok: boolean) => void>();
-  let previewCounter = 0;
-  yoAgent.setPreviewCallback(async (url) => {
-    const reqId = `preview-${++previewCounter}`;
-    // Broadcast only to workbench panels.
-    const workbenchPanelIds: string[] = [];
-    for (const app of appConnector.list()) {
-      if (app.url === "yo://workbench") workbenchPanelIds.push(app.id);
-    }
-    if (workbenchPanelIds.length === 0) return false;
-    for (const id of workbenchPanelIds) {
-      const wc = panelManager.getWebContents(id);
-      if (wc && !wc.isDestroyed()) {
-        try { wc.send("wb-preview:set-url", reqId, url); } catch { /* */ }
-      }
-    }
-    return new Promise<boolean>((resolve) => {
-      pendingPreview.set(reqId, resolve);
-      setTimeout(() => {
-        if (pendingPreview.has(reqId)) {
-          pendingPreview.delete(reqId);
-          resolve(false);
-        }
-      }, 1500);
-    });
-  });
-  ipcMain.on("wb-preview:accepted", (_e, reqId: string) => {
-    const resolve = pendingPreview.get(reqId);
-    if (resolve) {
-      pendingPreview.delete(reqId);
-      resolve(true);
-    }
-  });
-
+  // Approval system, ask_user_question, and preview_url (wb-preview:*)
+  // callback wiring removed — they only served the interactive chat agent's
+  // (YoAgent) SDK MCP tools, which no longer exist. mcp-expose.ts's own
+  // preview_url tool (used by run_jammer etc.) is unrelated — it posts to
+  // cypherBus directly and was never routed through this machinery.
 
   // ── Extracted IPC modules ──────────────────────────────
   registerSettingsIpc({
-    getPreference, setPreference, getCurrentLimits, broadcastTheme,
+    getPreference, setPreference, broadcastTheme,
     serverGetAuthed, startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
-    llmConfig, saveLLMConfig, applyLLMConfig, fetchServerModels,
-    mcpExpose: mcpExpose!, session, sendSessionState,
-    providerKeys: providerKeysModule, ccBootstrapStatus,
-    transcriber, cloudSyncInstance, execCommand,
-    getMainWindow: () => mainWindow, panelManager, yoAgent,
+    session, sendSessionState,
+    execCommand,
+    getMainWindow: () => mainWindow, panelManager,
   });
-
-  registerSkillsIpc({
-    skillEngine, mcpManager, appConnector, skillScheduler, canCreateSkill, listBuiltinYoTools,
-    // Route the skill's SKILL.md through the shared file-open path
-    // (media → browser tab, everything else → OS default app).
-    openSkillPath: (absPath: string) => { ipcMain.emit("file-open", null as never, absPath); },
-  });
-
-  // Standalone prompt schedules (decoupled from skills).
-  {
-    const { registerSchedulesIpc } = require("./schedules-ipc") as typeof import("./schedules-ipc");
-    registerSchedulesIpc({
-      runForResult: (prompt: string) => yoAgent.runForResult(prompt),
-      saveRunChat: (opts) => yoAgent.saveRunChat(opts),
-      deleteRunsForSkill: (name: string) => yoAgent.deleteRunsForSkill(name),
-    });
-  }
 
   registerAppsIpc({
     appConnector, layoutManager, dripManager, panelManager,
@@ -2903,10 +1657,8 @@ async function boot() {
     PICKER_SCRIPT,
   });
 
-  registerCapturesIpc({
-    captureStore, workspaceManager, panelManager,
-    resolveAppId,
-  });
+  // Installable Glyphh apps (marketplace unit) — capability-scoped windows.
+  registerGlyphhAppHost();
 
   // IPC: grid resize (drag dividers)
   ipcMain.on("grid-drag-end", (_e, type: "col" | "row", index: number, fraction: number) => {
@@ -2939,293 +1691,15 @@ async function boot() {
   });
 
 
-  registerMarketplaceIpc({
-    serverGetAuthed, serverPostAuthed,
-    listAgents, getAgent, saveAgent, removeAgent, idAvailable,
-    pushAgentProfile, deleteAgentProfile,
-    setOfferEnabled, getCapabilitiesStatus,
-  });
-
-  // Settings / home panel IPC — dashboard, MCP servers, connectors, prompts.
+  // Settings / home panel IPC — dashboard, MCP servers (relay), connectors, prompts.
   registerHomeIpc({
-    mcpExpose: mcpExpose!, mcpManager, connectorManager, canUseMcp,
-    usageTracker, promptLog, llmConfig,
-    panelManager, appConnector, getMainWindow: () => mainWindow, activeReminders,
-  });
-
-  // ── Local swarm session (cypher-session.ts) ──────────────────────
-  const { spawnSwarm, spawnEphemeral } = createCypherSession({
-    agentRunner,
-    workspaceManager,
-    mcpExpose: mcpExpose!,
-    cypherBus,
-    getAgent,
-  });
-
-  // runSwarm — the single entry shared by the create_swarm substrate tool
-  // (the yo agent) and mcp-expose. Resolves a roster, drafts a manifest,
-  // spawns locally; the swarm's activity streams inline into the yo panel.
-  async function runSwarm(goal: string, agentIds?: string[], size?: number): Promise<string> {
-    const g = (goal || "").trim();
-    if (!g) return "A goal is required.";
-    if (!mainWindow || mainWindow.isDestroyed()) return "Workspace window unavailable.";
-    const library = listAgents();
-    if (library.length === 0) {
-      return "No agents in the library yet — create some in the Agents tab first.";
-    }
-    let roster: string[];
-    if (agentIds && agentIds.length > 0) {
-      const missing = agentIds.filter((id) => !library.some((a) => a.id === id));
-      if (missing.length > 0) return `Unknown agent id(s): ${missing.join(", ")}.`;
-      roster = agentIds;
-    } else {
-      const n = Math.max(1, Math.min(library.length, size || 3));
-      roster = library.slice(0, n).map((a) => a.id);
-    }
-    const { draftSwarm } = await import("./swarm-draft");
-    const manifest = draftSwarm({ goal: g, workspace: workspaceManager.getActive().slug, agentIds: roster });
-    // Workspace prep — the swarm shares the .yo project folder, so make sure
-    // its CLAUDE.md and MCP config are in place before any agent starts.
-    const ws = workspaceManager.getActive();
-    try { ensureProjectClaudeMd(ws); } catch { /* */ }
-    if (mcpExpose?.isRunning) {
-      const mcpUrl = `http://127.0.0.1:${mcpExpose.getPort()}/mcp`;
-      const tokens = mcpExpose.getTokens();
-      const token = tokens.length > 0 ? tokens[0].token : mcpExpose.generateToken("workspace-agent").token;
-      try { ensureProjectMcpJson(ws, mcpUrl, token); } catch { /* */ }
-    }
-    // Tell the yo panel a swarm is starting — it caches the roster (for
-    // model badges) and the swarm's bus activity then streams in inline.
-    const swarmStart = {
-      title: manifest.title, goal: manifest.goal,
-      agents: manifest.agents.map((a) => {
-        const reg = library.find((r) => r.id === a.agentId);
-        return {
-          id: a.agentId, position: a.position,
-          provider: reg?.model_provider, model: reg?.model_name,
-        };
-      }),
-    };
-    mainWindow.webContents.send("yo-panel-swarm-start", swarmStart);
-    // Spawn a Sub-Agents panel tab per roster agent, keyed `swarm:<agentId>`
-    // to match the bus activity routed in cypherBus.onPost above. This is the
-    // call_agent / create_swarm equivalent of the Task tool's spawn event.
-    for (const a of manifest.agents) {
-      const reg = library.find((r) => r.id === a.agentId);
-      const nm = reg?.name || a.agentId;
-      broadcastSubAgent({
-        id: `swarm:${a.agentId}`,
-        kind: "spawn",
-        source: "yo-agent",
-        name: nm,
-        description: g,
-      });
-      // Register for result hand-back so the yo agent hears each agent's
-      // outcome (call_agent / create_swarm), the same way spawn_background does.
-      backgroundSpawns.set(a.agentId, { name: nm, transcript: "" });
-    }
-    notifyBgCount();
-    // Persist the start marker so the thread restores with the swarm card.
-    yoAgent.appendSwarmEntry("swarm-start", JSON.stringify(swarmStart));
-    const res = await spawnSwarm(manifest, mainWindow.webContents);
-    if (!res.ok) return `Swarm failed to start: ${res.error || "unknown error"}`;
-    return `Swarm started — ${res.spawned ?? 0} agent(s): ${roster.join(", ")}. `
-      + `The leader decomposes the goal and assigns work to the others over the bus. `
-      + `Their activity streams inline into this conversation as it happens — there is `
-      + `no separate panel. Tell the user the swarm is running and its activity will `
-      + `appear here; do not claim to watch a panel or poll for results yourself.`;
-  }
-
-  mcpExpose!.setSwarmRunner(runSwarm);
-
-  // runBackground — the spawn_background substrate tool. Launches ONE detached
-  // ephemeral agent (not from the library), returns immediately, and registers
-  // it for result hand-back so the yo agent hears back when it finishes.
-  async function runBackground(prompt: string, role?: string): Promise<string> {
-    const p = (prompt || "").trim();
-    if (!p) return "A prompt (the task) is required.";
-    if (!mainWindow || mainWindow.isDestroyed()) return "Workspace window unavailable.";
-    const id = `bg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-    const name = (role || "").trim() || "helper";
-    // Share the .yo project folder — make sure CLAUDE.md + MCP config exist
-    // before the agent starts (same prep runSwarm does).
-    const ws = workspaceManager.getActive();
-    try { ensureProjectClaudeMd(ws); } catch { /* best-effort */ }
-    if (mcpExpose?.isRunning) {
-      const mcpUrl = `http://127.0.0.1:${mcpExpose.getPort()}/mcp`;
-      const tokens = mcpExpose.getTokens();
-      const token = tokens.length > 0 ? tokens[0].token : mcpExpose.generateToken("workspace-agent").token;
-      try { ensureProjectMcpJson(ws, mcpUrl, token); } catch { /* best-effort */ }
-    }
-    // Spawn the Sub-Agents panel tab (keyed `swarm:<id>` to match the bus
-    // activity routed in cypherBus.onPost) and register for hand-back.
-    broadcastSubAgent({ id: `swarm:${id}`, kind: "spawn", source: "yo-agent", name, description: p });
-    backgroundSpawns.set(id, { name, transcript: "" });
-    notifyBgCount();
-    const res = await spawnEphemeral(mainWindow.webContents, { id, role, prompt: p });
-    if (!res.ok) {
-      backgroundSpawns.delete(id);
-      notifyBgCount();
-      broadcastSubAgent({ id: `swarm:${id}`, kind: "error", text: res.error || "failed to start" });
-      return `Background agent failed to start: ${res.error || "unknown error"}`;
-    }
-    return `Background agent "${name}" started (id ${id}). It runs detached — its activity streams into the `
-      + `Sub-Agents panel and its result is handed back to you as a new message when it finishes. Tell the user `
-      + `it's running; do not poll for it or claim to watch a panel yourself.`;
-  }
-
-  ipcMain.handle("cypher-thread-load-agent", (_e, cypherId: string, agentName: string) => {
-    return threadStore.loadAgent(cypherId, agentName);
-  });
-
-  ipcMain.handle("cypher-feed-load", (_e, cypherId: string, limit?: number) => {
-    return threadStore.loadFeed(cypherId, limit ?? 200);
-  });
-
-  ipcMain.handle("cypher-thread-list-agents", (_e, cypherId: string) => {
-    return threadStore.listAgentThreads(cypherId);
-  });
-
-  // Billing/account managed via web dashboard — no client-side checkout needed
-
-  // IPC: cypher workspace — agents come from the user's Agents registry
-  ipcMain.handle("cw:get-agents", () => {
-    return listAgents().map((a) => ({
-      name: a.id,
-      role: a.role || a.name || "agent",
-      prompt: a.systemPrompt,
-    }));
-  });
-
-  ipcMain.handle("cw:add-agent", (e, name: string, role: string, prompt?: string) => {
-    const wsSlug = cwWcWorkspace.get(e.sender.id) || workspaceManager.getActive().slug;
-    const result = workspaceManager.createAgent(wsSlug, { name, role, prompt });
-    if (!result.ok) return { ok: false, error: result.error };
-    const agent = result.agent;
-    const ws = workspaceManager.get(wsSlug)!;
-    const allAgents = workspaceManager.listAgents(wsSlug);
-    rewriteAllBriefings(ws, allAgents);
-    writeAgentBriefing(ws, agent, allAgents);
-    return { ok: true };
-  });
-
-  // Agent runner IPC: start/stop SDK-driven agents
-  function buildAgentConfig(wsSlug: string, agentId: string): AgentConfig | null {
-    const agent = getAgent(agentId);
-    if (!agent) return null;
-    const ws = workspaceManager.get(wsSlug);
-    if (!ws) return null;
-    const map = getPreference<Record<string, string>>("workspaceCypher", {});
-    const cypherId = map[wsSlug] || undefined;
-    const role = agent.role || "agent";
-    const startPrompt = cypherId
-      ? `You are agent "${agent.id}" (${role}). Read .yo/agents/${agent.id}.md for your role briefing. Messages from teammates arrive automatically. Say "Ready" and wait for instructions.`
-      : `You are agent "${agent.id}" (${role}). Read .yo/agents/${agent.id}.md for your role briefing. Then check .yo/inbox/${agent.id}.md for pending tasks. If the inbox is empty or doesn't exist, say "Ready" and wait for instructions.`;
-    return {
-      name: agent.id,
-      role,
-      cwd: ws.rootDir,
-      prompt: agent.systemPrompt,
-      startPrompt,
-      workspace: wsSlug,
-      cypherId,
-      model: agent.model_name,
-      modelProvider: agent.model_provider,
-      guardrails: agent.guardrails,
-    };
-  }
-
-  ipcMain.on("cw:agent:start", (e, agentName: string) => {
-    const wsSlug = cwWcWorkspace.get(e.sender.id) || workspaceManager.getActive().slug;
-    const config = buildAgentConfig(wsSlug, agentName);
-    if (!config) return;
-    agentRunner.startAgent(e.sender, config).catch((err) => {
-      console.error(`[agent-runner] failed to start agent "${agentName}":`, err);
-    });
-  });
-
-  ipcMain.on("cw:agent:stop", (e, agentName: string) => {
-    agentRunner.stopAgent(e.sender.id, agentName);
-  });
-
-  ipcMain.on("cw:agent:send", (e, agentName: string, message: string) => {
-    agentRunner.sendMessage(e.sender.id, agentName, message);
-  });
-
-  // ── Cypher binding (workspace slug → cypher id) ──────────
-
-  function getActiveCypherId(): string | undefined {
-    const wsSlug = workspaceManager.getActive().slug;
-    const map = getPreference<Record<string, string>>("workspaceCypher", {});
-    return map[wsSlug] || undefined;
-  }
-
-  ipcMain.handle("cw:cypher-status", async () => {
-    const wsSlug = workspaceManager.getActive().slug;
-    const cypherId = getActiveCypherId();
-    if (!cypherId) return { associated: false, layout_name: wsSlug };
-    try {
-      const r = await serverGetAuthed<{
-        cypher: { id: string; slug: string; title: string; status: string; type: string };
-        kitty_balance: number;
-      }>(`/api/cyphers/${encodeURIComponent(cypherId)}`);
-      let jammers = 0;
-      try {
-        const j = await serverGetAuthed<{ jammers: Array<{ left_at: string | null }> }>(
-          `/api/cyphers/${encodeURIComponent(cypherId)}/jammers`,
-        );
-        jammers = j.jammers.filter((x) => !x.left_at).length;
-      } catch { /* ignore */ }
-      return {
-        associated: true, layout_name: wsSlug,
-        cypher_id: r.cypher.id, slug: r.cypher.slug, title: r.cypher.title,
-        status: r.cypher.status, type: r.cypher.type,
-        kitty: r.kitty_balance, jammers,
-      };
-    } catch (err) {
-      const map = getPreference<Record<string, string>>("workspaceCypher", {});
-      const next = { ...map };
-      delete next[wsSlug];
-      setPreference("workspaceCypher", next);
-      return { associated: false, layout_name: wsSlug, error: err instanceof Error ? err.message : "fetch failed" };
-    }
-  });
-
-  ipcMain.handle("cw:cypher-create-and-publish", async (_e, input: Record<string, unknown>) => {
-    const wsSlug = workspaceManager.getActive().slug;
-    try {
-      const create = await serverPostAuthed<{ ok: boolean; cypher?: { id: string }; error?: string }>(
-        "/api/cyphers", input,
-      );
-      if (!create.ok || !create.cypher) return { ok: false, error: create.error || "create failed" };
-      const cypherId = create.cypher.id;
-      const deposit = Number(input.initial_kitty_deposit ?? 0);
-      const pub = await serverPostAuthed<{ ok: boolean; cypher?: { id: string; slug: string }; kitty_balance?: number; error?: string }>(
-        `/api/cyphers/${encodeURIComponent(cypherId)}/publish`,
-        { initial_kitty_deposit: deposit },
-      );
-      if (!pub.ok) return { ok: false, error: pub.error || "publish failed" };
-      const map = getPreference<Record<string, string>>("workspaceCypher", {});
-      setPreference("workspaceCypher", { ...map, [wsSlug]: cypherId });
-      return { ok: true, cypher: pub.cypher, kitty_balance: pub.kitty_balance };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : "publish failed" };
-    }
-  });
-
-  ipcMain.handle("cw:cypher-disassociate", async () => {
-    const wsSlug = workspaceManager.getActive().slug;
-    const map = getPreference<Record<string, string>>("workspaceCypher", {});
-    const next = { ...map };
-    delete next[wsSlug];
-    setPreference("workspaceCypher", next);
-    return { ok: true };
+    mcpManager, connectorManager, canUseMcp,
   });
 
   // IPC: tabs + URL bar (extracted to tab-ipc.ts)
   registerTabIpc({
     panelManager, layoutManager, appConnector,
-    yoAgent, yoInterceptor, agentRunner,
+    yoInterceptor,
     getMainWindow: () => mainWindow,
     openTabs,
     tabBrowserCounter: { get value() { return tabBrowserCounter; }, set value(v) { tabBrowserCounter = v; } },
@@ -3233,68 +1707,10 @@ async function boot() {
     panelNavWc,
     resolveAppId, resolveBrowserHome, browserHtmlUrl,
     ensureTab, persistTabs, sendSplitState, sendTabState,
-    openYoPanel, createPanelForApp,
+    createPanelForApp,
     setPreference, getPreference,
     URL_BAR_HEIGHT,
-    afterNav: () => { if (canvasApi?.isCanvasMode()) canvasApi.applyCanvas(); },
   });
-
-  // ── Canvas mode ───────────────────────────────────────────
-  // Right-click on a canvas window's titlebar → native context menu.
-  ipcMain.on("canvas-window-menu", (_e, id: string) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    const base = resolveAppId(id) || id;
-    const menu = Menu.buildFromTemplate([
-      { label: "New Window", click: () => ipcMain.emit("tab-new-window", {} as Electron.IpcMainEvent, base) },
-      { type: "separator" },
-      { label: "Collapse", click: () => ipcMain.emit("canvas-collapse", {} as Electron.IpcMainEvent, id) },
-      { label: "Expand", click: () => ipcMain.emit("canvas-maximize", {} as Electron.IpcMainEvent, id) },
-      { type: "separator" },
-      { label: "Close", click: () => ipcMain.emit("canvas-close", {} as Electron.IpcMainEvent, id) },
-      { label: "Close All", click: () => {
-        // Same as `.dip clear`: drop any layout, then close every open window.
-        layoutManager.clearSplit();
-        for (const tid of [...openTabs]) ipcMain.emit("tab-close", {} as Electron.IpcMainEvent, tid);
-      } },
-    ]);
-    menu.popup({ window: mainWindow });
-  });
-
-  const getPanelMeta = (id: string) => ({
-    name: getTabName(id),
-    favicon: panelFavicons[id] || agentPanelFavicon(id) || "",
-    url: panelUrls[id] || "",
-    isBrowser: resolveAppId(id) === "browser",
-  });
-  // Per-window chrome views (canvas mode): point them at their local HTML +
-  // preload before any window is laid out.
-  panelManager.configureCanvasChrome(
-    `file://${path.join(__dirname, "..", "renderer", "canvas-chrome.html")}`,
-    path.join(__dirname, "canvas-chrome-preload.js"),
-  );
-  canvasApi = registerCanvasIpc({
-    panelManager, layoutManager,
-    getMainWindow: () => mainWindow,
-    getPreference, setPreference,
-    openTabs,
-    getPanelMeta,
-    closeTab: (id: string) => { ipcMain.emit("tab-close", {} as Electron.IpcMainEvent, id); },
-    sendTabState,
-  });
-  // Any switchTo() while in canvas mode lays out as a window, not full-bleed:
-  // make sure the panel is a tracked tab (so applyCanvas includes it), bring it
-  // to front, then re-apply. Covers .dip, the nav rail, the gear, boot restore…
-  panelManager.setOnCanvasApply((id) => {
-    ensureTab(id);
-    if (canvasApi?.isCanvasMode()) {
-      ipcMain.emit("canvas-focus", {} as Electron.IpcMainEvent, id);
-      sendTabState();
-    }
-  });
-  // Restore canvas mode on boot if it was active when the app last closed.
-  if (getPreference<boolean>("canvasMode", false)) {
-    panelManager.setCanvasMode(true);
-  }
 
   ipcMain.on("open-external", (_e, url: string) => {
     // Only allow http(s) and mailto URLs — block file://, javascript://, etc.
@@ -3329,11 +1745,6 @@ async function boot() {
   // IPC: preferences
   ipcMain.on("set-preference", (_e, key: string, value: unknown) => {
     setPreference(key, value);
-    // Live-apply remote mode toggle
-    if (key === "remoteEnabled") {
-      if (value) voiceRelay?.start();
-      else voiceRelay?.stop();
-    }
     // Notify every panel/BrowserView so forms reading this pref (e.g. Settings →
     // Agent Defaults) update immediately when it's changed elsewhere (e.g. the
     // compaction modal in the right-rail .Yo agent).
@@ -3349,9 +1760,9 @@ async function boot() {
     app.exit(0);
   });
 
-  // IPC: onboarding complete — restore panels after activation
+  // IPC: onboarding complete — land on the Apps panel after activation
   ipcMain.handle("onboarding-complete", () => {
-    restorePanels();
+    openAppsPanelOnly();
     panelsReady = true;
     // Hide panels immediately — the tutorial will show next and it's HTML
     // that gets painted under BrowserViews. panelsShow fires when tutorial closes.
@@ -3389,7 +1800,7 @@ async function boot() {
     });
     if (!currentNeedsOnboarding && !panelsReady) {
       restoring = true;
-      restorePanels();
+      openAppsPanelOnly();
       restoring = false;
       panelsReady = true;
       sendSplitState();
@@ -3489,35 +1900,21 @@ function cleanupAll() {
   if (cleanedUp) return;
   cleanedUp = true;
   globalShortcut.unregisterAll();
+  disposeCommandWindow();
+  disposeOsWindowManager();
   cleanupAuthTimers();
-  cleanupCapabilities();
   try {
     const tabs = getPreference<string[]>("openTabs", []);
     if (tabs.includes("cypher")) {
       setPreference("openTabs", tabs.filter((t: string) => t !== "cypher"));
     }
   } catch {}
-  voiceRelay?.stop();
-  cloudSyncInstance?.stop();
-  cloudSyncInstance = null;
-  usageQueue.stop();
-  configSync?.stop();
-  configSync = null;
   terminalManager?.killAll();
-  wazManager?.closeAll();
-  // agentRunner instances are aborted when their webContents are destroyed
-  mcpExpose?.stop();
-  inboxRouter?.stop();
   mcpManager?.disconnectAll();
   connectorManager?.cleanup();
-  actionGrabber?.stopPolling();
-  embedder?.cleanup();
   dripManager?.cleanup();
   closeLocalDb();
   closeDataStoreDb();
-  closeSubstrateDb();
-  usageTracker.flush();
-  promptLog.flush();
   // Hard exit if anything keeps the process alive
   setTimeout(() => process.exit(0), 5000).unref();
 }

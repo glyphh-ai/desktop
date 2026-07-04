@@ -10,6 +10,21 @@ import path from "path";
 import os from "os";
 import { BrowserWindow } from "electron";
 import { PanelManager } from "./panel-manager";
+import { serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
+import { cachedServerGet, invalidateServerCache } from "./server-cache";
+
+// yo-server saved_layouts shape (saved-layout-service). Note the server model
+// stores cols/rows/cells/folderMode but NOT colWidths/rowHeights — fractional
+// sizing is reconstructed as equal fractions on load (uniform grid), matching
+// the platform Layouts page.
+interface ServerLayout {
+  id: string;
+  name: string;
+  cols: number;
+  rows: number;
+  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }>;
+  folderMode: "single" | "multi";
+}
 
 // ── Grid model ──────────────────────────────────────────────
 
@@ -88,13 +103,15 @@ const CELL_URL_HEIGHT = 22;
 
 export class LayoutManager {
   private layouts: Map<string, GridLayout> = new Map();
+  private serverIds: Map<string, string> = new Map();   // layout name → server UUID
   private activeGrid: GridLayout | null = null;
   private suspendedGrid: GridLayout | null = null;
   private boundWindow: BrowserWindow | null = null;
   private lastCellBounds: CellBounds[] = [];
 
   constructor(private panelManager: PanelManager) {
-    this.load();
+    this.load();                              // local cache first (instant, offline-safe)
+    void this.refreshAndList().catch(() => {}); // then reconcile with the server
   }
 
   /** Grid always starts below titlebar (global URL bar is hidden in grid mode) */
@@ -288,6 +305,7 @@ export class LayoutManager {
   saveLayout(grid: GridLayout): void {
     this.layouts.set(grid.name, grid);
     this.persist();
+    void this.persistToServer(grid).catch(() => {});
   }
 
   /** Delete a layout */
@@ -295,12 +313,69 @@ export class LayoutManager {
     if (!this.layouts.has(name)) return false;
     this.layouts.delete(name);
     this.persist();
+    const id = this.serverIds.get(name);
+    this.serverIds.delete(name);
+    invalidateServerCache("/api/layouts");
+    if (id) void serverDeleteAuthed(`/api/layouts/${id}`).catch(() => {});
     return true;
   }
 
   /** List all layouts */
   listLayouts(): GridLayout[] {
     return Array.from(this.layouts.values());
+  }
+
+  // ── Server sync (yo-server /api/layouts — the org-shared library the
+  // platform Layouts page also writes to) ────────────────────────────
+
+  /** Refresh the local cache from the server, then return the list. Used by
+   *  the layouts-list IPC so the Layouts tab shows server truth. Non-fatal
+   *  offline / pre-auth — the local cache stands in. */
+  async refreshAndList(): Promise<GridLayout[]> {
+    try {
+      const serverLayouts = await cachedServerGet<ServerLayout[]>("/api/layouts");
+      this.serverIds.clear();
+      for (const sl of serverLayouts) {
+        this.serverIds.set(sl.name, sl.id);
+        this.layouts.set(sl.name, this.fromServer(sl));
+      }
+      this.persist();
+    } catch { /* keep local cache */ }
+    return this.listLayouts();
+  }
+
+  /** Build a client GridLayout from a server layout, reconstructing equal
+   *  column/row fractions (the server model doesn't store them). */
+  private fromServer(sl: ServerLayout): GridLayout {
+    const cols = Math.max(1, sl.cols);
+    const rows = Math.max(1, sl.rows);
+    return {
+      name: sl.name,
+      version: 2,
+      cols,
+      rows,
+      colWidths: Array(cols).fill(1 / cols),
+      rowHeights: Array(rows).fill(1 / rows),
+      cells: sl.cells,
+      folderMode: sl.folderMode,
+    };
+  }
+
+  /** Push a layout to the server (create or update, keyed by name→id). */
+  private async persistToServer(grid: GridLayout): Promise<void> {
+    const body = {
+      name: grid.name,
+      cols: grid.cols,
+      rows: grid.rows,
+      cells: grid.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan })),
+      folderMode: grid.folderMode ?? "single",
+    };
+    const id = this.serverIds.get(grid.name);
+    const saved = id
+      ? await serverPatchAuthed<ServerLayout>(`/api/layouts/${id}`, body)
+      : await serverPostAuthed<ServerLayout>("/api/layouts", body);
+    this.serverIds.set(grid.name, saved.id);
+    invalidateServerCache("/api/layouts");
   }
 
   /** Get a layout by name */
@@ -496,14 +571,6 @@ export class LayoutManager {
   private applyGrid(win: BrowserWindow, animate = false) {
     const grid = this.activeGrid;
     if (!grid) return;
-
-    // Canvas mode: never tile fixed grid views. Just make sure each panel's view
-    // exists; canvas-ipc's arrangeToGrid then positions them as free-floating
-    // windows. (Without this the old grid renders underneath the canvas windows.)
-    if (this.panelManager.canvasMode) {
-      for (const cell of grid.cells) this.panelManager.getOrCreateView(cell.panelId, win);
-      return;
-    }
 
     const [rawW, h] = win.getContentSize();
     const left = this.panelManager.leftInset;

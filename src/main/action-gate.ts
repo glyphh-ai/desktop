@@ -10,7 +10,17 @@
  */
 
 import { getPreference } from "./preferences";
-import { isDestructiveTool } from "./substrate/tools";
+
+const DESTRUCTIVE_VERBS = new Set(["send", "delete", "remove", "publish", "push", "deploy", "destroy"]);
+
+/**
+ * Heuristic destructive-tool classifier. Connector short-names use underscores
+ * ("srv__delete_event", "..__send_email"), and \b treats "_" as a word char,
+ * so split on non-letters and test each segment instead of using \b.
+ */
+function isDestructiveTool(name: string): boolean {
+  return name.toLowerCase().split(/[^a-z]+/).some((seg) => DESTRUCTIVE_VERBS.has(seg));
+}
 
 export type AgentMode = "plan" | "default" | "acceptEdits" | "bypassPermissions";
 export type ToolTier = "observe" | "mutate";
@@ -55,7 +65,6 @@ export const TOOL_LABELS: Record<string, string> = {
   add_app:           "Add app",
   zoom:              "Zoom",
   manage_tabs:       "Manage tabs",
-  create_swarm:      "Create swarm",
 };
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -96,7 +105,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   add_app:           "Add an app to the workspace",
   zoom:              "Zoom in or out on a panel",
   manage_tabs:       "Open, close, or switch browser tabs",
-  create_swarm:      "Spin up a local swarm of agents to work a goal",
 };
 
 /** Strip an `mcp__<server>__` prefix, if present, to the bare tool name. */
@@ -146,7 +154,7 @@ export function getToolTier(toolName: string): ToolTier {
  * Tools that ARE the user interaction (or are harmless UI affordances) and so
  * must never be gated behind an approval card — gating them would double-prompt
  * the user (approve the tool, *then* answer the question it raises). Names can
- * arrive bare or MCP-namespaced (`mcp__yo__<name>`), so we compare on the bare
+ * arrive bare or MCP-namespaced (`mcp__glyphh__<name>`), so we compare on the bare
  * name.
  */
 const ALWAYS_EXECUTE = new Set<string>([

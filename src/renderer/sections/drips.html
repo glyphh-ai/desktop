@@ -1,0 +1,50 @@
+        <div class="help-section" data-section="drips">
+          <h2>Drips</h2>
+          <p class="section-desc">Custom effect presets. Use <code>.drip &lt;name&gt;</code> to play.</p>
+          <div id="drips-upgrade-gate" class="hidden" style="padding:24px 0;">
+            <p style="color:var(--text-2);font-size:14px;margin:0 0 12px;">Custom drips require a Basic or Advanced subscription.</p>
+            <button id="drips-upgrade-btn" class="action-btn primary">Upgrade to Basic</button>
+          </div>
+          <div id="drips-toolbar" class="crud-toolbar">
+            <input id="drip-search" type="text" class="crud-search" placeholder="Search drips..." spellcheck="false" autocomplete="off" />
+            <button id="drip-new-btn" class="action-btn primary">+ New</button>
+          </div>
+          <div id="drips-list" class="crud-cards"></div>
+          <div id="drip-editor" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="drip-back-link">&larr; Drips</a>
+              <div class="crud-spacer"></div>
+              <button id="drip-preview-btn" class="action-btn primary" type="button" title="Play this drip">&#9654; Play</button>
+            </div>
+            <div id="drip-form-error" class="crud-form-error hidden"></div>
+            <div id="drip-detail-head" class="edit-head"></div>
+            <label class="settings-label">Name</label>
+            <input type="text" id="drip-name" class="settings-input" placeholder="preset name" spellcheck="false" autocomplete="off" />
+
+            <label class="settings-label">Mode</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select id="drip-mode" class="settings-input" style="width:auto;">
+                <option value="oneshot">One-shot</option>
+                <option value="counted">Counted</option>
+                <option value="persistent">Persistent (toggle on/off)</option>
+              </select>
+              <input type="number" id="drip-count" class="settings-input hidden" min="2" max="10" value="3" style="width:70px;" />
+            </div>
+
+            <label class="settings-label" style="margin-top:8px;">Effects</label>
+            <div id="drip-effects-builder" style="display:flex;flex-direction:column;gap:6px;">
+              <div id="drip-effects-list"></div>
+              <button id="drip-add-effect" class="action-btn" style="align-self:flex-start;">+ Add effect</button>
+            </div>
+
+            <label class="settings-label" style="margin-top:8px;">Recipe preview</label>
+            <code id="drip-recipe-preview" style="display:block;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text-2);font-size:12px;font-family:var(--font-mono);">&mdash;</code>
+
+            <div class="settings-actions" style="margin-top:28px;">
+              <button id="drip-delete-btn" class="action-btn danger">Delete</button>
+              <div style="flex:1;"></div>
+              <button id="drip-cancel-btn" class="action-btn">Cancel</button>
+              <button id="drip-save-btn" class="action-btn primary">Save</button>
+            </div>
+          </div>
+        </div>

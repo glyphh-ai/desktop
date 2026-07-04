@@ -6,12 +6,14 @@ import {
   paginate, renderPaginationBar, confirmAction, clearInvalid,
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
+import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 
 declare const Chart: any;
 
 // ── Apps (unified: apps + MCP + connections) ────────────
 
 let appsPage = 0;
+const APPS_PER_PAGE = 24;
 const appsList = document.getElementById("apps-list")!;
 const appDetail = document.getElementById("app-detail")!;
 const appAddForm = document.getElementById("app-add-form")!;
@@ -20,7 +22,6 @@ const appDetailId = document.getElementById("app-detail-id") as HTMLInputElement
 const appDetailName = document.getElementById("app-detail-name") as HTMLInputElement;
 const appDetailUrl = document.getElementById("app-detail-url") as HTMLInputElement;
 const appForceWeb = document.getElementById("app-detail-force-web") as HTMLInputElement;
-const appDoNotRecord = document.getElementById("app-detail-do-not-record") as HTMLInputElement;
 const appSearchInput = document.getElementById("app-search") as HTMLInputElement;
 const appConnectStatus = document.getElementById("app-connect-status")!;
 const appCommandsList = document.getElementById("app-commands-list")!;
@@ -36,22 +37,128 @@ const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
 let currentAppId = "";
-let activeAppTab: "dashboard" | "panel" | "connection" | "mcp" = "dashboard";
-let connectorSearchOffset = 0;
+let activeAppTab: "dashboard" | "config" = "dashboard";
 
+// ── Browser ↔ Native helpers (pivot-mcp) ─────────────────
+// Apps are either web apps (isBrowser, url + browserTarget) or native desktop
+// apps (execPath + an archetype-specific launchConfig). These build/read the
+// launchConfig from the flat DOM fields, shared by the add + detail forms.
+type Archetype = "terminal" | "editor" | "generic";
+
+// Local mirror of preload.ts PanelAppInput — apps.ts is a standalone renderer
+// module and can't name the type declared in renderer.ts's `declare global`,
+// so it re-declares a structurally-identical alias for building patch bodies.
+type PanelAppInput = {
+  name?: string;
+  slug?: string;
+  url?: string | null;
+  forceWeb?: boolean;
+  isBrowser?: boolean;
+  browserTarget?: "webview" | "native";
+  execPath?: string | null;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
+};
+
+function readLaunchConfig(prefix: string, archetype: Archetype): Record<string, unknown> {
+  const val = (id: string) => (document.getElementById(`${prefix}-${id}`) as HTMLInputElement | HTMLTextAreaElement | null)?.value.trim() || "";
+  if (archetype === "terminal") {
+    const lc: Record<string, unknown> = {};
+    lc.windowMode = val("window-mode") || "window";
+    if (val("shell")) lc.shell = val("shell");
+    if (val("profile")) lc.profile = val("profile");
+    if (val("cwd")) lc.cwd = val("cwd");
+    const cmds = val("init-commands").split("\n").map((s) => s.trim()).filter(Boolean);
+    if (cmds.length) lc.initCommands = cmds;
+    return lc;
+  }
+  if (archetype === "editor") {
+    const lc: Record<string, unknown> = {};
+    if (val("folder")) lc.folder = val("folder");
+    return lc;
+  }
+  const lc: Record<string, unknown> = {};
+  const args = val("args") ? val("args").split(/\s+/) : [];
+  if (args.length) lc.args = args;
+  return lc;
+}
+
+function writeLaunchConfig(prefix: string, archetype: Archetype, lc: Record<string, unknown> | null | undefined): void {
+  const set = (id: string, v: string) => { const el = document.getElementById(`${prefix}-${id}`) as HTMLInputElement | HTMLTextAreaElement | null; if (el) el.value = v; };
+  const c = lc || {};
+  set("window-mode", c.windowMode === "tab" ? "tab" : c.windowMode === "blank" ? "blank" : "window");
+  set("shell", typeof c.shell === "string" ? c.shell : "");
+  set("profile", typeof c.profile === "string" ? c.profile : "");
+  set("cwd", typeof c.cwd === "string" ? c.cwd : "");
+  set("init-commands", Array.isArray(c.initCommands) ? (c.initCommands as string[]).join("\n") : "");
+  set("folder", typeof c.folder === "string" ? c.folder : "");
+  set("args", Array.isArray(c.args) ? (c.args as string[]).join(" ") : "");
+}
+
+// Show only the archetype-specific field block that matches the selection.
+function toggleArchetypeFields(prefix: string, archetype: Archetype): void {
+  document.getElementById(`${prefix}-terminal-fields`)?.classList.toggle("hidden", archetype !== "terminal");
+  document.getElementById(`${prefix}-editor-fields`)?.classList.toggle("hidden", archetype !== "editor");
+  document.getElementById(`${prefix}-generic-fields`)?.classList.toggle("hidden", archetype !== "generic");
+}
+
+// Show the browser-vs-native field blocks for a given form prefix.
+function toggleTypeFields(prefix: string, isBrowser: boolean): void {
+  document.getElementById(`${prefix}-browser-fields`)?.classList.toggle("hidden", !isBrowser);
+  document.getElementById(`${prefix}-native-fields`)?.classList.toggle("hidden", isBrowser);
+}
+
+// Dashboard shell (5a): apps are server objects (yo-server's saved_apps),
+// not local ones — `id` is the server row's UUID (used for every write:
+// update/delete/connection/mcp/commands); `slug` is the human-readable
+// identifier shown/edited in the UI (was previously `id` in the local model).
 interface PanelApp {
   id: string;
+  slug: string;
   name: string;
-  url?: string;
-  connectedSlug?: string;
+  system?: boolean;
+  url?: string | null;
   forceWeb?: boolean;
-  doNotRecord?: boolean;
-  commands?: Record<string, { selector: string; action: string; description: string }>;
-  connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean };
-  mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string }; enabled: boolean };
+  // Browser ↔ Native model (pivot-mcp).
+  isBrowser?: boolean;
+  browserTarget?: "webview" | "native";
+  execPath?: string | null;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
+  commands?: Record<string, { selector: string; action: string; description?: string; text?: string }>;
+  connectionIds?: string[];
+  mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
+}
+
+function toPanelApp(a: {
+  id: string; slug: string; name: string; system?: boolean; url: string | null; forceWeb: boolean;
+  isBrowser?: boolean; browserTarget?: "webview" | "native"; execPath?: string | null;
+  appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
+  commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
+  connectionIds: string[];
+  mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
+}): PanelApp {
+  return {
+    id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url, forceWeb: a.forceWeb,
+    isBrowser: a.isBrowser, browserTarget: a.browserTarget, execPath: a.execPath,
+    appArchetype: a.appArchetype, launchConfig: a.launchConfig,
+    commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
+  };
 }
 
 let panelApps: PanelApp[] = [];
+
+/** Open an app the way its config dictates (Browser↔Native model): native apps
+ *  launch their executable, browser apps open in native Chrome or Glyphh's
+ *  webview window per browserTarget. Returns the launch result so callers can
+ *  surface an error. */
+async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: string }> {
+  return window.yo.appLaunch({
+    slug: app.slug, name: app.name, url: app.url, forceWeb: app.forceWeb,
+    isBrowser: app.isBrowser, browserTarget: app.browserTarget,
+    execPath: app.execPath, appArchetype: app.appArchetype, launchConfig: app.launchConfig,
+  });
+}
 
 async function loadApps() {
   appDetail.classList.add("hidden");
@@ -63,19 +170,21 @@ async function loadApps() {
   appsToolbar.classList.remove("hidden");
 
   try {
-    const apps = await window.yo.appsList();
-    panelApps = apps
-      .filter((a) => a.url)
-      .map((a) => ({
-        id: a.id, name: a.name, url: a.url,
-        connectedSlug: a.connectedSlug, forceWeb: a.forceWeb, doNotRecord: a.doNotRecord,
-        commands: a.commands, connection: a.connection, mcp: a.mcp,
-      }));
+    const apps = await window.yo.panelAppsList();
+    // Keep browser apps (have a url) and native apps (isBrowser === false).
+    // Legacy rows have neither field set but always carry a url, so the url
+    // check still covers them.
+    // Hide seeded system apps (Glyphh) — they aren't user-managed.
+    panelApps = apps.filter((a) => !a.system && (a.url || a.isBrowser === false)).map(toPanelApp);
   } catch { panelApps = []; }
 
   document.getElementById("apps-limit-msg")!.classList.add("hidden");
 
   renderAppsList();
+  // Async — re-renders once OS file icons (native apps) land. Apps no longer
+  // carry a Pipedream connection (Connections are their own tab now), so their
+  // icon comes from the url favicon or the executable icon.
+  void primeNativeIcons(panelApps, renderAppsList);
 }
 
 function renderAppsList() {
@@ -85,7 +194,7 @@ function renderAppsList() {
     ? panelApps.filter((a) => a.name.toLowerCase().includes(query) || (a.url || "").toLowerCase().includes(query))
     : panelApps;
 
-  appsList.className = "app-grid";
+  appsList.className = "app-list-wrap";
 
   if (panelApps.length === 0) {
     appsList.innerHTML = `<div class="crud-empty">No apps yet. Click "+ New" to add one.</div>`;
@@ -96,39 +205,491 @@ function renderAppsList() {
     return;
   }
 
-  const { items: pageApps, state } = paginate(filtered, appsPage);
+  const { items: pageApps, state } = paginate(filtered, appsPage, APPS_PER_PAGE);
   appsPage = state.page;
   appsList.innerHTML = "";
 
+  // Cards live in their own grid; the pagination bar is a sibling below it
+  // (appending the bar into the grid would make it a stray grid cell).
+  const grid = document.createElement("div");
+  grid.className = "app-grid";
   for (const app of pageApps) {
-    const isInternal = app.url?.startsWith("yo://");
-    const hasUrl = app.url && !isInternal;
-    const faviconUrl = hasUrl
-      ? `https://www.google.com/s2/favicons?domain=${new URL(app.url!).hostname}&sz=64`
-      : "";
-    const initial = app.name.charAt(0).toUpperCase();
-
     const badges: string[] = [];
-    if (app.mcp && !app.url) badges.push(`<span class="app-card-badge">MCP</span>`);
-    if (app.connection?.accountId) badges.push(`<span class="app-card-badge badge-connection">API</span>`);
 
     const card = document.createElement("div");
     card.className = "app-card";
     card.innerHTML = `
       ${badges.join("")}
-      <div class="app-card-icon">
-        ${faviconUrl
-          ? `<img src="${faviconUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="app-card-initial" style="display:none">${initial}</span>`
-          : `<span class="app-card-initial">${initial}</span>`}
-      </div>
+      <div class="app-card-icon">${appIconInner(app, app.name, "app-card-initial")}</div>
       <div class="app-card-name">${app.name}</div>
-      <div class="app-card-id">${app.id}</div>`;
+      <div class="app-card-id">${app.slug}</div>`;
 
     card.addEventListener("click", () => openPanelAppDetail(app));
-    appsList.appendChild(card);
+    // Double-click skips the editor and opens the app per its config (5b) —
+    // webview window, native Chrome, or a native executable.
+    card.addEventListener("dblclick", () => { void launchPanelApp(app); });
+    grid.appendChild(card);
+  }
+  appsList.appendChild(grid);
+
+  if (state.totalPages > 1) {
+    appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
+  }
+}
+
+// ── Marketplace (Shopify-style storefront) ───────────────
+// Public catalog + org-private apps: search, categories, sponsored + popular
+// strips, paginated grid. Backed by marketplace.ts (placeholder catalog until
+// the yo-server routes land).
+type MktApp = Awaited<ReturnType<typeof window.yo.marketplaceList>>["items"][number];
+
+const marketplaceLibraryPage = document.getElementById("apps-library-page")!;
+const marketplacePage = document.getElementById("apps-marketplace-page")!;
+const mktStoreEl = document.getElementById("mkt-store")!;
+const mktDetailEl = document.getElementById("mkt-detail")!;
+const mktSearchInput = document.getElementById("mkt-search") as HTMLInputElement;
+const mktSortSelect = document.getElementById("mkt-sort") as HTMLSelectElement;
+const mktCategoriesEl = document.getElementById("mkt-categories")!;
+const mktFeaturedWrap = document.getElementById("mkt-featured")!;
+const mktFeaturedList = document.getElementById("mkt-featured-list")!;
+const mktPopularWrap = document.getElementById("mkt-popular")!;
+const mktPopularList = document.getElementById("mkt-popular-list")!;
+const mktListEl = document.getElementById("mkt-list")!;
+const mktPagerEl = document.getElementById("mkt-pager")!;
+const mktCountEl = document.getElementById("mkt-count")!;
+const mktAllTitle = document.getElementById("mkt-all-title")!;
+
+let mktScope: "public" | "private" = "public";
+let mktCategory = "";
+let mktQuery = "";
+let mktSort: "popular" | "rating" | "newest" = "popular";
+let mktPage = 1;
+let mktSearchTimer: ReturnType<typeof setTimeout> | null = null;
+
+function escMkt(s: string): string {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Canonical domain per connection slug — feeds appIconInner's favicon fallback
+// so a real brand icon still shows if the Pipedream catalog icon isn't cached.
+const CONN_DOMAIN: Record<string, string> = {
+  slack: "slack.com", slack_v2: "slack.com", gmail: "mail.google.com", notion: "notion.so", github: "github.com",
+  linear: "linear.app", google_sheets: "sheets.google.com", hubspot: "hubspot.com",
+  stripe: "stripe.com", figma: "figma.com", google_calendar: "calendar.google.com",
+  snowflake: "snowflake.com", google_drive: "drive.google.com", google_slides: "slides.google.com",
+  okta: "okta.com", zendesk: "zendesk.com",
+};
+
+/** A single required-connection icon — identical to the Layouts row
+ *  (appIconInner, icon only, name on hover), just sized smaller. Resolution
+ *  order matches the rest of the app: Pipedream catalog icon → favicon → initial. */
+function mktConnChip(conn: { name: string; slug: string }): string {
+  const domain = CONN_DOMAIN[conn.slug];
+  const app = { url: domain ? `https://${domain}` : undefined, connection: { accountId: "mkt", pipedreamSlug: conn.slug } };
+  return `<span class="mkt-conn" title="${escMkt(conn.name)}">${appIconInner(app, conn.name, "mkt-conn-initial")}</span>`;
+}
+
+/** Row of required-connection icons (icons only, like the Layouts card). */
+function mktConnRow(conns: Array<{ name: string; slug: string }>): string {
+  if (!conns || conns.length === 0) return "";
+  return `<div class="mkt-conns">${conns.map(mktConnChip).join("")}</div>`;
+}
+
+/** Pseudo-apps (connection-only) to hand to primeConnectedIcons so it fetches
+ *  the Pipedream catalog icon for every required-connection slug on screen. */
+function mktConnIconApps(conns: Array<{ slug: string }>): Array<{ connection: { accountId: string; pipedreamSlug: string } }> {
+  const slugs = new Set(conns.map((c) => c.slug));
+  return [...slugs].map((slug) => ({ connection: { accountId: "mkt", pipedreamSlug: slug } }));
+}
+
+// Pretty display name for a connector slug ("slack_v2" → "Slack").
+const CONN_LABEL: Record<string, string> = {
+  slack_v2: "Slack", gmail: "Gmail", google_calendar: "Google Calendar",
+  google_sheets: "Google Sheets", google_drive: "Google Drive",
+};
+function connLabel(slug: string): string {
+  return CONN_LABEL[slug] || slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** "Required connections" block on the app editor — one row per connector the
+ *  installed app's manifest declares, with live connected/not-connected status.
+ *  The app's tools call these accounts; missing ones mean the app WILL fail,
+ *  so the warning line under the list says exactly that. */
+async function renderRequiredConnections(app: PanelApp): Promise<void> {
+  const wrap = document.getElementById("app-req-conns");
+  const list = document.getElementById("app-req-conns-list");
+  const warn = document.getElementById("app-req-conns-warn");
+  if (!wrap || !list || !warn) return;
+  const required = ((app.launchConfig?.connectors as string[] | undefined) || []).filter(Boolean);
+  if (!required.length) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+
+  let connected = new Set<string>();
+  try {
+    const res = await window.yo.connectionsList();
+    connected = new Set((res.connections || []).map((c) => c.appSlug));
+  } catch { /* status unknown — render everything as missing */ }
+
+  const render = () => {
+    list.innerHTML = required.map((slug) => {
+      const ok = connected.has(slug);
+      return `<div class="app-req-conn-row">
+        ${mktConnChip({ name: connLabel(slug), slug })}
+        <span class="app-req-conn-name">${escMkt(connLabel(slug))}</span>
+        <span class="app-req-conn-status ${ok ? "ok" : "missing"}">${ok ? "Connected" : "Not connected"}</span>
+      </div>`;
+    }).join("");
+  };
+  render();
+  warn.classList.toggle("hidden", required.every((s) => connected.has(s)));
+  primeConnectedIcons(mktConnIconApps(required.map((slug) => ({ slug }))), render);
+}
+
+function mktCard(app: MktApp, variant: "grid" | "row" | "featured"): HTMLElement {
+  const card = document.createElement("div");
+  card.className = `mkt-card mkt-card-${variant}`;
+  const price = app.priceCredits > 0 ? `${app.priceCredits} credits/mo` : "Free plan available";
+  const icon = app.iconUrl ? `<img src="${escMkt(app.iconUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt((app.name || "?").charAt(0).toUpperCase())}</span>`;
+  card.innerHTML = `
+    <div class="mkt-card-top">
+      <div class="mkt-card-icon">${icon}</div>
+      <div class="mkt-card-head">
+        <div class="mkt-card-name">${escMkt(app.name)}</div>
+        <div class="mkt-card-metaline">
+          ${app.featured ? `<span class="mkt-ad">Ad</span>` : ""}
+          <span class="mkt-rating"><b>${app.rating.toFixed(1)}</b> <span class="mkt-stars">★</span> <span class="mkt-rating-count">(${app.ratingCount.toLocaleString()})</span></span>
+          <span class="mkt-dot">•</span>
+          <span class="mkt-price">${escMkt(price)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="mkt-card-tagline">${escMkt(app.tagline)}</div>
+    ${mktConnRow(app.connections)}`;
+  // The whole card is a link into the detail page — no per-card Install button.
+  card.setAttribute("role", "link");
+  card.tabIndex = 0;
+  card.addEventListener("click", () => void openMktDetail(app.id));
+  card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openMktDetail(app.id); } });
+  return card;
+}
+
+function flashMktNote(msg: string): void {
+  let note = document.getElementById("mkt-note");
+  if (!note) {
+    note = document.createElement("div");
+    note.id = "mkt-note";
+    note.className = "mkt-note";
+    marketplacePage.prepend(note);
+  }
+  note.textContent = msg;
+  note.classList.remove("hidden");
+  setTimeout(() => note?.classList.add("hidden"), 4000);
+}
+
+function renderMktCategories(cats: Array<{ id: string; label: string; count: number }>): void {
+  mktCategoriesEl.innerHTML = "";
+  const chip = (id: string, label: string, count?: number) => {
+    const b = document.createElement("button");
+    b.className = "mkt-cat" + (mktCategory === id ? " active" : "");
+    b.textContent = count != null ? `${label} ${count}` : label;
+    b.addEventListener("click", () => { mktCategory = mktCategory === id ? "" : id; mktPage = 1; void loadMarketplace(); });
+    return b;
+  };
+  mktCategoriesEl.appendChild(chip("", "All"));
+  for (const c of cats) mktCategoriesEl.appendChild(chip(c.id, c.label, c.count));
+}
+
+type MktRes = Awaited<ReturnType<typeof window.yo.marketplaceList>>;
+let lastMktRes: MktRes | null = null;
+
+async function loadMarketplace(): Promise<void> {
+  mktListEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
+  try {
+    lastMktRes = await window.yo.marketplaceList({ scope: mktScope, category: mktCategory || undefined, q: mktQuery || undefined, sort: mktSort, page: mktPage });
+  } catch {
+    lastMktRes = null;
+    mktListEl.innerHTML = `<div class="crud-empty">Marketplace unavailable right now.</div>`;
+    return;
+  }
+  renderMktStorefront(lastMktRes);
+  // Fetch the real Pipedream catalog icons for every required connection on
+  // screen, then re-render so chips swap from initials to the icons the Apps
+  // and Layouts pages use. primeConnectedIcons only re-fires for uncached
+  // slugs, so this can't loop.
+  const conns = [...lastMktRes.featured, ...lastMktRes.popular, ...lastMktRes.items].flatMap((a) => a.connections);
+  void primeConnectedIcons(mktConnIconApps(conns), () => { if (lastMktRes) renderMktStorefront(lastMktRes); });
+}
+
+function renderMktStorefront(res: MktRes): void {
+  renderMktCategories(res.categories);
+
+  // Strips only on the default view (no search / category / non-first page).
+  const stripsVisible = !mktQuery && !mktCategory && mktPage === 1;
+  mktFeaturedWrap.classList.toggle("hidden", !stripsVisible || res.featured.length === 0);
+  mktPopularWrap.classList.toggle("hidden", !stripsVisible || res.popular.length === 0);
+  if (stripsVisible) {
+    mktFeaturedList.innerHTML = "";
+    for (const a of res.featured) mktFeaturedList.appendChild(mktCard(a, "featured"));
+    mktPopularList.innerHTML = "";
+    for (const a of res.popular) mktPopularList.appendChild(mktCard(a, "row"));
   }
 
-  appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
+  mktAllTitle.textContent = mktCategory ? (res.categories.find((c) => c.id === mktCategory)?.label || "Apps")
+    : mktQuery ? `Results for “${mktQuery}”` : "All apps";
+  mktCountEl.textContent = res.total ? `${res.total} app${res.total === 1 ? "" : "s"}` : "";
+
+  mktListEl.innerHTML = "";
+  if (res.items.length === 0) {
+    mktListEl.innerHTML = mktScope === "private"
+      ? `<div class="crud-empty">Your organization hasn't published any apps yet. Publish from your CI, then release them to members.</div>`
+      : `<div class="crud-empty">No apps match your search.</div>`;
+  } else {
+    for (const a of res.items) mktListEl.appendChild(mktCard(a, "grid"));
+  }
+
+  // Pagination.
+  mktPagerEl.innerHTML = "";
+  const totalPages = Math.max(1, Math.ceil(res.total / res.pageSize));
+  if (totalPages > 1) {
+    const mk = (label: string, to: number, disabled: boolean) => {
+      const b = document.createElement("button");
+      b.className = "pagination-btn"; b.textContent = label; b.disabled = disabled;
+      b.addEventListener("click", () => { mktPage = to; void loadMarketplace(); marketplacePage.scrollTop = 0; });
+      return b;
+    };
+    mktPagerEl.appendChild(mk("‹ Prev", mktPage - 1, mktPage <= 1));
+    const info = document.createElement("span");
+    info.className = "pagination-info";
+    info.textContent = `${mktPage} / ${totalPages}`;
+    mktPagerEl.appendChild(info);
+    mktPagerEl.appendChild(mk("Next ›", mktPage + 1, mktPage >= totalPages));
+  }
+}
+
+// ── App detail page (Shopify-style listing) ──────────────
+type MktDetail = NonNullable<Awaited<ReturnType<typeof window.yo.marketplaceDetail>>>;
+
+const MKT_CATEGORY_LABELS: Record<string, string> = {
+  productivity: "Productivity", communication: "Communication", developer: "Developer tools",
+  ai: "AI & automation", marketing: "Marketing & sales", finance: "Finance",
+  design: "Design", data: "Data & analytics",
+};
+const mktCheckIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4.5 4.5L19 7"/></svg>`;
+const mktDotIcon = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>`;
+
+/** 5-glyph star row for a rating (rounded). */
+function mktStarRow(rating: number): string {
+  const full = Math.max(0, Math.min(5, Math.round(rating)));
+  return `<span class="mkt-stars">${"★".repeat(full)}${"☆".repeat(5 - full)}</span>`;
+}
+
+/** Hide the detail page and return to the storefront grid. */
+function closeMktDetail(): void {
+  mktDetailEl.classList.add("hidden");
+  mktDetailEl.innerHTML = "";
+  mktStoreEl.classList.remove("hidden");
+  marketplacePage.scrollTop = 0;
+}
+
+/** Load + show the detail page for one app id. */
+async function openMktDetail(id: string): Promise<void> {
+  mktStoreEl.classList.add("hidden");
+  mktDetailEl.classList.remove("hidden");
+  mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Loading…</div>`;
+  mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
+  marketplacePage.scrollTop = 0;
+
+  let detail: MktDetail | null = null;
+  try { detail = await window.yo.marketplaceDetail(id); }
+  catch { detail = null; }
+  if (!detail) {
+    mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Couldn't load this app right now.</div>`;
+    mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
+    return;
+  }
+  renderMktDetail(detail);
+}
+
+function renderMktDetail(d: MktDetail): void {
+  const catLabel = MKT_CATEGORY_LABELS[d.category] || "Apps";
+  const priceLabel = d.priceCredits > 0 ? `From ${d.priceCredits} credits/mo` : "Free plan available";
+  const ctaNote = d.priceCredits > 0 ? "Free trial available" : "Free to install";
+  const total = d.ratingCount || d.ratingBreakdown.reduce((a, b) => a + b.count, 0) || 1;
+
+  const highlights = d.highlights.map((h) => `<li>${mktCheckIcon}<span>${escMkt(h)}</span></li>`).join("");
+  const paras = d.description.split("\n\n").map((p) => `<p>${escMkt(p)}</p>`).join("");
+
+  const plans = d.plans.map((p) => `
+    <div class="mkt-plan">
+      <div class="mkt-plan-name">${escMkt(p.name)}</div>
+      <div class="mkt-plan-price">${p.priceCredits > 0 ? `${p.priceCredits}<small> credits/mo</small>` : "Free"}</div>
+      ${p.blurb ? `<div class="mkt-plan-blurb">${escMkt(p.blurb)}</div>` : ""}
+      <ul class="mkt-plan-features">${p.features.map((f) => `<li>${mktCheckIcon}<span>${escMkt(f)}</span></li>`).join("")}</ul>
+    </div>`).join("");
+
+  const bars = d.ratingBreakdown.map((b) => {
+    const pct = Math.round((b.count / total) * 100);
+    return `<div class="mkt-bar-row"><span>${b.stars} star</span><div class="mkt-bar-track"><div class="mkt-bar-fill" style="width:${pct}%"></div></div><span class="pct">${pct}%</span></div>`;
+  }).join("");
+
+  const reviews = d.reviews.map((r) => `
+    <div class="mkt-review">
+      <div class="mkt-review-head">${mktStarRow(r.rating)}<span class="mkt-review-date">${escMkt(r.date)}</span></div>
+      <p class="mkt-review-body">${escMkt(r.body)}</p>
+      <div class="mkt-review-who"><b>${escMkt(r.author)}</b>${r.location ? ` · ${escMkt(r.location)}` : ""}${r.usage ? ` · ${escMkt(r.usage)}` : ""}</div>
+    </div>`).join("");
+
+  const works = d.worksWith.map((w) => `<li><span class="dot"></span>${escMkt(w)}</li>`).join("");
+  const dataAccess = d.dataAccess.map((a) => `<li>${mktDotIcon}<span>${escMkt(a)}</span></li>`).join("");
+
+  const installBtn = d.installed
+    ? `<button class="action-btn mkt-dt-install" disabled>Installed</button>`
+    : `<button class="action-btn primary mkt-dt-install">Install</button>`;
+
+  const icon = d.iconUrl ? `<img src="${escMkt(d.iconUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt((d.name || "?").charAt(0).toUpperCase())}</span>`;
+
+  mktDetailEl.innerHTML = `
+    <button class="mkt-back">‹ Back to marketplace</button>
+    <nav class="mkt-crumbs">Marketplace<span class="sep">›</span><a class="mkt-crumb-cat" href="#">${escMkt(catLabel)}</a><span class="sep">›</span><span class="cur">${escMkt(d.name)}</span></nav>
+
+    <header class="mkt-dt-hero">
+      <div class="mkt-dt-icon">${icon}</div>
+      <div class="mkt-dt-headmain">
+        <h1 class="mkt-dt-name">${escMkt(d.name)}</h1>
+        <p class="mkt-dt-tagline">${escMkt(d.tagline)}</p>
+        <div class="mkt-dt-metarow">
+          <span class="mkt-dt-dev">by <b>${escMkt(d.developer.name)}</b></span>
+          ${mktConnRow(d.connections)}
+        </div>
+        <div class="mkt-dt-statrow">${mktStarRow(d.rating)}<b>${d.rating.toFixed(1)}</b><span>(${d.ratingCount.toLocaleString()} reviews)</span><span class="mkt-dot">•</span><span>${escMkt(priceLabel)}</span></div>
+      </div>
+      <div class="mkt-dt-cta">
+        ${installBtn}
+        <div class="mkt-dt-price-note">${escMkt(ctaNote)}</div>
+      </div>
+    </header>
+
+    <div class="mkt-dt-body">
+      <div class="mkt-dt-main">
+        <section class="mkt-dt-section mkt-gallery">
+          <div class="mkt-gallery-main"><img id="mkt-shot-main" src="${escMkt(d.screenshots[0]?.url || "")}" alt="" /></div>
+          <div class="mkt-gallery-caption" id="mkt-shot-caption">${escMkt(d.screenshots[0]?.caption || "")}</div>
+          <div class="mkt-gallery-thumbs">
+            ${d.screenshots.map((s, i) => `<button class="mkt-thumb${i === 0 ? " active" : ""}" data-i="${i}"><img src="${escMkt(s.url)}" alt="" /></button>`).join("")}
+          </div>
+        </section>
+
+        <section class="mkt-dt-section">
+          <h3>Highlights</h3>
+          <ul class="mkt-highlights">${highlights}</ul>
+        </section>
+
+        <section class="mkt-dt-section mkt-dt-desc">
+          <h3>About ${escMkt(d.name)}</h3>
+          ${paras}
+        </section>
+
+        <section class="mkt-dt-section">
+          <h3>Pricing</h3>
+          <div class="mkt-plans">${plans}</div>
+          <div class="mkt-plans-note">All charges are billed in Glyphh compute credits. ${d.priceCredits > 0 ? "Free trial available." : ""}</div>
+        </section>
+
+        <section class="mkt-dt-section">
+          <h3>Reviews</h3>
+          <div class="mkt-reviews-summary">
+            <div class="mkt-reviews-score">
+              <div class="big">${d.rating.toFixed(1)}</div>
+              ${mktStarRow(d.rating)}
+              <div class="cnt">${d.ratingCount.toLocaleString()} reviews</div>
+            </div>
+            <div class="mkt-reviews-bars">${bars}</div>
+          </div>
+          <div class="mkt-review-list">${reviews}</div>
+        </section>
+
+        ${d.similar.length ? `<section class="mkt-dt-section"><h3>More apps like this</h3><div class="mkt-grid" id="mkt-similar"></div></section>` : ""}
+      </div>
+
+      <aside class="mkt-dt-side">
+        <div class="mkt-side-card">
+          <h4>Works with</h4>
+          <ul class="mkt-works">${works}</ul>
+        </div>
+        <div class="mkt-side-card">
+          <h4>Resources</h4>
+          <div class="mkt-side-row"><span>Developer</span><b>${escMkt(d.developer.name)}</b></div>
+          ${d.website ? `<div class="mkt-side-row"><span>Website</span><a class="mkt-ext" data-url="${escMkt(d.website)}" href="#">${escMkt(d.website.replace(/^https?:\/\//, ""))}</a></div>` : ""}
+          <div class="mkt-side-row"><span>Launched</span><b>${escMkt(d.launchedAt)}</b></div>
+          ${d.updatedAt ? `<div class="mkt-side-row"><span>Changelog</span><b>${escMkt(d.updatedAt)}</b></div>` : ""}
+          <div class="mkt-side-row"><span>Category</span><b>${escMkt(catLabel)}</b></div>
+          <div class="mkt-side-row"><span>Languages</span><b>${escMkt(d.languages.join(", "))}</b></div>
+          ${d.version ? `<div class="mkt-side-row"><span>Version</span><b>${escMkt(d.version)}</b></div>` : ""}
+        </div>
+        <div class="mkt-side-card">
+          <h4>Data access</h4>
+          <ul class="mkt-dataaccess">${dataAccess}</ul>
+        </div>
+      </aside>
+    </div>`;
+
+  // Wire interactions.
+  mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
+  mktDetailEl.querySelector(".mkt-crumb-cat")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    mktCategory = d.category; mktQuery = ""; mktPage = 1;
+    if (mktSearchInput) mktSearchInput.value = "";
+    closeMktDetail(); void loadMarketplace();
+  });
+  mktDetailEl.querySelector(".mkt-ext")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    const url = (e.currentTarget as HTMLElement).dataset.url;
+    if (url) void window.yo.execCommand(`dip ${url}`);
+  });
+
+  const mainImg = mktDetailEl.querySelector("#mkt-shot-main") as HTMLImageElement | null;
+  const cap = mktDetailEl.querySelector("#mkt-shot-caption") as HTMLElement | null;
+  for (const t of Array.from(mktDetailEl.querySelectorAll<HTMLButtonElement>(".mkt-thumb"))) {
+    t.addEventListener("click", () => {
+      const i = Number(t.dataset.i);
+      const s = d.screenshots[i];
+      if (!s || !mainImg) return;
+      mainImg.src = s.url;
+      if (cap) cap.textContent = s.caption;
+      mktDetailEl.querySelectorAll(".mkt-thumb").forEach((x) => x.classList.toggle("active", x === t));
+    });
+  }
+
+  const installEl = mktDetailEl.querySelector(".mkt-dt-install") as HTMLButtonElement | null;
+  if (installEl && !d.installed) {
+    installEl.addEventListener("click", async () => {
+      installEl.disabled = true; installEl.textContent = "Installing…";
+      const res = await window.yo.marketplaceInstall(d.id);
+      if (res.ok) { installEl.textContent = "Installed"; }
+      else { installEl.disabled = false; installEl.textContent = "Install"; flashMktNote(res.error || "Install failed"); }
+    });
+  }
+
+  const similarWrap = mktDetailEl.querySelector("#mkt-similar");
+  if (similarWrap) for (const a of d.similar) similarWrap.appendChild(mktCard(a, "grid"));
+
+  // Real connection icons for the hero chips + similar cards, then re-render
+  // (only if this detail is still on screen).
+  const conns = [...d.connections, ...d.similar.flatMap((s) => s.connections)];
+  void primeConnectedIcons(mktConnIconApps(conns), () => {
+    if (!mktDetailEl.classList.contains("hidden")) renderMktDetail(d);
+  });
+}
+
+/** Switch between the "My apps" library and the Marketplace storefront. */
+function switchAppsPage(page: "library" | "marketplace" | "proxies"): void {
+  document.querySelectorAll<HTMLButtonElement>(".apps-page-tab").forEach((t) => t.classList.toggle("active", t.dataset.page === page));
+  marketplaceLibraryPage.classList.toggle("hidden", page !== "library");
+  marketplacePage.classList.toggle("hidden", page !== "marketplace");
+  document.getElementById("apps-proxies-page")?.classList.toggle("hidden", page !== "proxies");
+  if (page === "proxies") { closeProxyEditor(false); void loadProxies(); }
+  // Marketplace is temporarily "Coming Soon" (storefront hidden in markup).
+  // To re-enable, restore: if (page === "marketplace") { closeMktDetail(); void loadMarketplace(); }
 }
 
 // ── Tab switching ────────────────────────────────────────
@@ -144,205 +705,78 @@ function switchAppTab(tab: string) {
   document.querySelectorAll<HTMLElement>(".app-tab-right").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
-  if (tab === "dashboard") loadDashboardTab();
-  if (tab === "panel") loadPanelTab();
-  if (tab === "connection") loadConnectionTab();
-  if (tab === "mcp") loadMcpTab();
+  if (tab === "dashboard") loadPanelTab();
+  if (tab === "config") void loadConfigVarsTab();
 }
 
-// ── Dashboard tab ────────────────────────────────────────
+// ── Config Vars tab (per-app encrypted secrets) ──────────
+//
+// Values are write-only: typed once into the form, encrypted in the main
+// process, and never returned to any renderer again — the list shows key
+// names and set-dates only.
 
-let appDashIntakeChart: any = null;
-let appDashRangeMode: "7" | "30" = "7";
-let appDashDataOffset = 0;
-const APP_DASH_PAGE_SIZE = 20;
-let appDashViewingId: string | null = null;
-// search not yet wired — placeholder for future use
-
-async function loadDashboardTab() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-
-  const icon = document.getElementById("app-dash-icon")!;
-  const dashName = document.getElementById("app-dash-name")!;
-  dashName.textContent = app.name;
-
-  if (app.url && !app.url.startsWith("yo://")) {
-    try {
-      icon.innerHTML = `<img src="https://www.google.com/s2/favicons?domain=${new URL(app.url).hostname}&sz=64" onerror="this.outerHTML='${app.name.charAt(0).toUpperCase()}'" style="width:100%;height:100%;object-fit:contain;" />`;
-    } catch { icon.textContent = app.name.charAt(0).toUpperCase(); }
-  } else {
-    icon.textContent = app.name.charAt(0).toUpperCase();
-  }
-
-  appDashDataOffset = 0;
-  appDashViewingId = null;
-
-  const stats = await window.yo.capturesStatsForSource(app.id);
-
-  document.getElementById("app-dash-captures")!.textContent = String(stats.count);
-  document.getElementById("app-dash-embedded")!.textContent = String(stats.embeddedCount);
-  document.getElementById("app-dash-disk")!.textContent = formatBytes(stats.diskBytes);
-  document.getElementById("app-dash-oldest")!.textContent = relativeTime(stats.oldestTs);
-  document.getElementById("app-dash-newest")!.textContent = relativeTime(stats.newestTs);
-
-  renderAppDashIntakeChart();
-  renderAppDashDataList();
-}
-
-async function renderAppDashIntakeChart() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-  const canvas = document.getElementById("app-dash-chart-intake") as HTMLCanvasElement | null;
-  if (!canvas) return;
-
-  const days = appDashRangeMode === "30" ? 30 : 7;
-  const history: Array<{ date: string; count: number; bytes: number }> = await window.yo.capturesDailyHistoryForSource(app.id, days);
-
-  const labels = history.map((d) => {
-    const dt = new Date(d.date + "T00:00:00");
-    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  });
-  const countData = history.map((d) => d.count);
-  const bytesData = history.map((d) => d.bytes);
-
-  const ctx = canvas.getContext("2d")!;
-  if (appDashIntakeChart) appDashIntakeChart.destroy();
-
-  appDashIntakeChart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        { label: "Captures", data: countData, backgroundColor: "rgba(168, 85, 247,0.6)", borderRadius: 3, yAxisID: "y" },
-        { label: "Bytes", data: bytesData, backgroundColor: "rgba(72,219,251,0.35)", borderRadius: 3, yAxisID: "y1" },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      scales: {
-        x: { ticks: { color: cssVar("--text-3"), font: { size: 10 }, maxRotation: 0 }, grid: { color: cssVar("--border") } },
-        y: { position: "left", ticks: { color: cssVar("--accent"), font: { size: 10 }, stepSize: 1 }, grid: { color: cssVar("--border") }, title: { display: false } },
-        y1: { position: "right", ticks: { color: "#48dbfb", font: { size: 10 }, callback: (v: string | number) => formatBytes(Number(v)) }, grid: { drawOnChartArea: false } },
-      },
-      plugins: {
-        legend: { labels: { color: cssVar("--text-2"), font: { size: 11 }, usePointStyle: true, pointStyleWidth: 14, padding: 16 } },
-        tooltip: { callbacks: { label: (c: any) => c.dataset.label === "Bytes" ? `${c.dataset.label}: ${formatBytes(c.parsed.y)}` : `${c.dataset.label}: ${c.parsed.y}` } },
-      },
-    },
-  });
-}
-
-async function renderAppDashDataList() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-
-  const listEl = document.getElementById("app-dash-data-list")!;
-  const toolbarEl = document.getElementById("app-dash-data-toolbar")!;
-  const detailEl = document.getElementById("app-dash-data-detail")!;
-
-  detailEl.classList.add("hidden");
-  listEl.classList.remove("hidden");
-  toolbarEl.classList.remove("hidden");
-
-  const entries = await window.yo.capturesListForSource(app.id, appDashDataOffset, APP_DASH_PAGE_SIZE);
-  const stats = await window.yo.capturesStatsForSource(app.id);
-  const total = stats.count;
-
+async function loadConfigVarsTab() {
+  const listEl = document.getElementById("config-var-list")!;
+  const res = await window.yo.appSecretsList(currentAppId);
   listEl.innerHTML = "";
-  if (entries.length === 0 && appDashDataOffset === 0) {
-    listEl.innerHTML = `<div class="crud-empty">No captures yet. Use .sup on this app to start capturing.</div>`;
+  if (!res.ok) {
+    listEl.innerHTML = `<div class="inline-empty">Couldn't load config vars.</div>`;
     return;
   }
-
-  for (const e of entries) {
-    const card = document.createElement("div");
-    card.className = "crud-card";
-    const info = document.createElement("div");
-    info.className = "crud-card-info";
-    info.style.cssText = "min-width:0;";
-
-    const nameRow = document.createElement("div");
-    nameRow.style.cssText = "display:flex;gap:6px;align-items:center;";
-    const timeSpan = document.createElement("span");
-    timeSpan.className = "crud-card-name";
-    timeSpan.textContent = relativeTime(e.meta.created);
-    nameRow.appendChild(timeSpan);
-    if (e.size > 0) {
-      const sizeSpan = document.createElement("span");
-      sizeSpan.style.cssText = "font-size:10px;color:#48dbfb;flex-shrink:0;";
-      sizeSpan.textContent = formatBytes(e.size);
-      nameRow.appendChild(sizeSpan);
-    }
-    info.appendChild(nameRow);
-
-    const meta = document.createElement("span");
-    meta.className = "crud-card-meta";
-    meta.textContent = e.snippet;
-    meta.style.cssText = "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;";
-    info.appendChild(meta);
-    card.appendChild(info);
-
-    const actions = document.createElement("div");
-    actions.className = "crud-card-actions";
-    const delBtn = document.createElement("button");
-    delBtn.className = "crud-card-btn danger crud-delete-btn";
-    delBtn.title = "Delete";
-    delBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
-    delBtn.addEventListener("click", async (ev) => {
-      ev.stopPropagation();
-      await window.yo.capturesDelete(e.meta.id);
-      renderAppDashDataList();
+  const secrets = res.secrets || [];
+  if (!secrets.length) {
+    listEl.innerHTML = `<div class="inline-empty">No config vars yet. Keys like OPENAI_API_KEY let this app use services on your behalf — the value is encrypted and can never be viewed again.</div>`;
+    return;
+  }
+  for (const s of secrets) {
+    const row = document.createElement("div");
+    row.className = "config-var-row";
+    const keyEl = document.createElement("span");
+    keyEl.className = "config-var-key";
+    keyEl.textContent = s.key;
+    const valEl = document.createElement("span");
+    valEl.className = "config-var-masked";
+    valEl.textContent = "••••••••";
+    valEl.title = "Encrypted — set " + (s.at ? new Date(s.at).toLocaleDateString() : "earlier") + "; values can't be viewed again";
+    const del = document.createElement("button");
+    del.className = "action-btn danger";
+    del.style.cssText = "height:24px;font-size:11px;padding:0 10px;";
+    del.textContent = "Delete";
+    del.addEventListener("click", async () => {
+      if (!(await confirmAction(`Delete config var ${s.key}? Apps that need it will stop working until it's re-added.`))) return;
+      await window.yo.appSecretsDelete(currentAppId, s.key);
+      void loadConfigVarsTab();
     });
-    actions.appendChild(delBtn);
-    card.appendChild(actions);
-
-    card.addEventListener("click", () => openAppDashDataDetail(e.meta.id, e.meta.created));
-    listEl.appendChild(card);
-  }
-
-  if (total > APP_DASH_PAGE_SIZE) {
-    listEl.appendChild(buildPaginationBar(appDashDataOffset, APP_DASH_PAGE_SIZE, total, (newOffset) => {
-      appDashDataOffset = newOffset;
-      renderAppDashDataList();
-    }));
+    row.append(keyEl, valEl, del);
+    listEl.appendChild(row);
   }
 }
 
-async function openAppDashDataDetail(id: string, created: number) {
-  appDashViewingId = id;
-  const [content, size] = await Promise.all([
-    window.yo.capturesRead(id),
-    window.yo.capturesEntrySize(id),
-  ]);
-  const detailEl = document.getElementById("app-dash-data-detail")!;
-  const listEl = document.getElementById("app-dash-data-list")!;
-  const toolbarEl = document.getElementById("app-dash-data-toolbar")!;
-  document.getElementById("app-dash-data-meta")!.textContent = `${new Date(created).toLocaleString()} · ${formatBytes(size)} · ${id}`;
-  document.getElementById("app-dash-data-content")!.textContent = content || "(empty)";
-
-  listEl.classList.add("hidden");
-  toolbarEl.classList.add("hidden");
-  detailEl.classList.remove("hidden");
+function wireConfigVarsForm() {
+  const keyEl = document.getElementById("config-var-key") as HTMLInputElement;
+  const valueEl = document.getElementById("config-var-value") as HTMLTextAreaElement;
+  const errEl = document.getElementById("config-var-error")!;
+  const statusEl = document.getElementById("config-var-status")!;
+  document.getElementById("config-var-add")!.addEventListener("click", async () => {
+    errEl.classList.add("hidden");
+    statusEl.textContent = "";
+    const key = keyEl.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    const value = valueEl.value;
+    const res = await window.yo.appSecretsSet(currentAppId, key, value);
+    if (!res.ok) {
+      errEl.textContent = res.error || "Couldn't save";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    // The one and only moment the plaintext existed in the UI — clear it.
+    keyEl.value = "";
+    valueEl.value = "";
+    statusEl.textContent = `${key} saved — value encrypted; it can't be viewed again.`;
+    setTimeout(() => { if (statusEl.textContent?.startsWith(key)) statusEl.textContent = ""; }, 6000);
+    void loadConfigVarsTab();
+  });
 }
 
-function closeAppDashDataDetail() {
-  document.getElementById("app-dash-data-detail")!.classList.add("hidden");
-  document.getElementById("app-dash-data-list")!.classList.remove("hidden");
-  document.getElementById("app-dash-data-toolbar")!.classList.remove("hidden");
-  appDashViewingId = null;
-  renderAppDashDataList();
-}
-
-async function deleteAppDashDataEntry() {
-  if (!appDashViewingId) return;
-  const confirmed = await confirmAction("Delete this capture?");
-  if (!confirmed) return;
-  await window.yo.capturesDelete(appDashViewingId);
-  closeAppDashDataDetail();
-  loadDashboardTab();
-}
 
 // ── Panel tab ────────────────────────────────────────────
 
@@ -352,7 +786,7 @@ function loadPanelTab() {
   const app = panelApps.find((a) => a.id === currentAppId);
   if (!app) return;
   if (!app.url) {
-    document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">No URL configured for this app. Add a URL on the Dashboard tab to enable panel features.</div>`;
+    document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">No URL configured for this app. Add one above to enable panel features.</div>`;
     return;
   }
   if (!panelLoaded) {
@@ -363,418 +797,42 @@ function loadPanelTab() {
   refreshCommands();
 }
 
-// ── Connection tab ───────────────────────────────────────
-
-async function loadConnectionTab() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-
-  const gate = document.getElementById("connection-upgrade-gate")!;
-  const statusEl = document.getElementById("app-connection-status")!;
-  const listEl = document.getElementById("app-connected-list")!;
-  const toolsEl = document.getElementById("app-connection-tools")!;
-  const noToolsEl = document.getElementById("app-connection-no-tools")!;
-  const browseEl = document.querySelector<HTMLElement>(".connection-browse")!;
-
-  // App connections (Pipedream) are a paid-tier feature — lock for Free users.
-  if (!(await window.yo.hasMcpAccess())) {
-    gate.classList.remove("hidden");
-    statusEl.innerHTML = "";
-    listEl.innerHTML = "";
-    toolsEl.innerHTML = "";
-    noToolsEl.classList.add("hidden");
-    browseEl.classList.add("hidden");
-    return;
-  }
-  gate.classList.add("hidden");
-
-  // Left: this app's connection
-  listEl.innerHTML = "";
-  const isConnected = !!app.connection?.accountId;
-
-  if (app.connection && isConnected) {
-    // Connected — show status + disconnect, hide browse grid
-    browseEl.classList.add("hidden");
-    statusEl.innerHTML = `
-      <div class="connection-status">
-        <span class="connection-status-dot connected"></span>
-        <div class="connection-status-info">
-          <div class="connection-status-name">${app.connection.pipedreamSlug}</div>
-          <div class="connection-status-meta">Connected${app.connection.healthy === false ? " (unhealthy)" : ""}</div>
-        </div>
-        <button class="action-btn danger" id="app-conn-disconnect" style="height:28px;font-size:12px;">Disconnect</button>
-      </div>`;
-
-    document.getElementById("app-conn-disconnect")?.addEventListener("click", async () => {
-      if (!app.connection?.accountId) return;
-      const btn = document.getElementById("app-conn-disconnect") as HTMLButtonElement;
-      btn.disabled = true;
-      btn.textContent = "Disconnecting...";
-      await window.yo.connectorsDisconnect(app.connection.accountId);
-      // Also remove the connection from the app so it clears properly
-      await window.yo.appsRemoveConnection(app.id);
-      const apps = await window.yo.appsList();
-      reloadPanelApps(apps);
-      loadConnectionTab();
-    });
-  } else {
-    // Not connected — show browse grid to pick an app
-    statusEl.innerHTML = "";
-    browseEl.classList.remove("hidden");
-    connectorSearchOffset = 0;
-    const searchInput = document.getElementById("app-connector-search") as HTMLInputElement;
-    if (searchInput) searchInput.value = "";
-    loadConnectorGrid();
-  }
-
-  // Right: tools for this app's connection
-  toolsEl.innerHTML = "";
-  noToolsEl.classList.add("hidden");
-  if (isConnected && app.connection?.pipedreamSlug) {
-    await loadConnectionTools(app.connection.pipedreamSlug);
-  } else {
-    noToolsEl.textContent = "Connect an app to see its tools.";
-    noToolsEl.classList.remove("hidden");
-  }
-}
-
-async function loadConnectionTools(slug: string) {
-  const toolsEl = document.getElementById("app-connection-tools")!;
-  const noToolsEl = document.getElementById("app-connection-no-tools")!;
-  toolsEl.innerHTML = "";
-  noToolsEl.textContent = "Loading tools…";
-  noToolsEl.classList.remove("hidden");
-
-  // Tools come from yo-server's flat connector catalog (keyed by pipedream
-  // app slug), surfaced via connectors-list-tools. Filter to this app's slug.
-  let tools: Array<{ slug: string; name: string; description: string }> = [];
-  try {
-    tools = await window.yo.connectorsListTools();
-  } catch (err) {
-    console.error("[connection-tools] list failed:", err);
-  }
-  const appTools = tools.filter((t) => t.slug === slug);
-
-  if (appTools.length === 0) {
-    noToolsEl.textContent = "No tools available for this app yet.";
-    noToolsEl.classList.remove("hidden");
-    return;
-  }
-
-  noToolsEl.classList.add("hidden");
-  for (const tool of appTools) {
-    const row = document.createElement("div");
-    row.className = "crud-card";
-    row.innerHTML = `
-      <div class="crud-card-info">
-        <span class="crud-card-name" style="font-family:var(--font-mono);font-size:11px;">${tool.name}</span>
-        <span class="crud-card-meta">${tool.description || ""}</span>
-      </div>`;
-    toolsEl.appendChild(row);
-  }
-}
-
-async function loadConnectorGrid(search?: string) {
-  const grid = document.getElementById("app-connector-grid")!;
-  const loadMore = document.getElementById("app-connector-load-more")!;
-
-  try {
-    const { apps, hasMore } = await window.yo.connectorsGetApps(search, connectorSearchOffset);
-    if (connectorSearchOffset === 0) grid.innerHTML = "";
-
-    for (const app of apps) {
-      const card = document.createElement("div");
-      card.className = "connector-card";
-      const initial = app.name.charAt(0).toUpperCase();
-      card.innerHTML = `
-        ${app.icon
-          ? `<img class="connector-card-icon" src="${app.icon}" onerror="this.outerHTML='<span class=\\'connector-card-initial\\'>${initial}</span>'" />`
-          : `<span class="connector-card-initial">${initial}</span>`}
-        <div class="connector-card-info">
-          <div class="connector-card-name">${app.name}</div>
-        </div>`;
-      card.addEventListener("click", async () => {
-        const nameEl = card.querySelector(".connector-card-name")!;
-        nameEl.textContent = "Connecting...";
-        // Set the pipedream slug on the current app FIRST so syncAccountsToApps can find it
-        const currentApp = panelApps.find((a) => a.id === currentAppId);
-        if (currentApp) {
-          await window.yo.appsSetConnection(currentApp.id, app.id);
-        }
-        const result = await window.yo.connectorsConnect(app.id);
-        if (!result.ok) {
-          nameEl.textContent = result.error || "Connection failed";
-          // Remove the connection we just set since connect failed
-          if (currentApp) await window.yo.appsRemoveConnection(currentApp.id);
-          setTimeout(() => { nameEl.textContent = app.name; }, 3000);
-          return;
-        }
-        const allApps = await window.yo.appsList();
-        reloadPanelApps(allApps);
-        loadConnectionTab();
-      });
-      grid.appendChild(card);
-    }
-
-    loadMore.classList.toggle("hidden", !hasMore);
-  } catch {
-    if (connectorSearchOffset === 0) grid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Could not load apps. Check your connection.</div>`;
-  }
-}
-
-// ── MCP tab ──────────────────────────────────────────────
-
-async function loadMcpTab() {
-  const app = panelApps.find((a) => a.id === currentAppId);
-  if (!app) return;
-
-  const mcpGate = document.getElementById("mcp-tab-upgrade-gate")!;
-  const statusRow = document.getElementById("app-mcp-status-row")!;
-
-  // MCP is a paid-tier feature — lock the whole tab for Free users.
-  const mcpSiblings = document.querySelectorAll<HTMLElement>(".app-tab-left[data-tab='mcp'] > :not(#mcp-tab-upgrade-gate)");
-  if (!(await window.yo.hasMcpAccess())) {
-    mcpGate.classList.remove("hidden");
-    mcpSiblings.forEach(el => el.classList.add("hidden"));
-    return;
-  }
-  mcpGate.classList.add("hidden");
-  mcpSiblings.forEach(el => el.classList.remove("hidden"));
-
-  const statusBadge = document.getElementById("app-mcp-status")!;
-  const connectBtn = document.getElementById("app-mcp-connect") as HTMLButtonElement;
-  const disconnectBtn = document.getElementById("app-mcp-disconnect") as HTMLButtonElement;
-  const transportSelect = document.getElementById("app-mcp-transport") as HTMLSelectElement;
-  const commandInput = document.getElementById("app-mcp-command") as HTMLInputElement;
-  const argsInput = document.getElementById("app-mcp-args") as HTMLInputElement;
-  const envInput = document.getElementById("app-mcp-env") as HTMLTextAreaElement;
-  const urlInput = document.getElementById("app-mcp-url") as HTMLInputElement;
-
-  if (!app.mcp) {
-    statusBadge.className = "mcp-status-badge status-disconnected";
-    statusBadge.textContent = "not configured";
-    connectBtn.classList.add("hidden");
-    disconnectBtn.classList.add("hidden");
-    transportSelect.value = "stdio";
-    commandInput.value = "";
-    argsInput.value = "";
-    envInput.value = "";
-    urlInput.value = "";
-    (document.getElementById("app-mcp-client-id") as HTMLInputElement).value = "";
-    const secretReset = document.getElementById("app-mcp-client-secret") as HTMLInputElement;
-    secretReset.value = "";
-    secretReset.placeholder = "OAuth client secret";
-    (document.getElementById("app-mcp-token-url") as HTMLInputElement).value = "";
-    (document.getElementById("app-mcp-scope") as HTMLInputElement).value = "";
-    updateMcpFields();
-
-    const toolsTable = document.getElementById("app-mcp-tools-table")!;
-    const noTools = document.getElementById("app-mcp-no-tools")!;
-    toolsTable.classList.add("hidden");
-    noTools.classList.remove("hidden");
-    noTools.textContent = "Configure and save an MCP server to discover tools.";
-    return;
-  }
-
-  // Get live status from MCP manager
-  const servers = await window.yo.mcpGetServers();
-  const server = servers.find((s) => s.config.id === currentAppId);
-  const status = server?.status || "disconnected";
-
-  statusBadge.className = `mcp-status-badge status-${status}`;
-  statusBadge.textContent = status + (server?.error ? `: ${server.error}` : "");
-  connectBtn.classList.toggle("hidden", status === "connected" || status === "connecting");
-  disconnectBtn.classList.toggle("hidden", status !== "connected");
-
-  // Populate config form
-  transportSelect.value = app.mcp.transport;
-  commandInput.value = app.mcp.command || "";
-  argsInput.value = (app.mcp.args || []).join(" ");
-  envInput.value = app.mcp.env ? Object.entries(app.mcp.env).map(([k, v]) => `${k}=${v}`).join("\n") : "";
-  urlInput.value = app.mcp.url || "";
-
-  // OAuth fields. Never populate the secret into the DOM — only hint that one
-  // is saved so the user knows they can leave it blank to keep it.
-  const oauth = app.mcp.oauth;
-  (document.getElementById("app-mcp-client-id") as HTMLInputElement).value = oauth?.clientId || "";
-  (document.getElementById("app-mcp-token-url") as HTMLInputElement).value = oauth?.tokenUrl || "";
-  (document.getElementById("app-mcp-scope") as HTMLInputElement).value = oauth?.scope || "";
-  const secretInput = document.getElementById("app-mcp-client-secret") as HTMLInputElement;
-  secretInput.value = "";
-  secretInput.placeholder = oauth ? "•••••• (saved — re-enter to change)" : "OAuth client secret";
-  updateMcpFields();
-
-  // Tools table (right panel)
-  const toolsBody = document.getElementById("app-mcp-tools-body")!;
-  const toolsTable = document.getElementById("app-mcp-tools-table")!;
-  const noTools = document.getElementById("app-mcp-no-tools")!;
-  const tools = server?.tools || [];
-
-  if (tools.length === 0) {
-    toolsTable.classList.add("hidden");
-    noTools.classList.remove("hidden");
-  } else {
-    toolsTable.classList.remove("hidden");
-    noTools.classList.add("hidden");
-    toolsBody.innerHTML = "";
-
-    for (const tool of tools) {
-      const tr = document.createElement("tr");
-      tr.className = "tool-row";
-      const currentOverride = await window.yo.mcpGetToolOverride(currentAppId, tool.name);
-      tr.innerHTML = `
-        <td class="tool-td-name">${tool.name}</td>
-        <td class="tool-td-desc">${tool.description || ""}</td>
-        <td class="tool-td-perm">
-          <select class="tool-perm-select" data-tool="${tool.name}">
-            <option value="default"${currentOverride === "default" ? " selected" : ""}>Default</option>
-            <option value="auto"${currentOverride === "auto" ? " selected" : ""}>Auto</option>
-            <option value="ask"${currentOverride === "ask" ? " selected" : ""}>Ask</option>
-          </select>
-        </td>`;
-      toolsBody.appendChild(tr);
-    }
-
-    toolsBody.querySelectorAll<HTMLSelectElement>(".tool-perm-select").forEach(sel => {
-      sel.addEventListener("change", () => {
-        window.yo.mcpSetToolOverride(currentAppId, sel.dataset.tool!, sel.value);
-      });
-    });
-  }
-}
-
-function updateMcpFields() {
-  const transport = (document.getElementById("app-mcp-transport") as HTMLSelectElement).value;
-  document.getElementById("app-mcp-stdio-fields")!.classList.toggle("hidden", transport !== "stdio");
-  // The URL field is shared by SSE and streamable-http.
-  document.getElementById("app-mcp-sse-fields")!.classList.toggle("hidden", transport !== "sse" && transport !== "streamable-http");
-  document.getElementById("app-mcp-oauth-fields")!.classList.toggle("hidden", transport !== "streamable-http");
-}
-
-async function saveMcpConfig() {
-  const transport = (document.getElementById("app-mcp-transport") as HTMLSelectElement).value as "stdio" | "sse" | "streamable-http";
-  const statusEl = document.getElementById("app-mcp-save-status")!;
-
-  const app = panelApps.find((a) => a.id === currentAppId);
-
-  const config: Record<string, unknown> = { transport, enabled: false };
-  if (transport === "stdio") {
-    const command = (document.getElementById("app-mcp-command") as HTMLInputElement).value.trim();
-    if (!command) { statusEl.textContent = "Command required"; return; }
-    config.command = command;
-    const args = (document.getElementById("app-mcp-args") as HTMLInputElement).value.trim();
-    if (args) config.args = args.split(/\s+/);
-    const envText = (document.getElementById("app-mcp-env") as HTMLTextAreaElement).value.trim();
-    if (envText) {
-      const env: Record<string, string> = {};
-      for (const line of envText.split("\n")) {
-        const eq = line.indexOf("=");
-        if (eq > 0) env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
-      }
-      config.env = env;
-    }
-  } else if (transport === "streamable-http") {
-    const url = (document.getElementById("app-mcp-url") as HTMLInputElement).value.trim();
-    if (!url) { statusEl.textContent = "URL required"; return; }
-    config.url = url;
-
-    const clientId = (document.getElementById("app-mcp-client-id") as HTMLInputElement).value.trim();
-    const clientSecret = (document.getElementById("app-mcp-client-secret") as HTMLInputElement).value.trim();
-    const tokenUrl = (document.getElementById("app-mcp-token-url") as HTMLInputElement).value.trim();
-    const scope = (document.getElementById("app-mcp-scope") as HTMLInputElement).value.trim();
-
-    // The client secret never reaches the renderer (apps-ipc redacts it). A
-    // blank secret means "keep the one already on disk" — the main process
-    // preserves it (see app-connector preserveOAuthSecret). So a previously
-    // configured server can be edited without re-typing the secret.
-    const hadOauth = !!app?.mcp?.oauth;
-    const anyOauth = clientId || clientSecret || tokenUrl || hadOauth;
-    if (anyOauth) {
-      if (!clientId || !tokenUrl) {
-        statusEl.textContent = "client id and token URL are required for OAuth";
-        return;
-      }
-      if (!clientSecret && !hadOauth) {
-        statusEl.textContent = "client secret is required for OAuth";
-        return;
-      }
-      // clientSecret may be "" here when editing — main keeps the saved value.
-      const oauth: Record<string, string> = { clientId, clientSecret, tokenUrl };
-      if (scope) oauth.scope = scope;
-      config.oauth = oauth;
-    }
-    // No oauth fields → valid unauthenticated streamable-http server (url only).
-  } else {
-    const url = (document.getElementById("app-mcp-url") as HTMLInputElement).value.trim();
-    if (!url) { statusEl.textContent = "URL required"; return; }
-    config.url = url;
-  }
-
-  await window.yo.appsSetMcp(currentAppId, config as any);
-  if (app?.mcp) {
-    await window.yo.mcpUpdateServer(currentAppId, config);
-  } else {
-    await window.yo.mcpAddServer({ id: currentAppId, name: app?.name || currentAppId, ...config });
-  }
-  if (app) app.mcp = config as any;
-  statusEl.textContent = "Saved";
-  setTimeout(() => { statusEl.textContent = ""; loadMcpTab(); }, 1000);
-}
-
-
-const policySelect = document.getElementById("app-detail-capture-policy") as HTMLSelectElement;
-const policyParam = document.getElementById("app-detail-policy-param") as HTMLInputElement;
-const policyDesc = document.getElementById("app-detail-policy-desc")!;
-
-const POLICY_DESCRIPTIONS: Record<string, string> = {
-  append: "Every capture is stored as-is. Best for chat streams and logs.",
-  versioned: "Keeps the last N versions of the content. Older versions are pruned automatically.",
-  deduplicate: "Skips if content is identical to last capture. Replaces if changed.",
-  incremental: "Diffs against the last capture and only stores new lines. Ideal for conversations.",
-  "sliding-window": "Auto-prunes captures older than N hours. Good for ephemeral feeds.",
-  manual: "No automatic capture. Only explicit .sup commands are stored.",
-};
-
-const POLICY_PARAM_LABELS: Record<string, string> = {
-  versioned: "Versions",
-  "sliding-window": "Hours",
-  incremental: "Min chars",
-};
-
-function updatePolicyUI() {
-  const type = policySelect.value;
-  policyDesc.textContent = POLICY_DESCRIPTIONS[type] || "";
-  const paramLabel = POLICY_PARAM_LABELS[type];
-  if (paramLabel) {
-    policyParam.style.display = "";
-    policyParam.placeholder = paramLabel;
-    policyParam.title = paramLabel;
-  } else {
-    policyParam.style.display = "none";
-    policyParam.value = "";
-  }
-}
 
 async function openPanelAppDetail(app: PanelApp) {
   currentAppId = app.id;
   panelLoaded = false;
-  connectorSearchOffset = 0;
 
   // Populate dashboard fields
-  appDetailId.value = app.id;
+  appDetailId.value = app.slug;
   appDetailName.value = app.name;
   appDetailUrl.value = app.url || "";
   appForceWeb.checked = !!app.forceWeb;
-  appDoNotRecord.checked = !!app.doNotRecord;
+
+  // Browser ↔ Native fields (pivot-mcp). Legacy apps have isBrowser undefined
+  // but always carry a url, so they default to browser.
+  const isBrowser = app.isBrowser !== undefined ? app.isBrowser : true;
+  (document.getElementById("app-detail-type") as HTMLSelectElement).value = isBrowser ? "browser" : "native";
+  (document.getElementById("app-detail-browser-target") as HTMLSelectElement).value = app.browserTarget === "native" ? "native" : "webview";
+  (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
+  const detailArchetype = (app.appArchetype as Archetype) || "terminal";
+  (document.getElementById("app-detail-archetype") as HTMLSelectElement).value = detailArchetype;
+  writeLaunchConfig("app-detail", detailArchetype, app.launchConfig);
+  toggleTypeFields("app-detail", isBrowser);
+  toggleArchetypeFields("app-detail", detailArchetype);
+
   appConnectStatus.textContent = "";
   appMapCommand.classList.add("hidden");
-  appDetailHeading.textContent = app.name;
+  // Shared edit header: icon + name + slug (the header title span is now blank).
+  appDetailHeading.textContent = "";
+  document.getElementById("app-detail-head")!.innerHTML =
+    `<div class="app-card-icon">${appIconInner(app, app.name, "app-card-initial")}</div>` +
+    `<div class="edit-head-name">${escMkt(app.name)}<span class="edit-head-slug">${escMkt(app.slug)}</span></div>`;
 
-  const policy = await window.yo.appsGetCapturePolicy(app.id);
-  policySelect.value = policy.type;
-  const paramVal = policy.maxVersions ?? policy.windowHours ?? policy.minDeltaChars;
-  policyParam.value = paramVal ? String(paramVal) : "";
-  updatePolicyUI();
+  // The Glyphh system app can't be deleted (server enforces it) — don't offer.
+  document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
+
+  // Required connections (installed Glyphh apps) — status + missing warning.
+  void renderRequiredConnections(app);
 
   // All tabs always visible
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
@@ -792,7 +850,7 @@ async function openPanelAppDetail(app: PanelApp) {
 }
 
 async function refreshCommands() {
-  const apps = await window.yo.appsList();
+  const apps = await window.yo.panelAppsList();
   const app = apps.find((a) => a.id === currentAppId);
   const commands = app?.commands || {};
   const keys = Object.keys(commands);
@@ -830,7 +888,7 @@ async function refreshCommands() {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const key = (btn.closest(".command-row") as HTMLElement).dataset.key!;
-      await window.yo.appsRemoveCommand(currentAppId, key);
+      await window.yo.panelAppsRemoveCommand(currentAppId, key);
       refreshCommands();
     });
   });
@@ -840,7 +898,7 @@ async function refreshCommands() {
       e.stopPropagation();
       const key = (btn.closest(".command-row") as HTMLElement).dataset.key!;
       const wcId = getPreviewWebContentsId();
-      const result = await window.yo.appsTestCommand(currentAppId, key, wcId);
+      const result = await window.yo.appsTestCommand(commands[key] || null, wcId);
       appConnectStatus.textContent = result ? `Test ${key}: ${result.slice(0, 80)}` : `Test ${key}: executed`;
       setTimeout(() => { appConnectStatus.textContent = ""; }, 3000);
     });
@@ -955,7 +1013,7 @@ async function saveMapping() {
     description: descInput.value.trim() || key,
   };
   if (mappingText) mapping.text = mappingText;
-  await window.yo.appsSetCommand(currentAppId, key, mapping as any);
+  await window.yo.panelAppsSetCommand(currentAppId, key, mapping);
 
   appMapCommand.classList.add("hidden");
   appConnectStatus.textContent = `Mapped: ${key}`;
@@ -971,18 +1029,11 @@ function closeAppDetail() {
   appDetail.classList.add("hidden");
   appsList.classList.remove("hidden");
   appsToolbar.classList.remove("hidden");
-  if (appDashIntakeChart) { appDashIntakeChart.destroy(); appDashIntakeChart = null; }
   loadApps();
 }
 
 function reloadPanelApps(apps: Array<PanelApp>) {
-  panelApps = apps
-    .filter((a) => a.url)
-    .map((a) => ({
-      id: a.id, name: a.name, url: a.url,
-      connectedSlug: a.connectedSlug, forceWeb: a.forceWeb, doNotRecord: a.doNotRecord,
-      commands: a.commands, connection: a.connection, mcp: a.mcp,
-    }));
+  panelApps = apps.filter((a) => !a.system && (a.url || a.isBrowser === false));
 }
 
 // When a browser tab is "Create App"'d, the originating tab id is stashed here
@@ -1009,62 +1060,239 @@ export function openNewAppForm(url = "", name = "", tabId: string | null = null)
   nameInput.focus();
 }
 
-/** Red warning modal shown when the user is about to ENABLE capture for an
- *  app (unchecking "Do Not Capture"). Returns true if the user confirmed,
- *  false on cancel. Async so the caller can `await` and revert on cancel. */
-function confirmEnableCapture(appName: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "capture-warning-overlay";
-    overlay.innerHTML = `
-      <div class="capture-warning-card">
-        <div class="capture-warning-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>Enable capture for ${appName}?</span>
-        </div>
-        <div class="capture-warning-body">
-          <p>Capture lets the LLM read and learn from the content inside this app's panel — your conversations, documents, dashboards, whatever you have on screen.</p>
-          <p><strong>Stored in plain text on this machine.</strong> Captured content lands in the local capture store. We make every effort to filter passwords and obvious PII (emails, SSNs, card numbers), but the filter is not perfect — anything sensitive you read or type in this app may end up on disk in clear text.</p>
-          <p>You can turn capture back off any time from this app's detail panel.</p>
-        </div>
-        <div class="capture-warning-actions">
-          <button type="button" class="capture-warning-cancel">Cancel</button>
-          <button type="button" class="capture-warning-confirm">Enable capture</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    const cleanup = (result: boolean) => { overlay.remove(); resolve(result); };
-    overlay.querySelector(".capture-warning-cancel")!.addEventListener("click", () => cleanup(false));
-    overlay.querySelector(".capture-warning-confirm")!.addEventListener("click", () => cleanup(true));
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) cleanup(false); });
+// ── Public URLs (app proxy tunnels — APP-PROXY-UI-SPEC) ────────────────────
+
+type ProxyRow = Awaited<ReturnType<typeof window.yo.appProxiesList>>["proxies"][number];
+
+const APP_DOMAIN = "glyphh.app";
+const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+let allProxies: ProxyRow[] = [];
+let editingProxyId: string | null = null;
+
+const proxyEl = (id: string) => document.getElementById(id)!;
+const proxyInput = (id: string) => document.getElementById(id) as HTMLInputElement;
+const proxySelect = (id: string) => document.getElementById(id) as HTMLSelectElement;
+
+function proxyUrl(slug: string): string { return `https://${slug || "<name>"}.${APP_DOMAIN}`; }
+
+async function loadProxies(): Promise<void> {
+  const res = await window.yo.appProxiesList();
+  allProxies = res.ok ? res.proxies : [];
+  renderProxiesList(res.ok ? undefined : res.error);
+}
+
+function renderProxiesList(loadError?: string): void {
+  const list = proxyEl("proxies-list");
+  // Same tile grid as the Apps/Connections/Layouts pages. Preserve the hidden
+  // state so a re-render never pops the list over an open editor.
+  const wasHidden = list.classList.contains("hidden") || !proxyEl("proxy-editor").classList.contains("hidden");
+  list.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
+  list.innerHTML = "";
+
+  if (loadError) { list.innerHTML = `<div class="crud-empty">${escMkt(loadError)}</div>`; return; }
+  if (!allProxies.length) {
+    list.innerHTML = `<div class="crud-empty">No public URLs yet. Click "+ New" to expose a local app.</div>`;
+    return;
+  }
+  const query = (document.getElementById("proxy-search") as HTMLInputElement | null)?.value.trim().toLowerCase() || "";
+  const filtered = query
+    ? allProxies.filter((p) => p.slug.includes(query) || (p.label || "").toLowerCase().includes(query) || p.target.toLowerCase().includes(query))
+    : allProxies;
+  if (!filtered.length) { list.innerHTML = `<div class="crud-empty">No public URLs matching "${escMkt(query)}"</div>`; return; }
+
+  const grid = document.createElement("div");
+  grid.className = "app-grid";
+  for (const p of filtered) {
+    const card = document.createElement("div");
+    card.className = "app-card";
+    card.innerHTML = `
+      <div class="app-card-icon"><span class="app-card-initial">🌐</span></div>
+      <div class="app-card-name"></div>
+      <div class="app-card-id"></div>`;
+    card.querySelector(".app-card-name")!.textContent = p.label || p.slug;
+    card.querySelector(".app-card-id")!.textContent =
+      `${p.slug}.${APP_DOMAIN}${p.status !== "active" ? ` · ${p.status}` : ""}`;
+    card.addEventListener("click", () => openProxyEditor(p));
+    grid.appendChild(card);
+  }
+  list.appendChild(grid);
+}
+
+function proxyEditorHead(slug: string): void {
+  proxyEl("proxy-detail-head").innerHTML =
+    `<div class="app-card-icon"><span class="app-card-initial">🌐</span></div>` +
+    `<div class="edit-head-name">${escMkt(slug || "New public URL")}<span class="edit-head-slug">${escMkt(proxyUrl(slug))}</span></div>`;
+}
+
+/** Show/hide the mode-dependent field blocks + warnings. */
+function syncProxyAuthFields(): void {
+  const mode = proxySelect("proxy-auth-mode").value;
+  proxyEl("proxy-visibility-wrap").classList.toggle("hidden", mode !== "glyphh");
+  proxyEl("proxy-oidc-fields").classList.toggle("hidden", mode !== "oidc");
+  proxyEl("proxy-public-warn").classList.toggle("hidden", mode !== "public");
+}
+
+function openProxyEditor(p: ProxyRow | null): void {
+  editingProxyId = p?.id ?? null;
+  proxyEl("proxy-form-error").classList.add("hidden");
+  proxyInput("proxy-slug").value = p?.slug || "";
+  proxyInput("proxy-slug").disabled = !!p;             // slug is immutable after create
+  proxyInput("proxy-target").value = p?.target || "";
+  proxySelect("proxy-auth-mode").value = p?.auth_mode || "glyphh";
+  proxySelect("proxy-visibility").value = p?.visibility || "private";
+  proxyInput("proxy-oidc-issuer").value = p?.auth_config?.issuer || "";
+  proxyInput("proxy-oidc-client-id").value = p?.auth_config?.clientId || "";
+  proxyInput("proxy-oidc-secret").value = "";
+  proxyEl("proxy-oidc-secret-hint").classList.toggle("hidden", !p?.auth_config?.hasClientSecret);
+  proxyInput("proxy-oidc-scopes").value = (p?.auth_config?.scopes || []).join(" ");
+  proxyInput("proxy-oidc-domains").value = (p?.auth_config?.allowedDomains || []).join(", ");
+  proxyInput("proxy-label").value = p?.label || "";
+  proxyEl("proxy-delete-btn").style.display = p ? "" : "none";
+  const openLink = proxyEl("proxy-open-link") as HTMLAnchorElement;
+  openLink.classList.toggle("hidden", !p);
+  if (p) openLink.href = proxyUrl(p.slug);
+  proxyEl("proxy-copy-btn").classList.toggle("hidden", !p);
+  const toggleBtn = proxyEl("proxy-toggle-btn");
+  // Owners can flip active↔disabled; "flagged" is admin-only, so hide there.
+  toggleBtn.classList.toggle("hidden", !p || p.status === "flagged");
+  toggleBtn.textContent = p?.status === "disabled" ? "Enable" : "Disable";
+  proxyEditorHead(p?.slug || "");
+  syncProxySlugPreview();
+  syncProxyAuthFields();
+
+  proxyEl("proxies-list").classList.add("hidden");
+  proxyEl("proxies-toolbar").classList.add("hidden");
+  proxyEl("proxy-editor").classList.remove("hidden");
+  if (!p) proxyInput("proxy-slug").focus();
+}
+
+function closeProxyEditor(reload = true): void {
+  proxyEl("proxy-editor").classList.add("hidden");
+  proxyEl("proxies-list").classList.remove("hidden");
+  proxyEl("proxies-toolbar").classList.remove("hidden");
+  editingProxyId = null;
+  if (reload) void loadProxies();
+}
+
+function syncProxySlugPreview(): void {
+  const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
+  proxyEl("proxy-url-preview").textContent = proxyUrl(slug);
+  proxyEl("proxy-oidc-callback").textContent = `${proxyUrl(slug)}/__glyphh/oidc/callback`;
+  proxyEditorHead(slug);
+}
+
+function proxyFormError(msg: string): void {
+  const el = proxyEl("proxy-form-error");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+async function saveProxy(): Promise<void> {
+  proxyEl("proxy-form-error").classList.add("hidden");
+  const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
+  const target = proxyInput("proxy-target").value.trim();
+  const authMode = proxySelect("proxy-auth-mode").value;
+  const visibility = proxySelect("proxy-visibility").value;
+  const label = proxyInput("proxy-label").value.trim();
+
+  if (!editingProxyId && !SLUG_RE.test(slug)) { proxyFormError("Subdomain must be 1–63 lowercase letters, digits, or hyphens (no leading/trailing hyphen)."); return; }
+  if (!/^https?:\/\//i.test(target)) { proxyFormError("Target must start with http:// or https://."); return; }
+
+  let authConfig: Record<string, unknown> | undefined;
+  if (authMode === "oidc") {
+    const issuer = proxyInput("proxy-oidc-issuer").value.trim();
+    const clientId = proxyInput("proxy-oidc-client-id").value.trim();
+    const clientSecret = proxyInput("proxy-oidc-secret").value;
+    const hadSecret = !proxyEl("proxy-oidc-secret-hint").classList.contains("hidden");
+    if (!/^https:\/\//i.test(issuer)) { proxyFormError("OIDC issuer must be an https:// URL."); return; }
+    if (!clientId) { proxyFormError("OIDC client ID is required."); return; }
+    if (!clientSecret && !hadSecret) { proxyFormError("OIDC client secret is required."); return; }
+    const scopes = proxyInput("proxy-oidc-scopes").value.trim().split(/[\s,]+/).filter(Boolean);
+    const allowedDomains = proxyInput("proxy-oidc-domains").value.split(",").map((s) => s.trim()).filter(Boolean);
+    authConfig = {
+      issuer, clientId,
+      ...(clientSecret ? { clientSecret } : {}),   // blank on edit = keep stored secret
+      ...(scopes.length ? { scopes } : {}),
+      ...(allowedDomains.length ? { allowedDomains } : {}),
+    };
+  }
+
+  const res = editingProxyId
+    ? await window.yo.appProxyUpdate(editingProxyId, { target, visibility, label: label || null, authMode, ...(authConfig ? { authConfig } : {}) })
+    : await window.yo.appProxyCreate({ slug, target, visibility, label: label || undefined, authMode, ...(authConfig ? { authConfig } : {}) });
+
+  if (!res.ok) {
+    proxyFormError(/taken/i.test(res.error || "") ? "That subdomain is already taken — pick another." : (res.error || "Save failed"));
+    return;
+  }
+  closeProxyEditor();
+}
+
+async function deleteProxy(): Promise<void> {
+  if (!editingProxyId) return;
+  const p = allProxies.find((x) => x.id === editingProxyId);
+  const confirmed = await confirmAction(`Delete ${proxyUrl(p?.slug || "")}? Visitors will get "not found" immediately.`);
+  if (!confirmed) return;
+  await window.yo.appProxyDelete(editingProxyId);
+  closeProxyEditor();
+}
+
+function initProxiesPage(): void {
+  document.getElementById("proxy-new-btn")?.addEventListener("click", () => openProxyEditor(null));
+  document.getElementById("proxy-back-link")?.addEventListener("click", () => closeProxyEditor());
+  document.getElementById("proxy-cancel-btn")?.addEventListener("click", () => closeProxyEditor());
+  document.getElementById("proxy-save-btn")?.addEventListener("click", () => { void saveProxy(); });
+  document.getElementById("proxy-delete-btn")?.addEventListener("click", () => { void deleteProxy(); });
+  document.getElementById("proxy-auth-mode")?.addEventListener("change", syncProxyAuthFields);
+  document.getElementById("proxy-search")?.addEventListener("input", () => renderProxiesList());
+  document.getElementById("proxy-copy-btn")?.addEventListener("click", () => {
+    const p = allProxies.find((x) => x.id === editingProxyId);
+    if (p) window.yo.copyToClipboard(proxyUrl(p.slug));
+  });
+  document.getElementById("proxy-toggle-btn")?.addEventListener("click", async () => {
+    const p = allProxies.find((x) => x.id === editingProxyId);
+    if (!p || p.status === "flagged") return;
+    const res = await window.yo.appProxyUpdate(p.id, { status: p.status === "disabled" ? "active" : "disabled" });
+    if (res.ok && res.proxy) {
+      const idx = allProxies.findIndex((x) => x.id === p.id);
+      if (idx >= 0) allProxies[idx] = res.proxy;
+      proxyEl("proxy-toggle-btn").textContent = res.proxy.status === "disabled" ? "Enable" : "Disable";
+    }
+  });
+  const slugInput = proxyInput("proxy-slug");
+  slugInput?.addEventListener("input", () => {
+    const lower = slugInput.value.toLowerCase();
+    if (slugInput.value !== lower) slugInput.value = lower;
+    syncProxySlugPreview();
   });
 }
 
 function initApps() {
+  initProxiesPage();
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
   document.querySelectorAll<HTMLElement>(".tab-upgrade-btn").forEach((btn) => {
     btn.addEventListener("click", () => { void window.yo.execCommand(`dip ${window.yo.platformUrl}`); });
   });
 
+  // Manual refresh + live refresh when the app library changes server-side
+  // (e.g. an app installed over the MCP relay while this page is open).
+  document.getElementById("apps-refresh-btn")?.addEventListener("click", () => { void loadApps(); });
+  window.yo.onPanelAppsChanged?.(() => {
+    // Don't stomp an open editor — the list re-fetches next time it shows.
+    if (appDetail.classList.contains("hidden")) void loadApps();
+  });
+
+  // "Open Connections" from the required-connections warning.
+  document.getElementById("app-req-conns-goto")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    document.querySelector<HTMLButtonElement>('.help-nav-item[data-section="connections"]')?.click();
+  });
+
   const addNameInput = document.getElementById("app-add-name") as HTMLInputElement;
   const addSlugInput = document.getElementById("app-add-slug") as HTMLInputElement;
   const addUrlInput = document.getElementById("app-add-url") as HTMLInputElement;
-  // Force web mode / Do not record are no longer on the create form — new apps
-  // default to capture-off (set in app-connector.add) and the user tunes both on
-  // the app's detail screen.
-
-  // Detail toggle — show the warning modal when the user is about to
-  // ENABLE capture (going from "Do Not Capture: on" to "off"). Cancel
-  // reverts the checkbox.
-  appDoNotRecord?.addEventListener("change", async () => {
-    if (appDoNotRecord.checked) return; // still on — nothing to warn about
-    const name = appDetailName.value.trim() || "this app";
-    const ok = await confirmEnableCapture(name);
-    if (!ok) appDoNotRecord.checked = true;
-  });
-
   // URL → live preview sync in the detail form. Editing the URL field
   // navigates the embedded panel preview to the new address so the user
   // sees their change without having to Save + reopen. Debounced to ride
@@ -1096,16 +1324,71 @@ function initApps() {
   // + New — opens the simple App add form (name → auto-slug → URL).
   // The old "Add App | Add MCP Server" dropdown is gone; the form
   // already lets the user wire MCP in the detail view after creating.
+  const addTypeSelect = document.getElementById("app-add-type") as HTMLSelectElement;
+  const addArchetypeSelect = document.getElementById("app-add-archetype") as HTMLSelectElement;
+  const addExecPath = document.getElementById("app-add-exec-path") as HTMLInputElement;
+
+  // Apps page tabs: My apps ↔ Marketplace ↔ Public URLs.
+  for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".apps-page-tab"))) {
+    t.addEventListener("click", () => {
+      const page = t.dataset.page;
+      switchAppsPage(page === "marketplace" || page === "proxies" ? page : "library");
+    });
+  }
+  // Marketplace scope (Public / Your organization).
+  for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".mkt-scope"))) {
+    t.addEventListener("click", () => {
+      const scope = t.dataset.scope === "private" ? "private" : "public";
+      if (scope === mktScope) return;
+      mktScope = scope; mktCategory = ""; mktPage = 1;
+      document.querySelectorAll<HTMLButtonElement>(".mkt-scope").forEach((x) => x.classList.toggle("active", x === t));
+      void loadMarketplace();
+    });
+  }
+  // Marketplace search (debounced) + sort.
+  mktSearchInput?.addEventListener("input", () => {
+    if (mktSearchTimer) clearTimeout(mktSearchTimer);
+    mktSearchTimer = setTimeout(() => { mktQuery = mktSearchInput.value.trim(); mktPage = 1; void loadMarketplace(); }, 200);
+  });
+  mktSortSelect?.addEventListener("change", () => {
+    mktSort = (mktSortSelect.value as "popular" | "rating" | "newest") || "popular";
+    mktPage = 1; void loadMarketplace();
+  });
+  // Refresh — reload the current storefront view.
+  const mktRefreshBtn = document.getElementById("mkt-refresh");
+  mktRefreshBtn?.addEventListener("click", async () => {
+    mktRefreshBtn.classList.add("spinning");
+    closeMktDetail();
+    await loadMarketplace();
+    mktRefreshBtn.classList.remove("spinning");
+  });
+
   document.getElementById("apps-add-btn")!.addEventListener("click", () => {
     addNameInput.value = "";
     addSlugInput.value = "";
     slugTouched = false;
     addUrlInput.value = "";
+    // Reset Browser ↔ Native fields to defaults (browser / webview / terminal).
+    addTypeSelect.value = "browser";
+    (document.getElementById("app-add-browser-target") as HTMLSelectElement).value = "webview";
+    addExecPath.value = "";
+    addArchetypeSelect.value = "terminal";
+    writeLaunchConfig("app-add", "terminal", null);
+    toggleTypeFields("app-add", true);
+    toggleArchetypeFields("app-add", "terminal");
     appFormError.classList.add("hidden");
     appsList.classList.add("hidden");
     appsToolbar.classList.add("hidden");
     appAddForm.classList.remove("hidden");
     addNameInput.focus();
+  });
+
+  // Add-form Browser ↔ Native + archetype toggles + Browse… button.
+  addTypeSelect.addEventListener("change", () => toggleTypeFields("app-add", addTypeSelect.value === "browser"));
+  addArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
+  document.getElementById("app-add-exec-browse")!.addEventListener("click", async () => {
+    const picked = await window.yo.pickExecutable();
+    if (picked) addExecPath.value = picked;
   });
 
   // MCP add form transport toggle
@@ -1145,14 +1428,18 @@ function initApps() {
       mcpConfig.url = url;
     }
 
+    // KNOWN GAP: headless MCP-only entries (no panel URL) stay local — the
+    // server's saved_apps.url column is NOT NULL, so this path can't move to
+    // /api/panel-apps without a schema change. Flagged, not fixed here since
+    // it's a server-side ask outside this pass's scope.
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
     await window.yo.appsAdd(id, name);
     await window.yo.appsSetMcp(id, mcpConfig as any);
     await window.yo.mcpAddServer({ id, name, ...mcpConfig } as any);
 
     mcpAddForm.classList.add("hidden");
-    const apps = await window.yo.appsList();
-    reloadPanelApps(apps);
+    const apps = await window.yo.panelAppsList();
+    reloadPanelApps(apps.map(toPanelApp));
     const created = panelApps.find((a) => a.id === id);
     if (created) openPanelAppDetail(created);
     else loadApps();
@@ -1168,10 +1455,13 @@ function initApps() {
     const name = addNameInput.value.trim();
     const url = addUrlInput.value.trim();
     const slugInput = addSlugInput.value.trim();
+    const isBrowser = addTypeSelect.value === "browser";
+    const execPath = addExecPath.value.trim();
     if (!name) { addNameInput.classList.add("invalid"); clearInvalid(addNameInput); valid = false; }
-    if (!url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
+    if (isBrowser && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
+    if (!isBrowser && !execPath) { addExecPath.classList.add("invalid"); clearInvalid(addExecPath); valid = false; }
     if (!valid) {
-      appFormError.textContent = "Name and URL are required.";
+      appFormError.textContent = isBrowser ? "Name and URL are required." : "Name and executable path are required.";
       appFormError.classList.remove("hidden");
       return;
     }
@@ -1190,35 +1480,44 @@ function initApps() {
       return;
     }
     // Uniqueness check — apps and vibes share one namespace.
-    const existing = await window.yo.appsList();
-    if (existing.some((a) => a.id === id)) {
+    const existing = await window.yo.panelAppsList();
+    if (existing.some((a) => a.slug === id)) {
       addSlugInput.classList.add("invalid"); clearInvalid(addSlugInput);
       appFormError.textContent = `Slug "${id}" is already taken. Pick a different one.`;
       appFormError.classList.remove("hidden");
       return;
     }
-    await window.yo.appsAdd(id, name, url);
+    const archetype = addArchetypeSelect.value as Archetype;
+    const created = await window.yo.panelAppsCreate(isBrowser
+      ? { name, slug: id, isBrowser: true, url, browserTarget: (document.getElementById("app-add-browser-target") as HTMLSelectElement).value as "webview" | "native", execPath: null }
+      : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) });
+    if (!created.ok || !created.app) {
+      appFormError.textContent = created.error || "Failed to create app.";
+      appFormError.classList.remove("hidden");
+      return;
+    }
     // Force-web / do-not-record are set from the app's detail screen now; new
-    // apps already default to capture-off in app-connector.add.
+    // apps already default to capture-off.
     // If this app was created from a browser tab, convert that tab into it.
     if (pendingOriginTab) { window.yo.convertTabToApp(pendingOriginTab, id); pendingOriginTab = null; }
     appAddForm.classList.add("hidden");
-    const apps = await window.yo.appsList();
-    reloadPanelApps(apps);
-    const created = panelApps.find((a) => a.id === id);
-    if (created) openPanelAppDetail(created);
+    const apps = await window.yo.panelAppsList();
+    reloadPanelApps(apps.map(toPanelApp));
+    const createdLocal = panelApps.find((a) => a.id === created.app!.id);
+    if (createdLocal) openPanelAppDetail(createdLocal);
     else loadApps();
   });
 
   // App detail back button
   document.getElementById("app-detail-close")!.addEventListener("click", () => closeAppDetail());
 
-  // App detail "Open app" — opens the app as a panel (same path .dip uses)
-  // and closes the Settings overlay so the panel is visible.
-  document.getElementById("app-detail-open")!.addEventListener("click", () => {
-    if (!currentAppId) return;
-    void window.yo.execCommand(`dip ${currentAppId}`);
-    closeAppDetail();
+  // App detail "Open app" — opens the app per its config (webview window,
+  // native Chrome, or a native executable). Surfaces launch errors inline.
+  document.getElementById("app-detail-open")!.addEventListener("click", async () => {
+    const app = panelApps.find((a) => a.id === currentAppId);
+    if (!app) return;
+    const r = await launchPanelApp(app);
+    if (!r.ok && r.error) { appFormError.textContent = r.error; appFormError.classList.remove("hidden"); }
   });
 
   // Panel tab: "Pick Element" — start the element picker on the app preview.
@@ -1242,35 +1541,50 @@ function initApps() {
   document.getElementById("app-add-cancel")!.addEventListener("click", () => { pendingOriginTab = null; loadApps(); });
   document.getElementById("app-add-cancel-btn")!.addEventListener("click", () => { pendingOriginTab = null; loadApps(); });
 
-  policySelect.addEventListener("change", updatePolicyUI);
-
   // Tab buttons
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
     btn.addEventListener("click", () => switchAppTab(btn.dataset.tab!));
   });
 
+  // Config Vars tab: add-form wiring (list loads on tab switch).
+  wireConfigVarsForm();
+
+  // Detail-form Browser ↔ Native + archetype toggles + Browse… button.
+  const detailTypeSelect = document.getElementById("app-detail-type") as HTMLSelectElement;
+  const detailArchetypeSelect = document.getElementById("app-detail-archetype") as HTMLSelectElement;
+  const detailExecPath = document.getElementById("app-detail-exec-path") as HTMLInputElement;
+  detailTypeSelect.addEventListener("change", () => toggleTypeFields("app-detail", detailTypeSelect.value === "browser"));
+  detailArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-detail", detailArchetypeSelect.value as Archetype));
+  document.getElementById("app-detail-exec-browse")!.addEventListener("click", async () => {
+    const picked = await window.yo.pickExecutable();
+    if (picked) detailExecPath.value = picked;
+  });
+
   // Dashboard save
   document.getElementById("app-dash-save")!.addEventListener("click", async () => {
     if (!currentAppId) return;
-    const newId = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    if (newId && newId !== currentAppId) {
-      const ok = await window.yo.appsUpdateId(currentAppId, newId);
-      if (ok) currentAppId = newId;
-    }
+    const newSlug = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    const isBrowser = detailTypeSelect.value === "browser";
+    const patch: PanelAppInput = {
+      forceWeb: appForceWeb.checked,
+      isBrowser,
+    };
+    if (newSlug) patch.slug = newSlug;
     const name = appDetailName.value.trim();
-    const url = appDetailUrl.value.trim();
-    if (name) await window.yo.appsUpdateName(currentAppId, name);
-    if (url) await window.yo.appsUpdateUrl(currentAppId, url);
-    await window.yo.appsUpdateForceWeb(currentAppId, appForceWeb.checked);
-    await window.yo.appsUpdateDoNotRecord(currentAppId, appDoNotRecord.checked);
-
-    const pType = policySelect.value;
-    const pVal = parseInt(policyParam.value, 10) || undefined;
-    const policy: Record<string, unknown> = { type: pType };
-    if (pType === "versioned" && pVal) policy.maxVersions = pVal;
-    if (pType === "sliding-window" && pVal) policy.windowHours = pVal;
-    if (pType === "incremental" && pVal) policy.minDeltaChars = pVal;
-    await window.yo.appsUpdateCapturePolicy(currentAppId, policy as any);
+    if (name) patch.name = name;
+    if (isBrowser) {
+      const url = appDetailUrl.value.trim();
+      if (url) patch.url = url;
+      patch.browserTarget = (document.getElementById("app-detail-browser-target") as HTMLSelectElement).value as "webview" | "native";
+      patch.execPath = null;
+    } else {
+      patch.url = null;
+      patch.execPath = detailExecPath.value.trim();
+      const archetype = detailArchetypeSelect.value as Archetype;
+      patch.appArchetype = archetype;
+      patch.launchConfig = readLaunchConfig("app-detail", archetype);
+    }
+    await window.yo.panelAppsUpdate(currentAppId, patch);
 
     closeAppDetail();
   });
@@ -1278,34 +1592,16 @@ function initApps() {
   // Dashboard cancel
   document.getElementById("app-dash-cancel")!.addEventListener("click", () => closeAppDetail());
 
-  // App dashboard range toggle
-  document.getElementById("app-dash-range-7")?.addEventListener("click", () => {
-    appDashRangeMode = "7";
-    document.getElementById("app-dash-range-7")!.classList.add("active");
-    document.getElementById("app-dash-range-30")!.classList.remove("active");
-    renderAppDashIntakeChart();
-  });
-  document.getElementById("app-dash-range-30")?.addEventListener("click", () => {
-    appDashRangeMode = "30";
-    document.getElementById("app-dash-range-30")!.classList.add("active");
-    document.getElementById("app-dash-range-7")!.classList.remove("active");
-    renderAppDashIntakeChart();
-  });
-
-  // App dashboard data detail
-  document.getElementById("app-dash-data-back")?.addEventListener("click", closeAppDashDataDetail);
-  document.getElementById("app-dash-data-delete")?.addEventListener("click", deleteAppDashDataEntry);
-
   // Delete
   document.getElementById("app-detail-delete")!.addEventListener("click", async () => {
     if (!currentAppId) return;
     const confirmed = await confirmAction(`Delete app "${appDetailName.value}"?`);
     if (!confirmed) return;
-    await window.yo.appsRemove(currentAppId);
+    await window.yo.panelAppsDelete(currentAppId);
     closeAppDetail();
   });
 
-  // Export the current app as a .yoapp bundle (main shows the save dialog).
+  // Export the current app as a .glyphh bundle (main shows the save dialog).
   document.getElementById("app-detail-export")?.addEventListener("click", async () => {
     if (!currentAppId) return;
     const btn = document.getElementById("app-detail-export") as HTMLButtonElement;
@@ -1322,7 +1618,7 @@ function initApps() {
     }
   });
 
-  // Import a .yoapp bundle (main shows the open dialog) → reload the apps list.
+  // Import a .glyphh bundle (main shows the open dialog) → reload the apps list.
   document.getElementById("apps-import-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("apps-import-btn") as HTMLButtonElement;
     const prev = btn.textContent;
@@ -1343,67 +1639,7 @@ function initApps() {
     }
   });
 
-  // MCP tab: transport toggle, save, connect, disconnect
-  document.getElementById("app-mcp-transport")!.addEventListener("change", updateMcpFields);
-  document.getElementById("app-mcp-save")!.addEventListener("click", saveMcpConfig);
-
-  document.getElementById("app-mcp-connect")!.addEventListener("click", async () => {
-    if (!currentAppId) return;
-    const btn = document.getElementById("app-mcp-connect") as HTMLButtonElement;
-    btn.disabled = true;
-    btn.textContent = "Connecting...";
-    const result = await window.yo.mcpConnectServer(currentAppId);
-    btn.disabled = false;
-    btn.textContent = "Connect";
-    if (result.ok) loadMcpTab();
-    else {
-      const badge = document.getElementById("app-mcp-status")!;
-      badge.className = "mcp-status-badge status-error";
-      badge.textContent = `error: ${result.error}`;
-    }
-  });
-
-  document.getElementById("app-mcp-disconnect")!.addEventListener("click", async () => {
-    if (!currentAppId) return;
-    await window.yo.mcpDisconnectServer(currentAppId);
-    loadMcpTab();
-  });
-
-  document.getElementById("app-mcp-server-override")!.addEventListener("change", (e) => {
-    if (!currentAppId) return;
-    window.yo.mcpSetServerOverride(currentAppId, (e.target as HTMLSelectElement).value);
-    loadMcpTab();
-  });
-
-  // Connection tab: connector search
-  document.getElementById("app-connector-search")!.addEventListener("input", (e) => {
-    connectorSearchOffset = 0;
-    loadConnectorGrid((e.target as HTMLInputElement).value.trim() || undefined);
-  });
-
-  document.getElementById("app-connector-load-more")!.addEventListener("click", () => {
-    connectorSearchOffset += 20;
-    const search = (document.getElementById("app-connector-search") as HTMLInputElement).value.trim() || undefined;
-    loadConnectorGrid(search);
-  });
-
   appSearchInput.addEventListener("input", () => { appsPage = 0; renderAppsList(); });
-
-  // MCP changed event — refresh MCP tab if viewing
-  window.yo.onMcpChanged(() => {
-    if (!appDetail.classList.contains("hidden") && activeAppTab === "mcp" && currentAppId) {
-      loadMcpTab();
-    }
-  });
-
-  // Connectors changed event — refresh connection tab if viewing
-  window.yo.onConnectorsChanged(async () => {
-    if (!appDetail.classList.contains("hidden") && activeAppTab === "connection" && currentAppId) {
-      const apps = await window.yo.appsList();
-      reloadPanelApps(apps);
-      loadConnectionTab();
-    }
-  });
 
   // Apps dir changed on disk (e.g. an app dropped into ~/yo/apps) — refresh the
   // registry list live when it's the visible view, so new apps appear without a

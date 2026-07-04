@@ -106,27 +106,6 @@ export class PanelManager {
   private _leftInset = 0;
   private _topInset = 0;
   private _bottomInset = 0;
-  /** Canvas (free-floating window) mode — when on, switchTo/applyGrid are
-   *  bypassed and views are positioned by applyCanvas(). */
-  private _canvasMode = false;
-  private _canvasGrid = false;
-  /** Per-window chrome BrowserViews (titlebar + resize frame), keyed by panel
-   *  id. Each is stacked directly above its window's content view in canvas
-   *  mode so overlapping windows don't bleed into each other's chrome. */
-  private chromeViews: Map<string, BrowserView> = new Map();
-  private canvasChromeUrl: string | null = null;
-  private canvasChromePreload: string | null = null;
-  /** True while a canvas window is being dragged/resized. The dock auto-reveal
-   *  and inset-driven re-layout both re-attach views, which would break the
-   *  chrome view's mouse capture mid-gesture — so they no-op while this is set. */
-  private _canvasInteracting = false;
-  get canvasInteracting(): boolean { return this._canvasInteracting; }
-  setCanvasInteracting(v: boolean): void { this._canvasInteracting = v; }
-  /** When set, switchTo() in canvas mode delegates to this (ensure the panel is
-   *  a tracked tab, then applyCanvas) instead of showing it full-bleed — so
-   *  EVERY app-open path (.dip, rail, gear, …) lands as a free-floating window. */
-  private onCanvasApply: ((id: string) => void) | null = null;
-  setOnCanvasApply(cb: (id: string) => void): void { this.onCanvasApply = cb; }
 
   constructor(onPanelCreated?: PanelCreatedCallback) {
     this.onCreated = onPanelCreated ?? null;
@@ -203,8 +182,9 @@ export class PanelManager {
     });
   }
 
-  /** JS injected into forceWeb panels to suppress desktop-app redirects */
-  private static readonly FORCE_WEB_JS = `
+  /** JS injected into forceWeb panels to suppress desktop-app redirects.
+   *  Public: app-window-manager injects the same script into per-app windows. */
+  static readonly FORCE_WEB_JS = `
     (function() {
       if (window.__yoForceWeb) return;
       window.__yoForceWeb = true;
@@ -277,7 +257,7 @@ export class PanelManager {
    * Map a native protocol URL to the corresponding web client URL.
    * Returns null if no mapping exists (caller should just close the popup).
    */
-  private static nativeToWebUrl(nativeUrl: string, parentUrl: string): string | null {
+  static nativeToWebUrl(nativeUrl: string, parentUrl: string): string | null {
     try {
       const parsed = new URL(nativeUrl);
       const proto = parsed.protocol; // e.g. "slack:", "discord:", "msteams:"
@@ -458,18 +438,6 @@ export class PanelManager {
   getAllWebContents(): WebContents[] {
     const out: WebContents[] = [];
     for (const view of this.panels.values()) {
-      if (view.webContents && !view.webContents.isDestroyed()) {
-        out.push(view.webContents);
-      }
-    }
-    return out;
-  }
-
-  /** Chrome views (canvas window frames) — separate from panel content. Used so
-   *  theme changes reach the titlebars/URL bars of open canvas windows. */
-  getChromeWebContents(): WebContents[] {
-    const out: WebContents[] = [];
-    for (const view of this.chromeViews.values()) {
       if (view.webContents && !view.webContents.isDestroyed()) {
         out.push(view.webContents);
       }
@@ -783,13 +751,6 @@ export class PanelManager {
     if (oldId) this.previousPanel = oldId;
     this.activePanel = id;
 
-    // Canvas mode: never show a panel full-bleed — hand off to applyCanvas so the
-    // panel is placed as a free-floating window (with cascade geometry for a
-    // newcomer). This makes ALL open paths (rail, gear, .dip, command center,
-    // settings links, etc.) honour canvas mode, not just the ones routed through
-    // canvas-open-app.
-    if (this._canvasMode) { this.onCanvasApply?.(id); return true; }
-
     const [w, h] = parent.getContentSize();
     const yTop = 38 + this._topInset;
     const finalBounds = { x: this._leftInset, y: yTop, width: w - this._rightInset - this._leftInset, height: h - yTop - this._bottomInset };
@@ -977,158 +938,6 @@ export class PanelManager {
     this.onInsetChange?.();
   }
 
-  // ── Canvas (free-floating window) mode ───────────────────────
-  get canvasMode(): boolean { return this._canvasMode; }
-  setCanvasMode(on: boolean): void { this._canvasMode = on; if (!on) this._canvasGrid = false; }
-  // True while windows are tiled by `.dip grid` (so new apps join the grid and
-  // closing a window re-tiles). Cleared when the grid is broken (manual move,
-  // maximize, or leaving canvas).
-  get canvasGrid(): boolean { return this._canvasGrid; }
-  setCanvasGrid(on: boolean): void { this._canvasGrid = on; }
-
-  /**
-   * Arrange the given panels as free-floating windows at arbitrary bounds.
-   * Each window reserves CANVAS_TITLEBAR_H px at its top for the DOM titlebar
-   * (drawn by the renderer), so the BrowserView is inset below it. Views are
-   * attached in array order, so the last entry renders on top (z-order).
-   * Collapsed windows are detached entirely (their chrome lives in the dock).
-   */
-  applyCanvas(
-    parent: BrowserWindow,
-    windows: Array<{ id: string; x: number; y: number; width: number; height: number; topExtra?: number }>,
-    titlebarH: number,
-    frame = 0,
-  ): void {
-    if (parent.isDestroyed() || this._hidden || this._locked) return;
-    this.detachAllViews(parent);
-    // Drop chrome views for windows that are no longer present (closed/collapsed).
-    const present = new Set(windows.map((w) => w.id));
-    for (const id of [...this.chromeViews.keys()]) {
-      if (!present.has(id)) this.destroyChromeView(id, parent);
-    }
-    // Attach order per window: chrome view (full rect) FIRST, then the content
-    // view (inset below the titlebar / within the frame) on top of it. Windows
-    // come in ascending z, so the final order is
-    //   [w0.chrome, w0.content, w1.chrome, w1.content, …]
-    // which means every window's chrome sits above all windows behind it (no
-    // bleed) while its own content stays clickable on top of its chrome.
-    for (const wdesc of windows) {
-      const chrome = this.getOrCreateChromeView(wdesc.id, parent);
-      if (chrome) {
-        chrome.setAutoResize({ width: false, height: false });
-        this.attachView(parent, chrome);
-        chrome.setBounds({
-          x: Math.round(wdesc.x),
-          y: Math.round(wdesc.y),
-          width: Math.max(40, Math.round(wdesc.width)),
-          height: Math.max(40, Math.round(wdesc.height)),
-        });
-      }
-      const view = this.getOrCreateView(wdesc.id, parent);
-      if (!view) continue;
-      // topExtra reserves room below the titlebar for a per-window chrome strip
-      // (e.g. the browser URL bar), drawn by the chrome view.
-      const topInset = titlebarH + (wdesc.topExtra ?? 0);
-      const viewBounds = {
-        x: Math.round(wdesc.x + frame),
-        y: Math.round(wdesc.y + topInset),
-        width: Math.max(40, Math.round(wdesc.width - frame * 2)),
-        height: Math.max(40, Math.round(wdesc.height - topInset - frame)),
-      };
-      view.setAutoResize({ width: false, height: false });
-      this.attachView(parent, view);
-      view.setBounds(viewBounds);
-    }
-    if (windows.length > 0) this.activePanel = windows[windows.length - 1].id;
-  }
-
-  // ── Canvas chrome views ──────────────────────────────────────
-  /** Point chrome views at their local HTML + preload (called once at boot). */
-  configureCanvasChrome(url: string, preload: string): void {
-    this.canvasChromeUrl = url;
-    this.canvasChromePreload = preload;
-  }
-
-  /** Get or lazily create the chrome view for a canvas window. */
-  getOrCreateChromeView(id: string, parent: BrowserWindow): BrowserView | null {
-    const existing = this.chromeViews.get(id);
-    if (existing) {
-      try {
-        if (existing.webContents && !existing.webContents.isDestroyed()) return existing;
-      } catch { /* fall through to recreate */ }
-      this.chromeViews.delete(id);
-    }
-    if (!this.canvasChromeUrl || parent.isDestroyed()) return null;
-    const view = new BrowserView({
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        ...(this.canvasChromePreload ? { preload: this.canvasChromePreload } : {}),
-      },
-    });
-    try { view.setBackgroundColor("#00000000"); } catch { /* not supported everywhere */ }
-    view.webContents.loadURL(`${this.canvasChromeUrl}?id=${encodeURIComponent(id)}`);
-    this.chromeViews.set(id, view);
-    return view;
-  }
-
-  /** Push a window's meta + geometry to its chrome view for rendering. */
-  updateChromeView(id: string, payload: { name: string; favicon: string; active: boolean; titlebarH: number; frame: number; isBrowser?: boolean; urlBarOpen?: boolean; urlBarH?: number; url?: string }): void {
-    const view = this.chromeViews.get(id);
-    if (view && view.webContents && !view.webContents.isDestroyed()) {
-      view.webContents.send("canvas-chrome-update", payload);
-    }
-  }
-
-  /** Destroy one chrome view (window closed or collapsed). */
-  destroyChromeView(id: string, parent: BrowserWindow): void {
-    const view = this.chromeViews.get(id);
-    if (!view) return;
-    try {
-      if (!parent.isDestroyed()) parent.removeBrowserView(view);
-      if (view.webContents && !view.webContents.isDestroyed()) {
-        (view.webContents as unknown as { destroy?: () => void }).destroy?.();
-      }
-    } catch { /* already gone */ }
-    this.chromeViews.delete(id);
-  }
-
-  /** Destroy every chrome view (leaving canvas mode / shutdown). */
-  destroyAllChromeViews(parent: BrowserWindow): void {
-    for (const id of [...this.chromeViews.keys()]) this.destroyChromeView(id, parent);
-  }
-
-  /** Detach a single panel's content view (used during a canvas drag/resize so
-   *  only the lightweight chrome "ghost" moves; restored by the next
-   *  applyCanvas). No-op if the view isn't attached. */
-  detachPanelView(id: string, parent: BrowserWindow): void {
-    const view = this.panels.get(id);
-    if (view && !parent.isDestroyed()) {
-      try { parent.removeBrowserView(view); } catch { /* already gone */ }
-    }
-  }
-
-  /** Raise a window's chrome view to the top WITHOUT detaching it, so the view
-   *  holding the active mouse capture (during a drag) keeps its event stream. */
-  bringChromeToTop(id: string, parent: BrowserWindow): void {
-    const view = this.chromeViews.get(id);
-    if (view && !parent.isDestroyed() && view.webContents && !view.webContents.isDestroyed()) {
-      try { parent.setTopBrowserView(view); } catch { /* older electron / detached */ }
-    }
-  }
-
-  /** Live-reposition a window's chrome view during a drag/resize gesture. */
-  setChromeViewBounds(id: string, rect: { x: number; y: number; w: number; h: number }): void {
-    const view = this.chromeViews.get(id);
-    if (!view || (view.webContents && view.webContents.isDestroyed())) return;
-    view.setBounds({
-      x: Math.round(rect.x),
-      y: Math.round(rect.y),
-      width: Math.max(40, Math.round(rect.w)),
-      height: Math.max(40, Math.round(rect.h)),
-    });
-  }
-
   /** Whether panels are currently hidden for overlay */
   get isHidden(): boolean {
     return this._hidden;
@@ -1265,7 +1074,6 @@ export class PanelManager {
    *  If closing the active panel, switches to fallbackId (if given),
    *  then previousPanel, then any remaining loaded panel. */
   closePanel(id: string, parent: BrowserWindow, fallbackId?: string): void {
-    this.destroyChromeView(id, parent);
     const view = this.panels.get(id);
     if (view) {
       try {

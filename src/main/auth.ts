@@ -6,14 +6,15 @@
  *   2. User completes auth on the platform
  *   3. Web generates a one-time device code and redirects to /auth/callback?code=XXX
  *   4. We intercept the navigation, extract the code, exchange it for JWT tokens
- *   5. Tokens stored encrypted via safeStorage
+ *   5. Tokens stored on disk (0600 perms), not the OS keychain — see the
+ *      "Session file storage" comment below for why
  *   6. Heartbeat polls server every 4 hours for tier/entitlements
  */
 
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { BrowserWindow, net, safeStorage, shell } from "electron";
+import { BrowserWindow, net, shell } from "electron";
 
 const CONFIG_DIR = path.join(os.homedir(), "yo");
 const SESSION_FILE = path.join(CONFIG_DIR, ".session");
@@ -45,7 +46,7 @@ export interface AccountInfo {
 }
 
 export interface HeartbeatResult {
-  status: "active" | "expired" | "disabled";
+  status: "active" | "disabled";
   tier: string;
   billingStatus: string;
   entitlements: Record<string, unknown>;
@@ -83,30 +84,23 @@ function triggerReauth(): void {
   try { reauthHandler?.(); } catch { /* noop */ }
 }
 
-// ── Encrypted storage ────────────────────────────────────────
-
+// ── Session file storage ──────────────────────────────────────
+// Plain file, 0600 perms — NOT safeStorage/OS-keychain. Session tokens are
+// short-lived and already scoped/revocable server-side, so the tradeoff of
+// hitting the macOS Keychain on every single boot (a user-visible OS prompt
+// on some setups) isn't worth it for this value. Provider API keys (the
+// actually sensitive, long-lived secret) live server-side entirely — see
+// app-secrets.ts — so this file never holds anything higher-value than a
+// session token.
 function secureWrite(filePath: string, data: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  if (safeStorage.isEncryptionAvailable()) {
-    const encrypted = safeStorage.encryptString(data);
-    fs.writeFileSync(filePath, encrypted, { mode: 0o600 });
-  } else {
-    fs.writeFileSync(filePath, data, { encoding: "utf-8", mode: 0o600 });
-  }
+  fs.writeFileSync(filePath, data, { encoding: "utf-8", mode: 0o600 });
 }
 
 function secureRead(filePath: string): string | null {
   if (!fs.existsSync(filePath)) return null;
   try {
-    const raw = fs.readFileSync(filePath);
-    if (safeStorage.isEncryptionAvailable()) {
-      try {
-        return safeStorage.decryptString(raw);
-      } catch {
-        return raw.toString("utf-8");
-      }
-    }
-    return raw.toString("utf-8");
+    return fs.readFileSync(filePath, "utf-8");
   } catch {
     return null;
   }
@@ -293,29 +287,26 @@ export function getHeartbeatInfo(): HeartbeatResult | null {
 }
 
 /**
- * MCP (connecting servers + exposing Glyphh as an MCP server) and Pipedream
- * are paid-tier features — the Free plan excludes both. Gated client-side so
- * they're actually off, not just hidden. Defaults to false until the
- * heartbeat confirms an active paid plan; the heartbeat observer re-kicks
- * dependent features (relay, etc.) once it lands.
+ * MCP (connecting servers, the cloud relay, and the local MCP server) is
+ * available to any signed-in, active account — there is no pay gate. Access
+ * is denied only when not signed in, or when the heartbeat explicitly reports
+ * the account as disabled. It does NOT require the first heartbeat to have
+ * landed, so the relay/local server can come up immediately after sign-in.
  */
-const PAID_TIERS = new Set(["basic", "pro", "advanced", "cypher"]);
 export function hasMcpAccess(): boolean {
-  // Deny by default. Access is granted ONLY when there's an active heartbeat
-  // AND the tier is a known paid plan. No heartbeat, not signed in, account
-  // not active, "free", empty, null, or any unrecognized tier → no access.
+  if (!isAuthenticated()) return false;
   const hb = cachedHeartbeat;
-  if (!hb || hb.status !== "active") return false;
-  return PAID_TIERS.has(String(hb.tier || "").toLowerCase());
+  if (hb && hb.status !== "active") return false; // account explicitly disabled
+  return true;
 }
 
 /**
  * Get auth status for the boot sequence.
- * Returns trial/account info without requiring a license key.
+ * Returns account info without requiring a license key.
  */
 export function getAuthStatus(): {
   authenticated: boolean;
-  status: "active" | "expired" | "disabled" | "unauthenticated";
+  status: "active" | "disabled" | "unauthenticated";
   tier?: string;
 } {
   if (!isAuthenticated()) {
@@ -550,8 +541,8 @@ async function fetchHeartbeat(): Promise<HeartbeatResult | null> {
   try {
     const result = await serverGetAuthed<HeartbeatResult>("/api/heartbeat");
     cachedHeartbeat = result;
-    // Notify the observer so the app can gate access when a trial ends or an
-    // account is disabled — the heartbeat is the authoritative trial check.
+    // Notify the observer so the app can gate access when an account is
+    // disabled — the heartbeat is the authoritative account-status check.
     try { heartbeatObserver?.(result); } catch { /* observer must not break the poll */ }
     return result;
   } catch {
@@ -561,8 +552,8 @@ async function fetchHeartbeat(): Promise<HeartbeatResult | null> {
 
 /**
  * Register an observer notified on every heartbeat result. Used to lock the
- * client out of the workspace the moment a trial expires (status "expired")
- * or an account is disabled.
+ * client out of the workspace the moment an account is disabled (status
+ * "disabled").
  */
 export function setHeartbeatObserver(cb: ((result: HeartbeatResult) => void) | null): void {
   heartbeatObserver = cb;
@@ -695,13 +686,27 @@ export function serverDeleteAuthed<T>(endpoint: string): Promise<T> {
 }
 
 export function serverPostAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  return serverWriteAuthed<T>("POST", endpoint, body);
+}
+
+/** PATCH variant of serverPostAuthed — same auth/refresh/timeout handling. */
+export function serverPatchAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  return serverWriteAuthed<T>("PATCH", endpoint, body);
+}
+
+/** PUT variant of serverPostAuthed — same auth/refresh/timeout handling. */
+export function serverPutAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  return serverWriteAuthed<T>("PUT", endpoint, body);
+}
+
+function serverWriteAuthed<T>(method: "POST" | "PATCH" | "PUT", endpoint: string, body: Record<string, unknown>): Promise<T> {
   const token = getAuthToken();
   if (!token) { void refreshTokens(); return Promise.reject(new Error("Not authenticated")); }
 
   return new Promise((resolve, reject) => {
     const url = `${AUTH_SERVER}${endpoint}`;
     const data = JSON.stringify(body);
-    const request = net.request({ url, method: "POST" });
+    const request = net.request({ url, method });
     request.setHeader("Content-Type", "application/json");
     request.setHeader("Authorization", `Bearer ${token}`);
     const timer = setTimeout(() => { request.abort(); reject(new Error("Request timeout")); }, 10_000);
@@ -730,8 +735,3 @@ export function serverPostAuthed<T>(endpoint: string, body: Record<string, unkno
   });
 }
 
-// ── API key storage (use llm-config.ts secureWrite/secureRead) ──
-// Legacy plaintext saveApiKey/loadApiKey removed — all API key
-// storage now goes through llm-config.ts which uses safeStorage.
-
-// validateApiKey removed — use validateLLMConfig from llm-config.ts

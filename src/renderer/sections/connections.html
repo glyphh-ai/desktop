@@ -1,0 +1,58 @@
+        <div class="help-section" data-section="connections">
+          <h2>Connections</h2>
+          <p class="section-desc">Connect the accounts your AI can act on. Every connection's tools are exposed to your AI over the MCP relay — hide any you don't want it to use.</p>
+
+          <div id="connections-toolbar" class="crud-toolbar">
+            <input id="conn-search" type="text" class="crud-search" placeholder="Search connections..." spellcheck="false" autocomplete="off" />
+            <button id="conn-add-btn" class="action-btn primary">+ New</button>
+          </div>
+
+          <div id="connections-list" class="crud-cards"></div>
+
+          <!-- Detail: two-column, mirrors the App edit form (.app-builder-split) -->
+          <div id="conn-detail" class="hidden">
+            <div class="crud-inline-header" style="padding:0 16px;">
+              <a class="crud-breadcrumb-back" id="conn-detail-back">← Connections</a>
+              <span style="flex:1;"></span>
+            </div>
+
+            <div class="app-builder-split">
+              <!-- Left: identity + name -->
+              <div class="app-builder-controls">
+                <div id="conn-detail-error" class="crud-form-error hidden"></div>
+                <div id="conn-detail-head" class="edit-head"></div>
+                <label class="settings-label">Name</label>
+                <input id="conn-name" type="text" class="settings-input" placeholder="e.g. Gmail — work" spellcheck="false" autocomplete="off" />
+                <!-- Same button row as the App edit form: Delete/Disconnect left, Cancel/Save right -->
+                <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
+                  <button id="conn-disconnect" class="action-btn danger" type="button">Disconnect</button>
+                  <span style="flex:1;"></span>
+                  <button id="conn-cancel" class="action-btn" type="button">Cancel</button>
+                  <button id="conn-name-save" class="action-btn primary" type="button">Save</button>
+                </div>
+              </div>
+              <!-- Right: tool exposure -->
+              <div class="app-builder-preview">
+                <div class="conn-tools-pane">
+                  <h3 class="settings-subheading" style="margin:0 0 4px;">Tools exposed to your AI</h3>
+                  <p class="settings-hint" style="margin-top:2px;">Uncheck a tool to hide it — your AI won't see or be able to call it.</p>
+                  <div id="conn-tools" class="conn-tools"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- "+ New" modal: the full Pipedream catalog; click one to connect it -->
+          <div id="conn-modal" class="conn-modal hidden">
+            <div class="conn-modal-backdrop"></div>
+            <div class="conn-modal-panel">
+              <div class="conn-modal-header">
+                <h3 class="conn-modal-title">Add a connection</h3>
+                <button id="conn-modal-close" class="conn-modal-close" aria-label="Close">✕</button>
+              </div>
+              <input id="conn-catalog-search" type="text" class="settings-input" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
+              <div id="conn-catalog-grid" class="connector-grid"></div>
+              <button id="conn-catalog-more" class="connector-load-more hidden">Load more</button>
+            </div>
+          </div>
+        </div>

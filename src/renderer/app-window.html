@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Glyphh</title>
+<style>
+  /* Per-app window shell — chrome strip + hidden URL row ported from the
+     retired canvas-chrome, over a full-bleed webview. Theme follows the
+     same localStorage key the rest of the app writes. */
+  :root {
+    --aw-bg: #f4f4f5;
+    --aw-tb: #e9e9ec;
+    --aw-border: rgba(0,0,0,.14);
+    --aw-text: #2b2b30;
+    --aw-faint: #8a8a93;
+    --aw-accent: #4f46e5;
+    --aw-btn-hover: rgba(0,0,0,.08);
+  }
+  html[data-theme="dark"], html[data-theme="purple"], html[data-theme="aurora"] {
+    --aw-bg: #1c1c20;
+    --aw-tb: #26262b;
+    --aw-border: rgba(255,255,255,.12);
+    --aw-text: #e6e6ea;
+    --aw-faint: #8a8a93;
+    --aw-accent: #7c74ff;
+    --aw-btn-hover: rgba(255,255,255,.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    display: flex; flex-direction: column;
+    background: var(--aw-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+
+  #chrome {
+    flex: 0 0 auto;
+    position: relative;
+    height: 32px;
+    display: flex; align-items: center;
+    padding: 0 10px;
+    background: var(--aw-tb);
+    border-bottom: 1px solid var(--aw-border);
+    user-select: none;
+  }
+  /* Favicon + app title sit centered in the header; controls pin right. */
+  #chrome-title-group {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 7px;
+    max-width: 60%;
+  }
+  #fav { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; flex: 0 0 auto; }
+  #fav.hidden { display: none; }
+  #fav-initial {
+    width: 14px; height: 14px; border-radius: 3px; flex: 0 0 auto;
+    display: none; align-items: center; justify-content: center;
+    background: var(--aw-accent); color: #fff; font-size: 9px; font-weight: 700;
+  }
+  #title {
+    font-size: 12px; color: var(--aw-text); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  }
+  .tb-btn {
+    flex: 0 0 auto; width: 22px; height: 22px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; background: transparent; color: var(--aw-faint); cursor: pointer;
+  }
+  .tb-btn:hover { background: var(--aw-btn-hover); color: var(--aw-text); }
+  .tb-btn.active { background: var(--aw-btn-hover); color: var(--aw-accent); }
+  .tb-btn svg { width: 13px; height: 13px; }
+
+  #urlbar {
+    flex: 0 0 auto;
+    height: 36px;
+    display: none; align-items: center; gap: 4px;
+    padding: 0 8px;
+    background: var(--aw-bg);
+    border-bottom: 1px solid var(--aw-border);
+  }
+  body.urlbar-open #urlbar { display: flex; }
+  .ub-btn {
+    flex: 0 0 auto; width: 24px; height: 24px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; background: transparent; color: var(--aw-faint); cursor: pointer;
+  }
+  .ub-btn:hover { background: var(--aw-btn-hover); color: var(--aw-text); }
+  .ub-btn:disabled { opacity: .35; cursor: default; }
+  .ub-btn:disabled:hover { background: transparent; color: var(--aw-faint); }
+  .ub-btn svg { width: 14px; height: 14px; }
+  #ub-input {
+    flex: 1 1 auto; min-width: 0; height: 25px; border-radius: 6px;
+    border: 1px solid var(--aw-border); background: var(--aw-tb); color: var(--aw-text);
+    font-size: 12px; padding: 0 9px; outline: none;
+  }
+  #ub-input:focus { border-color: var(--aw-accent); }
+
+  #view { flex: 1 1 auto; min-height: 0; width: 100%; border: none; }
+</style>
+<script>
+  // Match the main app's theme before paint (same key renderer/home use).
+  try {
+    var t = localStorage.getItem("yoTheme") || "dark";
+    var r = t === "system"
+      ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+      : t;
+    document.documentElement.setAttribute("data-theme", r);
+  } catch (e) {}
+</script>
+</head>
+<body>
+  <div id="chrome">
+    <div id="chrome-title-group">
+      <img id="fav" class="hidden" />
+      <span id="fav-initial"></span>
+      <span id="title"></span>
+    </div>
+    <button class="tb-btn" id="btn-url" title="Toggle URL bar" style="margin-left:auto;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 0 0 18 14 14 0 0 0 0-18"/></svg>
+    </button>
+  </div>
+  <div id="urlbar">
+    <button class="ub-btn" id="ub-back" title="Back" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <button class="ub-btn" id="ub-fwd" title="Forward" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+    <button class="ub-btn" id="ub-reload" title="Reload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+    <input id="ub-input" type="text" spellcheck="false" placeholder="Search or enter address" />
+  </div>
+  <webview id="view" partition="persist:yo" allowpopups></webview>
+  <script type="module" src="app-window.js"></script>
+</body>
+</html>

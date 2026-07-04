@@ -1,0 +1,95 @@
+  <!-- First-time tutorial -->
+  <div id="tutorial-overlay" class="tutorial-overlay hidden">
+    <div class="tutorial-card">
+      <button id="tutorial-close" class="tutorial-close">&times;</button>
+      <div class="tutorial-logo">
+        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+      </div>
+      <div class="tutorial-sub">One AI workspace. One context, every app, every LLM, everywhere.</div>
+
+      <div id="tutorial-steps" class="tutorial-steps">
+        <!-- 1 · Apps -->
+        <div class="tutorial-step active" data-step="0">
+          <div class="tutorial-demo" id="tutorial-demo-0">
+            <div class="tutorial-kbd-mock">
+              <kbd class="tutorial-key tutorial-key-plus">+</kbd>
+            </div>
+          </div>
+          <div class="tutorial-cmd">Apps</div>
+          <div class="tutorial-desc">Open any app as a panel. Click the <strong>+</strong> button, or pick one from the <strong>left rail</strong> — browser, terminal, notes, and your own custom apps.</div>
+        </div>
+
+        <!-- 2 · Glyphh agent -->
+        <div class="tutorial-step" data-step="1">
+          <div class="tutorial-demo" id="tutorial-demo-1">
+            <div class="tutorial-input-mock">
+              <span class="tutorial-cursor">|</span>
+              <span class="tutorial-typed" id="tutorial-typed-1"></span>
+            </div>
+          </div>
+          <div class="tutorial-cmd">Glyphh agent</div>
+          <div class="tutorial-desc">Press <strong>Cmd+.</strong> to open the agent, then just ask. Build an app or a skill, navigate your workspace, pull things together — all in plain language.</div>
+        </div>
+
+        <!-- 3 · .yo -->
+        <div class="tutorial-step" data-step="2">
+          <div class="tutorial-demo" id="tutorial-demo-2">
+            <div class="tutorial-input-mock">
+              <span class="tutorial-cursor">|</span>
+              <span class="tutorial-typed" id="tutorial-typed-2"></span>
+            </div>
+          </div>
+          <div class="tutorial-cmd"><span class="tutorial-dot-sm">.</span>yo</div>
+          <div class="tutorial-desc">Type <strong>.yo</strong> in <strong>any text box anywhere</strong> — not only inside the agent dialog — to ask the agent right where you're working.</div>
+        </div>
+
+        <!-- 4 · .sup -->
+        <div class="tutorial-step" data-step="3">
+          <div class="tutorial-demo" id="tutorial-demo-3">
+            <div class="tutorial-input-mock">
+              <span class="tutorial-cursor">|</span>
+              <span class="tutorial-typed" id="tutorial-typed-3"></span>
+            </div>
+          </div>
+          <div class="tutorial-cmd"><span class="tutorial-dot-sm">.</span>sup</div>
+          <div class="tutorial-desc">Capture what's on screen into memory and run it through a skill — formalize, translate, summarize. Works from any text box.</div>
+        </div>
+
+        <!-- 5 · .dip -->
+        <div class="tutorial-step" data-step="4">
+          <div class="tutorial-demo" id="tutorial-demo-4">
+            <div class="tutorial-input-mock">
+              <span class="tutorial-cursor">|</span>
+              <span class="tutorial-typed" id="tutorial-typed-4"></span>
+            </div>
+          </div>
+          <div class="tutorial-cmd"><span class="tutorial-dot-sm">.</span>dip</div>
+          <div class="tutorial-desc">Arrange panels and layouts — split your screen any way you want. Type it in any text box too.</div>
+        </div>
+
+        <!-- 6 · shortcuts -->
+        <div class="tutorial-step" data-step="5">
+          <div class="tutorial-demo" id="tutorial-demo-5">
+            <div class="tutorial-kbd-mock">
+              <kbd class="tutorial-key">&#8984;</kbd><kbd class="tutorial-key">.</kbd>
+            </div>
+          </div>
+          <div class="tutorial-cmd">&#8984;. &nbsp;/&nbsp; &#8984;&gt;</div>
+          <div class="tutorial-desc"><strong>Cmd+.</strong> opens the agent. <strong>Cmd+&gt;</strong> opens the command bar. Remember: <strong>.yo</strong>, <strong>.sup</strong>, <strong>.dip</strong> and <strong>.drip</strong> work in any text box — not only inside the agent dialog.</div>
+        </div>
+      </div>
+
+      <div class="tutorial-nav">
+        <div class="tutorial-dots" id="tutorial-dots">
+          <span class="tutorial-nav-dot active"></span>
+          <span class="tutorial-nav-dot"></span>
+          <span class="tutorial-nav-dot"></span>
+          <span class="tutorial-nav-dot"></span>
+          <span class="tutorial-nav-dot"></span>
+          <span class="tutorial-nav-dot"></span>
+        </div>
+        <button id="tutorial-next" class="tutorial-next-btn">Next</button>
+      </div>
+    </div>
+  </div>

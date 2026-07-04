@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glyphh</title>
+  <script>
+    // Apply theme synchronously before paint (avoids a flash + keeps the
+    // login/onboarding screens on the right theme). Mirrors home.html.
+    try {
+      var t = localStorage.getItem("yoTheme") || "dark";
+      var r = t === "system"
+        ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+        : t;
+      document.documentElement.setAttribute("data-theme", r);
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Splash screen -->
+  <div id="splash">
+    <button id="splash-close" class="splash-close">&times;</button>
+    <div class="splash-content">
+      <div class="splash-logo">
+        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+      </div>
+      <div class="splash-subtitle">One AI workspace. One context. Every app, Every LLM, Everywhere.</div>
+      <div id="splash-status" class="splash-status"></div>
+      <div id="splash-update" class="splash-update hidden">
+        <div id="splash-update-label" class="splash-update-label">Updating…</div>
+        <div class="splash-update-bar"><div id="splash-update-fill" class="splash-update-fill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Update overlay — shown full-screen when the user triggers "Relaunch to
+       Update". The main process hides panels first (they're BrowserViews over
+       this shell) so this becomes visible right before quit + install. -->
+  <div id="updating-overlay" class="hidden">
+    <div class="splash-content">
+      <div class="splash-logo">
+        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+      </div>
+      <div id="updating-label" class="splash-status">Updating…</div>
+      <div class="splash-update">
+        <div class="splash-update-bar"><div id="updating-fill" class="splash-update-fill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Onboarding gate — matches the yo-platform auth-shell look & feel. -->
+  <div id="onboarding-overlay" class="hidden">
+    <div class="auth-shell">
+      <button id="onboarding-close">&times;</button>
+      <header class="auth-shell-header">
+        <div class="auth-shell-brand">
+          <span class="onboarding-wordmark">
+            <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+            <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+          </span>
+        </div>
+      </header>
+      <main class="auth-shell-body">
+        <!-- renderAuthStep() fills this content column for every auth step. -->
+        <div id="onboarding-step-auth" class="auth-shell-content"></div>
+      </main>
+      <footer class="auth-shell-footer">
+        &copy; 2026 Glyphh AI LLC
+      </footer>
+    </div>
+    <!-- Kept for backwards-compat status messaging; visually unused now. -->
+    <div id="onboarding-status" class="hidden"></div>
+  </div>
+
+  <!-- Account-inactive (admin-disabled) gate -->
+  <div id="lockout-overlay" class="hidden">
+    <div id="lockout-content">
+      <div class="onboarding-title">
+        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+      </div>
+      <h2 id="lockout-title" class="lockout-title">Your account is inactive</h2>
+      <p id="lockout-message" class="lockout-message">
+        This account has been deactivated. Reactivate your plan to get back into
+        your workspace — your data is safe.
+      </p>
+      <div class="onboarding-fields">
+        <button id="lockout-upgrade" class="onboarding-signin-btn">Manage account</button>
+        <button id="lockout-recheck" class="onboarding-register-btn">Refresh</button>
+      </div>
+      <div id="lockout-status"></div>
+      <button id="lockout-signout" class="lockout-link">Sign out</button>
+    </div>
+  </div>
+
+  <div id="titlebar">
+    <div id="window-controls">
+      <button id="btn-close" class="wc wc-close"></button>
+      <button id="btn-minimize" class="wc wc-minimize"></button>
+      <button id="btn-maximize" class="wc wc-maximize"></button>
+    </div>
+    <div id="titlebar-label"><img class="glyphh-mark" src="brand/glyphh-mark.png" alt="Glyphh" /></div>
+    <button id="header-command-center" class="titlebar-cmd" title="Command (⌘⇧Space)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+    <div id="tab-bar">
+      <button id="tab-new-btn" class="tab-new-btn" title="New tab">+</button>
+    </div>
+    <!-- Dashboard shell (5a): replaces the tab-bar + files-rail chrome after
+         auth. Two tabs — Apps / Settings — each open the matching yo://
+         system-app panel via the existing panel-manager mechanism (see
+         renderer.ts initDashboard()). Hidden until boot-gate-ui calls
+         showPanels() the first time post-auth. -->
+    <div id="dashboard-tabs" class="dashboard-tabs hidden">
+      <button id="dashboard-tab-apps" class="dashboard-tab active" data-dashboard-tab="apps">Apps</button>
+      <button id="dashboard-tab-connections" class="dashboard-tab" data-dashboard-tab="connections">Connections</button>
+      <button id="dashboard-tab-layouts" class="dashboard-tab" data-dashboard-tab="layouts">Layouts</button>
+      <button id="dashboard-tab-drips" class="dashboard-tab" data-dashboard-tab="drips">Drips</button>
+      <button id="dashboard-tab-settings" class="dashboard-tab" data-dashboard-tab="settings">Settings</button>
+      <button id="dashboard-tab-about" class="dashboard-tab" data-dashboard-tab="about">About</button>
+    </div>
+    <button id="titlebar-logout" class="titlebar-logout" title="Sign out">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <span>Logout</span>
+    </button>
+  </div>
+
+  <!-- URL bar — shown below titlebar for all panels -->
+  <div id="url-bar" class="url-bar">
+    <button id="url-bar-back" class="url-bar-nav" title="Back" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button id="url-bar-forward" class="url-bar-nav" title="Forward" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <button id="url-bar-refresh" class="url-bar-nav" title="Refresh">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+    </button>
+    <img id="url-bar-favicon" class="url-bar-favicon" width="14" height="14" />
+    <input id="url-bar-input" class="url-bar-input" type="text" placeholder="Enter URL..." spellcheck="false" autocomplete="off" />
+    <div id="dl-btn-wrap" class="dl-btn-wrap">
+      <button id="dl-btn" class="dl-btn" title="Downloads">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="dl-badge-count" class="dl-badge-count hidden">0</span>
+      </button>
+      <div id="dl-dropdown" class="dl-dropdown hidden">
+        <div class="dl-dropdown-header">
+          <span>Downloads</span>
+          <button id="dl-clear-all" class="dl-clear-all" title="Clear all">Clear</button>
+        </div>
+        <div id="dl-list" class="dl-list">
+          <div class="dl-empty">No downloads yet</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state — shown when no panels are open -->
+  <div id="empty-state" class="empty-state hidden">
+    <div class="empty-state-logo">
+      <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+      <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+    </div>
+    <div class="empty-state-hint">Type a command or press <kbd>Cmd+.</kbd></div>
+  </div>
+
+  <!-- Panel screenshots (freeze-frame when panels are hidden) -->
+  <div id="panel-screenshots"></div>
+
+  <!-- Per-cell URL bars (grid mode) -->
+  <div id="cell-url-bars"></div>
+
+  <!-- Grid drag handles + overlay -->
+  <div id="grid-handles"></div>
+  <div id="drag-overlay" class="hidden"></div>
+
+
+
+  <!-- Download toast (legacy, replaced by titlebar dropdown) -->
+
+  <!-- Update notification bar -->
+  <div id="update-bar" class="update-bar hidden">
+    <span id="update-message" class="update-message">A new version is available</span>
+    <div id="update-progress" class="update-progress hidden">
+      <div id="update-progress-fill" class="update-progress-fill"></div>
+    </div>
+    <button id="update-action" class="action-btn primary update-action hidden">Restart</button>
+    <button id="update-dismiss" class="update-dismiss">&times;</button>
+  </div>
+
+  <!--#include sections/tutorial.html -->
+
+  <!-- Yo agent slide-out panel removed (pivot-mcp) -->
+  <!-- Files left rail removed — Apps/Settings dashboard tabs replace it. -->
+
+  <div id="panel-container"></div>
+
+  <!-- Command Center feature removed. -->
+
+  <!-- Claude Code bootstrap modal — gates app use behind a CC sign-in.
+       Hidden by default; shown by renderer.ts when CC creds are missing. -->
+  <div id="cc-bootstrap-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;">
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:28px 32px;max-width:560px;width:90%;font-family:var(--font);">
+      <h2 style="margin:0 0 8px 0;font-size:20px;">Connect your Anthropic API key</h2>
+      <p id="cc-bootstrap-body" style="margin:0 0 18px 0;color:var(--text-2);font-size:14px;line-height:1.5;">
+        Glyphh's agent calls api.anthropic.com directly with your key.
+        The key stays on this machine — encrypted in your local profile,
+        never sent to Glyphh's servers.
+      </p>
+
+      <!-- Primary path: BYOK API key. Stored encrypted in ~/yo/.providers.json
+           and used as ANTHROPIC_API_KEY by the SDK. -->
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:600;color:var(--text-2);">Anthropic API key</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="cc-bootstrap-byok-key" class="settings-input" type="password" placeholder="sk-ant-..." spellcheck="false" autocomplete="off" style="flex:1;font-family:var(--font-mono);font-size:12px;" />
+          <button id="cc-bootstrap-byok-save" class="action-btn primary">Save key</button>
+        </div>
+        <p style="margin:2px 0 0;font-size:11px;color:var(--text-3);">
+          Get one at <a id="cc-bootstrap-key-link" href="#" style="color:var(--accent);text-decoration:underline;">console.anthropic.com/settings/keys</a>. Never sent to Glyphh's servers.
+        </p>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button id="cc-bootstrap-quit" class="action-btn" style="margin-left:auto;">Quit Glyphh</button>
+      </div>
+      <div id="cc-bootstrap-error" style="margin-top:12px;color:#d44a4a;font-size:12px;font-family:var(--font-mono, monospace);"></div>
+    </div>
+  </div>
+
+  <script src="chart.umd.min.js"></script>
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

@@ -3,17 +3,13 @@ import type { BrowserWindow } from "electron";
 import type { PanelManager } from "./panel-manager";
 import type { LayoutManager } from "./layout-manager";
 import type { AppConnector } from "./app-connector";
-import type { YoAgent } from "./yo-agent";
 import type { YoInterceptor } from "./yo-interceptor";
-import type { AgentRunner } from "./agent-runner";
 
 interface TabIpcDeps {
   panelManager: PanelManager;
   layoutManager: LayoutManager;
   appConnector: AppConnector;
-  yoAgent: YoAgent;
   yoInterceptor: YoInterceptor;
-  agentRunner: AgentRunner;
   getMainWindow: () => BrowserWindow | null;
   openTabs: string[];
   tabBrowserCounter: { value: number };
@@ -26,14 +22,10 @@ interface TabIpcDeps {
   persistTabs: () => void;
   sendSplitState: () => void;
   sendTabState: () => void;
-  openYoPanel: (query: string, sourcePanelId?: string) => void;
   createPanelForApp: (instanceId: string, app: { id: string; url?: string; forceWeb?: boolean }) => void;
   setPreference: (key: string, value: unknown) => void;
   getPreference: <T>(key: string, fallback: T) => T;
   URL_BAR_HEIGHT: number;
-  /** Re-arrange canvas windows after a tab nav (no-op outside canvas mode).
-   *  Keeps rail/recents "open app" from attaching a single full-screen view. */
-  afterNav?: () => void;
 }
 
 export function registerTabIpc(deps: TabIpcDeps): void {
@@ -45,7 +37,6 @@ export function registerTabIpc(deps: TabIpcDeps): void {
     ensureTab, persistTabs, sendSplitState, sendTabState,
     createPanelForApp,
     setPreference, getPreference, URL_BAR_HEIGHT,
-    afterNav,
   } = deps;
 
   // ── Tab handlers ──────────────────────────────────────────
@@ -85,7 +76,6 @@ export function registerTabIpc(deps: TabIpcDeps): void {
     }
     sendSplitState();
     sendTabState();
-    afterNav?.();
   });
 
   ipcMain.on("tab-reorder", (_e, newOrder: string[]) => {
@@ -208,7 +198,6 @@ export function registerTabIpc(deps: TabIpcDeps): void {
     ensureTab(id);
     sendSplitState();
     sendTabState();
-    afterNav?.();
   });
 
   ipcMain.on("tab-new-app", (_e, appId: string) => {
@@ -216,17 +205,6 @@ export function registerTabIpc(deps: TabIpcDeps): void {
     if (!mainWindow) return;
     const app = appConnector.get(appId);
     if (!app?.url) return;
-
-    // Canvas mode: one window per app — if a window for this app is already open,
-    // just raise it instead of spawning another (use "New window" to force one).
-    if (panelManager.canvasMode) {
-      const existing = openTabs.find((t) => t === appId || resolveAppId(t) === appId);
-      if (existing) {
-        ipcMain.emit("canvas-focus", {} as Electron.IpcMainEvent, existing);
-        sendTabState();
-        return;
-      }
-    }
 
     layoutManager.suspendSplit();
 
@@ -259,11 +237,9 @@ export function registerTabIpc(deps: TabIpcDeps): void {
     setPreference("lastView", { type: "panel", id: openTabs[openTabs.length - 1] });
     sendSplitState();
     sendTabState();
-    afterNav?.();
   });
 
-  // Force a brand-new instance/window of an app (the "New window" menu item),
-  // bypassing the canvas one-window-per-app dedupe.
+  // Force a brand-new instance/window of an app (the "New window" menu item).
   ipcMain.on("tab-new-window", (_e, appId: string) => {
     const mainWindow = getMainWindow();
     if (!mainWindow) return;
@@ -275,11 +251,10 @@ export function registerTabIpc(deps: TabIpcDeps): void {
     const instanceId = `${baseId}-${panelInstanceCounter.value}`;
     createPanelForApp(instanceId, app);
     ensureTab(instanceId);
-    panelManager.switchTo(instanceId, mainWindow); // canvas-aware → lands as a window
+    panelManager.switchTo(instanceId, mainWindow);
     setPreference("lastView", { type: "panel", id: openTabs[openTabs.length - 1] });
     sendSplitState();
     sendTabState();
-    afterNav?.();
   });
 
   // Browser tab → "Create App": open Home and route it to the New App form
@@ -425,9 +400,7 @@ export function registerTabIpc(deps: TabIpcDeps): void {
     }
     // panelNavWc[id] is the navigable webContents itself — for a browser panel
     // that's the <webview> guest (set on did-attach-webview), for a direct app
-    // panel it's the BrowserView. Either way, load straight into it; the old
-    // browser branch ran executeJavaScript looking for a <webview> element in
-    // the guest (where there is none), so canvas URL-bar navigation did nothing.
+    // panel it's the BrowserView. Either way, load straight into it.
     const nwc = panelNavWc[panelId];
     if (!nwc || nwc.isDestroyed()) return;
     nwc.loadURL(target).catch(() => {});
@@ -440,13 +413,6 @@ export function registerTabIpc(deps: TabIpcDeps): void {
   function applyUrlBarForActive(): void {
     const mainWindow = getMainWindow();
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    // In canvas mode each window has its own chrome + URL bar, so the global
-    // top URL bar must never show.
-    if (panelManager.canvasMode) {
-      panelManager.setTopInset(0);
-      mainWindow.webContents.send("url-bar-force", false);
-      return;
-    }
     // In a split/grid layout the URL bar is per-cell and belongs to the whole
     // grid, not the focused cell. Deciding from the single active panel would
     // hide the browser cell's URL bar the moment a non-browser cell is focused

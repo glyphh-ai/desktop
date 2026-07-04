@@ -14,7 +14,7 @@
 
 import { BrowserWindow, shell } from "electron";
 import { EventEmitter } from "events";
-import { serverPostAuthed, serverGetAuthed, getAccountInfo, getHeartbeatInfo, hasMcpAccess } from "./auth";
+import { serverPostAuthed, serverGetAuthed, serverPatchAuthed, getAccountInfo, getHeartbeatInfo } from "./auth";
 import type { McpManager } from "./mcp-manager";
 import type { AppConnector } from "./app-connector";
 import { refreshConnectorCatalog, type ConnectorTool } from "./connector-tools-client";
@@ -112,6 +112,10 @@ export class ConnectorManager extends EventEmitter {
       if (res.ok && res.accounts) {
         this.cachedAccounts = res.accounts;
         this.syncAccountsToApps(res.accounts);
+        // Awaited so connectApp()'s finish() resolves only after the server
+        // rows carry the accountId — the renderer refetches panel-apps
+        // immediately after connectorsConnect returns.
+        await this.syncAccountsToServerApps(res.accounts);
         return res.accounts;
       }
       return this.cachedAccounts;
@@ -131,6 +135,34 @@ export class ConnectorManager extends EventEmitter {
           healthy: account.healthy,
         });
       }
+    }
+  }
+
+  /** Persist connected accounts onto the server's saved_apps rows — apps are
+   *  server-authoritative now, so writing accountId to the local appConnector
+   *  alone (above) never reaches what the Apps page actually renders. Matches
+   *  each account to rows by connection.pipedreamSlug and PATCHes only when
+   *  the stored accountId/health drifted (no-op on a clean boot). */
+  private async syncAccountsToServerApps(accounts: ConnectedAccount[]): Promise<void> {
+    if (accounts.length === 0) return;
+    try {
+      const apps = await serverGetAuthed<Array<{
+        id: string;
+        connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
+      }>>("/api/panel-apps");
+      for (const account of accounts) {
+        const matches = apps.filter((a) => a.connection?.pipedreamSlug === account.appSlug);
+        for (const app of matches) {
+          if (app.connection?.accountId === account.id && app.connection?.healthy === account.healthy) continue;
+          await serverPatchAuthed(`/api/panel-apps/${app.id}/connection`, {
+            pipedreamSlug: account.appSlug,
+            accountId: account.id,
+            healthy: account.healthy,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[connectors] server app-connection sync failed:", err instanceof Error ? err.message : err);
     }
   }
 
@@ -172,10 +204,7 @@ export class ConnectorManager extends EventEmitter {
    * 4. Refresh accounts + MCP
    */
   async connectApp(appSlug: string): Promise<{ ok: boolean; error?: string }> {
-    // Pipedream connectors are a paid-tier feature.
-    if (!hasMcpAccess()) {
-      return { ok: false, error: "Pipedream connectors require a Pro plan." };
-    }
+    // Connections available to all tiers — no pay gate.
     // Get connect token from yo-server
     let connectUrl: string;
     try {

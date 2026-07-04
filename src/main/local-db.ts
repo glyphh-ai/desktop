@@ -1,12 +1,14 @@
 /**
- * LocalDb — singleton encrypted SQLite database for user state.
+ * LocalDb — singleton SQLite database for user state.
  *
  * Stores agents, layouts, and preferences in ~/yo/user-state.sqlite.
- * Uses WAL mode for performance. Sensitive fields (systemPrompt, API keys)
- * are encrypted via Electron's safeStorage before writing and decrypted on read.
+ * Uses WAL mode for performance.
  *
- * Does NOT use SQLCipher — instead uses application-level field encryption
- * to avoid complex native rebuilds.
+ * encryptField/decryptField (safeStorage/OS-keychain-backed) exist for the
+ * rare genuinely-sensitive local field, but agent system prompts no longer
+ * use them (see stores/agent-store-db.ts) — a prompt isn't a secret, and
+ * routing it through the keychain meant every agent list/load triggered an
+ * OS permission prompt.
  */
 
 import path from "path";
@@ -101,6 +103,35 @@ const MIGRATIONS: Migration[] = [
     sql: `
       ALTER TABLE agents ADD COLUMN avatar_url TEXT;
       ALTER TABLE agents ADD COLUMN bio TEXT;
+    `,
+  },
+  {
+    // system_prompt_enc (safeStorage/OS-keychain-encrypted) is retired — an
+    // agent's system prompt isn't a secret, and encrypting it meant every
+    // agent list/load touched the OS keychain, which is the "safe storage
+    // is annoying" prompt users were hitting on every boot. New plain
+    // column; agent-store-db.ts migrates any legacy encrypted rows to it
+    // on first read (a one-time decrypt, never again after that).
+    version: 3,
+    sql: `ALTER TABLE agents ADD COLUMN system_prompt TEXT;`,
+  },
+  {
+    // Persisted cron schedules for installed Glyphh apps (spec v2 —
+    // cron.schedule/cancel/list capabilities). Keyed per app so an app can
+    // only ever see/replace its own schedules; re-armed at boot by
+    // glyphh-app-services.armAllSchedules().
+    version: 4,
+    sql: `
+      CREATE TABLE IF NOT EXISTS app_schedules (
+        app_slug TEXT NOT NULL,
+        id TEXT NOT NULL,
+        cron TEXT NOT NULL,
+        handler TEXT NOT NULL,
+        args_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (app_slug, id)
+      );
     `,
   },
 ];

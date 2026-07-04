@@ -1,0 +1,290 @@
+        <div class="help-section" data-section="docs">
+          <div class="settings-layout">
+            <nav class="settings-nav docs-nav">
+              <button id="docs-back-settings" class="settings-nav-back">&#x2190; Settings</button>
+              <button class="settings-nav-item active" data-doc="navigation">Navigation</button>
+              <button class="settings-nav-item" data-doc="commands">Commands</button>
+              <button class="settings-nav-item" data-doc="apps">Apps</button>
+              <button class="settings-nav-item" data-doc="skills">Skills</button>
+              <button class="settings-nav-item" data-doc="layouts">Layouts</button>
+              <button class="settings-nav-item" data-doc="devspaces">Dev Spaces</button>
+
+              <button class="settings-nav-item" data-doc="agent">Agent</button>
+              <button class="settings-nav-item" data-doc="mcp">MCP</button>
+            </nav>
+            <div class="settings-panels docs-panels">
+            <div class="docs-panel active" data-doc="navigation">
+              <h3>Navigation</h3>
+              <p>Glyphh is a multi-panel workspace. You can view one app at a time, or split the screen into a grid of panels. Every panel is a live web app running inside Glyphh.</p>
+
+              <h4>Switching panels</h4>
+              <p>Use the <strong>.dip</strong> command to switch between panels. Type it in the command bar (Cmd+&gt;) or the agent panel.</p>
+              <div class="cmd-row"><code>.dip claude</code><span>Switch to Claude</span></div>
+              <div class="cmd-row"><code>.dip gmail</code><span>Switch to Gmail</span></div>
+              <div class="cmd-row"><code>.dip back</code><span>Go to the previous panel</span></div>
+              <p>You can also click on tabs in the tab bar to switch panels.</p>
+
+              <h4>Split view</h4>
+              <p>Put multiple panels side by side with <strong>.dip split</strong>.</p>
+              <div class="cmd-row"><code>.dip split claude gpt</code><span>Two panels side by side</span></div>
+              <div class="cmd-row"><code>.dip split claude gpt / gemini code</code><span>2&times;2 grid — <code>/</code> separates rows</span></div>
+
+              <h4>URL bar</h4>
+              <p>The URL bar at the top shows the current panel's address. You can type any URL to navigate, or use it as a search bar (searches Google by default). Use <strong>Cmd+L</strong> to focus it.</p>
+
+              <h4>Keyboard shortcuts</h4>
+              <div class="cmd-row"><code>&#8984;.</code><span>Toggle the Glyphh agent panel</span></div>
+              <div class="cmd-row"><code>&#8984;&gt;</code><span>Open the command bar</span></div>
+              <div class="cmd-row"><code>&#8984;L</code><span>Focus the URL bar</span></div>
+              <div class="cmd-row"><code>&#8984;R</code><span>Refresh the active panel</span></div>
+              <div class="cmd-row"><code>&#8984;+</code><span>Zoom in</span></div>
+              <div class="cmd-row"><code>&#8984;-</code><span>Zoom out</span></div>
+              <div class="cmd-row"><code>Esc</code><span>Close current overlay</span></div>
+            </div>
+
+            <div class="docs-panel" data-doc="commands">
+              <h3>Commands</h3>
+              <p>Commands are the core of Glyphh. Type them in the command bar (Cmd+&gt;), inside any panel, or chain them together. Every command starts with a dot.</p>
+
+              <h4>.yo — Agent</h4>
+              <p>Opens the AI agent panel. The agent can search your captures, run shell commands, navigate panels, and more. Works from any panel.</p>
+              <div class="cmd-row"><code>.yo</code><span>Open the agent panel</span></div>
+              <div class="cmd-row"><code>.yo find my notes about pricing</code><span>Agent searches your captures</span></div>
+              <div class="cmd-row"><code>.yo what was my last git commit</code><span>Agent runs read-only shell commands</span></div>
+
+              <h4>.yo . — Inline process</h4>
+              <p>Processes the last <code>.sup</code> capture with a prompt and injects the result directly into the active text field. No agent panel — just capture, switch, and process.</p>
+              <div class="cmd-row"><code>.yo . summarize this</code><span>Summarize and inject into text field</span></div>
+              <div class="cmd-row"><code>.yo . rewrite as bullet points</code><span>Transform captured content inline</span></div>
+
+              <h4>.sup — Capture</h4>
+              <p>Manually captures the active panel into memory and your clipboard. Panels also auto-capture on blur and navigation — this is for explicit capture or processing.</p>
+              <div class="cmd-row"><code>.sup</code><span>Capture to memory + clipboard</span></div>
+              <div class="cmd-row"><code>.sup . formalize</code><span>Capture + run the "formalize" skill</span></div>
+              <div class="cmd-row"><code>.sup . translate to spanish</code><span>Capture + run a freeform prompt</span></div>
+              <div class="cmd-row"><code>.sup ..</code><span>Capture last agent result into the text field</span></div>
+
+              <h4>.dip — Navigate</h4>
+              <p>Switches panels, creates split views, restores layouts, and chains app commands.</p>
+              <div class="cmd-row"><code>.dip claude</code><span>Switch to a panel</span></div>
+              <div class="cmd-row"><code>.dip split claude gpt</code><span>Side by side</span></div>
+              <div class="cmd-row"><code>.dip layout workspace</code><span>Restore a saved layout</span></div>
+              <div class="cmd-row"><code>.dip claude new</code><span>Switch + run app commands</span></div>
+              <div class="cmd-row"><code>.dip gmail compose</code><span>Switch to Gmail + open compose</span></div>
+
+              <h4>.drip — Effects</h4>
+              <p>Visual celebration effects. Reward yourself.</p>
+              <div class="cmd-row"><code>.drip</code><span>Default fireworks effect</span></div>
+              <div class="cmd-row"><code>.drip 3 fireworks, hearts</code><span>Stacked count + mixed effects</span></div>
+
+              <h4>swarm mode — Delegate to a local agent swarm</h4>
+              <p>Switch the .yo mode dropdown to <strong>swarm</strong> and the agent spins up a local swarm to work your goal: it picks the best agents from your Agents library, a leader decomposes the goal, and the rest execute and report into the swarm feed.</p>
+              <div class="cmd-row"><code>spin up a swarm to refactor the auth module</code><span>Auto-picks agents for the job</span></div>
+              <div class="cmd-row"><code>have 3 agents debate Postgres vs Mongo</code><span>Read-only agents debate a question</span></div>
+
+              <h4>Chaining</h4>
+              <p>Commands can be chained together. Each command runs in sequence.</p>
+              <div class="cmd-row"><code>.dip claude new</code><span>Switch to Claude, then start new chat</span></div>
+              <div class="cmd-row"><code>.sup .dip gpt .yo . explain this</code><span>Capture, switch to GPT, process inline</span></div>
+            </div>
+
+            <div class="docs-panel" data-doc="apps">
+              <h3>Apps</h3>
+              <p>Apps are web applications that run inside Glyphh panels. Each app has an ID, a URL, and a set of mapped commands that the agent can execute.</p>
+
+              <h4>Pre-configured apps</h4>
+              <p>Glyphh ships with pre-configured apps including ChatGPT, Claude, Gemini, Gmail, Slack, GitHub, Linear, Notion, Grok, Perplexity, YouTube, Reddit, Google Docs, and X. Each has commands mapped to their specific UI elements.</p>
+
+              <h4>Adding apps</h4>
+              <p>Open the <strong>Apps</strong> page in this help panel and click <strong>+ New</strong>. Give it an ID (used in commands like <code>.dip myapp</code>), a name, and a URL. You can optionally map commands.</p>
+
+              <h4>App commands</h4>
+              <p>Commands are actions mapped to specific selectors in the app's DOM. Common commands:</p>
+              <div class="cmd-row"><code>grab</code><span>Extract the main content as text</span></div>
+              <div class="cmd-row"><code>input</code><span>Focus the text input field</span></div>
+              <div class="cmd-row"><code>submit</code><span>Click the send/submit button</span></div>
+              <div class="cmd-row"><code>new</code><span>Start a new conversation/document</span></div>
+              <div class="cmd-row"><code>search</code><span>Focus the search bar</span></div>
+              <div class="cmd-row"><code>compose</code><span>Open compose window (email)</span></div>
+              <p>The .yo agent uses these commands when navigating for you. You can also run app commands via <code>.dip claude new</code> (switch + execute).</p>
+
+              <h4>Force web mode</h4>
+              <p>Some apps (like ChatGPT, Claude, Gmail) need to run in a web view instead of Electron's BrowserView. This is the "Force Web" toggle — enable it if the app doesn't render correctly.</p>
+
+              <h4>Do Not Record</h4>
+              <p>Prevents ambient capture of sensitive apps. When enabled, the app's content is never captured on blur or navigation. Banking, health, password manager, and tax/gov domains are blocked by default. Toggle per-app in the app detail view.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="skills">
+              <h3>Skills</h3>
+              <p>Skills are reusable prompt templates that process captured content. Think of them as saved instructions — capture something with <code>.sup</code>, then apply a skill to transform it.</p>
+
+              <h4>Using skills</h4>
+              <div class="cmd-row"><code>.sup . summarize</code><span>Capture + run the "summarize" skill</span></div>
+              <div class="cmd-row"><code>.sup . formalize</code><span>Capture + formalize the text</span></div>
+              <div class="cmd-row"><code>.yo . summarize</code><span>Process last capture with a skill</span></div>
+              <p>When you use <code>.sup . skillname</code>, the content is captured and then processed through the skill's prompt template. The result replaces your clipboard content.</p>
+              <p>When you use <code>.yo . skillname</code>, the result is injected directly into the active text field.</p>
+
+              <h4>Creating skills</h4>
+              <p>Go to the <strong>Skills</strong> page in this panel and click <strong>+ New</strong>. Each skill has:</p>
+              <ul class="docs-list">
+                <li><strong>Name</strong> — the keyword you use to invoke it (e.g., "summarize")</li>
+                <li><strong>Prompt</strong> — the instruction template. Use <code>{{input}}</code> as a placeholder for the captured content.</li>
+              </ul>
+              <p>Example prompt: <code>Summarize the following in 3 bullet points:\n\n{{input}}</code></p>
+              <p>The .yo agent can also create skills for you — just ask: <code>.yo create a skill called translate that converts text to Spanish</code></p>
+            </div>
+
+            <div class="docs-panel" data-doc="layouts">
+              <h3>Layouts</h3>
+              <p>Layouts save your panel arrangement so you can restore it later with one command. Save a 3-panel workspace, switch away, and come back to it instantly.</p>
+
+              <h4>Saving layouts</h4>
+              <p>Arrange your panels the way you want (using <code>.dip split</code> or <code>.dip grid</code>), then save:</p>
+              <p>Save layouts from the <strong>Layouts</strong> page in this panel, or ask the .yo agent to save one for you.</p>
+
+              <h4>Restoring layouts</h4>
+              <div class="cmd-row"><code>.dip layout workspace</code><span>Restore the "workspace" layout</span></div>
+              <p>This restores the exact panel arrangement, sizes, and apps that were active when you saved.</p>
+
+              <h4>Grid layouts</h4>
+              <p>For advanced arrangements, use <code>.dip grid</code> with column/row spans and custom sizing:</p>
+              <div class="cmd-row"><code>.dip grid claude,gpt / gemini,code</code><span>2&times;2 grid</span></div>
+              <div class="cmd-row"><code>.dip grid claude:2,gpt / gemini,code</code><span>Claude spans 2 columns</span></div>
+              <div class="cmd-row"><code>.dip grid [70,30] claude,gpt</code><span>70/30 split</span></div>
+              <p>Drag the grid handles between panels to resize them live.</p>
+            </div>
+
+
+            <div class="docs-panel" data-doc="devspaces">
+              <h3>Dev Spaces</h3>
+              <p>A <strong>dev space</strong> is a workspace bound to a project directory plus a team of named code-terminal agents that coordinate through a shared event log. Each agent runs its own Claude Code session with a role, an inbox, and a shared MCP toolkit for talking to the team.</p>
+
+              <h4>Workspaces</h4>
+              <p>A workspace binds a yo session to a project directory. Captures, agents, and layouts are scoped to it. The active workspace persists across app restarts. Manage workspaces from the <strong>Workspaces</strong> page in this help panel.</p>
+              <p>Storage: <code>~/yo/workspaces.json</code> (index) + <code>~/yo/workspaces/&lt;slug&gt;/</code> (per-workspace event log, agent metadata, inbox state).</p>
+
+              <h4>Scaffolding agents</h4>
+              <p>A <strong>code-terminal</strong> is a named pty panel running an LLM CLI (default <code>claude</code>) in the workspace's <code>rootDir</code>. Each agent has a name and a role. Configure agents from the <strong>Agents</strong> page in this help panel.</p>
+
+              <h4>How agents coordinate</h4>
+              <p>Each code-terminal boots with <code>YO_AGENT_NAME</code> and <code>YO_WORKSPACE</code> in its env, plus a project-local <code>CLAUDE.md</code> dispatcher and a <code>.mcp.json</code> pointing at the MCP server. Agents see a personalized briefing at <code>${rootDir}/.yo/agents/&lt;name&gt;.md</code>.</p>
+              <p>The MCP server (loopback HTTP, bearer token auth) exposes:</p>
+              <ul class="docs-list">
+                <li><strong>team_status()</strong> — list agents, roles, last-post timestamps</li>
+                <li><strong>read_log(filter?)</strong> — read the event log; filter by tag/from/to/kind/time</li>
+                <li><strong>read_agent(name, kind?)</strong> — read another agent's scratchpad or post history</li>
+                <li><strong>post(body, tags?, kind?, refs?)</strong> — append to the team event log</li>
+                <li><strong>post_to(agent, body, tags?)</strong> — direct message, fast-path delivery</li>
+                <li><strong>subscribe(filter)</strong> / <strong>unsubscribe(id)</strong> — manage tag-filter subscriptions</li>
+              </ul>
+
+              <h4>Default subscriptions</h4>
+              <p>Auto-added on agent creation: <code>mentions_me</code>, <code>role:&lt;my-role&gt;</code>, <code>broadcast</code>.</p>
+
+              <h4>Sender conventions</h4>
+              <ul class="docs-list">
+                <li>Status updates → <code>post(body, tags: ["broadcast"])</code></li>
+                <li>Cross-role asks → <code>post_to("server", body)</code> or <code>post(body, tags: ["role:server"])</code></li>
+                <li>Internal scratch → <code>post(body)</code> with no tags (logged but not delivered)</li>
+                <li>Use tag <code>blocking</code> for anything that needs a teammate response</li>
+              </ul>
+
+              <h4>Inbox delivery</h4>
+              <p>When an event lands and an agent has a matching subscription, the orchestrator appends it to <code>${rootDir}/.yo/inbox/&lt;agent&gt;.md</code> (rolling tail of the last 50 events). Each agent's <code>CLAUDE.md</code> instructs it to read this file at the start of every turn — events newer than its last activity are new.</p>
+
+              <h4>Storage layout</h4>
+              <pre class="docs-code">~/yo/workspaces.json                           # workspace index
+~/yo/workspaces/&lt;slug&gt;/agents.json             # roster + subscriptions
+~/yo/workspaces/&lt;slug&gt;/events.jsonl            # append-only event log
+~/yo/workspaces/&lt;slug&gt;/inbox-state.json        # per-agent lastDeliveredTs
+${rootDir}/.mcp.json                           # MCP config (managed)
+${rootDir}/CLAUDE.md                           # dispatcher section (managed)
+${rootDir}/.yo/agents/&lt;name&gt;.md                # per-agent role briefing
+${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
+
+            </div>
+
+            <div class="docs-panel" data-doc="agent">
+              <h3>The Glyphh Agent</h3>
+              <p>The agent is your AI assistant that lives in the side panel. It searches your captures, runs shell commands, and executes workspace operations — all through natural language.</p>
+
+              <h4>What it can do</h4>
+              <ul class="docs-list">
+                <li><strong>Search captures</strong> — vector search across all ambient and manual captures</li>
+                <li><strong>Run commands</strong> — read-only shell commands (git log, ls, cat, etc.)</li>
+                <li><strong>Read files</strong> — read any file under your home directory</li>
+                <li><strong>Search notes</strong> — keyword search across saved notes in ~/yo/notes/</li>
+                <li><strong>Format</strong> — apply skills to transform content</li>
+                <li><strong>Save memory</strong> — remember preferences and patterns for future conversations</li>
+              </ul>
+
+              <h4>Agent modes</h4>
+              <p>The mode selector at the bottom of the agent panel controls how the agent uses its tools. Every tool is classified as either <strong>observe</strong> (read-only, safe) or <strong>mutate</strong> (has side effects). The mode determines what happens when the agent wants to use a tool.</p>
+
+              <div class="cmd-row"><code>ask</code><span>Every tool requires your approval before running (default)</span></div>
+              <p>The safest mode. The agent will describe what it wants to do and wait for you to approve or deny each action. Good for learning what the agent can do.</p>
+
+              <div class="cmd-row"><code>plan</code><span>No tools run — agent only outlines its plan</span></div>
+              <p>The agent thinks through what it would do and shows you a numbered plan, but never executes anything. Use this to preview the agent's approach before switching to ask or auto.</p>
+
+              <div class="cmd-row"><code>auto</code><span>Observe tools run immediately, mutate tools still ask</span></div>
+              <p>Read-only tools (search captures, get context, read files, run commands, list files, search notes) execute without confirmation. Tools that change state (save memory, etc.) still require your approval. The balance between speed and safety.</p>
+
+              <h4>Tool permissions</h4>
+              <p>You can override the mode for individual tools in <strong>Settings &gt; Agent &gt; Tool Permissions</strong>. Each tool can be set to:</p>
+              <ul class="docs-list">
+                <li><strong>Default</strong> — follows the global mode above</li>
+                <li><strong>Auto</strong> — always runs without asking, regardless of mode</li>
+                <li><strong>Ask</strong> — always asks for approval, even in auto mode</li>
+              </ul>
+              <p>For example, you might set search_captures to "auto" so the agent can always search freely, while keeping save_memory on "ask" so it always confirms before persisting state.</p>
+
+              <h4>Ambient capture</h4>
+              <p>Content is automatically captured when you switch away from a panel (blur) or navigate to a new page. SmartGrab extracts the meaningful content and indexes it for vector search. Apps marked "Do Not Record" are excluded. This means the agent can search everything you've looked at without you ever typing <code>.sup</code>.</p>
+
+              <h4>Model selection</h4>
+              <p>The model selector lets you choose which LLM powers the agent. Configure your API key and preferred provider in <strong>Settings &gt; Model Configuration</strong>. Supports Anthropic, OpenAI, Google, xAI, and DeepSeek.</p>
+
+              <h4>Chat history</h4>
+              <p>Click the hamburger menu (&#9776;) in the agent panel header to see your conversation history. Each conversation is saved automatically. Click <strong>+</strong> to start a new chat.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="mcp">
+              <h3>MCP (Model Context Protocol)</h3>
+              <p>Glyphh supports MCP in two ways: as a <strong>server</strong> — the cloud relay exposes your workspace to external LLM tools — and as a <strong>client</strong>, where your saved apps can attach their own MCP servers whose tools ride the same relay.</p>
+
+              <h4>The Glyphh relay</h4>
+              <p>Enable in <strong>Settings &gt; MCP &gt; Enable remote relay</strong>. Your signed-in device keeps a WebSocket to the Glyphh cloud, and external tools connect to a single endpoint:</p>
+              <pre class="docs-code">https://api.glyphh.ai/mcp</pre>
+              <p>Connected tools can open your apps and layouts as native windows and drive them — click, type, read the DOM, take screenshots. Everything executes on your machine; the relay only forwards commands from clients you've approved.</p>
+
+              <h4>Connecting from Claude</h4>
+              <p>Add the endpoint in Claude's <strong>Connectors</strong> settings and approve the OAuth prompt — no token to copy. This is the recommended path for any OAuth-capable client.</p>
+
+              <h4>Clients without OAuth support (Cursor / Windsurf / others)</h4>
+              <p>Generate a token in <strong>Settings &gt; MCP</strong>, then add this to the tool's MCP config:</p>
+              <pre class="docs-code">{
+  "mcpServers": {
+    "glyphh": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://api.glyphh.ai/mcp",
+               "--header", "Authorization: Bearer YOUR_TOKEN"]
+    }
+  }
+}</pre>
+
+              <h4>Available MCP tools</h4>
+              <p>When connected, external tools can use:</p>
+              <ul class="docs-list">
+                <li><strong>panels_open / panels_list / panels_switch / panels_close</strong> — open and manage your apps as native windows</li>
+                <li><strong>layouts_open</strong> — open a saved layout, tiled in one window or across the whole screen</li>
+                <li><strong>rpa_click / rpa_type / rpa_read / rpa_screenshot</strong> — drive an open app by CSS selector</li>
+                <li><strong>connector tools</strong> — call your connected apps' APIs</li>
+              </ul>
+              <p>Tokens generated in Settings authenticate MCP clients to the relay. They're separate from any LLM API keys configured inside the external tool itself.</p>
+            </div>
+          </div>
+        </div>
+        </div>

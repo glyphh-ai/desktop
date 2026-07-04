@@ -1,8 +1,8 @@
 /**
- * Home app — entry point for the yo://home panel.
- *
- * Loads inside a dedicated BrowserView with full window.yo API.
- * Hosts all sections that used to live in the help overlay.
+ * Home app — entry point for the home.html section panels (loaded as
+ * home.html?section=<slug> for each system-app tab: Apps / Layouts / Drips /
+ * Skills / Settings / About). Runs in a dedicated BrowserView with the full
+ * window.yo API.
  */
 
 import { initHelp, openNewAppDeepLink, gotoSection } from "./help/index.js";
@@ -34,11 +34,10 @@ initSearchClears();
 window.yo.refreshAuth?.().catch(() => {});
 
 // Pick the startup section. Priority: ?section=<slug> in the URL (system-app
-// panel mounted as its own section) → an explicit pending nav (the rail
-// asked for a specific section) → the user's configured default
+// panel mounted as its own section) → the user's configured default
 // ("homeStartupSection", blank = "last viewed") → the last section → dashboard.
 void (async () => {
-  // System-app panels (yo://apps, yo://agents, …) load home.html with a
+  // System-app panels (yo://apps, yo://layouts, …) load home.html with a
   // ?section=<slug> query. When set, this panel is locked to that section.
   try {
     const params = new URLSearchParams(window.location.search);
@@ -54,17 +53,15 @@ void (async () => {
       return;
     }
   } catch { /* fall through */ }
-  try {
-    const pending = await window.yo.getPendingSection?.();
-    if (pending) { gotoSection(pending.section, pending.sub); return; }
-  } catch { /* fall through */ }
   const def = ((await window.yo.getPreference?.("homeStartupSection", "")) as string) || "";
   const lastSec = ((await window.yo.getPreference?.("homeLastSection", "")) as string) || "";
   const lastSub = ((await window.yo.getPreference?.("homeLastSub", "")) as string) || "";
-  const sec = def || lastSec || "dashboard";
+  let sec = def || lastSec || "dashboard";
+  // A remembered section may have been removed since (e.g. the old Skills
+  // page) — fall back rather than landing on a blank pane.
+  if (!document.querySelector(`.help-section[data-section="${sec}"]`)) sec = "dashboard";
   gotoSection(sec, sec === lastSec ? (lastSub || undefined) : undefined);
 })();
-window.yo.onGotoSection?.((section, sub) => gotoSection(section, sub));
 
 // "Create App" from a browser tab routes here — open the New App form prefilled.
 window.yo.onOpenNewApp?.((data) => openNewAppDeepLink(data));

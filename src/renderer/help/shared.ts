@@ -124,6 +124,7 @@ export interface PaginationState {
   page: number;
   totalPages: number;
   total: number;
+  pageSize: number;
 }
 
 export function renderPaginationBar(state: PaginationState, onPage: (page: number) => void): HTMLElement {
@@ -133,8 +134,8 @@ export function renderPaginationBar(state: PaginationState, onPage: (page: numbe
 
   const info = document.createElement("span");
   info.className = "pagination-info";
-  const start = state.page * PAGE_SIZE + 1;
-  const end = Math.min((state.page + 1) * PAGE_SIZE, state.total);
+  const start = state.page * state.pageSize + 1;
+  const end = Math.min((state.page + 1) * state.pageSize, state.total);
   info.textContent = `${start}–${end} of ${state.total}`;
 
   const nav = document.createElement("div");
@@ -188,12 +189,12 @@ export function renderPaginationBar(state: PaginationState, onPage: (page: numbe
   return bar;
 }
 
-export function paginate<T>(items: T[], page: number): { items: T[]; state: PaginationState } {
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+export function paginate<T>(items: T[], page: number, pageSize: number = PAGE_SIZE): { items: T[]; state: PaginationState } {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
   const safePage = Math.max(0, Math.min(page, totalPages - 1));
   return {
-    items: items.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE),
-    state: { page: safePage, totalPages, total: items.length },
+    items: items.slice(safePage * pageSize, (safePage + 1) * pageSize),
+    state: { page: safePage, totalPages, total: items.length, pageSize },
   };
 }
 

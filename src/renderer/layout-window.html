@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Glyphh</title>
+<style>
+  :root {
+    --lw-bg: #f4f4f5;
+    --lw-border: rgba(0,0,0,.14);
+  }
+  html[data-theme="dark"], html[data-theme="purple"], html[data-theme="aurora"] {
+    --lw-bg: #1c1c20;
+    --lw-border: rgba(255,255,255,.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body { background: var(--lw-bg); }
+  #grid { display: grid; width: 100%; height: 100%; gap: 1px; background: var(--lw-border); }
+  #grid webview { width: 100%; height: 100%; background: var(--lw-bg); }
+</style>
+<script>
+  try {
+    var t = localStorage.getItem("yoTheme") || "dark";
+    var r = t === "system"
+      ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+      : t;
+    document.documentElement.setAttribute("data-theme", r);
+  } catch (e) {}
+</script>
+</head>
+<body>
+  <div id="grid"></div>
+  <script type="module" src="layout-window.js"></script>
+</body>
+</html>

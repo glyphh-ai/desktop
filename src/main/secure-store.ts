@@ -1,7 +1,7 @@
 /**
  * secure-store — encrypt/decrypt JSON blobs at rest on the local filesystem.
  *
- * Same approach as provider-keys.ts / pipedream-config.ts: Electron safeStorage
+ * Same approach as app-secrets.ts / pipedream-config.ts: Electron safeStorage
  * (OS keychain) when available, with a machine-derived AES-256-GCM fallback.
  * Used for any on-disk config that may hold secrets (e.g. an app's MCP OAuth
  * client secret).

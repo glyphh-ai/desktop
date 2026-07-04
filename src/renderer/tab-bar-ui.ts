@@ -1,5 +1,7 @@
 // tab-bar-ui.ts — Tab bar system extracted from renderer.ts
 
+import { yoConfirm } from "./yo-modal.js";
+
 type TabInfo = { id: string; name: string; favicon?: string; layoutFavicons?: string[]; pinned?: boolean; url?: string; kind?: string };
 
 // ── Internal-app icons for the `+` picker ─────────────────────────────────
@@ -103,7 +105,7 @@ export function initTabBar(deps: TabBarDeps): {
         const id = baseName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `app-${Date.now()}`;
         const result = await window.yo.appsAdd(id, baseName, url);
         if (result && typeof result === "object" && "error" in result) {
-          alert((result as { error: string }).error);
+          void yoConfirm({ title: "Couldn't add app", message: (result as { error: string }).error, confirmText: "OK", cancelText: "" });
         }
       });
       menu.appendChild(addBtn);
@@ -167,13 +169,7 @@ export function initTabBar(deps: TabBarDeps): {
       el.className = "tab" + (tab.id === activeId ? " tab-active" : "") + (tab.pinned ? " tab-pinned" : "");
       el.dataset.id = tab.id;
 
-      // The Settings tab gets a gear icon.
-      if (tab.id === "home") {
-        const icon = document.createElement("span");
-        icon.className = "tab-home-icon";
-        icon.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-        el.appendChild(icon);
-      } else if (tab.kind === "layout") {
+      if (tab.kind === "layout") {
         // Layout tab gets a single grid glyph + the layout's name (handled by
         // the label block below). Stacked panel favicons are gone — the
         // layout's own identity wins.
@@ -287,9 +283,10 @@ export function initTabBar(deps: TabBarDeps): {
     tabBar.appendChild(tabNewBtn);
   }
 
-  /** Shown only when there are no tabs AND neither rail is open. Either
-   *  rail (left files rail or right yo panel) being open is itself "content"
-   *  for the user, so the placeholder is redundant. */
+  /** Shown only when there are no tabs AND the left files rail isn't open —
+   *  an open rail is itself "content" for the user, so the placeholder is
+   *  redundant. (The right-hand agent panel this also used to check was
+   *  removed in the pivot-mcp pass.) */
   let lastTabCount = 0;
   function updateEmptyState(tabs: TabInfo[]) {
     lastTabCount = tabs.length;
@@ -297,8 +294,7 @@ export function initTabBar(deps: TabBarDeps): {
   }
   function refreshEmptyState() {
     const leftRailOpen = !!document.getElementById("files-rail")?.classList.contains("open");
-    const yoPanelOpen = !!document.getElementById("yo-panel")?.classList.contains("open");
-    const showEmpty = lastTabCount === 0 && !leftRailOpen && !yoPanelOpen;
+    const showEmpty = lastTabCount === 0 && !leftRailOpen;
     emptyState.classList.toggle("hidden", !showEmpty);
   }
 

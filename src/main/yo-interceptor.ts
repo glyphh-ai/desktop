@@ -16,11 +16,8 @@
 
 import { WebContents } from "electron";
 import { AppConnector } from "./app-connector";
-import { SkillEngine } from "./skill-engine";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
-import type { YoChat } from "./yo-chat";
-import type { CaptureStore } from "./capture-store";
 
 import crypto from "crypto";
 
@@ -31,7 +28,6 @@ export class YoInterceptor {
   /** Per-session nonce — injected into pages and validated on receipt. */
   private readonly sessionNonce = crypto.randomBytes(16).toString("hex");
   private commandHandler: ((input: string, sourcePanelId?: string) => Promise<string>) | null = null;
-  private yoChat: YoChat | null = null;
   private getVisiblePanelIds: (() => string[]) | null = null;
   private opId = 0; // incremented per operation; cancel bumps it to invalidate in-flight results
   private sessionNotifier: (() => void) | null = null;
@@ -42,26 +38,19 @@ export class YoInterceptor {
   private yoActiveWc: WebContents | null = null; // wc the current .yo conversation is in
   private modeColor = "#a855f7"; // current agent mode color (ask=purple, plan=violet, auto=green, bypass=red)
   private agentMode = "default";
-  private currentModel = "";
-  private availableModels: string[] = [];
   private theme = "dark";
   private lastAgentResult: (() => string) | null = null;
-  private captureStore: CaptureStore | null = null;
   private getFavicons: (() => Record<string, string>) | null = null;
   private getLayouts: (() => Array<{ name: string }>) | null = null;
   private getDripCustoms: (() => Array<{ name: string; recipe: string }>) | null = null;
   private modeChanger: ((mode: string) => void) | null = null;
-  private modelChanger: ((model: string) => void) | null = null;
   private wazSpawner: ((prompt: string) => void) | null = null;
 
   constructor(
     private appConnector: AppConnector,
-    private skillEngine: SkillEngine,
     private session: SessionCache,
   ) {}
 
-  setYoChat(chat: YoChat): void { this.yoChat = chat; }
-  setCaptureStore(store: CaptureStore): void { this.captureStore = store; }
   setCommandHandler(handler: (input: string, sourcePanelId?: string) => Promise<string>): void { this.commandHandler = handler; }
   setVisiblePanelsGetter(getter: () => string[]): void { this.getVisiblePanelIds = getter; }
   setSessionNotifier(fn: () => void): void { this.sessionNotifier = fn; }
@@ -72,13 +61,7 @@ export class YoInterceptor {
   setDripCustomsGetter(fn: () => Array<{ name: string; recipe: string }>): void { this.getDripCustoms = fn; }
   setLastAgentResult(fn: () => string): void { this.lastAgentResult = fn; }
   setModeChanger(fn: (mode: string) => void): void { this.modeChanger = fn; }
-  setModelChanger(fn: (model: string) => void): void { this.modelChanger = fn; }
   setWazSpawner(fn: (prompt: string) => void): void { this.wazSpawner = fn; }
-  setAvailableModels(models: string[]): void { this.availableModels = models; }
-  setCurrentModel(model: string): void {
-    this.currentModel = model;
-    this.pushToAll(`if(window.__yoSetModel)window.__yoSetModel(${JSON.stringify(model)})`);
-  }
   setModeColor(color: string): void { this.modeColor = color; }
   setAgentMode(mode: string): void {
     this.agentMode = mode;
@@ -329,9 +312,6 @@ window.addEventListener('beforeunload',function(e){
       case "set-mode":
         if (data.instruction && this.modeChanger) this.modeChanger(data.instruction);
         break;
-      case "set-model":
-        if (data.instruction && this.modelChanger) this.modelChanger(data.instruction);
-        break;
       case "cancel":
         this.opId++;
         await this.clearNotify(wc);
@@ -526,108 +506,18 @@ window.addEventListener('beforeunload',function(e){
   }
 
   /**
-   * .yo . <prompt> — lightweight inline processing.
-   * Takes the last .sup capture from session, sends a single LLM call
-   * with the user's prompt, and injects the result directly into the
-   * current text area. No agent panel, no tools, no streaming.
+   * .yo . <prompt> — was inline LLM processing of the last capture. The
+   * in-app LLM (yo-chat) is deleted — Glyphh makes no model calls of its
+   * own; agentic behavior lives in installed apps (agent.run). The capture
+   * itself is still on the clipboard.
    */
-  private async handleYoDot(wc: WebContents, _appId: string, prompt: string): Promise<void> {
-    if (!this.yoChat) {
-      this.notify(wc, "Agent not ready.", "error");
-      return;
-    }
-
-    const context = this.session.get();
-    if (!context) {
-      this.notify(wc, "Nothing captured. Use .sup first.", "error");
-      return;
-    }
-
-    const myOp = ++this.opId;
-    this.notify(wc, "", "loading");
-
-    try {
-      const result = await this.yoChat.executeProcess(prompt, context);
-      if (this.opId !== myOp) return; // cancelled
-      await this.clearNotify(wc);
-
-      // Inject the result directly into the text area
-      try {
-        await wc.executeJavaScript(
-          `(function(){if(window.__yoInject){window.__yoInject(${JSON.stringify(result)});}})()`,
-        );
-      } catch {}
-    } catch (err) {
-      if (this.opId !== myOp) return;
-      await this.clearNotify(wc);
-      this.notify(wc, `Failed: ${err instanceof Error ? err.message : err}`, "error");
-    }
+  private async handleYoDot(wc: WebContents, _appId: string, _prompt: string): Promise<void> {
+    this.notify(wc, "Inline processing was removed — the capture is on your clipboard; agents live in apps now.", "error");
   }
 
-  /**
-   * .yo > <prompt> — search capture history + inject result.
-   * Searches the capture store, passes results to LLM with the user's prompt,
-   * injects the processed result into the current text area.
-   */
-  private async handleYoPull(wc: WebContents, _appId: string, prompt: string): Promise<void> {
-    if (!this.captureStore) {
-      this.notify(wc, "Capture store not available.", "error");
-      return;
-    }
-    if (!this.yoChat) {
-      this.notify(wc, "Agent not ready.", "error");
-      return;
-    }
-
-    const myOp = ++this.opId;
-    this.notify(wc, "", "loading");
-
-    try {
-      // Search captures for relevant content
-      const results = await this.captureStore.search(prompt, 5);
-      if (!results || results.length === 0) {
-        if (this.opId !== myOp) return;
-        await this.clearNotify(wc);
-        this.notify(wc, "No matching captures found.", "error");
-        return;
-      }
-
-      // Build context from search results
-      const context = results
-        .map((r, i) =>
-          `[${i + 1}] (score: ${r.score.toFixed(2)}, source: ${r.meta.source})\n${r.content}`)
-        .join("\n\n---\n\n");
-
-      // Check if prompt is a skill name
-      const matchedSkill = /^\S+$/.test(prompt)
-        ? this.skillEngine.listSkills().find((s) => s.toLowerCase() === prompt.toLowerCase())
-        : undefined;
-
-      let finalResult: string;
-      if (matchedSkill) {
-        try {
-          finalResult = await this.skillEngine.process(context, matchedSkill);
-        } catch (err) {
-          finalResult = `Skill error: ${err instanceof Error ? err.message : String(err)}`;
-        }
-      } else {
-        finalResult = await this.yoChat.executeProcess(prompt, context);
-      }
-
-      if (this.opId !== myOp) return;
-      await this.clearNotify(wc);
-
-      // Inject the result directly into the text area
-      try {
-        await wc.executeJavaScript(
-          `(function(){if(window.__yoInject){window.__yoInject(${JSON.stringify(finalResult)});}})()`,
-        );
-      } catch {}
-    } catch (err) {
-      if (this.opId !== myOp) return;
-      await this.clearNotify(wc);
-      this.notify(wc, `Failed: ${err instanceof Error ? err.message : err}`, "error");
-    }
+  /** .yo > <prompt> — searched capture history; capture store is removed. */
+  private async handleYoPull(wc: WebContents, _appId: string, _prompt: string): Promise<void> {
+    this.notify(wc, "Capture store not available.", "error");
   }
 
   private timestamp(): string {

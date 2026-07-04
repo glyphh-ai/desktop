@@ -9,15 +9,13 @@
  *   peace [count]   → particle peace-sign gesture
  */
 
-import { BrowserWindow, WebContents, ipcMain } from "electron";
+import { BrowserWindow, WebContents } from "electron";
 import { PanelManager } from "./panel-manager";
-import { SkillEngine } from "./skill-engine";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
 import { setPreference } from "./preferences";
-import type { YoChat } from "./yo-chat";
 export class CommandParser {
   private static readonly COMMAND_KEYWORDS = new Set(["sup", "dip", "drip", "peace", "waz"]);
 
@@ -28,17 +26,14 @@ export class CommandParser {
   private yoHistory: Array<{ role: string; content: string }> = [];
   private yoContext = ""; // assembled context from initial search
   private mainWindow: BrowserWindow | null = null;
-  private yoChat: YoChat | null = null;
   private grabber: ((activeOnly?: boolean) => Promise<string | null>) | null = null;
   private wcGetter: ((panelId: string) => WebContents | null) | null = null;
   private tabCloser: ((id: string) => void) | null = null;
   private tabLister: (() => string[]) | null = null;
   private tabCreator: ((url: string) => string) | null = null;
   private instanceCreator: ((appId: string) => string | null) | null = null;
-  private cypherOpener: ((slug: string) => Promise<boolean>) | null = null;
   constructor(
     private panels: PanelManager,
-    private skillEngine: SkillEngine,
     private layouts: LayoutManager,
     private appConnector: AppConnector,
     private session: SessionCache,
@@ -59,10 +54,6 @@ export class CommandParser {
   }
 
   /** Set the LLM engine for inline processing. */
-  setYoChat(chat: YoChat): void {
-    this.yoChat = chat;
-  }
-
   /** Set the grabber callback — grabs content from visible panels. */
   setGrabber(fn: (activeOnly?: boolean) => Promise<string | null>): void {
     this.grabber = fn;
@@ -90,11 +81,6 @@ export class CommandParser {
    *  and by `.dip <app> .waz <panel-cmd> <prompt>` chains. */
   private wazSpawner: ((prompt: string) => void) | null = null;
   setWazSpawner(fn: (prompt: string) => void): void { this.wazSpawner = fn; }
-
-  /** Set callback that opens the cypher workspace bound to a specific cypher slug. */
-  setCypherOpener(fn: (slug: string) => Promise<boolean>): void {
-    this.cypherOpener = fn;
-  }
 
   /** Split input at dot-prefixed command keyword boundaries for chaining.
    *  Only .yo / .dip / .drip trigger a split — bare keywords like "yo"
@@ -251,23 +237,11 @@ export class CommandParser {
       return "";
     }
 
-    // .sup . <skill/prompt> → capture + process → return result for injection
-    let finalContent = content;
-    const matchedSkill = /^\S+$/.test(instruction)
-      ? this.skillEngine.listSkills().find((s) => s.toLowerCase() === instruction.toLowerCase())
-      : undefined;
+    // .sup . <prompt> used to LLM-process the capture; the in-app LLM is
+    // gone (agents live in apps), so the raw capture passes through.
+    const finalContent = content;
 
-    if (matchedSkill) {
-      try {
-        finalContent = await this.skillEngine.process(content, matchedSkill);
-      } catch (err) {
-        finalContent = `Skill error: ${err instanceof Error ? err.message : String(err)}`;
-      }
-    } else if (this.yoChat) {
-      finalContent = await this.yoChat.executeProcess(instruction, content);
-    }
-
-    const label = matchedSkill || this.timestamp();
+    const label = this.timestamp();
     this.session.capture("command-bar", finalContent, `${label}.md`, label);
     this.session.copyToClipboard();
     return finalContent;
@@ -439,40 +413,9 @@ export class CommandParser {
       return this.handleDipSplit(args.slice(1), win);
     }
 
-    // Canvas mode: `dip grid` tiles all open windows equally; `dip grid <c> <r>`
-    // forces columns/rows. (Falls through to the fixed-grid spec parser only when
-    // not in canvas mode.)
-    if (sub === "grid" && this.panels.canvasMode) {
-      // Drop any active layout so execCommand's post-command sync doesn't
-      // re-arrange the windows back to it (e.g. after `.dip <layout>`).
-      this.layouts.clearSplit();
-      const cols = parseInt(args[1] ?? "", 10);
-      const rows = parseInt(args[2] ?? "", 10);
-      ipcMain.emit(
-        "canvas-grid-all",
-        {} as Electron.IpcMainEvent,
-        Number.isFinite(cols) ? cols : undefined,
-        Number.isFinite(rows) ? rows : undefined,
-      );
-      return rows || cols ? `Grid: ${cols || "auto"}×${rows || "auto"}` : "Arranged windows in a grid";
-    }
-
     // dip grid — full grid with spans, custom widths/heights
     if (sub === "grid" && args.length >= 2) {
       return this.handleDipGrid(args.slice(1), win);
-    }
-
-    // Canvas window controls. min/exp toggle the active window's minimize/expand;
-    // minAll/expAll act on every window.
-    if (sub === "min" || sub === "exp" || sub === "minall" || sub === "expall") {
-      if (!this.panels.canvasMode) return "Window controls (min/exp/minAll/expAll) only work in canvas mode.";
-      if (sub === "minall") { ipcMain.emit("canvas-collapse-all", {} as Electron.IpcMainEvent); return "Minimized all windows."; }
-      if (sub === "expall") { ipcMain.emit("canvas-restore-all", {} as Electron.IpcMainEvent); return "Expanded all windows."; }
-      const id = this.panels.activePanelId;
-      if (!id) return "No active window.";
-      if (sub === "min") { ipcMain.emit("canvas-collapse-toggle", {} as Electron.IpcMainEvent, id); return `Minimize toggled: ${id}`; }
-      ipcMain.emit("canvas-maximize", {} as Electron.IpcMainEvent, id); // exp → expand/restore toggle
-      return `Expand toggled: ${id}`;
     }
 
     // Check for saved layout
@@ -526,28 +469,12 @@ export class CommandParser {
       return "Tab manager not available";
     }
 
-    // dip <cypher-slug> — open cypher workspace bound to that cypher
-    if (this.cypherOpener && !this.panels.hasPanel(sub) && !this.appConnector.get(sub)) {
-      const opened = await this.cypherOpener(sub);
-      if (opened) {
-        setPreference("lastView", { type: "panel", id: "cypher" });
-        return `Cypher: ${sub}`;
-      }
-    }
-
     // dip <panel-id> [cmd1 cmd2 ...] — switch + optional app commands. Dipping to
     // anything that isn't a layout closes any open layout.
     this.layouts.clearSplit();
     const switched = this.panels.switchTo(sub, win);
     if (!switched) return `Unknown panel: ${sub}. Try: dip list`;
     setPreference("lastView", { type: "panel", id: sub });
-
-    // In canvas grid mode, dipping to an app opens/raises its window and re-tiles
-    // so the new window joins the grid (rather than just bringing it to front).
-    if (this.panels.canvasMode && this.panels.canvasGrid && args.length === 1) {
-      ipcMain.emit("canvas-grid-all", {} as Electron.IpcMainEvent);
-      return `Added ${sub} to grid`;
-    }
 
     // No commands to run — just a switch
     const commands = args.slice(1);

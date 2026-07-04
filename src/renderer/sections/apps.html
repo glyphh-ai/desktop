@@ -1,0 +1,586 @@
+        <div class="help-section" data-section="apps">
+          <div class="apps-page-tabs">
+            <button class="apps-page-tab active" data-page="library">My apps</button>
+            <button class="apps-page-tab" data-page="marketplace">Marketplace</button>
+            <button class="apps-page-tab" data-page="proxies">Public URLs</button>
+          </div>
+
+          <div id="apps-library-page" class="apps-page">
+          <h2 class="apps-page-heading">Apps</h2>
+          <p class="section-desc">Browse and connect apps.</p>
+
+          <!-- Upgrade gate (shown for non-Advanced when trying to connect) -->
+          <div id="apps-pro-gate" class="hidden" style="text-align:center;padding:32px 16px;">
+            <p style="color:var(--text-2);font-size:14px;margin-bottom:12px;">App connections require an Advanced subscription.</p>
+            <button id="apps-upgrade-btn" class="action-btn primary">Upgrade to Advanced</button>
+          </div>
+
+          <div id="apps-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 10 apps. <a id="apps-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
+          <div id="apps-toolbar" class="crud-toolbar">
+            <input id="app-search" type="text" class="crud-search" placeholder="Search apps..." spellcheck="false" autocomplete="off" />
+            <button id="apps-add-btn" class="action-btn primary">+ New</button>
+            <button id="apps-import-btn" class="action-btn" title="Import a .glyphh bundle">Import app</button>
+            <button id="apps-refresh-btn" class="action-btn" title="Refresh app list" aria-label="Refresh app list" style="padding:6px 9px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+            </button>
+          </div>
+
+          <div id="apps-list" class="crud-cards"></div>
+
+          <!-- App add form -->
+          <div id="app-add-form" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="app-add-cancel">← Apps</a>
+              <div class="crud-spacer"></div>
+            </div>
+            <div id="app-form-error" class="crud-form-error hidden"></div>
+            <label class="settings-label">Name</label>
+            <input id="app-add-name" type="text" class="settings-input" placeholder="e.g. Gmail" spellcheck="false" autocomplete="off" />
+            <label class="settings-label">Slug <span class="settings-hint">— how you'll dip to it (.dip &lt;slug&gt;)</span></label>
+            <input id="app-add-slug" type="text" class="settings-input" placeholder="auto" spellcheck="false" autocomplete="off" pattern="[a-z0-9-]+" />
+            <label class="settings-label">Type</label>
+            <select id="app-add-type" class="settings-input">
+              <option value="browser">Browser app (web URL)</option>
+              <option value="native">Native app (desktop executable)</option>
+            </select>
+            <!-- Browser fields -->
+            <div id="app-add-browser-fields">
+              <label class="settings-label">URL</label>
+              <input id="app-add-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" autocomplete="off" />
+              <label class="settings-label">Open in</label>
+              <select id="app-add-browser-target" class="settings-input">
+                <option value="webview">Glyphh webview</option>
+                <option value="native">Native Chrome</option>
+              </select>
+            </div>
+            <!-- Native fields -->
+            <div id="app-add-native-fields" class="hidden">
+              <label class="settings-label">Application / executable path</label>
+              <div style="display:flex;gap:6px;">
+                <input id="app-add-exec-path" type="text" class="settings-input" placeholder="/Applications/Terminal.app" spellcheck="false" autocomplete="off" style="flex:1;" />
+                <button id="app-add-exec-browse" class="action-btn" type="button">Browse…</button>
+              </div>
+              <label class="settings-label">Archetype</label>
+              <select id="app-add-archetype" class="settings-input">
+                <option value="terminal">Terminal</option>
+                <option value="editor">Editor</option>
+                <option value="generic">Generic</option>
+              </select>
+              <!-- Terminal archetype -->
+              <div id="app-add-terminal-fields">
+                <label class="settings-label">Open as</label>
+                <select id="app-add-window-mode" class="settings-input">
+                  <option value="window">New window</option>
+                  <option value="tab">New tab</option>
+                  <option value="blank">Just open (no new window/tab)</option>
+                </select>
+                <label class="settings-label">Shell</label>
+                <input id="app-add-shell" type="text" class="settings-input" placeholder="/bin/zsh" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Profile</label>
+                <input id="app-add-profile" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Working directory</label>
+                <input id="app-add-cwd" type="text" class="settings-input" placeholder="~/projects" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Init commands <span style="color:var(--text-2);font-weight:400;">(one per line)</span></label>
+                <textarea id="app-add-init-commands" class="settings-input" rows="3" spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+              </div>
+              <!-- Editor archetype -->
+              <div id="app-add-editor-fields" class="hidden">
+                <label class="settings-label">Folder</label>
+                <input id="app-add-folder" type="text" class="settings-input" placeholder="~/projects/my-repo" spellcheck="false" autocomplete="off" />
+              </div>
+              <!-- Generic archetype -->
+              <div id="app-add-generic-fields" class="hidden">
+                <label class="settings-label">Args <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+                <input id="app-add-args" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+              </div>
+            </div>
+            <!-- Force web mode + Do not record live on the app's detail screen
+                 (where they persist); duplicating them here did nothing. -->
+            <div class="settings-actions" style="margin-top:8px;">
+              <button id="app-add-cancel-btn" class="action-btn">Cancel</button>
+              <button id="app-add-save" class="action-btn primary">Save</button>
+            </div>
+          </div>
+
+          <!-- MCP add form -->
+          <div id="mcp-add-form" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="mcp-add-cancel">← Apps</a>
+              <div class="crud-spacer"></div>
+            </div>
+            <div id="mcp-form-error" class="crud-form-error hidden"></div>
+            <label class="settings-label">Name</label>
+            <input id="mcp-add-name" type="text" class="settings-input" placeholder="My Server" spellcheck="false" autocomplete="off" />
+            <label class="settings-label">Transport</label>
+            <select id="mcp-add-transport" class="settings-input">
+              <option value="stdio">stdio (local process)</option>
+              <option value="sse">SSE (HTTP server)</option>
+            </select>
+            <div id="mcp-add-stdio-fields">
+              <label class="settings-label">Command</label>
+              <input id="mcp-add-command" type="text" class="settings-input" placeholder="npx -y @modelcontextprotocol/server-..." spellcheck="false" autocomplete="off" />
+              <label class="settings-label">Arguments <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+              <input id="mcp-add-args" type="text" class="settings-input" placeholder="--flag value" spellcheck="false" autocomplete="off" />
+              <label class="settings-label">Environment <span style="color:var(--text-2);font-weight:400;">(KEY=VALUE, one per line)</span></label>
+              <textarea id="mcp-add-env" class="settings-input" rows="3" placeholder="API_KEY=sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+            </div>
+            <div id="mcp-add-sse-fields" class="hidden">
+              <label class="settings-label">Server URL</label>
+              <input id="mcp-add-url" type="text" class="settings-input" placeholder="http://localhost:3000/sse" spellcheck="false" autocomplete="off" />
+            </div>
+            <div class="settings-actions" style="margin-top:8px;">
+              <button id="mcp-add-cancel-btn" class="action-btn">Cancel</button>
+              <button id="mcp-add-save" class="action-btn primary">Save</button>
+            </div>
+          </div>
+
+          <!-- App detail (tabbed) -->
+          <div id="app-detail" class="hidden">
+            <div class="crud-inline-header" style="padding:0 16px;">
+              <a class="crud-breadcrumb-back" id="app-detail-close">← Apps</a>
+              <span id="app-detail-heading" class="hidden"></span>
+              <span style="flex:1;"></span>
+              <button id="app-detail-open" class="action-btn primary" type="button" title="Open this app as a panel">Open app</button>
+            </div>
+
+            <!-- Title under the breadcrumb (icon + name + slug), like the Connections form -->
+            <div id="app-detail-head" class="edit-head" style="padding:0 16px;margin-top:12px;"></div>
+
+            <div class="app-detail-tabs">
+              <button class="app-detail-tab" data-tab="dashboard">General</button>
+              <button class="app-detail-tab" data-tab="config">Config Vars</button>
+            </div>
+
+            <div class="app-builder-split">
+              <!-- Left panel: swaps per tab -->
+              <div class="app-builder-controls">
+                <!-- Dashboard left: form, then (below it) the pick-elements /
+                     mapped-commands section that used to be its own "Panel" tab. -->
+                <div class="app-tab-left" data-tab="dashboard">
+                  <label class="settings-label">Name</label>
+                  <input id="app-detail-name" class="settings-input" spellcheck="false" />
+                  <label class="settings-label">Slug <span style="color:var(--text-3);font-weight:400;font-size:11px;">— how you'll dip to it (.dip &lt;slug&gt;)</span></label>
+                  <input id="app-detail-id" class="settings-input" spellcheck="false" style="font-family:var(--font-mono);font-size:12px;" />
+                  <label class="settings-label">Type</label>
+                  <select id="app-detail-type" class="settings-input">
+                    <option value="browser">Browser app (web URL)</option>
+                    <option value="native">Native app (desktop executable)</option>
+                  </select>
+                  <!-- Browser fields -->
+                  <div id="app-detail-browser-fields">
+                    <label class="settings-label">URL</label>
+                    <input id="app-detail-url" class="settings-input" spellcheck="false" placeholder="https://..." />
+                    <label class="settings-label">Open in</label>
+                    <select id="app-detail-browser-target" class="settings-input">
+                      <option value="webview">Glyphh webview</option>
+                      <option value="native">Native Chrome</option>
+                    </select>
+                    <label class="settings-toggle" style="margin-top:4px;padding:8px 12px;">
+                      <input type="checkbox" id="app-detail-force-web" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Force web mode</span>
+                        <span class="toggle-desc">Block native app redirects and desktop prompts</span>
+                      </div>
+                    </label>
+                  </div>
+                  <!-- Native fields -->
+                  <div id="app-detail-native-fields" class="hidden">
+                    <label class="settings-label">Application / executable path</label>
+                    <div style="display:flex;gap:6px;">
+                      <input id="app-detail-exec-path" class="settings-input" placeholder="/Applications/Terminal.app" spellcheck="false" style="flex:1;font-family:var(--font-mono);font-size:12px;" />
+                      <button id="app-detail-exec-browse" class="action-btn" type="button">Browse…</button>
+                    </div>
+                    <label class="settings-label">Archetype</label>
+                    <select id="app-detail-archetype" class="settings-input">
+                      <option value="terminal">Terminal</option>
+                      <option value="editor">Editor</option>
+                      <option value="generic">Generic</option>
+                    </select>
+                    <!-- Terminal archetype -->
+                    <div id="app-detail-terminal-fields">
+                      <label class="settings-label">Open as</label>
+                      <select id="app-detail-window-mode" class="settings-input">
+                        <option value="window">New window</option>
+                        <option value="tab">New tab</option>
+                        <option value="blank">Just open (no new window/tab)</option>
+                      </select>
+                      <label class="settings-label">Shell</label>
+                      <input id="app-detail-shell" class="settings-input" placeholder="/bin/zsh" spellcheck="false" />
+                      <label class="settings-label">Profile</label>
+                      <input id="app-detail-profile" class="settings-input" spellcheck="false" />
+                      <label class="settings-label">Working directory</label>
+                      <input id="app-detail-cwd" class="settings-input" placeholder="~/projects" spellcheck="false" />
+                      <label class="settings-label">Init commands <span style="color:var(--text-2);font-weight:400;">(one per line)</span></label>
+                      <textarea id="app-detail-init-commands" class="settings-input" rows="3" spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                    </div>
+                    <!-- Editor archetype -->
+                    <div id="app-detail-editor-fields" class="hidden">
+                      <label class="settings-label">Folder</label>
+                      <input id="app-detail-folder" class="settings-input" placeholder="~/projects/my-repo" spellcheck="false" />
+                    </div>
+                    <!-- Generic archetype -->
+                    <div id="app-detail-generic-fields" class="hidden">
+                      <label class="settings-label">Args <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+                      <input id="app-detail-args" class="settings-input" spellcheck="false" />
+                    </div>
+                  </div>
+                  <!-- Required connections — declared by an installed Glyphh
+                       app's manifest. Shows per-connector connected status and
+                       warns loudly when any are missing. -->
+                  <div id="app-req-conns" class="hidden">
+                    <label class="settings-label">Required connections</label>
+                    <div id="app-req-conns-list"></div>
+                    <div id="app-req-conns-warn" class="app-req-conns-warn hidden">
+                      This app will <strong>not work</strong> until the accounts above are connected.
+                      <a id="app-req-conns-goto" href="#">Open Connections</a>
+                    </div>
+                  </div>
+                  <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
+                    <button id="app-detail-delete" class="action-btn danger">Delete</button>
+                    <button id="app-detail-export" class="action-btn" title="Export this app as a .glyphh bundle">Export</button>
+                    <div style="flex:1;"></div>
+                    <button id="app-dash-cancel" class="action-btn">Cancel</button>
+                    <button id="app-dash-save" class="action-btn primary">Save</button>
+                  </div>
+
+                  <div class="app-detail-section-sep"></div>
+
+                  <div id="app-connect-status"></div>
+                  <div id="app-commands-list"></div>
+                  <div id="app-map-command" class="hidden">
+                    <div class="map-command-header">Map to Command</div>
+                    <div class="map-command-info">
+                      <span id="map-selector"></span>
+                      <span id="map-element-info"></span>
+                    </div>
+                    <div class="map-command-form">
+                      <select id="map-command-key">
+                        <option value="">Select command...</option>
+                        <option value="new">new</option>
+                        <option value="search">search</option>
+                        <option value="submit">submit</option>
+                        <option value="grab">grab</option>
+                        <option value="input">input</option>
+                        <option value="__custom__">+ custom command</option>
+                      </select>
+                      <input id="map-custom-key" type="text" placeholder="command name" class="hidden" spellcheck="false" />
+                      <select id="map-action">
+                        <option value="click">Click</option>
+                        <option value="extractText">Extract Text</option>
+                        <option value="extractHTML">Extract HTML</option>
+                        <option value="setValue">Set Value</option>
+                        <option value="custom">Custom Script</option>
+                      </select>
+                      <input id="map-description" type="text" placeholder="description" spellcheck="false" />
+                      <button id="map-save-btn" class="action-btn primary">Save</button>
+                      <button id="map-cancel-btn" class="action-btn">Cancel</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Connection left -->
+                <div class="app-tab-left" data-tab="connection">
+                  <div id="connection-upgrade-gate" class="hidden" style="text-align:center;padding:40px 16px;">
+                    <p style="color:var(--text-2);font-size:14px;margin:0 0 12px;">App connections (Pipedream) require a paid plan.</p>
+                    <button class="action-btn primary tab-upgrade-btn">Manage plan</button>
+                  </div>
+                  <div id="app-connection-status"></div>
+                  <div id="app-connected-list"></div>
+                  <div class="connection-browse">
+                    <input id="app-connector-search" type="text" class="settings-input" placeholder="Search apps to connect..." spellcheck="false" autocomplete="off" />
+                    <div id="app-connector-grid" class="connector-grid"></div>
+                    <button id="app-connector-load-more" class="connector-load-more hidden">Load more</button>
+                  </div>
+                </div>
+
+                <!-- MCP left -->
+                <div class="app-tab-left" data-tab="mcp">
+                  <div id="mcp-tab-upgrade-gate" class="hidden" style="text-align:center;padding:40px 16px;">
+                    <p style="color:var(--text-2);font-size:14px;margin:0 0 12px;">MCP servers require a Pro plan.</p>
+                    <button class="action-btn primary tab-upgrade-btn">Upgrade to Pro</button>
+                  </div>
+                  <div id="app-mcp-status-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                    <span id="app-mcp-status" class="mcp-status-badge status-disconnected">disconnected</span>
+                    <div style="flex:1;"></div>
+                    <button id="app-mcp-connect" class="action-btn primary" style="height:28px;font-size:12px;">Connect</button>
+                    <button id="app-mcp-disconnect" class="action-btn hidden" style="height:28px;font-size:12px;">Disconnect</button>
+                  </div>
+                  <label class="settings-label">Transport</label>
+                  <select id="app-mcp-transport" class="settings-input">
+                    <option value="stdio">stdio (local process)</option>
+                    <option value="sse">SSE (HTTP server)</option>
+                    <option value="streamable-http">Streamable HTTP (OAuth)</option>
+                  </select>
+                  <div id="app-mcp-stdio-fields">
+                    <label class="settings-label">Command</label>
+                    <input id="app-mcp-command" type="text" class="settings-input" placeholder="npx -y @modelcontextprotocol/server-..." spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Arguments <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
+                    <input id="app-mcp-args" type="text" class="settings-input" placeholder="--flag value" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Environment <span style="color:var(--text-2);font-weight:400;">(KEY=VALUE, one per line)</span></label>
+                    <textarea id="app-mcp-env" class="settings-input" rows="3" placeholder="API_KEY=sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                  </div>
+                  <div id="app-mcp-sse-fields" class="hidden">
+                    <label class="settings-label">Server URL</label>
+                    <input id="app-mcp-url" type="text" class="settings-input" placeholder="http://localhost:3000/sse" spellcheck="false" autocomplete="off" />
+                    <span style="display:block;font-size:11px;color:var(--text-2);margin-top:-4px;">For Streamable HTTP, this is the MCP endpoint URL.</span>
+                  </div>
+                  <div id="app-mcp-oauth-fields" class="hidden">
+                    <label class="settings-label">OAuth Client ID</label>
+                    <input id="app-mcp-client-id" type="text" class="settings-input" placeholder="OAuth client id" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">OAuth Client Secret</label>
+                    <input id="app-mcp-client-secret" type="password" class="settings-input" placeholder="OAuth client secret" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Token URL</label>
+                    <input id="app-mcp-token-url" type="text" class="settings-input" placeholder="https://…/oauth/token" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Scope <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                    <input id="app-mcp-scope" type="text" class="settings-input" placeholder="scope (optional)" spellcheck="false" autocomplete="off" />
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+                    <label class="settings-label" style="margin:0;">All Tools</label>
+                    <select id="app-mcp-server-override" class="settings-input" style="flex:1;">
+                      <option value="default">Default</option>
+                      <option value="auto">Auto</option>
+                      <option value="ask">Ask</option>
+                    </select>
+                  </div>
+                  <div class="settings-actions" style="margin-top:12px;">
+                    <span id="app-mcp-save-status" style="flex:1;font-size:12px;color:var(--danger);"></span>
+                    <button id="app-mcp-save" class="action-btn primary">Save</button>
+                  </div>
+                </div>
+                <!-- Config Vars left: add form + list. Values are write-only —
+                     encrypted on this machine before upload; shown in plain
+                     text exactly once, here, while being typed. -->
+                <div class="app-tab-left" data-tab="config">
+                  <div id="config-var-error" class="crud-form-error hidden"></div>
+                  <label class="settings-label">Key</label>
+                  <input id="config-var-key" type="text" class="settings-input" placeholder="OPENAI_API_KEY" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
+                  <label class="settings-label">Value <span style="color:var(--text-2);font-weight:400;">— visible only now; encrypted on save and never shown again</span></label>
+                  <textarea id="config-var-value" class="settings-input" rows="4" placeholder="sk-…" spellcheck="false" autocomplete="off" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                  <div class="settings-actions" style="margin-top:8px;">
+                    <span id="config-var-status" style="flex:1;font-size:12px;color:var(--ok,#22c55e);"></span>
+                    <button id="config-var-add" class="action-btn primary">Save var</button>
+                  </div>
+
+                  <div class="app-detail-section-sep"></div>
+
+                  <div id="config-var-list"></div>
+                </div>
+              </div>
+
+              <div class="app-builder-divider" id="app-builder-divider"></div>
+
+              <!-- Right panel: swaps per tab -->
+              <div class="app-builder-preview">
+                <!-- Dashboard right: the live app preview (was its own "Panel"
+                     tab) now sits beside the General form. -->
+                <div class="app-tab-right" data-tab="dashboard">
+                  <div class="preview-toolbar">
+                    <div style="flex:1;"></div>
+                    <button id="app-preview-refresh" class="preview-action preview-action-visible">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                      Refresh
+                    </button>
+                    <button id="app-pick-btn" class="action-btn primary" style="height:24px;font-size:11px;padding:0 10px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                      <span id="app-pick-label">Pick Element</span>
+                    </button>
+                  </div>
+                  <webview id="app-preview" partition="persist:yo" allowpopups></webview>
+                </div>
+
+                <!-- Connection right -->
+                <div class="app-tab-right" data-tab="connection">
+                  <div style="padding:12px 16px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Tools</h3>
+                    <div id="app-connection-tools"></div>
+                    <div id="app-connection-no-tools" class="help-item-empty">No tools available. Connect an app to see its tools.</div>
+                  </div>
+                </div>
+
+                <!-- Config Vars right: how apps consume these -->
+                <div class="app-tab-right" data-tab="config">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">How apps use config vars</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      Config vars are per-app secrets: the key is visible below, the value is
+                      <strong>encrypted on this machine</strong> before it's stored and can never be
+                      viewed again — not here, not by the server. Delete and re-add a var to rotate it.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      A Glyphh app that declares the <code>secrets.get</code> capability reads its own vars at
+                      runtime — e.g. an agentic app fetching the key it needs:
+                    </p>
+                    <pre style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2,#2c2c30);border:1px solid var(--border,#3a3a3f);border-radius:8px;padding:10px 12px;overflow-x:auto;margin:0 0 10px;">await glyphh.call("secrets.get", { key: "OPENAI_API_KEY" })
+// → { value: "sk-…" }   (only app code sees it, never the UI)</pre>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      <code>agent.run</code> and <code>llm.complete</code> pick keys up automatically: a var named
+                      <code>ANTHROPIC_API_KEY</code> / <code>OPENAI_API_KEY</code> / <code>GOOGLE_API_KEY</code>
+                      powers that provider with no code at all. Keys belong to the app — Glyphh has no key
+                      store and makes no model calls of its own.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- MCP right -->
+                <div class="app-tab-right" data-tab="mcp">
+                  <div style="padding:12px 16px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Tools</h3>
+                    <table class="tool-table" id="app-mcp-tools-table">
+                      <thead>
+                        <tr>
+                          <th class="tool-th-name">Tool</th>
+                          <th class="tool-th-desc">Description</th>
+                          <th class="tool-th-perm">Permission</th>
+                        </tr>
+                      </thead>
+                      <tbody id="app-mcp-tools-body"></tbody>
+                    </table>
+                    <div id="app-mcp-no-tools" class="help-item-empty">No tools discovered. Connect the server first.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div><!-- /apps-library-page -->
+
+          <!-- ══ MARKETPLACE PAGE ══ -->
+          <div id="apps-marketplace-page" class="apps-page hidden">
+            <!-- Temporarily "Coming Soon" — the storefront below is kept intact
+                 but hidden; re-enable by removing this block + the hidden class
+                 on #mkt-store and restoring loadMarketplace() in switchAppsPage. -->
+            <div id="mkt-coming-soon" class="mkt-coming-soon">
+              <img class="mkt-cs-logo" src="brand/glyphh-mark.png" alt="" />
+              <div class="mkt-cs-title">Coming Soon</div>
+              <div class="mkt-cs-sub">The app marketplace is on its way.</div>
+            </div>
+            <!-- Storefront (grid of listings) — hidden while a detail page is open -->
+            <div id="mkt-store" class="hidden">
+            <div class="mkt-banner">
+              <button id="mkt-refresh" class="mkt-refresh" title="Refresh marketplace" aria-label="Refresh marketplace">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+              </button>
+              <div class="mkt-banner-inner">
+                <h2 class="mkt-banner-title">App marketplace</h2>
+                <p class="mkt-banner-sub">Install apps that give your AI new powers — published by developers or built inside your organization.</p>
+                <div class="mkt-search-wrap">
+                  <svg class="mkt-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                  <input id="mkt-search" class="mkt-search" type="text" placeholder="Search apps, developers, categories…" spellcheck="false" autocomplete="off" />
+                </div>
+              </div>
+            </div>
+
+            <div class="mkt-scopebar">
+              <div class="mkt-scope-tabs">
+                <button class="mkt-scope active" data-scope="public">Public</button>
+                <button class="mkt-scope" data-scope="private">Your organization</button>
+              </div>
+              <select id="mkt-sort" class="mkt-sort settings-input">
+                <option value="popular">Most popular</option>
+                <option value="rating">Top rated</option>
+                <option value="newest">Newest</option>
+              </select>
+            </div>
+
+            <div id="mkt-categories" class="mkt-categories"></div>
+
+            <!-- Sponsored strip -->
+            <div id="mkt-featured" class="mkt-strip hidden">
+              <div class="mkt-strip-head"><h4>Sponsored</h4><span class="mkt-strip-tag">Ad</span></div>
+              <div id="mkt-featured-list" class="mkt-featured-grid"></div>
+            </div>
+
+            <!-- Popular strip -->
+            <div id="mkt-popular" class="mkt-strip hidden">
+              <div class="mkt-strip-head"><h4>Popular apps</h4></div>
+              <div id="mkt-popular-list" class="mkt-row"></div>
+            </div>
+
+            <!-- Main grid -->
+            <div class="mkt-strip">
+              <div class="mkt-strip-head"><h4 id="mkt-all-title">All apps</h4><span id="mkt-count" class="mkt-count"></span></div>
+              <div id="mkt-list" class="mkt-grid"></div>
+              <div id="mkt-pager" class="cc-pager"></div>
+            </div>
+            </div><!-- /mkt-store -->
+
+            <!-- App detail page (Shopify-style listing) — filled by renderMktDetail() -->
+            <div id="mkt-detail" class="mkt-detail hidden"></div>
+          </div>
+
+          <!-- ══ PUBLIC URLS (app proxy tunnels) PAGE ══ -->
+          <div id="apps-proxies-page" class="apps-page hidden">
+            <p class="section-desc">Give a locally-running app a public <code>https://&lt;name&gt;.glyphh.app</code> URL. Glyphh tunnels requests to your machine through your running client — it's a tunnel, not hosting. When your client is offline, the app is offline.</p>
+
+            <div id="proxies-toolbar" class="crud-toolbar">
+              <input id="proxy-search" type="text" class="crud-search" placeholder="Search public URLs..." spellcheck="false" autocomplete="off" />
+              <button id="proxy-new-btn" class="action-btn primary">+ New</button>
+            </div>
+            <div id="proxies-list" class="app-list-wrap"></div>
+
+            <!-- Create / edit -->
+            <div id="proxy-editor" class="crud-inline-form hidden">
+              <div class="crud-inline-header">
+                <a class="crud-breadcrumb-back" id="proxy-back-link">&larr; Public URLs</a>
+                <div class="crud-spacer"></div>
+                <button id="proxy-copy-btn" class="action-btn hidden" type="button" title="Copy the public URL">Copy URL</button>
+                <a id="proxy-open-link" class="action-btn primary hidden" target="_blank" rel="noreferrer">Open URL</a>
+              </div>
+              <div id="proxy-form-error" class="crud-form-error hidden"></div>
+              <div id="proxy-detail-head" class="edit-head"></div>
+
+              <label class="settings-label">Subdomain</label>
+              <input type="text" id="proxy-slug" class="settings-input" placeholder="my-app" spellcheck="false" autocomplete="off" />
+              <div id="proxy-url-preview" class="proxy-url-preview"></div>
+
+              <label class="settings-label">Target <span style="color:var(--text-2);font-weight:400;">— the local address your app runs on</span></label>
+              <input type="text" id="proxy-target" class="settings-input" placeholder="http://127.0.0.1:3000" spellcheck="false" autocomplete="off" />
+
+              <label class="settings-label">Authentication</label>
+              <select id="proxy-auth-mode" class="settings-input">
+                <option value="glyphh">Glyphh SSO — visitors sign in with a Glyphh account</option>
+                <option value="public">Public (no auth) — anyone with the link</option>
+                <option value="oidc">Single sign-on (OIDC) — Okta, Auth0, …</option>
+                <option value="app_managed">App handles its own auth — passthrough</option>
+              </select>
+              <div id="proxy-public-warn" class="app-req-conns-warn hidden">Anyone with the link can reach this app anonymously, and requests spend your credits. Only expose apps you intend to share publicly.</div>
+
+              <div id="proxy-visibility-wrap">
+                <label class="settings-label">Visibility <span style="color:var(--text-2);font-weight:400;">— which Glyphh users may sign in</span></label>
+                <select id="proxy-visibility" class="settings-input">
+                  <option value="private">Private — only you</option>
+                  <option value="org">Org — members of your organization</option>
+                  <option value="public">Public — any signed-in Glyphh user</option>
+                </select>
+              </div>
+
+              <div id="proxy-oidc-fields" class="hidden">
+                <label class="settings-label">Issuer URL</label>
+                <input type="text" id="proxy-oidc-issuer" class="settings-input" placeholder="https://dev-123.okta.com/oauth2/default" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Client ID</label>
+                <input type="text" id="proxy-oidc-client-id" class="settings-input" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Client secret</label>
+                <input type="password" id="proxy-oidc-secret" class="settings-input" spellcheck="false" autocomplete="off" />
+                <div id="proxy-oidc-secret-hint" class="proxy-field-hint hidden">Secret set ✓ — leave blank to keep it.</div>
+                <label class="settings-label">Scopes <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                <input type="text" id="proxy-oidc-scopes" class="settings-input" placeholder="openid email profile" spellcheck="false" autocomplete="off" />
+                <label class="settings-label">Allowed email domains <span style="color:var(--text-2);font-weight:400;">(optional, comma-separated)</span></label>
+                <input type="text" id="proxy-oidc-domains" class="settings-input" placeholder="glyphh.ai" spellcheck="false" autocomplete="off" />
+                <div class="proxy-field-hint">Callback URL for your IdP app config: <code id="proxy-oidc-callback"></code></div>
+              </div>
+
+              <label class="settings-label">Label <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+              <input type="text" id="proxy-label" class="settings-input" placeholder="My dev app" spellcheck="false" autocomplete="off" />
+
+              <div class="proxy-field-hint" style="margin-top:14px;">Served by your machine — keep the Glyphh client running or visitors get "App offline". Requests spend your org's compute credits.</div>
+
+              <div class="settings-actions" style="margin-top:28px;">
+                <button id="proxy-delete-btn" class="action-btn danger">Delete</button>
+                <button id="proxy-toggle-btn" class="action-btn hidden" type="button">Disable</button>
+                <div style="flex:1;"></div>
+                <button id="proxy-cancel-btn" class="action-btn">Cancel</button>
+                <button id="proxy-save-btn" class="action-btn primary">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>

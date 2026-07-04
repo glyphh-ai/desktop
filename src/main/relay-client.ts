@@ -12,14 +12,17 @@
  *   client → server: { type:"response", reqId, ok, result?, error? }
  *                    { type:"ping" }  (heartbeat — optional, server also pings)
  *
- * Connection is opt-in: the relay only starts when the `relayEnabled`
- * preference is on. Reconnect uses exponential backoff capped at 30s so a
- * flapping server doesn't burn the user's CPU or trip the rate limiter.
+ * The relay is the ONLY MCP surface, so there is no opt-in preference: the
+ * client connects automatically whenever the account is eligible (signed in,
+ * active heartbeat, paid tier — hasMcpAccess). Reconnect uses exponential
+ * backoff capped at 30s so a flapping server doesn't burn the user's CPU or
+ * trip the rate limiter.
  */
 
 import { WebSocket } from "ws";
-import { getPreference } from "./stores/preferences-db.js";
 import { getAuthToken, isAuthenticated, hasMcpAccess } from "./auth.js";
+import { getPreference } from "./preferences.js";
+import { handleStreamFrame, abortAllStreams } from "./app-proxy-stream.js";
 
 const AUTH_SERVER = process.env.YO_AUTH_SERVER || "https://api.glyphh.ai";
 
@@ -44,8 +47,12 @@ let backoffMs = 1_000;                            // grows on each failed attemp
 let started = false;
 
 function relayEnabled(): boolean {
-  // The relay (exposing Glyphh as an MCP server) is a paid-tier feature.
-  return getPreference<boolean>("relayEnabled", false) && hasMcpAccess();
+  // User-controlled opt-in (default on) gated by eligibility. The toggle lets
+  // a user who prefers the local MCP server — or no cloud at all — turn the
+  // cloud relay off without affecting the local server. "Disabled" in Settings
+  // now means the toggle is off, not that the account is ineligible.
+  if (getPreference<boolean>("relayEnabled", true) === false) return false;
+  return hasMcpAccess();
 }
 
 async function dispatch(method: string, params: unknown): Promise<{ ok: true; result: unknown } | { ok: false; error: string }> {
@@ -57,6 +64,19 @@ async function dispatch(method: string, params: unknown): Promise<{ ok: true; re
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * Invoke a registered relay handler directly, bypassing the WebSocket. The
+ * local MCP server uses this so it shares ONE handler registry with the cloud
+ * relay — every panels / rpa / apps tool behaves identically whether the call
+ * arrives over the cloud WS or the local 127.0.0.1 server. Throws on an
+ * unknown method or a handler error.
+ */
+export async function dispatchRelayMethod(method: string, params: unknown): Promise<unknown> {
+  const out = await dispatch(method, params);
+  if (!out.ok) throw new Error(out.error);
+  return out.result;
 }
 
 function scheduleReconnect(reason: string): void {
@@ -94,6 +114,16 @@ function connect(): void {
     let frame: { type?: string; reqId?: string; method?: string; params?: unknown };
     try { frame = JSON.parse(raw.toString()); }
     catch { return; }
+
+    // HTTP app-proxy stream frames (see app-proxy-stream.ts) — a public
+    // request to <slug>.glyphh.app streaming through this client.
+    if (typeof frame.type === "string" && frame.type.startsWith("stream_") && typeof frame.reqId === "string") {
+      handleStreamFrame(frame, (out) => {
+        try { ws.send(JSON.stringify(out)); } catch { /* socket closed mid-stream */ }
+      });
+      return;
+    }
+
     if (frame.type !== "request" || typeof frame.reqId !== "string" || typeof frame.method !== "string") return;
     const out = await dispatch(frame.method, frame.params);
     const responseFrame = { type: "response", reqId: frame.reqId, ...out };
@@ -102,6 +132,7 @@ function connect(): void {
 
   ws.on("close", (code, reasonBuf) => {
     socket = null;
+    abortAllStreams();               // don't leave local app requests dangling
     const reason = reasonBuf ? reasonBuf.toString() : "";
     if (code === 1000 && reason === "replaced") {
       // A newer connection from the same user took over — don't reconnect.
