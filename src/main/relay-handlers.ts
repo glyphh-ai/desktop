@@ -21,7 +21,7 @@ import { registerRelayHandler } from "./relay-client.js";
 import {
   openAppWindow, focusAppWindow, closeAppWindow, listAppWindows, getAppWebContents,
 } from "./app-window-manager.js";
-import { resolveAppSpec, openLayoutByName } from "./app-resolver.js";
+import { openAppByRef, openLayoutByName } from "./app-resolver.js";
 import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
 import { connectorStatus } from "./glyphh-app-services.js";
 import fs from "fs";
@@ -56,9 +56,11 @@ export function installRelayHandlers(deps: Deps): void {
   registerRelayHandler("panels.list", () => listAppWindows());
 
   registerRelayHandler("panels.open", async (params) => {
-    const spec = await resolveAppSpec(appParam(params));
-    openAppWindow(spec);
-    return { app: spec.slug, name: spec.name, opened: true };
+    // openAppByRef mirrors the Apps page's full launch dispatch — webview
+    // apps, native apps, AND installed Glyphh apps (capability windows,
+    // no url), which resolveAppSpec's url-only path could never open.
+    const r = await openAppByRef(appParam(params));
+    return { app: r.slug, name: r.name, opened: true };
   });
 
   registerRelayHandler("panels.switch", (params) => {
