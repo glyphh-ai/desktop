@@ -1269,9 +1269,10 @@ async function syncPublicUrlTab(app: PanelApp): Promise<void> {
 
 function populatePublicUrlForm(app: PanelApp, p: ProxyRow | null): void {
   proxyEl("proxy-form-error").classList.add("hidden");
-  // Subdomain defaults to the app slug; immutable once the URL exists.
+  // Subdomain defaults to the app slug and stays editable — renaming it moves
+  // the public URL (old address stops resolving, new one starts).
   proxyInput("proxy-slug").value = p?.slug || app.slug;
-  proxyInput("proxy-slug").disabled = !!p;
+  proxyInput("proxy-slug").disabled = false;
   proxySelect("proxy-auth-mode").value = p?.auth_mode || "glyphh";
   proxySelect("proxy-visibility").value = p?.visibility || "private";
   proxyInput("proxy-oidc-issuer").value = p?.auth_config?.issuer || "";
@@ -1309,7 +1310,7 @@ async function savePublicUrl(): Promise<void> {
   // For HTTP apps the tunnel target is the app's Local URL (General tab).
   const target = kind === "http" ? (document.getElementById("app-detail-http-target") as HTMLInputElement).value.trim() : "";
 
-  if (!currentProxy && !SLUG_RE.test(slug)) { proxyFormError("Subdomain must be 1–63 lowercase letters, digits, or hyphens (no leading/trailing hyphen)."); return; }
+  if (!SLUG_RE.test(slug)) { proxyFormError("Subdomain must be 1–63 lowercase letters, digits, or hyphens (no leading/trailing hyphen)."); return; }
   if (kind === "http" && !/^https?:\/\//i.test(target)) { proxyFormError("Set the app's Local URL on the General tab first (http://…)."); return; }
 
   let authConfig: Record<string, unknown> | undefined;
@@ -1338,7 +1339,7 @@ async function savePublicUrl(): Promise<void> {
   const status: "active" | "disabled" = proxyInput("proxy-enabled").checked ? "active" : "disabled";
 
   const res = currentProxy
-    ? await window.yo.appProxyUpdate(currentProxy.id, { target, visibility, label: label || null, authMode, kind, ...(wasFlagged ? {} : { status }), ...(authConfig ? { authConfig } : {}) })
+    ? await window.yo.appProxyUpdate(currentProxy.id, { slug, target, visibility, label: label || null, authMode, kind, ...(wasFlagged ? {} : { status }), ...(authConfig ? { authConfig } : {}) })
     : await window.yo.appProxyCreate({ slug, target, visibility, label: label || undefined, authMode, kind, savedAppId: currentApp.id, ...(authConfig ? { authConfig } : {}) });
 
   if (!res.ok) {

@@ -1,5 +1,6 @@
 {
   "name": "glyphh-apps",
+  "productName": "Glyphh Desktop",
   "version": "5.1.5",
   "description": "Glyphh Desktop — Your AI workspace.",
   "main": "dist/main/main.js",
@@ -27,6 +28,10 @@
   },
   "author": "Glyphh AI",
   "license": "UNLICENSED",
+  "build": {
+    "appId": "ai.glyphh.desktop",
+    "productName": "Glyphh Desktop"
+  },
   "devDependencies": {
     "@electron/rebuild": "^3.7.0",
     "@types/adm-zip": "^0.5.8",
