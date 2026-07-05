@@ -187,6 +187,23 @@ function updateMergeButtons() {
   splitBtn.disabled = cell.colSpan === 1 && cell.rowSpan === 1;
 }
 
+// One-shot self-heal: if the grid rendered a cell whose app id didn't resolve
+// to a name (map stale — e.g. the app was created after the last fetch, or the
+// layout arrived over the relay), refetch the app list once and re-render.
+let namesRefreshing = false;
+function healUnresolvedNames(): void {
+  if (namesRefreshing) return;
+  const unresolved = builderCells.some((c) => c.panelId && !c.panelId.startsWith("agent:") && c.panelId !== "agents-tabbed" && !resolveApp(c.panelId));
+  if (!unresolved) return;
+  namesRefreshing = true;
+  void ensureAppNames().then(() => {
+    namesRefreshing = false;
+    // Only re-render if the refetch actually resolved something — a deleted
+    // app's id stays unresolvable, and looping on it would spin forever.
+    if (builderCells.some((c) => c.panelId && resolveApp(c.panelId))) renderGridPreview();
+  }).catch(() => { namesRefreshing = false; });
+}
+
 function renderGridPreview() {
   void refreshFolderModeRow();
   gridPreview.style.gridTemplateColumns = `repeat(${builderCols}, 1fr)`;
@@ -216,6 +233,7 @@ function renderGridPreview() {
   });
 
   updateMergeButtons();
+  healUnresolvedNames();
 }
 
 async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
@@ -234,6 +252,12 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     apps = [];
   }
   apps.sort((a, b) => a.name.localeCompare(b.name));
+  // Top up the id→name map from this fresh fetch so a picked app (and any
+  // other cell whose id was missing from the stale map) renders by name
+  // immediately — this is why cells used to show raw UUIDs until re-picked.
+  for (const a of apps) {
+    if (!appById[a.id]) appById[a.id] = { id: a.id, name: a.name, url: (a as { url?: string }).url, execPath: (a as { execPath?: string }).execPath };
+  }
   const options: PickerOption[] = apps.map((a) => ({ id: a.id, label: a.name }));
 
   const picker = document.createElement("div");
@@ -361,6 +385,9 @@ function renderLayoutsList() {
 
 async function editLayout(name: string) {
   editingLayoutName = name;
+  // Names must be current before the grid renders — a stale map shows raw
+  // app ids in the cells (healUnresolvedNames covers late misses too).
+  await ensureAppNames();
   const layouts = await window.yo.layoutsList();
   const layout = layouts.find((l) => l.name === name);
   if (layout) {
