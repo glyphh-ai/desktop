@@ -296,8 +296,6 @@ contextBridge.exposeInMainWorld("yo", {
   connectionDisconnect: (id: string) =>
     ipcRenderer.invoke("connection-disconnect", id) as Promise<{ ok: boolean; error?: string }>,
   // App proxies — public <slug>.glyphh.app tunnels to locally-running apps.
-  appProxiesList: () =>
-    ipcRenderer.invoke("app-proxies-list") as Promise<{ ok: boolean; error?: string; proxies: AppProxyRow[] }>,
   appProxyGet: (appId: string) =>
     ipcRenderer.invoke("app-proxy-get", appId) as Promise<{ ok: boolean; proxy?: AppProxyRow | null; error?: string }>,
   appProxyCreate: (body: Record<string, unknown>) =>

@@ -10988,13 +10988,6 @@ select:focus {
   font-size: 11px; font-family: var(--font-mono); color: var(--text); user-select: all;
 }
 
-/* Hide the page-level chrome while the proxy editor is open — same treatment
-   as the app/connection editors. */
-.help-section[data-section="apps"]:has(#proxy-editor:not(.hidden)) .apps-page-tabs,
-.help-section[data-section="apps"]:has(#proxy-editor:not(.hidden)) #apps-proxies-page > .section-desc {
-  display: none !important;
-}
-
 /* ── MCP-exposing apps: approved-tools list + endpoint (app editor) ── */
 .app-mcp-endpoint {
   display: block; margin: 6px 0; padding: 8px 10px; border-radius: 6px;

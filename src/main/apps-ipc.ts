@@ -172,10 +172,6 @@ function registerPanelAppsIpc(): void {
   // ── App proxies (public <slug>.glyphh.app tunnels) ─────────────
   // CRUD passes straight through to the server; every mutation drops the
   // stream handler's slug→target cache so edits take effect immediately.
-  ipcMain.handle("app-proxies-list", async () => {
-    try { const r = await serverGetAuthed<{ proxies: unknown[] }>("/api/apps/proxies"); return { ok: true, proxies: r.proxies || [] }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), proxies: [] }; }
-  });
   ipcMain.handle("app-proxy-get", async (_e, appId: string) => {
     try { const r = await serverGetAuthed<{ proxy: unknown }>(`/api/apps/${appId}/proxy`); return { ok: true, proxy: r.proxy ?? null }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), proxy: null }; }

@@ -160,7 +160,6 @@ declare global {
       connectionToolsSet: (id: string, hiddenTools: string[]) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
       connectionDisconnect: (id: string) => Promise<{ ok: boolean; error?: string }>;
       // App proxies — public <slug>.glyphh.app tunnels
-      appProxiesList: () => Promise<{ ok: boolean; error?: string; proxies: AppProxyRow[] }>;
       appProxyGet: (appId: string) => Promise<{ ok: boolean; proxy?: AppProxyRow | null; error?: string }>;
       appProxyCreate: (body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
       appProxyUpdate: (id: string, body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
