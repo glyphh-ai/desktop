@@ -42,7 +42,19 @@
             <select id="app-add-type" class="settings-input">
               <option value="browser">Browser app (web URL)</option>
               <option value="native">Native app (desktop executable)</option>
+              <option value="llm">LLM (lend your model over MCP)</option>
             </select>
+            <!-- LLM has no create-time fields: pick the provider + configure
+                 tools/guardrails on the MCP + Guardrails tabs after creating. -->
+            <div id="app-add-llm-fields" class="hidden">
+              <label class="settings-label">Provider</label>
+              <select id="app-add-llm-provider" class="settings-input">
+                <option value="claude">Claude</option>
+                <option value="claude-agent-sdk">Claude Agent SDK</option>
+                <option value="gemini">Gemini</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
             <!-- Browser fields -->
             <div id="app-add-browser-fields">
               <label class="settings-label">URL</label>
@@ -153,6 +165,10 @@
             <div class="app-detail-tabs">
               <button class="app-detail-tab" data-tab="dashboard">General</button>
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
+              <!-- Shown only for apps that expose an MCP endpoint (LLM type, or
+                   installed apps that declare tools). -->
+              <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
+              <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
             </div>
 
             <div class="app-builder-split">
@@ -169,7 +185,22 @@
                   <select id="app-detail-type" class="settings-input">
                     <option value="browser">Browser app (web URL)</option>
                     <option value="native">Native app (desktop executable)</option>
+                    <option value="llm">LLM (lend your model over MCP)</option>
                   </select>
+                  <!-- LLM fields — a local model exposed at <slug>.glyphh.app/mcp.
+                       Tools + limits live on the MCP + Guardrails tabs. -->
+                  <div id="app-detail-llm-fields" class="hidden">
+                    <label class="settings-label">Provider</label>
+                    <select id="app-detail-llm-provider" class="settings-input">
+                      <option value="claude">Claude</option>
+                      <option value="claude-agent-sdk">Claude Agent SDK</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="openai">OpenAI</option>
+                    </select>
+                    <label class="settings-label">Model <span style="color:var(--text-2);font-weight:400;">(optional — provider default if blank)</span></label>
+                    <input id="app-detail-llm-model" class="settings-input" placeholder="claude-opus-4-8" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
+                    <p class="proxy-field-hint">Uses this app's <code>&lt;PROVIDER&gt;_API_KEY</code> config var. Set it on the Config Vars tab; the key stays encrypted on this machine and never leaves it.</p>
+                  </div>
                   <!-- Browser fields -->
                   <div id="app-detail-browser-fields">
                     <label class="settings-label">URL</label>
@@ -280,74 +311,6 @@
                 </div>
 
                 <!-- Connection left -->
-                <div class="app-tab-left" data-tab="connection">
-                  <div id="connection-upgrade-gate" class="hidden" style="text-align:center;padding:40px 16px;">
-                    <p style="color:var(--text-2);font-size:14px;margin:0 0 12px;">App connections (Pipedream) require a paid plan.</p>
-                    <button class="action-btn primary tab-upgrade-btn">Manage plan</button>
-                  </div>
-                  <div id="app-connection-status"></div>
-                  <div id="app-connected-list"></div>
-                  <div class="connection-browse">
-                    <input id="app-connector-search" type="text" class="settings-input" placeholder="Search apps to connect..." spellcheck="false" autocomplete="off" />
-                    <div id="app-connector-grid" class="connector-grid"></div>
-                    <button id="app-connector-load-more" class="connector-load-more hidden">Load more</button>
-                  </div>
-                </div>
-
-                <!-- MCP left -->
-                <div class="app-tab-left" data-tab="mcp">
-                  <div id="mcp-tab-upgrade-gate" class="hidden" style="text-align:center;padding:40px 16px;">
-                    <p style="color:var(--text-2);font-size:14px;margin:0 0 12px;">MCP servers require a Pro plan.</p>
-                    <button class="action-btn primary tab-upgrade-btn">Upgrade to Pro</button>
-                  </div>
-                  <div id="app-mcp-status-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                    <span id="app-mcp-status" class="mcp-status-badge status-disconnected">disconnected</span>
-                    <div style="flex:1;"></div>
-                    <button id="app-mcp-connect" class="action-btn primary" style="height:28px;font-size:12px;">Connect</button>
-                    <button id="app-mcp-disconnect" class="action-btn hidden" style="height:28px;font-size:12px;">Disconnect</button>
-                  </div>
-                  <label class="settings-label">Transport</label>
-                  <select id="app-mcp-transport" class="settings-input">
-                    <option value="stdio">stdio (local process)</option>
-                    <option value="sse">SSE (HTTP server)</option>
-                    <option value="streamable-http">Streamable HTTP (OAuth)</option>
-                  </select>
-                  <div id="app-mcp-stdio-fields">
-                    <label class="settings-label">Command</label>
-                    <input id="app-mcp-command" type="text" class="settings-input" placeholder="npx -y @modelcontextprotocol/server-..." spellcheck="false" autocomplete="off" />
-                    <label class="settings-label">Arguments <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
-                    <input id="app-mcp-args" type="text" class="settings-input" placeholder="--flag value" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label">Environment <span style="color:var(--text-2);font-weight:400;">(KEY=VALUE, one per line)</span></label>
-                    <textarea id="app-mcp-env" class="settings-input" rows="3" placeholder="API_KEY=sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
-                  </div>
-                  <div id="app-mcp-sse-fields" class="hidden">
-                    <label class="settings-label">Server URL</label>
-                    <input id="app-mcp-url" type="text" class="settings-input" placeholder="http://localhost:3000/sse" spellcheck="false" autocomplete="off" />
-                    <span style="display:block;font-size:11px;color:var(--text-2);margin-top:-4px;">For Streamable HTTP, this is the MCP endpoint URL.</span>
-                  </div>
-                  <div id="app-mcp-oauth-fields" class="hidden">
-                    <label class="settings-label">OAuth Client ID</label>
-                    <input id="app-mcp-client-id" type="text" class="settings-input" placeholder="OAuth client id" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label">OAuth Client Secret</label>
-                    <input id="app-mcp-client-secret" type="password" class="settings-input" placeholder="OAuth client secret" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label">Token URL</label>
-                    <input id="app-mcp-token-url" type="text" class="settings-input" placeholder="https://…/oauth/token" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label">Scope <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-                    <input id="app-mcp-scope" type="text" class="settings-input" placeholder="scope (optional)" spellcheck="false" autocomplete="off" />
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px;margin-top:12px;">
-                    <label class="settings-label" style="margin:0;">All Tools</label>
-                    <select id="app-mcp-server-override" class="settings-input" style="flex:1;">
-                      <option value="default">Default</option>
-                      <option value="auto">Auto</option>
-                      <option value="ask">Ask</option>
-                    </select>
-                  </div>
-                  <div class="settings-actions" style="margin-top:12px;">
-                    <span id="app-mcp-save-status" style="flex:1;font-size:12px;color:var(--danger);"></span>
-                    <button id="app-mcp-save" class="action-btn primary">Save</button>
-                  </div>
-                </div>
                 <!-- Config Vars left: add form + list. Values are write-only —
                      encrypted on this machine before upload; shown in plain
                      text exactly once, here, while being typed. -->
@@ -365,6 +328,35 @@
                   <div class="app-detail-section-sep"></div>
 
                   <div id="config-var-list"></div>
+                </div>
+
+                <!-- MCP left: the tools this app exposes at <slug>.glyphh.app/mcp.
+                     Each must be explicitly approved (allowlist) before it's
+                     reachable — newly-appeared tools default to OFF. -->
+                <div class="app-tab-left" data-tab="mcp">
+                  <label class="settings-label">Public endpoint</label>
+                  <code id="app-mcp-endpoint" class="app-mcp-endpoint"></code>
+                  <p class="proxy-field-hint" style="margin-bottom:14px;">Add this URL to another agent (Claude, etc.). Only the approved tools below are exposed; calls spend your credits and are subject to the Guardrails limits.</p>
+                  <label class="settings-label">Approved tools</label>
+                  <div id="app-mcp-tools"></div>
+                  <div id="app-mcp-tools-empty" class="help-item-empty hidden">No tools available yet.</div>
+                </div>
+
+                <!-- Guardrails left: hard limits every MCP-exposing app must set. -->
+                <div class="app-tab-left" data-tab="guardrails">
+                  <label class="settings-label">Max input tokens <span style="color:var(--text-2);font-weight:400;">— per call</span></label>
+                  <input id="app-gr-max-input" type="number" min="0" class="settings-input" placeholder="e.g. 8000" />
+                  <label class="settings-label">Max output tokens <span style="color:var(--text-2);font-weight:400;">— per call</span></label>
+                  <input id="app-gr-max-output" type="number" min="0" class="settings-input" placeholder="e.g. 4000" />
+                  <label class="settings-label">Window <span style="color:var(--text-2);font-weight:400;">— seconds the caps below reset over</span></label>
+                  <input id="app-gr-window" type="number" min="1" class="settings-input" placeholder="3600" />
+                  <label class="settings-label">Max tokens per window</label>
+                  <input id="app-gr-window-tokens" type="number" min="0" class="settings-input" placeholder="e.g. 200000" />
+                  <label class="settings-label">Max calls per window</label>
+                  <input id="app-gr-window-calls" type="number" min="0" class="settings-input" placeholder="e.g. 100" />
+                  <label class="settings-label">Max concurrent calls</label>
+                  <input id="app-gr-concurrent" type="number" min="0" class="settings-input" placeholder="e.g. 2" />
+                  <p class="proxy-field-hint" style="margin-top:12px;">Blank = no limit for that field. Limits are enforced at the gateway before a call reaches your machine.</p>
                 </div>
               </div>
 
@@ -387,15 +379,6 @@
                     </button>
                   </div>
                   <webview id="app-preview" partition="persist:yo" allowpopups></webview>
-                </div>
-
-                <!-- Connection right -->
-                <div class="app-tab-right" data-tab="connection">
-                  <div style="padding:12px 16px;">
-                    <h3 class="settings-subheading" style="margin:0 0 8px;">Tools</h3>
-                    <div id="app-connection-tools"></div>
-                    <div id="app-connection-no-tools" class="help-item-empty">No tools available. Connect an app to see its tools.</div>
-                  </div>
                 </div>
 
                 <!-- Config Vars right: how apps consume these -->
@@ -422,23 +405,41 @@
                   </div>
                 </div>
 
-                <!-- MCP right -->
+                <!-- MCP right: explainer for the exposed endpoint. -->
                 <div class="app-tab-right" data-tab="mcp">
-                  <div style="padding:12px 16px;">
-                    <h3 class="settings-subheading" style="margin:0 0 8px;">Tools</h3>
-                    <table class="tool-table" id="app-mcp-tools-table">
-                      <thead>
-                        <tr>
-                          <th class="tool-th-name">Tool</th>
-                          <th class="tool-th-desc">Description</th>
-                          <th class="tool-th-perm">Permission</th>
-                        </tr>
-                      </thead>
-                      <tbody id="app-mcp-tools-body"></tbody>
-                    </table>
-                    <div id="app-mcp-no-tools" class="help-item-empty">No tools discovered. Connect the server first.</div>
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Exposing tools over MCP</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      Any agent — your own Claude, or someone else's — can add this app's
+                      <code>/mcp</code> URL as a connector and call the tools you approve. Everything
+                      runs on <strong>your machine</strong>, sandboxed by the Glyphh runtime; the app must
+                      be running (and your Glyphh client online) for calls to succeed.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Approval is an allowlist: a tool is unreachable until you switch it on, and any
+                      newly-appeared tool stays off until you approve it. Every call spends credits and
+                      is capped by the <strong>Guardrails</strong> limits.
+                    </p>
                   </div>
                 </div>
+
+                <!-- Guardrails right: explainer. -->
+                <div class="app-tab-right" data-tab="guardrails">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Hard limits</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      These caps are enforced at the gateway <em>before</em> a call reaches your machine, so a
+                      runaway or abusive caller can't drain your credits or hammer your model. They apply to
+                      every app that exposes an MCP endpoint.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Per-call caps bound a single request; the window caps (tokens / calls) reset every
+                      <em>window</em> seconds; concurrency bounds simultaneous in-flight calls. Leave a field
+                      blank to impose no limit there.
+                    </p>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>

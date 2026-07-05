@@ -36,6 +36,7 @@ const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
 let currentAppId = "";
+let currentApp: PanelApp | null = null;
 let activeAppTab: "dashboard" | "config" = "dashboard";
 
 // ── Browser ↔ Native helpers (pivot-mcp) ─────────────────
@@ -100,9 +101,128 @@ function toggleArchetypeFields(prefix: string, archetype: Archetype): void {
 }
 
 // Show the browser-vs-native field blocks for a given form prefix.
-function toggleTypeFields(prefix: string, isBrowser: boolean): void {
-  document.getElementById(`${prefix}-browser-fields`)?.classList.toggle("hidden", !isBrowser);
-  document.getElementById(`${prefix}-native-fields`)?.classList.toggle("hidden", isBrowser);
+type AppType = "browser" | "native" | "llm";
+
+function toggleTypeFields(prefix: string, type: AppType): void {
+  document.getElementById(`${prefix}-browser-fields`)?.classList.toggle("hidden", type !== "browser");
+  document.getElementById(`${prefix}-native-fields`)?.classList.toggle("hidden", type !== "native");
+  document.getElementById(`${prefix}-llm-fields`)?.classList.toggle("hidden", type !== "llm");
+}
+
+// ── MCP-exposing apps: static LLM tool set + approval + guardrails ──────────
+
+/** Built-in tools an LLM-type app exposes at <slug>.glyphh.app/mcp — each
+ *  bridges an incoming MCP call to the app's local model (BYOK). `sdkOnly`
+ *  tools only make sense for the Claude Agent SDK provider (agentic loop). */
+const LLM_TOOLS: Array<{ name: string; description: string; sdkOnly?: boolean }> = [
+  { name: "send_prompt", description: "Send a prompt (or messages) to this local model and return its completion." },
+  { name: "use_tool", description: "Give the model a set of tools and let it choose/call one (function-calling passthrough)." },
+  { name: "run_agent", description: "Run an agentic loop against a task and return the result.", sdkOnly: true },
+  { name: "count_tokens", description: "Count the tokens a piece of text uses for this model — no inference, cheap." },
+  { name: "list_model", description: "Report the provider and model this endpoint exposes." },
+];
+
+/** The tool list an app exposes, by app shape: LLM apps use the static set
+ *  (filtered by provider); installed apps declare theirs dynamically. */
+function appExposableTools(app: { appArchetype?: string | null; launchConfig?: Record<string, unknown> | null }): Array<{ name: string; description: string }> {
+  const lc = (app.launchConfig || {}) as Record<string, unknown>;
+  if (app.appArchetype === "llm") {
+    const provider = String((lc.llm as Record<string, unknown> | undefined)?.provider || "claude");
+    return LLM_TOOLS.filter((t) => !t.sdkOnly || provider === "claude-agent-sdk").map((t) => ({ name: t.name, description: t.description }));
+  }
+  // Installed Glyphh app — its manifest declares tools (dynamic).
+  const declared = Array.isArray(lc.tools) ? (lc.tools as Array<{ name?: string; description?: string }>) : [];
+  return declared.filter((t) => t?.name).map((t) => ({ name: String(t.name), description: String(t.description || "") }));
+}
+
+/** True when an app has an MCP surface worth showing the MCP/Guardrails tabs. */
+function appExposesMcp(app: { appArchetype?: string | null; launchConfig?: Record<string, unknown> | null }): boolean {
+  return app.appArchetype === "llm" || appExposableTools(app).length > 0;
+}
+
+/** Show/hide + populate the MCP and Guardrails tabs for the open app. */
+function syncMcpTabs(app: PanelApp): void {
+  const exposes = appExposesMcp(app);
+  document.querySelectorAll<HTMLElement>(".tab-mcp-only").forEach((el) => el.classList.toggle("hidden", !exposes));
+  if (!exposes) return;
+
+  const lc = (app.launchConfig || {}) as Record<string, unknown>;
+
+  // Public endpoint URL.
+  const ep = document.getElementById("app-mcp-endpoint");
+  if (ep) ep.textContent = `https://${app.slug}.${APP_DOMAIN}/mcp`;
+
+  // Approved-tools list — allowlist, so anything NOT in mcpApproved is off,
+  // including newly-appeared tools (safe default).
+  const approved = new Set(Array.isArray(lc.mcpApproved) ? (lc.mcpApproved as string[]) : []);
+  const tools = appExposableTools(app);
+  const list = document.getElementById("app-mcp-tools")!;
+  const empty = document.getElementById("app-mcp-tools-empty");
+  empty?.classList.toggle("hidden", tools.length > 0);
+  list.innerHTML = "";
+  for (const t of tools) {
+    const row = document.createElement("label");
+    row.className = "mcp-tool-row";
+    row.innerHTML = `
+      <input type="checkbox" class="mcp-tool-check" data-tool="${escMkt(t.name)}" ${approved.has(t.name) ? "checked" : ""} />
+      <div class="mcp-tool-info">
+        <span class="mcp-tool-name">${escMkt(t.name)}</span>
+        <span class="mcp-tool-desc">${escMkt(t.description)}</span>
+      </div>`;
+    list.appendChild(row);
+  }
+
+  // Guardrails fields.
+  const g = (lc.guardrails || {}) as Record<string, unknown>;
+  const setNum = (id: string, v: unknown) => { (document.getElementById(id) as HTMLInputElement).value = v == null ? "" : String(v); };
+  setNum("app-gr-max-input", g.maxInputTokens);
+  setNum("app-gr-max-output", g.maxOutputTokens);
+  setNum("app-gr-window", g.windowSeconds);
+  setNum("app-gr-window-tokens", g.windowTokens);
+  setNum("app-gr-window-calls", g.windowCalls);
+  setNum("app-gr-concurrent", g.maxConcurrent);
+}
+
+/** Re-render the MCP/Guardrails tabs from the CURRENT form state (type +
+ *  provider), preserving already-checked tools and typed guardrail values —
+ *  used when the user flips the type or provider while editing. */
+function syncMcpTabsFromForm(): void {
+  if (!currentApp) return;
+  const type = (document.getElementById("app-detail-type") as HTMLSelectElement).value as AppType;
+  const provider = (document.getElementById("app-detail-llm-provider") as HTMLSelectElement).value;
+  const { mcpApproved, guardrails } = readMcpConfig(); // preserve current selections
+  const synthetic: PanelApp = {
+    ...currentApp,
+    appArchetype: type === "llm" ? "llm" : (type === "native" ? (currentApp.appArchetype || "terminal") : null),
+    launchConfig: {
+      ...(currentApp.launchConfig || {}),
+      llm: { provider },
+      mcpApproved,
+      guardrails,
+    },
+  };
+  syncMcpTabs(synthetic);
+}
+
+/** Read the MCP-approval + guardrails fields back into a launchConfig patch. */
+function readMcpConfig(): { mcpApproved: string[]; guardrails: Record<string, number> } {
+  const mcpApproved = Array.from(document.querySelectorAll<HTMLInputElement>(".mcp-tool-check"))
+    .filter((c) => c.checked).map((c) => c.dataset.tool!).filter(Boolean);
+  const num = (id: string): number | undefined => {
+    const v = (document.getElementById(id) as HTMLInputElement | null)?.value.trim();
+    if (!v) return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const guardrails: Record<string, number> = {};
+  const put = (k: string, v: number | undefined) => { if (v !== undefined) guardrails[k] = v; };
+  put("maxInputTokens", num("app-gr-max-input"));
+  put("maxOutputTokens", num("app-gr-max-output"));
+  put("windowSeconds", num("app-gr-window"));
+  put("windowTokens", num("app-gr-window-tokens"));
+  put("windowCalls", num("app-gr-window-calls"));
+  put("maxConcurrent", num("app-gr-concurrent"));
+  return { mcpApproved, guardrails };
 }
 
 // Dashboard shell (5a): apps are server objects (yo-server's saved_apps),
@@ -795,6 +915,7 @@ function loadPanelTab() {
 
 async function openPanelAppDetail(app: PanelApp) {
   currentAppId = app.id;
+  currentApp = app;
   panelLoaded = false;
 
   // Populate dashboard fields
@@ -805,18 +926,26 @@ async function openPanelAppDetail(app: PanelApp) {
   // Browser ↔ Native fields (pivot-mcp). Legacy apps have isBrowser undefined
   // but always carry a url, so they default to browser.
   const isBrowser = app.isBrowser !== undefined ? app.isBrowser : true;
-  (document.getElementById("app-detail-type") as HTMLSelectElement).value = isBrowser ? "browser" : "native";
+  const detailType: AppType = isBrowser ? "browser" : (app.appArchetype === "llm" ? "llm" : "native");
+  (document.getElementById("app-detail-type") as HTMLSelectElement).value = detailType;
   {
     const lc = (app.launchConfig || {}) as Record<string, unknown>;
     (document.getElementById("app-detail-browser") as HTMLSelectElement).value = typeof lc.browser === "string" && lc.browser ? String(lc.browser) : "default";
     (document.getElementById("app-detail-open-as") as HTMLSelectElement).value = lc.openAs === "tab" ? "tab" : "window";
+    // LLM fields
+    const llm = (lc.llm || {}) as Record<string, unknown>;
+    (document.getElementById("app-detail-llm-provider") as HTMLSelectElement).value = String(llm.provider || "claude");
+    (document.getElementById("app-detail-llm-model") as HTMLInputElement).value = String(llm.model || "");
   }
   (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
   const detailArchetype = (app.appArchetype as Archetype) || "terminal";
   (document.getElementById("app-detail-archetype") as HTMLSelectElement).value = detailArchetype;
   writeLaunchConfig("app-detail", detailArchetype, app.launchConfig);
-  toggleTypeFields("app-detail", isBrowser);
+  toggleTypeFields("app-detail", detailType);
   toggleArchetypeFields("app-detail", detailArchetype);
+
+  // MCP + Guardrails tabs: only for apps that expose an MCP endpoint.
+  syncMcpTabs(app);
 
   appConnectStatus.textContent = "";
   appMapCommand.classList.add("hidden");
@@ -1387,7 +1516,7 @@ function initApps() {
     addExecPath.value = "";
     addArchetypeSelect.value = "terminal";
     writeLaunchConfig("app-add", "terminal", null);
-    toggleTypeFields("app-add", true);
+    toggleTypeFields("app-add", "browser");
     toggleArchetypeFields("app-add", "terminal");
     appFormError.classList.add("hidden");
     appsList.classList.add("hidden");
@@ -1396,8 +1525,8 @@ function initApps() {
     addNameInput.focus();
   });
 
-  // Add-form Browser ↔ Native + archetype toggles + Browse… button.
-  addTypeSelect.addEventListener("change", () => toggleTypeFields("app-add", addTypeSelect.value === "browser"));
+  // Add-form Browser / Native / LLM + archetype toggles + Browse… button.
+  addTypeSelect.addEventListener("change", () => toggleTypeFields("app-add", addTypeSelect.value as AppType));
   addArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
   document.getElementById("app-add-exec-browse")!.addEventListener("click", async () => {
     const picked = await window.yo.pickExecutable();
@@ -1468,13 +1597,14 @@ function initApps() {
     const name = addNameInput.value.trim();
     const url = addUrlInput.value.trim();
     const slugInput = addSlugInput.value.trim();
-    const isBrowser = addTypeSelect.value === "browser";
+    const addType = addTypeSelect.value as AppType;
+    const isBrowser = addType === "browser";
     const execPath = addExecPath.value.trim();
     if (!name) { addNameInput.classList.add("invalid"); clearInvalid(addNameInput); valid = false; }
-    if (isBrowser && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
-    if (!isBrowser && !execPath) { addExecPath.classList.add("invalid"); clearInvalid(addExecPath); valid = false; }
+    if (addType === "browser" && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
+    if (addType === "native" && !execPath) { addExecPath.classList.add("invalid"); clearInvalid(addExecPath); valid = false; }
     if (!valid) {
-      appFormError.textContent = isBrowser ? "Name and URL are required." : "Name and executable path are required.";
+      appFormError.textContent = addType === "browser" ? "Name and URL are required." : addType === "native" ? "Name and executable path are required." : "Name is required.";
       appFormError.classList.remove("hidden");
       return;
     }
@@ -1501,13 +1631,17 @@ function initApps() {
       return;
     }
     const archetype = addArchetypeSelect.value as Archetype;
-    const created = await window.yo.panelAppsCreate(isBrowser
+    const createInput = addType === "browser"
       ? { name, slug: id, isBrowser: true, url, execPath: null,
           launchConfig: {
             browser: (document.getElementById("app-add-browser") as HTMLSelectElement).value,
             openAs: (document.getElementById("app-add-open-as") as HTMLSelectElement).value,
           } }
-      : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) });
+      : addType === "llm"
+      ? { name, slug: id, isBrowser: false, url: null, execPath: null, appArchetype: "llm",
+          launchConfig: { llm: { provider: (document.getElementById("app-add-llm-provider") as HTMLSelectElement).value, model: null } } }
+      : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
+    const created = await window.yo.panelAppsCreate(createInput);
     if (!created.ok || !created.app) {
       appFormError.textContent = created.error || "Failed to create app.";
       appFormError.classList.remove("hidden");
@@ -1570,7 +1704,15 @@ function initApps() {
   const detailTypeSelect = document.getElementById("app-detail-type") as HTMLSelectElement;
   const detailArchetypeSelect = document.getElementById("app-detail-archetype") as HTMLSelectElement;
   const detailExecPath = document.getElementById("app-detail-exec-path") as HTMLInputElement;
-  detailTypeSelect.addEventListener("change", () => toggleTypeFields("app-detail", detailTypeSelect.value === "browser"));
+  detailTypeSelect.addEventListener("change", () => {
+    const type = detailTypeSelect.value as AppType;
+    toggleTypeFields("app-detail", type);
+    // Switching to/from LLM changes whether this app exposes MCP — re-sync the
+    // tabs against a synthetic app view of the current form state.
+    syncMcpTabsFromForm();
+  });
+  // Provider affects which static tools apply (run_agent is Agent-SDK only).
+  document.getElementById("app-detail-llm-provider")?.addEventListener("change", syncMcpTabsFromForm);
   detailArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-detail", detailArchetypeSelect.value as Archetype));
   document.getElementById("app-detail-exec-browse")!.addEventListener("click", async () => {
     const picked = await window.yo.pickExecutable();
@@ -1581,14 +1723,15 @@ function initApps() {
   document.getElementById("app-dash-save")!.addEventListener("click", async () => {
     if (!currentAppId) return;
     const newSlug = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    const isBrowser = detailTypeSelect.value === "browser";
-    const patch: PanelAppInput = {
-      isBrowser,
-    };
+    const type = detailTypeSelect.value as AppType;
+    // LLM apps are non-browser executables (archetype "llm") that expose an
+    // MCP endpoint rather than launching anything.
+    const patch: PanelAppInput = { isBrowser: type === "browser" };
     if (newSlug) patch.slug = newSlug;
     const name = appDetailName.value.trim();
     if (name) patch.name = name;
-    if (isBrowser) {
+
+    if (type === "browser") {
       const url = appDetailUrl.value.trim();
       if (url) patch.url = url;
       patch.launchConfig = {
@@ -1596,12 +1739,27 @@ function initApps() {
         openAs: (document.getElementById("app-detail-open-as") as HTMLSelectElement).value,
       };
       patch.execPath = null;
+    } else if (type === "llm") {
+      patch.url = null;
+      patch.execPath = null;
+      patch.appArchetype = "llm";
+      const { mcpApproved, guardrails } = readMcpConfig();
+      patch.launchConfig = {
+        llm: {
+          provider: (document.getElementById("app-detail-llm-provider") as HTMLSelectElement).value,
+          model: (document.getElementById("app-detail-llm-model") as HTMLInputElement).value.trim() || null,
+        },
+        mcpApproved,
+        guardrails,
+      };
     } else {
       patch.url = null;
       patch.execPath = detailExecPath.value.trim();
       const archetype = detailArchetypeSelect.value as Archetype;
       patch.appArchetype = archetype;
-      patch.launchConfig = readLaunchConfig("app-detail", archetype);
+      // Preserve MCP approval + guardrails for installed apps that expose tools.
+      const { mcpApproved, guardrails } = readMcpConfig();
+      patch.launchConfig = { ...readLaunchConfig("app-detail", archetype), mcpApproved, guardrails };
     }
     await window.yo.panelAppsUpdate(currentAppId, patch);
 

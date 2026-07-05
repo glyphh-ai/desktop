@@ -10994,3 +10994,21 @@ select:focus {
 .help-section[data-section="apps"]:has(#proxy-editor:not(.hidden)) #apps-proxies-page > .section-desc {
   display: none !important;
 }
+
+/* ── MCP-exposing apps: approved-tools list + endpoint (app editor) ── */
+.app-mcp-endpoint {
+  display: block; margin: 6px 0; padding: 8px 10px; border-radius: 6px;
+  background: var(--surface-2); font-family: var(--font-mono); font-size: 11.5px;
+  color: var(--text); word-break: break-all; user-select: all;
+}
+.mcp-tool-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 11px; margin-bottom: 6px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  cursor: pointer;
+}
+.mcp-tool-row:hover { border-color: var(--border-3, var(--border)); }
+.mcp-tool-check { margin-top: 2px; flex-shrink: 0; accent-color: var(--accent); }
+.mcp-tool-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mcp-tool-name { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--text); }
+.mcp-tool-desc { font-size: 11.5px; color: var(--text-2); line-height: 1.45; }
