@@ -2,7 +2,6 @@
           <div class="apps-page-tabs">
             <button class="apps-page-tab active" data-page="library">My apps</button>
             <button class="apps-page-tab" data-page="marketplace">Marketplace</button>
-            <button class="apps-page-tab" data-page="proxies">Public URLs</button>
           </div>
 
           <div id="apps-library-page" class="apps-page">
@@ -42,8 +41,13 @@
             <select id="app-add-type" class="settings-input">
               <option value="browser">Browser app (web URL)</option>
               <option value="native">Native app (desktop executable)</option>
+              <option value="http">HTTP app (local server, shared publicly)</option>
               <option value="llm">LLM (lend your model over MCP)</option>
             </select>
+            <div id="app-add-http-fields" class="hidden">
+              <label class="settings-label">Local URL <span style="color:var(--text-2);font-weight:400;">— where your app runs on this machine</span></label>
+              <input id="app-add-http-target" class="settings-input" placeholder="http://127.0.0.1:3000" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
+            </div>
             <!-- LLM has no create-time fields: pick the provider + configure
                  tools/guardrails on the MCP + Guardrails tabs after creating. -->
             <div id="app-add-llm-fields" class="hidden">
@@ -167,6 +171,8 @@
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
               <!-- Shown only for apps that expose an MCP endpoint (LLM type, or
                    installed apps that declare tools). -->
+              <!-- Shown for apps that get a public URL (HTTP / LLM / agent). -->
+              <button class="app-detail-tab tab-public-only hidden" data-tab="public">Public URL</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
             </div>
@@ -185,8 +191,16 @@
                   <select id="app-detail-type" class="settings-input">
                     <option value="browser">Browser app (web URL)</option>
                     <option value="native">Native app (desktop executable)</option>
+                    <option value="http">HTTP app (local server, shared publicly)</option>
                     <option value="llm">LLM (lend your model over MCP)</option>
                   </select>
+                  <!-- HTTP app: a local server exposed at <slug>.glyphh.app.
+                       Sharing (subdomain, auth, visibility) is on the Public URL tab. -->
+                  <div id="app-detail-http-fields" class="hidden">
+                    <label class="settings-label">Local URL <span style="color:var(--text-2);font-weight:400;">— where your app runs on this machine</span></label>
+                    <input id="app-detail-http-target" class="settings-input" placeholder="http://127.0.0.1:3000" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
+                    <p class="proxy-field-hint">Served by your machine over the relay — keep Glyphh running or visitors get "App offline". Configure the public URL + who can reach it on the <strong>Public URL</strong> tab.</p>
+                  </div>
                   <!-- LLM fields — a local model exposed at <slug>.glyphh.app/mcp.
                        Tools + limits live on the MCP + Guardrails tabs. -->
                   <div id="app-detail-llm-fields" class="hidden">
@@ -358,6 +372,25 @@
                   <input id="app-gr-concurrent" type="number" min="0" class="settings-input" placeholder="e.g. 2" />
                   <p class="proxy-field-hint" style="margin-top:12px;">Blank = no limit for that field. Limits are enforced at the gateway before a call reaches your machine.</p>
                 </div>
+
+                <!-- Public URL left: this app's public address + status. Target
+                     (for HTTP apps) comes from the Local URL on General. -->
+                <div class="app-tab-left" data-tab="public">
+                  <div id="proxy-form-error" class="crud-form-error hidden"></div>
+                  <label class="settings-label">Subdomain</label>
+                  <input type="text" id="proxy-slug" class="settings-input" placeholder="my-app" spellcheck="false" autocomplete="off" />
+                  <div id="proxy-url-preview" class="proxy-url-preview"></div>
+                  <label class="settings-label">Label <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                  <input type="text" id="proxy-label" class="settings-input" placeholder="My dev app" spellcheck="false" autocomplete="off" />
+                  <div class="proxy-field-hint" style="margin-top:14px;">Served by your machine over the relay — keep Glyphh running or visitors get "App offline". Requests spend your org's compute credits.</div>
+                  <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
+                    <button id="proxy-delete-btn" class="action-btn danger hidden" type="button">Remove URL</button>
+                    <button id="proxy-toggle-btn" class="action-btn hidden" type="button">Disable</button>
+                    <span style="flex:1;"></span>
+                    <a id="proxy-open-link" class="action-btn hidden" target="_blank" rel="noreferrer">Open</a>
+                    <button id="proxy-save-btn" class="action-btn primary" type="button">Save URL</button>
+                  </div>
+                </div>
               </div>
 
               <div class="app-builder-divider" id="app-builder-divider"></div>
@@ -442,6 +475,47 @@
                   </div>
                 </div>
 
+                <!-- Public URL right: access control (who can reach the URL). -->
+                <div class="app-tab-right" data-tab="public">
+                  <div style="padding:12px 16px;">
+                    <h3 class="settings-subheading" style="margin:0 0 4px;">Access</h3>
+                    <p class="settings-hint" style="margin-top:2px;">Who can reach this URL and how they sign in.</p>
+
+                    <label class="settings-label">Authentication</label>
+                    <select id="proxy-auth-mode" class="settings-input">
+                      <option value="glyphh">Glyphh SSO — visitors sign in with a Glyphh account</option>
+                      <option value="public">Public (no auth) — anyone with the link</option>
+                      <option value="oidc">Single sign-on (OIDC) — Okta, Auth0, …</option>
+                      <option value="app_managed">App handles its own auth — passthrough</option>
+                    </select>
+                    <div id="proxy-public-warn" class="app-req-conns-warn hidden">Anyone with the link can reach this app anonymously, and requests spend your credits. Only expose apps you intend to share publicly.</div>
+
+                    <div id="proxy-visibility-wrap">
+                      <label class="settings-label">Visibility <span style="color:var(--text-2);font-weight:400;">— which Glyphh users may sign in</span></label>
+                      <select id="proxy-visibility" class="settings-input">
+                        <option value="private">Private — only you</option>
+                        <option value="org">Org — members of your organization</option>
+                        <option value="public">Public — any signed-in Glyphh user</option>
+                      </select>
+                    </div>
+
+                    <div id="proxy-oidc-fields" class="hidden">
+                      <label class="settings-label">Issuer URL</label>
+                      <input type="text" id="proxy-oidc-issuer" class="settings-input" placeholder="https://dev-123.okta.com/oauth2/default" spellcheck="false" autocomplete="off" />
+                      <label class="settings-label">Client ID</label>
+                      <input type="text" id="proxy-oidc-client-id" class="settings-input" spellcheck="false" autocomplete="off" />
+                      <label class="settings-label">Client secret</label>
+                      <input type="password" id="proxy-oidc-secret" class="settings-input" spellcheck="false" autocomplete="off" />
+                      <div id="proxy-oidc-secret-hint" class="proxy-field-hint hidden">Secret set ✓ — leave blank to keep it.</div>
+                      <label class="settings-label">Scopes <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                      <input type="text" id="proxy-oidc-scopes" class="settings-input" placeholder="openid email profile" spellcheck="false" autocomplete="off" />
+                      <label class="settings-label">Allowed email domains <span style="color:var(--text-2);font-weight:400;">(optional, comma-separated)</span></label>
+                      <input type="text" id="proxy-oidc-domains" class="settings-input" placeholder="glyphh.ai" spellcheck="false" autocomplete="off" />
+                      <div class="proxy-field-hint">Callback URL for your IdP app config: <code id="proxy-oidc-callback"></code></div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
@@ -511,95 +585,4 @@
             <div id="mkt-detail" class="mkt-detail hidden"></div>
           </div>
 
-          <!-- ══ PUBLIC URLS (app proxy tunnels) PAGE — mirrors the Connections page ══ -->
-          <div id="apps-proxies-page" class="apps-page hidden">
-            <h2 class="apps-page-heading">Public URLs</h2>
-            <p class="section-desc">Give a locally-running app a public <code>https://&lt;name&gt;.glyphh.app</code> URL. Glyphh tunnels requests to your machine through your running client — it's a tunnel, not hosting. When your client is offline, the app is offline.</p>
-
-            <div id="proxies-toolbar" class="crud-toolbar">
-              <input id="proxy-search" type="text" class="crud-search" placeholder="Search public URLs..." spellcheck="false" autocomplete="off" />
-              <button id="proxy-new-btn" class="action-btn primary">+ New</button>
-            </div>
-            <div id="proxies-list" class="app-list-wrap"></div>
-
-            <!-- Detail: two-column, mirrors the Connections detail (.app-builder-split) -->
-            <div id="proxy-editor" class="hidden">
-              <div class="crud-inline-header" style="padding:0 16px;">
-                <a class="crud-breadcrumb-back" id="proxy-back-link">&larr; Public URLs</a>
-                <span style="flex:1;"></span>
-                <button id="proxy-copy-btn" class="action-btn hidden" type="button" title="Copy the public URL">Copy URL</button>
-                <a id="proxy-open-link" class="action-btn primary hidden" target="_blank" rel="noreferrer">Open URL</a>
-              </div>
-
-              <div class="app-builder-split">
-                <!-- Left: identity + address -->
-                <div class="app-builder-controls">
-                  <div id="proxy-form-error" class="crud-form-error hidden"></div>
-                  <div id="proxy-detail-head" class="edit-head"></div>
-
-                  <label class="settings-label">Subdomain</label>
-                  <input type="text" id="proxy-slug" class="settings-input" placeholder="my-app" spellcheck="false" autocomplete="off" />
-                  <div id="proxy-url-preview" class="proxy-url-preview"></div>
-
-                  <label class="settings-label">Target <span style="color:var(--text-2);font-weight:400;">— the local address your app runs on</span></label>
-                  <input type="text" id="proxy-target" class="settings-input" placeholder="http://127.0.0.1:3000" spellcheck="false" autocomplete="off" />
-
-                  <label class="settings-label">Label <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-                  <input type="text" id="proxy-label" class="settings-input" placeholder="My dev app" spellcheck="false" autocomplete="off" />
-
-                  <div class="proxy-field-hint" style="margin-top:14px;">Served by your machine — keep the Glyphh client running or visitors get "App offline". Requests spend your org's compute credits.</div>
-
-                  <!-- Same button row as the Connections form: danger left, Cancel/Save right -->
-                  <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
-                    <button id="proxy-delete-btn" class="action-btn danger" type="button">Delete</button>
-                    <button id="proxy-toggle-btn" class="action-btn hidden" type="button">Disable</button>
-                    <span style="flex:1;"></span>
-                    <button id="proxy-cancel-btn" class="action-btn" type="button">Cancel</button>
-                    <button id="proxy-save-btn" class="action-btn primary" type="button">Save</button>
-                  </div>
-                </div>
-
-                <!-- Right: access control (who can reach the URL) -->
-                <div class="app-builder-preview">
-                  <div class="conn-tools-pane">
-                    <h3 class="settings-subheading" style="margin:0 0 4px;">Access</h3>
-                    <p class="settings-hint" style="margin-top:2px;">Who can reach this URL and how they sign in.</p>
-
-                    <label class="settings-label">Authentication</label>
-                    <select id="proxy-auth-mode" class="settings-input">
-                      <option value="glyphh">Glyphh SSO — visitors sign in with a Glyphh account</option>
-                      <option value="public">Public (no auth) — anyone with the link</option>
-                      <option value="oidc">Single sign-on (OIDC) — Okta, Auth0, …</option>
-                      <option value="app_managed">App handles its own auth — passthrough</option>
-                    </select>
-                    <div id="proxy-public-warn" class="app-req-conns-warn hidden">Anyone with the link can reach this app anonymously, and requests spend your credits. Only expose apps you intend to share publicly.</div>
-
-                    <div id="proxy-visibility-wrap">
-                      <label class="settings-label">Visibility <span style="color:var(--text-2);font-weight:400;">— which Glyphh users may sign in</span></label>
-                      <select id="proxy-visibility" class="settings-input">
-                        <option value="private">Private — only you</option>
-                        <option value="org">Org — members of your organization</option>
-                        <option value="public">Public — any signed-in Glyphh user</option>
-                      </select>
-                    </div>
-
-                    <div id="proxy-oidc-fields" class="hidden">
-                      <label class="settings-label">Issuer URL</label>
-                      <input type="text" id="proxy-oidc-issuer" class="settings-input" placeholder="https://dev-123.okta.com/oauth2/default" spellcheck="false" autocomplete="off" />
-                      <label class="settings-label">Client ID</label>
-                      <input type="text" id="proxy-oidc-client-id" class="settings-input" spellcheck="false" autocomplete="off" />
-                      <label class="settings-label">Client secret</label>
-                      <input type="password" id="proxy-oidc-secret" class="settings-input" spellcheck="false" autocomplete="off" />
-                      <div id="proxy-oidc-secret-hint" class="proxy-field-hint hidden">Secret set ✓ — leave blank to keep it.</div>
-                      <label class="settings-label">Scopes <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-                      <input type="text" id="proxy-oidc-scopes" class="settings-input" placeholder="openid email profile" spellcheck="false" autocomplete="off" />
-                      <label class="settings-label">Allowed email domains <span style="color:var(--text-2);font-weight:400;">(optional, comma-separated)</span></label>
-                      <input type="text" id="proxy-oidc-domains" class="settings-input" placeholder="glyphh.ai" spellcheck="false" autocomplete="off" />
-                      <div class="proxy-field-hint">Callback URL for your IdP app config: <code id="proxy-oidc-callback"></code></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>

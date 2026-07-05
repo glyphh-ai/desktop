@@ -46,6 +46,8 @@ export interface AppProxyRow {
   id: string;
   org_id: string;
   user_id: string;
+  saved_app_id: string | null;
+  kind: "http" | "mcp";
   slug: string;
   target: string;
   visibility: "private" | "org" | "public";
@@ -296,6 +298,8 @@ contextBridge.exposeInMainWorld("yo", {
   // App proxies — public <slug>.glyphh.app tunnels to locally-running apps.
   appProxiesList: () =>
     ipcRenderer.invoke("app-proxies-list") as Promise<{ ok: boolean; error?: string; proxies: AppProxyRow[] }>,
+  appProxyGet: (appId: string) =>
+    ipcRenderer.invoke("app-proxy-get", appId) as Promise<{ ok: boolean; proxy?: AppProxyRow | null; error?: string }>,
   appProxyCreate: (body: Record<string, unknown>) =>
     ipcRenderer.invoke("app-proxy-create", body) as Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>,
   appProxyUpdate: (id: string, body: Record<string, unknown>) =>

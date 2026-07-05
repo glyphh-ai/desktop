@@ -52,7 +52,8 @@ type Connection = {
 
 // Mirrors preload.ts AppProxyRow — a public <slug>.glyphh.app tunnel.
 type AppProxyRow = {
-  id: string; org_id: string; user_id: string; slug: string; target: string;
+  id: string; org_id: string; user_id: string; saved_app_id: string | null;
+  kind: "http" | "mcp"; slug: string; target: string;
   visibility: "private" | "org" | "public";
   status: "active" | "flagged" | "disabled";
   auth_mode: "public" | "glyphh" | "oidc" | "app_managed";
@@ -160,6 +161,7 @@ declare global {
       connectionDisconnect: (id: string) => Promise<{ ok: boolean; error?: string }>;
       // App proxies — public <slug>.glyphh.app tunnels
       appProxiesList: () => Promise<{ ok: boolean; error?: string; proxies: AppProxyRow[] }>;
+      appProxyGet: (appId: string) => Promise<{ ok: boolean; proxy?: AppProxyRow | null; error?: string }>;
       appProxyCreate: (body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
       appProxyUpdate: (id: string, body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
       appProxyDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;

@@ -101,12 +101,13 @@ function toggleArchetypeFields(prefix: string, archetype: Archetype): void {
 }
 
 // Show the browser-vs-native field blocks for a given form prefix.
-type AppType = "browser" | "native" | "llm";
+type AppType = "browser" | "native" | "llm" | "http";
 
 function toggleTypeFields(prefix: string, type: AppType): void {
   document.getElementById(`${prefix}-browser-fields`)?.classList.toggle("hidden", type !== "browser");
   document.getElementById(`${prefix}-native-fields`)?.classList.toggle("hidden", type !== "native");
   document.getElementById(`${prefix}-llm-fields`)?.classList.toggle("hidden", type !== "llm");
+  document.getElementById(`${prefix}-http-fields`)?.classList.toggle("hidden", type !== "http");
 }
 
 // ── MCP-exposing apps: static LLM tool set + approval + guardrails ──────────
@@ -797,12 +798,10 @@ function renderMktDetail(d: MktDetail): void {
 }
 
 /** Switch between the "My apps" library and the Marketplace storefront. */
-function switchAppsPage(page: "library" | "marketplace" | "proxies"): void {
+function switchAppsPage(page: "library" | "marketplace"): void {
   document.querySelectorAll<HTMLButtonElement>(".apps-page-tab").forEach((t) => t.classList.toggle("active", t.dataset.page === page));
   marketplaceLibraryPage.classList.toggle("hidden", page !== "library");
   marketplacePage.classList.toggle("hidden", page !== "marketplace");
-  document.getElementById("apps-proxies-page")?.classList.toggle("hidden", page !== "proxies");
-  if (page === "proxies") { closeProxyEditor(false); void loadProxies(); }
   // Marketplace is temporarily "Coming Soon" (storefront hidden in markup).
   // To re-enable, restore: if (page === "marketplace") { closeMktDetail(); void loadMarketplace(); }
 }
@@ -937,7 +936,10 @@ async function openPanelAppDetail(app: PanelApp) {
   // Browser ↔ Native fields (pivot-mcp). Legacy apps have isBrowser undefined
   // but always carry a url, so they default to browser.
   const isBrowser = app.isBrowser !== undefined ? app.isBrowser : true;
-  const detailType: AppType = isBrowser ? "browser" : (app.appArchetype === "llm" ? "llm" : "native");
+  const detailType: AppType = isBrowser ? "browser"
+    : app.appArchetype === "llm" ? "llm"
+    : app.appArchetype === "http" ? "http"
+    : "native";
   (document.getElementById("app-detail-type") as HTMLSelectElement).value = detailType;
   {
     const lc = (app.launchConfig || {}) as Record<string, unknown>;
@@ -947,6 +949,8 @@ async function openPanelAppDetail(app: PanelApp) {
     const llm = (lc.llm || {}) as Record<string, unknown>;
     (document.getElementById("app-detail-llm-provider") as HTMLSelectElement).value = String(llm.provider || "claude");
     (document.getElementById("app-detail-llm-model") as HTMLInputElement).value = String(llm.model || "");
+    // HTTP app: local URL
+    (document.getElementById("app-detail-http-target") as HTMLInputElement).value = String(lc.httpTarget || "");
   }
   (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
   const detailArchetype = (app.appArchetype as Archetype) || "terminal";
@@ -955,8 +959,10 @@ async function openPanelAppDetail(app: PanelApp) {
   toggleTypeFields("app-detail", detailType);
   toggleArchetypeFields("app-detail", detailArchetype);
 
-  // MCP + Guardrails tabs: only for apps that expose an MCP endpoint.
+  // MCP + Guardrails tabs (MCP-exposing apps) + Public URL tab (anything with
+  // a public URL).
   syncMcpTabs(app);
+  void syncPublicUrlTab(app);
 
   appConnectStatus.textContent = "";
   appMapCommand.classList.add("hidden");
@@ -1200,13 +1206,12 @@ export function openNewAppForm(url = "", name = "", tabId: string | null = null)
 
 // ── Public URLs (app proxy tunnels — APP-PROXY-UI-SPEC) ────────────────────
 
-type ProxyRow = Awaited<ReturnType<typeof window.yo.appProxiesList>>["proxies"][number];
+// ── Public URL tab — the app's 1:1 <slug>.glyphh.app proxy ─────────────────
+
+type ProxyRow = NonNullable<Awaited<ReturnType<typeof window.yo.appProxyGet>>["proxy"]>;
 
 const APP_DOMAIN = "glyphh.app";
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
-
-let allProxies: ProxyRow[] = [];
-let editingProxyId: string | null = null;
 
 const proxyEl = (id: string) => document.getElementById(id)!;
 const proxyInput = (id: string) => document.getElementById(id) as HTMLInputElement;
@@ -1214,56 +1219,24 @@ const proxySelect = (id: string) => document.getElementById(id) as HTMLSelectEle
 
 function proxyUrl(slug: string): string { return `https://${slug || "<name>"}.${APP_DOMAIN}`; }
 
-async function loadProxies(): Promise<void> {
-  const res = await window.yo.appProxiesList();
-  allProxies = res.ok ? res.proxies : [];
-  renderProxiesList(res.ok ? undefined : res.error);
+// The open app's proxy (or null = the app has no public URL yet).
+let currentProxy: ProxyRow | null = null;
+
+/** Which proxy kind an app serves: http = tunnel to its Local URL; mcp = a
+ *  scoped MCP endpoint (LLM / agent apps). Prefers the live detail-form type
+ *  so a just-changed (not-yet-saved) type still saves the right kind. */
+function appProxyKind(app: PanelApp): "http" | "mcp" {
+  const formType = (document.getElementById("app-detail-type") as HTMLSelectElement | null)?.value;
+  const t = formType || app.appArchetype;
+  return t === "http" ? "http" : "mcp";
 }
 
-function renderProxiesList(loadError?: string): void {
-  const list = proxyEl("proxies-list");
-  // Same tile grid as the Apps/Connections/Layouts pages. Preserve the hidden
-  // state so a re-render never pops the list over an open editor.
-  const wasHidden = list.classList.contains("hidden") || !proxyEl("proxy-editor").classList.contains("hidden");
-  list.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
-  list.innerHTML = "";
-
-  if (loadError) { list.innerHTML = `<div class="crud-empty">${escMkt(loadError)}</div>`; return; }
-  if (!allProxies.length) {
-    list.innerHTML = `<div class="crud-empty">No public URLs yet. Click "+ New" to expose a local app.</div>`;
-    return;
-  }
-  const query = (document.getElementById("proxy-search") as HTMLInputElement | null)?.value.trim().toLowerCase() || "";
-  const filtered = query
-    ? allProxies.filter((p) => p.slug.includes(query) || (p.label || "").toLowerCase().includes(query) || p.target.toLowerCase().includes(query))
-    : allProxies;
-  if (!filtered.length) { list.innerHTML = `<div class="crud-empty">No public URLs matching "${escMkt(query)}"</div>`; return; }
-
-  const grid = document.createElement("div");
-  grid.className = "app-grid";
-  for (const p of filtered) {
-    const card = document.createElement("div");
-    card.className = "app-card";
-    card.innerHTML = `
-      <div class="app-card-icon"><span class="app-card-initial">🌐</span></div>
-      <div class="app-card-name"></div>
-      <div class="app-card-id"></div>`;
-    card.querySelector(".app-card-name")!.textContent = p.label || p.slug;
-    card.querySelector(".app-card-id")!.textContent =
-      `${p.slug}.${APP_DOMAIN}${p.status !== "active" ? ` · ${p.status}` : ""}`;
-    card.addEventListener("click", () => openProxyEditor(p));
-    grid.appendChild(card);
-  }
-  list.appendChild(grid);
+/** Apps that get a public URL at all — HTTP servers, and MCP-exposing apps. */
+function appHasPublicUrl(app: PanelApp): boolean {
+  return app.appArchetype === "http" || appExposesMcp(app);
 }
 
-function proxyEditorHead(slug: string): void {
-  proxyEl("proxy-detail-head").innerHTML =
-    `<div class="app-card-icon"><span class="app-card-initial">🌐</span></div>` +
-    `<div class="edit-head-name">${escMkt(slug || "New public URL")}<span class="edit-head-slug">${escMkt(proxyUrl(slug))}</span></div>`;
-}
-
-/** Show/hide the mode-dependent field blocks + warnings. */
+/** Show/hide the auth-mode-dependent field blocks + the public warning. */
 function syncProxyAuthFields(): void {
   const mode = proxySelect("proxy-auth-mode").value;
   proxyEl("proxy-visibility-wrap").classList.toggle("hidden", mode !== "glyphh");
@@ -1271,12 +1244,34 @@ function syncProxyAuthFields(): void {
   proxyEl("proxy-public-warn").classList.toggle("hidden", mode !== "public");
 }
 
-function openProxyEditor(p: ProxyRow | null): void {
-  editingProxyId = p?.id ?? null;
+function syncProxySlugPreview(): void {
+  const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
+  proxyEl("proxy-url-preview").textContent = proxyUrl(slug);
+  const cb = document.getElementById("proxy-oidc-callback");
+  if (cb) cb.textContent = `${proxyUrl(slug)}/__glyphh/oidc/callback`;
+}
+
+function proxyFormError(msg: string): void {
+  const el = proxyEl("proxy-form-error");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+/** Show/hide the Public URL tab for the open app, and load its proxy. */
+async function syncPublicUrlTab(app: PanelApp): Promise<void> {
+  const has = appHasPublicUrl(app);
+  document.querySelectorAll<HTMLElement>(".tab-public-only").forEach((el) => el.classList.toggle("hidden", !has));
+  if (!has) { currentProxy = null; return; }
+  const res = await window.yo.appProxyGet(app.id).catch(() => ({ ok: false as const }));
+  currentProxy = res.ok ? (res.proxy || null) : null;
+  populatePublicUrlForm(app, currentProxy);
+}
+
+function populatePublicUrlForm(app: PanelApp, p: ProxyRow | null): void {
   proxyEl("proxy-form-error").classList.add("hidden");
-  proxyInput("proxy-slug").value = p?.slug || "";
-  proxyInput("proxy-slug").disabled = !!p;             // slug is immutable after create
-  proxyInput("proxy-target").value = p?.target || "";
+  // Subdomain defaults to the app slug; immutable once the URL exists.
+  proxyInput("proxy-slug").value = p?.slug || app.slug;
+  proxyInput("proxy-slug").disabled = !!p;
   proxySelect("proxy-auth-mode").value = p?.auth_mode || "glyphh";
   proxySelect("proxy-visibility").value = p?.visibility || "private";
   proxyInput("proxy-oidc-issuer").value = p?.auth_config?.issuer || "";
@@ -1286,56 +1281,31 @@ function openProxyEditor(p: ProxyRow | null): void {
   proxyInput("proxy-oidc-scopes").value = (p?.auth_config?.scopes || []).join(" ");
   proxyInput("proxy-oidc-domains").value = (p?.auth_config?.allowedDomains || []).join(", ");
   proxyInput("proxy-label").value = p?.label || "";
-  proxyEl("proxy-delete-btn").style.display = p ? "" : "none";
+  proxyEl("proxy-delete-btn").classList.toggle("hidden", !p);
   const openLink = proxyEl("proxy-open-link") as HTMLAnchorElement;
   openLink.classList.toggle("hidden", !p);
   if (p) openLink.href = proxyUrl(p.slug);
-  proxyEl("proxy-copy-btn").classList.toggle("hidden", !p);
   const toggleBtn = proxyEl("proxy-toggle-btn");
-  // Owners can flip active↔disabled; "flagged" is admin-only, so hide there.
   toggleBtn.classList.toggle("hidden", !p || p.status === "flagged");
   toggleBtn.textContent = p?.status === "disabled" ? "Enable" : "Disable";
-  proxyEditorHead(p?.slug || "");
+  proxyEl("proxy-save-btn").textContent = p ? "Save URL" : "Create URL";
   syncProxySlugPreview();
   syncProxyAuthFields();
-
-  proxyEl("proxies-list").classList.add("hidden");
-  proxyEl("proxies-toolbar").classList.add("hidden");
-  proxyEl("proxy-editor").classList.remove("hidden");
-  if (!p) proxyInput("proxy-slug").focus();
 }
 
-function closeProxyEditor(reload = true): void {
-  proxyEl("proxy-editor").classList.add("hidden");
-  proxyEl("proxies-list").classList.remove("hidden");
-  proxyEl("proxies-toolbar").classList.remove("hidden");
-  editingProxyId = null;
-  if (reload) void loadProxies();
-}
-
-function syncProxySlugPreview(): void {
-  const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
-  proxyEl("proxy-url-preview").textContent = proxyUrl(slug);
-  proxyEl("proxy-oidc-callback").textContent = `${proxyUrl(slug)}/__glyphh/oidc/callback`;
-  proxyEditorHead(slug);
-}
-
-function proxyFormError(msg: string): void {
-  const el = proxyEl("proxy-form-error");
-  el.textContent = msg;
-  el.classList.remove("hidden");
-}
-
-async function saveProxy(): Promise<void> {
+async function savePublicUrl(): Promise<void> {
+  if (!currentApp) return;
   proxyEl("proxy-form-error").classList.add("hidden");
   const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
-  const target = proxyInput("proxy-target").value.trim();
   const authMode = proxySelect("proxy-auth-mode").value;
   const visibility = proxySelect("proxy-visibility").value;
   const label = proxyInput("proxy-label").value.trim();
+  const kind = appProxyKind(currentApp);
+  // For HTTP apps the tunnel target is the app's Local URL (General tab).
+  const target = kind === "http" ? (document.getElementById("app-detail-http-target") as HTMLInputElement).value.trim() : "";
 
-  if (!editingProxyId && !SLUG_RE.test(slug)) { proxyFormError("Subdomain must be 1–63 lowercase letters, digits, or hyphens (no leading/trailing hyphen)."); return; }
-  if (!/^https?:\/\//i.test(target)) { proxyFormError("Target must start with http:// or https://."); return; }
+  if (!currentProxy && !SLUG_RE.test(slug)) { proxyFormError("Subdomain must be 1–63 lowercase letters, digits, or hyphens (no leading/trailing hyphen)."); return; }
+  if (kind === "http" && !/^https?:\/\//i.test(target)) { proxyFormError("Set the app's Local URL on the General tab first (http://…)."); return; }
 
   let authConfig: Record<string, unknown> | undefined;
   if (authMode === "oidc") {
@@ -1350,53 +1320,40 @@ async function saveProxy(): Promise<void> {
     const allowedDomains = proxyInput("proxy-oidc-domains").value.split(",").map((s) => s.trim()).filter(Boolean);
     authConfig = {
       issuer, clientId,
-      ...(clientSecret ? { clientSecret } : {}),   // blank on edit = keep stored secret
+      ...(clientSecret ? { clientSecret } : {}),
       ...(scopes.length ? { scopes } : {}),
       ...(allowedDomains.length ? { allowedDomains } : {}),
     };
   }
 
-  const res = editingProxyId
-    ? await window.yo.appProxyUpdate(editingProxyId, { target, visibility, label: label || null, authMode, ...(authConfig ? { authConfig } : {}) })
-    : await window.yo.appProxyCreate({ slug, target, visibility, label: label || undefined, authMode, ...(authConfig ? { authConfig } : {}) });
+  const res = currentProxy
+    ? await window.yo.appProxyUpdate(currentProxy.id, { target, visibility, label: label || null, authMode, kind, ...(authConfig ? { authConfig } : {}) })
+    : await window.yo.appProxyCreate({ slug, target, visibility, label: label || undefined, authMode, kind, savedAppId: currentApp.id, ...(authConfig ? { authConfig } : {}) });
 
   if (!res.ok) {
     proxyFormError(/taken/i.test(res.error || "") ? "That subdomain is already taken — pick another." : (res.error || "Save failed"));
     return;
   }
-  closeProxyEditor();
+  currentProxy = res.proxy || currentProxy;
+  populatePublicUrlForm(currentApp, currentProxy);
 }
 
-async function deleteProxy(): Promise<void> {
-  if (!editingProxyId) return;
-  const p = allProxies.find((x) => x.id === editingProxyId);
-  const confirmed = await confirmAction(`Delete ${proxyUrl(p?.slug || "")}? Visitors will get "not found" immediately.`);
-  if (!confirmed) return;
-  await window.yo.appProxyDelete(editingProxyId);
-  closeProxyEditor();
+async function deletePublicUrl(): Promise<void> {
+  if (!currentProxy || !currentApp) return;
+  if (!(await confirmAction(`Remove the public URL ${proxyUrl(currentProxy.slug)}? Visitors get "not found" immediately.`))) return;
+  await window.yo.appProxyDelete(currentProxy.id);
+  currentProxy = null;
+  populatePublicUrlForm(currentApp, null);
 }
 
-function initProxiesPage(): void {
-  document.getElementById("proxy-new-btn")?.addEventListener("click", () => openProxyEditor(null));
-  document.getElementById("proxy-back-link")?.addEventListener("click", () => closeProxyEditor());
-  document.getElementById("proxy-cancel-btn")?.addEventListener("click", () => closeProxyEditor());
-  document.getElementById("proxy-save-btn")?.addEventListener("click", () => { void saveProxy(); });
-  document.getElementById("proxy-delete-btn")?.addEventListener("click", () => { void deleteProxy(); });
+function initPublicUrlTab(): void {
+  document.getElementById("proxy-save-btn")?.addEventListener("click", () => { void savePublicUrl(); });
+  document.getElementById("proxy-delete-btn")?.addEventListener("click", () => { void deletePublicUrl(); });
   document.getElementById("proxy-auth-mode")?.addEventListener("change", syncProxyAuthFields);
-  document.getElementById("proxy-search")?.addEventListener("input", () => renderProxiesList());
-  document.getElementById("proxy-copy-btn")?.addEventListener("click", () => {
-    const p = allProxies.find((x) => x.id === editingProxyId);
-    if (p) window.yo.copyToClipboard(proxyUrl(p.slug));
-  });
   document.getElementById("proxy-toggle-btn")?.addEventListener("click", async () => {
-    const p = allProxies.find((x) => x.id === editingProxyId);
-    if (!p || p.status === "flagged") return;
-    const res = await window.yo.appProxyUpdate(p.id, { status: p.status === "disabled" ? "active" : "disabled" });
-    if (res.ok && res.proxy) {
-      const idx = allProxies.findIndex((x) => x.id === p.id);
-      if (idx >= 0) allProxies[idx] = res.proxy;
-      proxyEl("proxy-toggle-btn").textContent = res.proxy.status === "disabled" ? "Enable" : "Disable";
-    }
+    if (!currentProxy || currentProxy.status === "flagged") return;
+    const res = await window.yo.appProxyUpdate(currentProxy.id, { status: currentProxy.status === "disabled" ? "active" : "disabled" });
+    if (res.ok && res.proxy) { currentProxy = res.proxy; if (currentApp) populatePublicUrlForm(currentApp, currentProxy); }
   });
   const slugInput = proxyInput("proxy-slug");
   slugInput?.addEventListener("input", () => {
@@ -1407,7 +1364,7 @@ function initProxiesPage(): void {
 }
 
 function initApps() {
-  initProxiesPage();
+  initPublicUrlTab();
 
   // Browser dropdowns (add form + editor) — the real browsers on this machine.
   void window.yo.browsersDetect?.().then((browsers) => {
@@ -1484,7 +1441,7 @@ function initApps() {
   for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".apps-page-tab"))) {
     t.addEventListener("click", () => {
       const page = t.dataset.page;
-      switchAppsPage(page === "marketplace" || page === "proxies" ? page : "library");
+      switchAppsPage(page === "marketplace" ? "marketplace" : "library");
     });
   }
   // Marketplace scope (Public / Your organization).
@@ -1611,11 +1568,21 @@ function initApps() {
     const addType = addTypeSelect.value as AppType;
     const isBrowser = addType === "browser";
     const execPath = addExecPath.value.trim();
+    const httpTarget = (document.getElementById("app-add-http-target") as HTMLInputElement).value.trim();
     if (!name) { addNameInput.classList.add("invalid"); clearInvalid(addNameInput); valid = false; }
     if (addType === "browser" && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
     if (addType === "native" && !execPath) { addExecPath.classList.add("invalid"); clearInvalid(addExecPath); valid = false; }
+    if (addType === "http" && !/^https?:\/\//i.test(httpTarget)) {
+      (document.getElementById("app-add-http-target") as HTMLInputElement).classList.add("invalid");
+      clearInvalid(document.getElementById("app-add-http-target") as HTMLInputElement);
+      valid = false;
+    }
     if (!valid) {
-      appFormError.textContent = addType === "browser" ? "Name and URL are required." : addType === "native" ? "Name and executable path are required." : "Name is required.";
+      appFormError.textContent =
+        addType === "browser" ? "Name and URL are required."
+        : addType === "native" ? "Name and executable path are required."
+        : addType === "http" ? "Name and a Local URL (http://…) are required."
+        : "Name is required.";
       appFormError.classList.remove("hidden");
       return;
     }
@@ -1651,6 +1618,9 @@ function initApps() {
       : addType === "llm"
       ? { name, slug: id, isBrowser: false, url: null, execPath: null, appArchetype: "llm",
           launchConfig: { llm: { provider: (document.getElementById("app-add-llm-provider") as HTMLSelectElement).value, model: null } } }
+      : addType === "http"
+      ? { name, slug: id, isBrowser: false, url: null, execPath: null, appArchetype: "http",
+          launchConfig: { httpTarget } }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
     const created = await window.yo.panelAppsCreate(createInput);
     if (!created.ok || !created.app) {
@@ -1721,6 +1691,9 @@ function initApps() {
     // Switching to/from LLM changes whether this app exposes MCP — re-sync the
     // tabs against a synthetic app view of the current form state.
     syncMcpTabsFromForm();
+    // Public URL availability follows the form type too (http + mcp-exposing).
+    const hasPublic = type === "http" || type === "llm";
+    document.querySelectorAll<HTMLElement>(".tab-public-only").forEach((el) => el.classList.toggle("hidden", !hasPublic));
   });
   // Provider affects which static tools apply (run_agent is Agent-SDK only).
   document.getElementById("app-detail-llm-provider")?.addEventListener("change", syncMcpTabsFromForm);
@@ -1762,6 +1735,13 @@ function initApps() {
         },
         mcpApproved,
         guardrails,
+      };
+    } else if (type === "http") {
+      patch.url = null;
+      patch.execPath = null;
+      patch.appArchetype = "http";
+      patch.launchConfig = {
+        httpTarget: (document.getElementById("app-detail-http-target") as HTMLInputElement).value.trim(),
       };
     } else {
       patch.url = null;
