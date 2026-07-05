@@ -163,7 +163,6 @@ declare global {
       appProxyGet: (appId: string) => Promise<{ ok: boolean; proxy?: AppProxyRow | null; error?: string }>;
       appProxyCreate: (body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
       appProxyUpdate: (id: string, body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
-      appProxyDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsRemoveMcp: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;

@@ -184,10 +184,6 @@ function registerPanelAppsIpc(): void {
     try { const proxy = await serverPatchAuthed(`/api/apps/proxies/${id}`, body); invalidateProxyCache(); return { ok: true, proxy }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("app-proxy-delete", async (_e, id: string) => {
-    try { await serverDeleteAuthed(`/api/apps/proxies/${id}`); invalidateProxyCache(); return { ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
   ipcMain.handle("panel-apps-set-mcp", async (_e, id: string, mcp: Record<string, unknown>) => {
     try { const app = await serverPatchAuthed(`/api/panel-apps/${id}/mcp`, mcp); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }

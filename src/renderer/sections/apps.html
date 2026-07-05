@@ -383,12 +383,20 @@
                   <label class="settings-label">Label <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
                   <input type="text" id="proxy-label" class="settings-input" placeholder="My dev app" spellcheck="false" autocomplete="off" />
                   <div class="proxy-field-hint" style="margin-top:14px;">Served by your machine over the relay — keep Glyphh running or visitors get "App offline". Requests spend your org's compute credits.</div>
-                  <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
-                    <button id="proxy-delete-btn" class="action-btn danger hidden" type="button">Remove URL</button>
-                    <button id="proxy-toggle-btn" class="action-btn hidden" type="button">Disable</button>
+                  <div class="settings-toggles" style="margin-top:20px;">
+                    <label class="settings-toggle">
+                      <input type="checkbox" id="proxy-enabled" checked />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Enabled</span>
+                        <span class="toggle-desc" id="proxy-enabled-desc">When off, the URL returns "not found" — your config is kept so you can turn it back on.</span>
+                      </div>
+                    </label>
+                  </div>
+                  <div class="settings-actions" style="margin-top:24px;display:flex;gap:8px;align-items:center;">
                     <span style="flex:1;"></span>
                     <a id="proxy-open-link" class="action-btn hidden" target="_blank" rel="noreferrer">Open</a>
-                    <button id="proxy-save-btn" class="action-btn primary" type="button">Save URL</button>
+                    <button id="proxy-save-btn" class="action-btn primary" type="button">Save</button>
                   </div>
                 </div>
               </div>

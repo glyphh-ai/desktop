@@ -302,8 +302,6 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("app-proxy-create", body) as Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>,
   appProxyUpdate: (id: string, body: Record<string, unknown>) =>
     ipcRenderer.invoke("app-proxy-update", id, body) as Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>,
-  appProxyDelete: (id: string) =>
-    ipcRenderer.invoke("app-proxy-delete", id) as Promise<{ ok: boolean; error?: string }>,
   panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) =>
     ipcRenderer.invoke("panel-apps-set-mcp", id, mcp) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsRemoveMcp: (id: string) =>

@@ -1281,14 +1281,19 @@ function populatePublicUrlForm(app: PanelApp, p: ProxyRow | null): void {
   proxyInput("proxy-oidc-scopes").value = (p?.auth_config?.scopes || []).join(" ");
   proxyInput("proxy-oidc-domains").value = (p?.auth_config?.allowedDomains || []).join(", ");
   proxyInput("proxy-label").value = p?.label || "";
-  proxyEl("proxy-delete-btn").classList.toggle("hidden", !p);
+  // Enabled flag: on = active. A new (unsaved) URL defaults to enabled.
+  // A moderation-flagged URL can't be self-enabled, so lock the toggle off.
+  const flagged = p?.status === "flagged";
+  const enabled = proxyInput("proxy-enabled");
+  enabled.checked = p ? p.status === "active" : true;
+  enabled.disabled = flagged;
+  proxyEl("proxy-enabled-desc").textContent = flagged
+    ? "This URL was flagged and is unavailable — contact support."
+    : 'When off, the URL returns "not found" — your config is kept so you can turn it back on.';
+  // Open only makes sense once the URL exists and is live.
   const openLink = proxyEl("proxy-open-link") as HTMLAnchorElement;
-  openLink.classList.toggle("hidden", !p);
+  openLink.classList.toggle("hidden", !p || p.status !== "active");
   if (p) openLink.href = proxyUrl(p.slug);
-  const toggleBtn = proxyEl("proxy-toggle-btn");
-  toggleBtn.classList.toggle("hidden", !p || p.status === "flagged");
-  toggleBtn.textContent = p?.status === "disabled" ? "Enable" : "Disable";
-  proxyEl("proxy-save-btn").textContent = p ? "Save URL" : "Create URL";
   syncProxySlugPreview();
   syncProxyAuthFields();
 }
@@ -1326,8 +1331,14 @@ async function savePublicUrl(): Promise<void> {
     };
   }
 
+  // The Enabled toggle is the on/off switch: on = active, off = disabled. A
+  // flagged URL is a moderation state the owner can't self-clear, so we never
+  // send status for it.
+  const wasFlagged = currentProxy?.status === "flagged";
+  const status: "active" | "disabled" = proxyInput("proxy-enabled").checked ? "active" : "disabled";
+
   const res = currentProxy
-    ? await window.yo.appProxyUpdate(currentProxy.id, { target, visibility, label: label || null, authMode, kind, ...(authConfig ? { authConfig } : {}) })
+    ? await window.yo.appProxyUpdate(currentProxy.id, { target, visibility, label: label || null, authMode, kind, ...(wasFlagged ? {} : { status }), ...(authConfig ? { authConfig } : {}) })
     : await window.yo.appProxyCreate({ slug, target, visibility, label: label || undefined, authMode, kind, savedAppId: currentApp.id, ...(authConfig ? { authConfig } : {}) });
 
   if (!res.ok) {
@@ -1335,26 +1346,17 @@ async function savePublicUrl(): Promise<void> {
     return;
   }
   currentProxy = res.proxy || currentProxy;
+  // New URLs are created active; if the owner saved with Enabled off, apply it.
+  if (!wasFlagged && currentProxy && currentProxy.status !== status) {
+    const upd = await window.yo.appProxyUpdate(currentProxy.id, { status });
+    if (upd.ok && upd.proxy) currentProxy = upd.proxy;
+  }
   populatePublicUrlForm(currentApp, currentProxy);
-}
-
-async function deletePublicUrl(): Promise<void> {
-  if (!currentProxy || !currentApp) return;
-  if (!(await confirmAction(`Remove the public URL ${proxyUrl(currentProxy.slug)}? Visitors get "not found" immediately.`))) return;
-  await window.yo.appProxyDelete(currentProxy.id);
-  currentProxy = null;
-  populatePublicUrlForm(currentApp, null);
 }
 
 function initPublicUrlTab(): void {
   document.getElementById("proxy-save-btn")?.addEventListener("click", () => { void savePublicUrl(); });
-  document.getElementById("proxy-delete-btn")?.addEventListener("click", () => { void deletePublicUrl(); });
   document.getElementById("proxy-auth-mode")?.addEventListener("change", syncProxyAuthFields);
-  document.getElementById("proxy-toggle-btn")?.addEventListener("click", async () => {
-    if (!currentProxy || currentProxy.status === "flagged") return;
-    const res = await window.yo.appProxyUpdate(currentProxy.id, { status: currentProxy.status === "disabled" ? "active" : "disabled" });
-    if (res.ok && res.proxy) { currentProxy = res.proxy; if (currentApp) populatePublicUrlForm(currentApp, currentProxy); }
-  });
   const slugInput = proxyInput("proxy-slug");
   slugInput?.addEventListener("input", () => {
     const lower = slugInput.value.toLowerCase();

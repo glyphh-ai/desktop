@@ -123,9 +123,10 @@ export async function agentRun(
     );
   }
   const model = String(args.model || DEFAULT_MODELS[provider] || "");
-  if (provider === "anthropic") return runAnthropic(apiKey, model, prompt, system, tools, maxTurns, deps);
-  if (provider === "openai") return runOpenAI(apiKey, model, prompt, system, tools, maxTurns, deps);
-  if (provider === "google") return runGemini(apiKey, model, prompt, system, tools, maxTurns, deps);
+  const maxTokens = Number(args.maxTokens) > 0 ? Math.floor(Number(args.maxTokens)) : undefined;
+  if (provider === "anthropic") return runAnthropic(apiKey, model, prompt, system, tools, maxTurns, deps, maxTokens);
+  if (provider === "openai") return runOpenAI(apiKey, model, prompt, system, tools, maxTurns, deps, maxTokens);
+  if (provider === "google") return runGemini(apiKey, model, prompt, system, tools, maxTurns, deps, maxTokens);
   throw new Error(`unknown provider: ${provider} (anthropic | openai | google)`);
 }
 
@@ -138,7 +139,8 @@ async function runAnthropic(
   system: string,
   tools: AgentToolSpec[],
   maxTurns: number,
-  deps: AgentRunDeps
+  deps: AgentRunDeps,
+  maxTokens?: number
 ): Promise<AgentRunResult> {
   const client = new Anthropic({ apiKey });
   const record: ToolCallRecord[] = [];
@@ -154,7 +156,7 @@ async function runAnthropic(
   for (let turn = 1; turn <= maxTurns; turn++) {
     const resp = await client.messages.create({
       model,
-      max_tokens: 4096,
+      max_tokens: maxTokens && maxTokens > 0 ? maxTokens : 4096,
       system,
       messages,
       ...(toolDefs.length ? { tools: toolDefs } : {}),
@@ -187,7 +189,8 @@ async function runOpenAI(
   system: string,
   tools: AgentToolSpec[],
   maxTurns: number,
-  deps: AgentRunDeps
+  deps: AgentRunDeps,
+  maxTokens?: number
 ): Promise<AgentRunResult> {
   const client = new OpenAI({ apiKey });
   const record: ToolCallRecord[] = [];
@@ -207,6 +210,7 @@ async function runOpenAI(
       model,
       instructions: system,
       input,
+      ...(maxTokens && maxTokens > 0 ? { max_output_tokens: maxTokens } : {}),
       ...(toolDefs.length ? { tools: toolDefs } : {}),
     });
     if (resp.usage) {
@@ -239,13 +243,15 @@ async function runGemini(
   system: string,
   tools: AgentToolSpec[],
   maxTurns: number,
-  deps: AgentRunDeps
+  deps: AgentRunDeps,
+  maxTokens?: number
 ): Promise<AgentRunResult> {
   const ai = new GoogleGenAI({ apiKey });
   const record: ToolCallRecord[] = [];
   const usage = { input_tokens: 0, output_tokens: 0 };
   const config = {
     systemInstruction: system,
+    ...(maxTokens && maxTokens > 0 ? { maxOutputTokens: maxTokens } : {}),
     ...(tools.length
       ? {
           tools: [{
