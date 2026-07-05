@@ -17,7 +17,7 @@ import {
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
 } from "./app-window-manager.js";
 import { launchNativeApp, launchWebApp, type LaunchResult } from "./native-launch.js";
-import { getBrowser, detectBrowsers, type InstalledBrowser } from "./browser-detect.js";
+import { resolveBrowser, type InstalledBrowser } from "./browser-detect.js";
 import { getPreference } from "./stores/preferences-db.js";
 import {
   positionAppWindow, focusWindow, setWindowBounds, listWindows, minimizeWindow,
@@ -203,14 +203,16 @@ async function openNativeTracked(
   await launchGate;
 }
 
-/** How this web app's config says to open: which browser, window or tab. */
+/** How this web app's config says to open: which browser, window or tab.
+ *  "default"/unset resolves to the machine's actual default browser so New
+ *  window works there too (a real app path is needed to pass window flags). */
 function webLaunchPlan(app: ServerApp): { browser: InstalledBrowser | null; openAs: "window" | "tab" } {
   const lc = (app.launchConfig || {}) as Record<string, unknown>;
-  const pref = getPreference<string>("defaultBrowser", "default");
-  const browser = getBrowser(typeof lc.browser === "string" && lc.browser ? lc.browser : pref)
-    ?? detectBrowsers().find(() => false) ?? null;
+  const configured = typeof lc.browser === "string" && lc.browser
+    ? lc.browser
+    : getPreference<string>("defaultBrowser", "default");
   const openAs = lc.openAs === "tab" ? "tab" as const : "window" as const;
-  return { browser: browser ?? null, openAs };
+  return { browser: resolveBrowser(configured), openAs };
 }
 
 /**

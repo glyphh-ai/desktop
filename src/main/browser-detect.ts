@@ -9,6 +9,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { execFileSync } from "child_process";
 
 export interface InstalledBrowser {
   /** Stable id stored in the app's launchConfig.browser. */
@@ -28,20 +29,24 @@ interface BrowserDef {
   chromium: boolean;
   /** macOS bundle names to look for, in preference order. */
   macApps: string[];
+  /** macOS bundle id (lowercased) — matches the OS default-handler lookup. */
+  macBundleId: string;
   /** Windows exe paths relative to Program Files roots. */
   winPaths: string[];
+  /** Windows UserChoice ProgId prefixes — matches the default-handler lookup. */
+  winProgIds: string[];
   proc: string;
 }
 
 const KNOWN: BrowserDef[] = [
-  { id: "chrome", name: "Google Chrome", chromium: true, macApps: ["Google Chrome.app"], winPaths: ["Google/Chrome/Application/chrome.exe"], proc: "Google Chrome" },
-  { id: "safari", name: "Safari", chromium: false, macApps: ["Safari.app"], winPaths: [], proc: "Safari" },
-  { id: "edge", name: "Microsoft Edge", chromium: true, macApps: ["Microsoft Edge.app"], winPaths: ["Microsoft/Edge/Application/msedge.exe"], proc: "Microsoft Edge" },
-  { id: "arc", name: "Arc", chromium: true, macApps: ["Arc.app"], winPaths: [], proc: "Arc" },
-  { id: "brave", name: "Brave", chromium: true, macApps: ["Brave Browser.app"], winPaths: ["BraveSoftware/Brave-Browser/Application/brave.exe"], proc: "Brave Browser" },
-  { id: "firefox", name: "Firefox", chromium: false, macApps: ["Firefox.app"], winPaths: ["Mozilla Firefox/firefox.exe"], proc: "Firefox" },
-  { id: "vivaldi", name: "Vivaldi", chromium: true, macApps: ["Vivaldi.app"], winPaths: ["Vivaldi/Application/vivaldi.exe"], proc: "Vivaldi" },
-  { id: "opera", name: "Opera", chromium: true, macApps: ["Opera.app"], winPaths: ["Opera/opera.exe"], proc: "Opera" },
+  { id: "chrome", name: "Google Chrome", chromium: true, macApps: ["Google Chrome.app"], macBundleId: "com.google.chrome", winPaths: ["Google/Chrome/Application/chrome.exe"], winProgIds: ["ChromeHTML"], proc: "Google Chrome" },
+  { id: "safari", name: "Safari", chromium: false, macApps: ["Safari.app"], macBundleId: "com.apple.safari", winPaths: [], winProgIds: [], proc: "Safari" },
+  { id: "edge", name: "Microsoft Edge", chromium: true, macApps: ["Microsoft Edge.app"], macBundleId: "com.microsoft.edgemac", winPaths: ["Microsoft/Edge/Application/msedge.exe"], winProgIds: ["MSEdgeHTM"], proc: "Microsoft Edge" },
+  { id: "arc", name: "Arc", chromium: true, macApps: ["Arc.app"], macBundleId: "company.thebrowser.browser", winPaths: [], winProgIds: [], proc: "Arc" },
+  { id: "brave", name: "Brave", chromium: true, macApps: ["Brave Browser.app"], macBundleId: "com.brave.browser", winPaths: ["BraveSoftware/Brave-Browser/Application/brave.exe"], winProgIds: ["BraveHTML"], proc: "Brave Browser" },
+  { id: "firefox", name: "Firefox", chromium: false, macApps: ["Firefox.app"], macBundleId: "org.mozilla.firefox", winPaths: ["Mozilla Firefox/firefox.exe"], winProgIds: ["FirefoxURL"], proc: "Firefox" },
+  { id: "vivaldi", name: "Vivaldi", chromium: true, macApps: ["Vivaldi.app"], macBundleId: "com.vivaldi.vivaldi", winPaths: ["Vivaldi/Application/vivaldi.exe"], winProgIds: ["VivaldiHTM"], proc: "Vivaldi" },
+  { id: "opera", name: "Opera", chromium: true, macApps: ["Opera.app"], macBundleId: "com.operasoftware.opera", winPaths: ["Opera/opera.exe"], winProgIds: ["OperaStable"], proc: "Opera" },
 ];
 
 let cache: InstalledBrowser[] | null = null;
@@ -84,4 +89,56 @@ export function detectBrowsers(): InstalledBrowser[] {
 export function getBrowser(id: string | undefined | null): InstalledBrowser | null {
   if (!id || id === "default") return null;
   return detectBrowsers().find((b) => b.id === id) || null;
+}
+
+let defaultCache: InstalledBrowser | null | undefined; // undefined = not yet probed
+
+/**
+ * The machine's default https browser, resolved to a concrete detected
+ * browser — so "System default" can still open a NEW WINDOW (which needs a
+ * real app path + launch flags), not just a fire-and-forget tab.
+ * Returns null if it can't be resolved (unknown/unlisted browser).
+ */
+export function getDefaultBrowser(): InstalledBrowser | null {
+  if (defaultCache !== undefined) return defaultCache;
+  let matched: InstalledBrowser | null = null;
+  try {
+    if (process.platform === "darwin") {
+      // LaunchServices records the per-scheme handler bundle id. plutil is
+      // always present; convert the (binary) secure plist to JSON and find
+      // the https handler.
+      const plist = path.join(os.homedir(), "Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist");
+      const json = execFileSync("plutil", ["-convert", "json", "-o", "-", plist], { encoding: "utf8", timeout: 3000 });
+      const handlers = (JSON.parse(json).LSHandlers || []) as Array<{ LSHandlerURLScheme?: string; LSHandlerRoleAll?: string }>;
+      const https = handlers.find((h) => h.LSHandlerURLScheme === "https");
+      const bundleId = https?.LSHandlerRoleAll?.toLowerCase();
+      if (bundleId) {
+        const def = KNOWN.find((d) => d.macBundleId === bundleId);
+        if (def) matched = detectBrowsers().find((b) => b.id === def.id) || null;
+      } else {
+        // No recorded https handler → Safari is the implicit OS default.
+        matched = detectBrowsers().find((b) => b.id === "safari") || null;
+      }
+    } else if (process.platform === "win32") {
+      // HKCU UserChoice ProgId is the authoritative default for https.
+      const out = execFileSync("reg", [
+        "query",
+        "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice",
+        "/v", "ProgId",
+      ], { encoding: "utf8", timeout: 3000 });
+      const m = out.match(/ProgId\s+REG_SZ\s+(\S+)/i);
+      const progId = m?.[1] || "";
+      const def = KNOWN.find((d) => d.winProgIds.some((p) => progId.startsWith(p)));
+      if (def) matched = detectBrowsers().find((b) => b.id === def.id) || null;
+    }
+  } catch { /* unreadable / unknown handler → null (fire-and-forget fallback) */ }
+  defaultCache = matched;
+  return matched;
+}
+
+/** Resolve an app's configured browser id, mapping "default"/unset to the
+ *  machine's actual default browser so New window works there too. */
+export function resolveBrowser(id: string | undefined | null): InstalledBrowser | null {
+  if (id && id !== "default") return getBrowser(id);
+  return getDefaultBrowser();
 }

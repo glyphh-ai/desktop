@@ -8,7 +8,7 @@ import { cachedServerGet, invalidateServerCache } from "./server-cache";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 
 import { launchNativeApp, launchWebApp } from "./native-launch";
-import { getBrowser, detectBrowsers } from "./browser-detect";
+import { resolveBrowser, detectBrowsers } from "./browser-detect";
 import { openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host";
@@ -53,7 +53,7 @@ function registerPanelAppsIpc(): void {
       return { ok: false, error: "App has no web URL" };
     }
     const lc = (spec.launchConfig || {}) as Record<string, unknown>;
-    return launchWebApp(url, getBrowser(typeof lc.browser === "string" ? lc.browser : null), lc.openAs === "tab" ? "tab" : "window");
+    return launchWebApp(url, resolveBrowser(typeof lc.browser === "string" ? lc.browser : null), lc.openAs === "tab" ? "tab" : "window");
   });
 
   // Installed real browsers — feeds the app editor's Browser dropdown.
