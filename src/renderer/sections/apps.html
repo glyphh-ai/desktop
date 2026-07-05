@@ -47,10 +47,14 @@
             <div id="app-add-browser-fields">
               <label class="settings-label">URL</label>
               <input id="app-add-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" autocomplete="off" />
-              <label class="settings-label">Open in</label>
-              <select id="app-add-browser-target" class="settings-input">
-                <option value="webview">Glyphh webview</option>
-                <option value="native">Native Chrome</option>
+              <label class="settings-label">Browser</label>
+              <select id="app-add-browser" class="settings-input">
+                <option value="default">System default</option>
+              </select>
+              <label class="settings-label">Open as</label>
+              <select id="app-add-open-as" class="settings-input">
+                <option value="window">New window — Glyphh can tile, focus, and re-find it</option>
+                <option value="tab">New tab — opens in the browser's current window</option>
               </select>
             </div>
             <!-- Native fields -->
@@ -94,7 +98,7 @@
                 <input id="app-add-args" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
               </div>
             </div>
-            <!-- Force web mode + Do not record live on the app's detail screen
+            <!-- Do not record lives on the app's detail screen
                  (where they persist); duplicating them here did nothing. -->
             <div class="settings-actions" style="margin-top:8px;">
               <button id="app-add-cancel-btn" class="action-btn">Cancel</button>
@@ -170,19 +174,15 @@
                   <div id="app-detail-browser-fields">
                     <label class="settings-label">URL</label>
                     <input id="app-detail-url" class="settings-input" spellcheck="false" placeholder="https://..." />
-                    <label class="settings-label">Open in</label>
-                    <select id="app-detail-browser-target" class="settings-input">
-                      <option value="webview">Glyphh webview</option>
-                      <option value="native">Native Chrome</option>
+                    <label class="settings-label">Browser</label>
+                    <select id="app-detail-browser" class="settings-input">
+                      <option value="default">System default</option>
                     </select>
-                    <label class="settings-toggle" style="margin-top:20px;padding:8px 12px;">
-                      <input type="checkbox" id="app-detail-force-web" />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Force web mode</span>
-                        <span class="toggle-desc">Block native app redirects and desktop prompts</span>
-                      </div>
-                    </label>
+                    <label class="settings-label">Open as</label>
+                    <select id="app-detail-open-as" class="settings-input">
+                      <option value="window">New window — Glyphh can tile, focus, and re-find it</option>
+                      <option value="tab">New tab — opens in the browser's current window</option>
+                    </select>
                   </div>
                   <!-- Native fields -->
                   <div id="app-detail-native-fields" class="hidden">

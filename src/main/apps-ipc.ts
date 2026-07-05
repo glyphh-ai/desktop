@@ -6,8 +6,9 @@ import { exportApp, importApp, localBundleDir } from "./glyphh-app-package";
 import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverPutAuthed, serverDeleteAuthed } from "./auth";
 import { cachedServerGet, invalidateServerCache } from "./server-cache";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
-import { openAppWindow } from "./app-window-manager";
-import { launchNativeApp, launchInNativeChrome } from "./native-launch";
+
+import { launchNativeApp, launchWebApp } from "./native-launch";
+import { getBrowser, detectBrowsers } from "./browser-detect";
 import { openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host";
@@ -21,21 +22,20 @@ import { invalidateProxyCache } from "./app-proxy-stream";
  *  message instead of crashing on a network hiccup. */
 function registerPanelAppsIpc(): void {
   // 5b Panel Manager: open a server app in its own native OS window.
-  ipcMain.handle("app-window-open", (_e, spec: { slug: string; name: string; url: string; forceWeb?: boolean }) => {
+  ipcMain.handle("app-window-open", (_e, spec: { slug: string; name: string; url: string }) => {
     if (!spec?.url || (!spec.url.startsWith("http://") && !spec.url.startsWith("https://"))) {
       return { ok: false, error: "App has no web URL" };
     }
-    openAppWindow({ slug: String(spec.slug || spec.url), name: String(spec.name || spec.slug), url: spec.url, forceWeb: !!spec.forceWeb });
-    return { ok: true };
+    // Native-OS model: URLs open in the user's real default browser.
+    return launchWebApp(spec.url, null, "window");
   });
 
-  // Launch an app the way its config says to (Browser↔Native model):
+  // Launch an app the way its config says to (native-OS model):
   //   - native app (isBrowser=false) → launch its executable + archetype config
-  //   - browser app, target "native" → open the URL in the user's real Chrome
-  //   - browser app, target "webview" (default) → Glyphh's own webview window
+  //   - web app → its URL in the configured real browser (window or tab)
   ipcMain.handle("app-launch", (_e, spec: {
-    slug: string; name: string; url?: string | null; forceWeb?: boolean;
-    isBrowser?: boolean; browserTarget?: "webview" | "native";
+    slug: string; name: string; url?: string | null;
+    isBrowser?: boolean;
     execPath?: string | null; appArchetype?: string | null;
     launchConfig?: Record<string, unknown> | null;
   }) => {
@@ -48,17 +48,16 @@ function registerPanelAppsIpc(): void {
     if (!isBrowser) {
       return launchNativeApp(spec.execPath ?? "", spec.appArchetype, spec.launchConfig);
     }
-    if (spec.browserTarget === "native") {
-      return launchInNativeChrome(String(spec.url || ""));
-    }
-    // webview (default) — Glyphh's own OS window over the shared session.
     const url = String(spec.url || "");
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       return { ok: false, error: "App has no web URL" };
     }
-    openAppWindow({ slug: String(spec.slug || url), name: String(spec.name || spec.slug), url, forceWeb: !!spec.forceWeb });
-    return { ok: true };
+    const lc = (spec.launchConfig || {}) as Record<string, unknown>;
+    return launchWebApp(url, getBrowser(typeof lc.browser === "string" ? lc.browser : null), lc.openAs === "tab" ? "tab" : "window");
   });
+
+  // Installed real browsers — feeds the app editor's Browser dropdown.
+  ipcMain.handle("browsers-detect", () => detectBrowsers());
 
   // Native-app icon as a data URL (Apps page, Layouts cards, command overlay),
   // session-cached per path and SERIALIZED through a promise chain.
@@ -264,7 +263,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // tab's "Open" button uses instead of the legacy in-window layout manager.
   ipcMain.handle("layouts-open", async (_e, name: string) => {
     showThinking();
-    try { return { ok: true, ...(await openLayoutByName(String(name), "screen")) }; }
+    try { return { ok: true, ...(await openLayoutByName(String(name))) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
     finally { hideThinking(); }
   });
@@ -397,8 +396,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     refuseIfInternal(id) ? false : appConnector.updateName(id, name));
   ipcMain.handle("apps-update-url", (_e, id: string, url: string) =>
     refuseIfInternal(id) ? false : appConnector.updateUrl(id, url));
-  ipcMain.handle("apps-update-force-web", (_e, id: string, forceWeb: boolean) =>
-    refuseIfInternal(id) ? false : appConnector.updateForceWeb(id, forceWeb));
   ipcMain.handle("apps-set-connected-slug", () => false);
 
   // ── yo app package (import / export) ──────────────────────

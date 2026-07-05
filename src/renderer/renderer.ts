@@ -33,10 +33,8 @@ type SavedPanelApp = {
   slug: string;
   system: boolean;
   url: string | null;
-  forceWeb: boolean;
   // Browser ↔ Native model (pivot-mcp) — see preload.ts SavedPanelApp.
   isBrowser?: boolean;
-  browserTarget?: "webview" | "native";
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
@@ -94,9 +92,7 @@ type PanelAppInput = {
   name?: string;
   slug?: string;
   url?: string | null;
-  forceWeb?: boolean;
   isBrowser?: boolean;
-  browserTarget?: "webview" | "native";
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
@@ -133,11 +129,12 @@ declare global {
       appsAdd: (id: string, name: string, url?: string) => Promise<unknown>;
       // Dashboard shell (5a): server-authoritative Apps tab CRUD — see
       // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
-      appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+      appWindowOpen: (spec: { slug: string; name: string; url: string }) => Promise<{ ok: boolean; error?: string }>;
+      browsersDetect: () => Promise<Array<{ id: string; name: string; chromium: boolean }>>;
       appFileIcon: (execPath: string) => Promise<string>;
       appLaunch: (spec: {
-        slug: string; name: string; url?: string | null; forceWeb?: boolean;
-        isBrowser?: boolean; browserTarget?: "webview" | "native";
+        slug: string; name: string; url?: string | null;
+        isBrowser?: boolean;
         execPath?: string | null; appArchetype?: string | null;
         launchConfig?: Record<string, unknown> | null;
       }) => Promise<{ ok: boolean; error?: string }>;
@@ -183,7 +180,6 @@ declare global {
       appsUpdateId: (oldId: string, newId: string) => Promise<boolean>;
       appsUpdateName: (id: string, name: string) => Promise<boolean>;
       appsUpdateUrl: (id: string, url: string) => Promise<boolean>;
-      appsUpdateForceWeb: (id: string, forceWeb: boolean) => Promise<boolean>;
       appsSetConnectedSlug: (id: string, slug: string | null) => Promise<boolean>;
       appsSetCommand: (id: string, key: string, mapping: { selector: string; action: string; description: string }) => Promise<boolean>;
       appsRemoveCommand: (id: string, key: string) => Promise<boolean>;

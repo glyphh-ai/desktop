@@ -120,7 +120,7 @@ export function registerCommandWindow(fallback?: (cmd: string) => Promise<string
     showThinking({ immediate: true });
     hideCommandWindow();
     try {
-      return { ok: true, ...(await openLayoutByName(String(name), "screen")) };
+      return { ok: true, ...(await openLayoutByName(String(name))) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     } finally {

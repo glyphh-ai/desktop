@@ -1,18 +1,18 @@
 /**
- * native-launch — open an app outside Glyphh's webview shell (5b app model).
+ * native-launch — start real OS apps (the native-OS app model).
  *
- * Two cases the in-window BrowserWindow path can't cover:
- *   - a BROWSER app whose target is "native" → open its URL in the user's real
- *     Chrome (not the persist:yo webview);
+ *   - a WEB app → its URL opens in the user's chosen real browser
+ *     (launchWebApp: window or tab, per the app's config);
  *   - a NATIVE app (isBrowser=false) → launch its executable, honoring the
  *     archetype's launch config (terminal cwd, editor folder, generic args).
  *
- * Launch-only for v1: we start the app/URL, we don't drive it. Injecting shell
- * init commands / Terminal profiles is deferred (needs AppleScript / a PTY).
+ * Launch-only: we start the app/URL; window adoption/positioning happens in
+ * app-resolver via the OS window manager.
  */
 
 import { spawn } from "child_process";
 import { shell } from "electron";
+import type { InstalledBrowser } from "./browser-detect.js";
 
 export type LaunchResult = { ok: boolean; error?: string };
 
@@ -81,24 +81,54 @@ function launchMacTerminal(lc: Record<string, unknown>, mode: string): void {
   }
 }
 
-/** Open a URL in the user's native Chrome, falling back to the OS default
- *  browser if Chrome isn't found. */
-export function launchInNativeChrome(url: string): LaunchResult {
+/**
+ * Open a web app in a real browser — the ONLY way web apps open (we stay
+ * native OS: the user's own browser, extensions, sessions; no webview shell).
+ *
+ *   browser — a detected browser (browser-detect), or null = system default.
+ *   openAs  — "window": a NEW browser window, trackable by the OS window
+ *             manager so layouts/panels can tile, focus, and re-find it;
+ *             "tab": a tab in the frontmost window (fire-and-forget — no
+ *             cross-browser way to address a specific tab afterwards).
+ */
+export function launchWebApp(url: string, browser: InstalledBrowser | null, openAs: "window" | "tab"): LaunchResult {
   if (!/^https?:\/\//.test(url)) return { ok: false, error: "App has no web URL" };
   try {
+    if (!browser) {
+      // "System default" — we can't know which app claims the URL, so this is
+      // always fire-and-forget (no window to track).
+      void shell.openExternal(url).catch(() => {});
+      return { ok: true };
+    }
     if (process.platform === "darwin") {
-      spawn("open", ["-a", "Google Chrome", url], { detached: true, stdio: "ignore" }).unref();
+      if (openAs === "tab") {
+        safeSpawn("open", ["-a", browser.appPath, url]);
+      } else if (browser.chromium) {
+        // -n signals a fresh activation so --args reach a NEW window.
+        safeSpawn("open", ["-na", browser.appPath, "--args", "--new-window", url]);
+      } else if (browser.id === "firefox") {
+        safeSpawn("open", ["-na", browser.appPath, "--args", "-new-window", url]);
+      } else if (browser.id === "safari") {
+        // Safari has no CLI window flag — AppleScript makes a real new window.
+        runOsascript([
+          'tell application "Safari"',
+          "activate",
+          `make new document with properties {URL:"${appleEscape(url)}"}`,
+          "end tell",
+        ]);
+      } else {
+        safeSpawn("open", ["-a", browser.appPath, url]);
+      }
     } else if (process.platform === "win32") {
-      // `start "" chrome <url>` — the empty title arg keeps start from eating the URL.
-      spawn("cmd", ["/c", "start", "", "chrome", url], { detached: true, stdio: "ignore" }).unref();
+      safeSpawn(browser.appPath, openAs === "window"
+        ? [browser.chromium ? "--new-window" : "-new-window", url]
+        : [url]);
     } else {
-      spawn("google-chrome", [url], { detached: true, stdio: "ignore" }).unref();
+      safeSpawn(browser.appPath, openAs === "window" ? ["--new-window", url] : [url]);
     }
     return { ok: true };
-  } catch {
-    // Chrome not resolvable on PATH — fall back to the default browser.
-    void shell.openExternal(url).catch(() => {});
-    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

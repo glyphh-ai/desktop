@@ -9,19 +9,14 @@
  *   - panels.switch/close {app}  → focus / close an app's window
  *   - layouts.open {name, mode}  → a server layout, either tiled inside one
  *     window ("window") or as real OS windows tiling the screen ("screen")
- *   - rpa.*  {app, ...}          → drive the app's webview by CSS selector
  *
  * Each handler returns plain JSON-serializable data; the relay-client wraps
  * thrown errors into `{ok:false,error}` frames automatically.
  */
 
-import type { WebContents } from "electron";
 import type { McpManager } from "./mcp-manager.js";
 import { registerRelayHandler } from "./relay-client.js";
-import {
-  openAppWindow, focusAppWindow, closeAppWindow, listAppWindows, getAppWebContents,
-} from "./app-window-manager.js";
-import { openAppByRef, openLayoutByName } from "./app-resolver.js";
+import { openAppByRef, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
 import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
 import { connectorStatus } from "./glyphh-app-services.js";
 import fs from "fs";
@@ -29,18 +24,6 @@ import os from "os";
 
 interface Deps {
   getMcpManager: () => McpManager | null;
-}
-
-/** Pull the live webview WebContents for an app, or throw. */
-function getLiveWc(app: string): WebContents {
-  const wc = getAppWebContents(app);
-  if (!wc) throw new Error(`app not open (or has no web view): ${app} — open it with panels.open first`);
-  return wc;
-}
-
-/** Stringify a value for executeJavaScript injection without breaking quotes. */
-function jsLiteral(value: string): string {
-  return JSON.stringify(value);
 }
 
 function appParam(params: unknown): string {
@@ -51,133 +34,40 @@ function appParam(params: unknown): string {
 export function installRelayHandlers(deps: Deps): void {
   const { getMcpManager } = deps;
 
-  // ── panels — one native window per app ─────────────────
+  // ── panels — one real OS window per app ─────────────────
 
-  registerRelayHandler("panels.list", () => listAppWindows());
+  registerRelayHandler("panels.list", () => listOpenAppWindows());
 
   registerRelayHandler("panels.open", async (params) => {
-    // openAppByRef mirrors the Apps page's full launch dispatch — webview
-    // apps, native apps, AND installed Glyphh apps (capability windows,
-    // no url), which resolveAppSpec's url-only path could never open.
+    // openAppByRef mirrors the Apps page's full launch dispatch — web apps
+    // (real browser windows), native apps, AND installed Glyphh apps
+    // (capability windows, no url).
     const r = await openAppByRef(appParam(params));
     return { app: r.slug, name: r.name, opened: true };
   });
 
-  registerRelayHandler("panels.switch", (params) => {
+  registerRelayHandler("panels.switch", async (params) => {
     const app = appParam(params);
     if (!app) throw new Error("panels.switch requires { app }");
-    if (!focusAppWindow(app)) throw new Error(`app window not open: ${app}`);
+    if (!(await focusOpenApp(app))) throw new Error(`app window not open: ${app}`);
     return { app, switched: true };
   });
 
-  registerRelayHandler("panels.close", (params) => {
+  registerRelayHandler("panels.close", async (params) => {
     const app = appParam(params);
     if (!app) throw new Error("panels.close requires { app }");
-    if (!closeAppWindow(app)) throw new Error(`app window not open: ${app}`);
+    // Tracked OS windows (browser/native) minimize — AX close isn't wired yet.
+    if (!(await closeOpenApp(app))) throw new Error(`app window not open: ${app}`);
     return { app, closed: true };
   });
 
   // ── layouts — server-defined grids of apps ─────────────
 
   registerRelayHandler("layouts.open", async (params) => {
-    const p = params as { name?: string; mode?: string } | null;
+    const p = params as { name?: string } | null;
     const name = String(p?.name || "").trim();
     if (!name) throw new Error("layouts.open requires { name }");
-    const mode = p?.mode === "screen" ? "screen" : "window";
-    return openLayoutByName(name, mode);
-  });
-
-  // ── rpa — drive an app's webview ────────────────────────
-
-  // Click an element matched by a CSS selector. Throws if the element doesn't
-  // exist or isn't visible (offsetParent === null catches `display:none`).
-  registerRelayHandler("rpa.click", async (params) => {
-    const p = params as { selector?: string } | null;
-    const app = appParam(params);
-    const selector = String(p?.selector || "");
-    if (!app || !selector) throw new Error("rpa.click requires { app, selector }");
-    const wc = getLiveWc(app);
-    const result = await wc.executeJavaScript(`
-      (function(){
-        var el = document.querySelector(${jsLiteral(selector)});
-        if (!el) return { ok: false, error: "no match for selector" };
-        if (el.offsetParent === null && getComputedStyle(el).position !== "fixed") {
-          return { ok: false, error: "element not visible" };
-        }
-        el.click();
-        return { ok: true };
-      })()
-    `, true);
-    if (!result || !result.ok) throw new Error(result?.error || "click failed");
-    return { clicked: true };
-  });
-
-  // Set the value of an input/textarea and dispatch input/change so frameworks
-  // pick up the new value. Falls back to focus + execCommand for editable divs.
-  registerRelayHandler("rpa.type", async (params) => {
-    const p = params as { selector?: string; text?: string } | null;
-    const app = appParam(params);
-    const selector = String(p?.selector || "");
-    const text = String(p?.text ?? "");
-    if (!app || !selector) throw new Error("rpa.type requires { app, selector, text }");
-    const wc = getLiveWc(app);
-    const result = await wc.executeJavaScript(`
-      (function(){
-        var el = document.querySelector(${jsLiteral(selector)});
-        if (!el) return { ok: false, error: "no match for selector" };
-        var t = ${jsLiteral(text)};
-        if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") {
-          var setter = Object.getOwnPropertyDescriptor(el.__proto__, "value")?.set;
-          if (setter) setter.call(el, t); else el.value = t;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          return { ok: true };
-        }
-        if (el.isContentEditable) {
-          el.focus();
-          document.execCommand("selectAll", false, undefined);
-          document.execCommand("insertText", false, t);
-          return { ok: true };
-        }
-        return { ok: false, error: "element is not an input or contenteditable" };
-      })()
-    `, true);
-    if (!result || !result.ok) throw new Error(result?.error || "type failed");
-    return { typed: true };
-  });
-
-  // Read visible text or a specific attribute from a matched element.
-  registerRelayHandler("rpa.read", async (params) => {
-    const p = params as { selector?: string; attr?: string } | null;
-    const app = appParam(params);
-    const selector = String(p?.selector || "");
-    const attr = p?.attr ? String(p.attr) : "";
-    if (!app || !selector) throw new Error("rpa.read requires { app, selector }");
-    const wc = getLiveWc(app);
-    const result = await wc.executeJavaScript(`
-      (function(){
-        var el = document.querySelector(${jsLiteral(selector)});
-        if (!el) return { ok: false, error: "no match for selector" };
-        var attrName = ${jsLiteral(attr)};
-        if (attrName) return { ok: true, value: el.getAttribute(attrName) };
-        if ("value" in el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
-          return { ok: true, value: (el).value };
-        }
-        return { ok: true, value: (el.innerText || el.textContent || "").trim() };
-      })()
-    `, true);
-    if (!result || !result.ok) throw new Error(result?.error || "read failed");
-    return { value: result.value };
-  });
-
-  // Capture a screenshot of the app's webview as a base64 PNG.
-  registerRelayHandler("rpa.screenshot", async (params) => {
-    const app = appParam(params);
-    if (!app) throw new Error("rpa.screenshot requires { app }");
-    const wc = getLiveWc(app);
-    const image = await wc.capturePage();
-    if (image.isEmpty()) throw new Error("capturePage returned empty image");
-    return { dataUrl: image.toDataURL() };
+    return openLayoutByName(name);
   });
 
   // ── Local MCP servers only — Pipedream-connected apps go via the ─

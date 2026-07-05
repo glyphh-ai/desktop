@@ -1,35 +1,28 @@
 /**
- * AppWindowManager — one real OS window per opened app (5b of the app-shell
- * rewrite). Each window is a native-framed BrowserWindow hosting
- * app-window.html: a thin chrome strip (app name + globe URL-row toggle,
- * ported from the retired canvas-chrome) over a full-bleed <webview> on the
- * shared persist:yo session. The terminal is the one special case — it loads
- * terminal.html + terminal-preload directly (its PTY IPC is global).
+ * AppWindowManager — the few windows Glyphh still hosts itself.
+ *
+ * Native-OS app model: web apps open in the user's REAL browser (see
+ * native-launch.launchWebApp + app-resolver's tracked opens) — Glyphh renders
+ * no web content of its own. What's left here:
+ *   - the TERMINAL window (terminal.html + PTY IPC), and
+ *   - open/focus/close/list over those Electron-hosted windows, which
+ *     app-resolver merges with tracked OS windows for the relay's panels_*.
  *
  * Geometry is Node-controlled (Electron screen module) — windows cascade on
- * the display under the cursor. Layouts open in two modes:
- *   - "window": ONE window hosting layout-window.html with the cells tiled
- *     inside it as webviews (CSS grid).
- *   - "screen": one window PER cell, tiled across the display's work area
- *     using the layout's grid fractions.
- *
- * Every <webview> reports its WebContents id keyed by app slug (via
- * app-window-preload) so the MCP relay's RPA tools can target apps by name.
+ * the display under the cursor, and layouts place them at exact cell rects.
  */
 
-import { BrowserWindow, ipcMain, nativeTheme, screen, shell, webContents } from "electron";
+import { BrowserWindow, nativeTheme, screen } from "electron";
 import path from "path";
 import { getPreference } from "./stores/preferences-db";
-import { PanelManager } from "./panel-manager";
 
 export interface AppWindowSpec {
   /** Stable identity — one window per slug; re-opening focuses it. */
   slug: string;
   name: string;
-  /** http(s) URL for webview apps, or "yo://terminal" for the terminal. */
+  /** "yo://terminal" for the terminal; web URLs identify browser built-ins
+   *  (resolved by app-resolver — never rendered here). */
   url: string;
-  /** Block native-app redirects (slack:// etc.) and desktop-app prompts. */
-  forceWeb?: boolean;
 }
 
 const CASCADE_STEP = 32;
@@ -37,88 +30,10 @@ const DEFAULT_W = 1100;
 const DEFAULT_H = 760;
 
 const windows = new Map<string, { win: BrowserWindow; spec: AppWindowSpec }>();
-/** slug → WebContents id of the app's <webview> (reported by the preload). */
-const webviewIds = new Map<string, number>();
-/** slug → original app URL, for force-web apps only (parent for native→web mapping). */
-const forceWebApps = new Map<string, string>();
-const forceWebConfigured = new WeakSet<Electron.WebContents>();
 let cascade = 0;
 
-ipcMain.on("app-window-webview-attached", (_e, slug: string, wcId: number) => {
-  if (typeof slug === "string" && typeof wcId === "number") {
-    webviewIds.set(slug, wcId);
-    if (forceWebApps.has(slug)) {
-      const wc = webContents.fromId(wcId);
-      if (wc && !wc.isDestroyed()) applyForceWeb(slug, wc);
-    }
-  }
-});
-
-/**
- * Force-web treatment for an app's webview — same mechanics the old
- * BrowserView panels had (PanelManager): block native-protocol redirects
- * (slack://, zoommtg://, …) and map them back to the web client, block
- * download/get-started page redirects, police popups the same way, and
- * inject the banner-hiding script on every load.
- */
-function applyForceWeb(slug: string, wc: Electron.WebContents): void {
-  if (forceWebConfigured.has(wc)) return;
-  forceWebConfigured.add(wc);
-  const parentUrl = forceWebApps.get(slug) || wc.getURL();
-
-  wc.on("will-navigate", (e, url) => {
-    if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("about:")) {
-      e.preventDefault();
-      const web = PanelManager.nativeToWebUrl(url, parentUrl);
-      if (web) void wc.loadURL(web);
-      return;
-    }
-    try {
-      const u = new URL(url);
-      if (/\/(get-started|download|desktop|install|apps)\b/i.test(u.pathname)) {
-        console.log(`[app-window:${slug}:forceWeb] blocked redirect to:`, url);
-        e.preventDefault();
-      }
-    } catch { /* malformed URL */ }
-  });
-
-  // Replaces the generic popup handler set at attach time — force-web apps
-  // map native-protocol popups back into the webview instead of the OS.
-  wc.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("about:")) {
-      const web = PanelManager.nativeToWebUrl(url, parentUrl);
-      if (web) void wc.loadURL(web);
-      return { action: "deny" };
-    }
-    return {
-      action: "allow",
-      overrideBrowserWindowOptions: {
-        webPreferences: { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" },
-      },
-    };
-  });
-
-  // Popups that open https:// then bounce to slack:// — block the bounce,
-  // send the parent to the web client, and close the popup.
-  wc.on("did-create-window", (child) => {
-    child.webContents.on("will-navigate", (e, navUrl) => {
-      if (!navUrl.startsWith("http://") && !navUrl.startsWith("https://") && !navUrl.startsWith("about:")) {
-        console.log(`[app-window:${slug}:forceWeb] child blocked:`, navUrl.slice(0, 120));
-        e.preventDefault();
-        const web = PanelManager.nativeToWebUrl(navUrl, parentUrl);
-        if (web) void wc.loadURL(web);
-        setTimeout(() => { if (!child.isDestroyed()) child.close(); }, 300);
-      }
-    });
-  });
-
-  const inject = () => { void wc.executeJavaScript(PanelManager.FORCE_WEB_JS).catch(() => {}); };
-  wc.on("did-finish-load", inject);
-  if (!wc.isLoading()) inject();
-}
-
-// Same map main.ts uses for the in-dashboard browser panel — the standalone
-// browser window opens at the Appearance-tab homepage too.
+// Same map main.ts uses for the in-dashboard browser panel — the built-in
+// "browser" app opens the user's real browser at this homepage.
 const BROWSER_HOMES: Record<string, string> = {
   google: "https://www.google.com",
   claude: "https://claude.ai",
@@ -136,28 +51,8 @@ function rendererFile(name: string): string {
   return `file://${path.join(__dirname, "..", "renderer", name)}`;
 }
 
-function allowWebviewPopups(win: BrowserWindow): void {
-  // Webview popups (OAuth flows, target=_blank) — allow http(s) as real
-  // windows on the same session, everything else goes to the OS browser.
-  (win.webContents as any).on("did-attach-webview", (_e: unknown, childWc: Electron.WebContents) => {
-    childWc.setWindowOpenHandler(({ url }) => {
-      if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        void shell.openExternal(url).catch(() => {});
-        return { action: "deny" };
-      }
-      return {
-        action: "allow",
-        overrideBrowserWindowOptions: {
-          webPreferences: { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" },
-        },
-      };
-    });
-  });
-}
-
 /** Themed window background — matches styles.css --bg so a freshly created
- *  window paints as a themed tile instead of flashing white while its shell
- *  page (and the webview content behind it) loads. */
+ *  window paints as a themed tile instead of flashing white while it loads. */
 function themedBackground(): string {
   const t = getPreference<string>("theme", "dark");
   if (t === "light") return "#f5f5f5";
@@ -167,7 +62,12 @@ function themedBackground(): string {
   return "#1a1a1c"; // dark
 }
 
-function makeWindow(slug: string, spec: AppWindowSpec, fileUrl: string, opts: { preload?: string; webviewTag?: boolean }, bounds?: Electron.Rectangle): BrowserWindow {
+function createAppWindow(spec: AppWindowSpec, bounds?: Electron.Rectangle): BrowserWindow {
+  if (spec.url !== "yo://terminal") {
+    // Web content never renders in a Glyphh window — app-resolver routes web
+    // apps to the user's real browser before this is reached.
+    throw new Error(`not an Electron-hosted app: ${spec.slug} (${spec.url})`);
+  }
   const win = new BrowserWindow({
     ...(bounds ?? {}),
     width: bounds?.width ?? DEFAULT_W,
@@ -178,34 +78,16 @@ function makeWindow(slug: string, spec: AppWindowSpec, fileUrl: string, opts: { 
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      ...(opts.preload ? { preload: opts.preload } : {}),
-      ...(opts.webviewTag ? { webviewTag: true } : {}),
+      preload: path.join(__dirname, "terminal-preload.js"),
     },
   });
-  if (opts.webviewTag) allowWebviewPopups(win);
-  void win.loadURL(fileUrl);
+  void win.loadURL(rendererFile("terminal.html"));
   win.once("ready-to-show", () => win.show());
   win.on("closed", () => {
-    if (windows.get(slug)?.win === win) windows.delete(slug);
-    webviewIds.delete(slug);
+    if (windows.get(spec.slug)?.win === win) windows.delete(spec.slug);
   });
-  windows.set(slug, { win, spec });
+  windows.set(spec.slug, { win, spec });
   return win;
-}
-
-function createAppWindow(spec: AppWindowSpec, bounds?: Electron.Rectangle): BrowserWindow {
-  if (spec.url === "yo://terminal") {
-    // Terminal renders directly (xterm + PTY IPC), no webview shell.
-    return makeWindow(spec.slug, spec, rendererFile("terminal.html"), {
-      preload: path.join(__dirname, "terminal-preload.js"),
-    }, bounds);
-  }
-  if (spec.forceWeb) forceWebApps.set(spec.slug, spec.url);
-  const q = new URLSearchParams({ slug: spec.slug, name: spec.name, url: spec.url });
-  return makeWindow(spec.slug, spec, `${rendererFile("app-window.html")}?${q.toString()}`, {
-    preload: path.join(__dirname, "app-window-preload.js"),
-    webviewTag: true,
-  }, bounds);
 }
 
 function cascadeBounds(): Electron.Rectangle {
@@ -232,9 +114,8 @@ export function openAppWindow(spec: AppWindowSpec): void {
   createAppWindow(spec, cascadeBounds());
 }
 
-/** Slide a Glyphh app window in from the left, ending full-screen (work area).
- *  Used by `.dip <app>` / the command overlay so a single app opens big with a
- *  quick left→right motion. Re-opening an app just brings it full-screen. */
+/** Slide a Glyphh-hosted window in from the left, ending full-screen (work
+ *  area) — `.dip terminal` / the command overlay's big-open motion. */
 export function openAppWindowSlide(spec: AppWindowSpec): void {
   const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const target: Electron.Rectangle = { x: wa.x, y: wa.y, width: wa.width, height: wa.height };
@@ -263,8 +144,8 @@ function animateSlideX(win: BrowserWindow, fromX: number, toX: number, y: number
   }, 16);
 }
 
-/** Open (or move) a Glyphh app window at exact screen bounds — used to tile a
- *  web/webview app into a layout cell. */
+/** Open (or move) a Glyphh-hosted window at exact screen bounds — used to
+ *  tile the terminal into a layout cell. */
 export function openAppWindowAt(spec: AppWindowSpec, bounds: Electron.Rectangle): void {
   const existing = windows.get(spec.slug);
   if (existing && !existing.win.isDestroyed()) {
@@ -303,25 +184,15 @@ export function listAppWindows(): AppWindowInfo[] {
   const out: AppWindowInfo[] = [];
   for (const [slug, { win, spec }] of windows) {
     if (win.isDestroyed()) continue;
-    const wc = getAppWebContents(slug);
     out.push({
       app: slug,
       name: spec.name,
-      url: wc ? wc.getURL() : spec.url,
-      title: wc ? wc.getTitle() : spec.name,
+      url: spec.url,
+      title: win.getTitle() || spec.name,
       focused: win.isFocused(),
     });
   }
   return out;
-}
-
-/** Live WebContents of the app's <webview> — the RPA target. Null when the
- *  app isn't open (or is the terminal, which has no web page to drive). */
-export function getAppWebContents(slug: string): Electron.WebContents | null {
-  const id = webviewIds.get(slug);
-  if (id === undefined) return null;
-  const wc = webContents.fromId(id);
-  return wc && !wc.isDestroyed() ? wc : null;
 }
 
 // ── Layouts ────────────────────────────────────────────────
@@ -334,78 +205,9 @@ export interface LayoutSpec {
   cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }>;
 }
 
-export type ResolveApp = (panelId: string) => AppWindowSpec | null;
-
-/**
- * "screen" mode: one window per cell, tiled across the display under the
- * cursor using the layout's grid fractions — OS-level tiling, Node-controlled.
- */
-export function openLayoutOnScreen(layout: LayoutSpec, resolveApp: ResolveApp): string[] {
-  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const colW = area.width / layout.cols;
-  const rowH = area.height / layout.rows;
-  const opened: string[] = [];
-
-  for (const cell of layout.cells) {
-    const spec = resolveApp(cell.panelId);
-    if (!spec) continue;
-    const bounds: Electron.Rectangle = {
-      x: Math.round(area.x + cell.col * colW),
-      y: Math.round(area.y + cell.row * rowH),
-      width: Math.round(cell.colSpan * colW),
-      height: Math.round(cell.rowSpan * rowH),
-    };
-    const existing = windows.get(spec.slug);
-    if (existing && !existing.win.isDestroyed()) {
-      existing.win.setBounds(bounds);
-      if (existing.win.isMinimized()) existing.win.restore();
-      existing.win.focus();
-    } else {
-      createAppWindow(spec, bounds);
-    }
-    opened.push(spec.slug);
-  }
-  return opened;
-}
-
-/**
- * "window" mode: ONE regular window hosting the whole layout, cells tiled
- * inside it as webviews (layout-window.html renders the CSS grid).
- */
-export function openLayoutInWindow(layout: LayoutSpec, resolveApp: ResolveApp): string[] {
-  const cells = layout.cells
-    .map((cell) => {
-      const spec = resolveApp(cell.panelId);
-      if (!spec || !spec.url.startsWith("http")) return null;
-      if (spec.forceWeb) forceWebApps.set(spec.slug, spec.url);
-      return { slug: spec.slug, name: spec.name, url: spec.url, col: cell.col, row: cell.row, colSpan: cell.colSpan, rowSpan: cell.rowSpan };
-    })
-    .filter((c): c is NonNullable<typeof c> => c !== null);
-  if (cells.length === 0) return [];
-
-  const slug = `layout:${layout.name}`;
-  const existing = windows.get(slug);
-  if (existing && !existing.win.isDestroyed()) existing.win.close();
-
-  const grid = { name: layout.name, cols: layout.cols, rows: layout.rows, cells };
-  const q = new URLSearchParams({ grid: JSON.stringify(grid) });
-  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  makeWindow(slug, { slug, name: layout.name, url: "" }, `${rendererFile("layout-window.html")}?${q.toString()}`, {
-    preload: path.join(__dirname, "app-window-preload.js"),
-    webviewTag: true,
-  }, {
-    x: area.x + 40,
-    y: area.y + 30,
-    width: Math.min(Math.round(area.width * 0.9), area.width - 80),
-    height: Math.min(Math.round(area.height * 0.9), area.height - 60),
-  });
-  return cells.map((c) => c.slug);
-}
-
 export function closeAllAppWindows(): void {
   for (const { win } of windows.values()) {
     if (!win.isDestroyed()) win.close();
   }
   windows.clear();
-  webviewIds.clear();
 }

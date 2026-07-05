@@ -374,12 +374,17 @@ export async function snapshotWindowIds(hint: string): Promise<Set<string>> {
 export async function waitForAppWindow(
   hint: string,
   excludeIds: Set<string>,
-  opts?: { timeoutMs?: number; graceMs?: number; pollMs?: number; forbidden?: Set<string> },
+  opts?: { timeoutMs?: number; graceMs?: number; pollMs?: number; forbidden?: Set<string>; noFallback?: boolean },
 ): Promise<OsWindow | null> {
   const timeoutMs = opts?.timeoutMs ?? 10_000;
   const graceMs = opts?.graceMs ?? 2_000;
   const pollMs = opts?.pollMs ?? 150;
   const forbidden = opts?.forbidden ?? new Set<string>();
+  // noFallback: the launch ALWAYS creates a new window (browser --new-window),
+  // so never adopt an existing one — the fallback would latch the user's own
+  // browser window (with whatever tabs they had) and mis-track it until
+  // restart. Either a genuinely new window appears, or we return null.
+  const noFallback = !!opts?.noFallback;
   const t0 = Date.now();
   let fallback: OsWindow | null = null;
   while (Date.now() - t0 < timeoutMs) {
@@ -387,10 +392,12 @@ export async function waitForAppWindow(
       const matches = (await listWindows()).filter((w) => windowMatches(w, hint));
       const fresh = matches.find((w) => !excludeIds.has(w.id));
       if (fresh) return fresh;
-      // Reuse fallback: frontmost matching window that isn't owned by another
-      // config. Never latch a forbidden window (that's the cross-wiring bug).
-      if (!fallback) fallback = matches.find((w) => !forbidden.has(w.id)) ?? null;
-      if (fallback && Date.now() - t0 >= graceMs) return fallback;
+      if (!noFallback) {
+        // Reuse fallback: frontmost matching window that isn't owned by another
+        // config. Never latch a forbidden window (that's the cross-wiring bug).
+        if (!fallback) fallback = matches.find((w) => !forbidden.has(w.id)) ?? null;
+        if (fallback && Date.now() - t0 >= graceMs) return fallback;
+      }
     } catch { /* retry */ }
     await sleep(pollMs);
   }

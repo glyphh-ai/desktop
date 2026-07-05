@@ -15,12 +15,10 @@ export interface SavedPanelApp {
   slug: string;
   system: boolean;               // seeded system app (Glyphh) — hidden from the Apps list, undeletable
   url: string | null;
-  forceWeb: boolean;
   // Browser ↔ Native model (pivot-mcp). isBrowser=true (default) → web app
-  // with a url + browserTarget; false → native desktop app with execPath +
+  // with a url; false → native desktop app with execPath +
   // an archetype-specific launchConfig.
   isBrowser?: boolean;
-  browserTarget?: "webview" | "native";
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
@@ -68,9 +66,7 @@ export interface PanelAppInput {
   name?: string;
   slug?: string;
   url?: string | null;
-  forceWeb?: boolean;
   isBrowser?: boolean;
-  browserTarget?: "webview" | "native";
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
@@ -265,14 +261,17 @@ contextBridge.exposeInMainWorld("yo", {
   // 5b Panel Manager: open a server app in its own native OS window.
   appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) =>
     ipcRenderer.invoke("app-window-open", spec) as Promise<{ ok: boolean; error?: string }>,
-  // Launch an app the way its config dictates (native exec / native Chrome /
-  // webview) — see the app-launch handler in apps-ipc.ts.
+  // Launch an app the way its config dictates (native exec / real browser) —
+  // see the app-launch handler in apps-ipc.ts.
   appLaunch: (spec: {
-    slug: string; name: string; url?: string | null; forceWeb?: boolean;
-    isBrowser?: boolean; browserTarget?: "webview" | "native";
+    slug: string; name: string; url?: string | null;
+    isBrowser?: boolean;
     execPath?: string | null; appArchetype?: string | null;
     launchConfig?: Record<string, unknown> | null;
   }) => ipcRenderer.invoke("app-launch", spec) as Promise<{ ok: boolean; error?: string }>,
+  // Installed real browsers — the app editor's Browser dropdown.
+  browsersDetect: () =>
+    ipcRenderer.invoke("browsers-detect") as Promise<Array<{ id: string; name: string; chromium: boolean }>>,
   // OS icon for a native app's executable / .app bundle (data URL, "" if none).
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
@@ -331,7 +330,6 @@ contextBridge.exposeInMainWorld("yo", {
   appsUpdateId: (oldId: string, newId: string) => ipcRenderer.invoke("apps-update-id", oldId, newId) as Promise<boolean>,
   appsUpdateName: (id: string, name: string) => ipcRenderer.invoke("apps-update-name", id, name) as Promise<boolean>,
   appsUpdateUrl: (id: string, url: string) => ipcRenderer.invoke("apps-update-url", id, url) as Promise<boolean>,
-  appsUpdateForceWeb: (id: string, forceWeb: boolean) => ipcRenderer.invoke("apps-update-force-web", id, forceWeb) as Promise<boolean>,
   appsSetConnectedSlug: (id: string, slug: string | null) => ipcRenderer.invoke("apps-set-connected-slug", id, slug) as Promise<boolean>,
   appsSetCommand: (id: string, key: string, mapping: { selector: string; action: string; description: string }) =>
     ipcRenderer.invoke("apps-set-command", id, key, mapping) as Promise<boolean>,

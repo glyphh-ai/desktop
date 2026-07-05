@@ -108,7 +108,7 @@ function buildMcpServer(): McpServer {
 
   mcp.tool(
     "relay_ping",
-    "Smoke-test the local server: pings Glyphh and returns whatever it echoes. Use this to confirm the connection is alive before relying on panel / RPA tools.",
+    "Smoke-test the local server: pings Glyphh and returns whatever it echoes. Use this to confirm the connection is alive before relying on panel tools.",
     { message: z.string().optional().describe("Optional message to echo back") },
     async ({ message }) => via("relay.ping", { message: message ?? "ping" }),
   );
@@ -116,7 +116,7 @@ function buildMcpServer(): McpServer {
   // ── Panel management ─────────────────────────────────
   mcp.tool(
     "panels_list",
-    "List the user's open app windows. Returns app (slug — the key every other panel/RPA tool takes), name, current url, page title, and which window is focused.",
+    "List the user's open app windows. Returns app (slug — the key every other panel tool takes), name, current url, page title, and which window is focused.",
     {},
     async () => via("panels.list", {}),
   );
@@ -146,43 +146,6 @@ function buildMcpServer(): McpServer {
       mode: z.enum(["window", "screen"]).optional().describe("'window' = tiled inside one window (default); 'screen' = OS-level tiling, one window per app"),
     },
     async ({ name, mode }) => via("layouts.open", { name, mode }),
-  );
-
-  // ── RPA — drive a panel's webContents ───────────────
-  mcp.tool(
-    "rpa_click",
-    "Click an element in an open app matched by CSS selector. Throws if no match or the element is hidden.",
-    {
-      app: z.string().describe("Target app slug (see panels_list)"),
-      selector: z.string().describe("CSS selector for the element to click"),
-    },
-    async ({ app, selector }) => via("rpa.click", { app, selector }),
-  );
-  mcp.tool(
-    "rpa_type",
-    "Type text into an input / textarea / contenteditable in an open app. Sets the value and dispatches input + change so frameworks pick it up.",
-    {
-      app: z.string().describe("Target app slug (see panels_list)"),
-      selector: z.string().describe("CSS selector for the input"),
-      text: z.string().describe("Text to type"),
-    },
-    async ({ app, selector, text }) => via("rpa.type", { app, selector, text }),
-  );
-  mcp.tool(
-    "rpa_read",
-    "Read text content (or a specific attribute) from an element in an open app.",
-    {
-      app: z.string().describe("Target app slug (see panels_list)"),
-      selector: z.string().describe("CSS selector for the element"),
-      attr: z.string().optional().describe("Optional attribute name; omit for innerText / value"),
-    },
-    async ({ app, selector, attr }) => via("rpa.read", { app, selector, attr }),
-  );
-  mcp.tool(
-    "rpa_screenshot",
-    "Capture a screenshot of an open app as a base64 PNG data URL. Use when text extraction isn't enough.",
-    { app: z.string().describe("Target app slug (see panels_list)") },
-    async ({ app }) => via("rpa.screenshot", { app }),
   );
 
   // ── Installed Glyphh apps — discover / invoke / deploy ─

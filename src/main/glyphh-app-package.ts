@@ -223,7 +223,6 @@ export function importApp(appConnector: AppConnector, srcPath: string): ImportRe
       appConnector.updateCommands(appId, manifest.commands);
     }
     if (manifest.mcp) appConnector.setMcp(appId, manifest.mcp);
-    if (manifest.forceWeb) appConnector.updateForceWeb(appId, true);
     void app;
     return { ok: true, appId };
   } catch (err) {

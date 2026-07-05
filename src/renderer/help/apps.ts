@@ -21,7 +21,6 @@ const mcpAddForm = document.getElementById("mcp-add-form")!;
 const appDetailId = document.getElementById("app-detail-id") as HTMLInputElement;
 const appDetailName = document.getElementById("app-detail-name") as HTMLInputElement;
 const appDetailUrl = document.getElementById("app-detail-url") as HTMLInputElement;
-const appForceWeb = document.getElementById("app-detail-force-web") as HTMLInputElement;
 const appSearchInput = document.getElementById("app-search") as HTMLInputElement;
 const appConnectStatus = document.getElementById("app-connect-status")!;
 const appCommandsList = document.getElementById("app-commands-list")!;
@@ -40,7 +39,7 @@ let currentAppId = "";
 let activeAppTab: "dashboard" | "config" = "dashboard";
 
 // ── Browser ↔ Native helpers (pivot-mcp) ─────────────────
-// Apps are either web apps (isBrowser, url + browserTarget) or native desktop
+// Apps are either web apps (isBrowser, url + launchConfig browser/openAs) or native desktop
 // apps (execPath + an archetype-specific launchConfig). These build/read the
 // launchConfig from the flat DOM fields, shared by the add + detail forms.
 type Archetype = "terminal" | "editor" | "generic";
@@ -52,9 +51,7 @@ type PanelAppInput = {
   name?: string;
   slug?: string;
   url?: string | null;
-  forceWeb?: boolean;
   isBrowser?: boolean;
-  browserTarget?: "webview" | "native";
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
@@ -118,10 +115,8 @@ interface PanelApp {
   name: string;
   system?: boolean;
   url?: string | null;
-  forceWeb?: boolean;
   // Browser ↔ Native model (pivot-mcp).
   isBrowser?: boolean;
-  browserTarget?: "webview" | "native";
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
@@ -131,16 +126,16 @@ interface PanelApp {
 }
 
 function toPanelApp(a: {
-  id: string; slug: string; name: string; system?: boolean; url: string | null; forceWeb: boolean;
-  isBrowser?: boolean; browserTarget?: "webview" | "native"; execPath?: string | null;
+  id: string; slug: string; name: string; system?: boolean; url: string | null;
+  isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
 }): PanelApp {
   return {
-    id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url, forceWeb: a.forceWeb,
-    isBrowser: a.isBrowser, browserTarget: a.browserTarget, execPath: a.execPath,
+    id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url,
+    isBrowser: a.isBrowser, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
@@ -150,12 +145,12 @@ let panelApps: PanelApp[] = [];
 
 /** Open an app the way its config dictates (Browser↔Native model): native apps
  *  launch their executable, browser apps open in native Chrome or Glyphh's
- *  webview window per browserTarget. Returns the launch result so callers can
+ *  the configured real browser (window or tab). Returns the launch result so callers can
  *  surface an error. */
 async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: string }> {
   return window.yo.appLaunch({
-    slug: app.slug, name: app.name, url: app.url, forceWeb: app.forceWeb,
-    isBrowser: app.isBrowser, browserTarget: app.browserTarget,
+    slug: app.slug, name: app.name, url: app.url,
+    isBrowser: app.isBrowser,
     execPath: app.execPath, appArchetype: app.appArchetype, launchConfig: app.launchConfig,
   });
 }
@@ -806,13 +801,16 @@ async function openPanelAppDetail(app: PanelApp) {
   appDetailId.value = app.slug;
   appDetailName.value = app.name;
   appDetailUrl.value = app.url || "";
-  appForceWeb.checked = !!app.forceWeb;
 
   // Browser ↔ Native fields (pivot-mcp). Legacy apps have isBrowser undefined
   // but always carry a url, so they default to browser.
   const isBrowser = app.isBrowser !== undefined ? app.isBrowser : true;
   (document.getElementById("app-detail-type") as HTMLSelectElement).value = isBrowser ? "browser" : "native";
-  (document.getElementById("app-detail-browser-target") as HTMLSelectElement).value = app.browserTarget === "native" ? "native" : "webview";
+  {
+    const lc = (app.launchConfig || {}) as Record<string, unknown>;
+    (document.getElementById("app-detail-browser") as HTMLSelectElement).value = typeof lc.browser === "string" && lc.browser ? String(lc.browser) : "default";
+    (document.getElementById("app-detail-open-as") as HTMLSelectElement).value = lc.openAs === "tab" ? "tab" : "window";
+  }
   (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
   const detailArchetype = (app.appArchetype as Archetype) || "terminal";
   (document.getElementById("app-detail-archetype") as HTMLSelectElement).value = detailArchetype;
@@ -1270,6 +1268,20 @@ function initProxiesPage(): void {
 
 function initApps() {
   initProxiesPage();
+
+  // Browser dropdowns (add form + editor) — the real browsers on this machine.
+  void window.yo.browsersDetect?.().then((browsers) => {
+    for (const id of ["app-add-browser", "app-detail-browser"]) {
+      const sel = document.getElementById(id) as HTMLSelectElement | null;
+      if (!sel) continue;
+      for (const b of browsers) {
+        const opt = document.createElement("option");
+        opt.value = b.id;
+        opt.textContent = b.name;
+        sel.appendChild(opt);
+      }
+    }
+  }).catch(() => { /* dropdowns keep "System default" */ });
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
   document.querySelectorAll<HTMLElement>(".tab-upgrade-btn").forEach((btn) => {
@@ -1370,7 +1382,8 @@ function initApps() {
     addUrlInput.value = "";
     // Reset Browser ↔ Native fields to defaults (browser / webview / terminal).
     addTypeSelect.value = "browser";
-    (document.getElementById("app-add-browser-target") as HTMLSelectElement).value = "webview";
+    (document.getElementById("app-add-browser") as HTMLSelectElement).value = "default";
+    (document.getElementById("app-add-open-as") as HTMLSelectElement).value = "window";
     addExecPath.value = "";
     addArchetypeSelect.value = "terminal";
     writeLaunchConfig("app-add", "terminal", null);
@@ -1489,7 +1502,11 @@ function initApps() {
     }
     const archetype = addArchetypeSelect.value as Archetype;
     const created = await window.yo.panelAppsCreate(isBrowser
-      ? { name, slug: id, isBrowser: true, url, browserTarget: (document.getElementById("app-add-browser-target") as HTMLSelectElement).value as "webview" | "native", execPath: null }
+      ? { name, slug: id, isBrowser: true, url, execPath: null,
+          launchConfig: {
+            browser: (document.getElementById("app-add-browser") as HTMLSelectElement).value,
+            openAs: (document.getElementById("app-add-open-as") as HTMLSelectElement).value,
+          } }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) });
     if (!created.ok || !created.app) {
       appFormError.textContent = created.error || "Failed to create app.";
@@ -1566,7 +1583,6 @@ function initApps() {
     const newSlug = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
     const isBrowser = detailTypeSelect.value === "browser";
     const patch: PanelAppInput = {
-      forceWeb: appForceWeb.checked,
       isBrowser,
     };
     if (newSlug) patch.slug = newSlug;
@@ -1575,7 +1591,10 @@ function initApps() {
     if (isBrowser) {
       const url = appDetailUrl.value.trim();
       if (url) patch.url = url;
-      patch.browserTarget = (document.getElementById("app-detail-browser-target") as HTMLSelectElement).value as "webview" | "native";
+      patch.launchConfig = {
+        browser: (document.getElementById("app-detail-browser") as HTMLSelectElement).value,
+        openAs: (document.getElementById("app-detail-open-as") as HTMLSelectElement).value,
+      };
       patch.execPath = null;
     } else {
       patch.url = null;

@@ -420,18 +420,6 @@ export class AppConnector {
     return true;
   }
 
-  updateForceWeb(id: string, forceWeb: boolean): boolean {
-    const app = this.apps.get(id);
-    if (!app) return false;
-    if (forceWeb) {
-      app.forceWeb = true;
-    } else {
-      delete app.forceWeb;
-    }
-    this.save(app);
-    return true;
-  }
-
   /** True when the app ships with .Yo (INTERNAL_APPS). Hides it from the
    *  Apps registry (no CRUD), but it still mounts. */
   isInternal(id: string): boolean {

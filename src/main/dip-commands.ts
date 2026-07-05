@@ -121,7 +121,7 @@ export async function runDip(input: string, ctx?: DipContext): Promise<DipResult
 
     // Single token: a saved layout first, then an app.
     try {
-      const r = await openLayoutByName(text, "screen");
+      const r = await openLayoutByName(text);
       return { ok: true, message: `opened layout "${r.layout}"` };
     } catch {
       const app = await openAppByRef(text);

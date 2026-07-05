@@ -13,12 +13,14 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { cachedServerGet } from "./server-cache.js";
 import {
-  openAppWindowAt, openAppWindowSlide, openLayoutInWindow,
+  openAppWindowAt, openAppWindowSlide, focusAppWindow, closeAppWindow, listAppWindows,
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
 } from "./app-window-manager.js";
-import { launchNativeApp, launchInNativeChrome } from "./native-launch.js";
+import { launchNativeApp, launchWebApp, type LaunchResult } from "./native-launch.js";
+import { getBrowser, detectBrowsers, type InstalledBrowser } from "./browser-detect.js";
+import { getPreference } from "./stores/preferences-db.js";
 import {
-  positionAppWindow, focusWindow, setWindowBounds, listWindows,
+  positionAppWindow, focusWindow, setWindowBounds, listWindows, minimizeWindow,
   snapshotWindowIds, waitForAppWindow,
   type Rect as OsRect,
 } from "./os-window-manager.js";
@@ -44,7 +46,7 @@ function wlog(...parts: unknown[]): void {
 }
 /** Snapshot of the tracked map (app-id → window-id) for logging. */
 function trackedSnapshot(): Record<string, string> {
-  return Object.fromEntries([...nativeAppWindows.entries()]);
+  return Object.fromEntries([...nativeAppWindows.entries()].map(([id, t]) => [id, t.winId]));
 }
 
 /** The seeded "Glyphh" system app (archetype 'glyphh-self') — the palette's
@@ -69,11 +71,9 @@ export interface ServerApp {
   slug: string;
   name: string;
   url: string | null;
-  forceWeb?: boolean;
   // Browser ↔ Native model (mirrors SavedPanelApp): native apps carry an
   // execPath + archetype/launchConfig instead of a url.
   isBrowser?: boolean;
-  browserTarget?: "webview" | "native";
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
@@ -87,7 +87,10 @@ export interface ServerApp {
 // wrong one when toggling. Instead, remember which OS window each saved app
 // row opened (pre-launch window-set diff → the window the launch created)
 // and drive THAT window on subsequent opens.
-const nativeAppWindows = new Map<string, string>(); // saved-app row id → OS window id
+// saved-app row id → the OS window it owns (+ identity for panels_list).
+// Covers BOTH native executables and web apps opened as browser windows —
+// a browser is just another binary whose new window we adopt and drive.
+const nativeAppWindows = new Map<string, { winId: string; slug: string; name: string }>();
 
 // Launch+adopt chains, one per binary. Two same-binary launches in quick
 // succession (a layout with both Terminal configs) must not race: the second
@@ -107,11 +110,20 @@ const nativeOpenChains = new Map<string, Promise<void>>();
  * continues detached so callers (and the thinking scrim) aren't held through
  * a cold app start.
  */
-async function openNativeTracked(app: ServerApp, rect: OsRect, retileOnFocus: boolean): Promise<void> {
-  const hint = (app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name;
+async function openNativeTracked(
+  app: ServerApp,
+  rect: OsRect,
+  retileOnFocus: boolean,
+  // Custom launcher (web apps): hint = the browser's process name, run = the
+  // browser launch, alwaysNewWindow = the launch always creates a window, so
+  // adoption must never fall back to an existing one. Default = the
+  // native-executable launch.
+  launch?: { hint: string; run: () => LaunchResult; alwaysNewWindow?: boolean },
+): Promise<void> {
+  const hint = launch?.hint ?? ((app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name);
   wlog("openNativeTracked ENTER", { id: app.id, slug: app.slug, name: app.name, hint, exec: app.execPath, archetype: app.appArchetype, launchConfig: app.launchConfig, retileOnFocus, rect, map: trackedSnapshot() });
 
-  const tracked = nativeAppWindows.get(app.id);
+  const tracked = nativeAppWindows.get(app.id)?.winId;
   if (tracked) {
     // Minimized windows are excluded from the on-screen list — detect that so
     // we can re-apply bounds after the un-minimize animation (a single bounds
@@ -123,19 +135,32 @@ async function openNativeTracked(app: ServerApp, rect: OsRect, retileOnFocus: bo
     wlog("  tracked hit", { tracked, wasMinimized, trackedWin: trackedWin ? { proc: trackedWin.proc, title: trackedWin.title } : null });
     const focused = await focusWindow(tracked);
     wlog("  focusWindow(tracked)", { tracked, focused });
-    if (focused) {
+    let trackedAlive = focused;
+    if (focused && wasMinimized) {
+      // Absent from the visible list means minimized OR closed — and on macOS
+      // focusWindow can "succeed" against a dead id (the AX call doesn't
+      // throw). A real unminimize makes the window visible again; if it never
+      // shows up, the user closed it — drop tracking and relaunch.
       if (retileOnFocus) {
         await setWindowBounds(tracked, rect);
-        if (wasMinimized) {
-          // Re-apply as the unminimize settles so it lands full work-area.
-          await sleep(180); await setWindowBounds(tracked, rect);
-          await sleep(280); await setWindowBounds(tracked, rect);
-        }
+        await sleep(180); await setWindowBounds(tracked, rect);
+        await sleep(280); await setWindowBounds(tracked, rect);
+      } else {
+        await sleep(460);
       }
+      const nowVisible = (await listWindows().catch(() => [])).some((w) => w.id === tracked);
+      if (!nowVisible) {
+        wlog("  tracked window never became visible — treating as CLOSED", { id: app.id, tracked });
+        trackedAlive = false;
+      }
+    } else if (focused && retileOnFocus) {
+      await setWindowBounds(tracked, rect);
+    }
+    if (trackedAlive) {
       wlog("  DONE via tracked-focus", { id: app.id, tracked });
       return;
     }
-    wlog("  focus FAILED — dropping tracked + relaunching", { id: app.id, tracked });
+    wlog("  focus failed or window gone — dropping tracked + relaunching", { id: app.id, tracked });
     nativeAppWindows.delete(app.id); // window was closed — relaunch below
   } else {
     wlog("  no tracked window for this config — will launch/adopt");
@@ -156,18 +181,18 @@ async function openNativeTracked(app: ServerApp, rect: OsRect, retileOnFocus: bo
     // minimized, since a minimized window is absent from the CGWindowList
     // snapshot and would otherwise look "new" if the launch surfaces it.
     const ownedByOthers = new Set(
-      [...nativeAppWindows.entries()].filter(([id]) => id !== app.id).map(([, wid]) => wid),
+      [...nativeAppWindows.entries()].filter(([id]) => id !== app.id).map(([, t]) => t.winId),
     );
     const snap = await snapshotWindowIds(hint);
     const before = new Set([...snap, ...ownedByOthers]);
     wlog("  relaunch: snapshot", { id: app.id, hint, snapshot: [...snap], ownedByOthers: [...ownedByOthers] });
-    const r = launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
+    const r = launch ? launch.run() : launchNativeApp(app.execPath ?? "", app.appArchetype ?? null, app.launchConfig ?? null);
     if (!r.ok) { wlog("  launch FAILED", { id: app.id, err: r.error }); launchFailed(new Error(r.error || "failed to launch native app")); return; }
     launched();
-    const w = await waitForAppWindow(hint, before, { forbidden: ownedByOthers });
+    const w = await waitForAppWindow(hint, before, { forbidden: ownedByOthers, noFallback: !!launch?.alwaysNewWindow });
     if (!w) { wlog("  no window appeared after launch", { id: app.id, hint }); console.error(`[app-resolver] no window appeared for "${app.name}" (${hint})`); return; }
     wlog("  ADOPTED window", { id: app.id, slug: app.slug, adopted: w.id, proc: w.proc, title: w.title, map: trackedSnapshot() });
-    nativeAppWindows.set(app.id, w.id);
+    nativeAppWindows.set(app.id, { winId: w.id, slug: app.slug, name: app.name });
     await setWindowBounds(w.id, rect);
     // Raise the placed window — without this a layout can tile windows that
     // stay buried under unrelated apps (bounds don't change z-order).
@@ -178,26 +203,43 @@ async function openNativeTracked(app: ServerApp, rect: OsRect, retileOnFocus: bo
   await launchGate;
 }
 
+/** How this web app's config says to open: which browser, window or tab. */
+function webLaunchPlan(app: ServerApp): { browser: InstalledBrowser | null; openAs: "window" | "tab" } {
+  const lc = (app.launchConfig || {}) as Record<string, unknown>;
+  const pref = getPreference<string>("defaultBrowser", "default");
+  const browser = getBrowser(typeof lc.browser === "string" && lc.browser ? lc.browser : pref)
+    ?? detectBrowsers().find(() => false) ?? null;
+  const openAs = lc.openAs === "tab" ? "tab" as const : "window" as const;
+  return { browser: browser ?? null, openAs };
+}
+
+/**
+ * Open a WEB app in its configured real browser. Window mode rides the same
+ * tracked-open machinery as native apps — the browser is just another binary
+ * whose new window we adopt, position, and re-focus on later opens. Tab mode
+ * (or "System default" browser) is fire-and-forget: nothing to track.
+ */
+async function openWebTracked(app: ServerApp, rect: OsRect, retileOnFocus: boolean): Promise<void> {
+  const url = String(app.url || "");
+  if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("app has no web URL");
+  const { browser, openAs } = webLaunchPlan(app);
+  if (!browser || openAs === "tab") {
+    const r = launchWebApp(url, browser, openAs);
+    if (!r.ok) throw new Error(r.error || "failed to open in browser");
+    return;
+  }
+  await openNativeTracked(app, rect, retileOnFocus, {
+    hint: browser.proc,
+    run: () => launchWebApp(url, browser, "window"),
+    alwaysNewWindow: true,
+  });
+}
+
 /** Built-in apps that aren't in the server library. */
 function builtinSpec(key: string): AppWindowSpec | null {
   if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
   if (key === "terminal" || key === "term") return { slug: "terminal", name: "Terminal", url: "yo://terminal" };
   return null;
-}
-
-/** Resolve an app reference (slug / name / id) to a window spec, or throw. */
-export async function resolveAppSpec(ref: string): Promise<AppWindowSpec> {
-  const key = ref.trim().toLowerCase();
-  if (!key) throw new Error("app is required");
-  const builtin = builtinSpec(key);
-  if (builtin) return builtin;
-
-  const apps = await cachedServerGet<ServerApp[]>("/api/panel-apps");
-  const app = apps.find((a) => a.slug === key)
-    || apps.find((a) => a.name.toLowerCase() === key)
-    || apps.find((a) => a.id === ref.trim());
-  if (!app?.url) throw new Error(`unknown app: ${ref} — use the app library slugs`);
-  return { slug: app.slug, name: app.name, url: app.url, forceWeb: !!app.forceWeb };
 }
 
 /**
@@ -226,31 +268,30 @@ export function findLibraryApp(apps: ServerApp[], ref: string): ServerApp | unde
       : undefined);
 }
 
-/** A panelId→spec resolver bound to a fetched app library (for layout cells). */
-export function makeCellResolver(apps: ServerApp[]): (panelId: string) => AppWindowSpec | null {
-  return (panelId: string): AppWindowSpec | null => {
-    const key = panelId.trim().toLowerCase();
-    const builtin = builtinSpec(key);
-    if (builtin) return builtin;
-    const app = apps.find((a) => a.slug === key) || apps.find((a) => a.id === panelId);
-    return app?.url ? { slug: app.slug, name: app.name, url: app.url, forceWeb: !!app.forceWeb } : null;
-  };
-}
-
 /**
  * Open a saved app (or built-in) the way its config says to — mirrors the
  * Apps page's app-launch dispatch:
  *   - native app (isBrowser=false) → launch its executable (VS Code, Terminal…)
- *   - browser app, target "native" → open the URL in the user's real Chrome
- *   - browser app, target "webview" (default) or a built-in → an OS webview
- *     window (openAppWindow)
+ *   - web app → its URL in the user's configured real browser (window or tab)
+ *   - built-in terminal → Glyphh's own terminal window
  */
 export async function openAppByRef(ref: string): Promise<{ slug: string; name: string }> {
   const key = ref.trim().toLowerCase();
   if (!key) throw new Error("app is required");
 
   const builtin = builtinSpec(key);
-  if (builtin) { openAppWindowSlide(builtin); return { slug: builtin.slug, name: builtin.name }; }
+  if (builtin) {
+    if (builtin.url.startsWith("http")) {
+      // Built-in "browser" → the user's real browser at their homepage.
+      const wa0 = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+      await openWebTracked(
+        { id: `builtin:${builtin.slug}`, slug: builtin.slug, name: builtin.name, url: builtin.url },
+        { x: wa0.x, y: wa0.y, width: wa0.width, height: wa0.height }, true);
+    } else {
+      openAppWindowSlide(builtin); // terminal — Glyphh's own window
+    }
+    return { slug: builtin.slug, name: builtin.name };
+  }
 
   const apps = await cachedServerGet<ServerApp[]>("/api/panel-apps");
   const app = findLibraryApp(apps, ref);
@@ -284,14 +325,9 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     await openNativeTracked(app, { x: wa.x, y: wa.y, width: wa.width, height: wa.height }, true);
     return { slug: app.slug, name: app.name };
   }
-  if (app.browserTarget === "native") {
-    const r = launchInNativeChrome(String(app.url || ""));
-    if (!r.ok) throw new Error(r.error || "failed to open in browser");
-    return { slug: app.slug, name: app.name };
-  }
-  const url = String(app.url || "");
-  if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("app has no web URL");
-  openAppWindowSlide({ slug: app.slug, name: app.name, url, forceWeb: !!app.forceWeb });
+  // Web app → the user's real browser, per its config (browser + window/tab).
+  const wa2 = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  await openWebTracked(app, { x: wa2.x, y: wa2.y, width: wa2.width, height: wa2.height }, true);
   return { slug: app.slug, name: app.name };
 }
 
@@ -299,10 +335,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
  * Open a saved layout by name. Default "screen" mode tiles real OS windows
  * across the display under the cursor (nothing inside the Glyphh client).
  */
-export async function openLayoutByName(
-  name: string,
-  mode: "screen" | "window" = "screen",
-): Promise<{ layout: string; mode: string; apps: string[] }> {
+export async function openLayoutByName(name: string): Promise<{ layout: string; apps: string[] }> {
   const key = name.trim().toLowerCase();
   if (!key) throw new Error("layout name is required");
 
@@ -320,15 +353,9 @@ export async function openLayoutByName(
     throw new Error(`unknown layout: ${name} — saved layouts: ${names}`);
   }
 
-  if (mode === "window") {
-    const opened = openLayoutInWindow(layout, makeCellResolver(apps));
-    if (opened.length === 0) throw new Error(`layout "${layout.name}" has no resolvable apps`);
-    return { layout: layout.name, mode, apps: opened };
-  }
-
-  // "screen" mode — tile each cell as a real OS window. Web/webview apps become
-  // Glyphh windows placed at the cell rect; native apps (VS Code, Terminal…) are
-  // launched, then best-effort moved into place through the OS window layer.
+  // Tile each cell as a real OS window. Web apps open as browser windows and
+  // native apps launch their executables — both adopted + placed through the
+  // OS window layer. Nothing renders inside the Glyphh client.
   const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const colW = wa.width / layout.cols;
   const rowH = wa.height / layout.rows;
@@ -344,7 +371,16 @@ export async function openLayoutByName(
     const key = cell.panelId.trim().toLowerCase();
 
     const builtin = builtinSpec(key);
-    if (builtin) { openAppWindowAt(builtin, bounds); opened.push(builtin.slug); continue; }
+    if (builtin) {
+      if (builtin.url.startsWith("http")) {
+        void openWebTracked({ id: `builtin:${builtin.slug}`, slug: builtin.slug, name: builtin.name, url: builtin.url }, bounds, true)
+          .catch((err) => console.error(`[layout] browser cell failed: ${err instanceof Error ? err.message : err}`));
+      } else {
+        openAppWindowAt(builtin, bounds); // terminal — Glyphh's own window
+      }
+      opened.push(builtin.slug);
+      continue;
+    }
 
     const app = apps.find((a) => a.id === cell.panelId)
       || apps.find((a) => a.slug === key)
@@ -379,22 +415,57 @@ export async function openLayoutByName(
       opened.push(app.slug);
       continue;
     }
-    if (app.browserTarget === "native") {
-      // Opens in the user's real Chrome; positioning a specific Chrome window
-      // isn't reliable, so just launch it.
-      launchInNativeChrome(String(app.url || ""));
-      opened.push(app.slug);
-      continue;
-    }
     const url = String(app.url || "");
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       console.error(`[layout] "${app.name}" — not native and no web URL, skipped`);
       continue;
     }
-    openAppWindowAt({ slug: app.slug, name: app.name, url, forceWeb: !!app.forceWeb }, bounds);
+    // Web app → a tracked browser window tiled into the cell (tab-mode apps
+    // just open; a tab can't be positioned). Fire-and-forget like natives.
+    void openWebTracked(app, bounds, true).catch((err) =>
+      console.error(`[layout] web "${app.name}" failed: ${err instanceof Error ? err.message : err}`));
     opened.push(app.slug);
   }
 
   if (opened.length === 0) throw new Error(`layout "${layout.name}" has no resolvable apps`);
-  return { layout: layout.name, mode, apps: opened };
+  return { layout: layout.name, apps: opened };
+}
+
+// ── Panels surface (relay) — Electron windows + tracked OS windows ─────────
+
+export interface OpenWindowInfo {
+  app: string;
+  name: string;
+  url: string | null;
+  title: string | null;
+  focused: boolean;
+}
+
+/** Every open app window Glyphh knows about: Electron-hosted ones (terminal)
+ *  plus tracked OS windows (native apps + web apps in browser windows).
+ *  Minimized OS windows aren't in the visible list — they're skipped. */
+export async function listOpenAppWindows(): Promise<OpenWindowInfo[]> {
+  const out: OpenWindowInfo[] = listAppWindows();
+  const visible = await listWindows().catch(() => []);
+  for (const t of nativeAppWindows.values()) {
+    const w = visible.find((x) => x.id === t.winId);
+    if (!w) continue;
+    out.push({ app: t.slug, name: t.name, url: null, title: w.title || t.name, focused: false });
+  }
+  return out;
+}
+
+/** Focus an app's window by slug — Electron windows first, then tracked. */
+export async function focusOpenApp(slug: string): Promise<boolean> {
+  if (focusAppWindow(slug)) return true;
+  const t = [...nativeAppWindows.values()].find((x) => x.slug === slug);
+  return t ? focusWindow(t.winId) : false;
+}
+
+/** Close an app's window by slug. Tracked OS windows can't be AX-closed yet,
+ *  so they minimize instead (and stay tracked for the next open). */
+export async function closeOpenApp(slug: string): Promise<boolean> {
+  if (closeAppWindow(slug)) return true;
+  const t = [...nativeAppWindows.values()].find((x) => x.slug === slug);
+  return t ? minimizeWindow(t.winId) : false;
 }

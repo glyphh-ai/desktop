@@ -567,8 +567,9 @@ body {
   transition: border-color 200ms ease, background 200ms ease;
 }
 #onboarding-overlay .auth-shell-input:focus {
-  border-color: var(--accent);
-  background: rgba(140, 59, 242, 0.04);
+  border-color: #fff;
+  box-shadow: 0 0 0 1px #fff;
+  background: transparent;
 }
 #onboarding-overlay .auth-shell-input.has-error {
   border-color: var(--danger);
@@ -752,7 +753,7 @@ body {
   outline: none;
   transition: border-color 0.2s;
 }
-#onboarding-overlay .code-input-box:focus { border-color: var(--accent); }
+#onboarding-overlay .code-input-box:focus { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
 
 /* ── Lockout gate (trial expired / account disabled) ─────────── */
 
