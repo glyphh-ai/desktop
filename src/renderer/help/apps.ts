@@ -831,6 +831,10 @@ function switchAppTab(tab: string) {
 // names and set-dates only.
 
 async function loadConfigVarsTab() {
+  // Never let unsaved plaintext linger in the entry fields across a tab switch
+  // or app reopen — a value only ever exists here while actively being typed.
+  (document.getElementById("config-var-key") as HTMLInputElement).value = "";
+  (document.getElementById("config-var-value") as HTMLTextAreaElement).value = "";
   const listEl = document.getElementById("config-var-list")!;
   const res = await window.yo.appSecretsList(currentAppId);
   listEl.innerHTML = "";
