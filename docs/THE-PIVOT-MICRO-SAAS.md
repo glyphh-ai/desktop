@@ -102,7 +102,7 @@ connections, so **an agent structurally cannot see more than its human**
 — the answer to the confused-deputy problem, and every action lands in the
 source SaaS's own audit log under the user's identity.
 
-Naming: product noun = **Glyphh Apps** (keep it boring). Category =
+Naming: product noun = **Glyphh Desktop** (keep it boring). Category =
 **identity-native micro-SaaS** ("apps that glue your systems together and
 can only ever see what you can see"). Tagline to test: *"Your SaaS is the
 database. Glyphh is the app."*

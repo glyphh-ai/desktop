@@ -1,7 +1,7 @@
 {
   "name": "glyphh-apps",
   "version": "5.1.5",
-  "description": "Glyphh Apps — Your AI workspace.",
+  "description": "Glyphh Desktop — Your AI workspace.",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "npm run build && ELECTRON_RUN_AS_NODE= electron .",
