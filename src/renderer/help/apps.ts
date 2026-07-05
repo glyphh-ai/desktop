@@ -849,6 +849,13 @@ async function loadConfigVarsTab() {
     const keyEl = document.createElement("span");
     keyEl.className = "config-var-key";
     keyEl.textContent = s.key;
+    if (s.hostOnly) {
+      const badge = document.createElement("span");
+      badge.className = "config-var-hostonly";
+      badge.textContent = "runtime-only";
+      badge.title = "Credential — encrypted, and never readable by app code (secrets.get refuses it). Only the trusted runtime uses it.";
+      keyEl.appendChild(badge);
+    }
     const valEl = document.createElement("span");
     valEl.className = "config-var-masked";
     valEl.textContent = "••••••••";

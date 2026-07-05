@@ -313,7 +313,7 @@ contextBridge.exposeInMainWorld("yo", {
   // Per-app config vars (encrypted secrets). List never includes values —
   // a value is visible only in the form where it's typed, at creation.
   appSecretsList: (id: string) =>
-    ipcRenderer.invoke("app-secrets-list", id) as Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string }>; error?: string }>,
+    ipcRenderer.invoke("app-secrets-list", id) as Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean }>; error?: string }>,
   appSecretsSet: (id: string, key: string, value: string) =>
     ipcRenderer.invoke("app-secrets-set", id, key, value) as Promise<{ ok: boolean; error?: string }>,
   appSecretsDelete: (id: string, key: string) =>

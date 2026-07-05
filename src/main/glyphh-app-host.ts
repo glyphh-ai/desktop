@@ -53,7 +53,7 @@ import {
   graphCypher,
 } from "./glyphh-app-ai.js";
 import { agentRun } from "./glyphh-app-agent.js";
-import { secretValueFromRow, secretKeysFromRow } from "./app-secrets.js";
+import { secretValueFromRow, secretKeysFromRow, isHostOnlySecret } from "./app-secrets.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -437,9 +437,17 @@ async function runCapability(
       });
     }
     case "secrets.get": {
-      const app = await findAppRow(slug);
       const key = String(args.key || "").trim();
       if (!key) throw new Error("key is required");
+      // Credential-shaped vars (provider API keys, tokens, secrets) are
+      // HOST-ONLY: encrypted at rest AND never handed to sandboxed code. The
+      // trusted runtime (llm.complete / agent.run / LLM-proxy wrappers) uses
+      // them in the main process and returns only results — so a key lent to
+      // an untrusted remote agent can never be read back out.
+      if (isHostOnlySecret(key)) {
+        throw new Error(`"${key}" is host-only — the Glyphh runtime uses it for you (llm.complete / agent.run) and never exposes the value to app code.`);
+      }
+      const app = await findAppRow(slug);
       const value = secretValueFromRow(app?.launchConfig as Record<string, unknown> | undefined, key);
       if (value == null) throw new Error(`config var not set: ${key} — the user sets it on the app's Config Vars tab`);
       return { value };

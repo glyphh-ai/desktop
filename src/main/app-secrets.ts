@@ -79,14 +79,14 @@ async function patchSecrets(row: AppRowLite, secrets: SecretsMap): Promise<void>
 }
 
 /** Key names + set-dates only — never values (there is no "get value" IPC). */
-export async function listAppSecrets(appId: string): Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string }>; error?: string }> {
+export async function listAppSecrets(appId: string): Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly: boolean }>; error?: string }> {
   const row = await findRow(appId);
   if (!row) return { ok: false, error: "app not found" };
   const secrets = readSecrets(row.launchConfig);
   return {
     ok: true,
     secrets: Object.entries(secrets)
-      .map(([key, e]) => ({ key, at: e.at }))
+      .map(([key, e]) => ({ key, at: e.at, hostOnly: isHostOnlySecret(key) }))
       .sort((a, b) => a.key.localeCompare(b.key)),
   };
 }
@@ -132,6 +132,18 @@ export async function deleteAppSecret(appId: string, key: string): Promise<{ ok:
 
 // ── capability-path reads (main process only) ──────────────
 
+/**
+ * Credential-shaped config vars — provider API keys, tokens, secrets,
+ * passwords. These are HOST-ONLY: encrypted at rest and never returned to
+ * sandboxed app code via `secrets.get`. Only the trusted main-process runtime
+ * (llm.complete / agent.run / the LLM-proxy tool wrappers) decrypts and uses
+ * them, and it returns only results — never the key. This is what makes it
+ * safe to lend a model to an untrusted remote agent.
+ */
+export function isHostOnlySecret(key: string): boolean {
+  return /(?:_API_KEY|_KEY|_SECRET|_TOKEN|_PASSWORD|PASSWORD)$/i.test(key.trim());
+}
+
 /** Decrypt one value from an app row's launchConfig. Returns null when unset
  *  (or set on another machine — safeStorage is machine-bound). */
 export function secretValueFromRow(launchConfig: Record<string, unknown> | null | undefined, key: string): string | null {
@@ -146,10 +158,12 @@ export function secretValueFromRow(launchConfig: Record<string, unknown> | null 
   return plain && plain !== entry.v ? plain : null;
 }
 
-/** Key names + whether each decrypts on THIS machine (for secrets.list). */
-export function secretKeysFromRow(launchConfig: Record<string, unknown> | null | undefined): Array<{ key: string; readable: boolean }> {
+/** Key names + whether each decrypts on THIS machine (for secrets.list).
+ *  `hostOnly` = credential-shaped; the value is never returned to the sandbox
+ *  via secrets.get (only the trusted runtime uses it). */
+export function secretKeysFromRow(launchConfig: Record<string, unknown> | null | undefined): Array<{ key: string; readable: boolean; hostOnly: boolean }> {
   const secrets = readSecrets(launchConfig as AppRowLite["launchConfig"]);
   return Object.keys(secrets)
-    .map((key) => ({ key, readable: secretValueFromRow(launchConfig, key) != null }))
+    .map((key) => ({ key, readable: secretValueFromRow(launchConfig, key) != null, hostOnly: isHostOnlySecret(key) }))
     .sort((a, b) => a.key.localeCompare(b.key));
 }

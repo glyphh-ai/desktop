@@ -167,7 +167,7 @@ declare global {
       panelAppsRemoveMcp: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsRemoveCommand: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
-      appSecretsList: (id: string) => Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string }>; error?: string }>;
+      appSecretsList: (id: string) => Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean }>; error?: string }>;
       appSecretsSet: (id: string, key: string, value: string) => Promise<{ ok: boolean; error?: string }>;
       appSecretsDelete: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
