@@ -28,13 +28,6 @@
   },
   "author": "Glyphh AI",
   "license": "UNLICENSED",
-  "build": {
-    "appId": "ai.glyphh.desktop",
-    "productName": "Glyphh Desktop",
-    "directories": {
-      "output": "release"
-    }
-  },
   "devDependencies": {
     "@electron/rebuild": "^3.7.0",
     "@types/adm-zip": "^0.5.8",
