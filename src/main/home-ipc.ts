@@ -51,12 +51,13 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     interface UsageResp { totals?: { credits?: number; requests?: number } }
     interface DailyDay { day: string; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number }
     interface DailyResp { days?: DailyDay[] }
+    interface PanelApp { system?: boolean; url?: string | null; isBrowser?: boolean }
 
     const [credits, usage, daily, apps] = await Promise.all([
       serverGetAuthed<CreditsResp>("/api/billing/credits").catch(() => null),
       serverGetAuthed<UsageResp>(`/api/usage?from=${encodeURIComponent(monthStart.toISOString())}&to=${encodeURIComponent(now.toISOString())}`).catch(() => null),
       serverGetAuthed<DailyResp>(`/api/usage/daily?from=${ymd(windowStart)}&to=${ymd(now)}&tz=${encodeURIComponent(tz)}`).catch(() => null),
-      serverGetAuthed<unknown[]>("/api/panel-apps").catch(() => null),
+      serverGetAuthed<PanelApp[]>("/api/panel-apps").catch(() => null),
     ]);
 
     // Fill the day series so gaps render as zero bars (the API omits empty days).
@@ -78,7 +79,9 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       allowance: Math.floor((credits?.allowance || 0) / MICRO),
       spendCredits: Math.floor((usage?.totals?.credits || 0) / MICRO),
       requests: usage?.totals?.requests || 0,
-      appsCount: Array.isArray(apps) ? apps.length : 0,
+      // Count visible apps only, exactly like the Apps tab: the seeded Glyphh
+      // system app (system:true — hidden + undeletable) is not a deployed app.
+      appsCount: Array.isArray(apps) ? apps.filter((a) => !a.system && (a.url || a.isBrowser === false)).length : 0,
       totalTokens: days.reduce((s, d) => s + d.tokens, 0),
       days,
     };
