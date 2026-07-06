@@ -115,7 +115,8 @@
          renderer.ts initDashboard()). Hidden until boot-gate-ui calls
          showPanels() the first time post-auth. -->
     <div id="dashboard-tabs" class="dashboard-tabs hidden">
-      <button id="dashboard-tab-apps" class="dashboard-tab active" data-dashboard-tab="apps">Apps</button>
+      <button id="dashboard-tab-dashboard" class="dashboard-tab active" data-dashboard-tab="dashboard">Home</button>
+      <button id="dashboard-tab-apps" class="dashboard-tab" data-dashboard-tab="apps">Apps</button>
       <button id="dashboard-tab-connections" class="dashboard-tab" data-dashboard-tab="connections">Connections</button>
       <button id="dashboard-tab-layouts" class="dashboard-tab" data-dashboard-tab="layouts">Layouts</button>
       <button id="dashboard-tab-drips" class="dashboard-tab" data-dashboard-tab="drips">Drips</button>
@@ -164,7 +165,7 @@
       <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
       <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
     </div>
-    <div class="empty-state-hint">Type a command or press <kbd>Cmd+.</kbd></div>
+    <div class="empty-state-hint">Press <kbd>&#8984;&#8679;Space</kbd> to open an app</div>
   </div>
 
   <!-- Panel screenshots (freeze-frame when panels are hidden) -->
@@ -231,7 +232,7 @@
     </div>
   </div>
 
-  <script src="chart.umd.min.js"></script>
+  <script src="app-libs/chart.js"></script>
   <script type="module" src="renderer.js"></script>
 </body>
 </html>

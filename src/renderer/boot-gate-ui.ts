@@ -58,14 +58,11 @@ export function isCcModalShowing(): boolean { return ccModalShowing; }
 
 // ── Tutorial ────────────────────────────────────────────────────────────────
 
-const TUTORIAL_SEQUENCES = [
-  "",                                          // 0 · Apps — shows the + key, no typing
-  "build a skill that summarizes my open tabs",// 1 · Glyphh agent
-  ".yo find that reddit thread about pricing", // 2 · .yo (any text box)
-  ".sup . formalize",                          // 3 · .sup
-  ".dip split claude gpt",                      // 4 · .dip
-  "",                                          // 5 · Cmd+. / Cmd+> — shows shortcut keys
-];
+// One entry per tutorial step (sections/tutorial.html): Add apps → Connect
+// systems → Connect AI → Build & host. These are visual steps (icon + copy),
+// not command demos, so nothing is typed — the array length drives the step
+// count and the final "Get Started" button.
+const TUTORIAL_SEQUENCES = ["", "", "", ""];
 
 function showTutorial(cb: BootGateCallbacks): void {
   tutorialShowing = true;

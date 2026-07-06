@@ -150,6 +150,7 @@ declare global {
       marketplaceDetail: (id: string) => Promise<MarketplaceAppDetail | null>;
       marketplaceInstall: (id: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
+      dashboardData: () => Promise<{ name: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number; totalTokens: number; days: Array<{ day: string; tokens: number }> }>;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
@@ -611,9 +612,9 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  type DashSlug = "apps" | "connections" | "layouts" | "drips" | "settings" | "about";
+  type DashSlug = "dashboard" | "apps" | "connections" | "layouts" | "drips" | "settings" | "about";
   const setActive = (slug: DashSlug) => {
-    for (const s of ["apps", "connections", "layouts", "drips", "settings", "about"] as DashSlug[]) {
+    for (const s of ["dashboard", "apps", "connections", "layouts", "drips", "settings", "about"] as DashSlug[]) {
       document.getElementById(`dashboard-tab-${s}`)?.classList.toggle("active", slug === s);
     }
   };
@@ -625,6 +626,7 @@ function initDashboard(): void {
       openWorkspaceApp(appId);
     });
   };
+  wireTab("dashboard", "dashboard");
   wireTab("apps", "apps");
   wireTab("connections", "connections");
   wireTab("layouts", "layouts");
@@ -632,12 +634,12 @@ function initDashboard(): void {
   wireTab("settings", "dashboard-settings");
   wireTab("about", "about");
 
-  // Land on Apps by default — just the tab styling. Main already opened and
-  // activated the "apps" panel directly at boot (openAppsPanelOnly() in
-  // main.ts); calling openWorkspaceApp("apps") here too raced it into
-  // opening a SECOND "apps" instance (tabNewApp doesn't know the boot-time
-  // one exists), which was the extra flash/transition after the splash.
-  setActive("apps");
+  // Land on Home by default — just the tab styling. Main already opened and
+  // activated the "dashboard" panel directly at boot (openHomePanelOnly() in
+  // main.ts); calling openWorkspaceApp("dashboard") here too would race it into
+  // opening a SECOND instance (tabNewApp doesn't know the boot-time one
+  // exists), which is the extra flash/transition after the splash.
+  setActive("dashboard");
 }
 
 // -- Boot gate --

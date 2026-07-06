@@ -1,0 +1,58 @@
+<!-- Dashboard / Home — the landing section. Populated by help/dashboard.ts
+     (loadDashboard) from server usage/billing endpoints. -->
+<div class="help-section" data-section="dashboard">
+  <div class="dash-scroll">
+
+    <!-- Header: greeting + primary actions -->
+    <div class="dash-header">
+      <div>
+        <h1 class="dash-greeting" id="dash-greeting">Welcome back</h1>
+        <p class="dash-subtitle">Your workspace at a glance.</p>
+      </div>
+      <div class="dash-header-actions">
+        <button class="action-btn" id="dash-get-key">Connect Claude</button>
+        <button class="action-btn primary" id="dash-add-funds">Add credits</button>
+      </div>
+    </div>
+
+    <!-- Top row: three metric cards -->
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-card-label">Organization credits</div>
+        <div class="dash-card-value" id="dash-credits-value">—</div>
+        <div class="dash-card-sub" id="dash-credits-sub">available</div>
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-card-label">Spend this month</div>
+        <div class="dash-card-value" id="dash-spend-value">—</div>
+        <div class="dash-card-sub" id="dash-spend-sub">credits used</div>
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-card-label">Apps deployed</div>
+        <div class="dash-card-value" id="dash-apps-value">—</div>
+        <div class="dash-card-sub" id="dash-apps-sub">hosted on this machine</div>
+      </div>
+    </div>
+
+    <!-- Token volume chart — spans the full width -->
+    <div class="dash-card dash-card-wide">
+      <div class="dash-card-head">
+        <div>
+          <div class="dash-card-label">Token volume</div>
+          <div class="dash-card-value dash-card-value-sm" id="dash-usage-total">—</div>
+          <div class="dash-card-sub" id="dash-usage-range">last 14 days</div>
+        </div>
+        <button class="dash-refresh" id="dash-refresh" title="Refresh">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        </button>
+      </div>
+      <div class="dash-chart-wrap">
+        <canvas id="dash-usage-chart"></canvas>
+        <div class="dash-chart-empty hidden" id="dash-usage-empty">No usage yet — connect an AI and start driving your apps.</div>
+      </div>
+    </div>
+
+  </div>
+</div>

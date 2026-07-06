@@ -521,6 +521,7 @@ async function boot() {
   // Slugs that map to home.html with ?section=<slug>. Each system-app tab
   // (Apps / Layouts / Drips / Skills / Settings / About) opens its section.
   const HOME_SECTION_SLUGS: Record<string, string> = {
+    "yo://dashboard": "dashboard",
     "yo://apps": "apps",
     "yo://connections": "connections",
     "yo://layouts": "layouts",
@@ -761,11 +762,11 @@ async function boot() {
   // paints/loads independently, which looked like every screen flashing on
   // launch. Kept restorePanels() defined (unused) rather than deleted, in
   // case per-app windows (5b) want to resurrect a "reopen last session" option.
-  function openAppsPanelOnly() {
-    const appsApp = appConnector.get("apps");
-    if (appsApp?.url && mainWindow) {
-      createPanelForApp("apps", appsApp);
-      panelManager.switchTo("apps", mainWindow);
+  function openHomePanelOnly() {
+    const homeApp = appConnector.get("dashboard");
+    if (homeApp?.url && mainWindow) {
+      createPanelForApp("dashboard", homeApp);
+      panelManager.switchTo("dashboard", mainWindow);
     }
   }
 
@@ -1275,7 +1276,7 @@ async function boot() {
   // Only restore panels if not gated by onboarding
   if (!needsOnboarding) {
     restoring = true;
-    openAppsPanelOnly();
+    openHomePanelOnly();
     restoring = false;
     panelsReady = true;
     // Hide panels during splash — renderer will show them after splash dismisses
@@ -1763,7 +1764,7 @@ async function boot() {
 
   // IPC: onboarding complete — land on the Apps panel after activation
   ipcMain.handle("onboarding-complete", () => {
-    openAppsPanelOnly();
+    openHomePanelOnly();
     panelsReady = true;
     // Hide panels immediately — the tutorial will show next and it's HTML
     // that gets painted under BrowserViews. panelsShow fires when tutorial closes.
@@ -1801,7 +1802,7 @@ async function boot() {
     });
     if (!currentNeedsOnboarding && !panelsReady) {
       restoring = true;
-      openAppsPanelOnly();
+      openHomePanelOnly();
       restoring = false;
       panelsReady = true;
       sendSplitState();

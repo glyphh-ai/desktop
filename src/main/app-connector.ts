@@ -196,6 +196,7 @@ export const CATEGORY_COMMANDS: Record<string, Array<{ key: string; description:
 const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKind; requiresFolder?: boolean }> = [
   { id: "term", name: "Terminal", url: "yo://terminal", requiresFolder: true },
   { id: "browser", name: "Browser", url: "yo://browser" },
+  { id: "dashboard", name: "Home", url: "yo://dashboard", kind: "system" },
   { id: "apps", name: "Apps", url: "yo://apps", kind: "system" },
   { id: "connections", name: "Connections", url: "yo://connections", kind: "system" },
   { id: "layouts", name: "Layouts", url: "yo://layouts", kind: "system" },

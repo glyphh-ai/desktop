@@ -277,6 +277,7 @@ contextBridge.exposeInMainWorld("yo", {
   // OS icon for a native app's executable / .app bundle (data URL, "" if none).
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
+  dashboardData: () => ipcRenderer.invoke("dashboard-data"),
   panelAppsCreate: (input: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsUpdate: (id: string, patch: PanelAppInput) =>

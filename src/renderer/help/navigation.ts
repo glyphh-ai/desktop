@@ -3,6 +3,7 @@
  */
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning } from "./shared.js";
+import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps, openNewAppForm } from "./apps.js";
 import { loadSettings, initSettings } from "./settings.js";
@@ -111,7 +112,8 @@ export function loadActiveSection(explicit?: string) {
   // Prefer the explicitly-navigated section. Falling back to the active nav
   // item can resolve to "guide" for sections with no `help-nav-item`.
   const sec = explicit || activeSection();
-  if (sec === "drips") loadDrips();
+  if (sec === "dashboard") void loadDashboard();
+  else if (sec === "drips") loadDrips();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "apps") loadApps();
   else if (sec === "connections") void loadConnections();
@@ -256,6 +258,7 @@ export function initHelp() {
   });
 
   // Initialize all section event handlers
+  initDashboardEvents();
   initSettings();
   initApps();
   initConnections();

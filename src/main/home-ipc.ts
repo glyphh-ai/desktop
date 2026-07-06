@@ -21,7 +21,7 @@ import {
   localMcpRevokeToken,
 } from "./local-mcp-server";
 import { setPreference } from "./preferences";
-import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER } from "./auth";
+import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, getAccountInfo } from "./auth";
 
 interface HomeIpcDeps {
   mcpManager: McpManager | null;
@@ -31,6 +31,58 @@ interface HomeIpcDeps {
 
 export function registerHomeIpc(deps: HomeIpcDeps): void {
   const { mcpManager, connectorManager, canUseMcp } = deps;
+
+  // ── Home dashboard ──────────────────────────────────────────────────────
+  // Credits, month spend, apps deployed, and a token-volume series for the
+  // landing chart. Mirrors the platform's billing/usage endpoints; each call
+  // degrades to null so one failure doesn't blank the whole card set. All
+  // credit amounts are stored in micro-credits (1 credit = 1e6) → /1e6.
+  ipcMain.handle("dashboard-data", async () => {
+    const MICRO = 1_000_000;
+    const WINDOW = 14;
+    const ymd = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const now = new Date();
+    const windowStart = new Date(now); windowStart.setDate(now.getDate() - (WINDOW - 1));
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+    interface CreditsResp { balance?: number; allowance?: number }
+    interface UsageResp { totals?: { credits?: number; requests?: number } }
+    interface DailyDay { day: string; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number }
+    interface DailyResp { days?: DailyDay[] }
+
+    const [credits, usage, daily, apps] = await Promise.all([
+      serverGetAuthed<CreditsResp>("/api/billing/credits").catch(() => null),
+      serverGetAuthed<UsageResp>(`/api/usage?from=${encodeURIComponent(monthStart.toISOString())}&to=${encodeURIComponent(now.toISOString())}`).catch(() => null),
+      serverGetAuthed<DailyResp>(`/api/usage/daily?from=${ymd(windowStart)}&to=${ymd(now)}&tz=${encodeURIComponent(tz)}`).catch(() => null),
+      serverGetAuthed<unknown[]>("/api/panel-apps").catch(() => null),
+    ]);
+
+    // Fill the day series so gaps render as zero bars (the API omits empty days).
+    const tokByDay = new Map<string, number>();
+    for (const d of daily?.days ?? []) {
+      tokByDay.set(d.day, (d.inputTokens || 0) + (d.outputTokens || 0) + (d.cacheReadTokens || 0) + (d.cacheCreationTokens || 0));
+    }
+    const days: Array<{ day: string; tokens: number }> = [];
+    for (let i = WINDOW - 1; i >= 0; i--) {
+      const d = new Date(now); d.setDate(now.getDate() - i);
+      const key = ymd(d);
+      days.push({ day: key, tokens: tokByDay.get(key) || 0 });
+    }
+
+    const acct = getAccountInfo();
+    return {
+      name: (acct?.firstName || "").trim(),
+      credits: Math.floor((credits?.balance || 0) / MICRO),
+      allowance: Math.floor((credits?.allowance || 0) / MICRO),
+      spendCredits: Math.floor((usage?.totals?.credits || 0) / MICRO),
+      requests: usage?.totals?.requests || 0,
+      appsCount: Array.isArray(apps) ? apps.length : 0,
+      totalTokens: days.reduce((s, d) => s + d.tokens, 0),
+      days,
+    };
+  });
 
   // Relay: bouncing the WS after the user flips the toggle, and proxying
   // token CRUD to yo-server (the JWT authenticates these calls — same one
