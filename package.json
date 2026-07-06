@@ -17,6 +17,7 @@
     "bench:code-index": "npm run build:main && node dist/main/code-index/benchmark.js",
     "bench:code-index-ab": "npm run build:main && node dist/main/code-index/benchmark-ab.js",
     "start": "electron .",
+    "clean:local": "bash scripts/clean-local.sh",
     "postinstall": "electron-rebuild",
     "package:mac": "electron-builder --mac",
     "package:win": "electron-builder --win",
