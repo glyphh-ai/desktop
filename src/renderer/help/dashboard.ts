@@ -6,7 +6,6 @@
  */
 
 import { $a, formatTokens, cssVar } from "./shared.js";
-import { gotoSection } from "./navigation.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: any;
@@ -124,9 +123,12 @@ export function initDashboardEvents(): void {
   document.getElementById("dash-add-funds")?.addEventListener("click", () => {
     window.yo.openExternal?.(`${window.yo.platformUrl}/dashboard/manage/billing`);
   });
-  // "Connect Claude" → the Settings › MCP panel, where the connection URL + token live.
+  // "Connect Claude" → open the Settings tab (its MCP panel has the connection
+  // URL + token). Open it as its own shell tab rather than switching sections
+  // in place: this Home panel is scope-locked to `dashboard` with its nav rail
+  // hidden, so an in-panel gotoSection would trap the user with no way back.
   document.getElementById("dash-get-key")?.addEventListener("click", () => {
-    gotoSection("settings", "mcp");
+    window.yo.tabNewApp("dashboard-settings");
   });
   document.getElementById("dash-refresh")?.addEventListener("click", () => {
     void loadDashboard();
