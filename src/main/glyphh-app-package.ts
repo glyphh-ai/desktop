@@ -9,7 +9,7 @@
  * - kind:"web"     — the app is a URL (http/https or yo://). Manifest only.
  * - kind:"bundled" — the app has local assets under a code dir (e.g. a vibe's
  *                    code/). Export adds them under code/ in the zip; import
- *                    extracts to a stable location (~/yo/apps/<id>/code) and
+ *                    extracts to a stable location (~/.glyphh/apps/<id>/code) and
  *                    points the app's url at that index.html.
  *
  * Import dedupes the id so an incoming app never clobbers an existing one, then
@@ -18,9 +18,9 @@
 
 import fs from "fs";
 import path from "path";
-import os from "os";
 import AdmZip from "adm-zip";
 import type { AppConnector, CommandMapping, McpConfig } from "./app-connector";
+import { glyphhPath } from "./app-paths.js";
 
 // ── Manifest ────────────────────────────────────────────────
 
@@ -39,9 +39,9 @@ export interface YoAppManifest {
 
 const MANIFEST_VERSION = "1";
 
-/** Where imported bundled apps land: ~/yo/apps/<id>/code. */
+/** Where imported bundled apps land: ~/.glyphh/apps/<id>/code. */
 function importedCodeDir(id: string): string {
-  return path.join(os.homedir(), "yo", "apps", id, "code");
+  return glyphhPath("apps", id, "code");
 }
 
 /** True when a url points at a remote web app (vs a local file/bundle). */
@@ -164,7 +164,7 @@ function uniqueAppId(appConnector: AppConnector, base: string): string {
 
 /**
  * Import a `.glyphh` bundle: unzip, read manifest.json, dedupe the id, extract
- * bundled code/ (if any) to ~/yo/apps/<id>/code, then register the app so it
+ * bundled code/ (if any) to ~/.glyphh/apps/<id>/code, then register the app so it
  * shows up in the user's apps list. Returns the (possibly deduped) appId.
  */
 export function importApp(appConnector: AppConnector, srcPath: string): ImportResult {

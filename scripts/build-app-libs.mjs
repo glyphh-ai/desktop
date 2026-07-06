@@ -1,6 +1,6 @@
 // Bundle the host-provided UI libraries for Glyphh apps into
 // dist/renderer/app-libs/. At runtime the host copies these to
-// ~/yo/custom-apps/_libs/ so any installed app can load them with a relative
+// ~/.glyphh/custom-apps/_libs/ so any installed app can load them with a relative
 // <script src="../_libs/<name>.js"> — no vendoring, no network, versioned
 // with Glyphh. Run: `node scripts/build-app-libs.mjs`.
 

@@ -7,7 +7,7 @@
  *                     window?: { width, height }, description? }
  *   index.html (+ assets)   self-contained UI
  *
- * Install: extract to ~/yo/custom-apps/<slug>/ and create a NORMAL saved-app
+ * Install: extract to ~/.glyphh/custom-apps/<slug>/ and create a NORMAL saved-app
  * row on the server (isBrowser:false, appArchetype:"glyphh-app", execPath →
  * the entry html, launchConfig → { capabilities, window }). Riding the
  * saved-app rails means the app shows on the Apps page, in the command
@@ -39,6 +39,7 @@ import AdmZip from "adm-zip";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { glyphhPath } from "./app-paths.js";
 import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js";
 import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
@@ -116,7 +117,7 @@ const KNOWN_CAPABILITIES = new Set([
 const DARWIN_ONLY_CAPABILITIES = new Set(["contacts.search", "messages.send"]);
 
 function customAppsDir(): string {
-  return path.join(os.homedir(), "yo", "custom-apps");
+  return glyphhPath("custom-apps");
 }
 
 /** Parse + validate a glyphh-app manifest ("" slug etc. rejected). */
@@ -562,7 +563,7 @@ let registered = false;
 /**
  * Publish the host-provided UI libraries (Chart.js, three.js, React Flow —
  * built by scripts/build-app-libs.mjs into dist/renderer/app-libs) to
- * ~/yo/custom-apps/_libs/ so every installed app can load them with a
+ * ~/.glyphh/custom-apps/_libs/ so every installed app can load them with a
  * relative <script src="../_libs/<name>.js">. Copied (not symlinked) so app
  * pages never reach into the install dir, and refreshed on every startup so
  * they track the running Glyphh version.

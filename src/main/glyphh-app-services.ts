@@ -20,7 +20,7 @@
  *
  * Isolation model: every service call carries the calling app's slug (from its
  * capability grant) and is scoped to that slug — an app's database lives in
- * ~/yo/app-data/<slug>/data.sqlite and its schedules are keyed by slug. Apps
+ * ~/.glyphh/app-data/<slug>/data.sqlite and its schedules are keyed by slug. Apps
  * cannot name another app's resources; there is no cross-app surface at all.
  *
  * The host injects resolveApp/openApp at init (initAppServices) so this module
@@ -31,9 +31,9 @@ import { Notification } from "electron";
 import Database from "better-sqlite3";
 import cron, { ScheduledTask } from "node-cron";
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { initLocalDb } from "./local-db.js";
+import { glyphhPath } from "./app-paths.js";
 import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
 import { serverGetAuthed } from "./auth.js";
 import {
@@ -64,7 +64,7 @@ function requireDeps(): AppServicesDeps {
 const appDbs = new Map<string, Database.Database>();
 
 export function appDataDir(slug: string): string {
-  return path.join(os.homedir(), "yo", "app-data", slug);
+  return glyphhPath("app-data", slug);
 }
 
 function getAppDb(slug: string): Database.Database {

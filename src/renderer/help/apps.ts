@@ -1812,7 +1812,7 @@ function initApps() {
 
   appSearchInput.addEventListener("input", () => { appsPage = 0; renderAppsList(); });
 
-  // Apps dir changed on disk (e.g. an app dropped into ~/yo/apps) — refresh the
+  // Apps dir changed on disk (e.g. an app dropped into ~/.glyphh/apps) — refresh the
   // registry list live when it's the visible view, so new apps appear without a
   // restart. Skip while a detail/form is open to avoid yanking the user away.
   window.yo.onAppsChanged(() => {

@@ -4,14 +4,14 @@
  * Each app is a panel with a connector: mapped commands that know
  * how to grab content against the app's live DOM.
  *
- * Stored encrypted at rest in ~/yo/apps/{id}.json (see secure-store.ts) — the
+ * Stored encrypted at rest in ~/.glyphh/apps/{id}.json (see secure-store.ts) — the
  * MCP OAuth client secret must never sit in plaintext on disk.
  */
 
 import fs from "fs";
 import path from "path";
-import os from "os";
 import { encryptJson, decryptJson } from "./secure-store";
+import { glyphhPath } from "./app-paths.js";
 // ── Types ───────────────────────────────────────────────
 
 /** Execution intelligence attached to a command — makes the agent reliable. */
@@ -216,7 +216,7 @@ export class AppConnector {
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    this.appsDir = path.join(os.homedir(), "yo", "apps");
+    this.appsDir = glyphhPath("apps");
     fs.mkdirSync(this.appsDir, { recursive: true });
     this.loadAll();
     this.ensureDefaults();
@@ -224,12 +224,12 @@ export class AppConnector {
 
   /** Register a callback fired (debounced) whenever the apps directory changes
    *  on disk. Lets the main process broadcast a refresh to the renderer so an
-   *  app dropped into ~/yo/apps appears without restarting yo. */
+   *  app dropped into ~/.glyphh/apps appears without restarting yo. */
   setOnChange(cb: () => void): void {
     this.onChange = cb;
   }
 
-  /** Begin watching ~/yo/apps for added/changed/removed app json files. Safe to
+  /** Begin watching ~/.glyphh/apps for added/changed/removed app json files. Safe to
    *  call once (idempotent); a burst of writes is debounced into one reload. */
   startWatching(): void {
     if (this.watcher) return;
@@ -292,7 +292,7 @@ export class AppConnector {
 
   /** Seed internal + default apps on first launch */
   private ensureDefaults(): void {
-    // Purge stale internal entries persisted to ~/yo/apps/<id>.json on a
+    // Purge stale internal entries persisted to ~/.glyphh/apps/<id>.json on a
     // prior launch. Dropping them from INTERNAL_APPS alone leaves them in
     // the app list, so we explicitly delete the entry + the file.
     //   - drop, files, vscode, monaco, code, yo-editor  → removed builds
@@ -353,7 +353,7 @@ export class AppConnector {
     }
 
     // Apps are server-authoritative now (the Apps tab reads /api/panel-apps).
-    // Any real-URL app still sitting in the local ~/yo/apps store is a stale
+    // Any real-URL app still sitting in the local ~/.glyphh/apps store is a stale
     // seed from an older build — purge it (entry + file) so it stops showing
     // up anywhere the local registry is read (e.g. the Layouts cell picker).
     // Only the yo:// internal surfaces stay local: Browser, Terminal, and the

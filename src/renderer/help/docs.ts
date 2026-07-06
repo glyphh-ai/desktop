@@ -214,7 +214,7 @@ const PRIVACY_POLICY = `
 </ul>
 
 <p><strong>3. Local-First Architecture</strong></p>
-<p>Glyphh is designed with a local-first architecture. Your data — including captured context, skills, layouts, preferences, and API keys — is stored exclusively on your local machine in the <code>~/yo/</code> directory. If you enable Cloud Sync (Basic plan and above), your library data is encrypted and synced to our servers. You can disable Cloud Sync at any time, and request deletion of cloud-stored data.</p>
+<p>Glyphh is designed with a local-first architecture. Your data — including captured context, skills, layouts, preferences, and API keys — is stored exclusively on your local machine in the <code>~/.glyphh/</code> directory. If you enable Cloud Sync (Basic plan and above), your library data is encrypted and synced to our servers. You can disable Cloud Sync at any time, and request deletion of cloud-stored data.</p>
 
 <p><strong>4. How We Use Information</strong></p>
 <ul>

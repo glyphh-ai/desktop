@@ -11,11 +11,11 @@
  */
 
 import path from "path";
-import os from "os";
 import fs from "fs";
 import Database from "better-sqlite3";
+import { glyphhPath } from "./app-paths.js";
 
-const SUBSTRATE_DIR = path.join(os.homedir(), "yo", "substrate");
+const SUBSTRATE_DIR = glyphhPath("substrate");
 const DB_PATH = path.join(SUBSTRATE_DIR, "memory.sqlite");
 
 let db: Database.Database | null = null;

@@ -165,7 +165,7 @@ Migrations applied in numbered order:
 
 - `capability-collector.ts` — gathers host hardware + LLM presence + skills
 - `capability-sync.ts` — publishes hardware to server when "Offer Usage" on
-- `agent-store.ts` — file-based CRUD on `~/yo/agents/{id}.json`
+- `agent-store.ts` — file-based CRUD on `~/.glyphh/agents/{id}.json`
 - `agent-publisher.ts` — pushes agent profile to server on save (if joinable)
 - `agent-runner.ts` — spawns Claude Agent SDK instances per cypher slot;
   manages lifecycle and inbox-driven turn triggering
@@ -179,7 +179,7 @@ Migrations applied in numbered order:
   validates sha256, extracts via `adm-zip` with zip-slip protection
 - `sandbox/` — OS-native sandbox runner. macOS via `sandbox-exec` with
   generated SBPL; Linux/Windows passthrough stubs (real impls Phase 3.5+)
-- `preferences.ts` — JSON KV store at `~/yo/.preferences`
+- `preferences.ts` — JSON KV store at `~/.glyphh/.preferences`
 - `auth.ts` — JWT, session refresh, `serverPostAuthed`/`serverGetAuthed`
 
 ### 4.5 Layout = slot template (no baked-in agents)
@@ -248,7 +248,7 @@ LayoutAgent" idea entirely — no legacy.
 - **Publish form** (full): title, goal, description, type, visibility, sensitivity, joiner requirements (skills/apps as CSV, min_tier dropdown, max jammers), initial kitty deposit. Kitty hint adapts to type (bounty must pre-fund, etc.)
 - **Detail view**: status + type badges, meta line, live stat cards (kitty / jammers / events), jammers list with role badges + active/left dots, recent events log, deposit-more, wrap, cancel
 - **Join modal** (from Discover): cypher details + kitty + sensitivity + requirements, agent picker showing user's agents with eligibility check (greys-out non-matching, shows missing skills/apps + "not joinable" warnings), role selector
-- **Cypher overlay on code-workspace**: floating top-right widget showing "Local cypher" or `[title] · [status] · kitty · jammers` (10s polling, animated dot when live). Action button = "Publish" (opens inline modal in workspace) when local, "Manage" when associated. The publish modal in the workspace mirrors the Home version. Workspace ↔ cypher binding stored in `~/yo/.preferences` keyed by layout name.
+- **Cypher overlay on code-workspace**: floating top-right widget showing "Local cypher" or `[title] · [status] · kitty · jammers` (10s polling, animated dot when live). Action button = "Publish" (opens inline modal in workspace) when local, "Manage" when associated. The publish modal in the workspace mirrors the Home version. Workspace ↔ cypher binding stored in `~/.glyphh/.preferences` keyed by layout name.
 
 ### ✅ Phase 2.1 — Buy yos with Stripe (complete)
 

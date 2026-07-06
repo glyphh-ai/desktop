@@ -97,7 +97,7 @@ The post-pivot pitch is **"we coordinate; you bring the inference."**
 | Today | After the pivot |
 |---|---|
 | `proxy-client.ts` → `POST /api/llm/proxy` (SSE) | Adapters call provider SDKs directly from main process |
-| Provider keys stored on yo-server (`provider_keys` table, encrypted) | Provider keys stored client-side in `~/yo/.providers.json` (`safeStorage`) |
+| Provider keys stored on yo-server (`provider_keys` table, encrypted) | Provider keys stored client-side in `~/.glyphh/.providers.json` (`safeStorage`) |
 | `yos` balance, top-ups, overage, kitty, settlement | **Deleted.** Subscription only. |
 | Cypher kitty pre-funding the work | **Deleted.** Hosts pay nothing to yo for cypher work; their jammers spend their own provider bills. |
 | `cypher_kitty_ledger`, `kitty_balance`, settlement at wrap | **Deleted.** Reputation = merged-PR count (after THE-PIVOT-GITHUB) or `agent_performance` (today) — cost attribution disappears entirely. |
@@ -181,7 +181,7 @@ Settings already exists in yo-client. Add a Providers tab.
     updates the badge
   - "Remove" button → wipes the key
 - [ ] `src/main/provider-keys.ts` (new) — reads/writes
-      `~/yo/.providers.json`, encrypted via `safeStorage`. Exposes
+      `~/.glyphh/.providers.json`, encrypted via `safeStorage`. Exposes
       `getKey(provider)`, `setKey(provider, key)`, `removeKey(provider)`,
       `listConfiguredProviders()`.
 - [ ] IPC: `providerKey.set`, `providerKey.remove`, `providerKey.test`,

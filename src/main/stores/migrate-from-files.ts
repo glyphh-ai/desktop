@@ -2,24 +2,23 @@
  * MigrateFromFiles — one-time migration from file-based stores to SQLite.
  *
  * Reads existing:
- *   ~/yo/.layouts        → layouts table
- *   ~/yo/.preferences    → preferences table
+ *   ~/.glyphh/.layouts        → layouts table
+ *   ~/.glyphh/.preferences    → preferences table
  *
- * Writes sentinel ~/yo/.migrated-to-db on success so it only runs once.
+ * Writes sentinel ~/.glyphh/.migrated-to-db on success so it only runs once.
  * Does NOT delete old files.
  */
 
 import fs from "fs";
 import path from "path";
-import os from "os";
 import { saveLayout } from "./layout-store-db";
 import { setPreference } from "./preferences-db";
 import type { GridLayout } from "../layout-manager";
+import { GLYPHH_DIR } from "../app-paths.js";
 
-const YO_DIR = path.join(os.homedir(), "yo");
-const LAYOUTS_FILE = path.join(YO_DIR, ".layouts");
-const PREFS_FILE = path.join(YO_DIR, ".preferences");
-const SENTINEL = path.join(YO_DIR, ".migrated-to-db");
+const LAYOUTS_FILE = path.join(GLYPHH_DIR, ".layouts");
+const PREFS_FILE = path.join(GLYPHH_DIR, ".preferences");
+const SENTINEL = path.join(GLYPHH_DIR, ".migrated-to-db");
 
 /**
  * Run the one-time file-to-db migration. Safe to call on every boot —
@@ -95,7 +94,7 @@ export function migrateFromFiles(): { migrated: boolean; layouts: number; prefs:
 
   // ── Write sentinel ───────────────────────────────────────
   try {
-    fs.mkdirSync(YO_DIR, { recursive: true });
+    fs.mkdirSync(GLYPHH_DIR, { recursive: true });
     fs.writeFileSync(SENTINEL, JSON.stringify({
       migratedAt: new Date().toISOString(),
       layouts: layoutCount,

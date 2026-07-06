@@ -34,6 +34,7 @@ app.commandLine.appendSwitch("use-mock-keychain");
 
 import path from "path";
 import fs from "fs";
+import { glyphhPath } from "./app-paths.js";
 import { PanelManager } from "./panel-manager";
 import { TerminalManager, AgentSpawnConfig } from "./terminal";
 import { CommandParser } from "./command-parser";
@@ -280,11 +281,11 @@ async function boot() {
   });
 
   // Backward compat: redirect file:// requests for chart.umd.min.js from skill folders
-  const yoDir = path.join(os.homedir(), "yo", "skills");
+  const skillsDir = glyphhPath("skills");
   electronSession.defaultSession.webRequest.onBeforeRequest(
     { urls: ["file://*chart.umd.min.js"] },
     (details: { url: string }, callback: (response: { redirectURL?: string }) => void) => {
-      if (details.url.includes(yoDir)) {
+      if (details.url.includes(skillsDir)) {
         callback({ redirectURL: `file://${path.join(rendererDir, "chart.umd.min.js")}` });
       } else {
         callback({});
@@ -362,7 +363,7 @@ async function boot() {
     }
   }
 
-  // Live apps reload — watch ~/yo/apps so an app dropped on disk (e.g. a
+  // Live apps reload — watch ~/.glyphh/apps so an app dropped on disk (e.g. a
   // packaged app's <id>.json) shows up in the registry + `+` picker without a
   // restart. Fans the refresh to the main window and every panel webContents
   // (the Apps registry runs inside the yo://apps panel, not the main window).
@@ -1521,7 +1522,7 @@ async function boot() {
   // Open a file from a yo-panel file link — defers to the OS default app.
   ipcMain.on("open-in-editor", (_e, filePath: string) => {
     if (typeof filePath !== "string" || !filePath) return;
-    const resolved = path.isAbsolute(filePath) ? filePath : path.join(os.homedir(), "yo", filePath);
+    const resolved = path.isAbsolute(filePath) ? filePath : glyphhPath(filePath);
     void shell.openPath(resolved);
   });
 

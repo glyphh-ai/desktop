@@ -73,7 +73,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   get_context:       "Read current session context (in-memory captures)",
   format:            "Apply a skill to format content",
   save_memory:       "Save a preference or pattern to agent memory",
-  search_notes:      "Keyword search across saved notes in ~/yo/notes/",
+  search_notes:      "Keyword search across saved notes in ~/.glyphh/notes/",
   read_file:         "Read a file from the local filesystem",
   list_files:        "List files in a directory",
   run_command:       "Run a read-only shell command (git log, ls, etc.)",

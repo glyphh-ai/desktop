@@ -122,7 +122,7 @@ is the GH OAuth flow: a child `BrowserWindow` opens `https://api.dotyo.dev/api/a
 the user authorizes on github.com, the redirect lands at the platform's
 `/auth/callback?code=…`, The Drop's main-process owner intercepts the
 code, exchanges it via yo-server, and persists the augmented session in
-its own storage file (`~/yo/.session.drop`).
+its own storage file (`~/.glyphh/.session.drop`).
 
 **Why a separate session file?** Rotation independence and clean
 revocation. A user can keep using yo-client while their GH binding is
@@ -165,7 +165,7 @@ yo-only.
 
 **Tasks:**
 
-- [x] `drop.ts` boot: check for `~/yo/.session.drop`. If missing or
+- [x] `drop.ts` boot: check for `~/.glyphh/.session.drop`. If missing or
       expired, render a centered "Continue with GitHub" landing card
       (same visual language as the rest of The Drop, locked to the
       single CTA + a "Why GitHub?" expandable explainer).
@@ -178,7 +178,7 @@ yo-only.
       `${AUTH_SERVER}/api/auth/github/exchange?flow=electron-drop`,
       receives `{ accessToken, refreshToken, expiresAt, gh_user_id,
       gh_login, gh_avatar }`, encrypts via `safeStorage`, writes to
-      `~/yo/.session.drop`. Schedules refresh.
+      `~/.glyphh/.session.drop`. Schedules refresh.
 - [x] Drop-only IPC client (`drop-api.ts`): wraps `net` requests with
       `Authorization: Bearer <drop-session-jwt>` instead of the main
       session. Imported only by `drop-preload`.
@@ -364,7 +364,7 @@ The local jammer daemon lives in **the main process, not inside The
 Drop's renderer**. It's user-scoped, runs whenever yo-client is open,
 and reacts to assignments regardless of whether The Drop panel is
 focused. The Drop's GH-bound session token is what authenticates the
-SSE subscription (the daemon reads it from `~/yo/.session.drop`).
+SSE subscription (the daemon reads it from `~/.glyphh/.session.drop`).
 
 - [ ] `agent-runner.ts`: subscribe to `${AUTH_SERVER}/api/me/
       assignments/stream` on app start (only when `.session.drop`
@@ -465,7 +465,7 @@ an installed org sees "billed via @acme" with no top-up UI.
 
 - **GH OAuth in any panel other than The Drop.** The binding is scoped.
 - **A second main-process token store.** Drop sessions live in
-  `.session.drop`; the existing `~/yo/.session` is untouched.
+  `.session.drop`; the existing `~/.glyphh/.session` is untouched.
 - **A merge button in The Drop.** Hosts merge on github.com. The
   Workspace view links out.
 - **A diff viewer in The Drop.** Click the PR row → opens in browser.

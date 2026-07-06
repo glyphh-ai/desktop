@@ -2,13 +2,13 @@
  * LayoutManager — grid-based panel layout engine.
  *
  * Supports N×M grids with column/row spans.
- * Layouts stored as JSON in ~/yo/.layouts
+ * Layouts stored as JSON in ~/.glyphh/.layouts
  */
 
 import fs from "fs";
 import path from "path";
-import os from "os";
 import { BrowserWindow } from "electron";
+import { glyphhPath } from "./app-paths.js";
 import { PanelManager } from "./panel-manager";
 import { serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
 import { cachedServerGet, invalidateServerCache } from "./server-cache";
@@ -94,7 +94,7 @@ interface LegacyLayout {
 
 // ── Constants ───────────────────────────────────────────────
 
-const LAYOUTS_FILE = path.join(os.homedir(), "yo", ".layouts");
+const LAYOUTS_FILE = glyphhPath(".layouts");
 const TITLEBAR_HEIGHT = 38;
 const SPLIT_GAP = 8;
 const CELL_URL_HEIGHT = 22;

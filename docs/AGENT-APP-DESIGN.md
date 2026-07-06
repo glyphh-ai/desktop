@@ -12,7 +12,7 @@
 ### Two kinds of agents — never the same code path
 
 - **Right-rail .Yo** — the wrapper. One per yo-client window. **Always cwd-ed
-  at `~/yo/`**, covers every folder the user touches. Locked to Claude Code
+  at `~/.glyphh/`**, covers every folder the user touches. Locked to Claude Code
   today. Carries the heavier orchestration burden.
 - **Agent app instances** — the worker bees. Many per user. Each has its own
   identity (name, avatar, bio), tool whitelist by app+skill+ad-hoc, model
@@ -171,13 +171,13 @@ interface AgentConfig {
 
 This is the worker-bee schema. **We don't redesign it.** Changes:
 
-- **Foldered, not flat.** Migrate `~/yo/agents/{id}.json` →
-  `~/yo/agents/<slug>/` so `CLAUDE.md` (the editable system prompt) and
+- **Foldered, not flat.** Migrate `~/.glyphh/agents/{id}.json` →
+  `~/.glyphh/agents/<slug>/` so `CLAUDE.md` (the editable system prompt) and
   `avatar.png` can live alongside. `agent.json` is the config file inside.
 - **Runtime is per-folder, not per-workspace.** Chat history scopes to the
   folder the Agent panel is bound to:
   ```
-  ~/yo/agents/<slug>/
+  ~/.glyphh/agents/<slug>/
     agent.json
     CLAUDE.md
     avatar.png?
@@ -226,7 +226,7 @@ Three things change in the right rail:
 
 1. **Workdir bar removed.** The `yo-workdir-bar` markup
    (`index.html:241-265`) and its wiring come out. The right-rail agent
-   cwds to `~/yo/` always.
+   cwds to `~/.glyphh/` always.
 2. **The picker that used to live here moves into folder-bound app
    chrome.** Same UI code, reparented.
 3. **Chat history shows folders** — same data source the Welcome screen
@@ -290,7 +290,7 @@ Sits alongside Settings → Providers. Defaults for new agent creation:
 - Default system prompt (a `CLAUDE.md` template)
 - Default whitelisted apps + skills + MCP servers
 
-Stored at `~/yo/.agent-defaults.json`. Consumed by
+Stored at `~/.glyphh/.agent-defaults.json`. Consumed by
 `agent-store.createFromDefaults(slug)`.
 
 ## 12. Phased plan
@@ -305,7 +305,7 @@ previous is on main and the right-rail still works.
 - `Recent` data source extracted into a shared IPC, fed by folder-bound
   app/layout mounts.
 - Remove `yo-workdir-bar` from the right-rail; right-rail always cwds
-  `~/yo/`. The picker UI is reparented (becomes a reusable component for
+  `~/.glyphh/`. The picker UI is reparented (becomes a reusable component for
   app chrome).
 - Pref: `welcomeOnStartup`.
 
@@ -360,7 +360,7 @@ Add `runner.startInteractive(...)` + the `AgentRegistry` + the
 `agent:<id>:*` channels. Prove with a scratch IPC call.
 
 ### Phase 5 — Foldered agent storage + per-folder runtime + migration
-- Foldered `~/yo/agents/<slug>/agent.json` + `CLAUDE.md`. One-shot
+- Foldered `~/.glyphh/agents/<slug>/agent.json` + `CLAUDE.md`. One-shot
   migration of existing flat files.
 - Per-folder `<agent-cwd>/.yo/agents/<slug>/history/*.jsonl` +
   `state.json`.
@@ -383,14 +383,14 @@ Existing `renderer/help/agents.ts` already has CRUD. Add:
 - Avatar render (use existing `avatar_url`; identicon fallback).
 
 ### Phase 8 — Settings → Agent Defaults tab
-New tab in `settings.ts`. Storage at `~/yo/.agent-defaults.json`. Wired
+New tab in `settings.ts`. Storage at `~/.glyphh/.agent-defaults.json`. Wired
 into `createFromDefaults()`.
 
 ## 13. Resolved decisions
 
 1. **Single-window, always.** Multi-window negates the .yo premise of one
    workspace per window. No `BrowserWindow` multiplication.
-2. **No migrations.** Greenfield. Foldered `~/yo/agents/<slug>/` from day
+2. **No migrations.** Greenfield. Foldered `~/.glyphh/agents/<slug>/` from day
    one. No flat-file migration path.
 3. **Default Agent `CLAUDE.md` seed depends on entry point:**
    - Open `yo://agent` from `+` (no slug → default agent) → full Claude
@@ -411,7 +411,7 @@ into `createFromDefaults()`.
 ## 14. Non-goals
 
 - Touching `YoChat` (right-rail engine).
-- Replacing `~/yo/.providers.json`.
+- Replacing `~/.glyphh/.providers.json`.
 - A second SDK / engine. Phase 0-8 all run on Claude Agent SDK. Other
   providers come later via a future `LocalAgentEngine` / `OpenAIAgentEngine`
   swap-in to `agent-runner`.

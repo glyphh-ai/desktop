@@ -31,7 +31,7 @@ SPEC.md   →   plan.md   →   Claude Code builds   →   preview   →   ship
 need to build, develop, and ship, so there's no reason to alt-tab to another tool. The
 build surfaces are not one morphing layout — they're **distinct yo apps** you switch
 between (the whole "everything is a yo app" thesis), all sharing one agent + one `SPEC.md`
-+ one real repo (`~/yo/vibes/<id>/`):
++ one real repo (`~/.glyphh/vibes/<id>/`):
 
 | App (`yo://…`) | Surface | For | Code |
 |----------------|---------|-----|------|
@@ -96,9 +96,9 @@ intact), not from `os-overlay` (which deleted it).**
 - **Preview — on-demand browser tab.** Open `meta.dev_server_url` in a normal tab when building something visual; no reserved region (don't eat space for an occasional view).
 
 ## Vibe registry (persistence) — `src/main/vibe-store.ts`
-Mirror `agent-store`/`council-store` per-item-on-disk pattern under `~/yo/vibes/<id>/`:
+Mirror `agent-store`/`council-store` per-item-on-disk pattern under `~/.glyphh/vibes/<id>/`:
 ```
-~/yo/vibes/<id>/
+~/.glyphh/vibes/<id>/
   meta.json        # VibeMeta (below)
   SPEC.md          # durable intent — the source of truth (the layer above plan)
   plan.md          # living task list, derived from SPEC.md, maintained by the agent
@@ -128,7 +128,7 @@ On "plan with a council": `createCouncil(...)` → run → `summarizeCouncil(id)
 
 ## Build order — v1 (shipped in v4.2.0)
 1. **Workspace shell** — `vibe.html`/`vibe.ts` real 3-region layout; Claude Code PTY agent in region 1 (cwd = a scratch dir for now); plan pane (region 2) editing a plan.md; `<webview>` preview (region 3). Single agent.
-2. **Vibe registry + rail** — `vibe-store.ts`, `vibe-ipc.ts` (list/get/create/delete + open), rail Vibes list, open-by-id binds the workspace to `~/yo/vibes/<id>/`.
+2. **Vibe registry + rail** — `vibe-store.ts`, `vibe-ipc.ts` (list/get/create/delete + open), rail Vibes list, open-by-id binds the workspace to `~/.glyphh/vibes/<id>/`.
 3. **vibe-planner skill** — generate `plan.md` + `CLAUDE.md` from a goal on create.
 4. **Council → vibe feed** — synthesis seeds the plan.
 5. **yo app import/export** — `.glyphh` bundle; vibe "ship" registers the output as an app.

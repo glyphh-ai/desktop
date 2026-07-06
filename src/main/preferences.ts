@@ -1,5 +1,5 @@
 /**
- * Preferences — simple JSON key-value store at ~/yo/.preferences
+ * Preferences — simple JSON key-value store at ~/.glyphh/.preferences
  *
  * The store is shared by the main process AND short-lived child/utility
  * processes (embedder, sdk-llm, mcp-client, capability sync, …). An in-memory
@@ -13,9 +13,9 @@
 
 import fs from "fs";
 import path from "path";
-import os from "os";
+import { glyphhPath } from "./app-paths.js";
 
-const PREFS_FILE = path.join(os.homedir(), "yo", ".preferences");
+const PREFS_FILE = glyphhPath(".preferences");
 
 function readAll(): Record<string, unknown> {
   try {

@@ -65,7 +65,7 @@ Connections (scoped to the manifest's `connectors` list — see below):
 Machine capabilities (macOS): `contacts.search { query }`,
 `messages.send { to, body }`.
 
-`db.exec` is the app's OWN SQLite file (`~/yo/app-data/<slug>/data.sqlite`) —
+`db.exec` is the app's OWN SQLite file (`~/.glyphh/app-data/<slug>/data.sqlite`) —
 one statement per call, `?` params. No ATTACH/PRAGMA/VACUUM. No cross-app data.
 
 If the app needs a capability that doesn't exist yet, it must be added to the

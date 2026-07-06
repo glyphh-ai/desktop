@@ -68,7 +68,7 @@ preference keys like `codeWorkspaceLayout` / `codeWorkspaceCypher`). That
 naming is from the `.code` command era. Rename to `cypher-workspace`
 across the surface, with a one-time read-time migration shim for existing
 persisted state:
-- `~/yo/workspaces/<slug>/layouts.json` entries with `type: "code"` →
+- `~/.glyphh/workspaces/<slug>/layouts.json` entries with `type: "code"` →
   `type: "cypher"`
 - preferences `codeWorkspaceLayout` → `cypherWorkspaceLayout`,
   `codeWorkspaceCypher` → `cypherWorkspaceCypher`

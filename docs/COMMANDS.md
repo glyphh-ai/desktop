@@ -85,7 +85,7 @@ Workspaces, agents, and dev-space layouts are managed from the in-app **Home**
 panel (Workspaces, Agents, Layouts pages). The cypher abstraction will subsume
 this surface in a follow-up cleanup pass.
 
-Storage: `~/yo/workspaces.json` (index) + `~/yo/workspaces/<slug>/` (per-workspace
+Storage: `~/.glyphh/workspaces.json` (index) + `~/.glyphh/workspaces/<slug>/` (per-workspace
 state — events log, agent metadata, inbox state).
 
 ### How agents coordinate
@@ -126,10 +126,10 @@ of every turn — events newer than their last activity are new.
 ### Storage layout
 
 ```
-~/yo/workspaces.json                              # workspace index
-~/yo/workspaces/<slug>/agents.json                # agent roster + subscriptions
-~/yo/workspaces/<slug>/events.jsonl               # append-only event log
-~/yo/workspaces/<slug>/inbox-state.json           # per-agent lastDeliveredTs
+~/.glyphh/workspaces.json                              # workspace index
+~/.glyphh/workspaces/<slug>/agents.json                # agent roster + subscriptions
+~/.glyphh/workspaces/<slug>/events.jsonl               # append-only event log
+~/.glyphh/workspaces/<slug>/inbox-state.json           # per-agent lastDeliveredTs
 ${rootDir}/.mcp.json                              # MCP config (managed)
 ${rootDir}/CLAUDE.md                              # dispatcher section (managed)
 ${rootDir}/.yo/agents/<name>.md                   # per-agent role briefing

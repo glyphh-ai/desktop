@@ -10,9 +10,9 @@
  *                                                 embedded — real Cypher)
  *
  * Everything here is ON-DEVICE and slug-scoped like the other services:
- * vectors in ~/yo/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/.
+ * vectors in ~/.glyphh/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/.
  * Embeddings run locally via @huggingface/transformers + onnxruntime
- * (already shipped); the model downloads once to ~/yo/models. Glyphh itself
+ * (already shipped); the model downloads once to ~/.glyphh/models. Glyphh itself
  * makes no LLM calls — remote model access (llm.complete / agent.run) lives
  * in glyphh-app-agent.ts and runs on the app's own config-var key.
  *
@@ -23,9 +23,9 @@
 import Database from "better-sqlite3";
 import kuzu from "kuzu";
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { appDataDir } from "./glyphh-app-services.js";
+import { glyphhPath } from "./app-paths.js";
 
 // ── local embeddings (llm.embed) ────────────────────────────
 
@@ -44,7 +44,7 @@ function getEmbedder(model: string): Promise<any> {
   if (!p) {
     p = (async () => {
       const tf = await dynamicImport("@huggingface/transformers");
-      tf.env.cacheDir = path.join(os.homedir(), "yo", "models");
+      tf.env.cacheDir = glyphhPath("models");
       try {
         return await tf.pipeline("feature-extraction", model);
       } catch (err) {
@@ -264,7 +264,7 @@ export function vectorDelete(slug: string, args: Record<string, unknown>): { del
 // A real graph database, not a table dressed up as one: Kuzu is an embedded,
 // in-process graph engine that speaks Cypher (structured property graphs,
 // MATCH patterns, variable-length paths, shortest path, aggregations). Each
-// app gets its own database directory at ~/yo/app-data/<slug>/graph.kuzu.
+// app gets its own database directory at ~/.glyphh/app-data/<slug>/graph.kuzu.
 //
 // The app owns its schema — Kuzu is schema-full, so the first calls are DDL:
 //   graph.cypher { query: "CREATE NODE TABLE Account (name STRING, arr DOUBLE, PRIMARY KEY (name))" }

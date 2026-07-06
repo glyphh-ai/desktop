@@ -28,7 +28,7 @@ worker.js          # optional — headless logic (the manifest `worker`, see §4
 …assets            # any CSS/JS/images the UI references (relative paths)
 ```
 
-Install extracts it to `~/yo/custom-apps/<slug>/` and creates a normal Glyphh
+Install extracts it to `~/.glyphh/custom-apps/<slug>/` and creates a normal Glyphh
 saved-app row, so the app appears on the Apps page, in the command overlay,
 answers to `.dip <slug>`, and can sit in a layout — **installed like any other
 app**. Re-importing the same slug **updates** the existing install (its worker
@@ -100,7 +100,7 @@ install anchor and always required).
   overlay). The UI talks to the host through `window.glyphh.call(method, args)`,
   where `method` is a declared capability. This is the human path.
 
-  The host publishes shared UI libraries to `~/yo/custom-apps/_libs/`
+  The host publishes shared UI libraries to `~/.glyphh/custom-apps/_libs/`
   (refreshed each startup, versioned with Glyphh), so apps get rich
   visualization without vendoring or the network:
 
@@ -179,7 +179,7 @@ OS permission prompts, and the security boundary.
 | `notify.send`   | `{ title, body }`                   | `{ shown }`                              |
 
 - **`db.exec`** — the app's own SQLite database at
-  `~/yo/app-data/<slug>/data.sqlite` (WAL). One statement per call; `params`
+  `~/.glyphh/app-data/<slug>/data.sqlite` (WAL). One statement per call; `params`
   is an array (`?` placeholders) or an object (named). `SELECT`s return
   `{ rows }`; writes return `{ changes, lastInsertRowid }`.
   `ATTACH`/`DETACH`/`PRAGMA`/`VACUUM` are host-only. There is **no cross-app
@@ -252,16 +252,16 @@ keys it expects, and gate features on their presence.
 
 - **`llm.embed`** — local embeddings (ONNX via transformers.js; default model
   `Xenova/all-MiniLM-L6-v2`, 384-dim). The model downloads once to
-  `~/yo/models` on first use — expect the first call to take longer. Batch up
+  `~/.glyphh/models` on first use — expect the first call to take longer. Batch up
   to 64 texts. Fully on-device.
-- **`vector.*`** — per-app vector store (`~/yo/app-data/<slug>/vectors.sqlite`).
+- **`vector.*`** — per-app vector store (`~/.glyphh/app-data/<slug>/vectors.sqlite`).
   `items: [{ id, text?, vector?, metadata? }]` — text is embedded
   automatically with the collection's model (pinned at creation). Search is
   exact cosine (normalized dot product); `filter` is exact-match on metadata
   keys. Typical pipeline: `llm.chunk` → `vector.upsert { items }` →
   `vector.search { query }`.
 - **`graph.cypher`** — a real knowledge graph: each app gets its own embedded
-  **Kuzu** database (`~/yo/app-data/<slug>/graph.kuzu`) speaking full Cypher —
+  **Kuzu** database (`~/.glyphh/app-data/<slug>/graph.kuzu`) speaking full Cypher —
   property graphs, MATCH patterns, variable-length paths (`-[:Owns*1..3]->`),
   shortest path, aggregations. Kuzu is schema-full; the app's first calls are
   DDL:

@@ -38,7 +38,7 @@ Release builds are normally produced by CI (`.github/workflows/build.yml`) on a
 
 - Backend defaults to `https://api.glyphh.ai`; override with `YO_AUTH_SERVER`
   (and `YO_PLATFORM_URL`) to point at a different/self-hosted server.
-- Local app data lives under `~/yo/`.
+- Local app data lives under `~/.glyphh/`.
 
 ---
 

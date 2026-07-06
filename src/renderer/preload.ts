@@ -510,7 +510,7 @@ contextBridge.exposeInMainWorld("yo", {
   connectorsListTools: () => ipcRenderer.invoke("connectors-list-tools") as Promise<Array<{ slug: string; name: string; description: string }>>,
   onConnectorsChanged: (cb: () => void) => { ipcRenderer.on("connectors-changed", cb); },
 
-  // Apps registry live-reload — fired when ~/yo/apps changes on disk so the
+  // Apps registry live-reload — fired when ~/.glyphh/apps changes on disk so the
   // registry + picker refresh without a restart.
   onAppsChanged: (cb: () => void) => { ipcRenderer.on("apps-changed", () => cb()); },
 

@@ -68,7 +68,7 @@ All registered in `server.ts`. TypeScript clean.
 ### yo-client `gh-pivot` branch
 
 - **`src/main/drop-auth.ts`** (new)
-  - `~/yo/.session.drop` storage (encrypted via `safeStorage`)
+  - `~/.glyphh/.session.drop` storage (encrypted via `safeStorage`)
   - `signInWithGitHub()` — hits `/api/auth/github/start`, opens child
     `BrowserWindow` on the partition `persist:drop-session`, intercepts the
     callback redirect (will-redirect/did-navigate), POSTs `{code,state}` to
@@ -269,7 +269,7 @@ To test cypher-bus migration audit: `grep "PIVOT-GITHUB MIGRATION" src/main/cyph
 1. **Register the GH App on github.com** + set the 6 `GH_*` env vars on
    yo-server. Run migrations 035 + 036 + 037 against the target DB.
 2. **Smoke the live exchange** end-to-end: `YO_ENABLE_GH_AUTH=1` in the
-   client, click "Continue with GitHub" → completes → `~/yo/.session.drop`
+   client, click "Continue with GitHub" → completes → `~/.glyphh/.session.drop`
    on disk → `dropApi.projectsMine()` returns 200 (empty).
 3. **GraphQL Project v2 writer** — currently the highest-leverage TODO.
    Once it lands, `POST /api/projects` populates `gh_project_url` and the

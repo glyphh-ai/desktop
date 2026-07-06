@@ -13,10 +13,10 @@
 
 import fs from "fs";
 import path from "path";
-import os from "os";
 import { BrowserWindow, net, shell } from "electron";
+import { GLYPHH_DIR } from "./app-paths.js";
 
-const CONFIG_DIR = path.join(os.homedir(), "yo");
+const CONFIG_DIR = GLYPHH_DIR;
 const SESSION_FILE = path.join(CONFIG_DIR, ".session");
 const REFRESH_MARGIN = 3 * 60 * 1000; // refresh 3 min before expiry
 const HEARTBEAT_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours

@@ -1,7 +1,7 @@
 /**
  * LocalDb — singleton SQLite database for user state.
  *
- * Stores agents, layouts, and preferences in ~/yo/user-state.sqlite.
+ * Stores agents, layouts, and preferences in ~/.glyphh/user-state.sqlite.
  * Uses WAL mode for performance.
  *
  * encryptField/decryptField (safeStorage/OS-keychain-backed) exist for the
@@ -12,13 +12,12 @@
  */
 
 import path from "path";
-import os from "os";
 import fs from "fs";
 import Database from "better-sqlite3";
 import { safeStorage } from "electron";
+import { GLYPHH_DIR } from "./app-paths.js";
 
-const YO_DIR = path.join(os.homedir(), "yo");
-const DB_PATH = path.join(YO_DIR, "user-state.sqlite");
+const DB_PATH = path.join(GLYPHH_DIR, "user-state.sqlite");
 
 let db: Database.Database | null = null;
 
@@ -167,7 +166,7 @@ function runMigrations(database: Database.Database): void {
  */
 export function initLocalDb(): Database.Database {
   if (db) return db;
-  fs.mkdirSync(YO_DIR, { recursive: true });
+  fs.mkdirSync(GLYPHH_DIR, { recursive: true });
   db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");

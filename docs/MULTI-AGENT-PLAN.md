@@ -53,7 +53,7 @@ Five nouns. Memorize these — every implementation decision falls out of them.
 | **Workspace** | `{ name, rootDir }` — a slug + a directory on disk. Captures, terminals, and layouts are scoped to it. Today this is a string preference; in v3 it's a real object. |
 | **Panel** | An app instance (built-in, vibe, or code-terminal). Has a unique slug in the workspace's panel namespace. Already exists post-v2.4.13. |
 | **Agent** | A code-terminal panel running Claude Code with a name, role, and workspace binding. Agent name = panel slug. |
-| **Context** | Append-only event log of what's happened in the workspace: file edits, agent posts, captures, decisions. Lives at `~/yo/workspaces/<slug>/events.jsonl`. |
+| **Context** | Append-only event log of what's happened in the workspace: file edits, agent posts, captures, decisions. Lives at `~/.glyphh/workspaces/<slug>/events.jsonl`. |
 | **Subscription** | A tag-filter an agent registers; orchestrator delivers matching events to the agent's inbox. |
 
 Three verbs:
@@ -73,8 +73,8 @@ That's the whole protocol. Everything else is UX.
 Today: `activeWorkspace` is a string preference. Captures get tagged with it.
 
 Change: Workspace = `{ slug, name, rootDir, createdAt }`. **Global slug registry**
-— one `~/yo/workspaces.json` index plus per-workspace dirs at
-`~/yo/workspaces/<slug>/`. Slugs share the reserved-keyword set with commands
+— one `~/.glyphh/workspaces.json` index plus per-workspace dirs at
+`~/.glyphh/workspaces/<slug>/`. Slugs share the reserved-keyword set with commands
 (`yo`, `sup`, `dip`, `drip`, `peace`, `council`).
 
 Two slugs may point at the same `rootDir` (different "lenses" on one project) —
@@ -130,7 +130,7 @@ Reserved code-terminal names: command keywords + workspace slugs in current scop
 | Agent posts an update | MCP tool that appends to `events.jsonl` | One write path, atomic, debuggable |
 | Real-time delivery | Orchestrator drains relevant events into `${rootDir}/.yo/inbox/<agent>.md` | At next prompt boundary — no mid-tool-call interruption |
 | Persistent record | `events.jsonl` (append-only, one per workspace) | Durable, greppable, version-controllable |
-| Free-form artifacts | `~/yo/workspaces/<slug>/agents/<name>.md` | Markdown scratchpad each agent owns |
+| Free-form artifacts | `~/.glyphh/workspaces/<slug>/agents/<name>.md` | Markdown scratchpad each agent owns |
 
 **Event shape (locked):**
 ```typescript
@@ -257,7 +257,7 @@ Sender conventions:
 The user is the final authority — defer to them on scope.
 ```
 
-Editable per workspace via `~/yo/workspaces/<slug>/agent-prompt-template.md`.
+Editable per workspace via `~/.glyphh/workspaces/<slug>/agent-prompt-template.md`.
 Power users will tweak this constantly; that's fine.
 
 ### 3.7 Capture-store integration (the workspace-tagging gap)
@@ -337,7 +337,7 @@ Ship in order. Each phase is independently testable and provides value alone.
 - Commands: `.yo .ws new | switch | list`
 - All capture paths use the active workspace's slug + rootDir
 - Migration: existing `activeWorkspace` string becomes the slug of a default workspace bound to `~`
-- **Demo:** `ws new yousup ~/dev/yousup`, switch to it, captures land in `~/yo/workspaces/yousup/`.
+- **Demo:** `ws new yousup ~/dev/yousup`, switch to it, captures land in `~/.glyphh/workspaces/yousup/`.
 
 ### Phase 2 — Code-terminal panel type (~3 days)
 - New panel type with name, role, cwd, agentCommand, prompt addon
@@ -349,8 +349,8 @@ Ship in order. Each phase is independently testable and provides value alone.
 ### Phase 3 — Workspace MCP server (~3 days)
 - New MCP server registered when a workspace is active
 - Tools: `team_status`, `read_log`, `read_agent`, `post`, `post_to`, `subscribe`
-- `events.jsonl` storage at `~/yo/workspaces/<slug>/events.jsonl`
-- Per-agent scratchpad at `~/yo/workspaces/<slug>/agents/<name>.md`
+- `events.jsonl` storage at `~/.glyphh/workspaces/<slug>/events.jsonl`
+- Per-agent scratchpad at `~/.glyphh/workspaces/<slug>/agents/<name>.md`
 - Code-terminals auto-configured with the server URL on boot
 - **Demo:** agent ui posts a decision; agent server reads it via `read_log`.
 
