@@ -30,7 +30,10 @@
   "license": "UNLICENSED",
   "build": {
     "appId": "ai.glyphh.desktop",
-    "productName": "Glyphh Desktop"
+    "productName": "Glyphh Desktop",
+    "directories": {
+      "output": "release"
+    }
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.0",
