@@ -1,7 +1,6 @@
 /**
- * CommandParser — parses and executes yo/sup/dip/drip/peace commands.
+ * CommandParser — parses and executes sup/dip/drip/peace/waz commands.
  *
- *   yo [query]      → open agent side panel (optionally with query)
  *   sup             → capture active panel to clipboard + session
  *   sup . <skill>   → capture + skill process → inject result
  *   dip <panel>     → switch/split/grid
@@ -111,8 +110,6 @@ export class CommandParser {
     const args = parts.slice(1);
 
     switch (cmd) {
-      case "yo":
-        return this.handleYo(args);
       case "sup":
         return this.handleSup(args);
       case "dip":
@@ -124,7 +121,7 @@ export class CommandParser {
       case "waz":
         return this.handleWaz(args, sourcePanelId);
       default:
-        return `Unknown command: ${cmd}. Try yo, sup, dip, drip, or waz.`;
+        return `Unknown command: ${cmd}. Try sup, dip, drip, or waz.`;
     }
   }
 
@@ -169,13 +166,8 @@ export class CommandParser {
     const trimmed = input.trim();
     if (!trimmed) return "";
 
-    const clean = (s: string) => s.replace(/\.(yo|sup|dip|drip|peace|waz)\b/gi, "$1");
+    const clean = (s: string) => s.replace(/\.(sup|dip|drip|peace|waz)\b/gi, "$1");
 
-    // .yo (search/agent) NEVER chains — entire input is one command.
-    const yoMatch = trimmed.match(/^\.?yo\b/i);
-    if (yoMatch) {
-      return this.executeSingle(clean(trimmed), sourcePanelId);
-    }
     // .sup (capture) can chain only when using dot modifier (.sup . .dip gmail).
     // Bare .sup never chains.
     const supMatch = trimmed.match(/^\.?sup\b/i);
@@ -198,14 +190,6 @@ export class CommandParser {
     }
     return lastResult;
   }
-
-  // ── yo: opens the agent side panel, or dispatches a sub-mode ─────
-
-  private async handleYo(args: string[]): Promise<string> {
-    const query = args.join(" ").trim();
-    return `__YO_PANEL__${query ? `:${query}` : ""}`;
-  }
-
 
   // ── sup: capture screen ─────────────────────────────────
 

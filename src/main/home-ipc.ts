@@ -33,10 +33,12 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   const { mcpManager, connectorManager, canUseMcp } = deps;
 
   // ── Home dashboard ──────────────────────────────────────────────────────
-  // Credits, month spend, apps deployed, and a token-volume series for the
-  // landing chart. Mirrors the platform's billing/usage endpoints; each call
-  // degrades to null so one failure doesn't blank the whole card set. All
-  // credit amounts are stored in micro-credits (1 credit = 1e6) → /1e6.
+  // Credits, month spend, apps deployed, and a per-day usage series (credits
+  // + calls). LLM tokens are deliberately NOT a client concept — the client
+  // never meters models; usage here is compute. Mirrors the platform's
+  // billing/usage endpoints; each call degrades to null so one failure
+  // doesn't blank the whole card set. Credit amounts arrive in micro-credits
+  // (1 credit = 1e6) → /1e6.
   ipcMain.handle("dashboard-data", async () => {
     const MICRO = 1_000_000;
     const WINDOW = 14;
@@ -49,7 +51,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
 
     interface CreditsResp { balance?: number; allowance?: number }
     interface UsageResp { totals?: { credits?: number; requests?: number } }
-    interface DailyDay { day: string; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number }
+    interface DailyDay { day: string; credits?: number; requests?: number }
     interface DailyResp { days?: DailyDay[] }
     interface PanelApp { system?: boolean; url?: string | null; isBrowser?: boolean }
 
@@ -60,16 +62,18 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       serverGetAuthed<PanelApp[]>("/api/panel-apps").catch(() => null),
     ]);
 
-    // Fill the day series so gaps render as zero bars (the API omits empty days).
-    const tokByDay = new Map<string, number>();
+    // Per-day credits/calls (the server combines LLM + compute usage). Fill
+    // the series so gaps render as zero bars (the API omits empty days).
+    const byDay = new Map<string, { credits: number; calls: number }>();
     for (const d of daily?.days ?? []) {
-      tokByDay.set(d.day, (d.inputTokens || 0) + (d.outputTokens || 0) + (d.cacheReadTokens || 0) + (d.cacheCreationTokens || 0));
+      byDay.set(d.day, { credits: (d.credits || 0) / MICRO, calls: d.requests || 0 });
     }
-    const days: Array<{ day: string; tokens: number }> = [];
+    const days: Array<{ day: string; credits: number; calls: number }> = [];
     for (let i = WINDOW - 1; i >= 0; i--) {
       const d = new Date(now); d.setDate(now.getDate() - i);
       const key = ymd(d);
-      days.push({ day: key, tokens: tokByDay.get(key) || 0 });
+      const v = byDay.get(key);
+      days.push({ day: key, credits: v?.credits || 0, calls: v?.calls || 0 });
     }
 
     const acct = getAccountInfo();
@@ -82,7 +86,8 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       // Count visible apps only, exactly like the Apps tab: the seeded Glyphh
       // system app (system:true — hidden + undeletable) is not a deployed app.
       appsCount: Array.isArray(apps) ? apps.filter((a) => !a.system && (a.url || a.isBrowser === false)).length : 0,
-      totalTokens: days.reduce((s, d) => s + d.tokens, 0),
+      windowCredits: days.reduce((s, d) => s + d.credits, 0),
+      windowCalls: days.reduce((s, d) => s + d.calls, 0),
       days,
     };
   });

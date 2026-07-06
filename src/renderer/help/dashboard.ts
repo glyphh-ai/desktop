@@ -1,24 +1,26 @@
 /**
  * Dashboard (Home) — the landing section. Shows a welcome, org credit balance,
- * spend this month, apps deployed, and a token-volume chart. All numbers come
- * from the server via window.yo.dashboardData() (see home-ipc.ts), which mirrors
- * the same billing/usage endpoints the platform dashboard uses.
+ * spend this month, apps deployed, and a per-day usage chart (credits + calls;
+ * LLM tokens are not a client concept). All numbers come from the server via
+ * window.yo.dashboardData() (see home-ipc.ts), which mirrors the same
+ * billing/usage endpoints the platform dashboard uses.
  */
 
-import { $a, formatTokens, cssVar } from "./shared.js";
+import { $a, cssVar } from "./shared.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: any;
 
 interface DashboardData {
   name: string;
-  credits: number;       // whole credits available
-  allowance: number;     // whole credits/month included in the plan
-  spendCredits: number;  // whole credits used this calendar month
-  requests: number;      // billable calls this month
-  appsCount: number;     // apps hosted for this org
-  totalTokens: number;   // tokens over the chart window
-  days: Array<{ day: string; tokens: number }>;
+  credits: number;        // whole credits available
+  allowance: number;      // whole credits/month included in the plan
+  spendCredits: number;   // whole credits used this calendar month
+  requests: number;       // billable calls this month
+  appsCount: number;      // apps hosted for this org
+  windowCredits: number;  // credits used over the chart window
+  windowCalls: number;    // calls over the chart window
+  days: Array<{ day: string; credits: number; calls: number }>;
 }
 
 let chart: { destroy: () => void } | null = null;
@@ -34,6 +36,11 @@ function fmtInt(n: number): string {
   return Math.max(0, Math.round(n)).toLocaleString();
 }
 
+/** Credits on the chart axis/tooltip — whole numbers, thousands separated. */
+function fmtCredits(n: number): string {
+  return fmtInt(n);
+}
+
 /** "Jul 5" from a "YYYY-MM-DD" bucket (parsed as local, not UTC). */
 function shortDay(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -41,14 +48,14 @@ function shortDay(iso: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function renderChart(days: Array<{ day: string; tokens: number }>): void {
+function renderChart(days: Array<{ day: string; credits: number; calls: number }>): void {
   const canvas = $a<HTMLCanvasElement>("dash-usage-chart");
   const empty = document.getElementById("dash-usage-empty");
   if (!canvas || typeof Chart === "undefined") return;
 
   if (chart) { chart.destroy(); chart = null; }
 
-  const hasData = days.some((d) => d.tokens > 0);
+  const hasData = days.some((d) => d.credits > 0 || d.calls > 0);
   empty?.classList.toggle("hidden", hasData);
   canvas.style.visibility = hasData ? "visible" : "hidden";
   if (!hasData) return;
@@ -60,7 +67,7 @@ function renderChart(days: Array<{ day: string; tokens: number }>): void {
     data: {
       labels: days.map((d) => shortDay(d.day)),
       datasets: [{
-        data: days.map((d) => d.tokens),
+        data: days.map((d) => d.credits),
         backgroundColor: accent,
         hoverBackgroundColor: accent,
         borderRadius: 4,
@@ -73,7 +80,10 @@ function renderChart(days: Array<{ day: string; tokens: number }>): void {
       plugins: {
         legend: { display: false },
         tooltip: {
-          callbacks: { label: (c: { parsed: { y: number } }) => `${formatTokens(c.parsed.y)} tokens` },
+          callbacks: {
+            label: (c: { parsed: { y: number }; dataIndex: number }) =>
+              `${fmtCredits(c.parsed.y)} credits · ${fmtInt(days[c.dataIndex]?.calls || 0)} calls`,
+          },
         },
       },
       scales: {
@@ -81,7 +91,7 @@ function renderChart(days: Array<{ day: string; tokens: number }>): void {
         y: {
           beginAtZero: true,
           grid: { color: cssVar("--border") || "rgba(255,255,255,0.08)" },
-          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => formatTokens(v) },
+          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtCredits(v) },
         },
       },
     },
@@ -107,7 +117,8 @@ export async function loadDashboard(): Promise<void> {
 
     $a("dash-apps-value").textContent = fmtInt(data.appsCount);
 
-    $a("dash-usage-total").textContent = `${formatTokens(data.totalTokens)} tokens`;
+    $a("dash-usage-total").textContent =
+      `${fmtCredits(data.windowCredits)} credits · ${fmtInt(data.windowCalls)} calls`;
     $a("dash-usage-range").textContent = `last ${data.days.length} days`;
     renderChart(data.days);
   } catch (err) {

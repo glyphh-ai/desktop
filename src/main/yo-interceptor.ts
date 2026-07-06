@@ -34,7 +34,6 @@ export class YoInterceptor {
 
   // Yo conversation callbacks
   private yoClearer: (() => void) | null = null;
-  private panelOpener: ((query: string, sourcePanelId?: string) => void) | null = null;
   private yoActiveWc: WebContents | null = null; // wc the current .yo conversation is in
   private modeColor = "#a855f7"; // current agent mode color (ask=purple, plan=violet, auto=green, bypass=red)
   private agentMode = "default";
@@ -55,7 +54,6 @@ export class YoInterceptor {
   setVisiblePanelsGetter(getter: () => string[]): void { this.getVisiblePanelIds = getter; }
   setSessionNotifier(fn: () => void): void { this.sessionNotifier = fn; }
   setYoClearer(fn: () => void): void { this.yoClearer = fn; }
-  setPanelOpener(fn: (query: string, sourcePanelId?: string) => void): void { this.panelOpener = fn; }
   setFaviconsGetter(fn: () => Record<string, string>): void { this.getFavicons = fn; }
   setLayoutsGetter(fn: () => Array<{ name: string }>): void { this.getLayouts = fn; }
   setDripCustomsGetter(fn: () => Array<{ name: string; recipe: string }>): void { this.getDripCustoms = fn; }
@@ -307,7 +305,7 @@ window.addEventListener('beforeunload',function(e){
         }
         break;
       case "yo-toggle-panel":
-        if (this.panelOpener) this.panelOpener("", appId);
+        // The in-app agent panel was removed (pivot-mcp) — nothing to toggle.
         break;
       case "set-mode":
         if (data.instruction && this.modeChanger) this.modeChanger(data.instruction);
@@ -498,11 +496,10 @@ window.addEventListener('beforeunload',function(e){
       return;
     }
 
-    // Regular .yo → open the agent side panel
+    // Bare .yo used to open the in-app agent panel — removed (pivot-mcp).
+    // Agents live in installed apps now; drive Glyphh from your own AI.
     this.yoActiveWc = wc;
-    if (this.panelOpener) {
-      this.panelOpener(raw, appId);
-    }
+    this.notify(wc, "The in-app agent was removed — connect your own AI over MCP (Settings › MCP).", "error");
   }
 
   /**

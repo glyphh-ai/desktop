@@ -150,7 +150,7 @@ declare global {
       marketplaceDetail: (id: string) => Promise<MarketplaceAppDetail | null>;
       marketplaceInstall: (id: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
-      dashboardData: () => Promise<{ name: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number; totalTokens: number; days: Array<{ day: string; tokens: number }> }>;
+      dashboardData: () => Promise<{ name: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number; windowCredits: number; windowCalls: number; days: Array<{ day: string; credits: number; calls: number }> }>;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;

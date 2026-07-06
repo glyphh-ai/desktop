@@ -651,21 +651,11 @@ async function boot() {
     mainWindow?.webContents.send("session-changed", session.getInfo());
   };
 
-  // Wire command callbacks for interceptor + chat (both need dip routing)
-  const callbacks = { openYoPanel: null as ((query: string) => void) | null };
-
   const execCommand = async (cmd: string, sourcePanelId?: string) => {
     // .waz is now handled by commandParser.execute (so chained forms like
     // `.dip gmail .waz new <prompt>` work too); the inline shim that used
     // to short-circuit bare `waz <prompt>` is no longer needed.
     const result = await commandParser.execute(cmd, sourcePanelId);
-
-    // .yo always opens the agent side panel
-    if (result.startsWith("__YO_PANEL__")) {
-      const query = result.replace(/^__YO_PANEL__:?/, "");
-      callbacks.openYoPanel?.(query);
-      return "";
-    }
 
     const gridInfo = layoutManager.getGridInfo();
     mainWindow?.webContents.send("split-state", gridInfo);
