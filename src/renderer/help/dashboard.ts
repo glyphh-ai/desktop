@@ -123,7 +123,7 @@ export function initDashboardEvents(): void {
   document.getElementById("dash-add-funds")?.addEventListener("click", () => {
     window.yo.openExternal?.(`${window.yo.platformUrl}/dashboard/manage/billing`);
   });
-  // "Connect Claude" → open the Settings tab (its MCP panel has the connection
+  // "Connect MCP" → open the Settings tab (its MCP panel has the connection
   // URL + token). Open it as its own shell tab rather than switching sections
   // in place: this Home panel is scope-locked to `dashboard` with its nav rail
   // hidden, so an in-panel gotoSection would trap the user with no way back.
