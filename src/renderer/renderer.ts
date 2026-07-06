@@ -634,6 +634,19 @@ function initDashboard(): void {
   wireTab("settings", "dashboard-settings");
   wireTab("about", "about");
 
+  // Keep the tab highlight in sync with the ACTUAL active panel, so a tab
+  // opened programmatically (e.g. the dashboard's "Connect MCP" → Settings)
+  // highlights correctly — not only tabs opened by a click here. System-app
+  // panels are single-instance, so activePanelId is the app id.
+  const APPID_TO_TAB: Record<string, DashSlug> = {
+    dashboard: "dashboard", apps: "apps", connections: "connections",
+    layouts: "layouts", drips: "drips", "dashboard-settings": "settings", about: "about",
+  };
+  window.yo.onTabState((state) => {
+    const tab = APPID_TO_TAB[state.activeId];
+    if (tab) setActive(tab);
+  });
+
   // Land on Home by default — just the tab styling. Main already opened and
   // activated the "dashboard" panel directly at boot (openHomePanelOnly() in
   // main.ts); calling openWorkspaceApp("dashboard") here too would race it into
