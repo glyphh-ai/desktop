@@ -180,3 +180,12 @@ export function stopAppWorker(slug: string): void {
   if (handle && !handle.win.isDestroyed()) handle.win.destroy();
   workers.delete(slug);
 }
+
+/** Destroy every running worker window (app shutdown) so the hidden windows
+ *  don't keep window-all-closed from firing / the process from exiting. */
+export function stopAllAppWorkers(): void {
+  for (const [slug, handle] of workers) {
+    if (!handle.win.isDestroyed()) handle.win.destroy();
+    workers.delete(slug);
+  }
+}

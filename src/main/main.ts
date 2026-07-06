@@ -69,8 +69,10 @@ import { setMainWindowRef } from "./main-window-ref";
 import { initThinkingOverlay } from "./thinking-overlay";
 import { runDip } from "./dip-commands";
 import { McpManager } from "./mcp-manager";
-import { initRelayClient, reconnectRelay } from "./relay-client";
-import { syncLocalMcpServer } from "./local-mcp-server";
+import { initRelayClient, reconnectRelay, stopRelayClient } from "./relay-client";
+import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
+import { stopAllAppWorkers } from "./glyphh-app-worker";
+import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
@@ -232,6 +234,11 @@ async function createWindow() {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+    // Closing the main window quits the app. Auxiliary windows (hidden app
+    // workers, overlays, per-app windows) can otherwise keep window-all-closed
+    // from firing, leaving a zombie process; quitting directly runs will-quit →
+    // cleanupAll, which tears the rest down. Idempotent during an update restart.
+    app.quit();
   });
 
   // Refresh auth/tier when window regains focus (e.g. returning from billing portal)
@@ -1362,8 +1369,9 @@ async function boot() {
   ipcMain.handle("get-update-status", () => pendingUpdate);
 
   if (autoUpdateEnabled) {
-    setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 800);
-    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+    setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 800).unref();
+    // .unref() so this recurring check never keeps the process alive on quit.
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000).unref();
   } else {
     broadcastUpdate({ status: "none" });
   }
@@ -1915,6 +1923,12 @@ function cleanupAll() {
   mcpManager?.disconnectAll();
   connectorManager?.cleanup();
   dripManager?.cleanup();
+  // Close the background handles that otherwise keep the Node event loop alive
+  // (and hidden app-worker windows that keep window-all-closed from firing).
+  stopRelayClient();
+  stopLocalMcpServer();
+  stopAllAppWorkers();
+  stopAllSchedules();
   closeLocalDb();
   closeDataStoreDb();
   // Hard exit if anything keeps the process alive

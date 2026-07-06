@@ -219,6 +219,15 @@ export function resetAppSchedules(slug: string): void {
   initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ?").run(slug);
 }
 
+/** Stop every armed cron task (app shutdown) so node-cron timers don't keep the
+ *  process alive. Persisted schedules are untouched — they re-arm next launch. */
+export function stopAllSchedules(): void {
+  for (const task of armedTasks.values()) {
+    try { task.stop(); } catch { /* ignore */ }
+  }
+  armedTasks.clear();
+}
+
 // ── connectors (connector.status / connector.tools / connector.call) ──
 //
 // `declared` is the manifest's `connectors` list, resolved from the caller's

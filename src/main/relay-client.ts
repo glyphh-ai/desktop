@@ -45,6 +45,7 @@ let socket: WebSocket | null = null;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let backoffMs = 1_000;                            // grows on each failed attempt
 let started = false;
+let stopped = false;                              // set on shutdown — blocks reconnect
 
 function relayEnabled(): boolean {
   // User-controlled opt-in (default on) gated by eligibility. The toggle lets
@@ -80,7 +81,7 @@ export async function dispatchRelayMethod(method: string, params: unknown): Prom
 }
 
 function scheduleReconnect(reason: string): void {
-  if (reconnectTimer) return;
+  if (stopped || reconnectTimer) return;
   console.log(`[relay] reconnect in ${Math.round(backoffMs / 1000)}s — ${reason}`);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
@@ -90,6 +91,7 @@ function scheduleReconnect(reason: string): void {
 }
 
 function connect(): void {
+  if (stopped) return;
   if (!relayEnabled()) return;
   if (!isAuthenticated()) return;                  // wait until the user is signed in
   const token = getAuthToken();
@@ -162,8 +164,17 @@ export function initRelayClient(): void {
   connect();
 }
 
+/** Tear down the relay for shutdown: stop reconnecting and force-close the
+ *  socket so the WebSocket stops keeping the Node process alive on quit. */
+export function stopRelayClient(): void {
+  stopped = true;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (socket) { try { socket.terminate(); } catch { /* ignore */ } socket = null; }
+}
+
 /** Force a reconnect — call this after the user changes the token in settings. */
 export function reconnectRelay(): void {
+  stopped = false;
   if (socket) {
     try { socket.close(1000, "token-changed"); } catch { /* ignore */ }
     socket = null;
