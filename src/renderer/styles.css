@@ -2898,6 +2898,56 @@ body.account-locked #dl-btn-wrap {
 }
 .dash-refresh:hover { color: var(--text); border-color: var(--border-2); background: var(--hover); }
 
+/* ── Pending-update badge (bottom-right, all home pages) ─────────────── */
+.update-badge {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  font-size: 12.5px;
+  color: var(--text);
+  animation: gh-pop 0.35s ease;
+}
+.update-badge.hidden { display: none; }
+.update-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  flex: 0 0 auto;
+}
+.update-badge-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+.update-badge-btn:hover { background: var(--accent-hover, var(--accent)); }
+.update-badge-x {
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.update-badge-x:hover { color: var(--text); }
+
 /* The library page wrapper (added for the My apps | Marketplace tabs) must
    pass the section's flex layout through — otherwise #app-detail's flex:1
    sits in a plain block and the editor's split pane never fills the page

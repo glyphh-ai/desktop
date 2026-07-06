@@ -65,3 +65,41 @@ void (async () => {
 
 // "Create App" from a browser tab routes here — open the New App form prefilled.
 window.yo.onOpenNewApp?.((data) => openNewAppDeepLink(data));
+
+// ── Pending-update badge (bottom-right, every page) ─────────────────────────
+// Shows once an update has downloaded; stays until the user restarts into it
+// or dismisses it. Dismissal is per version and main rebroadcasts it, so
+// dismissing in one panel hides it in all of them.
+void (async () => {
+  const badge = document.getElementById("update-badge");
+  const text = document.getElementById("update-badge-text");
+  if (!badge || !text) return;
+  let version = "";
+
+  const show = async (v: string) => {
+    version = v || "";
+    const dismissed = await window.yo.getPreference?.(`updateDismissed:${version || "unknown"}`, false);
+    if (dismissed) return;
+    text.textContent = `Update ready${version ? ` — v${version}` : ""}`;
+    badge.classList.remove("hidden");
+  };
+
+  document.getElementById("update-badge-restart")?.addEventListener("click", () => {
+    window.yo.updateInstall?.();
+  });
+  document.getElementById("update-badge-dismiss")?.addEventListener("click", () => {
+    badge.classList.add("hidden");
+    window.yo.updateBadgeDismiss?.(version);
+  });
+
+  window.yo.onUpdateStatus?.((info) => {
+    if (info.status === "ready") void show(info.version || "");
+    else if (info.status === "dismissed" || info.status === "restarting" || info.status === "none") {
+      badge.classList.add("hidden");
+    }
+  });
+
+  // Panels mount after boot — ask main whether an update is already waiting.
+  const pending = await window.yo.getUpdateStatus?.();
+  if (pending?.ready) void show(pending.version);
+})();

@@ -131,6 +131,15 @@
       </main>
     </div>
     </div>
+
+    <!-- Pending-update badge — bottom-right on every page, until the user
+         restarts into the update or dismisses it (per version, all panels). -->
+    <div id="update-badge" class="update-badge hidden">
+      <span class="update-badge-dot" aria-hidden="true"></span>
+      <span id="update-badge-text">Update ready</span>
+      <button id="update-badge-restart" class="update-badge-btn">Restart</button>
+      <button id="update-badge-dismiss" class="update-badge-x" title="Dismiss">&times;</button>
+    </div>
   </div>
   <!-- Chart.js (auto build) → window.Chart, used by the Home dashboard chart. -->
   <script src="app-libs/chart.js"></script>

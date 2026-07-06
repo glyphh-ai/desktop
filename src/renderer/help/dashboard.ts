@@ -13,6 +13,7 @@ declare const Chart: any;
 
 interface DashboardData {
   name: string;
+  plan: string;           // org tier slug (free / basic / pro / advanced)
   credits: number;        // whole credits available
   allowance: number;      // whole credits/month included in the plan
   spendCredits: number;   // whole credits used this calendar month
@@ -108,9 +109,10 @@ export async function loadDashboard(): Promise<void> {
     $a("dash-greeting").textContent = greeting(data.name);
 
     $a("dash-credits-value").textContent = fmtInt(data.credits);
+    const planName = data.plan ? data.plan.charAt(0).toUpperCase() + data.plan.slice(1) : "";
     $a("dash-credits-sub").textContent = data.allowance > 0
-      ? `available · ${fmtInt(data.allowance)}/mo plan`
-      : "available";
+      ? `${planName ? `${planName} plan · ` : ""}${fmtInt(data.allowance)} credits/mo`
+      : (planName ? `${planName} plan` : "available");
 
     $a("dash-spend-value").textContent = fmtInt(data.spendCredits);
     $a("dash-spend-sub").textContent = `credits used${data.requests ? ` · ${fmtInt(data.requests)} calls` : ""}`;

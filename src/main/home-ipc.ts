@@ -21,7 +21,7 @@ import {
   localMcpRevokeToken,
 } from "./local-mcp-server";
 import { setPreference } from "./preferences";
-import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, getAccountInfo } from "./auth";
+import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, getAccountInfo, getAuthStatus } from "./auth";
 
 interface HomeIpcDeps {
   mcpManager: McpManager | null;
@@ -79,6 +79,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     const acct = getAccountInfo();
     return {
       name: (acct?.firstName || "").trim(),
+      plan: getAuthStatus().tier || "",
       credits: Math.floor((credits?.balance || 0) / MICRO),
       allowance: Math.floor((credits?.allowance || 0) / MICRO),
       spendCredits: Math.floor((usage?.totals?.credits || 0) / MICRO),

@@ -1333,6 +1333,13 @@ async function boot() {
     autoUpdater.checkForUpdates().catch(() => {});
   };
 
+  // Bottom-right update badge (home panels): dismissing in one panel must hide
+  // it in every panel, so the dismissal is persisted per version and rebroadcast.
+  ipcMain.on("update-badge-dismiss", (_e, version: string) => {
+    setPreference(`updateDismissed:${version || "unknown"}`, true);
+    broadcastUpdate({ status: "dismissed", version });
+  });
+
   autoUpdater.on("update-available", (info: { version: string }) => {
     if (!isNewerVersion(info.version, app.getVersion())) return;
     pendingUpdate = { version: info.version, ready: false };
