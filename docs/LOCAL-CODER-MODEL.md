@@ -207,6 +207,31 @@ runs on the **user's own accounts/keys** — zero token markup, and the escalati
 
 ## 8. Fine-tune plan
 
+**Two training tracks — the model must both *build* and *operate*.**
+- **Track A — Builder:** `(app request → manifest + worker.js + index.html)`. Emit `.glyphh`
+  bundles to spec. Self-verifying via install-validation. (The primary target above.)
+- **Track B — Operator:** `(task → multi-turn tool-call trace)`. *Use* the Glyphh runtime —
+  discover tools (`app_list_tools` / `connector_list_tools` / `panels_list`), pick the right
+  one, read results, chain, repair, escalate. This is the daily-assistant / automation-runner
+  loop. The free-local vision needs Track B **in the local weights** — otherwise orchestration
+  isn't free (you'd need a frontier model to drive).
+- **Crucial: train the *discipline*, not a fixed tool list.** Tools are **dynamic per user**
+  (different installed apps + connected accounts) and the live schemas are always in context at
+  inference. So Track B teaches *behavior* — discover-first, prefer a declared tool over RPA,
+  open-before-drive, chain results, repair on error, know when to escalate — generalizing over
+  whatever tools are in context. Overfitting to specific tool names breaks the moment a user's
+  setup differs.
+- **The tracks compose:** the operator loop invokes the builder when there's no tool for the
+  job (build a `.glyphh` → `app_install` → use it). That composition *is* the "build
+  automations, call them, run your assistant" loop.
+- **Track B data (best → worst):** real relay traces of a frontier model driving Glyphh
+  (gold — pure distillation; capture via consented dogfooding) → synthetic frontier traces
+  executed against the runtime → templated deterministic sequences. Oracle = execute against a
+  real runtime: did each call succeed and the goal state hold?
+- **Sequencing:** Track A first (ready, self-verifying, useful now). Track B **after the
+  trimmed MCP tool surface stabilizes** — don't distill operator traces against a tool surface
+  that's about to change.
+
 - **QLoRA on Qwen2.5-Coder-14B** = one 24GB consumer GPU or a few rented A100 hours →
   **low hundreds of $ per run.** Cheap enough to iterate weekly as the spec evolves.
 - **Tooling is first-class:** LLaMA-Factory / Axolotl / Unsloth all support
