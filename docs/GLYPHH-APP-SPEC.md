@@ -11,8 +11,9 @@ Apps are web apps with native-grade services: the host hands them a per-app
 SQLite database, a cron scheduler, OS notifications, and machine capabilities
 (Contacts, Messages) — all behind one capability-gated bridge.
 
-This document is the contract. Version: **2**.
-(v1 bundles — no `worker`, capability-only tools — remain valid and unchanged.)
+This document is the contract. Version: **2.1**.
+(v1 bundles — no `worker`, capability-only tools — remain valid and unchanged. The v2.1
+listing fields in §2.1 are all OPTIONAL and additive — older bundles install unchanged.)
 
 ---
 
@@ -46,8 +47,17 @@ is restarted on the new code; its cron schedules survive).
   "slug": "keep-in-touch",        // stable id: [a-z0-9_-]; the .dip / tool key
   "entry": "index.html",          // UI entry, relative to the bundle root
   "worker": "worker.js",          // OPTIONAL headless entry (see §4)
-  "description": "…",             // one line; shown in the app card
+  "description": "…",             // one-line tagline; shown in the card + listing
   "window": { "width": 500, "height": 680 },
+
+  // ── Marketplace listing (all OPTIONAL; see §2.1). These travel WITH the
+  //    bundle, so a published app is self-describing — no separate metadata
+  //    step, and nothing extra to train a generator on.
+  "version": "1.0.0",             // semver; the publisher bumps on update
+  "icon": "📇",                   // an emoji, or a bundled image path ("icon.png")
+  "category": "productivity",     // one marketplace category (see §2.1)
+  "keywords": ["crm", "reminders"], // free-text search terms
+  "about": "A personal CRM that nudges you to keep in touch.", // longer listing copy (markdown string, or a bundled .md path)
 
   // Host capabilities this app is allowed to use. The host enforces this list
   // PER-APP: an app can only ever reach a capability it declared here. See §5.
@@ -88,6 +98,45 @@ Rules:
 - `inputSchema` is a JSON Schema object. It's what the LLM sees and what the
   host validates args against before running. For capability tools the args
   pass through 1:1; for handler tools the args arrive as the handler's argument.
+
+---
+
+## 2.1 Marketplace listing (the publishable envelope)
+
+A Glyphh app is meant to be **distributable** — hosted, shared, and one day listed in a
+marketplace. To make that frictionless, **all descriptive listing data lives in the
+manifest and travels with the bundle**: a generated app is self-describing and
+publish-ready, so nothing extra needs to be authored — or trained into a generator — to
+list it.
+
+**Bundle-carried (in `manifest.json`) — everything *intrinsic* to the app:**
+
+| field | listing role |
+|-------|--------------|
+| `name` | title |
+| `description` | one-line tagline (card subtitle) |
+| `about` | long description / readme (markdown string, or a bundled `.md` path) |
+| `version` | semver, shown on the listing; the publisher bumps on update |
+| `icon` | emoji (zero-asset default) or a bundled image path |
+| `category` | one of: `productivity`, `communication`, `developer`, `data`, `crm`, `finance`, `personal`, `fun`, `other` |
+| `keywords` | search terms |
+| `capabilities` / `connectors` / `tools` | already declared — auto-populate the listing's "what it does / what it connects" sections |
+
+**Publish-time envelope — everything *extrinsic*, added by the marketplace, NEVER in the
+bundle:**
+
+- **Publisher / author** — bound to the authenticated publishing user/org at publish time.
+  (Never trust a bundle to name its own author.)
+- **Pricing** — free / paid + price; a publisher decision, set at publish.
+- **License** — SPDX id; the publisher confirms (a generator may *suggest* one).
+- **Screenshots / preview** — real image assets: **auto-captured by Glyphh at publish** (it
+  runs the app in a window — screenshot the entry) or author-provided. Not generated.
+- **Trust & popularity** — verification / signing status, install count, ratings, reviews:
+  server-assigned or server-derived.
+
+**Design principle:** the **bundle carries what the app *is*** (a generator's job); the
+**marketplace layers who publishes it, what it costs, and whether it's trusted** (a human +
+server job) at publish. The marketplace record = `manifest` + this envelope.
 
 ---
 
