@@ -11160,7 +11160,7 @@ select:focus {
   overflow: hidden;
   transition: width 0.16s ease, min-width 0.16s ease;
 }
-.code-rail.collapsed { width: 0; min-width: 0; border-right: none; }
+.code-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
 .code-rail-head {
   display: flex;
   align-items: center;
@@ -11223,10 +11223,16 @@ select:focus {
 .code-thread {
   flex: 1;
   overflow-y: auto;
+  padding: 20px 24px;
+}
+.code-thread-inner {
+  width: 100%;
+  max-width: 780px;
+  min-height: 100%;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 20px 24px;
 }
 .code-msg {
   max-width: 720px;
@@ -11240,20 +11246,21 @@ select:focus {
 .code-msg.user { align-self: flex-end; background: var(--active-bg); border: 1px solid var(--border); color: var(--text); }
 .code-msg.assistant { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
 .code-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 4px 16px 18px;
+  box-sizing: border-box;
 }
+.code-input-wrap { position: relative; display: flex; }
 .code-input {
   flex: 1;
   resize: none;
-  min-height: 36px;
-  max-height: 180px;
-  padding: 8px 12px;
+  min-height: 40px;
+  max-height: 220px;
+  padding: 10px 44px 10px 14px;
   border: 1px solid var(--border-2);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-sans);
@@ -11274,7 +11281,7 @@ select:focus {
   overflow: hidden;
   transition: width 0.16s ease, min-width 0.16s ease;
 }
-.code-workbench.collapsed { width: 0; min-width: 0; border-left: none; }
+.code-workbench.collapsed { width: 0 !important; min-width: 0 !important; border-left: none; }
 .code-wb-head {
   display: flex;
   gap: 2px;
@@ -11306,3 +11313,42 @@ select:focus {
   font-size: 13px;
   line-height: 1.6;
 }
+
+/* In-input send — return icon normally, stop icon while thinking. */
+.code-send {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+}
+.code-send:hover { color: var(--accent); background: var(--hover); }
+.code-send .icon-stop { display: none; }
+.code-send.thinking .icon-return { display: none; }
+.code-send.thinking .icon-stop { display: block; }
+
+/* Drag splitters between the rails and the agent column. */
+.code-splitter {
+  flex: 0 0 4px;
+  width: 4px;
+  margin: 0 -2px;
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+  background: transparent;
+}
+.code-splitter:hover { background: var(--border-2); }
+.code-rail.collapsed + .code-splitter { display: none; }
+#code-wb-splitter:has(+ .code-workbench.collapsed) { display: none; }
+body.code-dragging { cursor: col-resize; user-select: none; }
+body.code-dragging .code-rail,
+body.code-dragging .code-workbench { transition: none; }

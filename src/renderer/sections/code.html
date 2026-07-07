@@ -1,7 +1,7 @@
         <div class="help-section" data-section="code">
           <div class="code-root">
 
-            <!-- Left rail — chats (collapsible) -->
+            <!-- Left rail — chats (collapsible, draggable) -->
             <aside id="code-rail" class="code-rail">
               <div class="code-rail-head">
                 <span class="code-rail-title">Chats</span>
@@ -11,6 +11,7 @@
               </div>
               <div id="code-history" class="code-history"></div>
             </aside>
+            <div id="code-rail-splitter" class="code-splitter" title="Drag to resize"></div>
 
             <!-- Center — the agent thread -->
             <section class="code-agent">
@@ -26,12 +27,18 @@
               </div>
               <div id="code-thread" class="code-thread"></div>
               <div class="code-composer">
-                <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
-                <button id="code-send" class="action-btn primary">Send</button>
+                <div class="code-input-wrap">
+                  <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
+                  <button id="code-send" class="code-send" title="Send">
+                    <svg class="icon-return" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
+                    <svg class="icon-stop" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
+                  </button>
+                </div>
               </div>
             </section>
 
-            <!-- Right — the workbench (code / preview) -->
+            <!-- Right — the workbench (code / preview; collapsible, draggable) -->
+            <div id="code-wb-splitter" class="code-splitter" title="Drag to resize"></div>
             <aside id="code-workbench" class="code-workbench">
               <div class="code-wb-head">
                 <button class="code-wb-tab active" data-wbtab="code">Code</button>
