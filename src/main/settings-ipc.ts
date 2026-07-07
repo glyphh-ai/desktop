@@ -89,6 +89,26 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     }
   });
 
+  // Org-wide runtime guardrails policy (organizations.guardrails_policy) —
+  // server-authoritative and org_admin-gated on the server. Surfaced in the
+  // Settings > Security panel; applied to every installed app in P2.3.
+  ipcMain.handle("org-guardrails-get", async () => {
+    try {
+      const r = await serverGetAuthed<{ guardrails_policy?: Record<string, number> | null }>("/api/org/guardrails");
+      return { ok: true, policy: r.guardrails_policy ?? null };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "load failed" };
+    }
+  });
+  ipcMain.handle("org-guardrails-set", async (_e, policy: Record<string, number> | null) => {
+    try {
+      await serverPatchAuthed("/api/org/guardrails", { guardrails_policy: policy });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "save failed" };
+    }
+  });
+
   // Per-user usage + credit balance, straight from the server (the proxy meters
   // this org/user). Replaces the old local UsageTracker numbers on the dashboard.
 

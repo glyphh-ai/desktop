@@ -43,6 +43,10 @@ export interface SecretEntry {
    *  Distinguishes "decrypt failed on this machine" from "stored plaintext
    *  because the OS keychain was unavailable". */
   enc: boolean;
+  /** Whether app code may read this value via secrets.get. Default-deny:
+   *  unset/false ⇒ host-only (only the trusted runtime uses it). Credential-
+   *  shaped keys are host-only regardless of this flag (see isHostOnlySecret). */
+  appReadable?: boolean;
 }
 
 export type SecretsMap = Record<string, SecretEntry>;
@@ -60,7 +64,7 @@ function readSecrets(launchConfig: AppRowLite["launchConfig"]): SecretsMap {
   for (const [key, entry] of Object.entries(secrets)) {
     if (entry && typeof entry === "object" && typeof (entry as SecretEntry).v === "string") {
       const e = entry as SecretEntry;
-      out[key] = { v: e.v, at: String(e.at || ""), enc: e.enc !== false };
+      out[key] = { v: e.v, at: String(e.at || ""), enc: e.enc !== false, appReadable: e.appReadable === true };
     }
   }
   return out;
@@ -79,14 +83,14 @@ async function patchSecrets(row: AppRowLite, secrets: SecretsMap): Promise<void>
 }
 
 /** Key names + set-dates only — never values (there is no "get value" IPC). */
-export async function listAppSecrets(appId: string): Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly: boolean }>; error?: string }> {
+export async function listAppSecrets(appId: string): Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly: boolean; appReadable: boolean }>; error?: string }> {
   const row = await findRow(appId);
   if (!row) return { ok: false, error: "app not found" };
   const secrets = readSecrets(row.launchConfig);
   return {
     ok: true,
     secrets: Object.entries(secrets)
-      .map(([key, e]) => ({ key, at: e.at, hostOnly: isHostOnlySecret(key) }))
+      .map(([key, e]) => ({ key, at: e.at, hostOnly: isHostOnlySecret(key), appReadable: !isHostOnlySecret(key) && e.appReadable === true }))
       .sort((a, b) => a.key.localeCompare(b.key)),
   };
 }
@@ -94,7 +98,7 @@ export async function listAppSecrets(appId: string): Promise<{ ok: boolean; secr
 /** Set (or replace) one config var. The plaintext is encrypted here and never
  *  stored or echoed back — this is the last moment it exists outside the
  *  capability path. */
-export async function setAppSecret(appId: string, key: string, value: string): Promise<{ ok: boolean; error?: string }> {
+export async function setAppSecret(appId: string, key: string, value: string, appReadable = false): Promise<{ ok: boolean; error?: string }> {
   const k = String(key || "").trim();
   if (!KEY_RE.test(k)) return { ok: false, error: "Key must be letters/digits/underscore (e.g. OPENAI_API_KEY), max 64 chars" };
   const v = String(value ?? "");
@@ -107,7 +111,9 @@ export async function setAppSecret(appId: string, key: string, value: string): P
   if (!secrets[k] && Object.keys(secrets).length >= MAX_SECRETS_PER_APP) {
     return { ok: false, error: `Limit reached (${MAX_SECRETS_PER_APP} config vars per app)` };
   }
-  secrets[k] = { v: encryptField(v), at: new Date().toISOString(), enc: safeStorage.isEncryptionAvailable() };
+  // Credential-shaped keys can never be app-readable, even if the flag is set.
+  const readable = appReadable === true && !isHostOnlySecret(k);
+  secrets[k] = { v: encryptField(v), at: new Date().toISOString(), enc: safeStorage.isEncryptionAvailable(), appReadable: readable };
   try {
     await patchSecrets(row, secrets);
     return { ok: true };
@@ -144,6 +150,19 @@ export function isHostOnlySecret(key: string): boolean {
   return /(?:_API_KEY|_KEY|_SECRET|_TOKEN|_PASSWORD|PASSWORD)$/i.test(key.trim());
 }
 
+/**
+ * Whether app code may read this config var's value via `secrets.get`.
+ * Default-deny: a var is app-readable only if the user explicitly marked it so
+ * on the Config Vars tab, and credential-shaped names (isHostOnlySecret) are
+ * never app-readable regardless of the flag. Inverts the previous name-only
+ * denylist — a plain var no longer leaks just because it isn't credential-named.
+ */
+export function isSecretAppReadable(launchConfig: Record<string, unknown> | null | undefined, key: string): boolean {
+  if (isHostOnlySecret(key)) return false;
+  const entry = readSecrets(launchConfig as AppRowLite["launchConfig"])[key];
+  return !!entry && entry.appReadable === true;
+}
+
 /** Decrypt one value from an app row's launchConfig. Returns null when unset
  *  (or set on another machine — safeStorage is machine-bound). */
 export function secretValueFromRow(launchConfig: Record<string, unknown> | null | undefined, key: string): string | null {
@@ -161,9 +180,9 @@ export function secretValueFromRow(launchConfig: Record<string, unknown> | null 
 /** Key names + whether each decrypts on THIS machine (for secrets.list).
  *  `hostOnly` = credential-shaped; the value is never returned to the sandbox
  *  via secrets.get (only the trusted runtime uses it). */
-export function secretKeysFromRow(launchConfig: Record<string, unknown> | null | undefined): Array<{ key: string; readable: boolean; hostOnly: boolean }> {
+export function secretKeysFromRow(launchConfig: Record<string, unknown> | null | undefined): Array<{ key: string; readable: boolean; hostOnly: boolean; appReadable: boolean }> {
   const secrets = readSecrets(launchConfig as AppRowLite["launchConfig"]);
   return Object.keys(secrets)
-    .map((key) => ({ key, readable: secretValueFromRow(launchConfig, key) != null, hostOnly: isHostOnlySecret(key) }))
+    .map((key) => ({ key, readable: secretValueFromRow(launchConfig, key) != null, hostOnly: isHostOnlySecret(key), appReadable: isSecretAppReadable(launchConfig, key) }))
     .sort((a, b) => a.key.localeCompare(b.key));
 }

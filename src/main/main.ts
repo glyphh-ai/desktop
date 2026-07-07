@@ -1777,6 +1777,19 @@ async function boot() {
     sendSplitState();
   });
 
+  // The app-preview <webview> (Apps page) previews installed glyphh-apps, whose
+  // UI calls window.glyphh.call — so it needs the same preload the standalone app
+  // window gets (openGlyphhApp). A webview's preload is fixed when its guest is
+  // created, so it must be set here at will-attach time (setting it later is
+  // ignored). Inert for ordinary web-app previews: glyphh-app:call rejects any
+  // webContents without a capability grant (granted per-app via preview-open).
+  (mainWindow?.webContents as any)?.on(
+    "will-attach-webview",
+    (_event: unknown, webPreferences: Electron.WebPreferences) => {
+      webPreferences.preload = path.join(__dirname, "glyphh-app-preload.js");
+    },
+  );
+
   // Configure webviews embedded in the renderer (e.g. app-preview in help overlay)
   (mainWindow?.webContents as any)?.on("did-attach-webview", (_event: unknown, childWc: Electron.WebContents) => {
     childWc.setWindowOpenHandler(({ url }) => {

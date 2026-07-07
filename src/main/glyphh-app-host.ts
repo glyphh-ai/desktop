@@ -33,12 +33,13 @@
  *   notify.send     { title, body }  → { shown }
  */
 
-import { BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow, ipcMain, webContents, session } from "electron";
 import { execFile } from "child_process";
 import AdmZip from "adm-zip";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { pathToFileURL, fileURLToPath } from "url";
 import { glyphhPath } from "./app-paths.js";
 import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js";
 import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
@@ -54,7 +55,8 @@ import {
   graphCypher,
 } from "./glyphh-app-ai.js";
 import { agentRun } from "./glyphh-app-agent.js";
-import { secretValueFromRow, secretKeysFromRow, isHostOnlySecret } from "./app-secrets.js";
+import { secretValueFromRow, secretKeysFromRow, isHostOnlySecret, isSecretAppReadable } from "./app-secrets.js";
+import { fsPick, fsRead, fsWrite } from "./glyphh-app-fs.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -110,6 +112,9 @@ const KNOWN_CAPABILITIES = new Set([
   "graph.cypher",
   "secrets.get",
   "secrets.list",
+  "fs.read",
+  "fs.write",
+  "fs.pick",
 ]);
 
 /** AppleScript-backed capabilities that only exist on macOS. Everything else
@@ -288,6 +293,33 @@ export function isGlyphhAppRow(row: { appArchetype?: string | null; execPath?: s
   return !!row.execPath && /\.html?$/i.test(row.execPath);
 }
 
+/** The capability + connector grant a row's UI/preview should receive — the
+ *  declared caps filtered to ones the host actually knows. Shared by the
+ *  standalone window (openGlyphhApp) and the in-app preview grant. */
+function grantsFromRow(row: { launchConfig?: Record<string, unknown> | null }): { caps: string[]; connectors: string[] } {
+  const lc = (row.launchConfig || {}) as { capabilities?: unknown; connectors?: unknown };
+  const caps = Array.isArray(lc.capabilities) ? lc.capabilities.map(String).filter((c) => KNOWN_CAPABILITIES.has(c)) : [];
+  const connectors = Array.isArray(lc.connectors) ? lc.connectors.map(String) : [];
+  return { caps, connectors };
+}
+
+/** An installed app renders its own local UI and reaches the host only through
+ *  granted capabilities — it must never navigate to, or open, a remote page.
+ *  Paired with the app-session CSP (which blocks fetch/XHR/img egress), this
+ *  closes the UI window's outbound network. Navigation is allowed only within the
+ *  app's own bundle dir (`appDir`, for multi-page apps); everything else denied. */
+function attachAppWindowEgressGuards(wc: Electron.WebContents, appDir: string): void {
+  const root = appDir + path.sep;
+  wc.setWindowOpenHandler(() => ({ action: "deny" }));
+  const guard = (e: Electron.Event, url: string) => {
+    if (!url.startsWith("file://")) { e.preventDefault(); return; }
+    try { if (!fileURLToPath(url).startsWith(root)) e.preventDefault(); }
+    catch { e.preventDefault(); }
+  };
+  wc.on("will-navigate", guard);
+  wc.on("will-redirect", guard);
+}
+
 /** Open (or focus) an installed Glyphh app from its saved-app row. */
 export function openGlyphhApp(row: GlyphhAppRow): { ok: boolean; error?: string } {
   const entryPath = String(row.execPath || "");
@@ -301,21 +333,22 @@ export function openGlyphhApp(row: GlyphhAppRow): { ok: boolean; error?: string 
     return { ok: true };
   }
 
-  const lc = (row.launchConfig || {}) as { capabilities?: unknown; connectors?: unknown; window?: { width?: number; height?: number } | null };
-  const caps = Array.isArray(lc.capabilities) ? lc.capabilities.map(String).filter((c) => KNOWN_CAPABILITIES.has(c)) : [];
-  const connectors = Array.isArray(lc.connectors) ? lc.connectors.map(String) : [];
+  const lc = (row.launchConfig || {}) as { window?: { width?: number; height?: number } | null };
+  const { caps, connectors } = grantsFromRow(row);
   const win = new BrowserWindow({
     width: lc.window?.width || 460,
     height: lc.window?.height || 640,
     title: row.name,
     show: false,
     webPreferences: {
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, "glyphh-app-preload.js"),
     },
   });
   grantAppCaps(win.webContents.id, row.slug, row.name, caps, connectors);
+  attachAppWindowEgressGuards(win.webContents, path.dirname(entryPath));
   void win.loadFile(entryPath);
   win.once("ready-to-show", () => win.show());
   win.on("closed", () => {
@@ -397,7 +430,8 @@ async function runCapability(
   appName: string,
   method: string,
   args: Record<string, unknown>,
-  connectors: Set<string> = new Set()
+  connectors: Set<string> = new Set(),
+  senderWc?: Electron.WebContents
 ): Promise<unknown> {
   if (DARWIN_ONLY_CAPABILITIES.has(method) && process.platform !== "darwin") {
     throw new Error(`capability ${method} is macOS-only for now`);
@@ -440,15 +474,19 @@ async function runCapability(
     case "secrets.get": {
       const key = String(args.key || "").trim();
       if (!key) throw new Error("key is required");
-      // Credential-shaped vars (provider API keys, tokens, secrets) are
-      // HOST-ONLY: encrypted at rest AND never handed to sandboxed code. The
-      // trusted runtime (llm.complete / agent.run / LLM-proxy wrappers) uses
-      // them in the main process and returns only results — so a key lent to
-      // an untrusted remote agent can never be read back out.
+      const app = await findAppRow(slug);
+      // Default-deny. Credential-shaped vars (provider API keys, tokens,
+      // secrets) are HOST-ONLY forever; everything else is host-only too UNLESS
+      // the user explicitly marked it "readable by app code" on the Config Vars
+      // tab. The trusted runtime (llm.complete / agent.run / LLM-proxy wrappers)
+      // still uses host-only keys in the main process and returns only results —
+      // so a key lent to an untrusted remote agent can never be read back out.
       if (isHostOnlySecret(key)) {
         throw new Error(`"${key}" is host-only — the Glyphh runtime uses it for you (llm.complete / agent.run) and never exposes the value to app code.`);
       }
-      const app = await findAppRow(slug);
+      if (!isSecretAppReadable(app?.launchConfig as Record<string, unknown> | undefined, key)) {
+        throw new Error(`"${key}" is not app-readable — turn on "Readable by app code" for it on the app's Config Vars tab to expose its value.`);
+      }
       const value = secretValueFromRow(app?.launchConfig as Record<string, unknown> | undefined, key);
       if (value == null) throw new Error(`config var not set: ${key} — the user sets it on the app's Config Vars tab`);
       return { value };
@@ -461,6 +499,11 @@ async function runCapability(
     case "vector.search":    return vectorSearch(slug, args);
     case "vector.delete":    return vectorDelete(slug, args);
     case "graph.cypher":     return graphCypher(slug, args);
+    // Filesystem is brokered + user-scoped: fs.pick (interactive OS dialog)
+    // grants a root; read/write only resolve under a granted root. See glyphh-app-fs.
+    case "fs.pick":          return fsPick(senderWc, args, slug);
+    case "fs.read":          return fsRead(slug, args);
+    case "fs.write":         return fsWrite(slug, args);
     default: throw new Error(`unknown capability: ${method}`);
   }
 }
@@ -560,6 +603,55 @@ export async function callAppTool(appSlug: string, toolName: string, args: Recor
 
 let registered = false;
 
+/** Preview webContents ids that already have a teardown-revoke listener, so
+ *  repeated preview-open calls on the reused preview <webview> don't stack up. */
+const previewRevokeWired = new Set<number>();
+
+/** CSP applied to installed-app UI documents (file:// under custom-apps/). Apps
+ *  render from their own local + inline assets and reach the host only over the
+ *  glyphh.call IPC bridge (not governed by CSP), so ALL remote loads and
+ *  connect-src (fetch/XHR/WebSocket/beacon) are blocked — a conforming-but-
+ *  malicious app can't exfiltrate the data it holds. file:/data:/blob: stay
+ *  allowed for local resource types so ../_libs/* and sibling assets still load. */
+const APP_UI_CSP = [
+  "default-src 'none'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' file:",
+  "style-src 'self' 'unsafe-inline' file:",
+  "img-src 'self' data: blob: file:",
+  "font-src 'self' data: file:",
+  "media-src 'self' data: blob: file:",
+  "worker-src 'self' blob: file:",
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join("; ");
+
+const hardenedAppSessions = new WeakSet<Electron.Session>();
+
+/** Inject APP_UI_CSP onto installed-app UI documents loaded in `ses`. Idempotent
+ *  per session. Only the top document under custom-apps/ is stamped; the worker
+ *  shell is skipped (it ships its own stricter meta CSP). */
+function hardenAppSession(ses: Electron.Session): void {
+  if (hardenedAppSessions.has(ses)) return;
+  hardenedAppSessions.add(ses);
+  const root = customAppsDir() + path.sep;
+  ses.webRequest.onHeadersReceived({ urls: ["file://*/*"] }, (details, callback) => {
+    const headers = details.responseHeaders || {};
+    if (details.resourceType === "mainFrame" && !details.url.includes(".glyphh-worker.html")) {
+      let underCustomApps = false;
+      try { underCustomApps = fileURLToPath(details.url).startsWith(root); } catch { /* not a plain file path */ }
+      if (underCustomApps) {
+        for (const k of Object.keys(headers)) {
+          if (/^content-security-policy/i.test(k)) delete headers[k];
+        }
+        headers["Content-Security-Policy"] = [APP_UI_CSP];
+      }
+    }
+    callback({ responseHeaders: headers });
+  });
+}
+
 /**
  * Publish the host-provided UI libraries (Chart.js, three.js, React Flow —
  * built by scripts/build-app-libs.mjs into dist/renderer/app-libs) to
@@ -590,6 +682,10 @@ export function registerGlyphhAppHost(): void {
   registered = true;
 
   syncAppLibs();
+  // Harden the sessions that host installed-app UI pages (standalone window =
+  // default session; in-app preview = persist:yo) with the app CSP.
+  hardenAppSession(session.defaultSession);
+  hardenAppSession(session.fromPartition("persist:yo"));
 
   initAppServices({
     resolveApp: async (slug) => {
@@ -610,7 +706,55 @@ export function registerGlyphhAppHost(): void {
       return { ok: false, error: `capability not granted: ${m}` };
     }
     try {
-      return { ok: true, result: await runCapability(grant.slug, grant.name, m, (args || {}) as Record<string, unknown>, grant.connectors) };
+      return { ok: true, result: await runCapability(grant.slug, grant.name, m, (args || {}) as Record<string, unknown>, grant.connectors, event.sender) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Live in-app preview (Apps page) of an installed glyphh-app. The preview
+  // <webview> gets the glyphh preload in main (will-attach-webview), but the
+  // bridge is inert until its webContents is granted the app's caps — mirror
+  // openGlyphhApp here, then hand back the file:// entry to load so the app's
+  // relative ../_libs/* references resolve from custom-apps/<slug>/.
+  ipcMain.handle("glyphh-app:preview-open", async (event, previewWcId: unknown, slug: unknown) => {
+    const row = await findAppRow(String(slug || ""));
+    if (!row) return { ok: false, error: `unknown app: ${slug}` };
+    const entryPath = String(row.execPath || "");
+    if (!entryPath || !fs.existsSync(entryPath)) {
+      return { ok: false, error: "App bundle is missing on this machine — re-install it" };
+    }
+    // Only grant to a webContents that is genuinely a webview guest of the
+    // calling window — never an arbitrary id handed in by the renderer.
+    const guest = typeof previewWcId === "number" ? webContents.fromId(previewWcId) : undefined;
+    if (!guest || guest.hostWebContents !== event.sender) {
+      return { ok: false, error: "invalid preview target" };
+    }
+    const { caps, connectors } = grantsFromRow(row);
+    grantAppCaps(guest.id, row.slug, row.name, caps, connectors);
+    // The preview <webview> is reused across apps; a later grant overwrites this
+    // one in place, and teardown drops it. (Web-app previews call preview-clear.)
+    // Wire the teardown-revoke once per guest so repeated switches don't pile up
+    // listeners on the same long-lived webContents.
+    if (!previewRevokeWired.has(guest.id)) {
+      previewRevokeWired.add(guest.id);
+      guest.once("destroyed", () => { revokeAppCaps(guest.id); previewRevokeWired.delete(guest.id); });
+    }
+    return { ok: true, fileUrl: pathToFileURL(entryPath).toString() };
+  });
+
+  // Switching the preview to a web app (or closing the detail) — drop any grant
+  // left on the reused preview webContents so a web page can't inherit caps.
+  ipcMain.handle("glyphh-app:preview-clear", (_event, previewWcId: unknown) => {
+    if (typeof previewWcId === "number") revokeAppCaps(previewWcId);
+    return { ok: true };
+  });
+
+  // Invoke an installed app's declared tool locally (Apps page "Test" button) —
+  // runs the real tool via callAppTool (worker handler or host capability).
+  ipcMain.handle("glyphh-app:call-tool", async (_e, slug: string, tool: string, args: unknown) => {
+    try {
+      return { ok: true, result: await callAppTool(String(slug || ""), String(tool || ""), (args || {}) as Record<string, unknown>) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

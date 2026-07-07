@@ -88,6 +88,7 @@ function startWorker(spec: AppWorkerSpec): WorkerHandle {
     width: 0,
     height: 0,
     webPreferences: {
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, "glyphh-app-worker-preload.js"),

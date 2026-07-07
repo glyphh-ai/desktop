@@ -139,6 +139,9 @@ declare global {
         execPath?: string | null; appArchetype?: string | null;
         launchConfig?: Record<string, unknown> | null;
       }) => Promise<{ ok: boolean; error?: string }>;
+      glyphhAppPreviewOpen: (slug: string, previewWcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>;
+      glyphhAppPreviewClear: (previewWcId?: number) => Promise<{ ok: boolean }>;
+      appCallTool: (slug: string, tool: string, args: unknown) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
       marketplaceList: (params: {
         scope: "public" | "private"; category?: string; q?: string;
         sort?: "popular" | "rating" | "newest"; page?: number;
@@ -169,8 +172,8 @@ declare global {
       panelAppsRemoveMcp: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsRemoveCommand: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
-      appSecretsList: (id: string) => Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean }>; error?: string }>;
-      appSecretsSet: (id: string, key: string, value: string) => Promise<{ ok: boolean; error?: string }>;
+      appSecretsList: (id: string) => Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean; appReadable?: boolean }>; error?: string }>;
+      appSecretsSet: (id: string, key: string, value: string, appReadable?: boolean) => Promise<{ ok: boolean; error?: string }>;
       appSecretsDelete: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
       appExport: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
@@ -222,6 +225,8 @@ declare global {
       getAccountInfo: () => Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string } | null>;
       userTimezoneGet: () => Promise<string | null>;
       userTimezoneSet: (tz: string) => Promise<{ ok: boolean; error?: string }>;
+      orgGuardrailsGet: () => Promise<{ ok: boolean; policy?: Record<string, number> | null; error?: string }>;
+      orgGuardrailsSet: (policy: Record<string, number> | null) => Promise<{ ok: boolean; error?: string }>;
       logout: () => Promise<void>;
       onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => void;
       onThemeChanged: (callback: (theme: string) => void) => void;

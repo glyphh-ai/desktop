@@ -205,7 +205,7 @@ function registerPanelAppsIpc(): void {
   // names + set-dates ONLY; there is deliberately no handler that returns a
   // decrypted value to a renderer — plaintext exists once, at creation.
   ipcMain.handle("app-secrets-list", async (_e, id: string) => listAppSecrets(id));
-  ipcMain.handle("app-secrets-set", async (_e, id: string, key: string, value: string) => setAppSecret(id, key, value));
+  ipcMain.handle("app-secrets-set", async (_e, id: string, key: string, value: string, appReadable?: boolean) => setAppSecret(id, key, value, appReadable === true));
   ipcMain.handle("app-secrets-delete", async (_e, id: string, key: string) => deleteAppSecret(id, key));
 }
 

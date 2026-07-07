@@ -271,6 +271,16 @@ contextBridge.exposeInMainWorld("yo", {
     execPath?: string | null; appArchetype?: string | null;
     launchConfig?: Record<string, unknown> | null;
   }) => ipcRenderer.invoke("app-launch", spec) as Promise<{ ok: boolean; error?: string }>,
+  // Live preview of an installed glyphh-app on the Apps page: grants the preview
+  // <webview> (id passed by webContents id) the app's caps and returns the
+  // file:// entry URL to load. Clear drops the grant when switching away.
+  glyphhAppPreviewOpen: (slug: string, previewWcId?: number) =>
+    ipcRenderer.invoke("glyphh-app:preview-open", previewWcId, slug) as Promise<{ ok: boolean; fileUrl?: string; error?: string }>,
+  glyphhAppPreviewClear: (previewWcId?: number) =>
+    ipcRenderer.invoke("glyphh-app:preview-clear", previewWcId) as Promise<{ ok: boolean }>,
+  // Invoke an installed app's declared tool locally — the Apps page MCP "Test" button.
+  appCallTool: (slug: string, tool: string, args: unknown) =>
+    ipcRenderer.invoke("glyphh-app:call-tool", slug, tool, args) as Promise<{ ok: boolean; result?: unknown; error?: string }>,
   // Installed real browsers — the app editor's Browser dropdown.
   browsersDetect: () =>
     ipcRenderer.invoke("browsers-detect") as Promise<Array<{ id: string; name: string; chromium: boolean }>>,
@@ -314,9 +324,9 @@ contextBridge.exposeInMainWorld("yo", {
   // Per-app config vars (encrypted secrets). List never includes values —
   // a value is visible only in the form where it's typed, at creation.
   appSecretsList: (id: string) =>
-    ipcRenderer.invoke("app-secrets-list", id) as Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean }>; error?: string }>,
-  appSecretsSet: (id: string, key: string, value: string) =>
-    ipcRenderer.invoke("app-secrets-set", id, key, value) as Promise<{ ok: boolean; error?: string }>,
+    ipcRenderer.invoke("app-secrets-list", id) as Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean; appReadable?: boolean }>; error?: string }>,
+  appSecretsSet: (id: string, key: string, value: string, appReadable?: boolean) =>
+    ipcRenderer.invoke("app-secrets-set", id, key, value, appReadable) as Promise<{ ok: boolean; error?: string }>,
   appSecretsDelete: (id: string, key: string) =>
     ipcRenderer.invoke("app-secrets-delete", id, key) as Promise<{ ok: boolean; error?: string }>,
   // yo app package (import / export)
@@ -362,6 +372,8 @@ contextBridge.exposeInMainWorld("yo", {
   // Server-profile timezone (users.timezone) — same field the platform edits.
   userTimezoneGet: () => ipcRenderer.invoke("user-timezone-get") as Promise<string | null>,
   userTimezoneSet: (tz: string) => ipcRenderer.invoke("user-timezone-set", tz) as Promise<{ ok: boolean; error?: string }>,
+  orgGuardrailsGet: () => ipcRenderer.invoke("org-guardrails-get") as Promise<{ ok: boolean; policy?: Record<string, number> | null; error?: string }>,
+  orgGuardrailsSet: (policy: Record<string, number> | null) => ipcRenderer.invoke("org-guardrails-set", policy) as Promise<{ ok: boolean; error?: string }>,
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));

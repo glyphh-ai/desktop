@@ -18,7 +18,7 @@
           <div id="apps-toolbar" class="crud-toolbar">
             <input id="app-search" type="text" class="crud-search" placeholder="Search apps..." spellcheck="false" autocomplete="off" />
             <button id="apps-add-btn" class="action-btn primary">+ New</button>
-            <button id="apps-import-btn" class="action-btn" title="Import a .glyphh bundle">Import app</button>
+            <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
             <button id="apps-refresh-btn" class="action-btn" title="Refresh app list" aria-label="Refresh app list" style="padding:6px 9px;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
             </button>
@@ -334,6 +334,10 @@
                   <input id="config-var-key" type="text" class="settings-input" placeholder="OPENAI_API_KEY" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
                   <label class="settings-label">Value <span style="color:var(--text-2);font-weight:400;">— visible only now; encrypted on save and never shown again</span></label>
                   <textarea id="config-var-value" class="settings-input" rows="4" placeholder="sk-…" spellcheck="false" autocomplete="off" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                  <label style="display:flex;align-items:flex-start;gap:8px;margin-top:8px;font-size:12px;color:var(--text-2);cursor:pointer;line-height:1.4;">
+                    <input id="config-var-readable" type="checkbox" style="width:auto;margin:2px 0 0;flex:none;" />
+                    <span>Readable by app code <span style="color:var(--text-3,#888);">— the app can fetch this value via <code>secrets.get</code>. Leave off (default) for credentials the runtime uses on the app's behalf but never hands to app code.</span></span>
+                  </label>
                   <div class="settings-actions" style="margin-top:8px;">
                     <span id="config-var-status" style="flex:1;font-size:12px;color:var(--ok,#22c55e);"></span>
                     <button id="config-var-add" class="action-btn primary">Save var</button>
@@ -351,9 +355,30 @@
                   <label class="settings-label">Public endpoint</label>
                   <code id="app-mcp-endpoint" class="app-mcp-endpoint"></code>
                   <p class="proxy-field-hint" style="margin-bottom:14px;">Add this URL to another agent (Claude, etc.). Only the approved tools below are exposed; calls spend your credits and are subject to the Guardrails limits.</p>
-                  <label class="settings-label">Approved tools</label>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <label class="settings-label" style="margin:0;">Approved tools</label>
+                    <label id="app-mcp-select-all-wrap" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);cursor:pointer;">
+                      <input type="checkbox" id="app-mcp-select-all" style="width:auto;margin:0;" /> Select all
+                    </label>
+                  </div>
                   <div id="app-mcp-tools"></div>
                   <div id="app-mcp-tools-empty" class="help-item-empty hidden">No tools available yet.</div>
+
+                  <!-- Test an exposed tool through the local runtime (installed apps). -->
+                  <div id="app-mcp-test-section" class="hidden">
+                    <label class="settings-label" style="margin-top:16px;">Test a tool</label>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                      <select id="app-mcp-test-tool" class="settings-input" style="flex:1;"></select>
+                      <button id="app-mcp-test-btn" class="action-btn" type="button">Test</button>
+                    </div>
+                    <textarea id="app-mcp-test-args" class="settings-input" rows="2" placeholder='{ "arg": "value" }  — JSON args (optional)' spellcheck="false" style="margin-top:6px;resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                    <pre id="app-mcp-test-result" class="hidden" style="margin-top:6px;background:var(--surface-2);padding:8px 10px;border-radius:6px;font-size:11px;max-height:160px;overflow:auto;white-space:pre-wrap;word-break:break-word;"></pre>
+                  </div>
+
+                  <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                    <span id="app-mcp-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                    <button id="app-mcp-save" class="action-btn primary" type="button">Save</button>
+                  </div>
                 </div>
 
                 <!-- Guardrails left: hard limits every MCP-exposing app must set. -->
@@ -371,6 +396,10 @@
                   <label class="settings-label">Max concurrent calls</label>
                   <input id="app-gr-concurrent" type="number" min="0" class="settings-input" placeholder="e.g. 2" />
                   <p class="proxy-field-hint" style="margin-top:12px;">Blank = no limit for that field. Limits are enforced at the gateway before a call reaches your machine.</p>
+                  <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                    <span id="app-gr-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                    <button id="app-gr-save" class="action-btn primary" type="button">Save</button>
+                  </div>
                 </div>
 
                 <!-- Public URL left: this app's public address + status. Target

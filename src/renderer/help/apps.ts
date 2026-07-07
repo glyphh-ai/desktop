@@ -39,6 +39,18 @@ let currentAppId = "";
 let currentApp: PanelApp | null = null;
 let activeAppTab: "dashboard" | "config" = "dashboard";
 
+// Reasonable default guardrails, prefilled in the per-app Guardrails tab (and
+// mirrored in the org Security panels) so a new app is never shipped unbounded.
+// All sit under the server GUARDRAIL_FLOOR, so they only ever tighten.
+const DEFAULT_GUARDRAILS: Record<string, number> = {
+  maxInputTokens: 16000,
+  maxOutputTokens: 4000,
+  windowSeconds: 60,
+  windowTokens: 200000,
+  windowCalls: 100,
+  maxConcurrent: 4,
+};
+
 // ── Browser ↔ Native helpers (pivot-mcp) ─────────────────
 // Apps are either web apps (isBrowser, url + launchConfig browser/openAs) or native desktop
 // apps (execPath + an archetype-specific launchConfig). These build/read the
@@ -173,15 +185,25 @@ function syncMcpTabs(app: PanelApp): void {
     list.appendChild(row);
   }
 
+  // Test-a-tool picker — installed apps only (LLM tools run against the model).
+  const canTest = app.appArchetype !== "llm" && tools.length > 0;
+  document.getElementById("app-mcp-test-section")?.classList.toggle("hidden", !canTest);
+  const testSel = document.getElementById("app-mcp-test-tool") as HTMLSelectElement | null;
+  if (testSel) testSel.innerHTML = tools.map((t) => `<option value="${escMkt(t.name)}">${escMkt(t.name)}</option>`).join("");
+
+  // "Select all" reflects the current approvals (hidden when there are no tools).
+  document.getElementById("app-mcp-select-all-wrap")?.classList.toggle("hidden", tools.length === 0);
+  updateMcpSelectAll();
+
   // Guardrails fields.
   const g = (lc.guardrails || {}) as Record<string, unknown>;
   const setNum = (id: string, v: unknown) => { (document.getElementById(id) as HTMLInputElement).value = v == null ? "" : String(v); };
-  setNum("app-gr-max-input", g.maxInputTokens);
-  setNum("app-gr-max-output", g.maxOutputTokens);
-  setNum("app-gr-window", g.windowSeconds);
-  setNum("app-gr-window-tokens", g.windowTokens);
-  setNum("app-gr-window-calls", g.windowCalls);
-  setNum("app-gr-concurrent", g.maxConcurrent);
+  setNum("app-gr-max-input", g.maxInputTokens ?? DEFAULT_GUARDRAILS.maxInputTokens);
+  setNum("app-gr-max-output", g.maxOutputTokens ?? DEFAULT_GUARDRAILS.maxOutputTokens);
+  setNum("app-gr-window", g.windowSeconds ?? DEFAULT_GUARDRAILS.windowSeconds);
+  setNum("app-gr-window-tokens", g.windowTokens ?? DEFAULT_GUARDRAILS.windowTokens);
+  setNum("app-gr-window-calls", g.windowCalls ?? DEFAULT_GUARDRAILS.windowCalls);
+  setNum("app-gr-concurrent", g.maxConcurrent ?? DEFAULT_GUARDRAILS.maxConcurrent);
 }
 
 /** Re-render the MCP/Guardrails tabs from the CURRENT form state (type +
@@ -224,6 +246,56 @@ function readMcpConfig(): { mcpApproved: string[]; guardrails: Record<string, nu
   put("windowCalls", num("app-gr-window-calls"));
   put("maxConcurrent", num("app-gr-concurrent"));
   return { mcpApproved, guardrails };
+}
+
+/** Sync the MCP "Select all" checkbox to the tool checkboxes — checked when all
+ *  are on, indeterminate when only some are. */
+function updateMcpSelectAll(): void {
+  const sa = document.getElementById("app-mcp-select-all") as HTMLInputElement | null;
+  if (!sa) return;
+  const all = Array.from(document.querySelectorAll<HTMLInputElement>(".mcp-tool-check"));
+  const checked = all.filter((c) => c.checked).length;
+  sa.checked = all.length > 0 && checked === all.length;
+  sa.indeterminate = checked > 0 && checked < all.length;
+}
+
+/** Persist just the MCP-approval + Guardrails fields (from either tab), merged
+ *  into the app's launchConfig — a per-tab Save that doesn't close the detail. */
+async function saveMcpGuardrails(statusId: string): Promise<void> {
+  if (!currentAppId) return;
+  const { mcpApproved, guardrails } = readMcpConfig();
+  const base = (currentApp?.launchConfig || {}) as Record<string, unknown>;
+  const launchConfig = { ...base, mcpApproved, guardrails };
+  const statusEl = document.getElementById(statusId);
+  if (statusEl) statusEl.textContent = "Saving…";
+  const res = await window.yo.panelAppsUpdate(currentAppId, { launchConfig });
+  if (res?.ok && currentApp) currentApp.launchConfig = launchConfig;
+  if (statusEl) {
+    statusEl.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
+    setTimeout(() => { if (statusEl.textContent === "Saved ✓") statusEl.textContent = ""; }, 2500);
+  }
+}
+
+/** Invoke one of the app's exposed tools through the local runtime and show the
+ *  result — a smoke test before external agents rely on it (installed apps). */
+async function testMcpTool(): Promise<void> {
+  const sel = document.getElementById("app-mcp-test-tool") as HTMLSelectElement | null;
+  const argsEl = document.getElementById("app-mcp-test-args") as HTMLTextAreaElement | null;
+  const out = document.getElementById("app-mcp-test-result");
+  const tool = sel?.value;
+  if (!currentApp || !tool || !out) return;
+  let args: unknown = {};
+  const raw = (argsEl?.value || "").trim();
+  if (raw) {
+    try { args = JSON.parse(raw); }
+    catch { out.classList.remove("hidden"); out.textContent = "Args must be valid JSON."; return; }
+  }
+  out.classList.remove("hidden");
+  out.textContent = "Running…";
+  const res = await window.yo.appCallTool(currentApp.slug, tool, args);
+  out.textContent = res?.ok
+    ? (typeof res.result === "string" ? res.result : JSON.stringify(res.result, null, 2))
+    : `Error: ${res?.error || "failed"}`;
 }
 
 // Dashboard shell (5a): apps are server objects (yo-server's saved_apps),
@@ -819,7 +891,7 @@ function switchAppTab(tab: string) {
   document.querySelectorAll<HTMLElement>(".app-tab-right").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
-  if (tab === "dashboard") loadPanelTab();
+  if (tab === "dashboard") void loadPanelTab();
   if (tab === "config") void loadConfigVarsTab();
 }
 
@@ -834,6 +906,7 @@ async function loadConfigVarsTab() {
   // or app reopen — a value only ever exists here while actively being typed.
   (document.getElementById("config-var-key") as HTMLInputElement).value = "";
   (document.getElementById("config-var-value") as HTMLTextAreaElement).value = "";
+  (document.getElementById("config-var-readable") as HTMLInputElement).checked = false;
   const listEl = document.getElementById("config-var-list")!;
   const res = await window.yo.appSecretsList(currentAppId);
   listEl.innerHTML = "";
@@ -852,17 +925,40 @@ async function loadConfigVarsTab() {
     const keyEl = document.createElement("span");
     keyEl.className = "config-var-key";
     keyEl.textContent = s.key;
-    if (s.hostOnly) {
+    {
       const badge = document.createElement("span");
       badge.className = "config-var-hostonly";
-      badge.textContent = "runtime-only";
-      badge.title = "Credential — encrypted, and never readable by app code (secrets.get refuses it). Only the trusted runtime uses it.";
+      if (s.appReadable) {
+        badge.textContent = "app-readable";
+        badge.title = "App code can read this value via secrets.get.";
+        badge.style.cssText = "color:var(--ok,#22c55e);border-color:rgba(34,197,94,.4);";
+      } else {
+        badge.textContent = "runtime-only";
+        badge.title = s.hostOnly
+          ? "Credential — encrypted, never readable by app code (secrets.get refuses it). Only the trusted runtime uses it."
+          : "Encrypted; not readable by app code. Turn on \"Readable by app code\" when saving to expose it.";
+      }
       keyEl.appendChild(badge);
     }
     const valEl = document.createElement("span");
     valEl.className = "config-var-masked";
     valEl.textContent = "••••••••";
     valEl.title = "Encrypted — set " + (s.at ? new Date(s.at).toLocaleDateString() : "earlier") + "; values can't be viewed again";
+    const edit = document.createElement("button");
+    edit.className = "action-btn";
+    edit.style.cssText = "height:24px;font-size:11px;padding:0 10px;";
+    edit.textContent = "Edit";
+    edit.title = "Load this var into the form to change its value or its \"readable by app code\" setting. Values are write-only, so editing clears the value — re-enter it to save.";
+    edit.addEventListener("click", () => {
+      (document.getElementById("config-var-key") as HTMLInputElement).value = s.key;
+      (document.getElementById("config-var-readable") as HTMLInputElement).checked = !!s.appReadable;
+      // Write-only: the stored value can never be shown again, so editing wipes
+      // the field — the user re-enters the value (and can flip app-readable) to save.
+      const valueField = document.getElementById("config-var-value") as HTMLTextAreaElement;
+      valueField.value = "";
+      document.getElementById("config-var-status")!.textContent = `Editing ${s.key} — re-enter its value to save (values are write-only and can't be shown).`;
+      valueField.focus();
+    });
     const del = document.createElement("button");
     del.className = "action-btn danger";
     del.style.cssText = "height:24px;font-size:11px;padding:0 10px;";
@@ -872,7 +968,7 @@ async function loadConfigVarsTab() {
       await window.yo.appSecretsDelete(currentAppId, s.key);
       void loadConfigVarsTab();
     });
-    row.append(keyEl, valEl, del);
+    row.append(keyEl, valEl, edit, del);
     listEl.appendChild(row);
   }
 }
@@ -880,6 +976,7 @@ async function loadConfigVarsTab() {
 function wireConfigVarsForm() {
   const keyEl = document.getElementById("config-var-key") as HTMLInputElement;
   const valueEl = document.getElementById("config-var-value") as HTMLTextAreaElement;
+  const readableEl = document.getElementById("config-var-readable") as HTMLInputElement;
   const errEl = document.getElementById("config-var-error")!;
   const statusEl = document.getElementById("config-var-status")!;
   document.getElementById("config-var-add")!.addEventListener("click", async () => {
@@ -887,7 +984,7 @@ function wireConfigVarsForm() {
     statusEl.textContent = "";
     const key = keyEl.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
     const value = valueEl.value;
-    const res = await window.yo.appSecretsSet(currentAppId, key, value);
+    const res = await window.yo.appSecretsSet(currentAppId, key, value, readableEl.checked);
     if (!res.ok) {
       errEl.textContent = res.error || "Couldn't save";
       errEl.classList.remove("hidden");
@@ -907,19 +1004,52 @@ function wireConfigVarsForm() {
 
 let panelLoaded = false;
 
-function loadPanelTab() {
+async function loadPanelTab() {
   const app = panelApps.find((a) => a.id === currentAppId);
   if (!app) return;
-  if (!app.url) {
+
+  // Installed glyphh-apps have no url — their UI lives on disk at execPath
+  // (~/.glyphh/custom-apps/<slug>/index.html). Mirror isGlyphhAppRow so native
+  // terminal/editor apps (also execPath, no url) still fall through to "no url".
+  const isGlyphhApp = app.appArchetype === "glyphh-app" || /\.html?$/i.test(app.execPath || "");
+
+  if (!app.url && !isGlyphhApp) {
     document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">No URL configured for this app. Add one above to enable panel features.</div>`;
     return;
   }
+
   if (!panelLoaded) {
-    appPreview.partition = "persist:yo";
-    appPreview.src = app.url;
+    if (isGlyphhApp) {
+      // Grant the preview <webview> the app's caps (so window.glyphh.call is
+      // authorized — the preload is attached in main) and load its on-disk entry
+      // so relative ../_libs/* references resolve. Mirrors openGlyphhApp.
+      const wcId = await ensurePreviewWcId();
+      const res = await window.yo.glyphhAppPreviewOpen(app.slug, wcId);
+      if (!res?.ok || !res.fileUrl) {
+        document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">${res?.error || "Could not load app preview."}</div>`;
+        return;
+      }
+      appPreview.src = res.fileUrl;
+    } else {
+      // Web app: drop any glyphh grant left on the reused preview webContents.
+      void window.yo.glyphhAppPreviewClear(getPreviewWebContentsId());
+      appPreview.partition = "persist:yo";
+      appPreview.src = app.url!;
+    }
     panelLoaded = true;
   }
   refreshCommands();
+}
+
+/** The preview <webview> creates its guest (and thus a webContents id) shortly
+ *  after it attaches to the DOM; wait briefly so the caps grant has a target. */
+async function ensurePreviewWcId(): Promise<number | undefined> {
+  let id = getPreviewWebContentsId();
+  for (let i = 0; id === undefined && i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    id = getPreviewWebContentsId();
+  }
+  return id;
 }
 
 
@@ -1167,6 +1297,8 @@ async function saveMapping() {
 
 
 function closeAppDetail() {
+  // Drop any glyphh capability grant on the reused preview webContents.
+  void window.yo.glyphhAppPreviewClear(getPreviewWebContentsId());
   appPreview.src = "about:blank";
   panelLoaded = false;
   appMapCommand.classList.add("hidden");
@@ -1357,6 +1489,17 @@ async function savePublicUrl(): Promise<void> {
 
 function initPublicUrlTab(): void {
   document.getElementById("proxy-save-btn")?.addEventListener("click", () => { void savePublicUrl(); });
+  document.getElementById("app-mcp-save")?.addEventListener("click", () => { void saveMcpGuardrails("app-mcp-status"); });
+  document.getElementById("app-gr-save")?.addEventListener("click", () => { void saveMcpGuardrails("app-gr-status"); });
+  document.getElementById("app-mcp-test-btn")?.addEventListener("click", () => { void testMcpTool(); });
+  document.getElementById("app-mcp-select-all")?.addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    document.querySelectorAll<HTMLInputElement>(".mcp-tool-check").forEach((c) => { c.checked = on; });
+    updateMcpSelectAll();
+  });
+  document.getElementById("app-mcp-tools")?.addEventListener("change", (e) => {
+    if ((e.target as HTMLElement).classList?.contains("mcp-tool-check")) updateMcpSelectAll();
+  });
   document.getElementById("proxy-auth-mode")?.addEventListener("change", syncProxyAuthFields);
   const slugInput = proxyInput("proxy-slug");
   slugInput?.addEventListener("input", () => {

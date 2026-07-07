@@ -5,6 +5,7 @@
               <button class="settings-nav-item" data-sub="appearance">Appearance</button>
               <button class="settings-nav-item" data-sub="account">Account</button>
               <button class="settings-nav-item" data-sub="mcp">MCP Server</button>
+              <button class="settings-nav-item" data-sub="security">Security</button>
             </nav>
             <div class="settings-panels">
 
@@ -252,6 +253,33 @@
                     </div>
                   </div>
 
+                </div>
+              </div>
+
+              <!-- Security: org-wide runtime guardrails (org_admin only). Mirrors
+                   the per-app Guardrails fields; enforced under GUARDRAIL_FLOOR,
+                   above per-app overrides. -->
+              <div class="settings-panel" data-sub="security">
+                <h2>Security</h2>
+                <p class="section-desc">Org-wide runtime guardrails applied to every installed Glyphh app. An app can tighten these on its own Guardrails tab, but never exceed them. Blank = no org-wide limit for that field.</p>
+                <div id="security-admin-note" class="section-desc" style="color:var(--text-3);">Only an organization admin can edit these limits.</div>
+                <div id="security-guardrails" class="settings-form hidden" style="max-width:440px;">
+                  <label class="settings-label">Max input tokens <span style="color:var(--text-2);font-weight:400;">— per call</span></label>
+                  <input id="org-gr-max-input" type="number" min="0" class="settings-input" placeholder="e.g. 8000" />
+                  <label class="settings-label">Max output tokens <span style="color:var(--text-2);font-weight:400;">— per call</span></label>
+                  <input id="org-gr-max-output" type="number" min="0" class="settings-input" placeholder="e.g. 4000" />
+                  <label class="settings-label">Window <span style="color:var(--text-2);font-weight:400;">— seconds the caps below reset over</span></label>
+                  <input id="org-gr-window" type="number" min="1" class="settings-input" placeholder="e.g. 3600" />
+                  <label class="settings-label">Max tokens per window</label>
+                  <input id="org-gr-window-tokens" type="number" min="0" class="settings-input" placeholder="e.g. 200000" />
+                  <label class="settings-label">Max calls per window</label>
+                  <input id="org-gr-window-calls" type="number" min="0" class="settings-input" placeholder="e.g. 100" />
+                  <label class="settings-label">Max concurrent calls</label>
+                  <input id="org-gr-concurrent" type="number" min="0" class="settings-input" placeholder="e.g. 2" />
+                  <div class="settings-actions" style="margin-top:16px;">
+                    <button id="org-gr-save" class="action-btn primary">Save</button>
+                    <span id="org-gr-status" style="font-size:12px;color:var(--text-3);"></span>
+                  </div>
                 </div>
               </div>
 
