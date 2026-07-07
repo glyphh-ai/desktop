@@ -618,9 +618,9 @@ function initDashboard(): void {
   if (dashboardInitialized) return;
   dashboardInitialized = true;
 
-  type DashSlug = "dashboard" | "apps" | "connections" | "layouts" | "drips" | "settings" | "about";
+  type DashSlug = "dashboard" | "apps" | "connections" | "layouts" | "drips" | "code" | "settings" | "about";
   const setActive = (slug: DashSlug) => {
-    for (const s of ["dashboard", "apps", "connections", "layouts", "drips", "settings", "about"] as DashSlug[]) {
+    for (const s of ["dashboard", "apps", "connections", "layouts", "drips", "code", "settings", "about"] as DashSlug[]) {
       document.getElementById(`dashboard-tab-${s}`)?.classList.toggle("active", slug === s);
     }
   };
@@ -637,6 +637,7 @@ function initDashboard(): void {
   wireTab("connections", "connections");
   wireTab("layouts", "layouts");
   wireTab("drips", "drips");
+  wireTab("code", "code");
   wireTab("settings", "dashboard-settings");
   wireTab("about", "about");
 
@@ -646,7 +647,7 @@ function initDashboard(): void {
   // panels are single-instance, so activePanelId is the app id.
   const APPID_TO_TAB: Record<string, DashSlug> = {
     dashboard: "dashboard", apps: "apps", connections: "connections",
-    layouts: "layouts", drips: "drips", "dashboard-settings": "settings", about: "about",
+    layouts: "layouts", drips: "drips", code: "code", "dashboard-settings": "settings", about: "about",
   };
   window.yo.onTabState((state) => {
     const tab = APPID_TO_TAB[state.activeId];
