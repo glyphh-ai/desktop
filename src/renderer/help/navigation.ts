@@ -9,6 +9,7 @@ import { loadApps, initApps, openNewAppForm } from "./apps.js";
 import { loadSettings, initSettings } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { initSkills } from "./skills.js";
+import { loadCode, initCode } from "./code.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 
@@ -116,6 +117,7 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "drips") loadDrips();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "apps") loadApps();
+  else if (sec === "code") loadCode();
   else if (sec === "connections") void loadConnections();
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
@@ -265,4 +267,5 @@ export function initHelp() {
   initLayoutsEvents();
   initDripsEvents();
   initSkills();
+  initCode();
 }

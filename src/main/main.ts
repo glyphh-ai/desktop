@@ -533,6 +533,7 @@ async function boot() {
     "yo://connections": "connections",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
+    "yo://code": "code",
     "yo://about": "about",
     "yo://dashboard-settings": "settings",
   };

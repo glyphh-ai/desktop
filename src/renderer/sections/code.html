@@ -1,0 +1,51 @@
+        <div class="help-section" data-section="code">
+          <div class="code-root">
+
+            <!-- Left rail — chats (collapsible) -->
+            <aside id="code-rail" class="code-rail">
+              <div class="code-rail-head">
+                <span class="code-rail-title">Chats</span>
+                <button id="code-new-chat" class="code-icon-btn" title="New chat">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+              </div>
+              <div id="code-history" class="code-history"></div>
+            </aside>
+
+            <!-- Center — the agent thread -->
+            <section class="code-agent">
+              <div class="code-agent-head">
+                <button id="code-rail-toggle" class="code-icon-btn" title="Toggle chats">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                </button>
+                <span class="code-agent-title">Code</span>
+                <div class="code-spacer"></div>
+                <button id="code-workbench-toggle" class="code-icon-btn" title="Toggle workbench">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                </button>
+              </div>
+              <div id="code-thread" class="code-thread"></div>
+              <div class="code-composer">
+                <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
+                <button id="code-send" class="action-btn primary">Send</button>
+              </div>
+            </section>
+
+            <!-- Right — the workbench (code / preview) -->
+            <aside id="code-workbench" class="code-workbench">
+              <div class="code-wb-head">
+                <button class="code-wb-tab active" data-wbtab="code">Code</button>
+                <button class="code-wb-tab" data-wbtab="preview">Preview</button>
+              </div>
+              <div class="code-wb-body">
+                <div class="code-wb-pane active" data-wbtab="code">
+                  <div class="code-empty">Bundles William builds land here — manifest.json, worker.js, index.html, and repair diffs.</div>
+                </div>
+                <div class="code-wb-pane" data-wbtab="preview">
+                  <div class="code-empty">Live preview of the built app.</div>
+                </div>
+              </div>
+            </aside>
+
+          </div>
+        </div>
