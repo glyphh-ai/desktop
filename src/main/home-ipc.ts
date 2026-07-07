@@ -57,8 +57,11 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
 
     const [credits, usage, daily, apps] = await Promise.all([
       serverGetAuthed<CreditsResp>("/api/billing/credits").catch(() => null),
-      serverGetAuthed<UsageResp>(`/api/usage?from=${encodeURIComponent(monthStart.toISOString())}&to=${encodeURIComponent(now.toISOString())}`).catch(() => null),
-      serverGetAuthed<DailyResp>(`/api/usage/daily?from=${ymd(windowStart)}&to=${ymd(now)}&tz=${encodeURIComponent(tz)}`).catch(() => null),
+      // scope=me → the desktop dashboard always shows THIS user's spend, never
+      // the org's. `to` is the current instant (not a date) so tonight's usage
+      // isn't clipped for users in timezones behind UTC.
+      serverGetAuthed<UsageResp>(`/api/usage?from=${encodeURIComponent(monthStart.toISOString())}&to=${encodeURIComponent(now.toISOString())}&scope=me`).catch(() => null),
+      serverGetAuthed<DailyResp>(`/api/usage/daily?from=${ymd(windowStart)}&to=${encodeURIComponent(now.toISOString())}&tz=${encodeURIComponent(tz)}&scope=me`).catch(() => null),
       serverGetAuthed<PanelApp[]>("/api/panel-apps").catch(() => null),
     ]);
 
