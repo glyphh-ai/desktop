@@ -1,30 +1,62 @@
         <div class="help-section" data-section="code">
           <div class="code-root">
 
-            <!-- Left rail — chats (collapsible, draggable) -->
+            <!-- Left rail — sessions (collapsible, draggable) -->
             <aside id="code-rail" class="code-rail">
-              <div class="code-rail-head">
-                <span class="code-rail-title">Chats</span>
-                <button id="code-new-chat" class="code-icon-btn" title="New chat">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                </button>
-              </div>
+              <button id="code-new-chat" class="code-new-session" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>New session</span>
+              </button>
+              <div class="code-rail-label">Recents</div>
               <div id="code-history" class="code-history"></div>
             </aside>
             <div id="code-rail-splitter" class="code-splitter" title="Drag to resize"></div>
 
-            <!-- Center — the agent thread -->
+            <!-- Center — the agent -->
             <section class="code-agent">
               <div class="code-agent-head">
-                <button id="code-rail-toggle" class="code-icon-btn" title="Toggle chats">
+                <button id="code-rail-toggle" class="code-icon-btn" title="Toggle sessions">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
                 </button>
-                <span class="code-agent-title">Code</span>
-                <div class="code-spacer"></div>
-                <button id="code-workbench-toggle" class="code-icon-btn" title="Toggle workbench">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+
+                <!-- Workdir controls (old workbench header): folder picker +
+                     git branch (shown once a repo is picked) + add-folder.
+                     Wiring lands with the William loop. -->
+                <button id="code-workdir-btn" class="code-wd-btn" title="Pick the working folder" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                  <span id="code-workdir-name">Pick a folder</span>
                 </button>
+                <span class="code-wd-branch" id="code-workdir-branch-wrap" style="display:none;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>
+                  <span id="code-workdir-branch"></span>
+                </span>
+                <button id="code-workdir-add" class="code-icon-btn" title="Add folder" type="button">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                </button>
+
+                <div class="code-spacer"></div>
+
+                <!-- Workbench view toggles (old wb-section-toggles): each opens
+                     its rail on the right; accent = open. -->
+                <div class="code-view-toggles">
+                  <button class="code-view-btn" data-view="files" title="Files">
+                    <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                  </button>
+                  <button class="code-view-btn" data-view="terminal" title="Terminal">
+                    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                  </button>
+                  <button class="code-view-btn" data-view="diff" title="Diff">
+                    <svg viewBox="0 0 24 24"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>
+                  </button>
+                  <button class="code-view-btn" data-view="preview" title="Preview">
+                    <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                  <button class="code-view-btn" data-view="plan" title="Plan">
+                    <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  </button>
+                </div>
               </div>
+
               <div id="code-thread" class="code-thread"></div>
               <div class="code-composer">
                 <div class="code-input-wrap">
@@ -37,19 +69,26 @@
               </div>
             </section>
 
-            <!-- Right — the workbench (code / preview; collapsible, draggable) -->
+            <!-- Right — workbench rails: closed until a view is opened from the
+                 center-right toggles; open views appear as tabs. -->
             <div id="code-wb-splitter" class="code-splitter" title="Drag to resize"></div>
-            <aside id="code-workbench" class="code-workbench">
-              <div class="code-wb-head">
-                <button class="code-wb-tab active" data-wbtab="code">Code</button>
-                <button class="code-wb-tab" data-wbtab="preview">Preview</button>
-              </div>
+            <aside id="code-workbench" class="code-workbench collapsed">
+              <div id="code-wb-tabs" class="code-wb-head"></div>
               <div class="code-wb-body">
-                <div class="code-wb-pane active" data-wbtab="code">
-                  <div class="code-empty">Bundles William builds land here — manifest.json, worker.js, index.html, and repair diffs.</div>
+                <div class="code-wb-pane" data-wbtab="files">
+                  <div class="code-empty">Pick a working folder to browse its files here.</div>
+                </div>
+                <div class="code-wb-pane" data-wbtab="terminal">
+                  <div class="code-empty">A terminal opens here alongside the William loop.</div>
+                </div>
+                <div class="code-wb-pane" data-wbtab="diff">
+                  <div class="code-empty">Repair diffs — watch William fix its own build — land here.</div>
                 </div>
                 <div class="code-wb-pane" data-wbtab="preview">
                   <div class="code-empty">Live preview of the built app.</div>
+                </div>
+                <div class="code-wb-pane" data-wbtab="plan">
+                  <div class="code-empty">The build plan and run state land here.</div>
                 </div>
               </div>
             </aside>
