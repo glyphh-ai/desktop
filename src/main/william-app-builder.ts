@@ -76,7 +76,7 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
   let lastErrors: string[] = [];
   let lastEmission = "";
   for (let attempt = 1; attempt <= budget; attempt++) {
-    say(`Building app — attempt ${attempt}/${budget}, generating…`);
+    say(`Building app — pass ${attempt}/${budget}, generating…`);
     const user = attempt === 1
       ? baseUser
       : `${baseUser}\n\nYour previous attempt failed validation:\n${lastErrors.map((e) => `- ${e}`).join("\n")}\n\nPrevious emission:\n${lastEmission.slice(0, 6000)}\n\nFix every error and re-emit the FULL corrected bundle.`;
@@ -86,9 +86,9 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
     ], { temperature: 0.3, maxTokens: Math.max(4096, effortMaxTokens()), signal });
     lastEmission = raw;
 
-    say(`Building app — attempt ${attempt}/${budget}, validating…`);
+    say(`Building app — pass ${attempt}/${budget}, validating…`);
     const bundle: Bundle = parseEmission(raw);
-    if (bundle["index.html"]) showPreview(bundle["index.html"], `William build — attempt ${attempt}`);
+    if (bundle["index.html"]) showPreview(bundle["index.html"], `William build — pass ${attempt}`);
     const v = validateBundle(bundle, lookup);
     if (!v.ok) { lastErrors = v.errors; continue; }
 
@@ -110,5 +110,5 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
     }
   }
   say("");
-  throw new Error(`build failed after ${budget} attempt${budget === 1 ? "" : "s"}: ${lastErrors.join("; ") || "no valid bundle emitted"}`);
+  throw new Error(`build failed after ${budget} pass${budget === 1 ? "" : "es"}: ${lastErrors.join("; ") || "no valid bundle emitted"}`);
 }

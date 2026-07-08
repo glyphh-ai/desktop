@@ -125,7 +125,7 @@ const TOOLS: ToolDef[] = [
     action: (a) => ({ kind: "edit", title: "Create app", detail: String(a.description ?? "").slice(0, 400) }),
     run: async (a) => {
       const r = await buildGlyphhApp(String(a.description ?? ""));
-      return `installed "${r.name}" (${r.slug}) — validated in ${r.attempts} attempt${r.attempts === 1 ? "" : "s"}${r.warnings.length ? `; notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Open it with open_app("${r.slug}").`;
+      return `installed "${r.name}" (${r.slug}) — clean on pass ${r.attempts} of the build${r.warnings.length ? `; notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Open it with open_app("${r.slug}").`;
     },
   },
   {
