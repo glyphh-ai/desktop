@@ -20,16 +20,11 @@ interface CodeChat { id: string; title: string; createdAt: number; messages: Cod
 const STORE_KEY = "codeChats";
 const CURRENT_KEY = "codeCurrentChat";
 
-const WILLIAM_SYSTEM =
-  "You are William, Glyphh's local coding agent — warm, precise, and direct. " +
-  "Answer concretely; when writing code, write complete runnable code.";
-// History sent per run — newest-first until the budget is spent.
-const HISTORY_MAX_MSGS = 24;
-const HISTORY_MAX_CHARS = 20000;
 
-// ── Permission modes + effort (composer chips; Shift+Tab cycles mode) ────
-// The mode gates what the agent loop may DO (main: william-permissions.ts);
-// plan mode also reshapes the prompt. Effort sets the reply token budget.
+// ── Permission modes + effort (composer controls) ────────────────────────
+// Mode: a drop-UP menu (checkmark marks the selection; Shift+Tab cycles).
+// Effort: far right — a drop-up slider Low→Med→High→Superfly; superfly
+// turns the track into a particle matrix and maxes the reply budget.
 const MODES = [
   { id: "ask", label: "Ask", hint: "Every action needs your approval" },
   { id: "plan", label: "Plan", hint: "Read-only — William plans, changes nothing" },
@@ -38,9 +33,10 @@ const MODES = [
   { id: "bypass", label: "Bypass", hint: "Everything auto-approved — trusted sessions only" },
 ] as const;
 const EFFORTS = [
-  { id: "low", label: "Low effort", hint: "Quick replies (1k token budget)" },
-  { id: "medium", label: "Med effort", hint: "Balanced (4k token budget)" },
-  { id: "high", label: "High effort", hint: "Thorough (8k token budget)" },
+  { id: "low", label: "Low", hint: "Quick replies (1k token budget)" },
+  { id: "medium", label: "Med", hint: "Balanced (4k token budget)" },
+  { id: "high", label: "High", hint: "Thorough (8k token budget)" },
+  { id: "superfly", label: "Superfly", hint: "Absolute max — the context is the budget" },
 ] as const;
 let williamMode: (typeof MODES)[number]["id"] = "ask";
 let williamEffort: (typeof EFFORTS)[number]["id"] = "medium";
@@ -52,30 +48,167 @@ function paintChips(): void {
   if (mc) {
     const m = MODES.find((x) => x.id === williamMode) ?? MODES[0];
     mc.textContent = m.label;
-    mc.title = `${m.hint} — click or Shift+Tab to cycle`;
+    mc.title = `${m.hint} — Shift+Tab cycles`;
     mc.className = `code-chip mode-${m.id}`;
   }
   const ec = el("code-effort-chip");
   if (ec) {
     const ef = EFFORTS.find((x) => x.id === williamEffort) ?? EFFORTS[1];
-    ec.textContent = ef.label;
-    ec.title = `${ef.hint} — click to cycle`;
+    ec.textContent = ef.id === "superfly" ? "Superfly" : `Effort: ${ef.label}`;
+    ec.title = ef.hint;
     ec.className = `code-chip effort-${ef.id}`;
   }
+  syncEffortPop();
+}
+
+function setMode(id: (typeof MODES)[number]["id"]): void {
+  williamMode = id;
+  void window.yo.setPreference?.("williamMode", id);
+  paintChips();
+  renderModeMenu();
 }
 
 function cycleMode(): void {
   const i = MODES.findIndex((m) => m.id === williamMode);
-  williamMode = MODES[(i + 1) % MODES.length].id;
-  void window.yo.setPreference?.("williamMode", williamMode);
+  setMode(MODES[(i + 1) % MODES.length].id);
+}
+
+function setEffort(id: (typeof EFFORTS)[number]["id"]): void {
+  williamEffort = id;
+  void window.yo.setPreference?.("williamEffort", id);
   paintChips();
 }
 
-function cycleEffort(): void {
-  const i = EFFORTS.findIndex((x) => x.id === williamEffort);
-  williamEffort = EFFORTS[(i + 1) % EFFORTS.length].id;
-  void window.yo.setPreference?.("williamEffort", williamEffort);
-  paintChips();
+// ── Mode drop-up ──
+function renderModeMenu(): void {
+  const menu = el("code-mode-menu");
+  if (!menu) return;
+  menu.textContent = "";
+  for (const m of MODES) {
+    const item = document.createElement("button");
+    item.className = "code-drop-item";
+    item.type = "button";
+    item.title = m.hint;
+    const label = document.createElement("span");
+    label.textContent = m.label;
+    item.appendChild(label);
+    if (m.id === williamMode) {
+      item.classList.add("selected");
+      item.insertAdjacentHTML("beforeend",
+        `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`);
+    }
+    item.addEventListener("click", () => {
+      setMode(m.id);
+      el("code-mode-menu")?.classList.add("hidden");
+    });
+    menu.appendChild(item);
+  }
+}
+
+// ── Effort drop-up: labels over a 4-stop slider; superfly = matrix ──
+let matrixRaf = 0;
+
+function syncEffortPop(): void {
+  const pop = el("code-effort-pop");
+  if (!pop || pop.classList.contains("hidden")) return;
+  const idx = EFFORTS.findIndex((x) => x.id === williamEffort);
+  const range = pop.querySelector<HTMLInputElement>("input[type=range]");
+  if (range) range.value = String(idx);
+  pop.querySelectorAll(".effort-label").forEach((n, i) => n.classList.toggle("active", i === idx));
+  const superfly = williamEffort === "superfly";
+  pop.classList.toggle("superfly", superfly);
+  if (superfly) startMatrix();
+}
+
+/** The superfly matrix — vertical particle dashes streaming right→left:
+ *  hot/dense at the right edge, thinning to sparse at the left. White with
+ *  purple flashes (theme-read live). Runs only while visible. */
+function startMatrix(): void {
+  const canvas = el<HTMLCanvasElement>("effort-matrix");
+  if (!canvas || matrixRaf) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = canvas.clientWidth || 200;
+  const H = canvas.clientHeight || 26;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext("2d")!;
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#8c3bf2";
+  const wire = getComputedStyle(canvas).color || "#fff";
+  const parts: Array<{ x: number; y: number; vx: number; h: number; purple: boolean }> = [];
+  const tick = () => {
+    const pop = el("code-effort-pop");
+    if (!canvas.isConnected || !pop || pop.classList.contains("hidden") || !pop.classList.contains("superfly")) {
+      matrixRaf = 0;
+      return;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    // Spawn skewed hard toward the hot right edge.
+    for (let i = 0; i < 3; i++) {
+      const bias = Math.pow(Math.random(), 0.3);
+      parts.push({
+        x: W * (0.2 + 0.8 * bias),
+        y: 2 + Math.random() * (H - 8),
+        vx: -(0.45 + Math.random()),
+        h: 3 + Math.random() * 3.5,
+        purple: Math.random() < 0.3,
+      });
+    }
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.x += p.vx;
+      if (p.x < 0) { parts.splice(i, 1); continue; }
+      ctx.globalAlpha = Math.pow(p.x / W, 1.5) * 0.92;
+      ctx.fillStyle = p.purple ? accent : wire;
+      ctx.fillRect(p.x, p.y, 1.3, p.h);
+    }
+    if (parts.length > 260) parts.splice(0, parts.length - 260);
+    ctx.globalAlpha = 1;
+    matrixRaf = requestAnimationFrame(tick);
+  };
+  matrixRaf = requestAnimationFrame(tick);
+}
+
+function initComposerControls(): void {
+  const modeWrap = el("code-mode-wrap");
+  const effortWrap = el("code-effort-wrap");
+  if (!modeWrap || !effortWrap) return;
+  // Menus are built once; rows re-render on open/select.
+  const menu = document.createElement("div");
+  menu.id = "code-mode-menu";
+  menu.className = "code-drop-up hidden";
+  modeWrap.appendChild(menu);
+  const pop = document.createElement("div");
+  pop.id = "code-effort-pop";
+  pop.className = "code-drop-up code-effort-pop hidden";
+  pop.innerHTML = `
+    <div class="effort-labels">${EFFORTS.map((x) => `<span class="effort-label${x.id === "superfly" ? " sf" : ""}">${x.label}</span>`).join("")}</div>
+    <div class="effort-track">
+      <canvas id="effort-matrix"></canvas>
+      <input type="range" min="0" max="3" step="1" value="1" aria-label="Effort" />
+    </div>`;
+  effortWrap.appendChild(pop);
+  pop.querySelector<HTMLInputElement>("input[type=range]")!.addEventListener("input", (e) => {
+    const idx = Math.max(0, Math.min(3, Number((e.target as HTMLInputElement).value) || 0));
+    setEffort(EFFORTS[idx].id);
+  });
+  el("code-mode-chip")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    el("code-effort-pop")?.classList.add("hidden");
+    renderModeMenu();
+    el("code-mode-menu")?.classList.toggle("hidden");
+  });
+  el("code-effort-chip")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    el("code-mode-menu")?.classList.add("hidden");
+    el("code-effort-pop")?.classList.toggle("hidden");
+    syncEffortPop();
+  });
+  document.addEventListener("click", (e) => {
+    const t = e.target as Node;
+    if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
+    if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
+  });
 }
 
 // Ghost empty-state quotes — the spirit of Ada & William Lovelace, with
@@ -130,15 +263,33 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T | null {
 const input = () => el<HTMLTextAreaElement>("code-input");
 
 // ── Session store ────────────────────────────────────────────────────────
-function loadStore(): void {
-  try { chats = JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); } catch { chats = []; }
-  currentId = localStorage.getItem(CURRENT_KEY) || "";
-}
-function saveStore(): void {
+let storeLoaded = false;
+/** Sessions live in main's disk store (userData/william/sessions.json) —
+ *  localStorage's 5MB cap can't hold real coding sessions. First load
+ *  migrates any legacy localStorage sessions up, then clears them. */
+async function loadStore(): Promise<void> {
+  if (storeLoaded) return;
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(chats));
-    localStorage.setItem(CURRENT_KEY, currentId);
-  } catch { /* quota — scaffold store, ignore */ }
+    const s = await window.yo.williamSessionsLoad?.();
+    chats = ((s?.chats as CodeChat[]) || []);
+    currentId = String(s?.currentId || "");
+  } catch { chats = []; currentId = ""; }
+  if (!chats.length) {
+    try {
+      const legacy = JSON.parse(localStorage.getItem(STORE_KEY) || "[]") as CodeChat[];
+      if (Array.isArray(legacy) && legacy.length) {
+        chats = legacy;
+        currentId = localStorage.getItem(CURRENT_KEY) || "";
+        await saveStore();
+        localStorage.removeItem(STORE_KEY);
+        localStorage.removeItem(CURRENT_KEY);
+      }
+    } catch { /* no legacy sessions */ }
+  }
+  storeLoaded = true;
+}
+function saveStore(): Promise<void> {
+  return Promise.resolve(window.yo.williamSessionsSave?.(chats, currentId)).then(() => undefined);
 }
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
 
@@ -150,7 +301,7 @@ function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [] };
   chats.unshift(c);
   currentId = c.id;
-  saveStore();
+  void saveStore();
   ensureCodeSection();
   // Fresh sessions start clean: all workbench rails closed, folder reset.
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession?.();
@@ -163,7 +314,7 @@ async function deleteChat(chat: CodeChat): Promise<void> {
   if (!(await confirmAction(`Delete "${chat.title}"?`))) return;
   chats = chats.filter((x) => x.id !== chat.id);
   if (currentId === chat.id) currentId = chats[0]?.id || "";
-  saveStore();
+  void saveStore();
   renderHistory();
   renderThread();
 }
@@ -210,7 +361,7 @@ function renderHistory(): void {
     row.append(dot, label, menuBtn);
     row.addEventListener("click", () => {
       currentId = c.id;
-      saveStore();
+      void saveStore();
       ensureCodeSection();
       renderHistory();
       renderThread();
@@ -304,6 +455,21 @@ function send(): void {
   if (!text) return;
   // Dot-commands (.dip slack, .drip rain, …) run through the command parser —
   // the composer doubles as the command input.
+  // `.remember <fact>` → William's persistent memory (memory.md), loaded
+  // into every session's prompt prefix.
+  const rem = /^\.remember\s+(.+)/is.exec(text);
+  if (rem) {
+    if (!current()) newChat();
+    const cc = current()!;
+    cc.messages.push({ role: "user", text, at: Date.now() });
+    ta.value = "";
+    autoGrow(ta);
+    void window.yo.williamRemember?.(rem[1].trim())
+      .then(() => cc.messages.push({ role: "assistant", text: "✓ Remembered — it rides along in every session now.", at: Date.now() }))
+      .catch((err) => cc.messages.push({ role: "assistant", text: `⚠ ${err instanceof Error ? err.message : String(err)}`, at: Date.now() }))
+      .then(() => { void saveStore(); renderHistory(); renderThread(); });
+    return;
+  }
   if (text.startsWith(".") && text.length > 1) {
     if (!current()) newChat();
     const cc = current()!;
@@ -313,7 +479,7 @@ function send(): void {
     autoGrow(ta);
     void window.yo.execCommand(text.slice(1).trim());
     cc.messages.push({ role: "assistant", text: `→ ran ${text}`, at: Date.now() });
-    saveStore();
+    void saveStore();
     renderHistory();
     renderThread();
     return;
@@ -324,37 +490,20 @@ function send(): void {
   if (c.title === "New session") c.title = text.length > 42 ? text.slice(0, 42) + "…" : text;
   ta.value = "";
   autoGrow(ta);
-  saveStore();
+  void saveStore();
   // Working state first so the spinner row + rail dot paint immediately.
   setThinking(true);
   renderHistory();
   renderThread();
   streamChatId = c.id;
   streamText = "";
-  void window.yo.williamRun({ messages: buildHistory(c) })
-    .then((r) => { activeRunId = r.runId; })
-    .catch((err) => {
-      finishRun(`⚠ ${err instanceof Error ? err.message : String(err)}`);
-    });
-}
-
-/** The messages a run sends: William's system prompt + recent history,
- *  newest-first until the budget is spent (then restored to order). */
-function buildHistory(c: CodeChat): Array<{ role: string; content: string }> {
-  const picked: Array<{ role: string; content: string }> = [];
-  let chars = 0;
-  for (let i = c.messages.length - 1; i >= 0 && picked.length < HISTORY_MAX_MSGS; i--) {
-    const m = c.messages[i];
-    chars += m.text.length;
-    if (picked.length && chars > HISTORY_MAX_CHARS) break;
-    picked.push({ role: m.role, content: m.text });
-  }
-  let system = WILLIAM_SYSTEM;
-  if (williamMode === "plan") {
-    system += " PLAN MODE: reply with a concise numbered plan of what you would build or change — no full implementations. End with open questions if anything is unclear.";
-  }
-  picked.push({ role: "system", content: system });
-  return picked.reverse();
+  // Main assembles the prompt from the store — the save must land first.
+  void saveStore().then(() =>
+    window.yo.williamRun({ chatId: c.id })
+      .then((r) => { activeRunId = r.runId; })
+      .catch((err) => {
+        finishRun(`⚠ ${err instanceof Error ? err.message : String(err)}`);
+      }));
 }
 
 /** Land the run's outcome in its chat (found by id — the user may have
@@ -362,7 +511,7 @@ function buildHistory(c: CodeChat): Array<{ role: string; content: string }> {
 function finishRun(text: string): void {
   const chat = chats.find((ch) => ch.id === streamChatId);
   if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now() });
-  saveStore();
+  void saveStore();
   activeRunId = null;
   streamChatId = null;
   streamText = "";
@@ -755,10 +904,12 @@ async function applyPanelPrefs(): Promise<void> {
 
 // ── Entry points ─────────────────────────────────────────────────────────
 export function loadCode(): void {
-  loadStore();
-  if (!currentId && chats.length) currentId = chats[0].id;
-  renderHistory();
-  renderThread();
+  void (async () => {
+    await loadStore();
+    if (!currentId && chats.length) currentId = chats[0].id;
+    renderHistory();
+    renderThread();
+  })();
   void loadRecentApps();
   void applyPanelPrefs();
   // Boot the ported workbench engine (idempotent) — it owns the workdir
@@ -781,8 +932,7 @@ export function initCode(): void {
   });
   el("code-send")?.addEventListener("click", send);
   initWilliamEvents();
-  el("code-mode-chip")?.addEventListener("click", cycleMode);
-  el("code-effort-chip")?.addEventListener("click", cycleEffort);
+  initComposerControls();
   void (async () => {
     const m = String((await window.yo.getPreference?.("williamMode", "ask")) || "ask");
     if (MODES.some((x) => x.id === m)) williamMode = m as typeof williamMode;

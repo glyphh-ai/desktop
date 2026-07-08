@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { getPreference } from "./preferences";
 import { effortMaxTokens, registerWilliamPermissionIpc } from "./william-permissions";
+import { assemblePrompt, compactIfNeeded, registerWilliamContextIpc } from "./william-context";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -177,15 +178,27 @@ export function assertWilliamExternalAllowed(via: "relay" | "local-mcp"): void {
 
 export function registerWilliamIpc(): void {
   registerWilliamPermissionIpc();
-  ipcMain.handle("william-run", (e, payload: { messages: ChatMessage[] }) => {
+  registerWilliamContextIpc();
+  ipcMain.handle("william-run", async (e, payload: { chatId: string }) => {
     if (active) throw new Error("a run is already in progress");
-    const messages = Array.isArray(payload?.messages) ? payload.messages : [];
-    if (!messages.length) throw new Error("no messages");
+    const chatId = String(payload?.chatId || "");
+    if (!chatId) throw new Error("chatId is required");
+    // Assembly is token-true (needs the server for /tokenize) — bring the
+    // runtime up first so counting and completion share one warm process.
+    await ensureWilliamServing();
+    const replyBudget = effortMaxTokens();
+    const messages = await assemblePrompt(chatId, replyBudget);
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     const ctrl = new AbortController();
     active = { id, ctrl };
     void stream(e.sender, id, messages, ctrl).finally(() => {
       if (active?.id === id) active = null;
+      // Fold history AFTER the reply lands — a send never waits on it.
+      // (The renderer saves the assistant turn right away; a short delay
+      // lets that write land before compaction reads the store.)
+      setTimeout(() => {
+        void compactIfNeeded(chatId, replyBudget, (msgs, opts) => williamComplete(msgs, opts));
+      }, 1500);
     });
     return { runId: id };
   });

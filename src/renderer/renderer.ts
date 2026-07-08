@@ -318,7 +318,10 @@ declare global {
       // Recents (rich)
       screenLayoutGet: () => Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>;
       screenLayoutSet: (v: { mode?: string; fraction?: number }) => Promise<{ mode: string; fraction: number }>;
-      williamRun: (p: { messages: Array<{ role: string; content: string }> }) => Promise<{ runId: string }>;
+      williamRun: (p: { chatId: string }) => Promise<{ runId: string }>;
+      williamSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
+      williamSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
+      williamRemember: (fact: string) => Promise<boolean>;
       williamStop: () => Promise<boolean>;
       williamStatus: () => Promise<{ up: boolean }>;
       onWilliamDelta: (cb: (d: { runId: string; delta: string }) => void) => void;

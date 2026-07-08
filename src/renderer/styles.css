@@ -11888,9 +11888,107 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-composer-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-top: 7px;
   padding: 0 4px;
+}
+.code-chipwrap { position: relative; }
+
+/* Drop-UP panels anchored to the chips */
+.code-drop-up {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 190px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  padding: 5px;
+  z-index: 60;
+}
+.code-drop-up.hidden { display: none; }
+#code-effort-wrap .code-drop-up { left: auto; right: 0; }
+.code-drop-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+}
+.code-drop-item:hover { background: var(--hover); color: var(--text); }
+.code-drop-item.selected { color: var(--text); }
+.code-drop-item .drop-check { color: var(--accent); flex-shrink: 0; }
+
+/* Effort drop-up — labels over a 4-stop slider */
+.code-effort-pop { min-width: 236px; padding: 12px 14px 13px; }
+.effort-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.effort-label.active { color: var(--text); }
+.effort-label.sf { color: var(--accent); }
+.effort-label.sf.active { text-shadow: 0 0 8px rgba(140, 59, 242, 0.7); }
+.effort-track { position: relative; height: 26px; color: var(--text-bright); }
+#effort-matrix {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  background: rgba(140, 59, 242, 0.07);
+  opacity: 0;
+  pointer-events: none;
+}
+.code-effort-pop.superfly #effort-matrix { opacity: 1; }
+.effort-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  -webkit-appearance: none;
+  background: none;
+  cursor: pointer;
+}
+.effort-track input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  margin-top: 11px;
+  border-radius: 2px;
+  background: var(--border-2);
+}
+.effort-track input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--text-bright);
+  border: 2px solid var(--accent);
+}
+/* Superfly: the matrix IS the control — the slider stays draggable but
+   disappears (drag left to come back down). */
+.code-effort-pop.superfly input[type="range"] { opacity: 0; }
+
+/* Superfly chip — purple heat */
+.code-chip.effort-superfly {
+  color: #d9b8ff;
+  border-color: rgba(140, 59, 242, 0.65);
+  box-shadow: 0 0 9px rgba(140, 59, 242, 0.35);
 }
 .code-chip {
   border: 1px solid var(--border);

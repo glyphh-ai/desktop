@@ -23,7 +23,7 @@ import { ipcMain, type WebContents } from "electron";
 import { getPreference } from "./preferences";
 
 export type WilliamMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
-export type WilliamEffort = "low" | "medium" | "high";
+export type WilliamEffort = "low" | "medium" | "high" | "superfly";
 export type WilliamActionKind = "read" | "edit" | "command" | "network" | "dangerous";
 
 export interface WilliamAction {
@@ -44,7 +44,7 @@ export function williamMode(): WilliamMode {
 
 export function williamEffort(): WilliamEffort {
   const e = String(getPreference("williamEffort", "medium"));
-  return e === "low" || e === "high" ? e : "medium";
+  return e === "low" || e === "high" || e === "superfly" ? e : "medium";
 }
 
 /** Response token budget per effort tier (context is 16384 minus history). */
@@ -52,6 +52,7 @@ export function effortMaxTokens(): number {
   switch (williamEffort()) {
     case "low": return 1024;
     case "high": return 8192;
+    case "superfly": return 12288; // absolute max — history squeezes to fit
     default: return 4096;
   }
 }
