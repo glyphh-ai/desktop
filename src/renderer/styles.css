@@ -11416,6 +11416,23 @@ body.code-dragging .code-rail { transition: none; }
   padding: 0;
 }
 .code-view-btn:hover { background: var(--hover); color: var(--text); }
-.code-view-btn.active { background: var(--active-bg); color: var(--text); border-color: var(--accent); }
+.code-view-btn.active { color: var(--white); }
 .code-view-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
+
+/* Maximize floods the section: the agent column collapses, rails take the width. */
+.code-root.wb-max .code-agent,
+.code-root.wb-max #code-rail-splitter,
+.code-root.wb-max .code-wb-edge { display: none; }
+.code-root.wb-max .code-workbench { flex: 1; }
+.code-root.wb-max .ws-right-rails { width: 100%; }
+
+/* Whole-workbench edge drag handle (left edge of the rails aside). */
+.code-wb-edge {
+  flex: 0 0 4px;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+}
+.code-wb-edge:hover,
+.code-wb-edge.dragging { background: var(--border-2); }

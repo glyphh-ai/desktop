@@ -259,6 +259,9 @@ async function init(): Promise<void> {
     const container = document.getElementById("code-wb-rails");
     if (!container) return;
     container.classList.toggle("has-fullscreen", maximizedSlotId !== null);
+    // Maximize floods the whole section: the agent column collapses and the
+    // rails take its width; restore puts everything back (wb-max in styles).
+    document.querySelector<HTMLElement>(".code-root")?.classList.toggle("wb-max", maximizedSlotId !== null);
     container.querySelectorAll<HTMLElement>(".ws-right-rail").forEach((railEl) => {
       const railHasMax = !!railEl.querySelector(`.ws-rail-slot[data-slot-id="${maximizedSlotId}"]`);
       railEl.classList.toggle("rail-has-fullscreen", maximizedSlotId !== null && railHasMax);
@@ -271,6 +274,20 @@ async function init(): Promise<void> {
       const slotId = Number((btn.closest(".ws-rail-slot") as HTMLElement)?.dataset.slotId);
       btn.innerHTML = (slotId === maximizedSlotId) ? RESTORE_SVG : MAXIMIZE_SVG;
       (btn as HTMLButtonElement).title = (slotId === maximizedSlotId) ? "Restore" : "Maximize";
+    });
+    // Slot sizes just changed (flood/restore) — refit live terminals so the
+    // pty cols/rows track the new size.
+    requestAnimationFrame(() => {
+      for (const rail of rails) {
+        for (const slot of rail.slots) {
+          if (slot.view === "terminal") {
+            const t = (slot as TermSlot).terminals[(slot as TermSlot).activeIdx];
+            if (t?.fit && t.term?.element?.isConnected) {
+              try { t.fit.fit(); } catch { /* noop */ }
+            }
+          }
+        }
+      }
     });
   }
 
@@ -360,7 +377,7 @@ async function init(): Promise<void> {
     const rootW = root ? root.getBoundingClientRect().width : window.innerWidth;
     const sessionsW = sessions && !sessions.classList.contains("collapsed")
       ? sessions.getBoundingClientRect().width : 0;
-    const MIN_AGENT = 440;
+    const MIN_AGENT = maximizedSlotId !== null ? 0 : 440;
     return Math.max(260, rootW - sessionsW - MIN_AGENT);
   }
   function applyResponsiveWidths(): void {
@@ -1424,6 +1441,42 @@ async function init(): Promise<void> {
       if (viewIsOpen(v)) closeAllOfView(v);
       else placeView(v);
     });
+  });
+
+  // ── Whole-workbench edge drag ── dragging the aside's left edge scales
+  // every rail proportionally (the aside itself is width:auto).
+  const edge = document.getElementById("code-wb-edge");
+  edge?.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    if (rails.length === 0) return;
+    edge.classList.add("dragging");
+    const startX = e.clientX;
+    const railEls = Array.from(document.querySelectorAll<HTMLElement>("#code-wb-rails .ws-right-rail"));
+    const startW = railEls.map((r) => r.getBoundingClientRect().width);
+    const totalStart = startW.reduce((a, b) => a + b, 0) || 1;
+    const budget = railsBudget();
+    const onMove = (ev: MouseEvent) => {
+      // Dragging LEFT grows the rails (the aside sits at the right edge).
+      const dx = startX - ev.clientX;
+      const scale = Math.max(0.2, (totalStart + dx) / totalStart);
+      railEls.forEach((railEl, i) => {
+        const w = Math.max(240, Math.min(budget, Math.round(startW[i] * scale)));
+        railEl.style.width = w + "px";
+      });
+    };
+    const onUp = () => {
+      edge.classList.remove("dragging");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      for (const railEl of railEls) {
+        const rail = rails.find((r) => r.id === Number(railEl.dataset.railId));
+        if (rail) rail.prefWidth = parseInt(railEl.style.width, 10) || rail.prefWidth;
+      }
+      saveLayout();
+      applyResponsiveWidths();
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   });
 
   // ── Container resize: reflow rails when the workbench panel itself is
