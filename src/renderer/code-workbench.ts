@@ -144,7 +144,10 @@ function isMarkdown(name: string): boolean {
 }
 
 async function init(): Promise<void> {
-  if (!window.wb) return;
+  if (!window.wb) {
+    console.error("[code-workbench] window.wb bridge missing — preload not loaded; workdir controls and rails are dead.");
+    return;
+  }
 
   let cwd = await window.wb.getCwd().catch(() => "");
 
@@ -1510,6 +1513,17 @@ async function init(): Promise<void> {
   // ── Initial paint + cwd change subscription ──
   void paintWorkdirBar(cwd);
   loadLayout();
+
+  // New session: close every rail and reset the folder selection (visual
+  // reset only — each folder's saved layout is untouched).
+  (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession = () => {
+    rails.length = 0;
+    maximizedSlotId = null;
+    renderRails();
+    cwd = "";
+    lastCwd = "";
+    void paintWorkdirBar("");
+  };
 
   let lastCwd = cwd;
   window.wb.onCwdChanged((dir) => {

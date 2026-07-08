@@ -11576,17 +11576,13 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 }
 .app-rail-search input:focus { border-color: var(--accent); }
 
-/* Base-window no-drag hole for the full-bleed chrome cluster. */
-#fullbleed-nodrag { display: none; }
-body.fullbleed-active #fullbleed-nodrag {
-  display: block;
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 200px;
-  height: 38px;
-  -webkit-app-region: no-drag;
-}
+/* While the full-bleed home panel is active, the base titlebar's OS drag
+   claim (which bleeds through BrowserViews across the WHOLE top band) shrinks
+   to a 6px sliver at the very top edge — window drag survives, and every
+   control in the panel's top strip (chrome cluster, workdir, view toggles)
+   gets its clicks back. */
+body.fullbleed-active #titlebar > * { display: none; }
+body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 
 /* Ghost empty state — Glyphh mark + rotating Lovelace-spirited quotes. */
 .code-ghost {

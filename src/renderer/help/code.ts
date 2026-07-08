@@ -89,6 +89,8 @@ function newChat(): void {
   currentId = c.id;
   saveStore();
   ensureCodeSection();
+  // Fresh sessions start clean: all workbench rails closed, folder reset.
+  (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession?.();
   renderHistory();
   renderThread();
   input()?.focus();
