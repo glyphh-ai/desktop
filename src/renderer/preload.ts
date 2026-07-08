@@ -644,7 +644,7 @@ contextBridge.exposeInMainWorld("yo", {
 contextBridge.exposeInMainWorld("wb", {
   getCwd: () => ipcRenderer.invoke("working-dir:get"),
   getCwdExplicit: () => ipcRenderer.invoke("working-dir:get-explicit"),
-  pickCwd: () => ipcRenderer.invoke("working-dir:pick"),
+  pickCwd: (opts?: { asDefault?: boolean; nullOnCancel?: boolean }) => ipcRenderer.invoke("working-dir:pick", opts),
   setCwd: (dir: string) => ipcRenderer.invoke("working-dir:set", dir),
   getCwdRecents: () => ipcRenderer.invoke("working-dir:recents"),
   gitInfo: (root: string) => ipcRenderer.invoke("files:git-info", root),

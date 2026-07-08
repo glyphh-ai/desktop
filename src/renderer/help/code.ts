@@ -499,7 +499,7 @@ function newChat(): void {
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession?.();
   renderHistory();
   renderThread();
-  input()?.focus();
+  input()?.focus();  void checkWorkdirGate();
 }
 
 async function deleteChat(chat: CodeChat): Promise<void> {
@@ -558,6 +558,7 @@ function renderHistory(): void {
       renderHistory();
       renderThread();
       refreshCtxMeter();
+      void checkWorkdirGate();
     });
     list.appendChild(row);
   }
@@ -682,29 +683,44 @@ function toolGroupEl(chatId: string, msgs: CodeMsg[]): HTMLElement {
 //    explains, a click pops the OS picker, and picking wakes it. The folder
 //    persists as last-used, so this is a once-per-setup moment. ──
 type WbBridge = {
+  getCwd?: () => Promise<string | null>;
   getCwdExplicit?: () => Promise<string | null>;
-  pickCwd?: () => Promise<string | null>;
+  pickCwd?: (opts?: { nullOnCancel?: boolean }) => Promise<string | null>;
   onCwdChanged?: (cb: (dir: string | null) => void) => void;
 };
 const wb = () => (window as unknown as { wb?: WbBridge }).wb;
 
-let workdirReady = true; // optimistic until the first check lands
+// EVERY new session picks its folder before the first prompt — sessions
+// that already carry messages (history) stay open. The native dialog
+// defaults to the last-used folder, so continuing a project is one click.
+const folderConfirmedChats = new Set<string>();
+let workdirReady = true; // painted by checkWorkdirGate
+let lastKnownCwd = "";
+
+function sessionNeedsFolder(): boolean {
+  const c = current();
+  if (!c) return true;
+  if (c.messages.length > 0) return false; // established session
+  return !folderConfirmedChats.has(c.id);
+}
 
 function paintComposerGate(): void {
   const ta = input();
   if (!ta) return;
   ta.disabled = !workdirReady;
+  const base = lastKnownCwd ? ` (last: ${lastKnownCwd.split("/").pop()})` : "";
   ta.placeholder = workdirReady
     ? "Describe the app to build…"
-    : "Pick a working folder to start — click here to choose";
+    : `Choose this session's working folder — click here${base}`;
   el("code-send")?.toggleAttribute("disabled", !workdirReady);
   document.querySelector(".code-input-wrap")?.classList.toggle("gated", !workdirReady);
 }
 
 async function checkWorkdirGate(): Promise<void> {
   try {
-    const wd = await wb()?.getCwdExplicit?.();
-    workdirReady = !!wd;
+    const explicit = await wb()?.getCwdExplicit?.();
+    lastKnownCwd = String(explicit || (await wb()?.getCwd?.()) || "");
+    workdirReady = !!explicit && !sessionNeedsFolder();
   } catch { workdirReady = true; /* bridge missing — never brick the composer */ }
   paintComposerGate();
 }
@@ -712,10 +728,17 @@ async function checkWorkdirGate(): Promise<void> {
 function initWorkdirGate(): void {
   void checkWorkdirGate();
   wb()?.onCwdChanged?.(() => { void checkWorkdirGate(); });
-  // A click on the sleeping composer IS the ask — pop the picker.
+  // A click on the sleeping composer IS the ask — pop the picker (defaults
+  // to the last folder; cancel keeps the gate honest).
   document.querySelector(".code-input-wrap")?.addEventListener("click", () => {
     if (workdirReady) return;
-    void wb()?.pickCwd?.().then(() => checkWorkdirGate());
+    void wb()?.pickCwd?.({ nullOnCancel: true }).then((dir) => {
+      if (dir) {
+        const c = current();
+        if (c) folderConfirmedChats.add(c.id);
+      }
+      return checkWorkdirGate();
+    });
   });
 }
 
@@ -1345,6 +1368,7 @@ export function loadCode(): void {
     renderHistory();
     renderThread();
     refreshCtxMeter();
+    void checkWorkdirGate();
   })();
   void loadRecentApps();
   void applyPanelPrefs();

@@ -276,7 +276,7 @@ export function registerWorkingDirectoryIpc(deps: {
 
   // OS folder picker. `opts.startIn` opens the dialog in the current dir;
   // `opts.asDefault` also stores the pick as the first-run default.
-  ipcMain.handle("working-dir:pick", async (_e, opts?: { asDefault?: boolean }) => {
+  ipcMain.handle("working-dir:pick", async (_e, opts?: { asDefault?: boolean; nullOnCancel?: boolean }) => {
     const win = getMainWindow();
     const dialogOpts = {
       properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">,
@@ -285,7 +285,9 @@ export function registerWorkingDirectoryIpc(deps: {
     const result = win
       ? await dialog.showOpenDialog(win, dialogOpts)
       : await dialog.showOpenDialog(dialogOpts);
-    if (result.canceled || result.filePaths.length === 0) return getWorkingDirectory();
+    if (result.canceled || result.filePaths.length === 0) {
+      return opts?.nullOnCancel ? null : getWorkingDirectory();
+    }
     const picked = result.filePaths[0];
     if (opts?.asDefault) setDefaultWorkingDirectory(picked);
     setWorkingDirectory(picked);
