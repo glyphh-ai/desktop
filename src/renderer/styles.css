@@ -12167,3 +12167,32 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-tool-summary .tg-chev { transition: transform 0.15s ease; }
 .code-tool-summary.open .tg-chev { transform: rotate(90deg); }
 .code-tool-group .code-tool-line { padding-left: 14px; margin-top: 2px; }
+
+/* Plan rail — William run timeline strip */
+.ws-plan-timeline {
+  border-bottom: 1px solid var(--ws-line, var(--border));
+  padding: 8px 12px;
+  max-height: 180px;
+  display: flex;
+  flex-direction: column;
+}
+.ws-plan-timeline.hidden { display: none; }
+.ws-plan-timeline-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  margin-bottom: 5px;
+}
+.ws-plan-timeline.running .ws-plan-timeline-title { color: var(--accent); }
+.ws-plan-timeline-rows { overflow-y: auto; min-height: 0; }
+.ws-plan-timeline-row {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ws-plan-timeline-row.failed { color: var(--text-3); }

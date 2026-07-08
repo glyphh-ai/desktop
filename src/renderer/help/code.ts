@@ -319,6 +319,14 @@ let streamBubble: HTMLElement | null = null;
 let runStartAt = 0;
 let runTokens = 0;
 let runTicker: ReturnType<typeof setInterval> | null = null;
+// This run's step lines, mirrored to the workbench Plan rail's timeline.
+let runSteps: string[] = [];
+
+function broadcastTimeline(running: boolean): void {
+  try {
+    document.dispatchEvent(new CustomEvent("william:timeline", { detail: { steps: [...runSteps], running } }));
+  } catch { /* no listeners */ }
+}
 
 function fmtElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -333,6 +341,8 @@ function paintRunMeta(): void {
 function startRunTicker(): void {
   runStartAt = Date.now();
   runTokens = 0;
+  runSteps = [];
+  broadcastTimeline(true);
   if (runTicker) clearInterval(runTicker);
   runTicker = setInterval(paintRunMeta, 1000);
 }
@@ -683,6 +693,7 @@ function finishRun(text: string): void {
   streamText = "";
   streamBubble = null;
   pendingApprovals = [];
+  broadcastTimeline(false);
   stopRunTicker();
   setThinking(false);
   renderThread();
@@ -743,6 +754,11 @@ function initWilliamEvents(): void {
     if (activeRunId && d.runId !== activeRunId) return;
     const chat = chats.find((ch) => ch.id === streamChatId);
     if (!chat) return;
+    if (d.phase === "start") runSteps.push(`⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`);
+    else if (d.phase === "done" && runSteps.length) {
+      runSteps[runSteps.length - 1] = `${d.denied || d.failed ? "✕" : "✓"} ${d.title || d.name}`;
+    }
+    broadcastTimeline(true);
     if (d.phase === "start") {
       chat.messages.push({ role: "assistant", kind: "tool", text: `⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`, at: Date.now() });
     } else if (d.phase === "done") {

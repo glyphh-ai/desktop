@@ -1054,6 +1054,10 @@ async function init(): Promise<void> {
   }
   async function renderPlanIntoSlot(body: HTMLElement, slot: PlanSlot): Promise<void> {
     body.innerHTML = `
+      <div class="ws-plan-timeline hidden">
+        <div class="ws-plan-timeline-title">William — run timeline</div>
+        <div class="ws-plan-timeline-rows"></div>
+      </div>
       <div class="ws-plan-status">
         <span class="ws-plan-path"></span>
         <span class="ws-plan-savestate plan-saved">saved</span>
@@ -1067,6 +1071,27 @@ async function init(): Promise<void> {
       <div class="ws-plan-host"></div>
       <div class="ws-plan-md-host"></div>
     `;
+    // Live run timeline — the Code surface broadcasts william:timeline
+    // (steps + running); the strip shows during/after runs, hides when a
+    // new session starts clean.
+    const tlWrap = body.querySelector(".ws-plan-timeline") as HTMLElement;
+    const tlRows = body.querySelector(".ws-plan-timeline-rows") as HTMLElement;
+    const onTimeline = (e: Event) => {
+      if (!body.isConnected) { document.removeEventListener("william:timeline", onTimeline); return; }
+      const d = (e as CustomEvent).detail as { steps: string[]; running: boolean };
+      const steps = Array.isArray(d?.steps) ? d.steps : [];
+      tlWrap.classList.toggle("hidden", steps.length === 0);
+      tlWrap.classList.toggle("running", !!d?.running);
+      tlRows.textContent = "";
+      for (const s of steps) {
+        const row = document.createElement("div");
+        row.className = "ws-plan-timeline-row" + (s.startsWith("✕") ? " failed" : "");
+        row.textContent = s;
+        tlRows.appendChild(row);
+      }
+      tlRows.scrollTop = tlRows.scrollHeight;
+    };
+    document.addEventListener("william:timeline", onTimeline);
     const pathEl = body.querySelector(".ws-plan-path") as HTMLElement;
     const saveStateEl = body.querySelector(".ws-plan-savestate") as HTMLElement;
     const host = body.querySelector(".ws-plan-host") as HTMLElement;
