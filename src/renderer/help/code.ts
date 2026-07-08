@@ -272,6 +272,43 @@ let railApps: RailApp[] = [];
 let railLayouts: RailLayout[] = [];
 let railOsApps: Array<{ proc: string; path: string }> = [];
 let railRecentTs: Record<string, number> = {};
+let railAppsPage = 0;
+let railLayoutsPage = 0;
+let railOsPage = 0;
+const RAIL_APPS_PER_PAGE = 9;
+const RAIL_LAYOUTS_PER_PAGE = 6;
+
+/** Slice items to a page, clamping in-range (palette parity). */
+function railPaginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; totalPages: number } {
+  const totalPages = Math.max(1, Math.ceil(items.length / size));
+  const pp = Math.max(0, Math.min(page, totalPages - 1));
+  return { items: items.slice(pp * size, (pp + 1) * size), page: pp, totalPages };
+}
+
+/** Prev / n / Next bar (reuses .pagination-* styling), spanning the grid. */
+function railPager(page: number, totalPages: number, onPage: (p: number) => void): HTMLElement {
+  const bar = document.createElement("div");
+  bar.className = "pagination-bar rail-grid-pager";
+  if (totalPages <= 1) return bar;
+  const nav = document.createElement("div");
+  nav.className = "pagination-nav";
+  const mk = (label: string, to: number, disabled: boolean) => {
+    const b = document.createElement("button");
+    b.className = "pagination-btn";
+    b.textContent = label;
+    b.disabled = disabled;
+    b.addEventListener("click", () => onPage(to));
+    return b;
+  };
+  nav.appendChild(mk("‹", page - 1, page === 0));
+  const info = document.createElement("span");
+  info.className = "pagination-info";
+  info.textContent = `${page + 1}/${totalPages}`;
+  nav.appendChild(info);
+  nav.appendChild(mk("›", page + 1, page >= totalPages - 1));
+  bar.appendChild(nav);
+  return bar;
+}
 
 /** Basename of an exec/.app path, lowercased, ".app" stripped — dedupe key
  *  (same as the command palette). */
@@ -317,38 +354,68 @@ function renderRecentApps(): void {
   if (!list) return;
   const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
   list.textContent = "";
-  type Item =
-    | { type: "app"; name: string; ts: number; app: RailApp }
-    | { type: "layout"; name: string; ts: number; layout: RailLayout };
-  const items: Item[] = [
-    ...railApps.map((a): Item => ({ type: "app", name: a.name || "", ts: railRecentTs[`app:${a.id}`] || 0, app: a })),
-    ...railLayouts.map((l): Item => ({ type: "layout", name: l.name || "", ts: railRecentTs[`layout:${l.name}`] || 0, layout: l })),
-  ]
-    // Palette parity: apps match the display name OR the slug (.dip target).
-    .filter((i) => !q || i.name.toLowerCase().includes(q) ||
-      (i.type === "app" && (i.app.slug || "").toLowerCase().includes(q)))
-    .sort((a, b) => (a.ts !== b.ts ? b.ts - a.ts : a.name.localeCompare(b.name)));
-  if (!items.length) {
-    const empty = document.createElement("div");
-    empty.className = "code-empty";
-    empty.style.margin = "10px auto";
-    empty.textContent = q ? "No matches." : "Your apps land here.";
-    list.appendChild(empty);
-    return;
-  }
-  for (const item of items) {
+  const gridLabel = (text: string) => {
+    const label = document.createElement("div");
+    label.className = "code-rail-label rail-grid-label";
+    label.textContent = text;
+    return label;
+  };
+
+  // ── Apps (recency-first, name OR slug match — palette parity) ──
+  const apps = railApps
+    .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ta = railRecentTs[`app:${a.id}`] || 0;
+      const tb = railRecentTs[`app:${b.id}`] || 0;
+      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
+    });
+  const ap = railPaginate(apps, railAppsPage, RAIL_APPS_PER_PAGE);
+  railAppsPage = ap.page;
+  for (const a of ap.items) {
     const tile = document.createElement("button");
     tile.className = "app-rail-tile";
     tile.type = "button";
-    tile.title = item.type === "layout" ? `${item.name} (layout)` : item.name;
+    tile.title = a.name;
     const icon = document.createElement("div");
-    icon.className = "tile-icon" + (item.type === "layout" ? " tile-layout" : "");
-    if (item.type === "app") {
-      icon.innerHTML = appIconInner(item.app, item.name, "tile-initial");
-    } else {
-      // Layouts render like the Layouts page: a mini stack of the apps inside.
+    icon.className = "tile-icon";
+    icon.innerHTML = appIconInner(a, a.name, "tile-initial");
+    const nm = document.createElement("span");
+    nm.className = "tile-name";
+    nm.textContent = a.name;
+    tile.append(icon, nm);
+    tile.addEventListener("click", () => {
+      // Same open the Apps page's "Open app" uses (per-config launch).
+      void window.yo.appLaunch?.({
+        slug: a.slug || a.id, name: a.name, url: a.url,
+        isBrowser: a.isBrowser, execPath: a.execPath,
+        appArchetype: a.appArchetype, launchConfig: a.launchConfig,
+      });
+    });
+    list.appendChild(tile);
+  }
+  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { railAppsPage = pg; renderRecentApps(); }));
+
+  // ── Layouts (mini icon stacks; same open as the Layouts page) ──
+  const layouts = railLayouts
+    .filter((l) => !q || (l.name || "").toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ta = railRecentTs[`layout:${a.name}`] || 0;
+      const tb = railRecentTs[`layout:${b.name}`] || 0;
+      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
+    });
+  if (layouts.length) {
+    list.appendChild(gridLabel("Layouts"));
+    const lp = railPaginate(layouts, railLayoutsPage, RAIL_LAYOUTS_PER_PAGE);
+    railLayoutsPage = lp.page;
+    for (const l of lp.items) {
+      const tile = document.createElement("button");
+      tile.className = "app-rail-tile";
+      tile.type = "button";
+      tile.title = `${l.name} (layout)`;
+      const icon = document.createElement("div");
+      icon.className = "tile-icon tile-layout";
       const seen = new Set<string>();
-      const ids = item.layout.splits
+      const ids = l.splits
         .map((s) => s.panelId)
         .filter((id) => id && !seen.has(id) && (seen.add(id), true))
         .slice(0, 4);
@@ -358,36 +425,23 @@ function renderRecentApps(): void {
             return `<span class="mini">${appIconInner(app || {}, app?.name || id, "tile-mini-initial")}</span>`;
           }).join("")
         : `<span class="tile-initial">▦</span>`;
+      const nm = document.createElement("span");
+      nm.className = "tile-name";
+      nm.textContent = l.name;
+      tile.append(icon, nm);
+      tile.addEventListener("click", () => { void window.yo.layoutsOpen?.(l.name); });
+      list.appendChild(tile);
     }
-    const nm = document.createElement("span");
-    nm.className = "tile-name";
-    nm.textContent = item.name;
-    tile.append(icon, nm);
-    tile.addEventListener("click", () => {
-      if (item.type === "layout") {
-        // Same open the Layouts page uses (OS-level tiled windows).
-        void window.yo.layoutsOpen?.(item.name);
-      } else {
-        // Same open the Apps page's "Open app" uses (per-config launch).
-        void window.yo.appLaunch?.({
-          slug: item.app.slug || item.app.id, name: item.app.name, url: item.app.url,
-          isBrowser: item.app.isBrowser, execPath: item.app.execPath,
-          appArchetype: item.app.appArchetype, launchConfig: item.app.launchConfig,
-        });
-      }
-    });
-    list.appendChild(tile);
+    if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRecentApps(); }));
   }
 
-  // Running OS apps outside the library — lighter tiles; click to focus
-  // (the palette's "Running apps" section).
+  // ── Running apps outside the library — click to focus (palette parity) ──
   const os = railOsApps.filter((o) => !q || o.proc.toLowerCase().includes(q));
   if (os.length) {
-    const label = document.createElement("div");
-    label.className = "code-rail-label rail-os-label";
-    label.textContent = "Running apps";
-    list.appendChild(label);
-    for (const o of os) {
+    list.appendChild(gridLabel("Running apps"));
+    const op = railPaginate(os, railOsPage, RAIL_APPS_PER_PAGE);
+    railOsPage = op.page;
+    for (const o of op.items) {
       const tile = document.createElement("button");
       tile.className = "app-rail-tile app-rail-tile--os";
       tile.type = "button";
@@ -402,6 +456,15 @@ function renderRecentApps(): void {
       tile.addEventListener("click", () => { void window.yo.commandFocusApp?.(o.proc); });
       list.appendChild(tile);
     }
+    if (op.totalPages > 1) list.appendChild(railPager(op.page, op.totalPages, (pg) => { railOsPage = pg; renderRecentApps(); }));
+  }
+
+  if (!apps.length && !layouts.length && !os.length) {
+    const empty = document.createElement("div");
+    empty.className = "code-empty";
+    empty.style.margin = "10px auto";
+    empty.textContent = q ? "No matches." : "Your apps land here.";
+    list.appendChild(empty);
   }
 }
 
@@ -497,6 +560,7 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   el("code-new-chat")?.addEventListener("click", newChat);
+  el("apps-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("apps"); });
   el("recents-toggle")?.addEventListener("click", () => {
     const open = el("recents-toggle")!.classList.contains("closed");
     setRecentsOpen(open, true);
@@ -520,7 +584,10 @@ export function initCode(): void {
   });
   initRailSplitter();
   initRecentsVsplit();
-  el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", renderRecentApps);
+  el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", () => {
+    railAppsPage = 0; railLayoutsPage = 0; railOsPage = 0;
+    renderRecentApps();
+  });
   // Enter runs the text as a command — same as the palette input (dip x, …).
   el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;

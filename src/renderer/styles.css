@@ -11732,10 +11732,34 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
    their drop-target width). */
 #code-wb-rails > .ws-rail-dropstrip:first-child { width: 2px; flex-basis: 2px; }
 
-/* Running-apps section inside the rail grid (palette parity) */
-.rail-os-label {
+/* Section labels + pagers inside the rail grid (palette parity) */
+.rail-grid-label {
   grid-column: 1 / -1;
   padding: 10px 2px 2px;
 }
+.rail-grid-pager { grid-column: 1 / -1; padding: 2px 0 4px; }
+.rail-grid-pager .pagination-nav { justify-content: center; }
+
+/* Apps label row — open icon on the far right */
+.app-rail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rail-label-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+}
+.rail-label-btn svg { width: 12px; height: 12px; }
+.rail-label-btn:hover { background: var(--hover); color: var(--text); }
 .app-rail-tile--os { opacity: 0.78; }
 .app-rail-tile--os:hover { opacity: 1; }
