@@ -180,6 +180,59 @@ export function extractConnectorCalls(worker: string): Array<{ connector: string
   return out;
 }
 
+
+// ── Runtime-semantics checks (statically catchable classes found in real
+//    William builds — keep-in-sync with glyphh-william validate.ts) ────────
+
+/** glyphh.call targets must be host capabilities — a worker calling its own
+ *  handlers through glyphh.call errors at runtime (call functions directly). */
+export function checkCallTargets(worker: string): string[] {
+  const errors: string[] = [];
+  const handlers = new Set<string>();
+  for (const m of worker.matchAll(/glyphh\.handle\(\s*["'`]([^"'`]+)["'`]/g)) handlers.add(m[1]);
+  for (const m of worker.matchAll(/glyphh\.call\(\s*["'`]([^"'`]+)["'`]/g)) {
+    const target = m[1];
+    if (KNOWN_CAPABILITIES.has(target)) continue;
+    if (handlers.has(target)) {
+      errors.push(`glyphh.call("${target}") targets the worker's own handler — call the function directly; glyphh.call is for host capabilities only`);
+    } else {
+      errors.push(`glyphh.call("${target}") is not a capability (capabilities are e.g. db.exec, cron.schedule, connector.call, llm.complete, notify.send)`);
+    }
+  }
+  return [...new Set(errors)];
+}
+
+/** cron.schedule expressions must be 5 space-separated fields — HH:MM-style
+ *  strings never fire. Literals validate hard; template-built ones warn. */
+const CRON_FIELD = /^(\*|[0-9*,/-]+)$/;
+export function checkCronExpressions(worker: string): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!worker.includes("cron.schedule")) return { errors, warnings };
+  // Scan EVERY cron-shaped string/template in the worker (the value usually
+  // lands in a variable before the call, so call-site extraction misses).
+  for (const m of worker.matchAll(/(["'`])((?:\\.|(?!\1).)*)\1/g)) {
+    const raw = m[2];
+    const fields = raw.trim().split(/\s+/);
+    const stars = fields.filter((f) => f === "*").length;
+    if (fields.length < 4 || stars < 2) continue; // not cron-intended
+    if (raw.includes("${")) {
+      // The HH:MM smell: ONE placeholder in the minute slot then "* * * *".
+      // (Legit templates use two: "${m} ${h} * * *".)
+      if (/^\$\{[^}]*\}\s+\*\s+\*\s+\*\s+\*$/.test(raw.trim())) {
+        warnings.push(`cron template "${raw.trim()}" puts one variable in the minute field — if it holds HH:MM the job never fires; split into minute and hour ("\${mm} \${hh} * * *")`);
+      } else if (raw.includes(":") || fields.length !== 5) {
+        warnings.push(`cron built from a template ("${raw.slice(0, 40)}") — must resolve to 5 space-separated fields (minute hour dom month dow), never HH:MM`);
+      }
+      continue;
+    }
+    if (fields.length !== 5 || raw.includes(":") || !fields.every((f) => CRON_FIELD.test(f))) {
+      errors.push(`invalid cron expression "${raw}" — needs 5 fields (minute hour dom month dow), e.g. "0 8 * * *" for daily 8am`);
+    }
+  }
+  return { errors, warnings };
+}
+
 /** `lookup(slug)` → live tool names for a connected slug, or null when
  *  unknown (grounding then warns instead of erroring). */
 export function validateBundle(bundle: Bundle, lookup?: (slug: string) => string[] | null): ValidationResult {
@@ -210,6 +263,13 @@ export function validateBundle(bundle: Bundle, lookup?: (slug: string) => string
   const workerCode = m.worker ? bundle[m.worker] : undefined;
   if (workerCode && FORBIDDEN_WORKER.test(workerCode))
     errors.push("worker uses forbidden APIs (network/node) — route all I/O through glyphh.call()");
+
+  if (workerCode) {
+    errors.push(...checkCallTargets(workerCode));
+    const cron = checkCronExpressions(workerCode);
+    errors.push(...cron.errors);
+    warnings.push(...cron.warnings);
+  }
 
   if (workerCode && lookup) {
     for (const { connector, tool } of extractConnectorCalls(workerCode)) {
