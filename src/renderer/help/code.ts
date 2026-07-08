@@ -690,37 +690,25 @@ type WbBridge = {
 };
 const wb = () => (window as unknown as { wb?: WbBridge }).wb;
 
-// EVERY new session picks its folder before the first prompt — sessions
-// that already carry messages (history) stay open. The native dialog
-// defaults to the last-used folder, so continuing a project is one click.
-const folderConfirmedChats = new Set<string>();
+// The composer gates ONLY when no working folder has ever been chosen —
+// once one exists it persists as last-used and sessions start ready (the
+// picker, when opened, defaults to that folder so switching is one click).
 let workdirReady = true; // painted by checkWorkdirGate
-let lastKnownCwd = "";
-
-function sessionNeedsFolder(): boolean {
-  const c = current();
-  if (!c) return true;
-  if (c.messages.length > 0) return false; // established session
-  return !folderConfirmedChats.has(c.id);
-}
 
 function paintComposerGate(): void {
   const ta = input();
   if (!ta) return;
   ta.disabled = !workdirReady;
-  const base = lastKnownCwd ? ` (last: ${lastKnownCwd.split("/").pop()})` : "";
   ta.placeholder = workdirReady
     ? "Describe the app to build…"
-    : `Choose this session's working folder — click here${base}`;
+    : "Pick a working folder to start — click here to choose";
   el("code-send")?.toggleAttribute("disabled", !workdirReady);
   document.querySelector(".code-input-wrap")?.classList.toggle("gated", !workdirReady);
 }
 
 async function checkWorkdirGate(): Promise<void> {
   try {
-    const explicit = await wb()?.getCwdExplicit?.();
-    lastKnownCwd = String(explicit || (await wb()?.getCwd?.()) || "");
-    workdirReady = !!explicit && !sessionNeedsFolder();
+    workdirReady = !!(await wb()?.getCwdExplicit?.());
   } catch { workdirReady = true; /* bridge missing — never brick the composer */ }
   paintComposerGate();
 }
@@ -728,17 +716,11 @@ async function checkWorkdirGate(): Promise<void> {
 function initWorkdirGate(): void {
   void checkWorkdirGate();
   wb()?.onCwdChanged?.(() => { void checkWorkdirGate(); });
-  // A click on the sleeping composer IS the ask — pop the picker (defaults
-  // to the last folder; cancel keeps the gate honest).
+  // A click on the sleeping composer IS the ask — pop the picker (cancel
+  // keeps the gate honest).
   document.querySelector(".code-input-wrap")?.addEventListener("click", () => {
     if (workdirReady) return;
-    void wb()?.pickCwd?.({ nullOnCancel: true }).then((dir) => {
-      if (dir) {
-        const c = current();
-        if (c) folderConfirmedChats.add(c.id);
-      }
-      return checkWorkdirGate();
-    });
+    void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
   });
 }
 
