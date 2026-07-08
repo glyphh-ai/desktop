@@ -11,9 +11,11 @@
 
 import { webContents } from "electron";
 import AdmZip from "adm-zip";
+import { execSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import { getExplicitWorkingDirectory } from "./working-directory";
 import {
   SYSTEM_PROMPT, parseEmission, validateBundle, buildGroundingBlock,
   type Bundle, type LiveConnectorTool,
@@ -63,7 +65,32 @@ async function liveGrounding(): Promise<{ block: string; lookup: (slug: string) 
   };
 }
 
-export interface BuildResult { slug: string; name: string; attempts: number; warnings: string[] }
+export interface BuildResult { slug: string; name: string; attempts: number; warnings: string[]; sourceDir?: string }
+
+/** Drop the FULL passing bundle (every emitted file, index.html included)
+ *  into <workdir>/<slug>/ so the Files rail shows exactly what shipped and
+ *  the user can iterate. Best-effort git commit when the folder's a repo. */
+function writeSourceToWorkdir(bundle: Bundle, slug: string): string | undefined {
+  const wd = getExplicitWorkingDirectory();
+  if (!wd) return undefined;
+  try {
+    const dir = path.join(wd, slug);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const [file, content] of Object.entries(bundle)) {
+      const abs = path.join(dir, file);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, content);
+    }
+    try {
+      execSync("git rev-parse --is-inside-work-tree", { cwd: wd, stdio: "ignore" });
+      execSync(`git add ${JSON.stringify(slug)}`, { cwd: wd, stdio: "ignore" });
+      execSync(`git commit -m ${JSON.stringify(`William: build ${slug}`)} -- ${JSON.stringify(slug)}`, { cwd: wd, stdio: "ignore" });
+    } catch { /* not a repo / nothing changed — the source is still there */ }
+    return dir;
+  } catch {
+    return undefined; // source copy is a convenience, never a build failure
+  }
+}
 
 export async function buildGlyphhApp(description: string, signal?: AbortSignal): Promise<BuildResult> {
   const desc = description.trim();
@@ -104,7 +131,8 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
       if (!r.ok) { lastErrors = [r.error || "install failed"]; continue; }
       say("");
       if (bundle["index.html"]) showPreview(bundle["index.html"], `${r.name || v.manifest!.name} — installed ✓`);
-      return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, attempts: attempt, warnings: v.warnings };
+      const sourceDir = writeSourceToWorkdir(bundle, v.manifest!.slug);
+      return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, attempts: attempt, warnings: v.warnings, sourceDir };
     } finally {
       try { fs.unlinkSync(tmp); } catch { /* tmp gone */ }
     }

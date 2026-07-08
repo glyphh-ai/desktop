@@ -125,7 +125,7 @@ const TOOLS: ToolDef[] = [
     action: (a) => ({ kind: "edit", title: "Create app", detail: String(a.description ?? "").slice(0, 400) }),
     run: async (a) => {
       const r = await buildGlyphhApp(String(a.description ?? ""));
-      return `installed "${r.name}" (${r.slug}) — clean on pass ${r.attempts} of the build${r.warnings.length ? `; notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Open it with open_app("${r.slug}").`;
+      return `installed "${r.name}" (${r.slug}) — clean on pass ${r.attempts} of the build${r.sourceDir ? `; source at ${r.sourceDir}` : ""}${r.warnings.length ? `; notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Open it with open_app("${r.slug}").`;
     },
   },
   {
@@ -199,6 +199,38 @@ const TOOLS: ToolDef[] = [
       return { kind: DANGEROUS_CMD.test(cmd) ? "dangerous" : "command", title: "Run command", detail: cmd };
     },
     run: async (a) => runShell(String(a.command ?? ""), workdir()),
+  },
+  {
+    name: "git_status",
+    doc: "git_status() — branch + changed files in the working folder",
+    action: () => ({ kind: "read", title: "Git status" }),
+    run: async () => runShell("git status --porcelain=v1 -b", workdir()),
+  },
+  {
+    name: "git_diff",
+    doc: "git_diff(path?, staged?) — unified diff of working-tree (or staged) changes",
+    action: (a) => ({ kind: "read", title: `Git diff${a.path ? ` ${String(a.path)}` : ""}` }),
+    run: async (a) => {
+      const p = String(a.path ?? "").replace(/'/g, "");
+      return runShell(`git diff ${a.staged ? "--staged " : ""}${p ? `-- '${p}'` : ""} | head -400`, workdir());
+    },
+  },
+  {
+    name: "git_log",
+    doc: "git_log(n?) — recent commits (oneline)",
+    action: () => ({ kind: "read", title: "Git log" }),
+    run: async (a) => runShell(`git log --oneline -n ${Math.max(1, Math.min(50, Number(a.n) || 10))}`, workdir()),
+  },
+  {
+    name: "git_commit",
+    doc: "git_commit(message, paths?) — stage (given paths, or everything) and commit in the working folder",
+    action: (a) => ({ kind: "command", title: "Git commit", detail: String(a.message ?? "") }),
+    run: async (a) => {
+      const msg = String(a.message ?? "").trim();
+      if (!msg) return "ERROR: commit message is required";
+      const paths = Array.isArray(a.paths) ? (a.paths as unknown[]).map((p) => `'${String(p).replace(/'/g, "")}'`).join(" ") : "";
+      return runShell(`git add ${paths || "-A"} && git commit -m ${JSON.stringify(msg)}`, workdir());
+    },
   },
   {
     name: "open_app",
