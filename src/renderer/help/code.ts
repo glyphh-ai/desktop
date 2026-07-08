@@ -263,6 +263,7 @@ function initComposerControls(): void {
       "Compact this session now — optionally tell William what the summary must keep.",
       "",
       "e.g. keep the API decisions, file paths, and open bugs",
+      "Compact now",
     ).then((focus) => {
       if (focus === null) return; // cancelled
       void runManualCompact(focus.trim());

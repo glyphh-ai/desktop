@@ -2437,7 +2437,7 @@ body.account-locked #dl-btn-wrap {
 .confirm-actions {
   display: flex;
   gap: 10px;
-  justify-content: center;
+  justify-content: space-between;
 }
 
 /* ── Panel screenshots (freeze-frame) ────────────────────── */
@@ -4240,6 +4240,17 @@ ol.docs-list li::before {
 
 .action-btn:hover:not(:disabled) { color: var(--white); background: var(--hover); border-color: var(--text-faint); }
 .action-btn:disabled { opacity: 0.3; cursor: default; }
+.action-btn.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+}
+.action-btn.secondary:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--white);
+  box-shadow: 0 0 0 1px var(--white);
+}
 .action-btn.danger { color: var(--danger); border-color: var(--danger-bg); }
 .action-btn.danger:hover { color: var(--danger); background: var(--danger-bg); border-color: var(--danger); }
 /* White resting, matching yo-web's marketing CTA — the accent→pink
