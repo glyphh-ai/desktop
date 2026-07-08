@@ -212,13 +212,32 @@ async function openNativeTracked(
     if (launch?.adoptExisting) {
       const hit = await launch.adoptExisting().catch(() => null);
       if (hit) {
-        launched();
         if (hit.winId && !ownedByOthers.has(hit.winId)) {
+          // Identified + unowned → it becomes this app's window.
+          launched();
           nativeAppWindows.set(app.id, { winId: hit.winId, slug: app.slug, name: app.name });
           if (retileOnFocus) await setWindowBounds(hit.winId, rect);
+          await focusWindow(hit.winId);
+          wlog("  DONE via existing-tab adopt", { id: app.id, winId: hit.winId });
+          return;
         }
-        wlog("  DONE via existing-tab focus", { id: app.id, winId: hit.winId });
-        return;
+        if (hit.winId) {
+          // Hosted in a window OWNED by another app config — the tab is
+          // focused, but the window stays that config's (no steal, no dup).
+          launched();
+          wlog("  DONE via existing-tab focus (window owned by another config)", { id: app.id, winId: hit.winId });
+          return;
+        }
+        // Focused but the window couldn't be identified. A creating launch
+        // (alwaysNewWindow) must STOP here — falling through would open a
+        // duplicate. A no-op launch (tab mode) falls through so
+        // waitForAppWindow's fallback polling can adopt the hosting window.
+        if (launch.alwaysNewWindow) {
+          launched();
+          wlog("  DONE via existing-tab focus (window unidentified)", { id: app.id });
+          return;
+        }
+        wlog("  existing tab focused, window unidentified — adopting via wait", { id: app.id });
       }
     }
     const snap = await snapshotWindowIds(hint);
@@ -253,23 +272,60 @@ function webLaunchPlan(app: ServerApp): { browser: InstalledBrowser | null; open
   return { browser: resolveBrowser(configured), openAs };
 }
 
+/** Does this OS window belong to the given browser? (proc names differ in
+ *  casing/length between backends — match loosely, both directions). */
+function isBrowserWindow(w: { proc: string } | null, browser: InstalledBrowser): boolean {
+  if (!w) return false;
+  const fp = w.proc.toLowerCase();
+  const bp = browser.proc.toLowerCase();
+  return fp.includes(bp) || bp.includes(fp);
+}
+
 /**
- * Open a WEB app in its configured real browser. Window mode rides the same
- * tracked-open machinery as native apps — the browser is just another binary
- * whose new window we adopt, position, and re-focus on later opens. Tab mode
- * (or "System default" browser) is fire-and-forget: nothing to track.
+ * Open a WEB app in its configured real browser. ONE placement policy for
+ * both open-as modes — the config only decides what gets created:
+ *   window → a NEW browser window, adopted + placed;
+ *   tab    → a tab (reusing an existing one with the app's URL), and the
+ *            HOSTING browser window is adopted + placed.
+ * "System default" browser stays fire-and-forget — we can't know which app
+ * claimed the URL, so there's nothing to script or track.
  */
 async function openWebTracked(app: ServerApp, rect: OsRect, retileOnFocus: boolean): Promise<void> {
   const url = String(app.url || "");
   if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("app has no web URL");
   const { browser, openAs } = webLaunchPlan(app);
-  if (!browser || openAs === "tab") {
-    // Reuse before create: a tab with this URL may already be open.
-    if (browser && (await focusExistingBrowserTab(url, browser))) return;
-    const r = launchWebApp(url, browser, openAs);
+  if (!browser) {
+    const r = launchWebApp(url, null, openAs);
     if (!r.ok) throw new Error(r.error || "failed to open in browser");
     return;
   }
+
+  if (openAs === "tab") {
+    // Ensure the tab exists + is frontmost BEFORE the tracked open: select an
+    // existing tab with this URL, else open a new one. This runs even when a
+    // hosting window is already tracked — focusing the window isn't enough,
+    // the right TAB has to come forward.
+    const focused = await focusExistingBrowserTab(url, browser);
+    if (!focused) {
+      const r = launchWebApp(url, browser, "tab");
+      if (!r.ok) throw new Error(r.error || "failed to open in browser");
+      await sleep(600); // let the browser attach the tab (or begin launching)
+    }
+    await openNativeTracked(app, rect, retileOnFocus, {
+      hint: browser.proc,
+      run: () => ({ ok: true }), // the tab was ensured above — nothing to spawn
+      adoptExisting: async () => {
+        // The hunt/open raised the hosting window — adopt whatever browser
+        // window is frontmost. If it can't be identified yet (browser still
+        // launching), fall through to waitForAppWindow's existing-window
+        // fallback, which polls for it.
+        const front = await frontWindow().catch(() => null);
+        return { winId: isBrowserWindow(front, browser) ? front!.id : null };
+      },
+    });
+    return;
+  }
+
   await openNativeTracked(app, rect, retileOnFocus, {
     hint: browser.proc,
     run: () => launchWebApp(url, browser, "window"),
@@ -280,9 +336,7 @@ async function openWebTracked(app: ServerApp, rect: OsRect, retileOnFocus: boole
       // tracked and placed like a window we opened ourselves.
       await sleep(250);
       const front = await frontWindow().catch(() => null);
-      const fp = (front?.proc || "").toLowerCase();
-      const bp = browser.proc.toLowerCase();
-      return { winId: front && (fp.includes(bp) || bp.includes(fp)) ? front.id : null };
+      return { winId: isBrowserWindow(front, browser) ? front!.id : null };
     },
   });
 }
@@ -474,8 +528,9 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
       console.error(`[layout] "${app.name}" — not native and no web URL, skipped`);
       continue;
     }
-    // Web app → a tracked browser window tiled into the cell (tab-mode apps
-    // just open; a tab can't be positioned). Fire-and-forget like natives.
+    // Web app → tracked + tiled into the cell. Both open-as modes: window
+    // mode adopts its new browser window; tab mode opens/reuses the tab and
+    // tiles the HOSTING window. Fire-and-forget like natives.
     void openWebTracked(app, bounds, true).catch((err) =>
       console.error(`[layout] web "${app.name}" failed: ${err instanceof Error ? err.message : err}`));
     opened.push(app.slug);
