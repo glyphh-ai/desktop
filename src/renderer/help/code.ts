@@ -11,6 +11,7 @@
 
 import { confirmAction } from "./shared.js";
 import { gotoSection } from "./navigation.js";
+import { appIconInner } from "./app-icon.js";
 
 interface CodeMsg { role: "user" | "assistant"; text: string; at: number }
 interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
@@ -211,6 +212,22 @@ function send(): void {
   if (!ta) return;
   const text = ta.value.trim();
   if (!text) return;
+  // Dot-commands (.dip slack, .drip rain, …) run through the command parser —
+  // the composer doubles as the command input.
+  if (text.startsWith(".") && text.length > 1) {
+    if (!current()) newChat();
+    const cc = current()!;
+    cc.messages.push({ role: "user", text, at: Date.now() });
+    if (cc.title === "New session") cc.title = text.length > 42 ? text.slice(0, 42) + "…" : text;
+    ta.value = "";
+    autoGrow(ta);
+    void window.yo.execCommand(text.slice(1).trim());
+    cc.messages.push({ role: "assistant", text: `→ ran ${text}`, at: Date.now() });
+    saveStore();
+    renderHistory();
+    renderThread();
+    return;
+  }
   if (!current()) newChat();
   const c = current()!;
   c.messages.push({ role: "user", text, at: Date.now() });
@@ -234,12 +251,34 @@ function send(): void {
   }, 800);
 }
 
-// ── Recent apps (recents:list — apps/layouts you opened, searchable) ────
-interface RecentEntry { kind: "app" | "layout"; id: string; name: string; folder: string; ts: number }
-let recentApps: RecentEntry[] = [];
+// ── Apps grid — the same list + icons as the Apps page / command center,
+//    ordered by last-opened (recents:list), opened with the same .dip the
+//    Apps page uses. All apps show; recents float to the top so search
+//    still covers the long tail. ─────────────────────────────────────────
+interface RailApp {
+  id: string;
+  slug?: string | null;
+  name: string;
+  url?: string | null;
+  execPath?: string | null;
+  system?: boolean;
+  connection?: { accountId?: string; pipedreamSlug: string } | null;
+}
+let railApps: RailApp[] = [];
+let railRecentTs: Record<string, number> = {};
 
 async function loadRecentApps(): Promise<void> {
-  try { recentApps = (await window.yo.recentsList?.()) || []; } catch { recentApps = []; }
+  try {
+    const [apps, recents] = await Promise.all([
+      window.yo.panelAppsList?.() ?? Promise.resolve([]),
+      window.yo.recentsList?.() ?? Promise.resolve([]),
+    ]);
+    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => !a.system);
+    railRecentTs = {};
+    for (const r of recents || []) {
+      if (r.kind === "app") railRecentTs[r.id] = Math.max(railRecentTs[r.id] || 0, r.ts || 0);
+    }
+  } catch { railApps = []; railRecentTs = {}; }
   renderRecentApps();
 }
 
@@ -248,26 +287,45 @@ function renderRecentApps(): void {
   if (!list) return;
   const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
   list.textContent = "";
-  const items = recentApps.filter((r) => !q || (r.name || "").toLowerCase().includes(q));
+  const items = railApps
+    .filter((a) => !q || (a.name || "").toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ta = railRecentTs[a.id] || 0;
+      const tb = railRecentTs[b.id] || 0;
+      if (ta !== tb) return tb - ta; // last-opened first
+      return (a.name || "").localeCompare(b.name || "");
+    });
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "code-empty";
     empty.style.margin = "10px auto";
-    empty.textContent = q ? "No matches." : "Apps you open land here.";
+    empty.textContent = q ? "No matches." : "Your apps land here.";
     list.appendChild(empty);
     return;
   }
-  for (const r of items) {
-    const row = document.createElement("div");
-    row.className = "code-history-item";
-    row.title = r.folder ? `${r.name} — ${r.folder}` : r.name;
-    const label = document.createElement("span");
-    label.className = "code-history-title";
-    label.textContent = r.name;
-    row.appendChild(label);
-    row.addEventListener("click", () => { void window.yo.recentsOpen?.(r); });
-    list.appendChild(row);
+  for (const a of items) {
+    const tile = document.createElement("button");
+    tile.className = "app-rail-tile";
+    tile.type = "button";
+    tile.title = a.name;
+    const icon = document.createElement("div");
+    icon.className = "tile-icon";
+    icon.innerHTML = appIconInner(a, a.name, "tile-initial");
+    const nm = document.createElement("span");
+    nm.className = "tile-name";
+    nm.textContent = a.name;
+    tile.append(icon, nm);
+    tile.addEventListener("click", () => { void window.yo.execCommand(`dip ${a.slug || a.id}`); });
+    list.appendChild(tile);
   }
+}
+
+// ── Recents disclosure ───────────────────────────────────────────────────
+function setRecentsOpen(open: boolean, persist: boolean): void {
+  el("recents-toggle")?.classList.toggle("closed", !open);
+  el("code-history")?.classList.toggle("hidden", !open);
+  el("recents-vsplit")?.classList.toggle("hidden", !open);
+  if (persist) void window.yo.setPreference?.("codeRecentsOpen", open);
 }
 
 // ── Recents vertical resize ──────────────────────────────────────────────
@@ -333,6 +391,8 @@ async function applyPanelPrefs(): Promise<void> {
   const recentsH = Number(await window.yo.getPreference?.("codeRecentsH", 0)) || 0;
   const hist = el("code-history");
   if (hist && recentsH > 0) hist.style.flex = `0 0 ${recentsH}px`;
+  const recentsOpen = (await window.yo.getPreference?.("codeRecentsOpen", true)) as boolean;
+  setRecentsOpen(recentsOpen !== false, false);
 }
 
 // ── Entry points ─────────────────────────────────────────────────────────
@@ -352,6 +412,10 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   el("code-new-chat")?.addEventListener("click", newChat);
+  el("recents-toggle")?.addEventListener("click", () => {
+    const open = el("recents-toggle")!.classList.contains("closed");
+    setRecentsOpen(open, true);
+  });
   el("code-send")?.addEventListener("click", send);
   const ta = input();
   ta?.addEventListener("keydown", (e) => {

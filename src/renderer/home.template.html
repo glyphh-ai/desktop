@@ -108,8 +108,14 @@
         <!-- Drag strip under the fixed chrome cluster. -->
         <div class="app-rail-top"></div>
         <div class="app-rail-switch">
-          <button id="app-rail-home" class="app-rail-switch-btn" data-target="dashboard">Home</button>
-          <button id="app-rail-code" class="app-rail-switch-btn" data-target="code">Code</button>
+          <button id="app-rail-home" class="app-rail-switch-btn" data-target="dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span>Home</span>
+          </button>
+          <button id="app-rail-code" class="app-rail-switch-btn" data-target="code">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>Code</span>
+          </button>
         </div>
         <button id="code-new-chat" class="code-new-session" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -133,14 +139,17 @@
             <span>Drips</span>
           </button>
         </nav>
-        <div class="code-rail-label">Recents</div>
+        <button id="recents-toggle" class="code-rail-label code-rail-disclosure" type="button">
+          <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <span>Recents</span>
+        </button>
         <div id="code-history" class="code-history"></div>
         <div id="recents-vsplit" class="recents-vsplit" title="Drag to resize"></div>
-        <div class="code-rail-label">Recent apps</div>
+        <div class="code-rail-label">Apps</div>
         <div class="app-rail-search">
-          <input id="recent-apps-search" type="text" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
+          <input id="recent-apps-search" class="rail-recents-search" type="text" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
         </div>
-        <div id="recent-apps-list" class="code-history"></div>
+        <div id="recent-apps-list" class="app-rail-grid"></div>
         <div class="app-rail-user">
           <button id="app-rail-user-btn" class="app-rail-user-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
