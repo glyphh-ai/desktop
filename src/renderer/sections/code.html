@@ -1,0 +1,83 @@
+        <div class="help-section" data-section="code">
+          <div class="code-root">
+
+            <!-- Sessions live in the global #app-rail (home.template.html). -->
+
+            <!-- Center — the agent -->
+            <section class="code-agent">
+              <div class="code-agent-head">
+                <!-- Workdir controls (old workbench header): folder picker +
+                     git branch (shown once a repo is picked) + add-folder.
+                     Wiring lands with the William loop. -->
+                <button id="code-workdir-btn" class="code-wd-btn" title="Pick the working folder" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                  <span id="code-workdir-name">Pick a folder</span>
+                </button>
+                <span class="code-wd-branch" id="code-workdir-branch-wrap" style="display:none;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>
+                  <span id="code-workdir-branch"></span>
+                </span>
+                <button id="code-workdir-add" class="code-icon-btn" title="Add folder" type="button">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                </button>
+
+                <div class="code-spacer"></div>
+
+                <!-- Workbench view toggles (old wb-section-toggles): each opens
+                     its rail on the right; accent = open. -->
+                <div class="code-view-toggles">
+                  <button class="code-view-btn" data-view="files" title="Files">
+                    <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                  </button>
+                  <button class="code-view-btn" data-view="terminal" title="Terminal">
+                    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                  </button>
+                  <button class="code-view-btn" data-view="diff" title="Diff">
+                    <svg viewBox="0 0 24 24"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>
+                  </button>
+                  <button class="code-view-btn" data-view="preview" title="Preview">
+                    <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                  <button class="code-view-btn" data-view="plan" title="Plan">
+                    <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div id="code-thread" class="code-thread"></div>
+              <div class="code-composer">
+                <div class="code-input-wrap">
+                  <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
+                  <button id="code-send" class="code-send" title="Send">
+                    <svg class="icon-return" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
+                    <svg class="icon-stop" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
+                  </button>
+                </div>
+                <div class="code-composer-bar">
+                  <div id="code-mode-wrap" class="code-chipwrap">
+                    <button id="code-mode-chip" class="code-chip" type="button"></button>
+                  </div>
+                  <div class="code-bar-right">
+                    <div id="code-ctx-meter" class="code-ctx-meter" title="Context">
+                      <div class="ctx-tick"></div>
+                      <div class="ctx-fill"></div>
+                    </div>
+                    <div id="code-effort-wrap" class="code-chipwrap">
+                      <button id="code-effort-chip" class="code-chip" type="button"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Right — the workbench rails (the old workbench engine, ported:
+                 code-workbench-bundle.js). Closed until a view is opened from
+                 the header toggles; slots insert/tile/drag/maximize per the
+                 old rules, layout persists per working folder. -->
+            <aside id="code-workbench" class="code-workbench collapsed">
+              <div id="code-wb-edge" class="code-wb-edge" title="Drag to resize"></div>
+              <div id="code-wb-rails" class="ws-right-rails"></div>
+            </aside>
+
+          </div>
+        </div>

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme } from "electron";
+import { getScreenLayout, setScreenLayout, isRailCollapsed, toggleRailCollapsed, setRailCollapsed } from "./screen-layout";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -80,6 +81,16 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
       return null;
     }
   });
+  // Screen layout — dock mode + fraction (applies live; persists to the
+  // user's server profile with a local cache).
+  ipcMain.handle("screen-layout-get", () => getScreenLayout());
+  // Rail collapse — shrink the app to just the left rail (and back).
+  ipcMain.handle("rail-collapse-get", () => isRailCollapsed());
+  ipcMain.handle("rail-collapse-toggle", () => toggleRailCollapsed());
+  ipcMain.handle("rail-collapse-set", (_e, on: boolean) => setRailCollapsed(!!on));
+  ipcMain.handle("screen-layout-set", (_e, v: { mode?: string; fraction?: number }) =>
+    setScreenLayout(v as Parameters<typeof setScreenLayout>[0]));
+
   ipcMain.handle("user-timezone-set", async (_e, timezone: string) => {
     try {
       await serverPatchAuthed("/api/user/me", { timezone });

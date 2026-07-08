@@ -5,7 +5,11 @@
   <link rel="stylesheet" href="styles.css" />
   <style>
     html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
-  </style>
+    .cc-ada { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .cc-ada-hit { text-align: left; border: 1px solid var(--border, #3f3f46); background: rgba(255,255,255,0.04); color: #c4c4c4; font-size: 12px; padding: 8px 11px; border-radius: 8px; cursor: pointer; }
+  .cc-ada-hit:hover:not(:disabled) { color: #fff; border-color: #57575e; }
+  .cc-ada-hit:disabled { opacity: 0.55; cursor: default; }
+</style>
 </head>
 <body>
   <div id="command-center" class="command-center">

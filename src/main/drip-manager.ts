@@ -533,6 +533,12 @@ interface ServerDrip { id: string; name: string; recipe: string; }
 // UUID for patch/delete. The command path saves optimistically (updates the
 // cache + writes in the background); the Drips tab IPC awaits the server.
 
+// Module singleton — main.ts registers its instance so tool surfaces
+// (William, relay) can reach the running manager without importing main.
+let current: DripManager | null = null;
+export function setDripManagerInstance(m: DripManager): void { current = m; }
+export function getDripManagerInstance(): DripManager | null { return current; }
+
 export class DripManager {
   private customs: Record<string, string> = {};   // name → recipe (cache)
   private ids: Record<string, string> = {};       // name → server UUID

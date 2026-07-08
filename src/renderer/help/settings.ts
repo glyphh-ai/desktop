@@ -21,9 +21,49 @@ const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!
 let mcpSectionRefresh: () => void = () => {};
 
 function initSettings() {
+  document.getElementById("william-training-toggle")?.addEventListener("change", (e) => {
+    void window.yo.setPreference?.("williamTrainingCapture", (e.target as HTMLInputElement).checked);
+  });
+  document.getElementById("william-compact-save")?.addEventListener("click", () => {
+    const wcp = document.getElementById("william-compact-prompt") as HTMLTextAreaElement | null;
+    const status = document.getElementById("william-compact-status");
+    void Promise.resolve(window.yo.setPreference?.("williamCompactionPrompt", (wcp?.value || "").trim())).then(() => {
+      if (status) { status.textContent = "Saved."; setTimeout(() => { status.textContent = ""; }, 1800); }
+    });
+  });
+
   settingsSaveBtn.addEventListener("click", saveSettings);
 
   // Theme picker
+  // Screen layout — dock mode picker + split preview (fraction comes from
+  // dragging the shared window edge; the mockup mirrors mode + fraction).
+  const slPicker = document.getElementById("screen-layout-picker");
+  const slPreview = document.getElementById("screen-layout-preview");
+  if (slPicker) {
+    let slFraction = 0.5;
+    const paintSl = (mode: string) => {
+      slPicker.querySelectorAll<HTMLElement>(".layout-mode-btn").forEach((b) =>
+        b.classList.toggle("active", b.dataset.mode === mode));
+      if (!slPreview) return;
+      slPreview.className = `sl-preview sl-mode-${mode}`;
+      const glyphhSide = slPreview.querySelector<HTMLElement>(".sl-glyphh");
+      if (glyphhSide) {
+        glyphhSide.style.flexBasis = mode === "full" ? "100%" : `${Math.round(slFraction * 100)}%`;
+      }
+    };
+    void window.yo.screenLayoutGet?.().then((sl) => {
+      slFraction = sl?.fraction ?? 0.5;
+      paintSl(sl?.mode || "full");
+    }).catch(() => paintSl("full"));
+    slPicker.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>(".layout-mode-btn");
+      if (!btn) return;
+      const mode = btn.dataset.mode || "full";
+      paintSl(mode);
+      void window.yo.screenLayoutSet?.({ mode });
+    });
+  }
+
   const themePicker = document.getElementById("theme-picker");
   if (themePicker) {
     window.yo.getTheme().then((theme) => {
@@ -490,6 +530,17 @@ function initSettings() {
 
 
 async function loadSettings() {
+  // William: standing compaction guidance + training capture
+  const wcp = document.getElementById("william-compact-prompt") as HTMLTextAreaElement | null;
+  if (wcp) wcp.value = String((await window.yo.getPreference?.("williamCompactionPrompt", "")) || "");
+  const wtt = document.getElementById("william-training-toggle") as HTMLInputElement | null;
+  if (wtt) wtt.checked = ((await window.yo.getPreference?.("williamTrainingCapture", true)) as boolean) !== false;
+  try {
+    const ts = await window.yo.williamTrainingStats?.();
+    const el = document.getElementById("william-training-stats");
+    if (el && ts) el.textContent = `${ts.files} file${ts.files === 1 ? "" : "s"}, ${(ts.bytes / 1024).toFixed(0)} KB — ${ts.dir}`;
+  } catch { /* main not ready */ }
+
   settingsStatus.textContent = "";
   const accountInfo = await window.yo.getAccountInfo();
 

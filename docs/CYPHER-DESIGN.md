@@ -179,7 +179,7 @@ Migrations applied in numbered order:
   validates sha256, extracts via `adm-zip` with zip-slip protection
 - `sandbox/` — OS-native sandbox runner. macOS via `sandbox-exec` with
   generated SBPL; Linux/Windows passthrough stubs (real impls Phase 3.5+)
-- `preferences.ts` — JSON KV store at `~/.glyphh/.preferences`
+- `stores/preferences-db.ts` — SQLite KV preferences store (`~/.glyphh/user-state.sqlite`)
 - `auth.ts` — JWT, session refresh, `serverPostAuthed`/`serverGetAuthed`
 
 ### 4.5 Layout = slot template (no baked-in agents)

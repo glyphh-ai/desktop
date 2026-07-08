@@ -10,7 +10,7 @@
  * app-resolver via the OS window manager.
  */
 
-import { spawn } from "child_process";
+import { execFile, spawn } from "child_process";
 import { shell } from "electron";
 import type { InstalledBrowser } from "./browser-detect.js";
 
@@ -79,6 +79,62 @@ function launchMacTerminal(lc: Record<string, unknown>, mode: string): void {
       'end tell',
     ]);
   }
+}
+
+/** AppleScript body that hunts every window's tabs for the target URL and
+ *  focuses the first hit. `sel` is the per-browser "select tab i of w" line.
+ *  Match = exact URL, or the URL followed by /, ? or # — so a configured
+ *  "https://mail.google.com" claims the signed-in "…/mail/u/0/#inbox" tab
+ *  without also claiming unrelated prefixed hosts. */
+function tabHuntScript(appName: string, target: string, sel: string): string {
+  const t = appleEscape(target);
+  return `tell application "${appleEscape(appName)}"
+  repeat with w in windows
+    try
+      set i to 0
+      repeat with t in tabs of w
+        set i to i + 1
+        try
+          set tu to (URL of t) as text
+          if tu is "${t}" or tu starts with "${t}/" or tu starts with "${t}?" or tu starts with "${t}#" then
+            ${sel}
+            set index of w to 1
+            activate
+            return "1"
+          end if
+        end try
+      end repeat
+    end try
+  end repeat
+end tell
+return "0"`;
+}
+
+/**
+ * If a tab with this URL is already open in the target browser, focus it
+ * (select the tab, raise its window) and return true — the caller skips
+ * opening a duplicate. Safari + Chromium only (Firefox has no tab
+ * scripting); non-mac, unscriptable browsers, denied Automation permission,
+ * or any script error resolve false so opening proceeds normally.
+ */
+export async function focusExistingBrowserTab(url: string, browser: InstalledBrowser): Promise<boolean> {
+  if (process.platform !== "darwin") return false;
+  const target = url.replace(/\/+$/, "");
+  const appName = (browser.appPath.split("/").pop() || "").replace(/\.app$/, "");
+  if (!appName || !/^https?:\/\//.test(target)) return false;
+  let script: string;
+  if (browser.id === "safari") {
+    script = tabHuntScript(appName, target, "set current tab of w to t");
+  } else if (browser.chromium) {
+    script = tabHuntScript(appName, target, "set active tab index of w to i");
+  } else {
+    return false;
+  }
+  return await new Promise<boolean>((resolve) => {
+    execFile("osascript", ["-e", script], { timeout: 3000 }, (err, stdout) => {
+      resolve(!err && String(stdout).trim() === "1");
+    });
+  });
 }
 
 /**

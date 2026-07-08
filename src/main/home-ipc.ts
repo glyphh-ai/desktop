@@ -20,7 +20,7 @@ import {
   localMcpListTokens,
   localMcpRevokeToken,
 } from "./local-mcp-server";
-import { setPreference } from "./preferences";
+import { setPreference } from "./stores/preferences-db";
 import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, getAccountInfo, getAuthStatus } from "./auth";
 
 interface HomeIpcDeps {

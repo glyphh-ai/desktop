@@ -45,6 +45,10 @@ import { AppConnector } from "./app-connector";
 import { canAddApp, canSaveLayout, canUseMcp } from "./entitlements";
 import { executeCommand } from "./dom-bridge";
 import { getPreference, setPreference } from "./stores/preferences-db";
+import { initAdaStore } from "./ada/store";
+import { registerAdaSync } from "./ada/indexer";
+import { registerAdaIpc } from "./ada/ipc";
+import { getLocalDb } from "./local-db";
 import { YoInterceptor } from "./yo-interceptor";
 import { SessionCache } from "./session-cache";
 import { smartGrab } from "./smart-grab";
@@ -75,7 +79,12 @@ import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
-import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
+import { registerWorkbenchTerminalIpc } from "./wb-terminal";
+import { registerWilliamIpc, shutdownWilliam } from "./william";
+import { retileWorkspace } from "./app-resolver";
+import { retileFullWindows } from "./app-window-manager";
+import { initScreenLayout, onWorkspaceChange } from "./screen-layout";
+import { DripManager, BUILTIN_EFFECTS, setDripManagerInstance } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc } from "./settings-ipc";
@@ -269,9 +278,12 @@ async function boot() {
 
   // Initialize local SQLite database (agents, layouts, preferences)
   initLocalDb();
+  initAdaStore(getLocalDb()); // Ada — schema-on-write fact memory
+  registerAdaIpc();
+  registerAdaSync(); // mirror the workspace catalog into facts (idempotent)
   const migrationResult = migrateFromFiles();
   if (migrationResult.migrated) {
-    console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs`);
+    console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs, ${migrationResult.prefsV2} stranded prefs`);
   }
 
   // Load LLM config (provider + model selection only)
@@ -527,20 +539,24 @@ async function boot() {
   const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
   // Slugs that map to home.html with ?section=<slug>. Each system-app tab
   // (Apps / Layouts / Drips / Skills / Settings / About) opens its section.
+  // "" = unlocked multi-section home (the Code-primary surface with the app
+  // rail); non-empty locks the panel to that one section (rail hidden).
   const HOME_SECTION_SLUGS: Record<string, string> = {
-    "yo://dashboard": "dashboard",
+    "yo://dashboard": "",
     "yo://apps": "apps",
     "yo://connections": "connections",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
-    "yo://about": "about",
     "yo://dashboard-settings": "settings",
   };
   for (const app of appConnector.list()) {
-    if (app.url && HOME_SECTION_SLUGS[app.url]) {
+    if (app.url && HOME_SECTION_SLUGS[app.url] !== undefined) {
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(app.id, `${homeHtml}?section=${section}`, homePreload, undefined, true);
+      panelManager.addPanel(app.id, `${homeHtml}${section ? `?section=${section}` : ""}`, homePreload, undefined, true);
+      // The unlocked home (Code-primary surface) owns its chrome — cover the
+      // titlebar strip entirely.
+      if (!section) panelManager.setFullBleed(app.id);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
@@ -652,9 +668,15 @@ async function boot() {
   };
 
   const execCommand = async (cmd: string, sourcePanelId?: string) => {
-    // .waz is now handled by commandParser.execute (so chained forms like
-    // `.dip gmail .waz new <prompt>` work too); the inline shim that used
-    // to short-circuit bare `waz <prompt>` is no longer needed.
+    // Modern dip first — the OS-window resolver (same routing the overlay
+    // path uses). The legacy commandParser's dip drives the retired
+    // BrowserView panel system and answers "Unknown panel"; it goes with
+    // cleanup 5g. This keeps the composer/rail-search `.dip` on the same
+    // path as the command palette.
+    if (/^\.?dip\b/i.test(cmd.trim())) {
+      const r = await runDip(cmd.trim());
+      return r.ok ? (r.message || "→ done") : `⚠ ${r.error || "dip failed"}`;
+    }
     const result = await commandParser.execute(cmd, sourcePanelId);
 
     const gridInfo = layoutManager.getGridInfo();
@@ -733,6 +755,7 @@ async function boot() {
 
   // Drip effects
   dripManager = new DripManager();
+  setDripManagerInstance(dripManager);
   if (mainWindow) dripManager.setMainWindow(mainWindow);
   commandParser.setDripManager(dripManager);
   yoInterceptor.setDripCustomsGetter(() => dripManager!.listCustoms());
@@ -918,12 +941,14 @@ async function boot() {
 
   function createPanelForApp(instanceId: string, app: { id: string; url?: string; forceWeb?: boolean }): void {
     if (!app.url) return;
-    if (app.url && HOME_SECTION_SLUGS[app.url]) {
+    if (app.url && HOME_SECTION_SLUGS[app.url] !== undefined) {
       // System-app wrappers (yo://apps, yo://layouts, …) reuse home.html
-      // with ?section=<slug>. home.ts reads the query on boot.
+      // with ?section=<slug>; yo://dashboard opens it unlocked (Code-primary
+      // surface with the app rail). home.ts reads the query on boot.
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(instanceId, `${homeHtml}?section=${section}`, homePreload, undefined, true);
+      panelManager.addPanel(instanceId, `${homeHtml}${section ? `?section=${section}` : ""}`, homePreload, undefined, true);
+      if (!section) panelManager.setFullBleed(instanceId);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
@@ -1249,6 +1274,12 @@ async function boot() {
     });
   }
 
+  // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
+  if (!ipcMain.listenerCount("wb-term:spawn")) {
+    registerWorkbenchTerminalIpc();
+    registerWilliamIpc();
+  }
+
   if (!ipcMain.listenerCount("get-preference")) {
     ipcMain.handle("get-preference", (_e, key: string, defaultVal: unknown) => {
       return getPreference(key, defaultVal);
@@ -1269,6 +1300,17 @@ async function boot() {
   // Restore zoom level
   const savedZoom = getPreference<number>("zoom", 1.0);
   if (savedZoom !== 1.0) panelManager.setZoom(savedZoom);
+
+  // Screen layout — apply the cached dock (full/left/right/top/bottom),
+  // reconcile with the server profile, and track edge drags.
+  if (mainWindow) initScreenLayout(mainWindow);
+  // When Glyphh's footprint changes (rail collapse/expand, dock change) the
+  // open workspace apps slide to fit: re-run the last placement (single app
+  // full-workspace, or a layout's grid re-tiled into the new region).
+  onWorkspaceChange(() => {
+    retileFullWindows();
+    void retileWorkspace();
+  });
 
   // Only restore panels if not gated by onboarding
   if (!needsOnboarding) {
@@ -1912,6 +1954,7 @@ app.on("activate", () => {
 });
 
 app.on("will-quit", () => {
+  shutdownWilliam();
   cleanupAll();
 });
 

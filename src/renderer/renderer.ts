@@ -316,6 +316,32 @@ declare global {
       filesRailWidthSave: (width: number) => void;
       filesRailGetWidth: () => Promise<number>;
       // Recents (rich)
+      screenLayoutGet: () => Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>;
+      screenLayoutSet: (v: { mode?: string; fraction?: number }) => Promise<{ mode: string; fraction: number }>;
+      williamRun: (p: { chatId: string }) => Promise<{ runId: string }>;
+      williamSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
+      williamSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
+      williamRemember: (fact: string) => Promise<boolean>;
+      adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
+      williamTrainingStats: () => Promise<{ files: number; bytes: number; dir: string; enabled: boolean }>;
+      adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
+      adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
+      williamContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>;
+      williamCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
+      williamStop: () => Promise<boolean>;
+      williamStatus: () => Promise<{ up: boolean }>;
+      onWilliamDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
+      onWilliamDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
+      onWilliamError: (cb: (d: { runId: string; error: string }) => void) => void;
+      onWilliamProgress: (cb: (d: { runId: string; tokens: number }) => void) => void;
+      onWilliamTool: (cb: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => void;
+      williamApprovalRespond: (id: string, allow: boolean) => Promise<boolean>;
+      onWilliamApproval: (cb: (d: { id: string; kind: string; title: string; detail: string }) => void) => void;
+      railCollapseGet: () => Promise<boolean>;
+      railCollapseToggle: () => Promise<boolean>;
+      railCollapseSet: (on: boolean) => Promise<boolean>;
+      commandOsApps: () => Promise<Array<{ proc: string; path: string }>>;
+      commandFocusApp: (proc: string) => Promise<{ ok: boolean; error?: string }>;
       recentsList: () => Promise<Array<{
         kind: "app" | "layout"; id: string; name: string; folder: string; ts: number;
       }>>;
@@ -406,7 +432,6 @@ document.getElementById("btn-close")!.addEventListener("click", () => window.yo.
 document.getElementById("btn-minimize")!.addEventListener("click", () => window.yo.windowMinimize());
 document.getElementById("btn-maximize")!.addEventListener("click", () => window.yo.windowMaximize());
 document.getElementById("splash-close")?.addEventListener("click", () => window.yo.windowClose());
-document.getElementById("titlebar-logout")?.addEventListener("click", () => { void window.yo.logout(); });
 document.getElementById("header-command-center")?.addEventListener("click", () => window.yo.commandToggle());
 
 // -- Titlebar label -> open home tab --
@@ -608,57 +633,24 @@ initDrip();
 // and yo://dashboard-settings system-app panels through the same
 // panel-manager mechanism the old rail used (openWorkspaceApp) — a deliberate
 // stopgap; the real Panel Manager rewrite is sub-phase 5b.
-let dashboardInitialized = false;
+let dashboardChromeInited = false;
 function initDashboard(): void {
+  // The titlebar tab strip is gone — the Code-primary home panel carries its
+  // own app rail (Home|Code, sections, user area). Just hide legacy chrome;
+  // main opened + activated the "dashboard" panel at boot (openHomePanelOnly).
   document.getElementById("files-rail")?.classList.add("dashboard-hidden");
   document.getElementById("tab-bar")?.classList.add("dashboard-hidden");
-  const tabs = document.getElementById("dashboard-tabs");
-  tabs?.classList.remove("hidden");
-
-  if (dashboardInitialized) return;
-  dashboardInitialized = true;
-
-  type DashSlug = "dashboard" | "apps" | "connections" | "layouts" | "drips" | "settings" | "about";
-  const setActive = (slug: DashSlug) => {
-    for (const s of ["dashboard", "apps", "connections", "layouts", "drips", "settings", "about"] as DashSlug[]) {
-      document.getElementById(`dashboard-tab-${s}`)?.classList.toggle("active", slug === s);
-    }
+  if (dashboardChromeInited) return;
+  dashboardChromeInited = true;
+  // Full-bleed sync: while the unlocked home panel (it owns the chrome
+  // cluster) is active, punch a no-drag hole in THIS page's titlebar drag
+  // claim — base-window drag regions bleed through BrowserViews.
+  const syncFullbleed = (activeId: string) => {
+    const on = activeId === "dashboard" || /^dashboard-\d+$/.test(activeId);
+    document.body.classList.toggle("fullbleed-active", on);
   };
-
-  // Each tab opens its matching yo:// system-app panel (home.html?section=…).
-  const wireTab = (slug: DashSlug, appId: string) => {
-    document.getElementById(`dashboard-tab-${slug}`)?.addEventListener("click", () => {
-      setActive(slug);
-      openWorkspaceApp(appId);
-    });
-  };
-  wireTab("dashboard", "dashboard");
-  wireTab("apps", "apps");
-  wireTab("connections", "connections");
-  wireTab("layouts", "layouts");
-  wireTab("drips", "drips");
-  wireTab("settings", "dashboard-settings");
-  wireTab("about", "about");
-
-  // Keep the tab highlight in sync with the ACTUAL active panel, so a tab
-  // opened programmatically (e.g. the dashboard's "Connect MCP" → Settings)
-  // highlights correctly — not only tabs opened by a click here. System-app
-  // panels are single-instance, so activePanelId is the app id.
-  const APPID_TO_TAB: Record<string, DashSlug> = {
-    dashboard: "dashboard", apps: "apps", connections: "connections",
-    layouts: "layouts", drips: "drips", "dashboard-settings": "settings", about: "about",
-  };
-  window.yo.onTabState((state) => {
-    const tab = APPID_TO_TAB[state.activeId];
-    if (tab) setActive(tab);
-  });
-
-  // Land on Home by default — just the tab styling. Main already opened and
-  // activated the "dashboard" panel directly at boot (openHomePanelOnly() in
-  // main.ts); calling openWorkspaceApp("dashboard") here too would race it into
-  // opening a SECOND instance (tabNewApp doesn't know the boot-time one
-  // exists), which is the extra flash/transition after the splash.
-  setActive("dashboard");
+  syncFullbleed("dashboard");
+  window.yo.onTabState((state) => syncFullbleed(state.activeId));
 }
 
 // -- Boot gate --

@@ -365,6 +365,8 @@ async function loadApps() {
     // Hide seeded system apps (Glyphh) — they aren't user-managed.
     panelApps = apps.filter((a) => !a.system && (a.url || a.isBrowser === false)).map(toPanelApp);
   } catch { panelApps = []; }
+  // The rail's Apps grid mirrors this list — tell it to refresh.
+  document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
 
   document.getElementById("apps-limit-msg")!.classList.add("hidden");
 

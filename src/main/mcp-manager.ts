@@ -6,7 +6,7 @@
  */
 
 import { McpClient, McpTool, McpToolResult } from "./mcp-client";
-import { getPreference, setPreference } from "./preferences";
+import { getPreference, setPreference } from "./stores/preferences-db";
 import { EventEmitter } from "events";
 import type { AppConnector, McpConfig, McpOAuth } from "./app-connector";
 import { callConnectorTool, type ConnectorTool } from "./connector-tools-client";

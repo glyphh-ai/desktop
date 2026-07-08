@@ -63,6 +63,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --white:       #111111;
   --hover:       #f0f0f0;
   --active-bg:   rgba(140, 59, 242, 0.06);
+  --rail-active-bg: rgba(17, 17, 17, 0.09);
   --accent:      #8c3bf2;
   --accent-hover:#a855f7;
   --accent-text: #b975f9;
@@ -94,18 +95,19 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --surface:     #252528;
   --surface-2:   #2e2e32;
   --surface-3:   #29292c;
-  --border:      #34343a;
-  --border-2:    #3e3e44;
-  --border-3:    #4a4a50;
+  --border:      #3f3f46;
+  --border-2:    #4a4a52;
+  --border-3:    #57575e;
   --text:        #f1f1f1;
   --text-bright: #ffffff;
-  --text-2:      #b6b6b6;
-  --text-3:      #868686;
-  --text-muted:  #6e6e6e;
-  --text-faint:  #545454;
+  --text-2:      #c4c4c4;
+  --text-3:      #9a9a9a;
+  --text-muted:  #828282;
+  --text-faint:  #6a6a6a;
   --white:       #ffffff;
   --hover:       #303035;
   --active-bg:   rgba(140, 59, 242, 0.08);
+  --rail-active-bg: rgba(255, 255, 255, 0.12);
   --accent:      #8c3bf2;
   --accent-hover:#a855f7;
   --accent-text: #b975f9;
@@ -149,6 +151,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --white:       #ffffff;
   --hover:       #2e2046;
   --active-bg:   rgba(173, 93, 248, 0.12);
+  --rail-active-bg: rgba(255, 255, 255, 0.12);
   --accent:      #ad5df8;
   --accent-hover:#b975f9;
   --accent-text: #c98ffb;
@@ -2422,7 +2425,10 @@ body.account-locked #dl-btn-wrap {
   border: 1px solid var(--border-3);
   border-radius: 10px;
   padding: 24px 28px;
-  max-width: 340px;
+  /* Half the chat content width (composer maxes at 780px) — one
+     consistent modal width everywhere. */
+  width: min(390px, 86vw);
+  box-sizing: border-box;
   text-align: center;
 }
 .confirm-box p {
@@ -2434,7 +2440,7 @@ body.account-locked #dl-btn-wrap {
 .confirm-actions {
   display: flex;
   gap: 10px;
-  justify-content: center;
+  justify-content: space-between;
 }
 
 /* ── Panel screenshots (freeze-frame) ────────────────────── */
@@ -2777,6 +2783,16 @@ body.account-locked #dl-btn-wrap {
 /* Content area */
 #help-content {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+#page-body {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 32px 40px;
   position: relative;
@@ -4227,6 +4243,17 @@ ol.docs-list li::before {
 
 .action-btn:hover:not(:disabled) { color: var(--white); background: var(--hover); border-color: var(--text-faint); }
 .action-btn:disabled { opacity: 0.3; cursor: default; }
+.action-btn.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+}
+.action-btn.secondary:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--white);
+  box-shadow: 0 0 0 1px var(--white);
+}
 .action-btn.danger { color: var(--danger); border-color: var(--danger-bg); }
 .action-btn.danger:hover { color: var(--danger); background: var(--danger-bg); border-color: var(--danger); }
 /* White resting, matching yo-web's marketing CTA — the accent→pink
@@ -5674,6 +5701,7 @@ select.settings-input {
 
 .theme-picker {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 8px;
 }
@@ -9314,13 +9342,13 @@ select.settings-input {
    The Settings page also drops the right page padding — its inner
    .settings-panels has its own 28px right gutter, so the page reads as
    filled-but-padded. */
-#help-content:has(.help-section[data-section="docs"].active),
-#help-content:has(.help-section[data-section="settings"].active) {
+#page-body:has(.help-section[data-section="docs"].active),
+#page-body:has(.help-section[data-section="settings"].active) {
   padding-right: 0;
 }
 
 /* Settings sits tighter into the corner — trim the page's 32/40px gutters. */
-#help-content:has(.help-section[data-section="settings"].active) {
+#page-body:has(.help-section[data-section="settings"].active) {
   padding-top: 12px;
   padding-left: 16px;
 }
@@ -11135,3 +11163,1036 @@ select:focus {
   font-size: 10px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
   color: #4ade80; background: rgba(74, 222, 128, .12); vertical-align: middle;
 }
+
+/* ── Code — the William agent surface (chats | agent | workbench) ───────── */
+/* Full-bleed inside #help-content when active (other sections keep padding). */
+#page-body:has(.help-section[data-section="code"].active) {
+  padding: 0;
+  overflow: hidden;
+}
+.help-section[data-section="code"].active {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+.code-root { display: flex; flex: 1; min-width: 0; min-height: 0; width: 100%; }
+
+/* App rail — the persistent left rail (Home|Code, sessions, nav, user) */
+#app-rail {
+  width: 232px;
+  min-width: 232px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  overflow: hidden;
+  transition: width 0.16s ease, min-width 0.16s ease;
+}
+#app-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
+.code-new-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 10px 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+.code-new-session:hover { border-color: var(--accent); color: var(--text-bright); }
+.code-rail-label {
+  padding: 12px 14px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.code-history { flex: 0 1 170px; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
+#recent-apps-list { flex: 1; min-height: 96px; }
+.code-history-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 3px 3px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+  min-height: 24px;
+}
+/* Agent-loop status — faint dot per session, strobing green while working. */
+.code-chat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 2px;
+  background: var(--text-faint);
+  opacity: 0.35;
+}
+.code-chat-dot.working {
+  background: #34d399;
+  animation: gs-dot-strobe 1.5s ease-in-out infinite;
+}
+@keyframes gs-dot-strobe {
+  0%, 100% { opacity: 0.25; box-shadow: 0 0 2px rgba(52, 211, 153, 0.2); }
+  50% { opacity: 0.95; box-shadow: 0 0 7px rgba(52, 211, 153, 0.6); }
+}
+.code-history-item:hover { background: var(--hover); color: var(--text-2); }
+.code-history-item.active { background: var(--rail-active-bg); color: var(--white); }
+.code-history-title { flex: 1; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-chat-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+  opacity: 0;
+}
+.code-history-item:hover .code-chat-menu-btn,
+.code-history-item.active .code-chat-menu-btn { opacity: 1; }
+.code-chat-menu-btn:hover { color: var(--text); background: var(--hover); }
+
+/* Center — agent */
+.code-agent { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+.code-agent-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+.code-agent-head button,
+.code-agent-head .code-wd-btn { -webkit-app-region: no-drag; }
+/* Rail collapsed → the fixed chrome cluster floats over the page; shove the
+   header content right so they don't overlap. */
+body.rail-collapsed .code-agent-head { margin-left: 200px; }
+.code-spacer { flex: 1; }
+.code-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.code-icon-btn:hover { background: var(--hover); color: var(--text); }
+.code-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 44px;
+}
+.code-thread-inner {
+  width: 100%;
+  max-width: 780px;
+  min-height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.code-msg {
+  max-width: 720px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.code-msg.user { align-self: flex-end; background: var(--active-bg); border: 1px solid var(--border); color: var(--text); }
+.code-msg.assistant { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+.code-composer {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 4px 44px 18px;
+  box-sizing: border-box;
+}
+.code-input-wrap { position: relative; display: flex; }
+.code-input {
+  flex: 1;
+  resize: none;
+  min-height: 40px;
+  max-height: 220px;
+  padding: 10px 44px 10px 14px;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
+  outline: none;
+}
+.code-input:focus { border-color: var(--accent); }
+
+/* Right — the workbench rails (ported old-workbench engine). The aside sizes
+   to its rails; each rail carries its own width (drag its right edge). */
+.code-workbench {
+  flex: 0 0 auto;
+  display: flex;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.code-workbench.collapsed { display: none; }
+.code-workbench .ws-right-rails { height: 100%; }
+
+/* Shared empty state */
+.code-empty {
+  margin: auto;
+  padding: 24px;
+  max-width: 420px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* In-input send — return icon normally, stop icon while thinking. */
+.code-send {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+}
+.code-send:hover { color: var(--accent); background: var(--hover); }
+.code-send .icon-stop { display: none; }
+.code-send.thinking .icon-return { display: none; }
+.code-send.thinking .icon-stop { display: block; }
+
+/* Drag splitters between the rails and the agent column. */
+.code-splitter {
+  flex: 0 0 4px;
+  width: 4px;
+  margin: 0 -2px;
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+  background: transparent;
+}
+.code-splitter:hover { background: var(--border-2); }
+#app-rail.collapsed + .code-splitter { display: none; }
+body.code-dragging { cursor: col-resize; user-select: none; }
+body.code-dragging #app-rail { transition: none; }
+
+/* Session row menu (⋯ → Delete) */
+.code-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 120px;
+  padding: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.code-menu-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.code-menu-item:hover { background: var(--hover); }
+.code-menu-item.danger { color: #e5484d; }
+.code-menu-item.danger:hover { background: rgba(229, 72, 77, 0.1); }
+
+/* Workdir controls (old workbench header, adapted) */
+.code-wd-btn,
+.code-wd-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.code-wd-btn:hover { background: var(--hover); color: var(--text); }
+.code-wd-btn svg,
+.code-wd-branch svg { width: 13px; height: 13px; flex-shrink: 0; }
+.code-wd-btn span,
+.code-wd-branch span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.code-wd-branch { color: var(--text-3); font-family: var(--font-mono); font-size: 12px; cursor: default; }
+
+/* Workbench view toggles (old wb-section-toggles, adapted) */
+.code-view-toggles { display: flex; align-items: center; gap: 2px; }
+.code-view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+}
+.code-view-btn:hover { background: var(--hover); color: var(--text); }
+.code-view-btn.active { color: var(--white); }
+.code-view-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+
+/* Maximize floods the section: the agent column collapses, rails take the width. */
+body.wb-max .code-agent,
+body.wb-max .code-wb-edge { display: none; }
+body.wb-max .code-workbench { flex: 1; }
+body.wb-max .ws-right-rails { width: 100%; }
+
+/* Whole-workbench edge drag handle — absolutely positioned over the aside's
+   left border so it adds no layout width (the border IS the divider). */
+.code-workbench { position: relative; }
+.code-wb-edge {
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  z-index: 5;
+  cursor: col-resize;
+  background: transparent;
+}
+.code-wb-edge:hover,
+.code-wb-edge.dragging { background: var(--border-2); }
+
+/* App rail — Home|Code switcher */
+.app-rail-switch {
+  display: flex;
+  gap: 4px;
+  margin: 12px 10px 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-3);
+}
+.app-rail-switch-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app-rail-switch-btn svg { width: 13px; height: 13px; }
+.app-rail-switch-btn:hover { color: var(--text); }
+.app-rail-switch-btn.active {
+  background: var(--rail-active-bg);
+  color: var(--text-bright);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+}
+
+/* App rail — section nav */
+.app-rail-nav { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 0; }
+.app-rail-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.app-rail-nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+.app-rail-nav-item:hover { background: var(--hover); color: var(--text); }
+.app-rail-nav-item.active { background: var(--rail-active-bg); color: var(--white); }
+
+/* App rail — user area (bottom) */
+.app-rail-user {
+  margin-top: auto;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+.app-rail-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.app-rail-user-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.app-rail-user-btn:hover { background: var(--hover); color: var(--text); }
+.app-rail-user-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* User dropdown (opens upward; reuses .code-menu) */
+.app-rail-user-menu { min-width: 168px; }
+.app-rail-user-menu .code-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.app-rail-user-menu .code-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* Full-bleed chrome — the home panel covers the titlebar strip. */
+#panel-wc {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 14px;
+  z-index: 300;
+}
+#panel-wc,
+#panel-wc * { -webkit-app-region: no-drag; }
+#panel-wc .app-rail-mark { width: 20px; height: 20px; margin-left: 14px; }
+#panel-wc .code-icon-btn { width: 26px; height: 26px; }
+.app-rail-top {
+  flex: 0 0 38px;
+  height: 38px;
+  /* Drag surface for the gap right of the chrome cluster — starts past the
+     cluster so the fixed overlay never sits on a drag region (that overlap
+     is what used to eat clicks). */
+  margin-left: 176px;
+  -webkit-app-region: drag;
+}
+.app-rail-mark { width: 16px; height: 16px; opacity: 0.9; }
+
+/* Recents vertical resize + Recent apps search */
+.recents-vsplit {
+  flex: 0 0 4px;
+  margin: 1px 8px;
+  border-radius: 2px;
+  cursor: row-resize;
+  background: var(--text-faint);
+  opacity: 0.7;
+}
+.recents-vsplit:hover { background: var(--accent); opacity: 1; }
+body.code-vdragging { cursor: row-resize; user-select: none; }
+.app-rail-search { padding: 0 10px 6px; }
+.app-rail-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+.app-rail-search input:focus { border-color: var(--accent); }
+
+/* While the full-bleed home panel is active, the base titlebar's OS drag
+   claim (which bleeds through BrowserViews across the WHOLE top band) shrinks
+   to a 6px sliver at the very top edge — window drag survives, and every
+   control in the panel's top strip (chrome cluster, workdir, view toggles)
+   gets its clicks back. */
+body.fullbleed-active #titlebar > * { display: none; }
+body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
+
+/* Ghost empty state — Glyphh mark + rotating Lovelace-spirited quotes. */
+.code-ghost {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+}
+.code-ghost-mark {
+  width: 96px;
+  height: 96px;
+  opacity: 0.10;
+  filter: grayscale(1);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.code-ghost-quote {
+  max-width: 440px;
+  text-align: center;
+  color: var(--white);
+  opacity: 0.8;
+  font-size: 13.5px;
+  line-height: 1.65;
+  transition: opacity 0.5s ease;
+}
+
+/* Recents disclosure */
+.code-rail-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+.code-rail-disclosure .disc-chevron {
+  width: 11px;
+  height: 11px;
+  transition: transform 0.15s ease;
+}
+.code-rail-disclosure.closed .disc-chevron { transform: rotate(-90deg); }
+
+/* Apps grid (rail) — Apps-page icons in tiles */
+.app-rail-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 10px 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 6px;
+  align-content: start;
+}
+.app-rail-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 2px 6px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.app-rail-tile:hover { background: var(--hover); color: var(--text); }
+.app-rail-tile .tile-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+}
+.app-rail-tile .tile-icon img { width: 100%; height: 100%; object-fit: cover; }
+.app-rail-tile .tile-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.app-rail-tile .tile-name {
+  max-width: 100%;
+  font-size: 10.5px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Layout tiles — mini 2x2 stack of the layout's app icons. */
+.app-rail-tile .tile-icon.tile-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  padding: 2px;
+  box-sizing: border-box;
+}
+.tile-layout .mini {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-2);
+  min-width: 0;
+  min-height: 0;
+}
+.tile-layout .mini img { width: 100%; height: 100%; object-fit: cover; }
+.tile-layout .tile-mini-initial { font-size: 8px; font-weight: 600; color: var(--text-3); }
+
+/* Slim the leading drop strip inside the rails (between-rail strips keep
+   their drop-target width). */
+#code-wb-rails > .ws-rail-dropstrip:first-child { width: 2px; flex-basis: 2px; }
+
+/* Section labels + pagers inside the rail grid (palette parity) */
+.rail-grid-label {
+  grid-column: 1 / -1;
+  padding: 10px 2px 2px;
+}
+.rail-grid-pager { grid-column: 1 / -1; padding: 2px 0 4px; }
+.rail-grid-pager .pagination-nav { justify-content: center; }
+
+/* Apps label row — open icon on the far right */
+.app-rail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rail-label-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+}
+.rail-label-btn svg { width: 12px; height: 12px; }
+.rail-label-btn:hover { background: var(--hover); color: var(--text); }
+.app-rail-tile--os { opacity: 0.78; }
+.app-rail-tile--os:hover { opacity: 1; }
+
+/* Screen layout picker (Settings → Appearance) */
+.layout-mode-picker { display: flex; gap: 6px; }
+.layout-mode-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.layout-mode-btn:hover { color: var(--text); border-color: var(--border-3); }
+.layout-mode-btn.active {
+  background: rgba(140, 59, 242, 0.14);
+  color: var(--text-bright);
+  border-color: var(--accent);
+}
+
+/* Screen-layout split preview — mini screen mockup under the mode picker. */
+.sl-preview {
+  margin-top: 12px;
+  width: 320px;
+  max-width: 100%;
+  height: 180px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--border);
+  overflow: hidden;
+}
+.sl-preview .sl-glyphh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  border-radius: 7px;
+  flex: 0 0 50%;
+  min-width: 0;
+  min-height: 0;
+}
+.sl-preview .sl-glyphh img { width: 26px; height: 26px; opacity: 0.9; }
+.sl-preview .sl-workspace {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border-radius: 7px;
+  color: var(--text-3);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  min-width: 0;
+  min-height: 0;
+}
+/* Orientation per mode: the Glyphh side sits on its docked edge. */
+.sl-preview.sl-mode-left { flex-direction: row; }
+.sl-preview.sl-mode-right { flex-direction: row-reverse; }
+.sl-preview.sl-mode-top { flex-direction: column; }
+.sl-preview.sl-mode-bottom { flex-direction: column-reverse; }
+.sl-preview.sl-mode-full { flex-direction: row; }
+.sl-preview.sl-mode-full .sl-workspace { display: none; }
+.sl-preview.sl-mode-full .sl-glyphh { flex: 1 1 100%; }
+
+/* Collapse-to-rail toggle — accent when the window is railed. */
+#workspace-collapse-toggle.active { color: var(--accent); }
+
+/* ── Glyphh spinner — tumbling wireframe cube + typed working phrase ────── */
+.glyphh-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  /* The cube + particles draw with this color — white on dark themes,
+     near-black on light. Override to retheme the cube. */
+  color: var(--text-bright);
+}
+.gs-cube { display: block; flex-shrink: 0; }
+.gs-phrase {
+  font-size: 12.5px;
+  color: var(--text-2);
+  min-width: 180px;
+  min-height: 1em;
+}
+.gs-meta {
+  font-size: 12.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.gs-phrase.typing::after {
+  content: "\258d";
+  margin-left: 1px;
+  color: var(--accent);
+  animation: gs-caret 0.7s step-end infinite;
+}
+@keyframes gs-caret { 50% { opacity: 0; } }
+
+/* Spinner row in the Code thread — no bubble chrome, just the spinner. */
+.code-msg.code-working {
+  background: none;
+  border: none;
+  padding: 2px 0;
+}
+
+/* ── Composer bar — permission mode + effort chips ──────────────────────── */
+.code-composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  padding: 0 4px;
+}
+.code-chipwrap { position: relative; }
+.code-bar-right { display: flex; align-items: center; gap: 10px; }
+
+/* Compaction meter — fills toward the fold tick (compaction point). */
+.code-ctx-meter {
+  position: relative;
+  width: 52px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: visible;
+}
+.code-ctx-meter .ctx-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  border-radius: 3px;
+  background: var(--text-3);
+  transition: width 0.4s ease;
+}
+.code-ctx-meter .ctx-fill.hot { background: var(--accent); box-shadow: 0 0 6px rgba(140, 59, 242, 0.5); }
+.code-ctx-meter .ctx-tick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 60%;
+  width: 1.5px;
+  background: var(--text-faint);
+}
+
+/* Drop-UP panels anchored to the chips */
+.code-drop-up {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 190px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  padding: 5px;
+  z-index: 60;
+}
+.code-drop-up.hidden { display: none; }
+#code-effort-wrap .code-drop-up { left: auto; right: 0; }
+.code-drop-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+}
+.code-drop-item:hover { background: var(--hover); color: var(--text); }
+.code-drop-item.selected { color: var(--text); }
+.code-drop-item .drop-check { color: var(--white); flex-shrink: 0; }
+
+/* Effort drop-up — labels over a 4-stop slider */
+.code-effort-pop { min-width: 236px; padding: 12px 14px 13px; }
+.effort-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.effort-label.active { color: var(--white); }
+.effort-label.sf { color: var(--accent); }
+.effort-label.sf.active { color: var(--white); text-shadow: 0 0 8px rgba(140, 59, 242, 0.7); }
+.effort-track { position: relative; height: 26px; color: var(--text-bright); }
+#effort-matrix {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  background: rgba(140, 59, 242, 0.07);
+  opacity: 0;
+  pointer-events: none;
+}
+.code-effort-pop.superfly #effort-matrix { opacity: 1; }
+.effort-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  -webkit-appearance: none;
+  background: none;
+  cursor: pointer;
+}
+.effort-track input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  margin-top: 11px;
+  border-radius: 2px;
+  background: var(--border-2);
+}
+.effort-track input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--text-bright);
+  border: 2px solid var(--accent);
+}
+/* Superfly: the matrix IS the control — the slider stays draggable but
+   disappears (drag left to come back down). */
+.code-effort-pop.superfly input[type="range"] { opacity: 0; }
+
+/* Superfly chip — purple heat */
+.code-chip.effort-superfly {
+  color: var(--white);
+  border-color: rgba(140, 59, 242, 0.65);
+  box-shadow: 0 0 9px rgba(140, 59, 242, 0.35);
+}
+.code-chip {
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2.5px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.code-chip:hover { color: var(--text); border-color: var(--border-3); }
+.code-chip.mode-plan { color: #4fc3f7; border-color: rgba(79, 195, 247, 0.4); }
+.code-chip.mode-acceptEdits { color: #34d399; border-color: rgba(52, 211, 153, 0.4); }
+.code-chip.mode-auto { color: #ffbd2e; border-color: rgba(255, 189, 46, 0.4); }
+.code-chip.mode-bypass { color: #ff5f56; border-color: rgba(255, 95, 86, 0.45); }
+
+/* Inline approval card (ask flow) */
+.code-approval {
+  align-self: flex-start;
+  max-width: 720px;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+}
+.code-approval-kind {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 3px;
+}
+.code-approval-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.code-approval-detail {
+  margin: 0 0 10px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 7px 9px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 130px;
+  overflow-y: auto;
+}
+.code-approval-actions { display: flex; gap: 8px; justify-content: space-between; }
+
+/* Prompt modal textarea (skill-ask-user — restored for compact/steer) */
+#skill-ask-user-answer {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 10px 0 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+#skill-ask-user-answer:focus { border-color: var(--accent); }
+
+/* Meter is clickable (compact now) + pulses while folding */
+.code-ctx-meter { cursor: pointer; }
+.code-ctx-meter.compacting .ctx-fill {
+  background: var(--accent);
+  animation: ctx-compacting 1s ease-in-out infinite;
+}
+@keyframes ctx-compacting { 50% { opacity: 0.35; } }
+
+/* Agent-loop breadcrumbs — compact chrome-free tool rows in the thread */
+.code-tool-line {
+  align-self: flex-start;
+  max-width: 720px;
+  font-size: 11.5px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  color: var(--text-3);
+  padding: 1px 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Ada search fallback rows (rail + palette) */
+.ada-hit {
+  display: block;
+  width: 100%;
+  grid-column: 1 / -1;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+  padding: 6px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ada-hit:hover { color: var(--text); border-color: var(--border-3); background: var(--hover); }
+
+/* Collapsed tool-run groups — quiet summary, click to inspect */
+.code-tool-group {
+  align-self: flex-start;
+  max-width: 720px;
+  width: 100%;
+}
+.code-tool-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.code-tool-summary:hover { color: var(--text-2); background: var(--hover); }
+.code-tool-summary .tg-chev { transition: transform 0.15s ease; }
+.code-tool-summary.open .tg-chev { transform: rotate(90deg); }
+.code-tool-group .code-tool-line { padding-left: 14px; margin-top: 2px; }
+
+/* Plan rail — William run timeline strip */
+.ws-plan-timeline {
+  border-bottom: 1px solid var(--ws-line, var(--border));
+  padding: 8px 12px;
+  max-height: 180px;
+  display: flex;
+  flex-direction: column;
+}
+.ws-plan-timeline.hidden { display: none; }
+.ws-plan-timeline-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  margin-bottom: 5px;
+}
+.ws-plan-timeline.running .ws-plan-timeline-title { color: var(--accent); }
+.ws-plan-timeline-rows { overflow-y: auto; min-height: 0; }
+.ws-plan-timeline-row {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ws-plan-timeline-row.failed { color: var(--text-3); }

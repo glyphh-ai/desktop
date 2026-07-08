@@ -7,12 +7,14 @@
   <link rel="icon" href="brand/glyphh-mark.png">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="monaco/editor/editor.main.css">
+  <!-- xterm — the Code workbench's Terminal slots -->
+  <link rel="stylesheet" href="xterm.css">
   <style>
     html, body { margin:0; padding:0; height:100%; overflow:hidden; background: var(--bg); }
     #home-root { position: absolute; inset: 0; overflow: hidden; }
     /* Force overlay to fill the page and override any .hidden from help.ts */
     #help-overlay { position: absolute !important; inset: 0 !important; display: block !important; background: var(--bg); }
-    #help-layout { position: absolute; inset: 0; }
+    #help-layout { position: absolute; inset: 0; display: flex; }
     /* The nav lives in the app's left rail now — keep it in the DOM (its
        buttons still drive section switching) but hide the sidebar. */
     #help-nav { display: none !important; }
@@ -32,6 +34,25 @@
 </head>
 <body>
   <div id="home-root">
+    <!-- Rail-top chrome cluster — traffic lights | mark | rail toggle |
+         command. Fixed top-left (survives the rail collapsing) and every
+         child explicitly no-drag so the strip's drag region can't swallow
+         clicks. -->
+    <div id="panel-wc">
+      <button id="panel-btn-close" class="wc wc-close"></button>
+      <button id="panel-btn-minimize" class="wc wc-minimize"></button>
+      <button id="panel-btn-maximize" class="wc wc-maximize"></button>
+      <img class="app-rail-mark" src="brand/glyphh-mark.png" alt="Glyphh" />
+      <button id="code-rail-toggle" class="code-icon-btn" title="Toggle rail">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+      </button>
+      <button id="workspace-collapse-toggle" class="code-icon-btn" title="Collapse to rail">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><polyline points="16 9 13 12 16 15"/></svg>
+      </button>
+      <button id="page-command-center" class="code-icon-btn" title="Command (⌘⇧Space)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </button>
+    </div>
     <div id="help-overlay">
     <div id="help-layout">
       <nav id="help-nav">
@@ -58,6 +79,7 @@
         <button class="help-nav-item" data-section="agents">Agents</button>
         <button class="help-nav-item" data-section="layouts">Layouts</button>
         <button class="help-nav-item" data-section="drips">Drips</button>
+        <button class="help-nav-item" data-section="code">Code</button>
         <!-- Skills export lives on Settings › MCP now -->
         <!-- MCP merged into Apps -->
         <div class="help-nav-group">
@@ -81,7 +103,68 @@
           </button>
         </div>
       </nav>
+
+      <!-- App rail — the persistent left rail of the Code-primary surface:
+           Home|Code switcher, sessions, section nav, and the user area.
+           Hidden when the panel is locked to a single section (?section=). -->
+      <aside id="app-rail">
+        <!-- Drag strip under the fixed chrome cluster. -->
+        <div class="app-rail-top"></div>
+        <div class="app-rail-switch">
+          <button id="app-rail-home" class="app-rail-switch-btn" data-target="dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span>Home</span>
+          </button>
+          <button id="app-rail-code" class="app-rail-switch-btn" data-target="code">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>Code</span>
+          </button>
+        </div>
+        <button id="code-new-chat" class="code-new-session" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>New session</span>
+        </button>
+        <nav class="app-rail-nav">
+          <button class="app-rail-nav-item" data-section="connections">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span>Connections</span>
+          </button>
+          <button class="app-rail-nav-item" data-section="layouts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="12" y2="12"/></svg>
+            <span>Layouts</span>
+          </button>
+          <button class="app-rail-nav-item" data-section="drips">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+            <span>Drips</span>
+          </button>
+        </nav>
+        <button id="recents-toggle" class="code-rail-label code-rail-disclosure" type="button">
+          <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <span>Recents</span>
+        </button>
+        <div id="code-history" class="code-history"></div>
+        <div id="recents-vsplit" class="recents-vsplit" title="Drag to resize"></div>
+        <div class="code-rail-label app-rail-label-row">
+          <span>Apps</span>
+          <button id="apps-open-btn" class="rail-label-btn" title="Open Apps page" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+        <div class="app-rail-search">
+          <input id="recent-apps-search" class="rail-recents-search" type="text" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
+        </div>
+        <div id="recent-apps-list" class="app-rail-grid"></div>
+        <div class="app-rail-user">
+          <button id="app-rail-user-btn" class="app-rail-user-btn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span id="app-rail-user-name">Account</span>
+          </button>
+        </div>
+      </aside>
+      <div id="code-rail-splitter" class="code-splitter" title="Drag to resize"></div>
+
       <main id="help-content">
+        <div id="page-body">
 
         <!-- Dashboard / Home — the landing section (welcome, credits, spend,
              apps deployed, usage chart). -->
@@ -98,7 +181,6 @@
 
         <!-- About — top-level dashboard tab (app version + updates). No policy
              copy here by design; wired by docs.ts loadAbout(). -->
-        <!--#include sections/about.html -->
 
         <!-- MCP section removed — merged into Apps tabs -->
 
@@ -107,6 +189,9 @@
 
         <!-- Drips -->
         <!--#include sections/drips.html -->
+
+        <!-- Code — the William agent surface (chats | agent | workbench) -->
+        <!--#include sections/code.html -->
 
         <!-- Apps -->
         <!--#include sections/apps.html -->
@@ -118,16 +203,27 @@
         <!--#include sections/settings.html -->
 
         <!-- Confirm modal -->
+        <div id="skill-ask-user-modal" class="confirm-overlay hidden">
+          <div class="confirm-box">
+            <p id="skill-ask-user-question"></p>
+            <textarea id="skill-ask-user-answer" rows="3" spellcheck="false"></textarea>
+            <div class="confirm-actions">
+              <button id="skill-ask-user-cancel" class="action-btn secondary">Cancel</button>
+              <button id="skill-ask-user-submit" class="action-btn primary">OK</button>
+            </div>
+          </div>
+        </div>
         <div id="confirm-modal" class="confirm-overlay hidden">
           <div class="confirm-box">
             <p id="confirm-message"></p>
             <div class="confirm-actions">
-              <button id="confirm-yes" class="action-btn danger">Delete</button>
-              <button id="confirm-no" class="action-btn">Cancel</button>
+              <button id="confirm-no" class="action-btn secondary">Cancel</button>
+              <button id="confirm-yes" class="action-btn primary">Delete</button>
             </div>
           </div>
         </div>
 
+        </div><!-- /#page-body -->
       </main>
     </div>
     </div>
@@ -143,6 +239,8 @@
   </div>
   <!-- Chart.js (auto build) → window.Chart, used by the Home dashboard chart. -->
   <script src="app-libs/chart.js"></script>
+  <!-- Code workbench engine (esbuild bundle: xterm + rails) → window.__initCodeWorkbench -->
+  <script src="code-workbench-bundle.js"></script>
   <script type="module" src="home.js"></script>
 </body>
 </html>

@@ -75,7 +75,7 @@ export function clearInvalid(el: HTMLElement) {
 }
 
 /** Simple prompt modal (Electron BrowserViews don't support window.prompt). */
-export function promptAction(message: string, defaultValue = "", placeholder = ""): Promise<string | null> {
+export function promptAction(message: string, defaultValue = "", placeholder = "", confirmLabel = "OK"): Promise<string | null> {
   return new Promise((resolve) => {
     const overlay = document.getElementById("skill-ask-user-modal");
     const qEl = document.getElementById("skill-ask-user-question");
@@ -87,6 +87,7 @@ export function promptAction(message: string, defaultValue = "", placeholder = "
       return;
     }
     qEl.textContent = message;
+    submitBtn.textContent = confirmLabel;
     ansEl.value = defaultValue;
     ansEl.placeholder = placeholder;
     overlay.classList.remove("hidden");

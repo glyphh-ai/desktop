@@ -17,7 +17,7 @@ import fs from "fs/promises";
 import { watch, statSync, type FSWatcher } from "fs";
 import path from "path";
 import os from "os";
-import { getPreference, setPreference } from "./preferences";
+import { getPreference, setPreference } from "./stores/preferences-db";
 
 const execFileP = promisify(execFile);
 
@@ -309,11 +309,66 @@ export function registerWorkingDirectoryIpc(deps: {
 
   // Read a file's text contents. Cap to ~1MB to avoid blowing up the renderer
   // on accidental clicks into a giant binary.
+  ipcMain.handle("files:read-file", async (_e, filePath: string) => {
+    if (typeof filePath !== "string" || !filePath) return { content: "", error: "missing path" };
+    try {
+      const stat = await fs.stat(filePath);
+      if (stat.size > 1_000_000) {
+        return { content: "", error: `file too large (${(stat.size / 1024 / 1024).toFixed(1)}MB)` };
+      }
+      const content = await fs.readFile(filePath, "utf8");
+      return { content };
+    } catch (err) {
+      return { content: "", error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // Write a text file, creating parent directories as needed. Used by the
-  // Plan app to persist phase .md files into <cwd>/.yo/plan/.
+  // Code workbench's Plan slot to persist <cwd>/.yo/plan.md.
+  ipcMain.handle("files:write-file", async (_e, filePath: string, content: string) => {
+    if (typeof filePath !== "string" || !filePath) return { ok: false, error: "missing path" };
+    try {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, typeof content === "string" ? content : "", "utf8");
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // Unified git diff of the working tree (staged + unstaged combined). The
-  // Workbench Diff slot renders this; returns "" when the tree is clean.
+  // workbench Diff slot renders this; returns "" when the tree is clean.
   // Probes the dir first so a non-repo cwd gets a clean "not a git repo"
   // message instead of the noisy `git diff --no-index` usage dump that git
   // emits when the path isn't inside a work tree.
+  ipcMain.handle("files:git-diff", async (_e, root: string) => {
+    if (typeof root !== "string" || !root) return { text: "", error: "missing root" };
+    try {
+      const probe = await execFileP("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root });
+      if (probe.stdout.trim() !== "true") return { text: "", error: "not a git repo" };
+    } catch {
+      return { text: "", error: "not a git repo" };
+    }
+    try {
+      const { stdout } = await execFileP("git", ["diff", "HEAD"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
+      return { text: stdout };
+    } catch (err) {
+      // Initial commit (no HEAD) is a normal state — show staged + unstaged.
+      const msg = err instanceof Error
+        ? (err as Error & { stderr?: string }).stderr || err.message
+        : String(err);
+      if (/unknown revision|ambiguous argument 'HEAD'|bad revision/i.test(msg)) {
+        try {
+          const { stdout } = await execFileP("git", ["diff"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
+          return { text: stdout };
+        } catch (err2) {
+          const msg2 = err2 instanceof Error
+            ? (err2 as Error & { stderr?: string }).stderr || err2.message
+            : String(err2);
+          return { text: "", error: msg2.split("\n")[0] || "git error" };
+        }
+      }
+      return { text: "", error: msg.split("\n")[0] || "git error" };
+    }
+  });
 }

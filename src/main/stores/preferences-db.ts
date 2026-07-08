@@ -1,8 +1,12 @@
 /**
  * PreferencesDb — SQLite-backed key-value store for user preferences.
  *
- * Drop-in replacement for the file-based preferences.ts.
- * Same public API shape, backed by the local-db singleton.
+ * The only preferences store: every main-process module and the renderer
+ * (via settings-ipc) read and write through here. The legacy JSON store
+ * (~/.glyphh/.preferences) is retired — migrate-from-files.ts copies it
+ * into the preferences table once and the file is never touched again.
+ *
+ * Backed by the local-db singleton; callers run after initLocalDb().
  */
 
 import { getLocalDb } from "../local-db";

@@ -9,6 +9,7 @@
  */
 
 import { screen, app as electronApp } from "electron";
+import { workspaceArea } from "./screen-layout.js";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { cachedServerGet } from "./server-cache.js";
@@ -16,12 +17,12 @@ import {
   openAppWindowAt, openAppWindowSlide, focusAppWindow, closeAppWindow, listAppWindows,
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
 } from "./app-window-manager.js";
-import { launchNativeApp, launchWebApp, type LaunchResult } from "./native-launch.js";
+import { launchNativeApp, launchWebApp, focusExistingBrowserTab, type LaunchResult } from "./native-launch.js";
 import { resolveBrowser, type InstalledBrowser } from "./browser-detect.js";
 import { getPreference } from "./stores/preferences-db.js";
 import {
   positionAppWindow, focusWindow, setWindowBounds, listWindows, minimizeWindow,
-  snapshotWindowIds, waitForAppWindow,
+  snapshotWindowIds, waitForAppWindow, frontWindow,
   type Rect as OsRect,
 } from "./os-window-manager.js";
 import { normKey, isSubsequence } from "./installed-apps.js";
@@ -92,6 +93,21 @@ export interface ServerApp {
 // a browser is just another binary whose new window we adopt and drive.
 const nativeAppWindows = new Map<string, { winId: string; slug: string; name: string }>();
 
+// The most recent workspace placement — a single app or a tiled layout.
+// retileWorkspace() re-runs it so open windows SLIDE to the current
+// workspace when Glyphh collapses/expands or the dock changes (openAppByRef
+// and openLayoutByName are idempotent: already-open windows are focused and
+// re-placed, not relaunched).
+let lastPlacement: { kind: "app"; ref: string } | { kind: "layout"; name: string } | null = null;
+
+export async function retileWorkspace(): Promise<void> {
+  if (!lastPlacement) return;
+  try {
+    if (lastPlacement.kind === "layout") await openLayoutByName(lastPlacement.name);
+    else await openAppByRef(lastPlacement.ref);
+  } catch { /* windows may have been closed since — nothing to slide */ }
+}
+
 // Launch+adopt chains, one per binary. Two same-binary launches in quick
 // succession (a layout with both Terminal configs) must not race: the second
 // snapshot has to include the window the first launch created, or both
@@ -118,7 +134,15 @@ async function openNativeTracked(
   // browser launch, alwaysNewWindow = the launch always creates a window, so
   // adoption must never fall back to an existing one. Default = the
   // native-executable launch.
-  launch?: { hint: string; run: () => LaunchResult; alwaysNewWindow?: boolean },
+  launch?: {
+    hint: string;
+    run: () => LaunchResult;
+    alwaysNewWindow?: boolean;
+    /** Pre-launch dedupe: focus an already-open tab/window holding this app.
+     *  null = nothing found (launch normally); { winId } = focused — stop,
+     *  and track/place the window when it could be identified. */
+    adoptExisting?: () => Promise<{ winId: string | null } | null>;
+  },
 ): Promise<void> {
   const hint = launch?.hint ?? ((app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name);
   wlog("openNativeTracked ENTER", { id: app.id, slug: app.slug, name: app.name, hint, exec: app.execPath, archetype: app.appArchetype, launchConfig: app.launchConfig, retileOnFocus, rect, map: trackedSnapshot() });
@@ -183,6 +207,44 @@ async function openNativeTracked(
     const ownedByOthers = new Set(
       [...nativeAppWindows.entries()].filter(([id]) => id !== app.id).map(([, t]) => t.winId),
     );
+    // The app's URL may already be open as a tab (user-opened, or from an
+    // untracked session) — focus it instead of stacking a duplicate.
+    if (launch?.adoptExisting) {
+      const hit = await launch.adoptExisting().catch(() => null);
+      if (hit) {
+        if (hit.winId && !ownedByOthers.has(hit.winId)) {
+          // Identified + unowned → it becomes this app's window.
+          launched();
+          nativeAppWindows.set(app.id, { winId: hit.winId, slug: app.slug, name: app.name });
+          if (retileOnFocus) await setWindowBounds(hit.winId, rect);
+          await focusWindow(hit.winId);
+          wlog("  DONE via existing-tab adopt", { id: app.id, winId: hit.winId });
+          return;
+        }
+        if (hit.winId) {
+          // Hosted in a window OWNED by another app config — don't re-track
+          // it, but the open still PLACES: the tab is focused, so position
+          // the hosting window into the target rect. (Real-world case: the
+          // user's "Chrome" library app owns the one big Chrome window that
+          // hosts every tab-mode app.)
+          launched();
+          if (retileOnFocus) await setWindowBounds(hit.winId, rect);
+          await focusWindow(hit.winId);
+          wlog("  DONE via existing-tab focus (owned by another config — placed, not re-tracked)", { id: app.id, winId: hit.winId });
+          return;
+        }
+        // Focused but the window couldn't be identified. A creating launch
+        // (alwaysNewWindow) must STOP here — falling through would open a
+        // duplicate. A no-op launch (tab mode) falls through so
+        // waitForAppWindow's fallback polling can adopt the hosting window.
+        if (launch.alwaysNewWindow) {
+          launched();
+          wlog("  DONE via existing-tab focus (window unidentified)", { id: app.id });
+          return;
+        }
+        wlog("  existing tab focused, window unidentified — adopting via wait", { id: app.id });
+      }
+    }
     const snap = await snapshotWindowIds(hint);
     const before = new Set([...snap, ...ownedByOthers]);
     wlog("  relaunch: snapshot", { id: app.id, hint, snapshot: [...snap], ownedByOthers: [...ownedByOthers] });
@@ -215,25 +277,72 @@ function webLaunchPlan(app: ServerApp): { browser: InstalledBrowser | null; open
   return { browser: resolveBrowser(configured), openAs };
 }
 
+/** Does this OS window belong to the given browser? (proc names differ in
+ *  casing/length between backends — match loosely, both directions). */
+function isBrowserWindow(w: { proc: string } | null, browser: InstalledBrowser): boolean {
+  if (!w) return false;
+  const fp = w.proc.toLowerCase();
+  const bp = browser.proc.toLowerCase();
+  return fp.includes(bp) || bp.includes(fp);
+}
+
 /**
- * Open a WEB app in its configured real browser. Window mode rides the same
- * tracked-open machinery as native apps — the browser is just another binary
- * whose new window we adopt, position, and re-focus on later opens. Tab mode
- * (or "System default" browser) is fire-and-forget: nothing to track.
+ * Open a WEB app in its configured real browser. ONE placement policy for
+ * both open-as modes — the config only decides what gets created:
+ *   window → a NEW browser window, adopted + placed;
+ *   tab    → a tab (reusing an existing one with the app's URL), and the
+ *            HOSTING browser window is adopted + placed.
+ * "System default" browser stays fire-and-forget — we can't know which app
+ * claimed the URL, so there's nothing to script or track.
  */
 async function openWebTracked(app: ServerApp, rect: OsRect, retileOnFocus: boolean): Promise<void> {
   const url = String(app.url || "");
   if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("app has no web URL");
   const { browser, openAs } = webLaunchPlan(app);
-  if (!browser || openAs === "tab") {
-    const r = launchWebApp(url, browser, openAs);
+  if (!browser) {
+    const r = launchWebApp(url, null, openAs);
     if (!r.ok) throw new Error(r.error || "failed to open in browser");
     return;
   }
+
+  if (openAs === "tab") {
+    // Ensure the tab exists + is frontmost BEFORE the tracked open: select an
+    // existing tab with this URL, else open a new one. This runs even when a
+    // hosting window is already tracked — focusing the window isn't enough,
+    // the right TAB has to come forward.
+    const focused = await focusExistingBrowserTab(url, browser);
+    if (!focused) {
+      const r = launchWebApp(url, browser, "tab");
+      if (!r.ok) throw new Error(r.error || "failed to open in browser");
+      await sleep(600); // let the browser attach the tab (or begin launching)
+    }
+    await openNativeTracked(app, rect, retileOnFocus, {
+      hint: browser.proc,
+      run: () => ({ ok: true }), // the tab was ensured above — nothing to spawn
+      adoptExisting: async () => {
+        // The hunt/open raised the hosting window — adopt whatever browser
+        // window is frontmost. If it can't be identified yet (browser still
+        // launching), fall through to waitForAppWindow's existing-window
+        // fallback, which polls for it.
+        const front = await frontWindow().catch(() => null);
+        return { winId: isBrowserWindow(front, browser) ? front!.id : null };
+      },
+    });
+    return;
+  }
+
   await openNativeTracked(app, rect, retileOnFocus, {
     hint: browser.proc,
     run: () => launchWebApp(url, browser, "window"),
     alwaysNewWindow: true,
+    adoptExisting: async () => {
+      if (!(await focusExistingBrowserTab(url, browser))) return null;
+      // The hunt raised the tab's window — identify it so it can be
+      // tracked and placed like a window we opened ourselves.
+      await sleep(250);
+      const front = await frontWindow().catch(() => null);
+      return { winId: isBrowserWindow(front, browser) ? front!.id : null };
+    },
   });
 }
 
@@ -283,9 +392,10 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
 
   const builtin = builtinSpec(key);
   if (builtin) {
+    wlog("openAppByRef builtin", { ref, slug: builtin.slug });
     if (builtin.url.startsWith("http")) {
       // Built-in "browser" → the user's real browser at their homepage.
-      const wa0 = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+      const wa0 = workspaceArea();
       await openWebTracked(
         { id: `builtin:${builtin.slug}`, slug: builtin.slug, name: builtin.name, url: builtin.url },
         { x: wa0.x, y: wa0.y, width: wa0.width, height: wa0.height }, true);
@@ -323,13 +433,15 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     // window of the shared binary happens to be first). retileOnFocus=true —
     // `.dip <app>` / a palette click always lands the app full-screen, the
     // same contract web apps get from openAppWindowSlide's reuse path.
-    const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    const wa = workspaceArea();
     await openNativeTracked(app, { x: wa.x, y: wa.y, width: wa.width, height: wa.height }, true);
+    lastPlacement = { kind: "app", ref };
     return { slug: app.slug, name: app.name };
   }
   // Web app → the user's real browser, per its config (browser + window/tab).
-  const wa2 = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const wa2 = workspaceArea();
   await openWebTracked(app, { x: wa2.x, y: wa2.y, width: wa2.width, height: wa2.height }, true);
+  lastPlacement = { kind: "app", ref };
   return { slug: app.slug, name: app.name };
 }
 
@@ -358,7 +470,7 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
   // Tile each cell as a real OS window. Web apps open as browser windows and
   // native apps launch their executables — both adopted + placed through the
   // OS window layer. Nothing renders inside the Glyphh client.
-  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const wa = workspaceArea();
   const colW = wa.width / layout.cols;
   const rowH = wa.height / layout.rows;
   const opened: string[] = [];
@@ -422,14 +534,16 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
       console.error(`[layout] "${app.name}" — not native and no web URL, skipped`);
       continue;
     }
-    // Web app → a tracked browser window tiled into the cell (tab-mode apps
-    // just open; a tab can't be positioned). Fire-and-forget like natives.
+    // Web app → tracked + tiled into the cell. Both open-as modes: window
+    // mode adopts its new browser window; tab mode opens/reuses the tab and
+    // tiles the HOSTING window. Fire-and-forget like natives.
     void openWebTracked(app, bounds, true).catch((err) =>
       console.error(`[layout] web "${app.name}" failed: ${err instanceof Error ? err.message : err}`));
     opened.push(app.slug);
   }
 
   if (opened.length === 0) throw new Error(`layout "${layout.name}" has no resolvable apps`);
+  lastPlacement = { kind: "layout", name };
   return { layout: layout.name, apps: opened };
 }
 

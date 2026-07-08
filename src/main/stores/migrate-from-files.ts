@@ -5,7 +5,18 @@
  *   ~/.glyphh/.layouts        → layouts table
  *   ~/.glyphh/.preferences    → preferences table
  *
- * Writes sentinel ~/.glyphh/.migrated-to-db on success so it only runs once.
+ * Two passes, each gated by its own sentinel so it runs once:
+ *
+ *   v1 (.migrated-to-db)    — full copy of both files at the SQLite cutover.
+ *   v2 (.migrated-to-db-v2) — re-copies the keys that stayed JSON-authoritative
+ *     after v1: working-directory, home-ipc, local-mcp-server, and mcp-manager
+ *     kept writing the legacy file store until they were repointed to
+ *     preferences-db, so for those keys the JSON file holds writes v1 never
+ *     saw. Keys whose writers were already on SQLite by then (theme, agentMode,
+ *     relayEnabled, and zoom/lastView via settings-ipc and main.ts) are
+ *     deliberately NOT re-copied — their JSON values are stale and copying
+ *     them would resurrect old state.
+ *
  * Does NOT delete old files.
  */
 
@@ -19,14 +30,37 @@ import { GLYPHH_DIR } from "../app-paths.js";
 const LAYOUTS_FILE = path.join(GLYPHH_DIR, ".layouts");
 const PREFS_FILE = path.join(GLYPHH_DIR, ".preferences");
 const SENTINEL = path.join(GLYPHH_DIR, ".migrated-to-db");
+const SENTINEL_V2 = path.join(GLYPHH_DIR, ".migrated-to-db-v2");
+
+/** Keys still being written to ~/.glyphh/.preferences after the v1 cutover. */
+const V2_STRANDED_KEYS = [
+  // working-directory.ts
+  "workingDirectory",
+  "workingDirDefault",
+  "workingDirRecents",
+  "recents",
+  // home-ipc.ts + local-mcp-server.ts
+  "localMcpEnabled",
+  "localMcpPort",
+  "localMcpTokens",
+  // mcp-manager.ts
+  "mcpServers",
+  "mcpToolOverrides",
+];
 
 /**
- * Run the one-time file-to-db migration. Safe to call on every boot —
- * returns immediately if already migrated.
+ * Run the one-time file-to-db migrations. Safe to call on every boot —
+ * each pass returns immediately once its sentinel exists.
  */
-export function migrateFromFiles(): { migrated: boolean; layouts: number; prefs: number } {
+export function migrateFromFiles(): { migrated: boolean; layouts: number; prefs: number; prefsV2: number } {
+  const v1 = migrateV1();
+  const v2 = migrateStrandedPrefs();
+  return { migrated: v1.ran || v2.ran, layouts: v1.layouts, prefs: v1.prefs, prefsV2: v2.prefs };
+}
+
+function migrateV1(): { ran: boolean; layouts: number; prefs: number } {
   if (fs.existsSync(SENTINEL)) {
-    return { migrated: false, layouts: 0, prefs: 0 };
+    return { ran: false, layouts: 0, prefs: 0 };
   }
 
   let layoutCount = 0;
@@ -104,5 +138,42 @@ export function migrateFromFiles(): { migrated: boolean; layouts: number; prefs:
     // Non-critical — migration will re-run next boot but that's safe (INSERT OR REPLACE)
   }
 
-  return { migrated: true, layouts: layoutCount, prefs: prefCount };
+  return { ran: true, layouts: layoutCount, prefs: prefCount };
+}
+
+function migrateStrandedPrefs(): { ran: boolean; prefs: number } {
+  if (fs.existsSync(SENTINEL_V2)) {
+    return { ran: false, prefs: 0 };
+  }
+
+  let prefCount = 0;
+
+  try {
+    if (fs.existsSync(PREFS_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(PREFS_FILE, "utf-8")) as Record<string, unknown>;
+      for (const key of V2_STRANDED_KEYS) {
+        if (!(key in raw)) continue;
+        try {
+          setPreference(key, raw[key]);
+          prefCount++;
+        } catch {
+          // Skip individual preference errors
+        }
+      }
+    }
+  } catch {
+    // .preferences doesn't exist or isn't readable — skip
+  }
+
+  try {
+    fs.mkdirSync(GLYPHH_DIR, { recursive: true });
+    fs.writeFileSync(SENTINEL_V2, JSON.stringify({
+      migratedAt: new Date().toISOString(),
+      preferences: prefCount,
+    }, null, 2), "utf-8");
+  } catch {
+    // Non-critical — migration will re-run next boot but that's safe (INSERT OR REPLACE)
+  }
+
+  return { ran: true, prefs: prefCount };
 }

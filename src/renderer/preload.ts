@@ -125,6 +125,12 @@ contextBridge.exposeInMainWorld("yo", {
   windowClose: () => ipcRenderer.send("window-close"),
   windowMinimize: () => ipcRenderer.send("window-minimize"),
   windowMaximize: () => ipcRenderer.send("window-maximize"),
+  // Screen layout (Settings → Appearance): dock mode + draggable fraction.
+  screenLayoutGet: () => ipcRenderer.invoke("screen-layout-get") as Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>,
+  screenLayoutSet: (v: { mode?: string; fraction?: number }) => ipcRenderer.invoke("screen-layout-set", v) as Promise<{ mode: string; fraction: number }>,
+  railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,
+  railCollapseToggle: () => ipcRenderer.invoke("rail-collapse-toggle") as Promise<boolean>,
+  railCollapseSet: (on: boolean) => ipcRenderer.invoke("rail-collapse-set", on) as Promise<boolean>,
 
   // Panel visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),
@@ -378,6 +384,45 @@ contextBridge.exposeInMainWorld("yo", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
+  williamRun: (p: { chatId: string }) =>
+    ipcRenderer.invoke("william-run", p) as Promise<{ runId: string }>,
+  williamSessionsLoad: () =>
+    ipcRenderer.invoke("william-sessions-load") as Promise<{ chats: unknown[]; currentId: string }>,
+  williamSessionsSave: (chats: unknown[], currentId: string) =>
+    ipcRenderer.invoke("william-sessions-save", { chats, currentId }) as Promise<boolean>,
+  williamRemember: (fact: string) => ipcRenderer.invoke("william-remember", fact) as Promise<boolean>,
+  williamCompact: (chatId: string, focus: string) =>
+    ipcRenderer.invoke("william-compact", { chatId, focus }) as Promise<{ ok: boolean; reason?: string }>,
+  adaRecall: (query: string, k?: number) =>
+    ipcRenderer.invoke("ada-recall", { query, k }) as Promise<Array<{ content: string; score: number }>>,
+  adaAsk: (op: unknown) => ipcRenderer.invoke("ada-ask", { op }) as Promise<{ ok: boolean; answer?: string; error?: string }>,
+  adaStats: () => ipcRenderer.invoke("ada-stats") as Promise<{ thoughts: number; slots: number; keys: number }>,
+  williamTrainingStats: () =>
+    ipcRenderer.invoke("william-training-stats") as Promise<{ files: number; bytes: number; dir: string; enabled: boolean }>,
+  williamContextUsage: (chatId: string) =>
+    ipcRenderer.invoke("william-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>,
+  williamStop: () => ipcRenderer.invoke("william-stop") as Promise<boolean>,
+  williamStatus: () => ipcRenderer.invoke("william-status") as Promise<{ up: boolean }>,
+  onWilliamDelta: (callback: (d: { runId: string; delta: string }) => void) => {
+    ipcRenderer.on("william:delta", (_event, d) => callback(d));
+  },
+  onWilliamDone: (callback: (d: { runId: string; stopped: boolean }) => void) => {
+    ipcRenderer.on("william:done", (_event, d) => callback(d));
+  },
+  onWilliamError: (callback: (d: { runId: string; error: string }) => void) => {
+    ipcRenderer.on("william:error", (_event, d) => callback(d));
+  },
+  onWilliamProgress: (callback: (d: { runId: string; tokens: number }) => void) => {
+    ipcRenderer.on("william:progress", (_event, d) => callback(d));
+  },
+  onWilliamTool: (callback: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => {
+    ipcRenderer.on("william:tool", (_event, d) => callback(d));
+  },
+  williamApprovalRespond: (id: string, allow: boolean) =>
+    ipcRenderer.invoke("william-approval-respond", { id, allow }) as Promise<boolean>,
+  onWilliamApproval: (callback: (d: { id: string; kind: string; title: string; detail: string }) => void) => {
+    ipcRenderer.on("william:approval", (_event, d) => callback(d));
+  },
   onThemeChanged: (callback: (theme: string) => void) => {
     ipcRenderer.on("theme-changed", (_event, theme) => callback(theme));
   },
@@ -489,6 +534,10 @@ contextBridge.exposeInMainWorld("yo", {
   filesRailGetWidth: () => ipcRenderer.invoke("files-rail-get-width") as Promise<number>,
 
   // Recents (rich: app/layout + folder pairs)
+  // Command-palette parity for the rail search — same global channels the
+  // command overlay uses (registered in command-window.ts).
+  commandOsApps: () => ipcRenderer.invoke("command:os-apps") as Promise<Array<{ proc: string; path: string }>>,
+  commandFocusApp: (proc: string) => ipcRenderer.invoke("command:focus-app", proc) as Promise<{ ok: boolean; error?: string }>,
   recentsList: () => ipcRenderer.invoke("recents:list") as Promise<Array<{
     kind: "app" | "layout"; id: string; name: string; folder: string; ts: number;
   }>>,
@@ -581,5 +630,50 @@ contextBridge.exposeInMainWorld("yo", {
   // Workspace / context panel
   onContextUpdate: (cb: (entry: {id: string; source: string; created: number; workspace?: string}) => void) => {
     ipcRenderer.on("context-update", (_e, entry) => cb(entry));
+  },
+});
+
+// ── Code workbench bridge (window.wb) ────────────────────────────────────
+// The same contract the old standalone workbench preload exposed: workdir +
+// git, the lazy file tree / file readers / diff, and the per-id terminal pty
+// bridge the Files / Diff / Terminal slots need. Consumed by
+// code-workbench-bundle.js inside the Code section.
+contextBridge.exposeInMainWorld("wb", {
+  getCwd: () => ipcRenderer.invoke("working-dir:get"),
+  pickCwd: () => ipcRenderer.invoke("working-dir:pick"),
+  setCwd: (dir: string) => ipcRenderer.invoke("working-dir:set", dir),
+  getCwdRecents: () => ipcRenderer.invoke("working-dir:recents"),
+  gitInfo: (root: string) => ipcRenderer.invoke("files:git-info", root),
+  onCwdChanged: (cb: (dir: string | null) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, dir: string | null) => cb(dir);
+    ipcRenderer.on("working-dir-changed", handler);
+    return () => { ipcRenderer.removeListener("working-dir-changed", handler); };
+  },
+  onFileChanged: (cb: (absPath: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, abs: string) => cb(abs);
+    ipcRenderer.on("workdir:file-changed", handler);
+    return () => { ipcRenderer.removeListener("workdir:file-changed", handler); };
+  },
+  listDir: (dir: string) => ipcRenderer.invoke("files:list-dir", dir),
+  readFile: (filePath: string) => ipcRenderer.invoke("files:read-file", filePath),
+  writeFile: (filePath: string, content: string) => ipcRenderer.invoke("files:write-file", filePath, content),
+  gitDiff: (root: string) => ipcRenderer.invoke("files:git-diff", root),
+  termSpawn: (termId: string, cwd: string, cols: number, rows: number) =>
+    ipcRenderer.send("wb-term:spawn", termId, cwd, cols, rows),
+  termWrite: (termId: string, data: string) => ipcRenderer.send("wb-term:write", termId, data),
+  termResize: (termId: string, cols: number, rows: number) =>
+    ipcRenderer.send("wb-term:resize", termId, cols, rows),
+  termKill: (termId: string) => ipcRenderer.send("wb-term:kill", termId),
+  termOnData: (termId: string, cb: (data: string) => void) => {
+    const channel = `wb-term:data:${termId}`;
+    const handler = (_e: Electron.IpcRendererEvent, data: string) => cb(data);
+    ipcRenderer.on(channel, handler);
+    return () => { ipcRenderer.removeListener(channel, handler); };
+  },
+  termOnExit: (termId: string, cb: (code: number) => void) => {
+    const channel = `wb-term:exit:${termId}`;
+    const handler = (_e: Electron.IpcRendererEvent, code: number) => cb(code);
+    ipcRenderer.on(channel, handler);
+    return () => { ipcRenderer.removeListener(channel, handler); };
   },
 });

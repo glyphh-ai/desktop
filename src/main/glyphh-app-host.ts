@@ -34,6 +34,7 @@
  */
 
 import { BrowserWindow, ipcMain, webContents, session } from "electron";
+import { workspaceArea } from "./screen-layout";
 import { execFile } from "child_process";
 import AdmZip from "adm-zip";
 import fs from "fs";
@@ -335,9 +336,16 @@ export function openGlyphhApp(row: GlyphhAppRow): { ok: boolean; error?: string 
 
   const lc = (row.launchConfig || {}) as { window?: { width?: number; height?: number } | null };
   const { caps, connectors } = grantsFromRow(row);
+  // Center the app window in the WORKSPACE region (screen-layout aware) —
+  // not the whole display, so docked mode keeps apps beside Glyphh.
+  const winW = lc.window?.width || 460;
+  const winH = lc.window?.height || 640;
+  const wa = workspaceArea();
   const win = new BrowserWindow({
-    width: lc.window?.width || 460,
-    height: lc.window?.height || 640,
+    x: Math.round(wa.x + Math.max(0, (wa.width - winW) / 2)),
+    y: Math.round(wa.y + Math.max(0, (wa.height - winH) / 2)),
+    width: winW,
+    height: winH,
     title: row.name,
     show: false,
     webPreferences: {

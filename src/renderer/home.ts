@@ -33,6 +33,25 @@ initHelp();
 initSearchClears();
 window.yo.refreshAuth?.().catch(() => {});
 
+// Full-bleed chrome — the panel covers the titlebar strip, so it owns the
+// window controls and the command button (page-top, left of which sits the
+// rail toggle wired by code.ts).
+document.getElementById("panel-btn-close")?.addEventListener("click", () => window.yo.windowClose());
+document.getElementById("panel-btn-minimize")?.addEventListener("click", () => window.yo.windowMinimize());
+document.getElementById("panel-btn-maximize")?.addEventListener("click", () => window.yo.windowMaximize());
+document.getElementById("page-command-center")?.addEventListener("click", () => window.yo.commandToggle());
+// Collapse-to-rail toggle — the whole window shrinks to the rail (workspace
+// apps slide to reclaim the space) and back.
+const wsToggle = document.getElementById("workspace-collapse-toggle");
+const paintWsToggle = (on: boolean) => {
+  wsToggle?.classList.toggle("active", on);
+  if (wsToggle) wsToggle.title = on ? "Expand Glyphh" : "Collapse to rail";
+};
+void window.yo.railCollapseGet?.().then(paintWsToggle).catch(() => {});
+wsToggle?.addEventListener("click", () => {
+  void window.yo.railCollapseToggle?.().then(paintWsToggle);
+});
+
 // Pick the startup section. Priority: ?section=<slug> in the URL (system-app
 // panel mounted as its own section) → the user's configured default
 // ("homeStartupSection", blank = "last viewed") → the last section → dashboard.
@@ -47,7 +66,9 @@ void (async () => {
       // Hide the left rail when this panel is locked to a single section —
       // it's mounted as its own app (yo://<slug>), so no in-rail switching.
       const style = document.createElement("style");
-      style.textContent = `[data-home-scope] .files-rail { display: none !important; } [data-home-scope] .help-main { margin-left: 0 !important; }`;
+      // Locked panels sit below the real titlebar — hide the full-bleed
+      // chrome (rail, splitter, page-top strip, panel window controls).
+      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }`;
       document.head.appendChild(style);
       gotoSection(urlSection);
       return;
@@ -56,10 +77,10 @@ void (async () => {
   const def = ((await window.yo.getPreference?.("homeStartupSection", "")) as string) || "";
   const lastSec = ((await window.yo.getPreference?.("homeLastSection", "")) as string) || "";
   const lastSub = ((await window.yo.getPreference?.("homeLastSub", "")) as string) || "";
-  let sec = def || lastSec || "dashboard";
+  let sec = def || lastSec || "code";
   // A remembered section may have been removed since (e.g. the old Skills
   // page) — fall back rather than landing on a blank pane.
-  if (!document.querySelector(`.help-section[data-section="${sec}"]`)) sec = "dashboard";
+  if (!document.querySelector(`.help-section[data-section="${sec}"]`)) sec = "code";
   gotoSection(sec, sec === lastSec ? (lastSub || undefined) : undefined);
 })();
 

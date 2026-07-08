@@ -13,6 +13,7 @@
  */
 
 import { BrowserWindow, nativeTheme, screen } from "electron";
+import { workspaceArea } from "./screen-layout";
 import path from "path";
 import { getPreference } from "./stores/preferences-db";
 
@@ -90,8 +91,23 @@ function createAppWindow(spec: AppWindowSpec, bounds?: Electron.Rectangle): Brow
   return win;
 }
 
+/** Slide Glyphh-hosted windows that were opened "full" (≥70% of the current
+ *  display work area) into the new workspace — the collapse/expand slide.
+ *  Cascaded utility windows stay put. */
+export function retileFullWindows(): void {
+  const area = workspaceArea();
+  const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  for (const { win } of windows.values()) {
+    if (win.isDestroyed()) continue;
+    const b = win.getBounds();
+    if (b.width >= d.width * 0.7 || Math.abs(b.width - area.width) < 80) {
+      win.setBounds(area);
+    }
+  }
+}
+
 function cascadeBounds(): Electron.Rectangle {
-  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const area = workspaceArea();
   const offset = (cascade++ % 8) * CASCADE_STEP;
   const width = Math.min(DEFAULT_W, area.width);
   const height = Math.min(DEFAULT_H, area.height);
@@ -117,7 +133,7 @@ export function openAppWindow(spec: AppWindowSpec): void {
 /** Slide a Glyphh-hosted window in from the left, ending full-screen (work
  *  area) — `.dip terminal` / the command overlay's big-open motion. */
 export function openAppWindowSlide(spec: AppWindowSpec): void {
-  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const wa = workspaceArea();
   const target: Electron.Rectangle = { x: wa.x, y: wa.y, width: wa.width, height: wa.height };
   const existing = windows.get(spec.slug);
   if (existing && !existing.win.isDestroyed()) {
