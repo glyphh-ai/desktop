@@ -11,7 +11,7 @@
 
 import { confirmAction } from "./shared.js";
 import { gotoSection } from "./navigation.js";
-import { appIconInner } from "./app-icon.js";
+import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 
 interface CodeMsg { role: "user" | "assistant"; text: string; at: number }
 interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
@@ -270,7 +270,14 @@ interface RailApp {
 interface RailLayout { name: string; splits: Array<{ panelId: string }> }
 let railApps: RailApp[] = [];
 let railLayouts: RailLayout[] = [];
+let railOsApps: Array<{ proc: string; path: string }> = [];
 let railRecentTs: Record<string, number> = {};
+
+/** Basename of an exec/.app path, lowercased, ".app" stripped — dedupe key
+ *  (same as the command palette). */
+function execKey(p: string | null | undefined): string {
+  return (p || "").split(/[\\/]/).pop()?.replace(/\.app$/i, "").toLowerCase() || "";
+}
 
 async function loadRecentApps(): Promise<void> {
   try {
@@ -279,7 +286,8 @@ async function loadRecentApps(): Promise<void> {
       window.yo.layoutsList?.() ?? Promise.resolve([]),
       window.yo.recentsList?.() ?? Promise.resolve([]),
     ]);
-    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => !a.system);
+    // Palette parity: web apps (have a url) + native library apps.
+    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.url || a.isBrowser === false);
     railLayouts = (layouts || []) as unknown as RailLayout[];
     railRecentTs = {};
     for (const r of recents || []) {
@@ -288,6 +296,20 @@ async function loadRecentApps(): Promise<void> {
     }
   } catch { railApps = []; railLayouts = []; railRecentTs = {}; }
   renderRecentApps();
+  // Icons land async (Pipedream catalog + OS file icons), then re-render —
+  // same as the palette / Apps page.
+  void primeConnectedIcons(railApps as never, renderRecentApps);
+  void primeNativeIcons(railApps as never, renderRecentApps);
+  // Running OS apps outside the library (osascript enumeration takes a beat),
+  // deduped by name / executable basename — exactly like the palette.
+  void window.yo.commandOsApps?.().then((list) => {
+    const libNames = new Set(railApps.map((x) => (x.name || "").trim().toLowerCase()));
+    const libExecs = new Set(railApps.map((x) => execKey(x.execPath)).filter(Boolean));
+    railOsApps = (list || []).filter((o) =>
+      !libNames.has(o.proc.trim().toLowerCase()) && !libExecs.has(execKey(o.path)));
+    renderRecentApps();
+    void primeNativeIcons(railOsApps.map((o) => ({ execPath: o.path || null })) as never, renderRecentApps);
+  }).catch(() => { railOsApps = []; });
 }
 
 function renderRecentApps(): void {
@@ -302,7 +324,9 @@ function renderRecentApps(): void {
     ...railApps.map((a): Item => ({ type: "app", name: a.name || "", ts: railRecentTs[`app:${a.id}`] || 0, app: a })),
     ...railLayouts.map((l): Item => ({ type: "layout", name: l.name || "", ts: railRecentTs[`layout:${l.name}`] || 0, layout: l })),
   ]
-    .filter((i) => !q || i.name.toLowerCase().includes(q))
+    // Palette parity: apps match the display name OR the slug (.dip target).
+    .filter((i) => !q || i.name.toLowerCase().includes(q) ||
+      (i.type === "app" && (i.app.slug || "").toLowerCase().includes(q)))
     .sort((a, b) => (a.ts !== b.ts ? b.ts - a.ts : a.name.localeCompare(b.name)));
   if (!items.length) {
     const empty = document.createElement("div");
@@ -353,6 +377,31 @@ function renderRecentApps(): void {
       }
     });
     list.appendChild(tile);
+  }
+
+  // Running OS apps outside the library — lighter tiles; click to focus
+  // (the palette's "Running apps" section).
+  const os = railOsApps.filter((o) => !q || o.proc.toLowerCase().includes(q));
+  if (os.length) {
+    const label = document.createElement("div");
+    label.className = "code-rail-label rail-os-label";
+    label.textContent = "Running apps";
+    list.appendChild(label);
+    for (const o of os) {
+      const tile = document.createElement("button");
+      tile.className = "app-rail-tile app-rail-tile--os";
+      tile.type = "button";
+      tile.title = `Switch to ${o.proc}`;
+      const icon = document.createElement("div");
+      icon.className = "tile-icon";
+      icon.innerHTML = appIconInner({ execPath: o.path || null }, o.proc, "tile-initial");
+      const nm = document.createElement("span");
+      nm.className = "tile-name";
+      nm.textContent = o.proc;
+      tile.append(icon, nm);
+      tile.addEventListener("click", () => { void window.yo.commandFocusApp?.(o.proc); });
+      list.appendChild(tile);
+    }
   }
 }
 
@@ -472,6 +521,12 @@ export function initCode(): void {
   initRailSplitter();
   initRecentsVsplit();
   el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", renderRecentApps);
+  // Enter runs the text as a command — same as the palette input (dip x, …).
+  el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const text = (e.target as HTMLInputElement).value.trim();
+    if (text) void window.yo.execCommand(text.replace(/^\./, ""));
+  });
   // The rail is global (outside the section switcher) — populate Recents and
   // apply collapse/width prefs at boot so it's live on every section.
   loadStore();

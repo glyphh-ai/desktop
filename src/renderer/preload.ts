@@ -489,6 +489,10 @@ contextBridge.exposeInMainWorld("yo", {
   filesRailGetWidth: () => ipcRenderer.invoke("files-rail-get-width") as Promise<number>,
 
   // Recents (rich: app/layout + folder pairs)
+  // Command-palette parity for the rail search — same global channels the
+  // command overlay uses (registered in command-window.ts).
+  commandOsApps: () => ipcRenderer.invoke("command:os-apps") as Promise<Array<{ proc: string; path: string }>>,
+  commandFocusApp: (proc: string) => ipcRenderer.invoke("command:focus-app", proc) as Promise<{ ok: boolean; error?: string }>,
   recentsList: () => ipcRenderer.invoke("recents:list") as Promise<Array<{
     kind: "app" | "layout"; id: string; name: string; folder: string; ts: number;
   }>>,

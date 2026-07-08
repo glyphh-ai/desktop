@@ -11731,3 +11731,11 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 /* Slim the leading drop strip inside the rails (between-rail strips keep
    their drop-target width). */
 #code-wb-rails > .ws-rail-dropstrip:first-child { width: 2px; flex-basis: 2px; }
+
+/* Running-apps section inside the rail grid (palette parity) */
+.rail-os-label {
+  grid-column: 1 / -1;
+  padding: 10px 2px 2px;
+}
+.app-rail-tile--os { opacity: 0.78; }
+.app-rail-tile--os:hover { opacity: 1; }
