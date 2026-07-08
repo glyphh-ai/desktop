@@ -9,6 +9,7 @@
  */
 
 import { screen, app as electronApp } from "electron";
+import { workspaceArea } from "./screen-layout.js";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { cachedServerGet } from "./server-cache.js";
@@ -285,7 +286,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   if (builtin) {
     if (builtin.url.startsWith("http")) {
       // Built-in "browser" → the user's real browser at their homepage.
-      const wa0 = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+      const wa0 = workspaceArea();
       await openWebTracked(
         { id: `builtin:${builtin.slug}`, slug: builtin.slug, name: builtin.name, url: builtin.url },
         { x: wa0.x, y: wa0.y, width: wa0.width, height: wa0.height }, true);
@@ -323,12 +324,12 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     // window of the shared binary happens to be first). retileOnFocus=true —
     // `.dip <app>` / a palette click always lands the app full-screen, the
     // same contract web apps get from openAppWindowSlide's reuse path.
-    const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    const wa = workspaceArea();
     await openNativeTracked(app, { x: wa.x, y: wa.y, width: wa.width, height: wa.height }, true);
     return { slug: app.slug, name: app.name };
   }
   // Web app → the user's real browser, per its config (browser + window/tab).
-  const wa2 = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const wa2 = workspaceArea();
   await openWebTracked(app, { x: wa2.x, y: wa2.y, width: wa2.width, height: wa2.height }, true);
   return { slug: app.slug, name: app.name };
 }
@@ -358,7 +359,7 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
   // Tile each cell as a real OS window. Web apps open as browser windows and
   // native apps launch their executables — both adopted + placed through the
   // OS window layer. Nothing renders inside the Glyphh client.
-  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const wa = workspaceArea();
   const colW = wa.width / layout.cols;
   const rowH = wa.height / layout.rows;
   const opened: string[] = [];

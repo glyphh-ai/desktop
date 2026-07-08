@@ -76,6 +76,7 @@ import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
+import { initScreenLayout } from "./screen-layout";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
@@ -1282,6 +1283,10 @@ async function boot() {
   // Restore zoom level
   const savedZoom = getPreference<number>("zoom", 1.0);
   if (savedZoom !== 1.0) panelManager.setZoom(savedZoom);
+
+  // Screen layout — apply the cached dock (full/left/right/top/bottom),
+  // reconcile with the server profile, and track edge drags.
+  if (mainWindow) initScreenLayout(mainWindow);
 
   // Only restore panels if not gated by onboarding
   if (!needsOnboarding) {

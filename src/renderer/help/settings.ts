@@ -24,6 +24,23 @@ function initSettings() {
   settingsSaveBtn.addEventListener("click", saveSettings);
 
   // Theme picker
+  // Screen layout — dock mode picker (fraction comes from dragging the edge).
+  const slPicker = document.getElementById("screen-layout-picker");
+  if (slPicker) {
+    const paintSl = (mode: string) => {
+      slPicker.querySelectorAll<HTMLElement>(".layout-mode-btn").forEach((b) =>
+        b.classList.toggle("active", b.dataset.mode === mode));
+    };
+    void window.yo.screenLayoutGet?.().then((sl) => paintSl(sl?.mode || "full")).catch(() => paintSl("full"));
+    slPicker.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>(".layout-mode-btn");
+      if (!btn) return;
+      const mode = btn.dataset.mode || "full";
+      paintSl(mode);
+      void window.yo.screenLayoutSet?.({ mode });
+    });
+  }
+
   const themePicker = document.getElementById("theme-picker");
   if (themePicker) {
     window.yo.getTheme().then((theme) => {

@@ -125,6 +125,9 @@ contextBridge.exposeInMainWorld("yo", {
   windowClose: () => ipcRenderer.send("window-close"),
   windowMinimize: () => ipcRenderer.send("window-minimize"),
   windowMaximize: () => ipcRenderer.send("window-maximize"),
+  // Screen layout (Settings → Appearance): dock mode + draggable fraction.
+  screenLayoutGet: () => ipcRenderer.invoke("screen-layout-get") as Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>,
+  screenLayoutSet: (v: { mode?: string; fraction?: number }) => ipcRenderer.invoke("screen-layout-set", v) as Promise<{ mode: string; fraction: number }>,
 
   // Panel visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),

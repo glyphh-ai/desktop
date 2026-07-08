@@ -316,6 +316,8 @@ declare global {
       filesRailWidthSave: (width: number) => void;
       filesRailGetWidth: () => Promise<number>;
       // Recents (rich)
+      screenLayoutGet: () => Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>;
+      screenLayoutSet: (v: { mode?: string; fraction?: number }) => Promise<{ mode: string; fraction: number }>;
       commandOsApps: () => Promise<Array<{ proc: string; path: string }>>;
       commandFocusApp: (proc: string) => Promise<{ ok: boolean; error?: string }>;
       recentsList: () => Promise<Array<{

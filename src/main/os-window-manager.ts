@@ -26,6 +26,7 @@
  * `.dip grid`.
  */
 
+import { workspaceArea } from "./screen-layout";
 import { screen } from "electron";
 import {
   initMacHelper, disposeMacHelper, macHelperAvailable,
@@ -66,10 +67,10 @@ const isWin = process.platform === "win32";
 // (best effort — we only track the frontmost window's app).
 const priorBounds = new Map<string, Rect>();
 
-/** Work area (screen minus menu bar / dock / taskbar) under the cursor. */
+/** Placement region under the cursor: the work area minus the docked
+ *  Glyphh window when a split screen-layout is active (screen-layout.ts). */
 function workArea(): Rect {
-  const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  return d.workArea;
+  return workspaceArea();
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
