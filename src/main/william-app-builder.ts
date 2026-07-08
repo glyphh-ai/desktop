@@ -117,44 +117,68 @@ export async function updateAppFromWorkdir(
   return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, warnings: v.warnings };
 }
 
-/** Drop the FULL passing bundle (every emitted file, index.html included)
- *  at the WORKING FOLDER ROOT — the picked folder IS the app's home (Files
- *  rail shows exactly what shipped; iteration overwrites in place with git
- *  underneath). One guard: if the root already holds a DIFFERENT app's
- *  manifest.json (or a foreign one), nest to <slug>/ instead of clobbering.
- *  Best-effort git commit of the written files when the folder's a repo. */
-function writeSourceToWorkdir(bundle: Bundle, slug: string): string | undefined {
-  const wd = getExplicitWorkingDirectory();
-  if (!wd) return undefined;
-  try {
-    let dir = wd;
-    const existing = path.join(wd, "manifest.json");
-    if (fs.existsSync(existing)) {
-      let sameApp = false;
-      try {
-        const m = JSON.parse(fs.readFileSync(existing, "utf8"));
-        sameApp = m?.kind === "glyphh-app" && String(m?.slug || "").toLowerCase() === slug;
-      } catch { /* unparseable → foreign → nest */ }
-      if (!sameApp) dir = path.join(wd, slug);
-    }
-    fs.mkdirSync(dir, { recursive: true });
-    const written: string[] = [];
-    for (const [file, content] of Object.entries(bundle)) {
-      const abs = path.join(dir, file);
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, content);
-      written.push(path.relative(wd, abs));
-    }
+/** Where this app's source lives: the WORKING FOLDER ROOT (the picked
+ *  folder IS the app), nesting to <slug>/ only when the root already holds
+ *  a DIFFERENT app's manifest (or a foreign one). */
+function resolveSourceDir(wd: string, slug: string): string {
+  const existing = path.join(wd, "manifest.json");
+  if (fs.existsSync(existing)) {
+    let sameApp = false;
     try {
-      execSync("git rev-parse --is-inside-work-tree", { cwd: wd, stdio: "ignore" });
-      const pathsArg = written.map((p) => JSON.stringify(p)).join(" ");
-      execSync(`git add ${pathsArg}`, { cwd: wd, stdio: "ignore" });
-      execSync(`git commit -m ${JSON.stringify(`William: build ${slug}`)} -- ${pathsArg}`, { cwd: wd, stdio: "ignore" });
-    } catch { /* not a repo / nothing changed — the source is still there */ }
-    return dir;
-  } catch {
-    return undefined; // source copy is a convenience, never a build failure
+      const m = JSON.parse(fs.readFileSync(existing, "utf8"));
+      sameApp = m?.kind === "glyphh-app" && String(m?.slug || "").toLowerCase() === slug;
+    } catch { /* unparseable → foreign → nest */ }
+    if (!sameApp) return path.join(wd, slug);
   }
+  return wd;
+}
+
+/** Streaming source writer — files land on disk AS William writes them.
+ *  The dir resolves once the manifest's slug is known; each flush writes
+ *  only changed files (the watcher refreshes the Files rail and reloads
+ *  open Monaco tabs live). The developer experience IS watching it type. */
+function makeStreamWriter(): { flush: (streamed: string) => void; dir: () => string | undefined } {
+  const wd = getExplicitWorkingDirectory();
+  let dir: string | undefined;
+  const lastWritten = new Map<string, string>();
+  return {
+    dir: () => dir,
+    flush: (streamed: string) => {
+      if (!wd) return;
+      try {
+        const partial = parseEmission(streamed);
+        if (!dir) {
+          const raw = partial["manifest.json"];
+          if (!raw) return; // nothing nameable yet
+          let slug = "";
+          try { slug = String(JSON.parse(raw)?.slug || "").toLowerCase(); } catch { /* manifest still streaming */ }
+          if (!slug) return;
+          dir = resolveSourceDir(wd, slug.replace(/[^a-z0-9_-]/g, "-"));
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        for (const [file, content] of Object.entries(partial)) {
+          if (lastWritten.get(file) === content) continue;
+          const abs = path.join(dir, file);
+          fs.mkdirSync(path.dirname(abs), { recursive: true });
+          fs.writeFileSync(abs, content);
+          lastWritten.set(file, content);
+        }
+      } catch { /* streaming write is best-effort */ }
+    },
+  };
+}
+
+/** Commit the app's source files (success only — passes overwrite freely). */
+function commitSource(dir: string, bundle: Bundle, slug: string): void {
+  const wd = getExplicitWorkingDirectory();
+  if (!wd) return;
+  try {
+    execSync("git rev-parse --is-inside-work-tree", { cwd: wd, stdio: "ignore" });
+    const written = Object.keys(bundle).map((f) => path.relative(wd, path.join(dir, f)));
+    const pathsArg = written.map((p) => JSON.stringify(p)).join(" ");
+    execSync(`git add ${pathsArg}`, { cwd: wd, stdio: "ignore" });
+    execSync(`git commit -m ${JSON.stringify(`William: build ${slug}`)} -- ${pathsArg}`, { cwd: wd, stdio: "ignore" });
+  } catch { /* not a repo / nothing changed */ }
 }
 
 export async function buildGlyphhApp(description: string, signal?: AbortSignal): Promise<BuildResult> {
@@ -175,9 +199,18 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
     : file === "index.html" ? "designing the UI"
     : `writing ${file}`;
 
+  const writer = makeStreamWriter();
   for (let attempt = 1; attempt <= budget; attempt++) {
     if (signal?.aborted) { say(""); throw new Error("aborted"); }
     say(`Building app — pass ${attempt}/${budget}: thinking it through…`);
+    // Prefill heartbeat — before the first token the server is chewing the
+    // prompt; without this the meta looks frozen.
+    const started = Date.now();
+    let sawDelta = false;
+    const heartbeat = setInterval(() => {
+      if (sawDelta) { clearInterval(heartbeat); return; }
+      say(`Building app — pass ${attempt}/${budget}: reading the request · ${Math.round((Date.now() - started) / 1000)}s`);
+    }, 3000);
     const user = attempt === 1
       ? baseUser
       : `${baseUser}\n\nYour previous attempt failed validation:\n${lastErrors.map((e) => `- ${e}`).join("\n")}\n\nPrevious emission:\n${lastEmission.slice(0, 6000)}\n\nFix every error and re-emit the FULL corrected bundle.`;
@@ -195,14 +228,18 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
       onDelta: (d) => {
         streamed += d;
         tokens++;
+        sawDelta = true;
         const now = Date.now();
         if (now - lastSay < 300) return;
         lastSay = now;
         const sections = [...streamed.matchAll(/^===\s*(.+?)\s*===\s*$/gm)];
         if (sections.length) label = sectionLabel(sections[sections.length - 1][1].trim());
         say(`Building app — pass ${attempt}/${budget}: ${label} · ${tokens.toLocaleString()} tokens`);
+        writer.flush(streamed); // files land as he writes — live in the rails
       },
     });
+    clearInterval(heartbeat);
+    writer.flush(streamed); // final flush of this pass's full emission
     lastEmission = raw;
 
     say(`Building app — pass ${attempt}/${budget}, validating…`);
@@ -216,7 +253,8 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
     if (!r.ok) { lastErrors = [r.error || "install failed"]; continue; }
     say("");
     if (bundle["index.html"]) showPreview(bundle["index.html"], `${r.name || v.manifest!.name} — installed ✓`);
-    const sourceDir = writeSourceToWorkdir(bundle, v.manifest!.slug);
+    const sourceDir = writer.dir();
+    if (sourceDir) commitSource(sourceDir, bundle, v.manifest!.slug);
     return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, attempts: attempt, warnings: v.warnings, sourceDir };
   }
   say("");
