@@ -76,7 +76,7 @@ import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
-import { registerWilliamIpc } from "./william";
+import { registerWilliamIpc, shutdownWilliam } from "./william";
 import { retileWorkspace } from "./app-resolver";
 import { retileFullWindows } from "./app-window-manager";
 import { initScreenLayout, onWorkspaceChange } from "./screen-layout";
@@ -1940,6 +1940,7 @@ app.on("activate", () => {
 });
 
 app.on("will-quit", () => {
+  shutdownWilliam();
   cleanupAll();
 });
 
