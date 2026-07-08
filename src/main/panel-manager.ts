@@ -105,6 +105,10 @@ export class PanelManager {
   private _rightInset = 0;
   private _leftInset = 0;
   private _topInset = 0;
+  /** Panels that cover the whole window INCLUDING the 38px titlebar strip —
+   *  the Code-primary home surface draws its own chrome (traffic lights,
+   *  drag regions, command button live inside the panel). */
+  private _fullBleed = new Set<string>();
   private _bottomInset = 0;
 
   constructor(onPanelCreated?: PanelCreatedCallback) {
@@ -752,7 +756,7 @@ export class PanelManager {
     this.activePanel = id;
 
     const [w, h] = parent.getContentSize();
-    const yTop = 38 + this._topInset;
+    const yTop = this.yTopFor(id);
     const finalBounds = { x: this._leftInset, y: yTop, width: w - this._rightInset - this._leftInset, height: h - yTop - this._bottomInset };
 
     // While hidden (onboarding/splash overlay) or locked (trial expired/disabled),
@@ -790,7 +794,7 @@ export class PanelManager {
         // Recompute bounds — rightInset may have changed during animation
         // (e.g. yo panel opened while slide was running)
         const [cw, ch] = parent.getContentSize();
-        const cy = 38 + this._topInset;
+        const cy = this.yTopFor(id);
         view.setBounds({ x: this._leftInset, y: cy, width: cw - this._rightInset - this._leftInset, height: ch - cy - this._bottomInset });
         view.setAutoResize({ width: true, height: true });
         view.webContents.focus();
@@ -896,6 +900,14 @@ export class PanelManager {
   /** Top inset (px) — used by URL bar to push BrowserViews down */
   get topInset(): number { return this._topInset; }
 
+  setFullBleed(id: string, on = true): void {
+    if (on) this._fullBleed.add(id);
+    else this._fullBleed.delete(id);
+  }
+  private yTopFor(id: string | null | undefined): number {
+    return id && this._fullBleed.has(id) ? 0 : 38 + this._topInset;
+  }
+
   private onInsetChange: (() => void) | null = null;
   setOnInsetChange(cb: () => void): void { this.onInsetChange = cb; }
 
@@ -915,10 +927,12 @@ export class PanelManager {
   resizeViews(parent: BrowserWindow): void {
     if (parent.isDestroyed() || this._hidden) return;
     const [w, h] = parent.getContentSize();
-    const yTop = 38 + this._topInset;
-    const bounds = { x: this._leftInset, y: yTop, width: w - this._rightInset - this._leftInset, height: h - yTop - this._bottomInset };
     for (const bv of parent.getBrowserViews()) {
-      bv.setBounds(bounds);
+      // Per-view yTop — full-bleed panels cover the titlebar strip.
+      let id: string | null = null;
+      for (const [pid, pv] of this.panels) { if (pv === bv) { id = pid; break; } }
+      const yTop = this.yTopFor(id);
+      bv.setBounds({ x: this._leftInset, y: yTop, width: w - this._rightInset - this._leftInset, height: h - yTop - this._bottomInset });
       bv.setAutoResize({ width: true, height: true });
     }
   }

@@ -34,6 +34,13 @@
 </head>
 <body>
   <div id="home-root">
+    <!-- Window controls — the full-bleed home panel owns the chrome. Fixed
+         top-left so they survive the rail collapsing. -->
+    <div id="panel-wc">
+      <button id="panel-btn-close" class="wc wc-close"></button>
+      <button id="panel-btn-minimize" class="wc wc-minimize"></button>
+      <button id="panel-btn-maximize" class="wc wc-maximize"></button>
+    </div>
     <div id="help-overlay">
     <div id="help-layout">
       <nav id="help-nav">
@@ -89,6 +96,9 @@
            Home|Code switcher, sessions, section nav, and the user area.
            Hidden when the panel is locked to a single section (?section=). -->
       <aside id="app-rail">
+        <div class="app-rail-top">
+          <img class="app-rail-mark" src="brand/glyphh-mark.png" alt="Glyphh" />
+        </div>
         <div class="app-rail-switch">
           <button id="app-rail-home" class="app-rail-switch-btn" data-target="dashboard">Home</button>
           <button id="app-rail-code" class="app-rail-switch-btn" data-target="code">Code</button>
@@ -117,6 +127,12 @@
         </nav>
         <div class="code-rail-label">Recents</div>
         <div id="code-history" class="code-history"></div>
+        <div id="recents-vsplit" class="recents-vsplit" title="Drag to resize"></div>
+        <div class="code-rail-label">Recent apps</div>
+        <div class="app-rail-search">
+          <input id="recent-apps-search" type="text" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
+        </div>
+        <div id="recent-apps-list" class="code-history"></div>
         <div class="app-rail-user">
           <button id="app-rail-user-btn" class="app-rail-user-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -127,6 +143,19 @@
       <div id="code-rail-splitter" class="code-splitter" title="Drag to resize"></div>
 
       <main id="help-content">
+
+        <!-- Page top strip — drag region owning the top edge of the right
+             page; the rail toggle sits immediately left of the command icon. -->
+        <div id="page-top">
+          <div class="page-top-spacer"></div>
+          <button id="code-rail-toggle" class="code-icon-btn" title="Toggle rail">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          </button>
+          <button id="page-command-center" class="code-icon-btn" title="Command (⌘⇧Space)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </button>
+        </div>
+        <div id="page-body">
 
         <!-- Dashboard / Home — the landing section (welcome, credits, spend,
              apps deployed, usage chart). -->
@@ -176,6 +205,7 @@
           </div>
         </div>
 
+        </div><!-- /#page-body -->
       </main>
     </div>
     </div>

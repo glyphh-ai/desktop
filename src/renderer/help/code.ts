@@ -192,6 +192,69 @@ function send(): void {
   }, 800);
 }
 
+// ── Recent apps (recents:list — apps/layouts you opened, searchable) ────
+interface RecentEntry { kind: "app" | "layout"; id: string; name: string; folder: string; ts: number }
+let recentApps: RecentEntry[] = [];
+
+async function loadRecentApps(): Promise<void> {
+  try { recentApps = (await window.yo.recentsList?.()) || []; } catch { recentApps = []; }
+  renderRecentApps();
+}
+
+function renderRecentApps(): void {
+  const list = el<HTMLDivElement>("recent-apps-list");
+  if (!list) return;
+  const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
+  list.textContent = "";
+  const items = recentApps.filter((r) => !q || (r.name || "").toLowerCase().includes(q));
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "code-empty";
+    empty.style.margin = "10px auto";
+    empty.textContent = q ? "No matches." : "Apps you open land here.";
+    list.appendChild(empty);
+    return;
+  }
+  for (const r of items) {
+    const row = document.createElement("div");
+    row.className = "code-history-item";
+    row.title = r.folder ? `${r.name} — ${r.folder}` : r.name;
+    const label = document.createElement("span");
+    label.className = "code-history-title";
+    label.textContent = r.name;
+    row.appendChild(label);
+    row.addEventListener("click", () => { void window.yo.recentsOpen?.(r); });
+    list.appendChild(row);
+  }
+}
+
+// ── Recents vertical resize ──────────────────────────────────────────────
+function initRecentsVsplit(): void {
+  const vs = el("recents-vsplit");
+  const hist = el("code-history");
+  if (!vs || !hist) return;
+  vs.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    document.body.classList.add("code-vdragging");
+    const startY = e.clientY;
+    const startH = hist.getBoundingClientRect().height;
+    const move = (ev: MouseEvent) => {
+      const h = Math.max(60, Math.min(Math.round(window.innerHeight * 0.6), startH + (ev.clientY - startY)));
+      hist.style.flex = `0 0 ${h}px`;
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("code-vdragging");
+      const m = hist.style.flex.match(/(\d+)px/);
+      const h = m ? parseInt(m[1], 10) : 0;
+      if (h > 0) void window.yo.setPreference?.("codeRecentsH", h);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+}
+
 // ── Left-rail splitter ───────────────────────────────────────────────────
 function initRailSplitter(): void {
   const splitter = el("code-rail-splitter");
@@ -224,6 +287,9 @@ async function applyPanelPrefs(): Promise<void> {
   const railW = Number(await window.yo.getPreference?.("codeRailWidth", 0)) || 0;
   const rail = el("app-rail");
   if (rail && railW > 0) { rail.style.width = `${railW}px`; rail.style.minWidth = `${railW}px`; }
+  const recentsH = Number(await window.yo.getPreference?.("codeRecentsH", 0)) || 0;
+  const hist = el("code-history");
+  if (hist && recentsH > 0) hist.style.flex = `0 0 ${recentsH}px`;
 }
 
 // ── Entry points ─────────────────────────────────────────────────────────
@@ -232,6 +298,7 @@ export function loadCode(): void {
   if (!currentId && chats.length) currentId = chats[0].id;
   renderHistory();
   renderThread();
+  void loadRecentApps();
   void applyPanelPrefs();
   // Boot the ported workbench engine (idempotent) — it owns the workdir
   // controls, the view toggles, and everything inside #code-workbench.
@@ -259,10 +326,13 @@ export function initCode(): void {
     if (menuEl && !menuEl.contains(e.target as Node)) closeMenu();
   });
   initRailSplitter();
+  initRecentsVsplit();
+  el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", renderRecentApps);
   // The rail is global (outside the section switcher) — populate Recents and
   // apply collapse/width prefs at boot so it's live on every section.
   loadStore();
   if (!currentId && chats.length) currentId = chats[0].id;
   renderHistory();
+  void loadRecentApps();
   void applyPanelPrefs();
 }

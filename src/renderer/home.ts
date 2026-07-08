@@ -33,6 +33,14 @@ initHelp();
 initSearchClears();
 window.yo.refreshAuth?.().catch(() => {});
 
+// Full-bleed chrome — the panel covers the titlebar strip, so it owns the
+// window controls and the command button (page-top, left of which sits the
+// rail toggle wired by code.ts).
+document.getElementById("panel-btn-close")?.addEventListener("click", () => window.yo.windowClose());
+document.getElementById("panel-btn-minimize")?.addEventListener("click", () => window.yo.windowMinimize());
+document.getElementById("panel-btn-maximize")?.addEventListener("click", () => window.yo.windowMaximize());
+document.getElementById("page-command-center")?.addEventListener("click", () => window.yo.commandToggle());
+
 // Pick the startup section. Priority: ?section=<slug> in the URL (system-app
 // panel mounted as its own section) → the user's configured default
 // ("homeStartupSection", blank = "last viewed") → the last section → dashboard.
@@ -47,7 +55,9 @@ void (async () => {
       // Hide the left rail when this panel is locked to a single section —
       // it's mounted as its own app (yo://<slug>), so no in-rail switching.
       const style = document.createElement("style");
-      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter { display: none !important; }`;
+      // Locked panels sit below the real titlebar — hide the full-bleed
+      // chrome (rail, splitter, page-top strip, panel window controls).
+      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }`;
       document.head.appendChild(style);
       gotoSection(urlSection);
       return;

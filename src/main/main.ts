@@ -544,6 +544,9 @@ async function boot() {
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
       panelManager.addPanel(app.id, `${homeHtml}${section ? `?section=${section}` : ""}`, homePreload, undefined, true);
+      // The unlocked home (Code-primary surface) owns its chrome — cover the
+      // titlebar strip entirely.
+      if (!section) panelManager.setFullBleed(app.id);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
@@ -928,6 +931,7 @@ async function boot() {
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
       panelManager.addPanel(instanceId, `${homeHtml}${section ? `?section=${section}` : ""}`, homePreload, undefined, true);
+      if (!section) panelManager.setFullBleed(instanceId);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
