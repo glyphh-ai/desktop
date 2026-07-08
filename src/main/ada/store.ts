@@ -86,11 +86,23 @@ export function adaTellRaw(text: string, facts: unknown, opts?: { key?: string; 
   const key = opts?.key?.trim() || undefined;
   const database = d();
 
-  // Exact-duplicate guard (content, current, same space) — idempotent tells.
-  const dup = database.prepare(
-    "SELECT thought_id FROM ada_thoughts WHERE space_id = ? AND archived = 0 AND lower(content) = lower(?)",
-  ).get(SPACE, text) as { thought_id: string } | undefined;
-  if (dup && !key) return { thoughtId: dup.thought_id, slots: 0 };
+  // Idempotency guards. Unkeyed: exact content dedupe. Keyed: if the
+  // CURRENT version's content is identical, skip — sync jobs can re-tell
+  // the whole catalog on a timer without version churn; only real drift
+  // versions.
+  if (key) {
+    const cur = database.prepare(
+      `SELECT t.thought_id, t.content, s.version FROM fact_slots s
+         JOIN ada_thoughts t ON t.thought_id = s.thought_id
+         WHERE s.space_id = ? AND s.key = ? AND s.is_current = 1 LIMIT 1`,
+    ).get(SPACE, key) as { thought_id: string; content: string; version: number } | undefined;
+    if (cur && cur.content === text) return { thoughtId: cur.thought_id, slots: 0, key, version: cur.version };
+  } else {
+    const dup = database.prepare(
+      "SELECT thought_id FROM ada_thoughts WHERE space_id = ? AND archived = 0 AND lower(content) = lower(?)",
+    ).get(SPACE, text) as { thought_id: string } | undefined;
+    if (dup) return { thoughtId: dup.thought_id, slots: 0 };
+  }
 
   const thoughtId = randomUUID().replace(/-/g, "").slice(0, 32);
   const now = Date.now() / 1000;

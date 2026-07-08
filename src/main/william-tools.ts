@@ -30,6 +30,7 @@ import { cachedServerGet } from "./server-cache";
 import { connectorTools, connectorCall } from "./glyphh-app-services";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
+import { indexConnectorTools } from "./ada/indexer";
 import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 
@@ -86,6 +87,7 @@ async function connectorToolNames(scope: Set<string>, connector: string): Promis
   const tools = await connectorTools(scope, { connector });
   const names = tools.map((t) => t.name);
   connectorNameCache.set(connector, { names, at: Date.now() });
+  indexConnectorTools(connector, tools); // fresh truth → Ada, opportunistically
   return names;
 }
 
@@ -222,6 +224,7 @@ const TOOLS: ToolDef[] = [
       const connector = String(a.connector ?? "");
       const tools = await connectorTools(await connectedSlugs(), { connector });
       connectorNameCache.set(connector, { names: tools.map((t) => t.name), at: Date.now() });
+      indexConnectorTools(connector, tools);
       return cap(JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description })), null, 1));
     },
   },

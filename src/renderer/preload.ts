@@ -393,6 +393,10 @@ contextBridge.exposeInMainWorld("yo", {
   williamRemember: (fact: string) => ipcRenderer.invoke("william-remember", fact) as Promise<boolean>,
   williamCompact: (chatId: string, focus: string) =>
     ipcRenderer.invoke("william-compact", { chatId, focus }) as Promise<{ ok: boolean; reason?: string }>,
+  adaRecall: (query: string, k?: number) =>
+    ipcRenderer.invoke("ada-recall", { query, k }) as Promise<Array<{ content: string; score: number }>>,
+  adaAsk: (op: unknown) => ipcRenderer.invoke("ada-ask", { op }) as Promise<{ ok: boolean; answer?: string; error?: string }>,
+  adaStats: () => ipcRenderer.invoke("ada-stats") as Promise<{ thoughts: number; slots: number; keys: number }>,
   williamContextUsage: (chatId: string) =>
     ipcRenderer.invoke("william-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>,
   williamStop: () => ipcRenderer.invoke("william-stop") as Promise<boolean>,

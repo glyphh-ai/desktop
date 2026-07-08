@@ -322,6 +322,9 @@ declare global {
       williamSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
       williamSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
       williamRemember: (fact: string) => Promise<boolean>;
+      adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
+      adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
+      adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
       williamContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>;
       williamCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
       williamStop: () => Promise<boolean>;
