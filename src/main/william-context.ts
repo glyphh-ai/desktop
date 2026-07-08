@@ -230,6 +230,23 @@ export async function compactIfNeeded(chatId: string, replyBudget: number, compl
   finally { compacting = false; }
 }
 
+/**
+ * How full the compaction window is — the SAME measure compactIfNeeded
+ * triggers on (tail tokens vs the history budget), so the meter and the
+ * fold behave identically. Estimate-only when the server is down (never
+ * wakes the runtime just to paint a meter).
+ */
+export async function contextUsage(chatId: string, replyBudget: number): Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }> {
+  const budget = CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
+  const { chats } = loadSessions();
+  const chat = chats.find((c) => c.id === chatId);
+  if (!chat) return { tokens: 0, budget, ratio: 0, foldAt: COMPACT_AT };
+  const upTo = loadSummaries()[chatId]?.upTo ?? 0;
+  const tailText = chat.messages.slice(upTo).map((m) => `${m.role}: ${m.text}`).join("\n");
+  const tokens = tailText ? await countTokens(tailText) : 0;
+  return { tokens, budget, ratio: Math.min(1, tokens / Math.max(1, budget)), foldAt: COMPACT_AT };
+}
+
 // ── IPC ────────────────────────────────────────────────────────────────────
 
 export function registerWilliamContextIpc(): void {
@@ -237,6 +254,10 @@ export function registerWilliamContextIpc(): void {
   ipcMain.handle("william-sessions-save", (_e, p: { chats: StoredChat[]; currentId: string }) => {
     saveSessions(Array.isArray(p?.chats) ? p.chats : [], String(p?.currentId || ""));
     return true;
+  });
+  ipcMain.handle("william-context-usage", async (_e, p: { chatId?: string; replyBudget?: number }) => {
+    const { effortMaxTokens } = await import("./william-permissions");
+    return contextUsage(String(p?.chatId || ""), Number(p?.replyBudget) || effortMaxTokens());
   });
   ipcMain.handle("william-remember", (_e, fact: string) => {
     const f = String(fact || "").trim();

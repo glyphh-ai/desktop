@@ -26,11 +26,11 @@ const CURRENT_KEY = "codeCurrentChat";
 // Effort: far right — a drop-up slider Low→Med→High→Superfly; superfly
 // turns the track into a particle matrix and maxes the reply budget.
 const MODES = [
-  { id: "ask", label: "Ask", hint: "Every action needs your approval" },
-  { id: "plan", label: "Plan", hint: "Read-only — William plans, changes nothing" },
-  { id: "acceptEdits", label: "Accept Edits", hint: "File edits auto-approved; commands still ask" },
-  { id: "auto", label: "Auto", hint: "Workspace actions auto-approved; risky ones ask" },
-  { id: "bypass", label: "Bypass", hint: "Everything auto-approved — trusted sessions only" },
+  { id: "ask", label: "Ask mode", hint: "Every action needs your approval" },
+  { id: "plan", label: "Plan mode", hint: "Read-only — William plans, changes nothing" },
+  { id: "acceptEdits", label: "Accept edits", hint: "File edits auto-approved; commands still ask" },
+  { id: "auto", label: "Auto mode", hint: "Workspace actions auto-approved; risky ones ask" },
+  { id: "bypass", label: "Bypass permissions", hint: "Everything auto-approved — trusted sessions only" },
 ] as const;
 const EFFORTS = [
   { id: "low", label: "Low", hint: "Quick replies (1k token budget)" },
@@ -167,6 +167,28 @@ function startMatrix(): void {
     matrixRaf = requestAnimationFrame(tick);
   };
   matrixRaf = requestAnimationFrame(tick);
+}
+
+// ── Compaction meter — how full the fold window is (tick = fold point) ──
+let meterTimer: ReturnType<typeof setTimeout> | null = null;
+
+function refreshCtxMeter(): void {
+  if (meterTimer) clearTimeout(meterTimer);
+  meterTimer = setTimeout(() => {
+    meterTimer = null;
+    const meter = el("code-ctx-meter");
+    if (!meter || !currentId) return;
+    void window.yo.williamContextUsage?.(currentId).then((u) => {
+      const fill = meter.querySelector<HTMLElement>(".ctx-fill");
+      const tick = meter.querySelector<HTMLElement>(".ctx-tick");
+      if (!fill || !tick) return;
+      const pct = Math.round(u.ratio * 100);
+      fill.style.width = `${pct}%`;
+      fill.classList.toggle("hot", u.ratio >= u.foldAt);
+      tick.style.left = `${u.foldAt * 100}%`;
+      meter.title = `Context ${pct}% (${u.tokens.toLocaleString()} of ${u.budget.toLocaleString()} tokens) — compacts at ${Math.round(u.foldAt * 100)}%`;
+    }).catch(() => { /* meter is cosmetic */ });
+  }, 350);
 }
 
 function initComposerControls(): void {
@@ -365,6 +387,7 @@ function renderHistory(): void {
       ensureCodeSection();
       renderHistory();
       renderThread();
+      refreshCtxMeter();
     });
     list.appendChild(row);
   }
@@ -497,6 +520,7 @@ function send(): void {
   renderThread();
   streamChatId = c.id;
   streamText = "";
+  refreshCtxMeter();
   // Main assembles the prompt from the store — the save must land first.
   void saveStore().then(() =>
     window.yo.williamRun({ chatId: c.id })
@@ -519,6 +543,7 @@ function finishRun(text: string): void {
   pendingApprovals = [];
   setThinking(false);
   renderThread();
+  refreshCtxMeter();
 }
 
 /** Inline approval card — Approve / Deny answer main's gate and the card
@@ -909,6 +934,7 @@ export function loadCode(): void {
     if (!currentId && chats.length) currentId = chats[0].id;
     renderHistory();
     renderThread();
+    refreshCtxMeter();
   })();
   void loadRecentApps();
   void applyPanelPrefs();

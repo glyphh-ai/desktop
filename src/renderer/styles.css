@@ -11894,6 +11894,34 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   padding: 0 4px;
 }
 .code-chipwrap { position: relative; }
+.code-bar-right { display: flex; align-items: center; gap: 10px; }
+
+/* Compaction meter — fills toward the fold tick (compaction point). */
+.code-ctx-meter {
+  position: relative;
+  width: 52px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: visible;
+}
+.code-ctx-meter .ctx-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  border-radius: 3px;
+  background: var(--text-3);
+  transition: width 0.4s ease;
+}
+.code-ctx-meter .ctx-fill.hot { background: var(--accent); box-shadow: 0 0 6px rgba(140, 59, 242, 0.5); }
+.code-ctx-meter .ctx-tick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 60%;
+  width: 1.5px;
+  background: var(--text-faint);
+}
 
 /* Drop-UP panels anchored to the chips */
 .code-drop-up {
@@ -11927,7 +11955,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 }
 .code-drop-item:hover { background: var(--hover); color: var(--text); }
 .code-drop-item.selected { color: var(--text); }
-.code-drop-item .drop-check { color: var(--accent); flex-shrink: 0; }
+.code-drop-item .drop-check { color: var(--white); flex-shrink: 0; }
 
 /* Effort drop-up — labels over a 4-stop slider */
 .code-effort-pop { min-width: 236px; padding: 12px 14px 13px; }

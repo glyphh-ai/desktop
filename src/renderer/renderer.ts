@@ -322,6 +322,7 @@ declare global {
       williamSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
       williamSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
       williamRemember: (fact: string) => Promise<boolean>;
+      williamContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>;
       williamStop: () => Promise<boolean>;
       williamStatus: () => Promise<{ up: boolean }>;
       onWilliamDelta: (cb: (d: { runId: string; delta: string }) => void) => void;

@@ -391,6 +391,8 @@ contextBridge.exposeInMainWorld("yo", {
   williamSessionsSave: (chats: unknown[], currentId: string) =>
     ipcRenderer.invoke("william-sessions-save", { chats, currentId }) as Promise<boolean>,
   williamRemember: (fact: string) => ipcRenderer.invoke("william-remember", fact) as Promise<boolean>,
+  williamContextUsage: (chatId: string) =>
+    ipcRenderer.invoke("william-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>,
   williamStop: () => ipcRenderer.invoke("william-stop") as Promise<boolean>,
   williamStatus: () => ipcRenderer.invoke("william-status") as Promise<{ up: boolean }>,
   onWilliamDelta: (callback: (d: { runId: string; delta: string }) => void) => {
