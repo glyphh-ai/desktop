@@ -661,9 +661,15 @@ async function boot() {
   };
 
   const execCommand = async (cmd: string, sourcePanelId?: string) => {
-    // .waz is now handled by commandParser.execute (so chained forms like
-    // `.dip gmail .waz new <prompt>` work too); the inline shim that used
-    // to short-circuit bare `waz <prompt>` is no longer needed.
+    // Modern dip first — the OS-window resolver (same routing the overlay
+    // path uses). The legacy commandParser's dip drives the retired
+    // BrowserView panel system and answers "Unknown panel"; it goes with
+    // cleanup 5g. This keeps the composer/rail-search `.dip` on the same
+    // path as the command palette.
+    if (/^\.?dip\b/i.test(cmd.trim())) {
+      const r = await runDip(cmd.trim());
+      return r.ok ? (r.message || "→ done") : `⚠ ${r.error || "dip failed"}`;
+    }
     const result = await commandParser.execute(cmd, sourcePanelId);
 
     const gridInfo = layoutManager.getGridInfo();
