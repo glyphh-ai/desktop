@@ -12,6 +12,7 @@
 import { confirmAction } from "./shared.js";
 import { gotoSection } from "./navigation.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
+import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 
 interface CodeMsg { role: "user" | "assistant"; text: string; at: number }
 interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
@@ -59,6 +60,9 @@ let chats: CodeChat[] = [];
 let currentId = "";
 let inited = false;
 let thinking = false;
+// Which chat the agent loop is working (drives the rail dot + spinner row).
+let workingChatId: string | null = null;
+let spinner: GlyphhSpinner | null = null;
 let stubTimer: ReturnType<typeof setTimeout> | null = null;
 let menuEl: HTMLDivElement | null = null;
 
@@ -136,12 +140,16 @@ function renderHistory(): void {
     const label = document.createElement("span");
     label.className = "code-history-title";
     label.textContent = c.title;
+    const dot = document.createElement("span");
+    const working = thinking && workingChatId === c.id;
+    dot.className = "code-chat-dot" + (working ? " working" : "");
+    dot.title = working ? "Working" : "Idle";
     const menuBtn = document.createElement("button");
     menuBtn.className = "code-chat-menu-btn";
     menuBtn.title = "More";
     menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
     menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openChatMenu(menuBtn, c); });
-    row.append(label, menuBtn);
+    row.append(dot, label, menuBtn);
     row.addEventListener("click", () => {
       currentId = c.id;
       saveStore();
@@ -183,6 +191,16 @@ function renderThread(): void {
     bubble.textContent = m.text;
     inner.appendChild(bubble);
   }
+  // Working row — the Glyphh spinner while the agent loop runs this chat.
+  spinner?.destroy();
+  spinner = null;
+  if (thinking && workingChatId === c.id) {
+    spinner = createGlyphhSpinner();
+    const row = document.createElement("div");
+    row.className = "code-msg assistant code-working";
+    row.appendChild(spinner.el);
+    inner.appendChild(row);
+  }
   thread.scrollTop = thread.scrollHeight;
 }
 
@@ -195,14 +213,18 @@ function autoGrow(ta: HTMLTextAreaElement): void {
 
 function setThinking(on: boolean): void {
   thinking = on;
+  workingChatId = on ? (current()?.id ?? null) : null;
+  if (!on) { spinner?.destroy(); spinner = null; }
   const send = el("code-send");
   send?.classList.toggle("thinking", on);
   if (send) send.title = on ? "Stop" : "Send";
+  renderHistory(); // rail dots track the loop state
 }
 
 function stopThinking(): void {
   if (stubTimer) { clearTimeout(stubTimer); stubTimer = null; }
   setThinking(false);
+  renderThread();
 }
 
 function send(): void {
@@ -235,20 +257,22 @@ function send(): void {
   ta.value = "";
   autoGrow(ta);
   saveStore();
+  // Stub "thinking" — replaced by the William agent loop once serving lands.
+  // Set before rendering so the spinner row + rail dot paint immediately;
+  // long enough to see the spinner's 5s phrase/direction beat.
+  setThinking(true);
   renderHistory();
   renderThread();
-  // Stub "thinking" — replaced by the William agent loop once serving lands.
-  setThinking(true);
   stubTimer = setTimeout(() => {
     stubTimer = null;
     const cur = current();
     if (cur) {
       cur.messages.push({ role: "assistant", text: STUB_REPLY, at: Date.now() });
       saveStore();
-      renderThread();
     }
     setThinking(false);
-  }, 800);
+    renderThread();
+  }, 9000);
 }
 
 // ── Apps grid — the same list + icons as the Apps page / command center,
