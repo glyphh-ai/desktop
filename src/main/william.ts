@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { getPreference } from "./preferences";
 import { effortMaxTokens, effortMaxTurns, registerWilliamPermissionIpc } from "./william-permissions";
 import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
+import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
@@ -298,11 +299,18 @@ async function agentRun(
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
   };
   // Tool instructions ride as a second system message so the cached prefix
-  // (system + memory + summary) stays byte-stable across runs.
+  // (system + memory + summary) stays byte-stable across runs. The app
+  // library is inlined so open_app targets real slugs (not guesses).
+  let appList = "";
+  try {
+    const apps = await cachedServerGet<Array<{ slug?: string | null; name: string }>>("/api/panel-apps");
+    appList = apps.slice(0, 48).map((a) => a.slug || a.name).join(", ");
+  } catch { /* offline — open_app still resolves by name */ }
   const toolsMsg: ChatMessage = {
     role: "system",
     content:
       "You are an agent loop with tools. Available tools:\n" + williamToolsPrompt() +
+      (appList ? `\n\nThe user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "") +
       "\n\nEach turn reply as JSON: {\"thought\": \"one short sentence\", \"action\": {\"name\": \"tool\", \"arguments\": {…}}} to use a tool, " +
       "or {\"thought\": \"…\", \"final\": \"your complete answer\"} when done. " +
       "Tool results arrive as <tool_response> messages. If a tool is DENIED, adapt or finish. Never invent tool output.",

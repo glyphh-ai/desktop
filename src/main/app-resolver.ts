@@ -222,10 +222,15 @@ async function openNativeTracked(
           return;
         }
         if (hit.winId) {
-          // Hosted in a window OWNED by another app config — the tab is
-          // focused, but the window stays that config's (no steal, no dup).
+          // Hosted in a window OWNED by another app config — don't re-track
+          // it, but the open still PLACES: the tab is focused, so position
+          // the hosting window into the target rect. (Real-world case: the
+          // user's "Chrome" library app owns the one big Chrome window that
+          // hosts every tab-mode app.)
           launched();
-          wlog("  DONE via existing-tab focus (window owned by another config)", { id: app.id, winId: hit.winId });
+          if (retileOnFocus) await setWindowBounds(hit.winId, rect);
+          await focusWindow(hit.winId);
+          wlog("  DONE via existing-tab focus (owned by another config — placed, not re-tracked)", { id: app.id, winId: hit.winId });
           return;
         }
         // Focused but the window couldn't be identified. A creating launch
@@ -387,6 +392,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
 
   const builtin = builtinSpec(key);
   if (builtin) {
+    wlog("openAppByRef builtin", { ref, slug: builtin.slug });
     if (builtin.url.startsWith("http")) {
       // Built-in "browser" → the user's real browser at their homepage.
       const wa0 = workspaceArea();
