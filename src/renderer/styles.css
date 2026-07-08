@@ -12092,3 +12092,15 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   animation: ctx-compacting 1s ease-in-out infinite;
 }
 @keyframes ctx-compacting { 50% { opacity: 0.35; } }
+
+/* Agent-loop breadcrumbs — compact chrome-free tool rows in the thread */
+.code-tool-line {
+  align-self: flex-start;
+  max-width: 720px;
+  font-size: 11.5px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  color: var(--text-3);
+  padding: 1px 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -14,7 +14,7 @@ import { gotoSection } from "./navigation.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" }
 interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
 
 const STORE_KEY = "codeChats";
@@ -456,7 +456,7 @@ function renderThread(): void {
   }
   for (const m of c.messages) {
     const bubble = document.createElement("div");
-    bubble.className = `code-msg ${m.role}`;
+    bubble.className = m.kind === "tool" ? "code-tool-line" : `code-msg ${m.role}`;
     bubble.textContent = m.text;
     inner.appendChild(bubble);
   }
@@ -640,6 +640,26 @@ function initWilliamEvents(): void {
   window.yo.onWilliamApproval?.((a) => {
     pendingApprovals.push(a);
     if (currentId === streamChatId || currentId === workingChatId) renderThread();
+  });
+  // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
+  // so a re-render or restart keeps the run's story).
+  window.yo.onWilliamTool?.((d) => {
+    if (activeRunId && d.runId !== activeRunId) return;
+    const chat = chats.find((ch) => ch.id === streamChatId);
+    if (!chat) return;
+    if (d.phase === "start") {
+      chat.messages.push({ role: "assistant", kind: "tool", text: `⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`, at: Date.now() });
+    } else if (d.phase === "done") {
+      const mark = d.denied ? "✕ denied" : "✓";
+      const last = chat.messages[chat.messages.length - 1];
+      if (last?.kind === "tool" && last.text.startsWith(`⚙ ${d.name}`)) {
+        last.text = `${d.denied ? "✕" : "✓"} ${d.title || d.name}${d.denied ? " — denied" : ""}`;
+      } else {
+        chat.messages.push({ role: "assistant", kind: "tool", text: `${mark} ${d.title || d.name}`, at: Date.now() });
+      }
+    }
+    void saveStore();
+    if (currentId === streamChatId) renderThread();
   });
   window.yo.onWilliamDelta?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;

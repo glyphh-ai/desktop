@@ -17,7 +17,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { getPreference } from "./preferences";
-import { effortMaxTokens, registerWilliamPermissionIpc } from "./william-permissions";
+import { effortMaxTokens, effortMaxTurns, registerWilliamPermissionIpc } from "./william-permissions";
+import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
@@ -191,7 +192,7 @@ export function registerWilliamIpc(): void {
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     const ctrl = new AbortController();
     active = { id, ctrl };
-    void stream(e.sender, id, messages, ctrl).finally(() => {
+    void agentRun(e.sender, id, messages, replyBudget, ctrl).finally(() => {
       if (active?.id === id) active = null;
       // Fold history AFTER the reply lands — a send never waits on it.
       // (The renderer saves the assistant turn right away; a short delay
@@ -233,6 +234,8 @@ export interface WilliamCompleteOpts {
   maxTokens?: number;
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
+  /** Grammar-constrain the reply to this JSON schema (agent turns). */
+  schema?: object;
 }
 
 export async function williamComplete(messages: ChatMessage[], opts: WilliamCompleteOpts = {}): Promise<string> {
@@ -245,6 +248,7 @@ export async function williamComplete(messages: ChatMessage[], opts: WilliamComp
       stream: true,
       temperature: opts.temperature ?? 0.3,
       max_tokens: opts.maxTokens ?? 4096,
+      ...(opts.schema ? { response_format: { type: "json_schema", json_schema: { name: "turn", schema: opts.schema } } } : {}),
     }),
     signal: opts.signal,
   });
@@ -276,16 +280,68 @@ export async function williamComplete(messages: ChatMessage[], opts: WilliamComp
   return text;
 }
 
-async function stream(wc: WebContents, runId: string, messages: ChatMessage[], ctrl: AbortController): Promise<void> {
+/**
+ * The agent loop: schema-constrained turns ({thought, action|final}) — the
+ * grammar guarantees every turn parses, the gate clears every action, and
+ * tool observations feed back until a final lands or the effort turn
+ * budget runs out. Thought/tool activity streams to the panel as
+ * william:tool events; the final answer arrives as one delta.
+ */
+async function agentRun(
+  wc: WebContents,
+  runId: string,
+  base: ChatMessage[],
+  replyBudget: number,
+  ctrl: AbortController,
+): Promise<void> {
   const emit = (channel: string, data: Record<string, unknown>) => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
   };
+  // Tool instructions ride as a second system message so the cached prefix
+  // (system + memory + summary) stays byte-stable across runs.
+  const toolsMsg: ChatMessage = {
+    role: "system",
+    content:
+      "You are an agent loop with tools. Available tools:\n" + williamToolsPrompt() +
+      "\n\nEach turn reply as JSON: {\"thought\": \"one short sentence\", \"action\": {\"name\": \"tool\", \"arguments\": {…}}} to use a tool, " +
+      "or {\"thought\": \"…\", \"final\": \"your complete answer\"} when done. " +
+      "Tool results arrive as <tool_response> messages. If a tool is DENIED, adapt or finish. Never invent tool output.",
+  };
+  const messages: ChatMessage[] = [base[0], toolsMsg, ...base.slice(1)];
+  const maxTurns = effortMaxTurns();
   try {
-    await williamComplete(messages, {
-      signal: ctrl.signal,
-      maxTokens: effortMaxTokens(), // the effort lever — budget per reply
-      onDelta: (delta) => emit("william:delta", { delta }),
-    });
+    for (let turn = 0; turn < maxTurns; turn++) {
+      const raw = await williamComplete(messages, {
+        signal: ctrl.signal,
+        maxTokens: replyBudget,
+        temperature: 0.15,
+        schema: TURN_SCHEMA,
+      });
+      let parsed: { thought?: string; action?: { name: string; arguments?: Record<string, unknown> }; final?: string };
+      try {
+        parsed = JSON.parse(raw) as typeof parsed;
+      } catch {
+        // Grammar should make this impossible — treat raw text as the final.
+        emit("william:delta", { delta: raw });
+        break;
+      }
+      if (parsed.action?.name) {
+        emit("william:tool", { phase: "start", name: parsed.action.name, thought: parsed.thought || "" });
+        const outcome = await executeWilliamTool(wc, parsed.action);
+        emit("william:tool", {
+          phase: "done",
+          name: parsed.action.name,
+          title: outcome.title,
+          denied: outcome.denied,
+          preview: outcome.result.slice(0, 160),
+        });
+        messages.push({ role: "assistant", content: raw });
+        messages.push({ role: "user", content: `<tool_response>\n${outcome.result}\n</tool_response>` });
+        continue;
+      }
+      emit("william:delta", { delta: parsed.final || parsed.thought || "" });
+      break;
+    }
     emit("william:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) {

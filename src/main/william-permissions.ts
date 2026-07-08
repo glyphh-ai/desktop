@@ -47,6 +47,16 @@ export function williamEffort(): WilliamEffort {
   return e === "low" || e === "high" || e === "superfly" ? e : "medium";
 }
 
+/** Agent-loop turn budget per effort tier (tool calls per run). */
+export function effortMaxTurns(): number {
+  switch (williamEffort()) {
+    case "low": return 4;
+    case "high": return 14;
+    case "superfly": return 24;
+    default: return 8;
+  }
+}
+
 /** Response token budget per effort tier (context is 16384 minus history). */
 export function effortMaxTokens(): number {
   switch (williamEffort()) {
