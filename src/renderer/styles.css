@@ -11290,41 +11290,18 @@ select:focus {
 }
 .code-input:focus { border-color: var(--accent); }
 
-/* Right — workbench */
+/* Right — the workbench rails (ported old-workbench engine). The aside sizes
+   to its rails; each rail carries its own width (drag its right edge). */
 .code-workbench {
-  width: 42%;
-  min-width: 320px;
+  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
+  min-width: 0;
   border-left: 1px solid var(--border);
   background: var(--surface-2);
   overflow: hidden;
-  transition: width 0.16s ease, min-width 0.16s ease;
 }
-.code-workbench.collapsed { width: 0 !important; min-width: 0 !important; border-left: none; }
-.code-wb-head {
-  display: flex;
-  gap: 2px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-}
-.code-wb-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  background: none;
-  padding: 5px 8px 5px 12px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  color: var(--text-3);
-  cursor: pointer;
-}
-.code-wb-tab:hover { background: var(--hover); color: var(--text); }
-.code-wb-tab.active { background: var(--active-bg); color: var(--text); font-weight: 600; }
-.code-wb-body { flex: 1; min-height: 0; position: relative; }
-.code-wb-pane { display: none; position: absolute; inset: 0; overflow: auto; }
-.code-wb-pane.active { display: flex; }
+.code-workbench.collapsed { display: none; }
+.code-workbench .ws-right-rails { height: 100%; }
 
 /* Shared empty state */
 .code-empty {
@@ -11371,10 +11348,8 @@ select:focus {
 }
 .code-splitter:hover { background: var(--border-2); }
 .code-rail.collapsed + .code-splitter { display: none; }
-#code-wb-splitter:has(+ .code-workbench.collapsed) { display: none; }
 body.code-dragging { cursor: col-resize; user-select: none; }
-body.code-dragging .code-rail,
-body.code-dragging .code-workbench { transition: none; }
+body.code-dragging .code-rail { transition: none; }
 
 /* Session row menu (⋯ → Delete) */
 .code-menu {
@@ -11444,16 +11419,3 @@ body.code-dragging .code-workbench { transition: none; }
 .code-view-btn.active { background: var(--active-bg); color: var(--text); border-color: var(--accent); }
 .code-view-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-/* Workbench tab close */
-.code-wb-tab-x {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 1;
-  color: var(--text-faint);
-}
-.code-wb-tab-x:hover { background: var(--hover); color: var(--text); }

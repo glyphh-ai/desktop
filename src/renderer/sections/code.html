@@ -69,28 +69,12 @@
               </div>
             </section>
 
-            <!-- Right — workbench rails: closed until a view is opened from the
-                 center-right toggles; open views appear as tabs. -->
-            <div id="code-wb-splitter" class="code-splitter" title="Drag to resize"></div>
+            <!-- Right — the workbench rails (the old workbench engine, ported:
+                 code-workbench-bundle.js). Closed until a view is opened from
+                 the header toggles; slots insert/tile/drag/maximize per the
+                 old rules, layout persists per working folder. -->
             <aside id="code-workbench" class="code-workbench collapsed">
-              <div id="code-wb-tabs" class="code-wb-head"></div>
-              <div class="code-wb-body">
-                <div class="code-wb-pane" data-wbtab="files">
-                  <div class="code-empty">Pick a working folder to browse its files here.</div>
-                </div>
-                <div class="code-wb-pane" data-wbtab="terminal">
-                  <div class="code-empty">A terminal opens here alongside the William loop.</div>
-                </div>
-                <div class="code-wb-pane" data-wbtab="diff">
-                  <div class="code-empty">Repair diffs — watch William fix its own build — land here.</div>
-                </div>
-                <div class="code-wb-pane" data-wbtab="preview">
-                  <div class="code-empty">Live preview of the built app.</div>
-                </div>
-                <div class="code-wb-pane" data-wbtab="plan">
-                  <div class="code-empty">The build plan and run state land here.</div>
-                </div>
-              </div>
+              <div id="code-wb-rails" class="ws-right-rails"></div>
             </aside>
 
           </div>

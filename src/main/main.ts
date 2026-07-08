@@ -75,6 +75,7 @@ import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
+import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
@@ -1248,6 +1249,11 @@ async function boot() {
         }
       },
     });
+  }
+
+  // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
+  if (!ipcMain.listenerCount("wb-term:spawn")) {
+    registerWorkbenchTerminalIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {

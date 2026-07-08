@@ -583,3 +583,48 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.on("context-update", (_e, entry) => cb(entry));
   },
 });
+
+// ── Code workbench bridge (window.wb) ────────────────────────────────────
+// The same contract the old standalone workbench preload exposed: workdir +
+// git, the lazy file tree / file readers / diff, and the per-id terminal pty
+// bridge the Files / Diff / Terminal slots need. Consumed by
+// code-workbench-bundle.js inside the Code section.
+contextBridge.exposeInMainWorld("wb", {
+  getCwd: () => ipcRenderer.invoke("working-dir:get"),
+  pickCwd: () => ipcRenderer.invoke("working-dir:pick"),
+  setCwd: (dir: string) => ipcRenderer.invoke("working-dir:set", dir),
+  getCwdRecents: () => ipcRenderer.invoke("working-dir:recents"),
+  gitInfo: (root: string) => ipcRenderer.invoke("files:git-info", root),
+  onCwdChanged: (cb: (dir: string | null) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, dir: string | null) => cb(dir);
+    ipcRenderer.on("working-dir-changed", handler);
+    return () => { ipcRenderer.removeListener("working-dir-changed", handler); };
+  },
+  onFileChanged: (cb: (absPath: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, abs: string) => cb(abs);
+    ipcRenderer.on("workdir:file-changed", handler);
+    return () => { ipcRenderer.removeListener("workdir:file-changed", handler); };
+  },
+  listDir: (dir: string) => ipcRenderer.invoke("files:list-dir", dir),
+  readFile: (filePath: string) => ipcRenderer.invoke("files:read-file", filePath),
+  writeFile: (filePath: string, content: string) => ipcRenderer.invoke("files:write-file", filePath, content),
+  gitDiff: (root: string) => ipcRenderer.invoke("files:git-diff", root),
+  termSpawn: (termId: string, cwd: string, cols: number, rows: number) =>
+    ipcRenderer.send("wb-term:spawn", termId, cwd, cols, rows),
+  termWrite: (termId: string, data: string) => ipcRenderer.send("wb-term:write", termId, data),
+  termResize: (termId: string, cols: number, rows: number) =>
+    ipcRenderer.send("wb-term:resize", termId, cols, rows),
+  termKill: (termId: string) => ipcRenderer.send("wb-term:kill", termId),
+  termOnData: (termId: string, cb: (data: string) => void) => {
+    const channel = `wb-term:data:${termId}`;
+    const handler = (_e: Electron.IpcRendererEvent, data: string) => cb(data);
+    ipcRenderer.on(channel, handler);
+    return () => { ipcRenderer.removeListener(channel, handler); };
+  },
+  termOnExit: (termId: string, cb: (code: number) => void) => {
+    const channel = `wb-term:exit:${termId}`;
+    const handler = (_e: Electron.IpcRendererEvent, code: number) => cb(code);
+    ipcRenderer.on(channel, handler);
+    return () => { ipcRenderer.removeListener(channel, handler); };
+  },
+});

@@ -7,6 +7,8 @@
   <link rel="icon" href="brand/glyphh-mark.png">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="monaco/editor/editor.main.css">
+  <!-- xterm — the Code workbench's Terminal slots -->
+  <link rel="stylesheet" href="xterm.css">
   <style>
     html, body { margin:0; padding:0; height:100%; overflow:hidden; background: var(--bg); }
     #home-root { position: absolute; inset: 0; overflow: hidden; }
@@ -147,6 +149,8 @@
   </div>
   <!-- Chart.js (auto build) → window.Chart, used by the Home dashboard chart. -->
   <script src="app-libs/chart.js"></script>
+  <!-- Code workbench engine (esbuild bundle: xterm + rails) → window.__initCodeWorkbench -->
+  <script src="code-workbench-bundle.js"></script>
   <script type="module" src="home.js"></script>
 </body>
 </html>
