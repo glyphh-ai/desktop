@@ -5684,6 +5684,7 @@ select.settings-input {
 
 .theme-picker {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 8px;
 }
@@ -9324,13 +9325,13 @@ select.settings-input {
    The Settings page also drops the right page padding — its inner
    .settings-panels has its own 28px right gutter, so the page reads as
    filled-but-padded. */
-#help-content:has(.help-section[data-section="docs"].active),
-#help-content:has(.help-section[data-section="settings"].active) {
+#page-body:has(.help-section[data-section="docs"].active),
+#page-body:has(.help-section[data-section="settings"].active) {
   padding-right: 0;
 }
 
 /* Settings sits tighter into the corner — trim the page's 32/40px gutters. */
-#help-content:has(.help-section[data-section="settings"].active) {
+#page-body:has(.help-section[data-section="settings"].active) {
   padding-top: 12px;
   padding-left: 16px;
 }
@@ -11201,7 +11202,7 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: 3px 3px 3px 10px;
   border-radius: 7px;
   cursor: pointer;
   color: var(--text-2);
@@ -11221,9 +11222,10 @@ select:focus {
   border: none;
   border-radius: 6px;
   background: none;
-  color: var(--text-3);
+  color: var(--text-2);
   cursor: pointer;
   padding: 0;
+  margin-left: auto;
   opacity: 0;
 }
 .code-history-item:hover .code-chat-menu-btn,

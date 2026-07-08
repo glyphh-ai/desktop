@@ -206,7 +206,6 @@ const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKi
   // "skills" removed — the Glyphh Skill export lives on Settings › MCP now
   // (and "skills" is in REMOVED_IDS below, so stale rows purge on boot).
   { id: "dashboard-settings", name: "Settings", url: "yo://dashboard-settings", kind: "system" },
-  { id: "about", name: "About", url: "yo://about", kind: "system" },
 ];
 
 // ── AppConnector ───────────────────────────────────────

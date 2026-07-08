@@ -539,7 +539,6 @@ async function boot() {
     "yo://connections": "connections",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
-    "yo://about": "about",
     "yo://dashboard-settings": "settings",
   };
   for (const app of appConnector.list()) {

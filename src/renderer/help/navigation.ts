@@ -127,7 +127,6 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
   else if (sec === "support") loadSupport();
-  else if (sec === "about") loadAbout();
 }
 
 /**
