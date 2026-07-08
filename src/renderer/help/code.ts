@@ -505,9 +505,13 @@ function initRecentsVsplit(): void {
     document.body.classList.add("code-vdragging");
     const startY = e.clientY;
     const startH = hist.getBoundingClientRect().height;
+    // Dragging down takes space from the apps grid — cap at the point the
+    // grid hits its 96px minimum so it always keeps a scrollable row.
+    const gridH = el("recent-apps-list")?.getBoundingClientRect().height ?? 0;
+    const maxH = startH + Math.max(0, gridH - 96);
     const move = (ev: MouseEvent) => {
-      const h = Math.max(60, Math.min(Math.round(window.innerHeight * 0.6), startH + (ev.clientY - startY)));
-      hist.style.flex = `0 0 ${h}px`;
+      const h = Math.max(60, Math.min(maxH, startH + (ev.clientY - startY)));
+      hist.style.flex = `0 1 ${h}px`;
     };
     const up = () => {
       document.removeEventListener("mousemove", move);
@@ -557,7 +561,7 @@ async function applyPanelPrefs(): Promise<void> {
   if (rail && railW > 0) { rail.style.width = `${railW}px`; rail.style.minWidth = `${railW}px`; }
   const recentsH = Number(await window.yo.getPreference?.("codeRecentsH", 0)) || 0;
   const hist = el("code-history");
-  if (hist && recentsH > 0) hist.style.flex = `0 0 ${recentsH}px`;
+  if (hist && recentsH > 0) hist.style.flex = `0 1 ${recentsH}px`;
   const recentsOpen = (await window.yo.getPreference?.("codeRecentsOpen", true)) as boolean;
   setRecentsOpen(recentsOpen !== false, false);
 }
