@@ -22,7 +22,7 @@ import { captureRun } from "./william-training";
 import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
-import { downloadWilliamModel, resolveDesiredModel, localModelPath, cachedManifest, selectedModelId } from "./william-models";
+import { downloadWilliamModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId } from "./william-models";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -248,8 +248,8 @@ export function registerWilliamIpc(): void {
     return true;
   });
 
-  ipcMain.handle("william-models-list", () => {
-    const models = cachedManifest();
+  ipcMain.handle("william-models-list", async () => {
+    const models = await refreshManifestIfStale();
     const desired = resolveDesiredModel();
     return {
       selected: selectedModelId(),

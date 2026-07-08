@@ -33,12 +33,41 @@ let downloading: Promise<string> | null = null;
 // ── Manifest cache (disk) — offline resolution + the selector's list ──────
 const manifestPath = () => join(app.getPath("userData"), "william", "manifest.json");
 
+const MANIFEST_STALE_MS = 6 * 60 * 60_000;
+
 function saveManifest(models: WilliamModelEntry[]): void {
-  try { writeFileSync(manifestPath(), JSON.stringify(models.map(({ url: _url, ...m }) => m))); } catch { /* best-effort */ }
+  try {
+    writeFileSync(manifestPath(), JSON.stringify({ at: Date.now(), models: models.map(({ url: _url, ...m }) => m) }));
+  } catch { /* best-effort */ }
+}
+
+function readManifestFile(): { at: number; models: Array<Omit<WilliamModelEntry, "url">> } {
+  try {
+    const raw = JSON.parse(readFileSync(manifestPath(), "utf8"));
+    if (Array.isArray(raw)) return { at: 0, models: raw }; // pre-freshness format
+    return { at: Number(raw?.at) || 0, models: Array.isArray(raw?.models) ? raw.models : [] };
+  } catch {
+    return { at: 0, models: [] };
+  }
 }
 
 export function cachedManifest(): Array<Omit<WilliamModelEntry, "url">> {
-  try { return JSON.parse(readFileSync(manifestPath(), "utf8")) as Array<Omit<WilliamModelEntry, "url">>; } catch { return []; }
+  return readManifestFile().models;
+}
+
+/** Fresh manifest for the selector: refetch when the cache is empty or
+ *  stale (signed-out/offline falls back to whatever the cache holds). */
+export async function refreshManifestIfStale(): Promise<Array<Omit<WilliamModelEntry, "url">>> {
+  const { at, models } = readManifestFile();
+  if (models.length && Date.now() - at < MANIFEST_STALE_MS) return models;
+  try {
+    const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
+    if (r.models?.length) {
+      saveManifest(r.models);
+      return r.models.map(({ url: _url, ...m }) => m);
+    }
+  } catch { /* signed out / offline */ }
+  return models;
 }
 
 export function selectedModelId(): string {
