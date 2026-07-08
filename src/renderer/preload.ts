@@ -128,6 +128,9 @@ contextBridge.exposeInMainWorld("yo", {
   // Screen layout (Settings → Appearance): dock mode + draggable fraction.
   screenLayoutGet: () => ipcRenderer.invoke("screen-layout-get") as Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>,
   screenLayoutSet: (v: { mode?: string; fraction?: number }) => ipcRenderer.invoke("screen-layout-set", v) as Promise<{ mode: string; fraction: number }>,
+  railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,
+  railCollapseToggle: () => ipcRenderer.invoke("rail-collapse-toggle") as Promise<boolean>,
+  railCollapseSet: (on: boolean) => ipcRenderer.invoke("rail-collapse-set", on) as Promise<boolean>,
 
   // Panel visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),

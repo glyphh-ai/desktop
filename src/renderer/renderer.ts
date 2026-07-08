@@ -318,6 +318,9 @@ declare global {
       // Recents (rich)
       screenLayoutGet: () => Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>;
       screenLayoutSet: (v: { mode?: string; fraction?: number }) => Promise<{ mode: string; fraction: number }>;
+      railCollapseGet: () => Promise<boolean>;
+      railCollapseToggle: () => Promise<boolean>;
+      railCollapseSet: (on: boolean) => Promise<boolean>;
       commandOsApps: () => Promise<Array<{ proc: string; path: string }>>;
       commandFocusApp: (proc: string) => Promise<{ ok: boolean; error?: string }>;
       recentsList: () => Promise<Array<{

@@ -32,6 +32,80 @@ let current: ScreenLayout = { mode: "full", fraction: 0.5 };
 let applying = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
+// ── Rail collapse — shrink the window to just the left rail ──────────────
+let railCollapsed = false;
+let expandedBounds: Rect | null = null;
+let prevMinSize: [number, number] | null = null;
+const workspaceChangeCbs: Array<() => void> = [];
+
+/** Registered callbacks fire after the window's footprint changes (collapse,
+ *  expand, dock-mode change) so open workspace apps can slide/retile. */
+export function onWorkspaceChange(cb: () => void): void {
+  workspaceChangeCbs.push(cb);
+}
+function fireWorkspaceChange(): void {
+  for (const cb of workspaceChangeCbs) { try { cb(); } catch { /* noop */ } }
+}
+
+/** Stepped bounds tween (~180ms ease-out) — the collapse/expand slide. */
+function tweenBounds(w: BrowserWindow, to: Rect, done?: () => void): void {
+  const from = w.getBounds();
+  const STEPS = 12;
+  let i = 0;
+  applying = true;
+  const timer = setInterval(() => {
+    i++;
+    const t = i / STEPS;
+    const e = 1 - Math.pow(1 - t, 3); // ease-out cubic
+    const mix = (a: number, b: number) => Math.round(a + (b - a) * e);
+    try {
+      w.setBounds({ x: mix(from.x, to.x), y: mix(from.y, to.y), width: mix(from.width, to.width), height: mix(from.height, to.height) });
+    } catch { /* window gone */ }
+    if (i >= STEPS) {
+      clearInterval(timer);
+      setTimeout(() => { applying = false; }, 50);
+      done?.();
+    }
+  }, 15);
+}
+
+function railWidth(): number {
+  const w = Number(getPreference("codeRailWidth", 232)) || 232;
+  return Math.max(180, Math.min(420, w)) + 6;
+}
+
+export function isRailCollapsed(): boolean { return railCollapsed; }
+
+/** Collapse to the rail (right edge slides left) or expand back out. Fires
+ *  workspace-change afterwards so open apps/layouts slide to fit. */
+export function setRailCollapsed(next: boolean): boolean {
+  if (!win || win.isDestroyed() || next === railCollapsed) return railCollapsed;
+  if (next) {
+    expandedBounds = win.getBounds();
+    prevMinSize = win.getMinimumSize() as [number, number];
+    win.setMinimumSize(160, Math.min(prevMinSize[1] || 300, 300));
+    const b = win.getBounds();
+    railCollapsed = true;
+    tweenBounds(win, { x: b.x, y: b.y, width: railWidth(), height: b.height }, fireWorkspaceChange);
+  } else {
+    railCollapsed = false;
+    const target = expandedBounds && screen.getDisplayMatching(expandedBounds).id === displayFor(win).id
+      ? expandedBounds
+      : win.getBounds();
+    tweenBounds(win, target, () => {
+      if (prevMinSize) { try { win?.setMinimumSize(prevMinSize[0], prevMinSize[1]); } catch { /* noop */ } }
+      // Re-snap to the dock rect when split (covers display changes).
+      if (current.mode !== "full") apply();
+      fireWorkspaceChange();
+    });
+  }
+  return railCollapsed;
+}
+
+export function toggleRailCollapsed(): boolean {
+  return setRailCollapsed(!railCollapsed);
+}
+
 const clampFraction = (f: number) => Math.min(MAX_FRACTION, Math.max(MIN_FRACTION, f));
 
 function displayFor(w: BrowserWindow) {
@@ -78,7 +152,7 @@ function persist(): void {
 
 /** The user dragged the shared edge — recompute the docked fraction. */
 function onResize(): void {
-  if (!win || win.isDestroyed() || applying || current.mode === "full") return;
+  if (!win || win.isDestroyed() || applying || railCollapsed || current.mode === "full") return;
   const wa = displayFor(win).workArea;
   const b = win.getBounds();
   const fr = current.mode === "left" || current.mode === "right"
@@ -99,8 +173,12 @@ export function setScreenLayout(next: Partial<ScreenLayout>): ScreenLayout {
     .includes(next.mode as ScreenLayoutMode) ? next.mode as ScreenLayoutMode : current.mode;
   const fraction = clampFraction(Number.isFinite(next.fraction as number) ? (next.fraction as number) : current.fraction);
   current = { mode, fraction };
+  // Changing the dock while collapsed expands first — the dock rect IS the
+  // expanded footprint.
+  if (railCollapsed) setRailCollapsed(false);
   apply();
   persist();
+  fireWorkspaceChange();
   return current;
 }
 

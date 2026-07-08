@@ -11829,3 +11829,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .sl-preview.sl-mode-full { flex-direction: row; }
 .sl-preview.sl-mode-full .sl-workspace { display: none; }
 .sl-preview.sl-mode-full .sl-glyphh { flex: 1 1 100%; }
+
+/* Collapse-to-rail toggle — accent when the window is railed. */
+#workspace-collapse-toggle.active { color: var(--accent); }

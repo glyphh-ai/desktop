@@ -93,6 +93,21 @@ export interface ServerApp {
 // a browser is just another binary whose new window we adopt and drive.
 const nativeAppWindows = new Map<string, { winId: string; slug: string; name: string }>();
 
+// The most recent workspace placement — a single app or a tiled layout.
+// retileWorkspace() re-runs it so open windows SLIDE to the current
+// workspace when Glyphh collapses/expands or the dock changes (openAppByRef
+// and openLayoutByName are idempotent: already-open windows are focused and
+// re-placed, not relaunched).
+let lastPlacement: { kind: "app"; ref: string } | { kind: "layout"; name: string } | null = null;
+
+export async function retileWorkspace(): Promise<void> {
+  if (!lastPlacement) return;
+  try {
+    if (lastPlacement.kind === "layout") await openLayoutByName(lastPlacement.name);
+    else await openAppByRef(lastPlacement.ref);
+  } catch { /* windows may have been closed since — nothing to slide */ }
+}
+
 // Launch+adopt chains, one per binary. Two same-binary launches in quick
 // succession (a layout with both Terminal configs) must not race: the second
 // snapshot has to include the window the first launch created, or both
@@ -326,11 +341,13 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     // same contract web apps get from openAppWindowSlide's reuse path.
     const wa = workspaceArea();
     await openNativeTracked(app, { x: wa.x, y: wa.y, width: wa.width, height: wa.height }, true);
+    lastPlacement = { kind: "app", ref };
     return { slug: app.slug, name: app.name };
   }
   // Web app → the user's real browser, per its config (browser + window/tab).
   const wa2 = workspaceArea();
   await openWebTracked(app, { x: wa2.x, y: wa2.y, width: wa2.width, height: wa2.height }, true);
+  lastPlacement = { kind: "app", ref };
   return { slug: app.slug, name: app.name };
 }
 
@@ -431,6 +448,7 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
   }
 
   if (opened.length === 0) throw new Error(`layout "${layout.name}" has no resolvable apps`);
+  lastPlacement = { kind: "layout", name };
   return { layout: layout.name, apps: opened };
 }
 

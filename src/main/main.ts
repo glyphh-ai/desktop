@@ -76,7 +76,9 @@ import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
-import { initScreenLayout } from "./screen-layout";
+import { retileWorkspace } from "./app-resolver";
+import { retileFullWindows } from "./app-window-manager";
+import { initScreenLayout, onWorkspaceChange } from "./screen-layout";
 import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
@@ -1287,6 +1289,13 @@ async function boot() {
   // Screen layout — apply the cached dock (full/left/right/top/bottom),
   // reconcile with the server profile, and track edge drags.
   if (mainWindow) initScreenLayout(mainWindow);
+  // When Glyphh's footprint changes (rail collapse/expand, dock change) the
+  // open workspace apps slide to fit: re-run the last placement (single app
+  // full-workspace, or a layout's grid re-tiled into the new region).
+  onWorkspaceChange(() => {
+    retileFullWindows();
+    void retileWorkspace();
+  });
 
   // Only restore panels if not gated by onboarding
   if (!needsOnboarding) {

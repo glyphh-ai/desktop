@@ -136,6 +136,13 @@ export function loadActiveSection(explicit?: string) {
  * stay in the DOM so `switchToSection` / `loadActiveSection` keep working.
  */
 export function gotoSection(section: string, sub?: string): void {
+  // Content sections need the window body — if Glyphh is collapsed to the
+  // rail, expand it (the workspace apps slide back right).
+  if (["apps", "connections", "layouts", "drips", "settings"].includes(section)) {
+    void window.yo.railCollapseSet?.(false).then((on) => {
+      document.getElementById("workspace-collapse-toggle")?.classList.toggle("active", on);
+    });
+  }
   // Remember the last section the user viewed so the app reopens here next
   // launch (unless a fixed startup page is set in Settings).
   void window.yo.setPreference?.("homeLastSection", section);

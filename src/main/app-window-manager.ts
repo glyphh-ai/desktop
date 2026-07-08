@@ -91,6 +91,21 @@ function createAppWindow(spec: AppWindowSpec, bounds?: Electron.Rectangle): Brow
   return win;
 }
 
+/** Slide Glyphh-hosted windows that were opened "full" (≥70% of the current
+ *  display work area) into the new workspace — the collapse/expand slide.
+ *  Cascaded utility windows stay put. */
+export function retileFullWindows(): void {
+  const area = workspaceArea();
+  const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  for (const { win } of windows.values()) {
+    if (win.isDestroyed()) continue;
+    const b = win.getBounds();
+    if (b.width >= d.width * 0.7 || Math.abs(b.width - area.width) < 80) {
+      win.setBounds(area);
+    }
+  }
+}
+
 function cascadeBounds(): Electron.Rectangle {
   const area = workspaceArea();
   const offset = (cascade++ % 8) * CASCADE_STEP;
