@@ -80,22 +80,20 @@ function setEffort(id: (typeof EFFORTS)[number]["id"]): void {
 }
 
 // ── Model selector (drop-up) — william-7b-mini / 14b-base / 34b-pro ──
-let modelList: Array<{ id: string; name: string; minRamGB: number; downloaded: boolean }> = [];
+let modelList: Array<{ id: string; name: string; minRamGB: number; status?: string; downloaded: boolean }> = [];
 let modelSelected = "auto";
 let modelResolved: string | null = null;
-
-const shortModel = (name: string) => name.replace(/^William\s+/i, "");
 
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
   const resolvedName = modelList.find((m) => m.id === modelResolved)?.name;
   if (modelSelected === "auto") {
-    mc.textContent = resolvedName ? `Auto · ${shortModel(resolvedName)}` : "Auto";
+    mc.textContent = resolvedName ? `Auto · ${resolvedName}` : "Auto";
     mc.title = "Model — picked by hardware; click to choose";
   } else {
     const selName = modelList.find((m) => m.id === modelSelected)?.name || modelSelected;
-    mc.textContent = shortModel(selName);
+    mc.textContent = selName;
     mc.title = `Model: ${selName} — click to change`;
   }
   mc.className = "code-chip";
@@ -138,6 +136,8 @@ function renderModelMenu(): void {
   };
   mk("auto", "Auto", "Picked by hardware");
   for (const m of modelList) {
+    // Only released models list — future tiers appear when they exist.
+    if ((m.status || "available") !== "available") continue;
     mk(m.id, m.name, `${m.minRamGB}GB+ RAM${m.downloaded ? "" : " — downloads on first use"}`, m.downloaded ? "" : "↓");
   }
 }

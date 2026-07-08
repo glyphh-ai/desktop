@@ -256,7 +256,8 @@ export function registerWilliamIpc(): void {
       resolved: desired?.id ?? null,
       models: models.map((m) => ({
         id: m.id, name: m.name, minRamGB: m.minRamGB, size: m.size,
-        downloaded: !!localModelPath(m),
+        status: m.status ?? "available",
+        downloaded: (m.status ?? "available") === "available" && !!localModelPath(m),
       })),
     };
   });

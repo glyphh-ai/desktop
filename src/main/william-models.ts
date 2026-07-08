@@ -25,7 +25,9 @@ export interface WilliamModelEntry {
   context: number;
   minRamGB: number;
   default: boolean;
-  url: string;
+  status?: "available" | "coming" | "hosted";
+  creditMultiplier?: number;
+  url: string | null;
 }
 
 let downloading: Promise<string> | null = null;
@@ -81,7 +83,7 @@ export function resolveDesiredModel(): Omit<WilliamModelEntry, "url"> | null {
   if (!models.length) return null;
   const sel = selectedModelId();
   if (sel !== "auto") {
-    const hit = models.find((m) => m.id === sel);
+    const hit = models.find((m) => m.id === sel && (m.status ?? "available") === "available");
     if (hit) return hit;
   }
   return pickModel(models as WilliamModelEntry[]);
@@ -108,9 +110,9 @@ function modelsDir(): string {
 
 /** Pick the tier for this machine (default tier when RAM allows, else the
  *  smallest that fits; null when nothing fits). */
-function pickModel<T extends { minRamGB: number; default: boolean }>(models: T[]): T | null {
+function pickModel<T extends { minRamGB: number; default: boolean; status?: string }>(models: T[]): T | null {
   const ramGB = Math.round(require("node:os").totalmem() / 1e9);
-  const fits = models.filter((m) => ramGB >= m.minRamGB);
+  const fits = models.filter((m) => (m.status ?? "available") === "available" && ramGB >= m.minRamGB);
   if (!fits.length) return null;
   return fits.find((m) => m.default) ?? fits.sort((a, b) => b.minRamGB - a.minRamGB)[0];
 }
@@ -133,7 +135,8 @@ async function downloadInner(): Promise<string> {
   if (!models.length) throw new Error("no William models published yet");
   saveManifest(models);
   const sel = selectedModelId();
-  const model = (sel !== "auto" && models.find((m) => m.id === sel)) || pickModel(models);
+  const avail = models.filter((m) => (m.status ?? "available") === "available");
+  const model = (sel !== "auto" && avail.find((m) => m.id === sel)) || pickModel(avail);
   if (!model) {
     const min = Math.min(...models.map((m) => m.minRamGB));
     throw new Error(`this machine is below William's smallest tier (${min}GB RAM needed) — the hosted tier lands soon`);
@@ -145,6 +148,7 @@ async function downloadInner(): Promise<string> {
   const tmp = join(modelsDir(), `.downloading-${model.file}`);
   try { if (existsSync(tmp)) unlinkSync(tmp); } catch { /* stale */ }
 
+  if (!model.url) throw new Error(`model ${model.id} has no download URL (not released)`);
   broadcast({ phase: "downloading", pct: 0, model: model.name });
   const res = await fetch(model.url);
   if (!res.ok || !res.body) throw new Error(`model download failed: HTTP ${res.status}`);
