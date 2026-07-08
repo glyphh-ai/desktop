@@ -11969,9 +11969,9 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   color: var(--text-3);
   margin-bottom: 8px;
 }
-.effort-label.active { color: var(--text); }
+.effort-label.active { color: var(--white); }
 .effort-label.sf { color: var(--accent); }
-.effort-label.sf.active { text-shadow: 0 0 8px rgba(140, 59, 242, 0.7); }
+.effort-label.sf.active { color: var(--white); text-shadow: 0 0 8px rgba(140, 59, 242, 0.7); }
 .effort-track { position: relative; height: 26px; color: var(--text-bright); }
 #effort-matrix {
   position: absolute;
@@ -12014,7 +12014,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 
 /* Superfly chip — purple heat */
 .code-chip.effort-superfly {
-  color: #d9b8ff;
+  color: var(--white);
   border-color: rgba(140, 59, 242, 0.65);
   box-shadow: 0 0 9px rgba(140, 59, 242, 0.35);
 }
