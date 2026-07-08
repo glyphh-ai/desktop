@@ -12121,3 +12121,20 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Ada search fallback rows (rail + palette) */
+.ada-hit {
+  display: block;
+  width: 100%;
+  grid-column: 1 / -1;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+  padding: 6px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ada-hit:hover { color: var(--text); border-color: var(--border-3); background: var(--hover); }

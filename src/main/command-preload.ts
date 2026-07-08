@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("yo", {
   // Data (same global ipcMain.handle channels the main window uses).
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list"),
   layoutsList: () => ipcRenderer.invoke("layouts-list"),
+  adaRecall: (query: string, k?: number) => ipcRenderer.invoke("ada-recall", { query, k }),
   dripsList: () => ipcRenderer.invoke("drips-list"),
   connectorsGetApps: (search?: string, offset?: number) =>
     ipcRenderer.invoke("connectors-get-apps", search, offset),

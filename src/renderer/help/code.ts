@@ -914,12 +914,51 @@ function renderRecentApps(): void {
   }
 
   if (!apps.length && !layouts.length && !os.length) {
-    const empty = document.createElement("div");
-    empty.className = "code-empty";
-    empty.style.margin = "10px auto";
-    empty.textContent = q ? "No matches." : "Your apps land here.";
-    list.appendChild(empty);
+    if (q) {
+      renderAdaFallback(list, q);
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "code-empty";
+      empty.style.margin = "10px auto";
+      empty.textContent = "Your apps land here.";
+      list.appendChild(empty);
+    }
   }
+}
+
+// ── Ada fallback — nothing matched by name, so ask fact memory by
+//    meaning ("email" finds gmail; "purple effect" finds the drip). A hit
+//    that carries an open_app/open_layout handle opens on click;
+//    everything else drops into the composer as context. ──
+let adaSearchSeq = 0;
+function renderAdaFallback(list: HTMLElement, q: string): void {
+  const seq = ++adaSearchSeq;
+  const empty = document.createElement("div");
+  empty.className = "code-empty";
+  empty.style.margin = "10px auto";
+  empty.textContent = "No matches.";
+  list.appendChild(empty);
+  void window.yo.adaRecall?.(q, 5).then((hits) => {
+    if (seq !== adaSearchSeq || !hits?.length || !empty.isConnected) return;
+    empty.textContent = "From Ada:";
+    for (const h of hits) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "ada-hit";
+      row.textContent = h.content.length > 90 ? `${h.content.slice(0, 90)}…` : h.content;
+      row.title = h.content;
+      row.addEventListener("click", () => {
+        const m = /open_(?:app|layout)\("([^"]+)"\)/.exec(h.content);
+        if (m) {
+          void window.yo.execCommand(`dip ${m[1]}`);
+        } else {
+          const ta = input();
+          if (ta) { ta.value = h.content; ta.focus(); autoGrow(ta); }
+        }
+      });
+      list.appendChild(row);
+    }
+  }).catch(() => { /* Ada quiet — plain empty state stands */ });
 }
 
 // ── Recents disclosure ───────────────────────────────────────────────────

@@ -191,7 +191,45 @@ function renderOsApps(): void {
   if (totalPages > 1) osPagerEl.appendChild(pager(page, totalPages, (p) => { osPage = p; renderOsApps(); }));
 }
 
-function renderAll(): void { renderApps(); renderLayouts(); renderOsApps(); }
+function renderAll(): void {
+  renderApps();
+  renderLayouts();
+  renderOsApps();
+  renderAdaFallback();
+}
+
+// Ada fallback — nothing matched by name → ask fact memory by meaning.
+let adaSeq = 0;
+function renderAdaFallback(): void {
+  const host = document.getElementById("cc-apps");
+  if (!host || !query) return;
+  const anyShown = host.children.length > 0
+    || (document.getElementById("cc-layouts")?.children.length ?? 0) > 0
+    || (document.getElementById("cc-os-apps")?.children.length ?? 0) > 0;
+  if (anyShown) return;
+  const seq = ++adaSeq;
+  const yo = (window as unknown as { yo: { adaRecall?: (q: string, k?: number) => Promise<Array<{ content: string }>> } }).yo;
+  void yo.adaRecall?.(query, 4).then((hits) => {
+    if (seq !== adaSeq || !hits?.length) return;
+    const wrap = document.createElement("div");
+    wrap.className = "cc-ada";
+    for (const h of hits) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "cc-ada-hit";
+      row.textContent = h.content.length > 110 ? `${h.content.slice(0, 110)}…` : h.content;
+      const m = /open_(?:app|layout)\("([^"]+)"\)/.exec(h.content);
+      if (m) {
+        const ref = m[1];
+        row.addEventListener("click", () => { void api.commandOpenApp(ref); });
+      } else {
+        row.disabled = true;
+      }
+      wrap.appendChild(row);
+    }
+    host.appendChild(wrap);
+  }).catch(() => { /* quiet */ });
+}
 
 /** Basename of an exec/.app path, lowercased, ".app" stripped — dedupe key. */
 function execKey(p: string | null | undefined): string {

@@ -21,6 +21,9 @@ const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!
 let mcpSectionRefresh: () => void = () => {};
 
 function initSettings() {
+  document.getElementById("william-training-toggle")?.addEventListener("change", (e) => {
+    void window.yo.setPreference?.("williamTrainingCapture", (e.target as HTMLInputElement).checked);
+  });
   document.getElementById("william-compact-save")?.addEventListener("click", () => {
     const wcp = document.getElementById("william-compact-prompt") as HTMLTextAreaElement | null;
     const status = document.getElementById("william-compact-status");
@@ -527,9 +530,16 @@ function initSettings() {
 
 
 async function loadSettings() {
-  // William: standing compaction guidance
+  // William: standing compaction guidance + training capture
   const wcp = document.getElementById("william-compact-prompt") as HTMLTextAreaElement | null;
   if (wcp) wcp.value = String((await window.yo.getPreference?.("williamCompactionPrompt", "")) || "");
+  const wtt = document.getElementById("william-training-toggle") as HTMLInputElement | null;
+  if (wtt) wtt.checked = ((await window.yo.getPreference?.("williamTrainingCapture", true)) as boolean) !== false;
+  try {
+    const ts = await window.yo.williamTrainingStats?.();
+    const el = document.getElementById("william-training-stats");
+    if (el && ts) el.textContent = `${ts.files} file${ts.files === 1 ? "" : "s"}, ${(ts.bytes / 1024).toFixed(0)} KB — ${ts.dir}`;
+  } catch { /* main not ready */ }
 
   settingsStatus.textContent = "";
   const accountInfo = await window.yo.getAccountInfo();

@@ -9,6 +9,7 @@
  */
 
 import { ENRICHER_SYSTEM, ENRICHER_JSON_SCHEMA, sanitizeUniversal, type UniversalFacts } from "./schema";
+import { captureEnrich } from "../william-training";
 
 export async function enrichFact(text: string): Promise<UniversalFacts> {
   // Lazy import — william.ts → william-tools.ts → here would otherwise cycle.
@@ -18,7 +19,9 @@ export async function enrichFact(text: string): Promise<UniversalFacts> {
     { role: "user", content: `FACT: ${text}` },
   ], { temperature: 0.1, maxTokens: 400, schema: ENRICHER_JSON_SCHEMA as unknown as object });
   try {
-    return sanitizeUniversal(JSON.parse(raw));
+    const facts = sanitizeUniversal(JSON.parse(raw));
+    captureEnrich({ text, facts }); // fact→schema pairs — enricher training data
+    return facts;
   } catch {
     return {};
   }

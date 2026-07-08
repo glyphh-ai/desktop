@@ -17,7 +17,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { getPreference } from "./stores/preferences-db";
-import { effortMaxTokens, effortMaxTurns, registerWilliamPermissionIpc } from "./william-permissions";
+import { effortMaxTokens, effortMaxTurns, williamEffort, williamMode, registerWilliamPermissionIpc } from "./william-permissions";
+import { captureRun, trainingStats } from "./william-training";
 import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
@@ -218,6 +219,7 @@ export function registerWilliamIpc(): void {
     return true;
   });
 
+  ipcMain.handle("william-training-stats", () => trainingStats());
   ipcMain.handle("william-status", async () => {
     const up = await healthy(1500);
     return { up, mode: up ? (managed ? "managed" : "external") : "down" };
@@ -326,8 +328,12 @@ async function agentRun(
   };
   const messages: ChatMessage[] = [base[0], toolsMsg, ...base.slice(1)];
   const maxTurns = effortMaxTurns();
+  let turnsUsed = 0;
+  let finalText = "";
+  let runError = "";
   try {
     for (let turn = 0; turn < maxTurns; turn++) {
+      turnsUsed = turn + 1;
       const raw = await williamComplete(messages, {
         signal: ctrl.signal,
         maxTokens: replyBudget,
@@ -357,15 +363,30 @@ async function agentRun(
         messages.push({ role: "user", content: `<tool_response>\n${outcome.result}\n</tool_response>` });
         continue;
       }
-      emit("william:delta", { delta: parsed.final || parsed.thought || "" });
+      finalText = parsed.final || parsed.thought || "";
+      messages.push({ role: "assistant", content: raw });
+      emit("william:delta", { delta: finalText });
       break;
     }
     emit("william:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) {
       emit("william:done", { stopped: true });
+      captureRun({ kind: "agent", effort: williamEffort(), mode: williamMode(), turnsUsed, stopped: true, messages });
       return;
     }
-    emit("william:error", { error: err instanceof Error ? err.message : String(err) });
+    runError = err instanceof Error ? err.message : String(err);
+    emit("william:error", { error: runError });
   }
+  // The flywheel: the full transcript (memory + history + constrained
+  // turns + tool observations + final) is next-run training data.
+  captureRun({
+    kind: "agent",
+    effort: williamEffort(),
+    mode: williamMode(),
+    turnsUsed,
+    final: finalText,
+    ...(runError ? { error: runError } : {}),
+    messages,
+  });
 }
