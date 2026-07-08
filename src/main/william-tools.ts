@@ -199,7 +199,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "connection_tools",
-    doc: "connection_tools(connector) — the API tools a connected account exposes",
+    doc: "connection_tools(connector) — the EXACT tool names a connected account exposes (always call before connection_call)",
     action: (a) => ({ kind: "read", title: `List ${String(a.connector ?? "?")} tools` }),
     run: async (a) => {
       const tools = await connectorTools(await connectedSlugs(), { connector: String(a.connector ?? "") });
@@ -208,19 +208,35 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "connection_call",
-    doc: "connection_call(connector, tool, arguments?) — call a connected account's API tool (send a message, create an issue, …)",
+    doc: "connection_call(connector, tool, arguments?) — call a connected account's API tool. Tool names MUST come from connection_tools — never guess them",
     action: (a) => ({
       kind: "network",
       title: `Call ${String(a.connector ?? "?")} → ${String(a.tool ?? "?")}`,
       detail: JSON.stringify(a.arguments ?? {}, null, 1).slice(0, 500),
     }),
     run: async (a) => {
-      const r = await connectorCall(await connectedSlugs(), {
-        connector: String(a.connector ?? ""),
-        tool: String(a.tool ?? ""),
-        args: (a.arguments as Record<string, unknown>) ?? {},
-      });
-      return cap(r.result);
+      const connector = String(a.connector ?? "");
+      const scope = await connectedSlugs();
+      try {
+        const r = await connectorCall(scope, {
+          connector,
+          tool: String(a.tool ?? ""),
+          args: (a.arguments as Record<string, unknown>) ?? {},
+        });
+        return cap(r.result);
+      } catch (err) {
+        // Unknown-tool errors answer like the William oracle: reject WITH
+        // the real names, so recovery is one turn instead of a guess loop.
+        let msg = err instanceof Error ? err.message : String(err);
+        if (/-32602|not found|unknown tool|invalid/i.test(msg)) {
+          try {
+            const tools = await connectorTools(scope, { connector });
+            const names = tools.map((t) => t.name).slice(0, 20).join(", ");
+            if (names) msg += `\nAvailable ${connector} tools: ${names}`;
+          } catch { /* listing failed too — plain error stands */ }
+        }
+        throw new Error(msg);
+      }
     },
   },
   {
