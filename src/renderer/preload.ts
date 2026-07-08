@@ -397,6 +397,11 @@ contextBridge.exposeInMainWorld("yo", {
   onWilliamError: (callback: (d: { runId: string; error: string }) => void) => {
     ipcRenderer.on("william:error", (_event, d) => callback(d));
   },
+  williamApprovalRespond: (id: string, allow: boolean) =>
+    ipcRenderer.invoke("william-approval-respond", { id, allow }) as Promise<boolean>,
+  onWilliamApproval: (callback: (d: { id: string; kind: string; title: string; detail: string }) => void) => {
+    ipcRenderer.on("william:approval", (_event, d) => callback(d));
+  },
   onThemeChanged: (callback: (theme: string) => void) => {
     ipcRenderer.on("theme-changed", (_event, theme) => callback(theme));
   },

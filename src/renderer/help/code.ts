@@ -27,6 +27,57 @@ const WILLIAM_SYSTEM =
 const HISTORY_MAX_MSGS = 24;
 const HISTORY_MAX_CHARS = 20000;
 
+// ── Permission modes + effort (composer chips; Shift+Tab cycles mode) ────
+// The mode gates what the agent loop may DO (main: william-permissions.ts);
+// plan mode also reshapes the prompt. Effort sets the reply token budget.
+const MODES = [
+  { id: "ask", label: "Ask", hint: "Every action needs your approval" },
+  { id: "plan", label: "Plan", hint: "Read-only — William plans, changes nothing" },
+  { id: "acceptEdits", label: "Accept Edits", hint: "File edits auto-approved; commands still ask" },
+  { id: "auto", label: "Auto", hint: "Workspace actions auto-approved; risky ones ask" },
+  { id: "bypass", label: "Bypass", hint: "Everything auto-approved — trusted sessions only" },
+] as const;
+const EFFORTS = [
+  { id: "low", label: "Low effort", hint: "Quick replies (1k token budget)" },
+  { id: "medium", label: "Med effort", hint: "Balanced (4k token budget)" },
+  { id: "high", label: "High effort", hint: "Thorough (8k token budget)" },
+] as const;
+let williamMode: (typeof MODES)[number]["id"] = "ask";
+let williamEffort: (typeof EFFORTS)[number]["id"] = "medium";
+// Approval cards awaiting a decision (rendered inline in the thread).
+let pendingApprovals: Array<{ id: string; kind: string; title: string; detail: string }> = [];
+
+function paintChips(): void {
+  const mc = el("code-mode-chip");
+  if (mc) {
+    const m = MODES.find((x) => x.id === williamMode) ?? MODES[0];
+    mc.textContent = m.label;
+    mc.title = `${m.hint} — click or Shift+Tab to cycle`;
+    mc.className = `code-chip mode-${m.id}`;
+  }
+  const ec = el("code-effort-chip");
+  if (ec) {
+    const ef = EFFORTS.find((x) => x.id === williamEffort) ?? EFFORTS[1];
+    ec.textContent = ef.label;
+    ec.title = `${ef.hint} — click to cycle`;
+    ec.className = `code-chip effort-${ef.id}`;
+  }
+}
+
+function cycleMode(): void {
+  const i = MODES.findIndex((m) => m.id === williamMode);
+  williamMode = MODES[(i + 1) % MODES.length].id;
+  void window.yo.setPreference?.("williamMode", williamMode);
+  paintChips();
+}
+
+function cycleEffort(): void {
+  const i = EFFORTS.findIndex((x) => x.id === williamEffort);
+  williamEffort = EFFORTS[(i + 1) % EFFORTS.length].id;
+  void window.yo.setPreference?.("williamEffort", williamEffort);
+  paintChips();
+}
+
 // Ghost empty-state quotes — the spirit of Ada & William Lovelace, with
 // peace and love woven in. Rotates while the thread is empty.
 const GHOST_QUOTES = [
@@ -204,6 +255,7 @@ function renderThread(): void {
   spinner = null;
   streamBubble = null;
   if (thinking && workingChatId === c.id) {
+    for (const a of pendingApprovals) inner.appendChild(approvalCard(a));
     if (streamText && streamChatId === c.id) {
       streamBubble = document.createElement("div");
       streamBubble.className = "code-msg assistant";
@@ -297,7 +349,11 @@ function buildHistory(c: CodeChat): Array<{ role: string; content: string }> {
     if (picked.length && chars > HISTORY_MAX_CHARS) break;
     picked.push({ role: m.role, content: m.text });
   }
-  picked.push({ role: "system", content: WILLIAM_SYSTEM });
+  let system = WILLIAM_SYSTEM;
+  if (williamMode === "plan") {
+    system += " PLAN MODE: reply with a concise numbered plan of what you would build or change — no full implementations. End with open questions if anything is unclear.";
+  }
+  picked.push({ role: "system", content: system });
   return picked.reverse();
 }
 
@@ -311,13 +367,54 @@ function finishRun(text: string): void {
   streamChatId = null;
   streamText = "";
   streamBubble = null;
+  pendingApprovals = [];
   setThinking(false);
   renderThread();
+}
+
+/** Inline approval card — Approve / Deny answer main's gate and the card
+ *  leaves the thread. */
+function approvalCard(a: { id: string; kind: string; title: string; detail: string }): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "code-approval";
+  const kind = document.createElement("div");
+  kind.className = "code-approval-kind";
+  kind.textContent = a.kind;
+  const title = document.createElement("div");
+  title.className = "code-approval-title";
+  title.textContent = a.title;
+  card.append(kind, title);
+  if (a.detail) {
+    const det = document.createElement("pre");
+    det.className = "code-approval-detail";
+    det.textContent = a.detail;
+    card.appendChild(det);
+  }
+  const actions = document.createElement("div");
+  actions.className = "code-approval-actions";
+  const mk = (label: string, allow: boolean, cls: string) => {
+    const b = document.createElement("button");
+    b.className = `action-btn ${cls}`;
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      pendingApprovals = pendingApprovals.filter((p) => p.id !== a.id);
+      void window.yo.williamApprovalRespond?.(a.id, allow);
+      renderThread();
+    });
+    return b;
+  };
+  actions.append(mk("Approve", true, "primary"), mk("Deny", false, ""));
+  card.appendChild(actions);
+  return card;
 }
 
 /** Wire the stream events once — deltas paint the live bubble (or just
  *  accumulate when another session is in view). */
 function initWilliamEvents(): void {
+  window.yo.onWilliamApproval?.((a) => {
+    pendingApprovals.push(a);
+    if (currentId === streamChatId || currentId === workingChatId) renderThread();
+  });
   window.yo.onWilliamDelta?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
     streamText += d.delta;
@@ -684,11 +781,23 @@ export function initCode(): void {
   });
   el("code-send")?.addEventListener("click", send);
   initWilliamEvents();
+  el("code-mode-chip")?.addEventListener("click", cycleMode);
+  el("code-effort-chip")?.addEventListener("click", cycleEffort);
+  void (async () => {
+    const m = String((await window.yo.getPreference?.("williamMode", "ask")) || "ask");
+    if (MODES.some((x) => x.id === m)) williamMode = m as typeof williamMode;
+    const ef = String((await window.yo.getPreference?.("williamEffort", "medium")) || "medium");
+    if (EFFORTS.some((x) => x.id === ef)) williamEffort = ef as typeof williamEffort;
+    paintChips();
+  })();
   const ta = input();
   ta?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!thinking) send();
+    } else if (e.key === "Tab" && e.shiftKey) {
+      e.preventDefault();
+      cycleMode();
     }
   });
   ta?.addEventListener("input", () => autoGrow(ta!));

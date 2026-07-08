@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { getPreference } from "./preferences";
+import { effortMaxTokens, registerWilliamPermissionIpc } from "./william-permissions";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -175,6 +176,7 @@ export function assertWilliamExternalAllowed(via: "relay" | "local-mcp"): void {
 }
 
 export function registerWilliamIpc(): void {
+  registerWilliamPermissionIpc();
   ipcMain.handle("william-run", (e, payload: { messages: ChatMessage[] }) => {
     if (active) throw new Error("a run is already in progress");
     const messages = Array.isArray(payload?.messages) ? payload.messages : [];
@@ -260,6 +262,7 @@ async function stream(wc: WebContents, runId: string, messages: ChatMessage[], c
   try {
     await williamComplete(messages, {
       signal: ctrl.signal,
+      maxTokens: effortMaxTokens(), // the effort lever — budget per reply
       onDelta: (delta) => emit("william:delta", { delta }),
     });
     emit("william:done", { stopped: false });

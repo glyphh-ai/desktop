@@ -324,6 +324,8 @@ declare global {
       onWilliamDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onWilliamDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
       onWilliamError: (cb: (d: { runId: string; error: string }) => void) => void;
+      williamApprovalRespond: (id: string, allow: boolean) => Promise<boolean>;
+      onWilliamApproval: (cb: (d: { id: string; kind: string; title: string; detail: string }) => void) => void;
       railCollapseGet: () => Promise<boolean>;
       railCollapseToggle: () => Promise<boolean>;
       railCollapseSet: (on: boolean) => Promise<boolean>;
