@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { getPreference } from "./preferences";
+import { getPreference } from "./stores/preferences-db";
 import { effortMaxTokens, effortMaxTurns, registerWilliamPermissionIpc } from "./william-permissions";
 import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
 import { cachedServerGet } from "./server-cache";

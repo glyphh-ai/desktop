@@ -20,7 +20,7 @@
  */
 
 import { ipcMain, type WebContents } from "electron";
-import { getPreference } from "./preferences";
+import { getPreference } from "./stores/preferences-db";
 
 export type WilliamMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
 export type WilliamEffort = "low" | "medium" | "high" | "superfly";

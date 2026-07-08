@@ -630,7 +630,7 @@ function approvalCard(a: { id: string; kind: string; title: string; detail: stri
     });
     return b;
   };
-  actions.append(mk("Approve", true, "primary"), mk("Deny", false, ""));
+  actions.append(mk("Deny", false, "secondary"), mk("Approve", true, "primary"));
   card.appendChild(actions);
   return card;
 }

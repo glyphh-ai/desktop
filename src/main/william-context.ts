@@ -21,7 +21,7 @@
 import { ipcMain, app } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { getPreference } from "./preferences";
+import { getPreference } from "./stores/preferences-db";
 import { williamMode } from "./william-permissions";
 import { getWorkingDirectory } from "./working-directory";
 

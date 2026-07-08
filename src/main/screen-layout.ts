@@ -12,7 +12,7 @@
  */
 
 import { BrowserWindow, screen } from "electron";
-import { getPreference, setPreference } from "./preferences";
+import { getPreference, setPreference } from "./stores/preferences-db";
 import { serverGetAuthed, serverPatchAuthed } from "./auth";
 
 export type ScreenLayoutMode = "full" | "left" | "right" | "top" | "bottom";
