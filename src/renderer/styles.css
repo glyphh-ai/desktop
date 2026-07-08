@@ -2440,7 +2440,7 @@ body.account-locked #dl-btn-wrap {
 .confirm-actions {
   display: flex;
   gap: 10px;
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
 /* ── Panel screenshots (freeze-frame) ────────────────────── */
@@ -12089,7 +12089,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   max-height: 130px;
   overflow-y: auto;
 }
-.code-approval-actions { display: flex; gap: 8px; justify-content: space-between; }
+.code-approval-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* Prompt modal textarea (skill-ask-user — restored for compact/steer) */
 #skill-ask-user-answer {
