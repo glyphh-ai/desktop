@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { getPreference } from "./preferences";
 import { effortMaxTokens, registerWilliamPermissionIpc } from "./william-permissions";
-import { assemblePrompt, compactIfNeeded, registerWilliamContextIpc } from "./william-context";
+import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -201,6 +201,14 @@ export function registerWilliamIpc(): void {
       }, 1500);
     });
     return { runId: id };
+  });
+
+  ipcMain.handle("william-compact", async (_e, p: { chatId?: string; focus?: string }) => {
+    if (active) return { ok: false, reason: "wait for the current run to finish" };
+    const chatId = String(p?.chatId || "");
+    if (!chatId) return { ok: false, reason: "chatId is required" };
+    await ensureWilliamServing();
+    return compactNow(chatId, effortMaxTokens(), (msgs, opts) => williamComplete(msgs, opts), String(p?.focus || ""));
   });
 
   ipcMain.handle("william-stop", () => {

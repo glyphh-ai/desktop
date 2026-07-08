@@ -21,6 +21,14 @@ const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!
 let mcpSectionRefresh: () => void = () => {};
 
 function initSettings() {
+  document.getElementById("william-compact-save")?.addEventListener("click", () => {
+    const wcp = document.getElementById("william-compact-prompt") as HTMLTextAreaElement | null;
+    const status = document.getElementById("william-compact-status");
+    void Promise.resolve(window.yo.setPreference?.("williamCompactionPrompt", (wcp?.value || "").trim())).then(() => {
+      if (status) { status.textContent = "Saved."; setTimeout(() => { status.textContent = ""; }, 1800); }
+    });
+  });
+
   settingsSaveBtn.addEventListener("click", saveSettings);
 
   // Theme picker
@@ -519,6 +527,10 @@ function initSettings() {
 
 
 async function loadSettings() {
+  // William: standing compaction guidance
+  const wcp = document.getElementById("william-compact-prompt") as HTMLTextAreaElement | null;
+  if (wcp) wcp.value = String((await window.yo.getPreference?.("williamCompactionPrompt", "")) || "");
+
   settingsStatus.textContent = "";
   const accountInfo = await window.yo.getAccountInfo();
 

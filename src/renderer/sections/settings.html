@@ -6,6 +6,7 @@
               <button class="settings-nav-item" data-sub="account">Account</button>
               <button class="settings-nav-item" data-sub="mcp">MCP Server</button>
               <button class="settings-nav-item" data-sub="security">Security</button>
+              <button class="settings-nav-item" data-sub="william">William</button>
               <button class="settings-nav-item" data-sub="about">About</button>
             </nav>
             <div class="settings-panels">
@@ -297,6 +298,20 @@
                   <div class="settings-actions" style="margin-top:16px;">
                     <button id="org-gr-save" class="action-btn primary">Save</button>
                     <span id="org-gr-status" style="font-size:12px;color:var(--text-3);"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-panel" data-sub="william">
+                <h2>William</h2>
+                <p class="section-desc">Glyphh's local coding agent — runs entirely on this machine.</p>
+                <div class="settings-form">
+                  <label class="settings-label">Compaction guidance</label>
+                  <textarea id="william-compact-prompt" class="settings-input" rows="4" spellcheck="false" placeholder="e.g. Always keep API decisions, file paths, and open bugs."></textarea>
+                  <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Folded into every session compaction — automatic and manual. One-shot focus from the compact dialog rides on top.</span>
+                  <div class="settings-actions" style="margin-top:14px;">
+                    <button id="william-compact-save" class="action-btn primary">Save</button>
+                    <span id="william-compact-status" style="font-size:12px;color:var(--text-3);"></span>
                   </div>
                 </div>
               </div>

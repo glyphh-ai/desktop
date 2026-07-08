@@ -187,31 +187,35 @@ type CompleteFn = (messages: ChatMessage[], opts: { maxTokens?: number; temperat
 let compacting = false;
 
 /**
- * Fold the older tail into the rolling summary when it nears its budget.
- * Runs in the background after a reply lands — a send never waits on it.
- * `complete` is injected (william.ts) to avoid a module cycle.
+ * Fold the older tail into the rolling summary NOW — the manual path
+ * (meter click / .compact) and the auto path both land here. `focus` is a
+ * one-shot steer for this fold; the standing williamCompactionPrompt
+ * preference (Settings → William) rides along on every fold.
  */
-export async function compactIfNeeded(chatId: string, replyBudget: number, complete: CompleteFn): Promise<void> {
-  if (compacting) return;
+export async function compactNow(
+  chatId: string,
+  replyBudget: number,
+  complete: CompleteFn,
+  focus?: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (compacting) return { ok: false, reason: "a compaction is already running" };
   compacting = true;
   try {
     const { chats } = loadSessions();
     const chat = chats.find((c) => c.id === chatId);
-    if (!chat) return;
+    if (!chat) return { ok: false, reason: "unknown session" };
     const summaries = loadSummaries();
     const entry = summaries[chatId];
     const upTo = entry?.upTo ?? 0;
     const tail = chat.messages.slice(upTo);
-    if (tail.length <= TAIL_KEEP + 2) return;
-
-    const budget = CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
-    const tailText = tail.map((m) => `${m.role}: ${m.text}`).join("\n");
-    if ((await countTokens(tailText)) < budget * COMPACT_AT) return;
+    if (tail.length <= TAIL_KEEP + 2) return { ok: false, reason: "nothing to fold yet — the recent turns already fit" };
 
     // Fold everything except the recency floor.
     const fold = tail.slice(0, -TAIL_KEEP);
     const foldText = fold.map((m) => `${m.role}: ${m.text}`).join("\n\n");
     const prior = entry?.summary ? `Existing summary of even earlier conversation:\n${entry.summary}\n\n` : "";
+    const standing = String(getPreference("williamCompactionPrompt", "")).trim();
+    const guidance = [standing, String(focus || "").trim()].filter(Boolean).join("\n");
     const summary = (await complete([
       {
         role: "system",
@@ -220,14 +224,43 @@ export async function compactIfNeeded(chatId: string, replyBudget: number, compl
           "digest under these exact headings: Goal, Decisions, Constraints, Files & artifacts, Open threads. " +
           "Be terse and concrete; keep names, paths, and numbers. No preamble.",
       },
-      { role: "user", content: `${prior}New turns to fold in:\n${foldText}` },
+      {
+        role: "user",
+        content: `${prior}New turns to fold in:\n${foldText}` +
+          (guidance ? `\n\nUser guidance — emphasize and preserve:\n${guidance}` : ""),
+      },
     ], { maxTokens: 700, temperature: 0.2 })).trim();
-    if (!summary) return;
+    if (!summary) return { ok: false, reason: "the summarizer returned nothing" };
 
     summaries[chatId] = { summary, upTo: upTo + fold.length };
     saveSummaries(summaries);
-  } catch { /* compaction is best-effort — next turn just carries more tail */ }
-  finally { compacting = false; }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  } finally {
+    compacting = false;
+  }
+}
+
+/**
+ * Auto path: fold only when the tail nears its budget. Runs in the
+ * background after a reply lands — a send never waits on it. `complete`
+ * is injected (william.ts) to avoid a module cycle.
+ */
+export async function compactIfNeeded(chatId: string, replyBudget: number, complete: CompleteFn): Promise<void> {
+  if (compacting) return;
+  try {
+    const { chats } = loadSessions();
+    const chat = chats.find((c) => c.id === chatId);
+    if (!chat) return;
+    const upTo = loadSummaries()[chatId]?.upTo ?? 0;
+    const tail = chat.messages.slice(upTo);
+    if (tail.length <= TAIL_KEEP + 2) return;
+    const budget = CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
+    const tailText = tail.map((m) => `${m.role}: ${m.text}`).join("\n");
+    if ((await countTokens(tailText)) < budget * COMPACT_AT) return;
+    await compactNow(chatId, replyBudget, complete);
+  } catch { /* best-effort — next turn just carries more tail */ }
 }
 
 /**

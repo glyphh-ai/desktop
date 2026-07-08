@@ -9,7 +9,7 @@
  * center header carries its workdir controls and view toggles.
  */
 
-import { confirmAction } from "./shared.js";
+import { confirmAction, promptAction } from "./shared.js";
 import { gotoSection } from "./navigation.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
@@ -169,6 +169,31 @@ function startMatrix(): void {
   matrixRaf = requestAnimationFrame(tick);
 }
 
+/** Manual compaction (meter click / .compact) — steers the fold with an
+ *  optional one-shot focus, reports the outcome into the thread. */
+async function runManualCompact(focus: string): Promise<void> {
+  const c = current();
+  if (!c || thinking) return;
+  const meter = el("code-ctx-meter");
+  meter?.classList.add("compacting");
+  try {
+    const r = await window.yo.williamCompact?.(c.id, focus);
+    const u = await window.yo.williamContextUsage?.(c.id).catch(() => null);
+    const pct = u ? ` — context now ${Math.round(u.ratio * 100)}%` : "";
+    c.messages.push({
+      role: "assistant",
+      text: r?.ok ? `✓ Compacted${pct}.` : `⚠ Compaction skipped: ${r?.reason || "unknown"}`,
+      at: Date.now(),
+    });
+  } catch (err) {
+    c.messages.push({ role: "assistant", text: `⚠ ${err instanceof Error ? err.message : String(err)}`, at: Date.now() });
+  }
+  meter?.classList.remove("compacting");
+  void saveStore();
+  renderThread();
+  refreshCtxMeter();
+}
+
 // ── Compaction meter — how full the fold window is (tick = fold point) ──
 let meterTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -230,6 +255,18 @@ function initComposerControls(): void {
     const t = e.target as Node;
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
     if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
+  });
+  // Meter click → compact modal (optional focus steers this fold).
+  el("code-ctx-meter")?.addEventListener("click", () => {
+    if (thinking || !current()) return;
+    void promptAction(
+      "Compact this session now — optionally tell William what the summary must keep.",
+      "",
+      "e.g. keep the API decisions, file paths, and open bugs",
+    ).then((focus) => {
+      if (focus === null) return; // cancelled
+      void runManualCompact(focus.trim());
+    });
   });
 }
 
@@ -478,6 +515,21 @@ function send(): void {
   if (!text) return;
   // Dot-commands (.dip slack, .drip rain, …) run through the command parser —
   // the composer doubles as the command input.
+  // `.compact [focus]` → fold the session's older turns now, optionally
+  // steering what the summary must keep.
+  const comp = /^\.compact(?:\s+(.+))?$/is.exec(text);
+  if (comp) {
+    if (!current()) newChat();
+    const cc = current()!;
+    cc.messages.push({ role: "user", text, at: Date.now() });
+    ta.value = "";
+    autoGrow(ta);
+    void saveStore();
+    renderHistory();
+    renderThread();
+    void runManualCompact((comp[1] || "").trim());
+    return;
+  }
   // `.remember <fact>` → William's persistent memory (memory.md), loaded
   // into every session's prompt prefix.
   const rem = /^\.remember\s+(.+)/is.exec(text);
