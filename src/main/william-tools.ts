@@ -31,7 +31,7 @@ import { connectorTools, connectorCall } from "./glyphh-app-services";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
-import { buildGlyphhApp } from "./william-app-builder";
+import { buildGlyphhApp, updateAppFromWorkdir } from "./william-app-builder";
 import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 
@@ -199,6 +199,21 @@ const TOOLS: ToolDef[] = [
       return { kind: DANGEROUS_CMD.test(cmd) ? "dangerous" : "command", title: "Run command", detail: cmd };
     },
     run: async (a, signal) => runShell(String(a.command ?? ""), workdir(), signal),
+  },
+  {
+    name: "update_app",
+    doc: "update_app() — re-validate + re-install the app from the working folder's source. ALWAYS call after editing manifest.json/worker.js/index.html, or tool calls run the OLD version",
+    action: () => ({ kind: "edit", title: "Update app from source" }),
+    run: async () => {
+      const scope = await connectedSlugs().catch(() => new Set<string>());
+      const lookup = (slug: string) => {
+        const hit = connectorNameCache.get(slug);
+        return hit ? hit.names : null;
+      };
+      void scope; // scope warms via connection_tools; cache-based lookup here
+      const r = await updateAppFromWorkdir(lookup);
+      return `updated "${r.name}" (${r.slug}) from source${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files.`;
+    },
   },
   {
     name: "git_status",

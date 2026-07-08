@@ -67,6 +67,56 @@ async function liveGrounding(): Promise<{ block: string; lookup: (slug: string) 
 
 export interface BuildResult { slug: string; name: string; attempts: number; warnings: string[]; sourceDir?: string }
 
+/** Zip a bundle and run it through the host's real install gate. */
+async function packageAndInstall(bundle: Bundle): Promise<{ ok: boolean; name?: string; error?: string }> {
+  const zip = new AdmZip();
+  for (const [file, content] of Object.entries(bundle)) {
+    zip.addFile(file, Buffer.from(content, "utf8"));
+  }
+  const tmp = path.join(os.tmpdir(), `william-build-${Date.now().toString(36)}.glyphh`);
+  fs.writeFileSync(tmp, zip.toBuffer());
+  try {
+    return await installGlyphhAppBundle(tmp);
+  } finally {
+    try { fs.unlinkSync(tmp); } catch { /* tmp gone */ }
+  }
+}
+
+/**
+ * The iteration loop's return path: re-validate + re-install the app from
+ * the WORKING FOLDER's source (the root by contract; a <slug>/ subfolder as
+ * fallback). William edits files, calls update_app, and the installed app
+ * catches up — then its tools reflect the edits.
+ */
+export async function updateAppFromWorkdir(
+  lookup?: (slug: string) => string[] | null,
+): Promise<{ slug: string; name: string; warnings: string[] }> {
+  const wd = getExplicitWorkingDirectory();
+  if (!wd) throw new Error("no working folder is set");
+  // Root first (the contract), else the newest subfolder holding a manifest.
+  let dir = wd;
+  if (!fs.existsSync(path.join(dir, "manifest.json"))) {
+    const sub = fs.readdirSync(wd)
+      .map((n) => path.join(wd, n))
+      .filter((p) => { try { return fs.statSync(p).isDirectory() && fs.existsSync(path.join(p, "manifest.json")); } catch { return false; } })
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
+    if (!sub) throw new Error("no manifest.json in the working folder — nothing to update");
+    dir = sub;
+  }
+  const bundle: Bundle = {};
+  for (const f of fs.readdirSync(dir)) {
+    const abs = path.join(dir, f);
+    try {
+      if (fs.statSync(abs).isFile() && fs.statSync(abs).size < 512_000) bundle[f] = fs.readFileSync(abs, "utf8");
+    } catch { /* unreadable — skip */ }
+  }
+  const v = validateBundle(bundle, lookup);
+  if (!v.ok) throw new Error(`source fails validation: ${v.errors.join("; ")}`);
+  const r = await packageAndInstall(bundle);
+  if (!r.ok) throw new Error(r.error || "install failed");
+  return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, warnings: v.warnings };
+}
+
 /** Drop the FULL passing bundle (every emitted file, index.html included)
  *  at the WORKING FOLDER ROOT — the picked folder IS the app's home (Files
  *  rail shows exactly what shipped; iteration overwrites in place with git
@@ -162,22 +212,12 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
     if (!v.ok) { lastErrors = v.errors; continue; }
 
     say("Installing…");
-    const zip = new AdmZip();
-    for (const [file, content] of Object.entries(bundle)) {
-      zip.addFile(file, Buffer.from(content, "utf8"));
-    }
-    const tmp = path.join(os.tmpdir(), `william-build-${Date.now().toString(36)}.glyphh`);
-    fs.writeFileSync(tmp, zip.toBuffer());
-    try {
-      const r = await installGlyphhAppBundle(tmp);
-      if (!r.ok) { lastErrors = [r.error || "install failed"]; continue; }
-      say("");
-      if (bundle["index.html"]) showPreview(bundle["index.html"], `${r.name || v.manifest!.name} — installed ✓`);
-      const sourceDir = writeSourceToWorkdir(bundle, v.manifest!.slug);
-      return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, attempts: attempt, warnings: v.warnings, sourceDir };
-    } finally {
-      try { fs.unlinkSync(tmp); } catch { /* tmp gone */ }
-    }
+    const r = await packageAndInstall(bundle);
+    if (!r.ok) { lastErrors = [r.error || "install failed"]; continue; }
+    say("");
+    if (bundle["index.html"]) showPreview(bundle["index.html"], `${r.name || v.manifest!.name} — installed ✓`);
+    const sourceDir = writeSourceToWorkdir(bundle, v.manifest!.slug);
+    return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, attempts: attempt, warnings: v.warnings, sourceDir };
   }
   say("");
   throw new Error(`build failed after ${budget} pass${budget === 1 ? "" : "es"}: ${lastErrors.join("; ") || "no valid bundle emitted"}`);

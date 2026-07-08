@@ -366,6 +366,7 @@ async function agentRun(
       "You are an agent loop with tools. Available tools:\n" + williamToolsPrompt() +
       (appList ? `\n\nThe user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "") +
       (connList ? `\n\nConnected accounts (connection_tools/connection_call): ${connList}` : "") +
+      "\n\nRULE: the working folder ROOT holds the current app's source (manifest.json, worker.js, index.html) — edit THOSE files directly, never create nested app folders. After editing app source, call update_app() or tool calls run the stale installed version. " +
       "\n\nRULE: before your FIRST connection_call to any connector in a session, call connection_tools(connector) — connector tool names are exact strings you cannot guess. " +
       "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly." +
       "\n\nEach turn reply as JSON: {\"thought\": \"one short sentence\", \"action\": {\"name\": \"tool\", \"arguments\": {…}}} to use a tool, " +
