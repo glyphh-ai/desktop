@@ -264,6 +264,10 @@ export function registerWorkingDirectoryIpc(deps: {
   // Agent app's branch picker dropdown.
   // Switch branches. Fails if the working tree is dirty — git surfaces a
   // clear error, which the renderer can display.
+  // Explicit-only read: null until the user has ever picked a folder —
+  // the Code composer gates on this (never on the ~/ fallback).
+  ipcMain.handle("working-dir:get-explicit", () => getExplicitWorkingDirectory());
+
   // Set the current dir to an already-known path (e.g. picked from recents).
   ipcMain.handle("working-dir:set", (_e, dir: string) => {
     if (dir) setWorkingDirectory(dir);

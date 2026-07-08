@@ -677,6 +677,48 @@ function toolGroupEl(chatId: string, msgs: CodeMsg[]): HTMLElement {
   return wrap;
 }
 
+// ── Working-folder gate — a session builds inside a folder the user chose.
+//    Until one has ever been picked, the composer sleeps: placeholder
+//    explains, a click pops the OS picker, and picking wakes it. The folder
+//    persists as last-used, so this is a once-per-setup moment. ──
+type WbBridge = {
+  getCwdExplicit?: () => Promise<string | null>;
+  pickCwd?: () => Promise<string | null>;
+  onCwdChanged?: (cb: (dir: string | null) => void) => void;
+};
+const wb = () => (window as unknown as { wb?: WbBridge }).wb;
+
+let workdirReady = true; // optimistic until the first check lands
+
+function paintComposerGate(): void {
+  const ta = input();
+  if (!ta) return;
+  ta.disabled = !workdirReady;
+  ta.placeholder = workdirReady
+    ? "Describe the app to build…"
+    : "Pick a working folder to start — click here to choose";
+  el("code-send")?.toggleAttribute("disabled", !workdirReady);
+  document.querySelector(".code-input-wrap")?.classList.toggle("gated", !workdirReady);
+}
+
+async function checkWorkdirGate(): Promise<void> {
+  try {
+    const wd = await wb()?.getCwdExplicit?.();
+    workdirReady = !!wd;
+  } catch { workdirReady = true; /* bridge missing — never brick the composer */ }
+  paintComposerGate();
+}
+
+function initWorkdirGate(): void {
+  void checkWorkdirGate();
+  wb()?.onCwdChanged?.(() => { void checkWorkdirGate(); });
+  // A click on the sleeping composer IS the ask — pop the picker.
+  document.querySelector(".code-input-wrap")?.addEventListener("click", () => {
+    if (workdirReady) return;
+    void wb()?.pickCwd?.().then(() => checkWorkdirGate());
+  });
+}
+
 // ── Composer ─────────────────────────────────────────────────────────────
 function autoGrow(ta: HTMLTextAreaElement): void {
   // Grow with input up to ~10 lines, then scroll internally.
@@ -1326,6 +1368,7 @@ export function initCode(): void {
   });
   el("code-send")?.addEventListener("click", send);
   initWilliamEvents();
+  initWorkdirGate();
   initComposerControls();
   void (async () => {
     const m = String((await window.yo.getPreference?.("williamMode", "ask")) || "ask");

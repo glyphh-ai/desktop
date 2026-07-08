@@ -643,6 +643,7 @@ contextBridge.exposeInMainWorld("yo", {
 // code-workbench-bundle.js inside the Code section.
 contextBridge.exposeInMainWorld("wb", {
   getCwd: () => ipcRenderer.invoke("working-dir:get"),
+  getCwdExplicit: () => ipcRenderer.invoke("working-dir:get-explicit"),
   pickCwd: () => ipcRenderer.invoke("working-dir:pick"),
   setCwd: (dir: string) => ipcRenderer.invoke("working-dir:set", dir),
   getCwdRecents: () => ipcRenderer.invoke("working-dir:recents"),
