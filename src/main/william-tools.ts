@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateWilliamAction, type WilliamActionKind } from "./william-permissions";
-import { getWorkingDirectory } from "./working-directory";
+import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { serverGetAuthed } from "./auth";
 import { cachedServerGet } from "./server-cache";
@@ -50,7 +50,7 @@ interface ToolDef {
 const cap = (s: string, n = OUTPUT_CAP) => (s.length > n ? `${s.slice(0, n)}\n…(truncated, ${s.length} chars total)` : s);
 
 function workdir(): string {
-  const wd = getWorkingDirectory();
+  const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set — ask the user to pick one in the Code header");
   return wd;
 }

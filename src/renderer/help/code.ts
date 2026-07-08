@@ -80,7 +80,7 @@ function setEffort(id: (typeof EFFORTS)[number]["id"]): void {
 }
 
 // ── Model selector (drop-up) — william-7b-mini / 14b-base / 34b-pro ──
-let modelList: Array<{ id: string; name: string; minRamGB: number; status?: string; downloaded: boolean }> = [];
+let modelList: Array<{ id: string; name: string; minRamGB: number; status?: string; usage?: string; downloaded: boolean }> = [];
 let modelSelected = "auto";
 let modelResolved: string | null = null;
 
@@ -115,15 +115,23 @@ function renderModelMenu(): void {
   if (!menu) return;
   menu.textContent = "";
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const mk = (id: string, label: string, hint: string, extra?: string) => {
+  const mk = (id: string, label: string, sub: string, extra?: string) => {
     const item = document.createElement("button");
-    item.className = "code-drop-item" + (id === modelSelected ? " selected" : "");
+    item.className = "code-drop-item drop-item-2line" + (id === modelSelected ? " selected" : "");
     item.type = "button";
-    item.title = hint;
+    const main = document.createElement("div");
+    main.className = "drop-main";
     const span = document.createElement("span");
     span.textContent = label + (extra ? ` ${extra}` : "");
-    item.appendChild(span);
-    if (id === modelSelected) item.insertAdjacentHTML("beforeend", check);
+    main.appendChild(span);
+    if (id === modelSelected) main.insertAdjacentHTML("beforeend", check);
+    item.appendChild(main);
+    if (sub) {
+      const subEl = document.createElement("span");
+      subEl.className = "drop-sub";
+      subEl.textContent = sub;
+      item.appendChild(subEl);
+    }
     item.addEventListener("click", () => {
       modelSelected = id;
       void window.yo.setPreference?.("williamModel", id);
@@ -134,11 +142,13 @@ function renderModelMenu(): void {
     });
     menu.appendChild(item);
   };
-  mk("auto", "Auto", "Picked by hardware");
+  mk("auto", "Auto", "Picks the best tier for this machine.");
   for (const m of modelList) {
     // Only released models list — future tiers appear when they exist.
     if ((m.status || "available") !== "available") continue;
-    mk(m.id, m.name, `${m.minRamGB}GB+ RAM${m.downloaded ? "" : " — downloads on first use"}`, m.downloaded ? "" : "↓");
+    const sub = [m.usage || "", `${m.minRamGB}GB+ RAM${m.downloaded ? "" : " · downloads on first use"}`]
+      .filter(Boolean).join(" ");
+    mk(m.id, m.name, sub, m.downloaded ? "" : "↓");
   }
 }
 
@@ -759,12 +769,24 @@ function send(): void {
   streamText = "";
   refreshCtxMeter();
   // Main assembles the prompt from the store — the save must land first.
-  void saveStore().then(() =>
+  // A session must run inside a folder the user chose: the first send on a
+  // fresh setup pops the OS folder picker, then the run proceeds.
+  const launch = (retried: boolean): Promise<void> =>
     window.yo.williamRun({ chatId: c.id })
       .then((r) => { activeRunId = r.runId; })
-      .catch((err) => {
-        finishRun(`⚠ ${err instanceof Error ? err.message : String(err)}`);
-      }));
+      .catch(async (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("NO_WORKDIR") && !retried) {
+          await (window as unknown as { wb?: { pickCwd?: () => Promise<string | null> } }).wb?.pickCwd?.();
+          return launch(true);
+        }
+        if (msg.includes("NO_WORKDIR")) {
+          finishRun("⚠ Pick a working folder to start — William works inside the folder you choose (folder button at the top of this pane).");
+          return;
+        }
+        finishRun(`⚠ ${msg}`);
+      });
+  void saveStore().then(() => launch(false));
 }
 
 /** Land the run's outcome in its chat (found by id — the user may have

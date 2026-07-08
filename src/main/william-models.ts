@@ -27,6 +27,7 @@ export interface WilliamModelEntry {
   default: boolean;
   status?: "available" | "coming" | "hosted";
   creditMultiplier?: number;
+  usage?: string;
   url: string | null;
 }
 

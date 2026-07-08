@@ -23,6 +23,7 @@ import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-t
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
 import { downloadWilliamModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId } from "./william-models";
+import { getExplicitWorkingDirectory } from "./working-directory";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -215,6 +216,9 @@ export function registerWilliamIpc(): void {
     if (active) throw new Error("a run is already in progress");
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
+    // Sessions run inside a folder the USER chose — never ~/, never the
+    // launch cwd. The renderer turns this into the folder picker.
+    if (!getExplicitWorkingDirectory()) throw new Error("NO_WORKDIR: pick a working folder to start");
     // Assembly is token-true (needs the server for /tokenize) — bring the
     // runtime up first so counting and completion share one warm process.
     await ensureWilliamServing();
@@ -257,6 +261,7 @@ export function registerWilliamIpc(): void {
       models: models.map((m) => ({
         id: m.id, name: m.name, minRamGB: m.minRamGB, size: m.size,
         status: m.status ?? "available",
+        usage: m.usage ?? "",
         downloaded: (m.status ?? "available") === "available" && !!localModelPath(m),
       })),
     };

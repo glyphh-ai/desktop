@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } fr
 import { join } from "node:path";
 import { getPreference } from "./stores/preferences-db";
 import { williamMode } from "./william-permissions";
-import { getWorkingDirectory } from "./working-directory";
+import { getExplicitWorkingDirectory } from "./working-directory";
 
 export interface StoredMsg { role: "user" | "assistant"; text: string; at: number }
 export interface StoredChat { id: string; title: string; createdAt: number; messages: StoredMsg[] }
@@ -109,7 +109,7 @@ function memoryBlock(): string {
   const user = readCapped(memoryPath(), 2000);
   if (user) parts.push(`Things the user asked you to remember:\n${user}`);
   try {
-    const wd = getWorkingDirectory();
+    const wd = getExplicitWorkingDirectory();
     if (wd) {
       const proj = readCapped(join(wd, "WILLIAM.md"), 4500);
       if (proj) parts.push(`Project notes (WILLIAM.md in the working folder):\n${proj}`);
