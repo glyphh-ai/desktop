@@ -9,7 +9,7 @@
  * gate() function that maps mode → decision without per-tool overrides.
  */
 
-import { getPreference } from "./preferences";
+import { getPreference } from "./stores/preferences-db";
 
 const DESTRUCTIVE_VERBS = new Set(["send", "delete", "remove", "publish", "push", "deploy", "destroy"]);
 

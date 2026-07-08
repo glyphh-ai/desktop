@@ -311,6 +311,7 @@ async function agentRun(
     content:
       "You are an agent loop with tools. Available tools:\n" + williamToolsPrompt() +
       (appList ? `\n\nThe user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "") +
+      "\n\nRULE: before your FIRST connection_call to any connector in a session, call connection_tools(connector) — connector tool names are exact strings you cannot guess." +
       "\n\nEach turn reply as JSON: {\"thought\": \"one short sentence\", \"action\": {\"name\": \"tool\", \"arguments\": {…}}} to use a tool, " +
       "or {\"thought\": \"…\", \"final\": \"your complete answer\"} when done. " +
       "Tool results arrive as <tool_response> messages. If a tool is DENIED, adapt or finish. Never invent tool output.",

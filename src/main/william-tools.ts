@@ -72,6 +72,21 @@ function runShell(command: string, cwd: string): Promise<string> {
   });
 }
 
+// Tool-name registry per connector — populated by connection_tools and by
+// the first connection_call; lets the executor validate names LOCALLY so a
+// guessed tool dies instantly with the real list (no server round-trip).
+const connectorNameCache = new Map<string, { names: string[]; at: number }>();
+const NAME_CACHE_TTL = 10 * 60_000;
+
+async function connectorToolNames(scope: Set<string>, connector: string): Promise<string[]> {
+  const hit = connectorNameCache.get(connector);
+  if (hit && Date.now() - hit.at < NAME_CACHE_TTL) return hit.names;
+  const tools = await connectorTools(scope, { connector });
+  const names = tools.map((t) => t.name);
+  connectorNameCache.set(connector, { names, at: Date.now() });
+  return names;
+}
+
 /** The user's connected connector slugs — William acts as the user, so
  *  every connected account is in scope (the server still owns all auth). */
 async function connectedSlugs(): Promise<Set<string>> {
@@ -202,7 +217,9 @@ const TOOLS: ToolDef[] = [
     doc: "connection_tools(connector) — the EXACT tool names a connected account exposes (always call before connection_call)",
     action: (a) => ({ kind: "read", title: `List ${String(a.connector ?? "?")} tools` }),
     run: async (a) => {
-      const tools = await connectorTools(await connectedSlugs(), { connector: String(a.connector ?? "") });
+      const connector = String(a.connector ?? "");
+      const tools = await connectorTools(await connectedSlugs(), { connector });
+      connectorNameCache.set(connector, { names: tools.map((t) => t.name), at: Date.now() });
       return cap(JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description })), null, 1));
     },
   },
@@ -217,10 +234,22 @@ const TOOLS: ToolDef[] = [
     run: async (a) => {
       const connector = String(a.connector ?? "");
       const scope = await connectedSlugs();
+      const tool = String(a.tool ?? "");
+      // Validate the name locally first — a guessed tool never even leaves
+      // the machine; the rejection carries the real names (oracle pattern).
+      try {
+        const names = await connectorToolNames(scope, connector);
+        if (names.length && !names.includes(tool)) {
+          const ci = names.find((n) => n.toLowerCase() === tool.toLowerCase());
+          if (!ci) {
+            return `ERROR: "${tool}" is not a ${connector} tool. Available ${connector} tools: ${names.slice(0, 20).join(", ")}`;
+          }
+        }
+      } catch { /* listing unavailable — let the server answer */ }
       try {
         const r = await connectorCall(scope, {
           connector,
-          tool: String(a.tool ?? ""),
+          tool,
           args: (a.arguments as Record<string, unknown>) ?? {},
         });
         return cap(r.result);
@@ -230,9 +259,8 @@ const TOOLS: ToolDef[] = [
         let msg = err instanceof Error ? err.message : String(err);
         if (/-32602|not found|unknown tool|invalid/i.test(msg)) {
           try {
-            const tools = await connectorTools(scope, { connector });
-            const names = tools.map((t) => t.name).slice(0, 20).join(", ");
-            if (names) msg += `\nAvailable ${connector} tools: ${names}`;
+            const names = await connectorToolNames(scope, connector);
+            if (names.length) msg += `\nAvailable ${connector} tools: ${names.slice(0, 20).join(", ")}`;
           } catch { /* listing failed too — plain error stands */ }
         }
         throw new Error(msg);

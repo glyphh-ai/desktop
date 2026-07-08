@@ -17,7 +17,7 @@ import fs from "fs/promises";
 import { watch, statSync, type FSWatcher } from "fs";
 import path from "path";
 import os from "os";
-import { getPreference, setPreference } from "./preferences";
+import { getPreference, setPreference } from "./stores/preferences-db";
 
 const execFileP = promisify(execFile);
 

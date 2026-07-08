@@ -21,7 +21,7 @@
 
 import { WebSocket } from "ws";
 import { getAuthToken, isAuthenticated, hasMcpAccess } from "./auth.js";
-import { getPreference } from "./preferences.js";
+import { getPreference } from "./stores/preferences-db.js";
 import { handleStreamFrame, abortAllStreams } from "./app-proxy-stream.js";
 
 const AUTH_SERVER = process.env.YO_AUTH_SERVER || "https://api.glyphh.ai";

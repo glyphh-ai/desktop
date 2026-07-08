@@ -276,7 +276,7 @@ async function boot() {
   initLocalDb();
   const migrationResult = migrateFromFiles();
   if (migrationResult.migrated) {
-    console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs`);
+    console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs, ${migrationResult.prefsV2} stranded prefs`);
   }
 
   // Load LLM config (provider + model selection only)
