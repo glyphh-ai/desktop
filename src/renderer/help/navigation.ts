@@ -99,6 +99,11 @@ function switchToSection(sectionId: string) {
   const section = document.querySelector(`.help-section[data-section="${sectionId}"]`) as HTMLElement;
   if (navItem) navItem.classList.add("active");
   if (section) section.classList.add("active");
+  // App rail (Code-primary surface): sync the Home|Code switcher + nav items.
+  document.querySelectorAll<HTMLButtonElement>(".app-rail-switch-btn").forEach((b) =>
+    b.classList.toggle("active", b.dataset.target === sectionId));
+  document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item").forEach((b) =>
+    b.classList.toggle("active", b.dataset.section === sectionId));
 }
 
 function collapseAllDropdowns() {
@@ -258,6 +263,55 @@ export function initHelp() {
   document.getElementById("docs-back-settings")?.addEventListener("click", () => {
     gotoSection("settings", "general");
   });
+
+  // ── App rail (Code-primary surface) ─────────────────────────────────────
+  document.querySelectorAll<HTMLButtonElement>(".app-rail-switch-btn").forEach((btn) => {
+    btn.addEventListener("click", () => gotoSection(btn.dataset.target!));
+  });
+  document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => gotoSection(btn.dataset.section!));
+  });
+
+  // User area — dropdown opens upward: Settings / Account / Logout.
+  const GEAR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+  const USER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+  const LOGOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
+  const userBtn = document.getElementById("app-rail-user-btn");
+  let userMenu: HTMLDivElement | null = null;
+  const closeUserMenu = () => { userMenu?.remove(); userMenu = null; };
+  userBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (userMenu) { closeUserMenu(); return; }
+    const m = document.createElement("div");
+    m.className = "code-menu app-rail-user-menu";
+    const mk = (label: string, icon: string, cb: () => void, danger = false) => {
+      const b = document.createElement("button");
+      b.className = "code-menu-item" + (danger ? " danger" : "");
+      b.innerHTML = `${icon}<span></span>`;
+      (b.querySelector("span") as HTMLElement).textContent = label;
+      b.addEventListener("click", () => { closeUserMenu(); cb(); });
+      m.appendChild(b);
+    };
+    mk("Settings", GEAR_SVG, () => gotoSection("settings"));
+    mk("Account", USER_SVG, () => gotoSection("settings", "account"));
+    mk("Logout", LOGOUT_SVG, () => { void window.yo.logout(); }, true);
+    document.body.appendChild(m);
+    const r = userBtn.getBoundingClientRect();
+    m.style.left = `${r.left}px`;
+    m.style.top = `${Math.max(8, r.top - m.offsetHeight - 6)}px`;
+    userMenu = m;
+  });
+  document.addEventListener("mousedown", (e) => {
+    if (userMenu && !userMenu.contains(e.target as Node) && e.target !== userBtn) closeUserMenu();
+  });
+  // Fill the user name from account info (email fallback).
+  void window.yo.getAccountInfo?.().then((info) => {
+    const nameEl = document.getElementById("app-rail-user-name");
+    if (nameEl && info) {
+      nameEl.textContent =
+        (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account";
+    }
+  }).catch(() => { /* signed out — keep the placeholder */ });
 
   // Initialize all section event handlers
   initDashboardEvents();

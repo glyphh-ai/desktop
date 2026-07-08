@@ -10,6 +10,7 @@
  */
 
 import { confirmAction } from "./shared.js";
+import { gotoSection } from "./navigation.js";
 
 interface CodeMsg { role: "user" | "assistant"; text: string; at: number }
 interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
@@ -47,11 +48,16 @@ function saveStore(): void {
 }
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
 
+function ensureCodeSection(): void {
+  if (!document.querySelector('.help-section[data-section="code"].active')) gotoSection("code");
+}
+
 function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [] };
   chats.unshift(c);
   currentId = c.id;
   saveStore();
+  ensureCodeSection();
   renderHistory();
   renderThread();
   input()?.focus();
@@ -105,6 +111,7 @@ function renderHistory(): void {
     row.addEventListener("click", () => {
       currentId = c.id;
       saveStore();
+      ensureCodeSection();
       renderHistory();
       renderThread();
     });
@@ -191,13 +198,11 @@ function initRailSplitter(): void {
   if (!splitter) return;
   splitter.addEventListener("mousedown", (e) => {
     e.preventDefault();
-    const root = document.querySelector<HTMLDivElement>(".code-root");
-    const pane = el("code-rail");
-    if (!root || !pane) return;
+    const pane = el("app-rail");
+    if (!pane) return;
     document.body.classList.add("code-dragging");
     const move = (ev: MouseEvent) => {
-      const r = root.getBoundingClientRect();
-      const w = Math.min(420, Math.max(170, ev.clientX - r.left));
+      const w = Math.min(420, Math.max(170, ev.clientX));
       pane.style.width = `${w}px`;
       pane.style.minWidth = `${w}px`;
     };
@@ -215,9 +220,9 @@ function initRailSplitter(): void {
 
 async function applyPanelPrefs(): Promise<void> {
   const railCollapsed = ((await window.yo.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
-  el("code-rail")?.classList.toggle("collapsed", railCollapsed);
+  el("app-rail")?.classList.toggle("collapsed", railCollapsed);
   const railW = Number(await window.yo.getPreference?.("codeRailWidth", 0)) || 0;
-  const rail = el("code-rail");
+  const rail = el("app-rail");
   if (rail && railW > 0) { rail.style.width = `${railW}px`; rail.style.minWidth = `${railW}px`; }
 }
 
@@ -247,11 +252,17 @@ export function initCode(): void {
   });
   ta?.addEventListener("input", () => autoGrow(ta!));
   el("code-rail-toggle")?.addEventListener("click", () => {
-    const collapsed = el("code-rail")!.classList.toggle("collapsed");
+    const collapsed = el("app-rail")!.classList.toggle("collapsed");
     void window.yo.setPreference?.("codeRailCollapsed", collapsed);
   });
   document.addEventListener("mousedown", (e) => {
     if (menuEl && !menuEl.contains(e.target as Node)) closeMenu();
   });
   initRailSplitter();
+  // The rail is global (outside the section switcher) — populate Recents and
+  // apply collapse/width prefs at boot so it's live on every section.
+  loadStore();
+  if (!currentId && chats.length) currentId = chats[0].id;
+  renderHistory();
+  void applyPanelPrefs();
 }

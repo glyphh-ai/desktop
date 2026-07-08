@@ -11149,8 +11149,8 @@ select:focus {
 }
 .code-root { display: flex; flex: 1; min-width: 0; min-height: 0; width: 100%; }
 
-/* Left rail — chats */
-.code-rail {
+/* App rail — the persistent left rail (Home|Code, sessions, nav, user) */
+#app-rail {
   width: 232px;
   min-width: 232px;
   display: flex;
@@ -11160,7 +11160,7 @@ select:focus {
   overflow: hidden;
   transition: width 0.16s ease, min-width 0.16s ease;
 }
-.code-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
+#app-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
 .code-new-session {
   display: flex;
   align-items: center;
@@ -11347,9 +11347,9 @@ select:focus {
   background: transparent;
 }
 .code-splitter:hover { background: var(--border-2); }
-.code-rail.collapsed + .code-splitter { display: none; }
+#app-rail.collapsed + .code-splitter { display: none; }
 body.code-dragging { cursor: col-resize; user-select: none; }
-body.code-dragging .code-rail { transition: none; }
+body.code-dragging #app-rail { transition: none; }
 
 /* Session row menu (⋯ → Delete) */
 .code-menu {
@@ -11421,11 +11421,10 @@ body.code-dragging .code-rail { transition: none; }
 
 
 /* Maximize floods the section: the agent column collapses, rails take the width. */
-.code-root.wb-max .code-agent,
-.code-root.wb-max #code-rail-splitter,
-.code-root.wb-max .code-wb-edge { display: none; }
-.code-root.wb-max .code-workbench { flex: 1; }
-.code-root.wb-max .ws-right-rails { width: 100%; }
+body.wb-max .code-agent,
+body.wb-max .code-wb-edge { display: none; }
+body.wb-max .code-workbench { flex: 1; }
+body.wb-max .ws-right-rails { width: 100%; }
 
 /* Whole-workbench edge drag handle (left edge of the rails aside). */
 .code-wb-edge {
@@ -11436,3 +11435,79 @@ body.code-dragging .code-rail { transition: none; }
 }
 .code-wb-edge:hover,
 .code-wb-edge.dragging { background: var(--border-2); }
+
+/* App rail — Home|Code switcher */
+.app-rail-switch {
+  display: flex;
+  gap: 4px;
+  margin: 12px 10px 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-3);
+}
+.app-rail-switch-btn {
+  flex: 1;
+  padding: 5px 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app-rail-switch-btn:hover { color: var(--text); }
+.app-rail-switch-btn.active { background: var(--surface); color: var(--text-bright); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+
+/* App rail — section nav */
+.app-rail-nav { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 0; }
+.app-rail-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.app-rail-nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+.app-rail-nav-item:hover { background: var(--hover); color: var(--text); }
+.app-rail-nav-item.active { background: var(--active-bg); color: var(--text); }
+
+/* App rail — user area (bottom) */
+.app-rail-user {
+  margin-top: auto;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+.app-rail-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.app-rail-user-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.app-rail-user-btn:hover { background: var(--hover); color: var(--text); }
+.app-rail-user-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* User dropdown (opens upward; reuses .code-menu) */
+.app-rail-user-menu { min-width: 168px; }
+.app-rail-user-menu .code-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.app-rail-user-menu .code-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }

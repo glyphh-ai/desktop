@@ -47,7 +47,7 @@ void (async () => {
       // Hide the left rail when this panel is locked to a single section —
       // it's mounted as its own app (yo://<slug>), so no in-rail switching.
       const style = document.createElement("style");
-      style.textContent = `[data-home-scope] .files-rail { display: none !important; } [data-home-scope] .help-main { margin-left: 0 !important; }`;
+      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter { display: none !important; }`;
       document.head.appendChild(style);
       gotoSection(urlSection);
       return;
@@ -56,10 +56,10 @@ void (async () => {
   const def = ((await window.yo.getPreference?.("homeStartupSection", "")) as string) || "";
   const lastSec = ((await window.yo.getPreference?.("homeLastSection", "")) as string) || "";
   const lastSub = ((await window.yo.getPreference?.("homeLastSub", "")) as string) || "";
-  let sec = def || lastSec || "dashboard";
+  let sec = def || lastSec || "code";
   // A remembered section may have been removed since (e.g. the old Skills
   // page) — fall back rather than landing on a blank pane.
-  if (!document.querySelector(`.help-section[data-section="${sec}"]`)) sec = "dashboard";
+  if (!document.querySelector(`.help-section[data-section="${sec}"]`)) sec = "code";
   gotoSection(sec, sec === lastSec ? (lastSub || undefined) : undefined);
 })();
 

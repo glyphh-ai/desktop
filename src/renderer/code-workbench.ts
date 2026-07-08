@@ -261,7 +261,7 @@ async function init(): Promise<void> {
     container.classList.toggle("has-fullscreen", maximizedSlotId !== null);
     // Maximize floods the whole section: the agent column collapses and the
     // rails take its width; restore puts everything back (wb-max in styles).
-    document.querySelector<HTMLElement>(".code-root")?.classList.toggle("wb-max", maximizedSlotId !== null);
+    document.body.classList.toggle("wb-max", maximizedSlotId !== null);
     container.querySelectorAll<HTMLElement>(".ws-right-rail").forEach((railEl) => {
       const railHasMax = !!railEl.querySelector(`.ws-rail-slot[data-slot-id="${maximizedSlotId}"]`);
       railEl.classList.toggle("rail-has-fullscreen", maximizedSlotId !== null && railHasMax);
@@ -372,13 +372,11 @@ async function init(): Promise<void> {
    *  rail and a floor for the agent column. The rails aside is width:auto, so
    *  we can't measure it directly — derive from the section instead. */
   function railsBudget(): number {
+    // .code-root spans agent + rails (the app rail sits outside it).
     const root = document.querySelector<HTMLElement>(".code-root");
-    const sessions = document.getElementById("code-rail");
     const rootW = root ? root.getBoundingClientRect().width : window.innerWidth;
-    const sessionsW = sessions && !sessions.classList.contains("collapsed")
-      ? sessions.getBoundingClientRect().width : 0;
     const MIN_AGENT = maximizedSlotId !== null ? 0 : 440;
-    return Math.max(260, rootW - sessionsW - MIN_AGENT);
+    return Math.max(260, rootW - MIN_AGENT);
   }
   function applyResponsiveWidths(): void {
     const container = document.getElementById("code-wb-rails");

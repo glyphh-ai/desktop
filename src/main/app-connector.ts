@@ -201,7 +201,8 @@ const INTERNAL_APPS: Array<{ id: string; name: string; url: string; kind?: AppKi
   { id: "connections", name: "Connections", url: "yo://connections", kind: "system" },
   { id: "layouts", name: "Layouts", url: "yo://layouts", kind: "system" },
   { id: "drips", name: "Drips", url: "yo://drips", kind: "system" },
-  { id: "code", name: "Code", url: "yo://code", kind: "system" },
+  // "code" removed as a separate app — the Code view IS the primary home
+  // surface now (yo://dashboard, unlocked). Purged via REMOVED_IDS below.
   // "skills" removed — the Glyphh Skill export lives on Settings › MCP now
   // (and "skills" is in REMOVED_IDS below, so stale rows purge on boot).
   { id: "dashboard-settings", name: "Settings", url: "yo://dashboard-settings", kind: "system" },
@@ -326,6 +327,7 @@ export class AppConnector {
     const REMOVED_IDS = [
       "agent", "plan", "ada", "adal", "workbench", "vscode",
       "home", "agents", "schedules", "layouts", "skills", "drips", "settings",
+      "code",
     ];
     for (const id of REMOVED_IDS) {
       if (this.apps.has(id)) {

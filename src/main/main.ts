@@ -528,21 +528,22 @@ async function boot() {
   const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
   // Slugs that map to home.html with ?section=<slug>. Each system-app tab
   // (Apps / Layouts / Drips / Skills / Settings / About) opens its section.
+  // "" = unlocked multi-section home (the Code-primary surface with the app
+  // rail); non-empty locks the panel to that one section (rail hidden).
   const HOME_SECTION_SLUGS: Record<string, string> = {
-    "yo://dashboard": "dashboard",
+    "yo://dashboard": "",
     "yo://apps": "apps",
     "yo://connections": "connections",
     "yo://layouts": "layouts",
     "yo://drips": "drips",
-    "yo://code": "code",
     "yo://about": "about",
     "yo://dashboard-settings": "settings",
   };
   for (const app of appConnector.list()) {
-    if (app.url && HOME_SECTION_SLUGS[app.url]) {
+    if (app.url && HOME_SECTION_SLUGS[app.url] !== undefined) {
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(app.id, `${homeHtml}?section=${section}`, homePreload, undefined, true);
+      panelManager.addPanel(app.id, `${homeHtml}${section ? `?section=${section}` : ""}`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(app.id, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
@@ -920,12 +921,13 @@ async function boot() {
 
   function createPanelForApp(instanceId: string, app: { id: string; url?: string; forceWeb?: boolean }): void {
     if (!app.url) return;
-    if (app.url && HOME_SECTION_SLUGS[app.url]) {
+    if (app.url && HOME_SECTION_SLUGS[app.url] !== undefined) {
       // System-app wrappers (yo://apps, yo://layouts, …) reuse home.html
-      // with ?section=<slug>. home.ts reads the query on boot.
+      // with ?section=<slug>; yo://dashboard opens it unlocked (Code-primary
+      // surface with the app rail). home.ts reads the query on boot.
       const section = HOME_SECTION_SLUGS[app.url];
       const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(instanceId, `${homeHtml}?section=${section}`, homePreload, undefined, true);
+      panelManager.addPanel(instanceId, `${homeHtml}${section ? `?section=${section}` : ""}`, homePreload, undefined, true);
     } else if (app.url === "yo://terminal") {
       panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
     } else if (app.url === "yo://browser") {
