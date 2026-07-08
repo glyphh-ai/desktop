@@ -261,24 +261,32 @@ interface RailApp {
   name: string;
   url?: string | null;
   execPath?: string | null;
+  isBrowser?: boolean;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
   system?: boolean;
   connection?: { accountId?: string; pipedreamSlug: string } | null;
 }
+interface RailLayout { name: string; splits: Array<{ panelId: string }> }
 let railApps: RailApp[] = [];
+let railLayouts: RailLayout[] = [];
 let railRecentTs: Record<string, number> = {};
 
 async function loadRecentApps(): Promise<void> {
   try {
-    const [apps, recents] = await Promise.all([
+    const [apps, layouts, recents] = await Promise.all([
       window.yo.panelAppsList?.() ?? Promise.resolve([]),
+      window.yo.layoutsList?.() ?? Promise.resolve([]),
       window.yo.recentsList?.() ?? Promise.resolve([]),
     ]);
     railApps = ((apps || []) as unknown as RailApp[]).filter((a) => !a.system);
+    railLayouts = (layouts || []) as unknown as RailLayout[];
     railRecentTs = {};
     for (const r of recents || []) {
-      if (r.kind === "app") railRecentTs[r.id] = Math.max(railRecentTs[r.id] || 0, r.ts || 0);
+      const key = `${r.kind}:${r.id}`;
+      railRecentTs[key] = Math.max(railRecentTs[key] || 0, r.ts || 0);
     }
-  } catch { railApps = []; railRecentTs = {}; }
+  } catch { railApps = []; railLayouts = []; railRecentTs = {}; }
   renderRecentApps();
 }
 
@@ -287,14 +295,15 @@ function renderRecentApps(): void {
   if (!list) return;
   const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
   list.textContent = "";
-  const items = railApps
-    .filter((a) => !q || (a.name || "").toLowerCase().includes(q))
-    .sort((a, b) => {
-      const ta = railRecentTs[a.id] || 0;
-      const tb = railRecentTs[b.id] || 0;
-      if (ta !== tb) return tb - ta; // last-opened first
-      return (a.name || "").localeCompare(b.name || "");
-    });
+  type Item =
+    | { type: "app"; name: string; ts: number; app: RailApp }
+    | { type: "layout"; name: string; ts: number; layout: RailLayout };
+  const items: Item[] = [
+    ...railApps.map((a): Item => ({ type: "app", name: a.name || "", ts: railRecentTs[`app:${a.id}`] || 0, app: a })),
+    ...railLayouts.map((l): Item => ({ type: "layout", name: l.name || "", ts: railRecentTs[`layout:${l.name}`] || 0, layout: l })),
+  ]
+    .filter((i) => !q || i.name.toLowerCase().includes(q))
+    .sort((a, b) => (a.ts !== b.ts ? b.ts - a.ts : a.name.localeCompare(b.name)));
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "code-empty";
@@ -303,19 +312,46 @@ function renderRecentApps(): void {
     list.appendChild(empty);
     return;
   }
-  for (const a of items) {
+  for (const item of items) {
     const tile = document.createElement("button");
     tile.className = "app-rail-tile";
     tile.type = "button";
-    tile.title = a.name;
+    tile.title = item.type === "layout" ? `${item.name} (layout)` : item.name;
     const icon = document.createElement("div");
-    icon.className = "tile-icon";
-    icon.innerHTML = appIconInner(a, a.name, "tile-initial");
+    icon.className = "tile-icon" + (item.type === "layout" ? " tile-layout" : "");
+    if (item.type === "app") {
+      icon.innerHTML = appIconInner(item.app, item.name, "tile-initial");
+    } else {
+      // Layouts render like the Layouts page: a mini stack of the apps inside.
+      const seen = new Set<string>();
+      const ids = item.layout.splits
+        .map((s) => s.panelId)
+        .filter((id) => id && !seen.has(id) && (seen.add(id), true))
+        .slice(0, 4);
+      icon.innerHTML = ids.length
+        ? ids.map((id) => {
+            const app = railApps.find((a) => a.id === id || a.slug === id);
+            return `<span class="mini">${appIconInner(app || {}, app?.name || id, "tile-mini-initial")}</span>`;
+          }).join("")
+        : `<span class="tile-initial">▦</span>`;
+    }
     const nm = document.createElement("span");
     nm.className = "tile-name";
-    nm.textContent = a.name;
+    nm.textContent = item.name;
     tile.append(icon, nm);
-    tile.addEventListener("click", () => { void window.yo.execCommand(`dip ${a.slug || a.id}`); });
+    tile.addEventListener("click", () => {
+      if (item.type === "layout") {
+        // Same open the Layouts page uses (OS-level tiled windows).
+        void window.yo.layoutsOpen?.(item.name);
+      } else {
+        // Same open the Apps page's "Open app" uses (per-config launch).
+        void window.yo.appLaunch?.({
+          slug: item.app.slug || item.app.id, name: item.app.name, url: item.app.url,
+          isBrowser: item.app.isBrowser, execPath: item.app.execPath,
+          appArchetype: item.app.appArchetype, launchConfig: item.app.launchConfig,
+        });
+      }
+    });
     list.appendChild(tile);
   }
 }
