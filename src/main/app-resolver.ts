@@ -17,12 +17,12 @@ import {
   openAppWindowAt, openAppWindowSlide, focusAppWindow, closeAppWindow, listAppWindows,
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
 } from "./app-window-manager.js";
-import { launchNativeApp, launchWebApp, type LaunchResult } from "./native-launch.js";
+import { launchNativeApp, launchWebApp, focusExistingBrowserTab, type LaunchResult } from "./native-launch.js";
 import { resolveBrowser, type InstalledBrowser } from "./browser-detect.js";
 import { getPreference } from "./stores/preferences-db.js";
 import {
   positionAppWindow, focusWindow, setWindowBounds, listWindows, minimizeWindow,
-  snapshotWindowIds, waitForAppWindow,
+  snapshotWindowIds, waitForAppWindow, frontWindow,
   type Rect as OsRect,
 } from "./os-window-manager.js";
 import { normKey, isSubsequence } from "./installed-apps.js";
@@ -134,7 +134,15 @@ async function openNativeTracked(
   // browser launch, alwaysNewWindow = the launch always creates a window, so
   // adoption must never fall back to an existing one. Default = the
   // native-executable launch.
-  launch?: { hint: string; run: () => LaunchResult; alwaysNewWindow?: boolean },
+  launch?: {
+    hint: string;
+    run: () => LaunchResult;
+    alwaysNewWindow?: boolean;
+    /** Pre-launch dedupe: focus an already-open tab/window holding this app.
+     *  null = nothing found (launch normally); { winId } = focused — stop,
+     *  and track/place the window when it could be identified. */
+    adoptExisting?: () => Promise<{ winId: string | null } | null>;
+  },
 ): Promise<void> {
   const hint = launch?.hint ?? ((app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name);
   wlog("openNativeTracked ENTER", { id: app.id, slug: app.slug, name: app.name, hint, exec: app.execPath, archetype: app.appArchetype, launchConfig: app.launchConfig, retileOnFocus, rect, map: trackedSnapshot() });
@@ -199,6 +207,20 @@ async function openNativeTracked(
     const ownedByOthers = new Set(
       [...nativeAppWindows.entries()].filter(([id]) => id !== app.id).map(([, t]) => t.winId),
     );
+    // The app's URL may already be open as a tab (user-opened, or from an
+    // untracked session) — focus it instead of stacking a duplicate.
+    if (launch?.adoptExisting) {
+      const hit = await launch.adoptExisting().catch(() => null);
+      if (hit) {
+        launched();
+        if (hit.winId && !ownedByOthers.has(hit.winId)) {
+          nativeAppWindows.set(app.id, { winId: hit.winId, slug: app.slug, name: app.name });
+          if (retileOnFocus) await setWindowBounds(hit.winId, rect);
+        }
+        wlog("  DONE via existing-tab focus", { id: app.id, winId: hit.winId });
+        return;
+      }
+    }
     const snap = await snapshotWindowIds(hint);
     const before = new Set([...snap, ...ownedByOthers]);
     wlog("  relaunch: snapshot", { id: app.id, hint, snapshot: [...snap], ownedByOthers: [...ownedByOthers] });
@@ -242,6 +264,8 @@ async function openWebTracked(app: ServerApp, rect: OsRect, retileOnFocus: boole
   if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("app has no web URL");
   const { browser, openAs } = webLaunchPlan(app);
   if (!browser || openAs === "tab") {
+    // Reuse before create: a tab with this URL may already be open.
+    if (browser && (await focusExistingBrowserTab(url, browser))) return;
     const r = launchWebApp(url, browser, openAs);
     if (!r.ok) throw new Error(r.error || "failed to open in browser");
     return;
@@ -250,6 +274,16 @@ async function openWebTracked(app: ServerApp, rect: OsRect, retileOnFocus: boole
     hint: browser.proc,
     run: () => launchWebApp(url, browser, "window"),
     alwaysNewWindow: true,
+    adoptExisting: async () => {
+      if (!(await focusExistingBrowserTab(url, browser))) return null;
+      // The hunt raised the tab's window — identify it so it can be
+      // tracked and placed like a window we opened ourselves.
+      await sleep(250);
+      const front = await frontWindow().catch(() => null);
+      const fp = (front?.proc || "").toLowerCase();
+      const bp = browser.proc.toLowerCase();
+      return { winId: front && (fp.includes(bp) || bp.includes(fp)) ? front.id : null };
+    },
   });
 }
 
