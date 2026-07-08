@@ -11243,7 +11243,7 @@ select:focus {
 .code-agent-head .code-wd-btn { -webkit-app-region: no-drag; }
 /* Rail collapsed → the fixed chrome cluster floats over the page; shove the
    header content right so they don't overlap. */
-body.rail-collapsed .code-agent-head { padding-left: 196px; }
+body.rail-collapsed .code-agent-head { margin-left: 200px; }
 .code-spacer { flex: 1; }
 .code-icon-btn {
   display: inline-flex;
@@ -11544,12 +11544,11 @@ body.wb-max .ws-right-rails { width: 100%; }
 }
 #panel-wc,
 #panel-wc * { -webkit-app-region: no-drag; }
-#panel-wc .app-rail-mark { margin: 0 4px 0 6px; }
+#panel-wc .app-rail-mark { width: 20px; height: 20px; margin-left: 14px; }
 #panel-wc .code-icon-btn { width: 26px; height: 26px; }
 .app-rail-top {
   flex: 0 0 38px;
   height: 38px;
-  -webkit-app-region: drag;
 }
 .app-rail-mark { width: 16px; height: 16px; opacity: 0.9; }
 
