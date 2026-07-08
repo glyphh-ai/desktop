@@ -196,7 +196,7 @@ export function checkCallTargets(worker: string): string[] {
     if (handlers.has(target)) {
       errors.push(`glyphh.call("${target}") targets the worker's own handler — call the function directly; glyphh.call is for host capabilities only`);
     } else {
-      errors.push(`glyphh.call("${target}") is not a capability (capabilities are e.g. db.exec, cron.schedule, connector.call, llm.complete, notify.send)`);
+      errors.push(`glyphh.call("${target}") is not a capability. The COMPLETE capability list: db.exec, cron.schedule/cancel/list, notify.send, llm.embed/chunk/complete, agent.run, vector.upsert/search/delete, graph.cypher, secrets.get/list, connector.status/tools/call, contacts.search, messages.send. There is NO network/fetch/http capability — workers reach the outside ONLY through connector.call.`);
     }
   }
   return [...new Set(errors)];
@@ -262,7 +262,7 @@ export function validateBundle(bundle: Bundle, lookup?: (slug: string) => string
   if (m.worker && !bundle[m.worker]) errors.push(`worker "${m.worker}" declared but its code is missing`);
   const workerCode = m.worker ? bundle[m.worker] : undefined;
   if (workerCode && FORBIDDEN_WORKER.test(workerCode))
-    errors.push("worker uses forbidden APIs (network/node) — route all I/O through glyphh.call()");
+    errors.push("worker uses forbidden APIs (network/node)." + " Workers have NO network access BY DESIGN — there is no fetch/HTTP capability. For outside data use connector.call with a CONNECTED account's tools, llm.complete for knowledge/summarization, or redesign around data the host provides.");
 
   if (workerCode) {
     errors.push(...checkCallTargets(workerCode));

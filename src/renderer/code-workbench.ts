@@ -58,6 +58,7 @@ interface MonacoTab {
   /** For .md files: "preview" renders markdown, "code" shows raw Monaco
    *  source. Non-markdown tabs ignore this and always render code. */
   mode?: "preview" | "code";
+  dirty?: boolean;
 }
 interface MonacoSlot { id: number; view: "monaco"; tabs: MonacoTab[]; activeIdx: number }
 interface FilesSlot { id: number; view: "files"; root?: TreeNode | null }
@@ -809,6 +810,7 @@ async function init(): Promise<void> {
         <button class="ws-monaco-mode-btn ws-monaco-mode-code" title="Source">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         </button>
+        <button class="ws-monaco-save hidden" title="Save (⌘S)">Save</button>
       </div>
       <div class="ws-monaco-host"></div>
       <div class="ws-monaco-md-host"></div>
@@ -819,6 +821,27 @@ async function init(): Promise<void> {
     const codeBtn    = body.querySelector(".ws-monaco-mode-code") as HTMLButtonElement;
     const host    = body.querySelector(".ws-monaco-host") as HTMLElement;
     const mdHost  = body.querySelector(".ws-monaco-md-host") as HTMLElement;
+    const saveBtn = body.querySelector(".ws-monaco-save") as HTMLButtonElement;
+
+    const paintSave = () => {
+      const tab = slot.tabs[slot.activeIdx];
+      saveBtn.classList.toggle("hidden", !tab?.dirty);
+    };
+    async function saveActive(): Promise<void> {
+      const tab = slot.tabs[slot.activeIdx];
+      const editor = (host as unknown as { __editor?: { getValue: () => string } }).__editor;
+      if (!tab || !tab.dirty || !editor) return;
+      const value = editor.getValue();
+      const res = await window.wb.writeFile(tab.path, value);
+      if (!(res as { error?: string })?.error) {
+        tab.content = value;
+        tab.dirty = false;
+        saveBtn.textContent = "Saved";
+        setTimeout(() => { saveBtn.textContent = "Save"; paintSave(); }, 900);
+      }
+      paintSave();
+    }
+    saveBtn.addEventListener("click", () => { void saveActive(); });
 
     function paintTabs(): void {
       tabsEl.innerHTML = "";
@@ -875,14 +898,23 @@ async function init(): Promise<void> {
       await ensureMonaco();
       const w = window as unknown as { monaco: any };
       const existing = (host as unknown as { __editor?: any }).__editor;
+      const wireModel = (editor: { setModel: (m: unknown) => void }) => {
+        const model = w.monaco.editor.createModel(tab.content, languageForFile(tab.name));
+        model.onDidChangeContent(() => {
+          const t = slot.tabs[slot.activeIdx];
+          if (t && !t.dirty) { t.dirty = true; paintSave(); }
+        });
+        editor.setModel(model);
+        paintSave();
+      };
       if (existing) {
-        existing.setModel(w.monaco.editor.createModel(tab.content, languageForFile(tab.name)));
+        wireModel(existing);
       } else {
         const editor = w.monaco.editor.create(host, {
           value: tab.content,
           language: languageForFile(tab.name),
           theme: monacoTheme(),
-          readOnly: true,
+          readOnly: false,
           fontSize: 12,
           fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace",
           minimap: { enabled: false },
@@ -892,6 +924,8 @@ async function init(): Promise<void> {
           scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
         });
         (host as unknown as { __editor?: any }).__editor = editor;
+        editor.addCommand(w.monaco.KeyMod.CtrlCmd | w.monaco.KeyCode.KeyS, () => { void saveActive(); });
+        wireModel(editor);
       }
     }
 
@@ -1658,6 +1692,7 @@ async function init(): Promise<void> {
         const mslot = slot as MonacoSlot;
         const tabIdx = mslot.tabs.findIndex((t) => t.path === abs);
         if (tabIdx < 0) continue;
+        if (mslot.tabs[tabIdx].dirty) continue; // never clobber unsaved edits
         const res = await window.wb.readFile(abs);
         const newContent = res.error ? `// error: ${res.error}` : res.content;
         mslot.tabs[tabIdx].content = newContent;

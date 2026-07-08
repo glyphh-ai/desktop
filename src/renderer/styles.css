@@ -12231,3 +12231,18 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 body.wb-mouse-drag iframe { pointer-events: none !important; }
 body.code-dragging iframe,
 body.code-vdragging iframe { pointer-events: none !important; }
+
+/* Monaco save button — appears when the file is dirty */
+.ws-monaco-save {
+  border: 1px solid var(--accent);
+  background: none;
+  color: var(--accent-text, var(--accent));
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-left: 6px;
+}
+.ws-monaco-save:hover { background: rgba(140, 59, 242, 0.14); }
+.ws-monaco-save.hidden { display: none; }

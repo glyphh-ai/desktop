@@ -382,6 +382,11 @@ async function agentRun(
   let lastSig = "";
   let lastFailed = false;
   let repeatFails = 0;
+  // Same-tool streak: varying inputs into the same failing tool is still a
+  // spiral (the fox/finance runs) — escalate guidance at 3, force a finish
+  // at 6.
+  let failToolName = "";
+  let failToolStreak = 0;
   let finalText = "";
   let runError = "";
   // Generated-token counter (one SSE delta ≈ one token) — throttled to the
@@ -431,6 +436,15 @@ async function agentRun(
         const outcome = await executeWilliamTool(wc, parsed.action, ctrl.signal);
         lastSig = sig;
         lastFailed = outcome.denied || outcome.result.startsWith("ERROR");
+        if (lastFailed && parsed.action.name === failToolName) failToolStreak++;
+        else if (lastFailed) { failToolName = parsed.action.name; failToolStreak = 1; }
+        else { failToolName = ""; failToolStreak = 0; }
+        let streakNote = "";
+        if (failToolStreak === 3) {
+          streakNote = `\n\nNOTE: ${parsed.action.name} has now failed 3 times in a row with different inputs. The approach itself may be impossible under the platform's constraints — re-read the error CAREFULLY, change strategy entirely, or finish and explain the constraint honestly.`;
+        } else if (failToolStreak >= 6) {
+          streakNote = `\n\nSTOP. Finish NOW ({"thought": "…", "final": "…"}): summarize what was built, what works, and exactly which platform constraint blocked the rest. Do not call ${parsed.action.name} again.`;
+        }
         emit("william:tool", {
           phase: "done",
           name: parsed.action.name,
@@ -440,7 +454,7 @@ async function agentRun(
           preview: outcome.result.slice(0, 160),
         });
         messages.push({ role: "assistant", content: raw });
-        messages.push({ role: "user", content: `<tool_response>\n${outcome.result}\n</tool_response>` });
+        messages.push({ role: "user", content: `<tool_response>\n${outcome.result}${streakNote}\n</tool_response>` });
         if (ctrl.signal.aborted) throw new Error("aborted");
         continue;
       }
