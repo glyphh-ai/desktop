@@ -21,7 +21,7 @@
  * it), so a forgotten instance can't leak a rAF loop.
  */
 
-export interface GlyphhSpinner { el: HTMLElement; destroy: () => void }
+export interface GlyphhSpinner { el: HTMLElement; destroy: () => void; setMeta: (text: string) => void }
 
 const PHRASES = [
   "Glyphhing…", "Twiddling…", "Noodling…", "Conjuring…", "Brewing…",
@@ -55,9 +55,11 @@ export function createGlyphhSpinner(opts?: { size?: number; phrases?: boolean })
   canvas.style.width = `${size}px`;
   canvas.style.height = `${size}px`;
   root.appendChild(canvas);
+  const metaEl = document.createElement("span");
+  metaEl.className = "gs-meta";
   const phraseEl = document.createElement("span");
   phraseEl.className = "gs-phrase";
-  if (showPhrases) root.appendChild(phraseEl);
+  if (showPhrases) root.append(metaEl, phraseEl);
   const ctx = canvas.getContext("2d")!;
 
   // ── Cube geometry ──
@@ -210,5 +212,9 @@ export function createGlyphhSpinner(opts?: { size?: number; phrases?: boolean })
   readColors();
   typePhrase();
   raf = requestAnimationFrame(frame);
-  return { el: root, destroy };
+  return {
+    el: root,
+    destroy,
+    setMeta: (text: string) => { metaEl.textContent = text ? `${text} · ` : ""; },
+  };
 }

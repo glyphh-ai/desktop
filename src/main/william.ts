@@ -331,6 +331,18 @@ async function agentRun(
   let turnsUsed = 0;
   let finalText = "";
   let runError = "";
+  // Generated-token counter (one SSE delta ≈ one token) — throttled to the
+  // panel so the spinner can read "1m 34s · 260 tokens".
+  let tokens = 0;
+  let lastProgress = 0;
+  const countDelta = () => {
+    tokens++;
+    const now = Date.now();
+    if (now - lastProgress > 250) {
+      lastProgress = now;
+      emit("william:progress", { tokens });
+    }
+  };
   try {
     for (let turn = 0; turn < maxTurns; turn++) {
       turnsUsed = turn + 1;
@@ -339,6 +351,7 @@ async function agentRun(
         maxTokens: replyBudget,
         temperature: 0.15,
         schema: TURN_SCHEMA,
+        onDelta: countDelta,
       });
       let parsed: { thought?: string; action?: { name: string; arguments?: Record<string, unknown> }; final?: string };
       try {
@@ -368,6 +381,7 @@ async function agentRun(
       emit("william:delta", { delta: finalText });
       break;
     }
+    emit("william:progress", { tokens });
     emit("william:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) {

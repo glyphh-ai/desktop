@@ -315,6 +315,33 @@ let activeRunId: string | null = null;
 let streamChatId: string | null = null;
 let streamText = "";
 let streamBubble: HTMLElement | null = null;
+// Run progress — elapsed · tokens painted onto the spinner every second.
+let runStartAt = 0;
+let runTokens = 0;
+let runTicker: ReturnType<typeof setInterval> | null = null;
+
+function fmtElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+}
+
+function paintRunMeta(): void {
+  if (!runStartAt) return;
+  spinner?.setMeta(`${fmtElapsed(Date.now() - runStartAt)} · ${runTokens.toLocaleString()} token${runTokens === 1 ? "" : "s"}`);
+}
+
+function startRunTicker(): void {
+  runStartAt = Date.now();
+  runTokens = 0;
+  if (runTicker) clearInterval(runTicker);
+  runTicker = setInterval(paintRunMeta, 1000);
+}
+
+function stopRunTicker(): void {
+  if (runTicker) { clearInterval(runTicker); runTicker = null; }
+  runStartAt = 0;
+  runTokens = 0;
+}
 let menuEl: HTMLDivElement | null = null;
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T | null {
@@ -475,6 +502,7 @@ function renderThread(): void {
       inner.appendChild(streamBubble);
     } else {
       spinner = createGlyphhSpinner();
+      paintRunMeta();
       const row = document.createElement("div");
       row.className = "code-msg assistant code-working";
       row.appendChild(spinner.el);
@@ -568,6 +596,7 @@ function send(): void {
   autoGrow(ta);
   void saveStore();
   // Working state first so the spinner row + rail dot paint immediately.
+  startRunTicker();
   setThinking(true);
   renderHistory();
   renderThread();
@@ -594,6 +623,7 @@ function finishRun(text: string): void {
   streamText = "";
   streamBubble = null;
   pendingApprovals = [];
+  stopRunTicker();
   setThinking(false);
   renderThread();
   refreshCtxMeter();
@@ -638,6 +668,11 @@ function approvalCard(a: { id: string; kind: string; title: string; detail: stri
 /** Wire the stream events once — deltas paint the live bubble (or just
  *  accumulate when another session is in view). */
 function initWilliamEvents(): void {
+  window.yo.onWilliamProgress?.((d) => {
+    if (activeRunId && d.runId !== activeRunId) return;
+    runTokens = d.tokens;
+    paintRunMeta();
+  });
   window.yo.onWilliamApproval?.((a) => {
     pendingApprovals.push(a);
     if (currentId === streamChatId || currentId === workingChatId) renderThread();

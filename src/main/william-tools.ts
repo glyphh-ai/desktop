@@ -62,6 +62,11 @@ function resolvePath(p: unknown): { abs: string; escapes: boolean } {
   return { abs, escapes: abs !== wd && !abs.startsWith(wd + sep) };
 }
 
+/** Read-shaped tool names (find/get/list/…) gate as reads — summarizing an
+ *  inbox shouldn't prompt when reading a file doesn't. Sends/creates/deletes
+ *  stay network-gated. */
+const READ_TOOL_RE = /(^|[-_.])(find|get|list|search|read|fetch|retrieve|lookup|history|show|download|count|query)([-_.]|$)/i;
+
 const DANGEROUS_CMD = /\brm\s+(-\w*[rf]\w*\s+)+|\bsudo\b|\bshutdown\b|\breboot\b|\bmkfs\b|\bdiskutil\s+erase|git\s+push\s+.*--force|>\s*\/dev\/|\bdd\s+if=/i;
 
 function runShell(command: string, cwd: string): Promise<string> {
@@ -245,7 +250,7 @@ const TOOLS: ToolDef[] = [
     name: "connection_call",
     doc: "connection_call(connector, tool, arguments?) — call a connected account's API tool. Tool names MUST come from connection_tools — never guess them",
     action: (a) => ({
-      kind: "network",
+      kind: READ_TOOL_RE.test(String(a.tool ?? "")) ? "read" : "network",
       title: `Call ${String(a.connector ?? "?")} → ${String(a.tool ?? "?")}`,
       detail: JSON.stringify(a.arguments ?? {}, null, 1).slice(0, 500),
     }),
@@ -354,7 +359,7 @@ const TOOLS: ToolDef[] = [
     name: "app_call_tool",
     doc: "app_call_tool(app, tool, arguments?) — run an installed Glyphh app's tool headlessly (send a message, create an event, …)",
     action: (a) => ({
-      kind: "command",
+      kind: READ_TOOL_RE.test(String(a.tool ?? "")) ? "read" : "command",
       title: `Run ${String(a.app ?? "?")} → ${String(a.tool ?? "?")}`,
       detail: JSON.stringify(a.arguments ?? {}, null, 1).slice(0, 500),
     }),

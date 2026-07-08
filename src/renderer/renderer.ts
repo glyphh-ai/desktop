@@ -333,6 +333,7 @@ declare global {
       onWilliamDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onWilliamDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
       onWilliamError: (cb: (d: { runId: string; error: string }) => void) => void;
+      onWilliamProgress: (cb: (d: { runId: string; tokens: number }) => void) => void;
       onWilliamTool: (cb: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => void;
       williamApprovalRespond: (id: string, allow: boolean) => Promise<boolean>;
       onWilliamApproval: (cb: (d: { id: string; kind: string; title: string; detail: string }) => void) => void;
