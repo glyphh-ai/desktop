@@ -51,7 +51,7 @@ where inputSchema is a JSON Schema object. RULES:
 db.exec {sql,params?} · cron.schedule {id,cron,handler,args?} · cron.cancel · cron.list
 · notify.send {title,body} · llm.embed · llm.chunk · llm.complete {prompt,system?}
 · agent.run {prompt,...} · vector.upsert/search/delete · graph.cypher {query,params?}
-· secrets.get {key} · secrets.list · connector.status · connector.tools · connector.call
+· secrets.get {key} · secrets.list · web.read {url} (clean page/RSS text — THE way to read the web) · web.fetch {url} (raw) · connector.status · connector.tools · connector.call
 {connector,tool,args?} · contacts.search · messages.send {to,body}.
 
 When a "Connectors available to this app" section is provided with the request, use
@@ -135,6 +135,7 @@ const KNOWN_CAPABILITIES = new Set([
   "llm.embed", "llm.chunk", "llm.complete", "agent.run",
   "vector.upsert", "vector.search", "vector.delete",
   "graph.cypher", "secrets.get", "secrets.list",
+  "web.fetch", "web.read",
 ]);
 
 const FORBIDDEN_WORKER = /\bfetch\s*\(|\brequire\s*\(|\bimport\s+[\w{*'"]|\bnew\s+WebSocket|\bXMLHttpRequest\b|\bprocess\.(env|platform|exit|cwd)/;
@@ -196,7 +197,7 @@ export function checkCallTargets(worker: string): string[] {
     if (handlers.has(target)) {
       errors.push(`glyphh.call("${target}") targets the worker's own handler — call the function directly; glyphh.call is for host capabilities only`);
     } else {
-      errors.push(`glyphh.call("${target}") is not a capability. The COMPLETE capability list: db.exec, cron.schedule/cancel/list, notify.send, llm.embed/chunk/complete, agent.run, vector.upsert/search/delete, graph.cypher, secrets.get/list, connector.status/tools/call, contacts.search, messages.send. There is NO network/fetch/http capability — workers reach the outside ONLY through connector.call.`);
+      errors.push(`glyphh.call("${target}") is not a capability. The COMPLETE capability list: db.exec, cron.schedule/cancel/list, notify.send, llm.embed/chunk/complete, agent.run, vector.upsert/search/delete, graph.cypher, secrets.get/list, connector.status/tools/call, contacts.search, messages.send. For web content use web.read {url} (clean page text) or web.fetch {url} (raw) — declared in manifest capabilities. Workers never call fetch directly.`);
     }
   }
   return [...new Set(errors)];
@@ -262,7 +263,7 @@ export function validateBundle(bundle: Bundle, lookup?: (slug: string) => string
   if (m.worker && !bundle[m.worker]) errors.push(`worker "${m.worker}" declared but its code is missing`);
   const workerCode = m.worker ? bundle[m.worker] : undefined;
   if (workerCode && FORBIDDEN_WORKER.test(workerCode))
-    errors.push("worker uses forbidden APIs (network/node)." + " Workers have NO network access BY DESIGN — there is no fetch/HTTP capability. For outside data use connector.call with a CONNECTED account's tools, llm.complete for knowledge/summarization, or redesign around data the host provides.");
+    errors.push("worker uses forbidden APIs (network/node)." + " Workers have NO direct network access — for web content use the web.read {url} capability (clean page text, host-mediated) or web.fetch {url} (raw), for account APIs use connector.call, for knowledge use llm.complete. Declare web.fetch/web.read in the manifest capabilities.");
 
   if (workerCode) {
     errors.push(...checkCallTargets(workerCode));

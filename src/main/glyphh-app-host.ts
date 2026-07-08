@@ -46,6 +46,7 @@ import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js"
 import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
+import { webFetch, webRead } from "./web-capability.js";
 import {
   initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend,
   connectorStatus, connectorTools, connectorCall,
@@ -116,6 +117,7 @@ const KNOWN_CAPABILITIES = new Set([
   "fs.read",
   "fs.write",
   "fs.pick",
+  "web.fetch", "web.read",
 ]);
 
 /** AppleScript-backed capabilities that only exist on macOS. Everything else
@@ -455,6 +457,8 @@ async function runCapability(
     case "connector.status": return connectorStatus(connectors);
     case "connector.tools":  return connectorTools(connectors, args);
     case "connector.call":   return connectorCall(connectors, args);
+    case "web.fetch":        return webFetch(args);
+    case "web.read":         return webRead(args);
     case "llm.embed":        return llmEmbed(args);
     case "llm.chunk":        return llmChunk(args);
     case "llm.complete": {

@@ -62,6 +62,7 @@ is restarted on the new code; its cron schedules survive).
   // Host capabilities this app is allowed to use. The host enforces this list
   // PER-APP: an app can only ever reach a capability it declared here. See §5.
   "capabilities": ["db.exec", "cron.schedule", "notify.send", "connector.call"],
+- `web.read {url}` — host-mediated readability fetch (clean text; public http(s) only, 12s, size-capped). `web.fetch {url}` — raw variant. SSRF-guarded; declare in `capabilities`.
 
   // Connections this app integrates (Pipedream app slugs) — OPTIONAL. The
   // connector.* capabilities are scoped to exactly this list. Connections are
