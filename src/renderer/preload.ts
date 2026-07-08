@@ -406,7 +406,7 @@ contextBridge.exposeInMainWorld("yo", {
   onWilliamError: (callback: (d: { runId: string; error: string }) => void) => {
     ipcRenderer.on("william:error", (_event, d) => callback(d));
   },
-  onWilliamTool: (callback: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; preview?: string }) => void) => {
+  onWilliamTool: (callback: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => {
     ipcRenderer.on("william:tool", (_event, d) => callback(d));
   },
   williamApprovalRespond: (id: string, allow: boolean) =>

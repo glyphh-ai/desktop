@@ -341,6 +341,7 @@ async function agentRun(
           name: parsed.action.name,
           title: outcome.title,
           denied: outcome.denied,
+          failed: outcome.result.startsWith("ERROR"),
           preview: outcome.result.slice(0, 160),
         });
         messages.push({ role: "assistant", content: raw });

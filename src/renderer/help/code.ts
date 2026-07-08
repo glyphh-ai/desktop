@@ -651,13 +651,14 @@ function initWilliamEvents(): void {
     if (d.phase === "start") {
       chat.messages.push({ role: "assistant", kind: "tool", text: `⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`, at: Date.now() });
     } else if (d.phase === "done") {
-      const mark = d.denied ? "✕ denied" : "✓";
+      const bad = d.denied || d.failed;
+      // Failures surface the tool's own first line — the model can gloss,
+      // the breadcrumb doesn't.
+      const reason = d.denied ? " — denied" : d.failed ? ` — ${String(d.preview || "").split("\n")[0].slice(0, 90)}` : "";
+      const text = `${bad ? "✕" : "✓"} ${d.title || d.name}${reason}`;
       const last = chat.messages[chat.messages.length - 1];
-      if (last?.kind === "tool" && last.text.startsWith(`⚙ ${d.name}`)) {
-        last.text = `${d.denied ? "✕" : "✓"} ${d.title || d.name}${d.denied ? " — denied" : ""}`;
-      } else {
-        chat.messages.push({ role: "assistant", kind: "tool", text: `${mark} ${d.title || d.name}`, at: Date.now() });
-      }
+      if (last?.kind === "tool" && last.text.startsWith(`⚙ ${d.name}`)) last.text = text;
+      else chat.messages.push({ role: "assistant", kind: "tool", text, at: Date.now() });
     }
     void saveStore();
     if (currentId === streamChatId) renderThread();

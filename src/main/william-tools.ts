@@ -75,10 +75,9 @@ function runShell(command: string, cwd: string): Promise<string> {
 /** The user's connected connector slugs — William acts as the user, so
  *  every connected account is in scope (the server still owns all auth). */
 async function connectedSlugs(): Promise<Set<string>> {
-  const r = await serverGetAuthed<{ connections?: Array<Record<string, unknown>> }>("/api/connections");
-  const slugs = (r.connections || [])
-    .map((c) => String(c.pipedreamSlug || c.slug || c.app || c.nameSlug || "")).filter(Boolean);
-  return new Set(slugs);
+  // /api/connections rows: { appSlug, appName, label, healthy, … }
+  const r = await serverGetAuthed<{ connections?: Array<{ appSlug?: string }> }>("/api/connections");
+  return new Set((r.connections || []).map((c) => String(c.appSlug || "")).filter(Boolean));
 }
 
 const TOOLS: ToolDef[] = [
@@ -192,9 +191,9 @@ const TOOLS: ToolDef[] = [
     doc: "list_connections() — the user's connected accounts (Slack, GitHub, …)",
     action: () => ({ kind: "read", title: "List connections" }),
     run: async () => {
-      const r = await serverGetAuthed<{ connections?: Array<Record<string, unknown>> }>("/api/connections");
+      const r = await serverGetAuthed<{ connections?: Array<{ appSlug?: string; appName?: string; label?: string | null; healthy?: boolean }> }>("/api/connections");
       const rows = (r.connections || []).map((c) =>
-        `${String(c.pipedreamSlug || c.slug || c.app || "?")}${c.label ? ` — ${String(c.label)}` : ""}`);
+        `${c.appSlug || "?"} (${c.appName || "?"})${c.label ? ` — ${c.label}` : ""}${c.healthy === false ? " — UNHEALTHY" : ""}`);
       return cap(rows.join("\n") || "(no connected accounts)");
     },
   },
