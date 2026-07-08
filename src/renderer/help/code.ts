@@ -337,16 +337,35 @@ async function loadRecentApps(): Promise<void> {
   // same as the palette / Apps page.
   void primeConnectedIcons(railApps as never, renderRecentApps);
   void primeNativeIcons(railApps as never, renderRecentApps);
-  // Running OS apps outside the library (osascript enumeration takes a beat),
-  // deduped by name / executable basename — exactly like the palette.
-  void window.yo.commandOsApps?.().then((list) => {
+  void refreshOsApps();
+}
+
+/** Running OS apps outside the library (osascript enumeration), deduped by
+ *  name / executable basename exactly like the palette. Only re-renders when
+ *  the set actually changed, so the 6s poll (apps opening/closing show and
+ *  hide live) doesn't churn the grid. */
+async function refreshOsApps(): Promise<void> {
+  try {
+    const list = (await window.yo.commandOsApps?.()) || [];
     const libNames = new Set(railApps.map((x) => (x.name || "").trim().toLowerCase()));
     const libExecs = new Set(railApps.map((x) => execKey(x.execPath)).filter(Boolean));
-    railOsApps = (list || []).filter((o) =>
+    const next = list.filter((o) =>
       !libNames.has(o.proc.trim().toLowerCase()) && !libExecs.has(execKey(o.path)));
+    const sig = (arr: Array<{ proc: string; path: string }>) => arr.map((o) => `${o.proc}\u0000${o.path}`).sort().join("|");
+    if (sig(next) === sig(railOsApps)) return;
+    railOsApps = next;
     renderRecentApps();
     void primeNativeIcons(railOsApps.map((o) => ({ execPath: o.path || null })) as never, renderRecentApps);
-  }).catch(() => { railOsApps = []; });
+  } catch { /* keep the last known list */ }
+}
+
+let railPollTimer: ReturnType<typeof setInterval> | null = null;
+function startRailPolling(): void {
+  if (railPollTimer) return;
+  railPollTimer = setInterval(() => {
+    if (document.hidden) return;
+    void refreshOsApps();
+  }, 6000);
 }
 
 function renderRecentApps(): void {
@@ -561,6 +580,10 @@ export function initCode(): void {
   inited = true;
   el("code-new-chat")?.addEventListener("click", newChat);
   el("apps-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("apps"); });
+  // Live updates: Apps/Layouts CRUD announces itself (same renderer); running
+  // OS apps poll on a change-detecting 6s loop.
+  document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
+  startRailPolling();
   el("recents-toggle")?.addEventListener("click", () => {
     const open = el("recents-toggle")!.classList.contains("closed");
     setRecentsOpen(open, true);

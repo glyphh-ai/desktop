@@ -324,6 +324,8 @@ async function loadLayouts() {
   layoutFormError.classList.add("hidden");
   await ensureAppNames();
   allLayouts = await window.yo.layoutsList();
+  // The rail's Apps grid mirrors layouts too — tell it to refresh.
+  document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
 
   document.getElementById("layouts-limit-msg")!.classList.add("hidden");
 
