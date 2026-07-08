@@ -1,9 +1,9 @@
 /**
  * Code — the William agent surface: sessions rail | agent | workbench rails.
  *
- * v1 scaffold: sessions persist in localStorage (moves to a real store when the
- * local William serving layer lands); the assistant reply is a stub that
- * exercises the return/stop send control. The right side is the REAL old
+ * Sessions persist in localStorage (moves to a real store as the loop
+ * matures); replies stream from the local William model (llama-server,
+ * william.ts bridge) — prompt → thinking spinner → streamed response. The right side is the REAL old
  * workbench (code-workbench-bundle.js — Files / Terminal / Diff / Preview /
  * Plan rails with insert/drag/maximize + per-folder layout persistence); the
  * center header carries its workdir controls and view toggles.
@@ -20,10 +20,12 @@ interface CodeChat { id: string; title: string; createdAt: number; messages: Cod
 const STORE_KEY = "codeChats";
 const CURRENT_KEY = "codeCurrentChat";
 
-const STUB_REPLY =
-  "William isn't wired into this panel yet — the local serving layer lands next. " +
-  "This is the Code surface: sessions on the left, the agent here, and the workbench " +
-  "rails on the right (Files / Terminal / Diff / Preview / Plan) where builds land.";
+const WILLIAM_SYSTEM =
+  "You are William, Glyphh's local coding agent — warm, precise, and direct. " +
+  "Answer concretely; when writing code, write complete runnable code.";
+// History sent per run — newest-first until the budget is spent.
+const HISTORY_MAX_MSGS = 24;
+const HISTORY_MAX_CHARS = 20000;
 
 // Ghost empty-state quotes — the spirit of Ada & William Lovelace, with
 // peace and love woven in. Rotates while the thread is empty.
@@ -63,7 +65,12 @@ let thinking = false;
 // Which chat the agent loop is working (drives the rail dot + spinner row).
 let workingChatId: string | null = null;
 let spinner: GlyphhSpinner | null = null;
-let stubTimer: ReturnType<typeof setTimeout> | null = null;
+// Active William stream — text accumulates here (chat-keyed, not DOM-keyed,
+// so switching sessions mid-stream loses nothing).
+let activeRunId: string | null = null;
+let streamChatId: string | null = null;
+let streamText = "";
+let streamBubble: HTMLElement | null = null;
 let menuEl: HTMLDivElement | null = null;
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T | null {
@@ -191,15 +198,24 @@ function renderThread(): void {
     bubble.textContent = m.text;
     inner.appendChild(bubble);
   }
-  // Working row — the Glyphh spinner while the agent loop runs this chat.
+  // Working state — spinner while thinking; once tokens flow the streamed
+  // reply renders live in its own bubble.
   spinner?.destroy();
   spinner = null;
+  streamBubble = null;
   if (thinking && workingChatId === c.id) {
-    spinner = createGlyphhSpinner();
-    const row = document.createElement("div");
-    row.className = "code-msg assistant code-working";
-    row.appendChild(spinner.el);
-    inner.appendChild(row);
+    if (streamText && streamChatId === c.id) {
+      streamBubble = document.createElement("div");
+      streamBubble.className = "code-msg assistant";
+      streamBubble.textContent = streamText;
+      inner.appendChild(streamBubble);
+    } else {
+      spinner = createGlyphhSpinner();
+      const row = document.createElement("div");
+      row.className = "code-msg assistant code-working";
+      row.appendChild(spinner.el);
+      inner.appendChild(row);
+    }
   }
   thread.scrollTop = thread.scrollHeight;
 }
@@ -222,9 +238,9 @@ function setThinking(on: boolean): void {
 }
 
 function stopThinking(): void {
-  if (stubTimer) { clearTimeout(stubTimer); stubTimer = null; }
-  setThinking(false);
-  renderThread();
+  // Abort the stream — main answers with william:done { stopped: true },
+  // which finalizes whatever streamed so far.
+  void window.yo.williamStop?.();
 }
 
 function send(): void {
@@ -257,22 +273,72 @@ function send(): void {
   ta.value = "";
   autoGrow(ta);
   saveStore();
-  // Stub "thinking" — replaced by the William agent loop once serving lands.
-  // Set before rendering so the spinner row + rail dot paint immediately;
-  // long enough to see the spinner's 5s phrase/direction beat.
+  // Working state first so the spinner row + rail dot paint immediately.
   setThinking(true);
   renderHistory();
   renderThread();
-  stubTimer = setTimeout(() => {
-    stubTimer = null;
-    const cur = current();
-    if (cur) {
-      cur.messages.push({ role: "assistant", text: STUB_REPLY, at: Date.now() });
-      saveStore();
+  streamChatId = c.id;
+  streamText = "";
+  void window.yo.williamRun({ messages: buildHistory(c) })
+    .then((r) => { activeRunId = r.runId; })
+    .catch((err) => {
+      finishRun(`⚠ ${err instanceof Error ? err.message : String(err)}`);
+    });
+}
+
+/** The messages a run sends: William's system prompt + recent history,
+ *  newest-first until the budget is spent (then restored to order). */
+function buildHistory(c: CodeChat): Array<{ role: string; content: string }> {
+  const picked: Array<{ role: string; content: string }> = [];
+  let chars = 0;
+  for (let i = c.messages.length - 1; i >= 0 && picked.length < HISTORY_MAX_MSGS; i--) {
+    const m = c.messages[i];
+    chars += m.text.length;
+    if (picked.length && chars > HISTORY_MAX_CHARS) break;
+    picked.push({ role: m.role, content: m.text });
+  }
+  picked.push({ role: "system", content: WILLIAM_SYSTEM });
+  return picked.reverse();
+}
+
+/** Land the run's outcome in its chat (found by id — the user may have
+ *  switched sessions mid-stream) and reset the working state. */
+function finishRun(text: string): void {
+  const chat = chats.find((ch) => ch.id === streamChatId);
+  if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now() });
+  saveStore();
+  activeRunId = null;
+  streamChatId = null;
+  streamText = "";
+  streamBubble = null;
+  setThinking(false);
+  renderThread();
+}
+
+/** Wire the stream events once — deltas paint the live bubble (or just
+ *  accumulate when another session is in view). */
+function initWilliamEvents(): void {
+  window.yo.onWilliamDelta?.((d) => {
+    if (activeRunId && d.runId !== activeRunId) return;
+    streamText += d.delta;
+    if (currentId === streamChatId) {
+      const thread = el<HTMLDivElement>("code-thread");
+      if (streamBubble && streamBubble.isConnected) {
+        streamBubble.textContent = streamText;
+        if (thread) thread.scrollTop = thread.scrollHeight;
+      } else {
+        renderThread(); // first token — swaps the spinner for the live bubble
+      }
     }
-    setThinking(false);
-    renderThread();
-  }, 9000);
+  });
+  window.yo.onWilliamDone?.((d) => {
+    if (activeRunId && d.runId !== activeRunId) return;
+    finishRun(streamText);
+  });
+  window.yo.onWilliamError?.((d) => {
+    if (activeRunId && d.runId !== activeRunId) return;
+    finishRun(streamText ? `${streamText}\n\n⚠ ${d.error}` : `⚠ ${d.error}`);
+  });
 }
 
 // ── Apps grid — the same list + icons as the Apps page / command center,
@@ -617,6 +683,7 @@ export function initCode(): void {
     setRecentsOpen(open, true);
   });
   el("code-send")?.addEventListener("click", send);
+  initWilliamEvents();
   const ta = input();
   ta?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {

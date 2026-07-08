@@ -384,6 +384,19 @@ contextBridge.exposeInMainWorld("yo", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
+  williamRun: (p: { messages: Array<{ role: string; content: string }> }) =>
+    ipcRenderer.invoke("william-run", p) as Promise<{ runId: string }>,
+  williamStop: () => ipcRenderer.invoke("william-stop") as Promise<boolean>,
+  williamStatus: () => ipcRenderer.invoke("william-status") as Promise<{ up: boolean }>,
+  onWilliamDelta: (callback: (d: { runId: string; delta: string }) => void) => {
+    ipcRenderer.on("william:delta", (_event, d) => callback(d));
+  },
+  onWilliamDone: (callback: (d: { runId: string; stopped: boolean }) => void) => {
+    ipcRenderer.on("william:done", (_event, d) => callback(d));
+  },
+  onWilliamError: (callback: (d: { runId: string; error: string }) => void) => {
+    ipcRenderer.on("william:error", (_event, d) => callback(d));
+  },
   onThemeChanged: (callback: (theme: string) => void) => {
     ipcRenderer.on("theme-changed", (_event, theme) => callback(theme));
   },

@@ -76,6 +76,7 @@ import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
+import { registerWilliamIpc } from "./william";
 import { retileWorkspace } from "./app-resolver";
 import { retileFullWindows } from "./app-window-manager";
 import { initScreenLayout, onWorkspaceChange } from "./screen-layout";
@@ -1262,6 +1263,7 @@ async function boot() {
   // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
   if (!ipcMain.listenerCount("wb-term:spawn")) {
     registerWorkbenchTerminalIpc();
+    registerWilliamIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {

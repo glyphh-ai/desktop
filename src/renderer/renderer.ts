@@ -318,6 +318,12 @@ declare global {
       // Recents (rich)
       screenLayoutGet: () => Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>;
       screenLayoutSet: (v: { mode?: string; fraction?: number }) => Promise<{ mode: string; fraction: number }>;
+      williamRun: (p: { messages: Array<{ role: string; content: string }> }) => Promise<{ runId: string }>;
+      williamStop: () => Promise<boolean>;
+      williamStatus: () => Promise<{ up: boolean }>;
+      onWilliamDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
+      onWilliamDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
+      onWilliamError: (cb: (d: { runId: string; error: string }) => void) => void;
       railCollapseGet: () => Promise<boolean>;
       railCollapseToggle: () => Promise<boolean>;
       railCollapseSet: (on: boolean) => Promise<boolean>;
