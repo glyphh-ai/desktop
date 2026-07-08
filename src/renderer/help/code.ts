@@ -829,6 +829,8 @@ function initWilliamEvents(): void {
       setupMeta = `Downloading ${d.model || "William"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
     } else if (d.phase === "manifest") {
       setupMeta = "Fetching model manifest…";
+    } else if (d.phase === "building") {
+      setupMeta = String((d as { text?: string }).text || "");
     } else {
       setupMeta = "";
     }

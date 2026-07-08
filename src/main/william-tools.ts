@@ -31,6 +31,7 @@ import { connectorTools, connectorCall } from "./glyphh-app-services";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
+import { buildGlyphhApp } from "./william-app-builder";
 import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 
@@ -118,6 +119,15 @@ async function connectedSlugs(): Promise<Set<string>> {
 }
 
 const TOOLS: ToolDef[] = [
+  {
+    name: "create_app",
+    doc: "create_app(description) — BUILD and install a new Glyphh app from a plain description (beautiful single-file UI + worker tools; connectors auto-grounded). THE tool for 'create/build me an app'",
+    action: (a) => ({ kind: "edit", title: "Create app", detail: String(a.description ?? "").slice(0, 400) }),
+    run: async (a) => {
+      const r = await buildGlyphhApp(String(a.description ?? ""));
+      return `installed "${r.name}" (${r.slug}) — validated in ${r.attempts} attempt${r.attempts === 1 ? "" : "s"}${r.warnings.length ? `; notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Open it with open_app("${r.slug}").`;
+    },
+  },
   {
     name: "list_dir",
     doc: "list_dir(path?) — list a folder in the workspace (name, type, size)",
