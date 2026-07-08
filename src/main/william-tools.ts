@@ -42,7 +42,7 @@ interface ToolDef {
   name: string;
   /** One line shown to the model in the system prompt. */
   doc: string;
-  run: (args: Record<string, unknown>) => Promise<string>;
+  run: (args: Record<string, unknown>, signal?: AbortSignal) => Promise<string>;
   /** Gate classification for a concrete call. */
   action: (args: Record<string, unknown>) => { kind: WilliamActionKind; title: string; detail?: string };
 }
@@ -70,9 +70,9 @@ const READ_TOOL_RE = /(^|[-_.])(find|get|list|search|read|fetch|retrieve|lookup|
 
 const DANGEROUS_CMD = /\brm\s+(-\w*[rf]\w*\s+)+|\bsudo\b|\bshutdown\b|\breboot\b|\bmkfs\b|\bdiskutil\s+erase|git\s+push\s+.*--force|>\s*\/dev\/|\bdd\s+if=/i;
 
-function runShell(command: string, cwd: string): Promise<string> {
+function runShell(command: string, cwd: string, signal?: AbortSignal): Promise<string> {
   return new Promise((res) => {
-    exec(command, { cwd, timeout: 60_000, maxBuffer: 4 * 1024 * 1024, shell: "/bin/zsh" }, (err, stdout, stderr) => {
+    exec(command, { cwd, timeout: 60_000, maxBuffer: 4 * 1024 * 1024, shell: "/bin/zsh", signal }, (err, stdout, stderr) => {
       const out = [stdout, stderr].filter(Boolean).join("\n---stderr---\n").trim();
       if (err && !out) res(`exit ${err.code ?? "?"}: ${err.message}`);
       else if (err) res(cap(`${out}\n(exit ${err.code ?? "signal"})`));
@@ -123,8 +123,8 @@ const TOOLS: ToolDef[] = [
     name: "create_app",
     doc: "create_app(description) — BUILD and install a new Glyphh app from a plain description (beautiful single-file UI + worker tools; connectors auto-grounded). THE tool for 'create/build me an app'",
     action: (a) => ({ kind: "edit", title: "Create app", detail: String(a.description ?? "").slice(0, 400) }),
-    run: async (a) => {
-      const r = await buildGlyphhApp(String(a.description ?? ""));
+    run: async (a, signal) => {
+      const r = await buildGlyphhApp(String(a.description ?? ""), signal);
       return `installed "${r.name}" (${r.slug}) — clean on pass ${r.attempts} of the build${r.sourceDir ? `; source at ${r.sourceDir}` : ""}${r.warnings.length ? `; notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Open it with open_app("${r.slug}").`;
     },
   },
@@ -198,7 +198,7 @@ const TOOLS: ToolDef[] = [
       const cmd = String(a.command ?? "");
       return { kind: DANGEROUS_CMD.test(cmd) ? "dangerous" : "command", title: "Run command", detail: cmd };
     },
-    run: async (a) => runShell(String(a.command ?? ""), workdir()),
+    run: async (a, signal) => runShell(String(a.command ?? ""), workdir(), signal),
   },
   {
     name: "git_status",
@@ -440,6 +440,7 @@ export interface ToolOutcome { result: string; denied: boolean; title: string }
 export async function executeWilliamTool(
   wc: WebContents,
   call: { name: string; arguments?: Record<string, unknown> },
+  signal?: AbortSignal,
 ): Promise<ToolOutcome> {
   const tool = TOOLS.find((t) => t.name === call.name);
   if (!tool) {
@@ -457,7 +458,7 @@ export async function executeWilliamTool(
     return { result: `DENIED: ${gate.reason || "not allowed"}`, denied: true, title: action.title };
   }
   try {
-    return { result: await tool.run(args), denied: false, title: action.title };
+    return { result: await tool.run(args, signal), denied: false, title: action.title };
   } catch (err) {
     return { result: `ERROR: ${err instanceof Error ? err.message : String(err)}`, denied: false, title: action.title };
   }

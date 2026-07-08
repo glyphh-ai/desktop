@@ -391,6 +391,7 @@ async function agentRun(
   };
   try {
     for (let turn = 0; turn < maxTurns; turn++) {
+      if (ctrl.signal.aborted) throw new Error("aborted");
       turnsUsed = turn + 1;
       const raw = await williamComplete(messages, {
         signal: ctrl.signal,
@@ -409,7 +410,7 @@ async function agentRun(
       }
       if (parsed.action?.name) {
         emit("william:tool", { phase: "start", name: parsed.action.name, thought: parsed.thought || "" });
-        const outcome = await executeWilliamTool(wc, parsed.action);
+        const outcome = await executeWilliamTool(wc, parsed.action, ctrl.signal);
         emit("william:tool", {
           phase: "done",
           name: parsed.action.name,
@@ -420,6 +421,7 @@ async function agentRun(
         });
         messages.push({ role: "assistant", content: raw });
         messages.push({ role: "user", content: `<tool_response>\n${outcome.result}\n</tool_response>` });
+        if (ctrl.signal.aborted) throw new Error("aborted");
         continue;
       }
       finalText = parsed.final || parsed.thought || "";

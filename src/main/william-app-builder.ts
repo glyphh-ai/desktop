@@ -118,6 +118,7 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
   let lastErrors: string[] = [];
   let lastEmission = "";
   for (let attempt = 1; attempt <= budget; attempt++) {
+    if (signal?.aborted) { say(""); throw new Error("aborted"); }
     say(`Building app — pass ${attempt}/${budget}, generating…`);
     const user = attempt === 1
       ? baseUser

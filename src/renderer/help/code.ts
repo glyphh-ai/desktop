@@ -789,11 +789,29 @@ function send(): void {
   void saveStore().then(() => launch(false));
 }
 
+// Stopping isn't failure — it's a choice. All peace, no violence.
+const STOP_LINES = [
+  "You paused the vibe — William set his tools down gently.",
+  "Peace restored. Everything finished so far stays yours.",
+  "The loop rests — happy to pick this back up whenever.",
+  "Gently stopped. William tucked the work away, mid-glyph.",
+  "You called it — William bowed out with grace.",
+  "Stillness. The trail so far is saved.",
+];
+
 /** Land the run's outcome in its chat (found by id — the user may have
  *  switched sessions mid-stream) and reset the working state. */
-function finishRun(text: string): void {
+function finishRun(text: string, stopped = false): void {
   const chat = chats.find((ch) => ch.id === streamChatId);
   if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now() });
+  if (chat && stopped) {
+    chat.messages.push({
+      role: "assistant",
+      kind: "tool",
+      text: `☮ ${STOP_LINES[Math.floor(Math.random() * STOP_LINES.length)]}`,
+      at: Date.now(),
+    });
+  }
   void saveStore();
   activeRunId = null;
   streamChatId = null;
@@ -915,7 +933,7 @@ function initWilliamEvents(): void {
   });
   window.yo.onWilliamDone?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
-    finishRun(streamText);
+    finishRun(streamText, d.stopped);
   });
   window.yo.onWilliamError?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
