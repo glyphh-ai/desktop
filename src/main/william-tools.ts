@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateWilliamAction, type WilliamActionKind } from "./william-permissions";
-import { getWorkingDirectory } from "./working-directory";
+import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { serverGetAuthed } from "./auth";
 import { cachedServerGet } from "./server-cache";
@@ -31,6 +31,7 @@ import { connectorTools, connectorCall } from "./glyphh-app-services";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
+import { buildGlyphhApp } from "./william-app-builder";
 import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 
@@ -41,7 +42,7 @@ interface ToolDef {
   name: string;
   /** One line shown to the model in the system prompt. */
   doc: string;
-  run: (args: Record<string, unknown>) => Promise<string>;
+  run: (args: Record<string, unknown>, signal?: AbortSignal) => Promise<string>;
   /** Gate classification for a concrete call. */
   action: (args: Record<string, unknown>) => { kind: WilliamActionKind; title: string; detail?: string };
 }
@@ -49,7 +50,7 @@ interface ToolDef {
 const cap = (s: string, n = OUTPUT_CAP) => (s.length > n ? `${s.slice(0, n)}\n…(truncated, ${s.length} chars total)` : s);
 
 function workdir(): string {
-  const wd = getWorkingDirectory();
+  const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set — ask the user to pick one in the Code header");
   return wd;
 }
@@ -69,9 +70,9 @@ const READ_TOOL_RE = /(^|[-_.])(find|get|list|search|read|fetch|retrieve|lookup|
 
 const DANGEROUS_CMD = /\brm\s+(-\w*[rf]\w*\s+)+|\bsudo\b|\bshutdown\b|\breboot\b|\bmkfs\b|\bdiskutil\s+erase|git\s+push\s+.*--force|>\s*\/dev\/|\bdd\s+if=/i;
 
-function runShell(command: string, cwd: string): Promise<string> {
+function runShell(command: string, cwd: string, signal?: AbortSignal): Promise<string> {
   return new Promise((res) => {
-    exec(command, { cwd, timeout: 60_000, maxBuffer: 4 * 1024 * 1024, shell: "/bin/zsh" }, (err, stdout, stderr) => {
+    exec(command, { cwd, timeout: 60_000, maxBuffer: 4 * 1024 * 1024, shell: "/bin/zsh", signal }, (err, stdout, stderr) => {
       const out = [stdout, stderr].filter(Boolean).join("\n---stderr---\n").trim();
       if (err && !out) res(`exit ${err.code ?? "?"}: ${err.message}`);
       else if (err) res(cap(`${out}\n(exit ${err.code ?? "signal"})`));
@@ -118,6 +119,15 @@ async function connectedSlugs(): Promise<Set<string>> {
 }
 
 const TOOLS: ToolDef[] = [
+  {
+    name: "create_app",
+    doc: "create_app(description) — BUILD and install a new Glyphh app from a plain description (beautiful single-file UI + worker tools; connectors auto-grounded). THE tool for 'create/build me an app'",
+    action: (a) => ({ kind: "edit", title: "Create app", detail: String(a.description ?? "").slice(0, 400) }),
+    run: async (a, signal) => {
+      const r = await buildGlyphhApp(String(a.description ?? ""), signal);
+      return `installed "${r.name}" (${r.slug}) — clean on pass ${r.attempts} of the build${r.sourceDir ? `; source at ${r.sourceDir}` : ""}${r.warnings.length ? `; notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Open it with open_app("${r.slug}").`;
+    },
+  },
   {
     name: "list_dir",
     doc: "list_dir(path?) — list a folder in the workspace (name, type, size)",
@@ -188,7 +198,39 @@ const TOOLS: ToolDef[] = [
       const cmd = String(a.command ?? "");
       return { kind: DANGEROUS_CMD.test(cmd) ? "dangerous" : "command", title: "Run command", detail: cmd };
     },
-    run: async (a) => runShell(String(a.command ?? ""), workdir()),
+    run: async (a, signal) => runShell(String(a.command ?? ""), workdir(), signal),
+  },
+  {
+    name: "git_status",
+    doc: "git_status() — branch + changed files in the working folder",
+    action: () => ({ kind: "read", title: "Git status" }),
+    run: async () => runShell("git status --porcelain=v1 -b", workdir()),
+  },
+  {
+    name: "git_diff",
+    doc: "git_diff(path?, staged?) — unified diff of working-tree (or staged) changes",
+    action: (a) => ({ kind: "read", title: `Git diff${a.path ? ` ${String(a.path)}` : ""}` }),
+    run: async (a) => {
+      const p = String(a.path ?? "").replace(/'/g, "");
+      return runShell(`git diff ${a.staged ? "--staged " : ""}${p ? `-- '${p}'` : ""} | head -400`, workdir());
+    },
+  },
+  {
+    name: "git_log",
+    doc: "git_log(n?) — recent commits (oneline)",
+    action: () => ({ kind: "read", title: "Git log" }),
+    run: async (a) => runShell(`git log --oneline -n ${Math.max(1, Math.min(50, Number(a.n) || 10))}`, workdir()),
+  },
+  {
+    name: "git_commit",
+    doc: "git_commit(message, paths?) — stage (given paths, or everything) and commit in the working folder",
+    action: (a) => ({ kind: "command", title: "Git commit", detail: String(a.message ?? "") }),
+    run: async (a) => {
+      const msg = String(a.message ?? "").trim();
+      if (!msg) return "ERROR: commit message is required";
+      const paths = Array.isArray(a.paths) ? (a.paths as unknown[]).map((p) => `'${String(p).replace(/'/g, "")}'`).join(" ") : "";
+      return runShell(`git add ${paths || "-A"} && git commit -m ${JSON.stringify(msg)}`, workdir());
+    },
   },
   {
     name: "open_app",
@@ -398,6 +440,7 @@ export interface ToolOutcome { result: string; denied: boolean; title: string }
 export async function executeWilliamTool(
   wc: WebContents,
   call: { name: string; arguments?: Record<string, unknown> },
+  signal?: AbortSignal,
 ): Promise<ToolOutcome> {
   const tool = TOOLS.find((t) => t.name === call.name);
   if (!tool) {
@@ -415,7 +458,7 @@ export async function executeWilliamTool(
     return { result: `DENIED: ${gate.reason || "not allowed"}`, denied: true, title: action.title };
   }
   try {
-    return { result: await tool.run(args), denied: false, title: action.title };
+    return { result: await tool.run(args, signal), denied: false, title: action.title };
   } catch (err) {
     return { result: `ERROR: ${err instanceof Error ? err.message : String(err)}`, denied: false, title: action.title };
   }

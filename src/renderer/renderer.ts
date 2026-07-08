@@ -323,7 +323,7 @@ declare global {
       williamSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
       williamRemember: (fact: string) => Promise<boolean>;
       adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
-      williamTrainingStats: () => Promise<{ files: number; bytes: number; dir: string; enabled: boolean }>;
+      williamModelsList: () => Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; status: string; usage: string; downloaded: boolean }> }>;
       adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
       adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
       williamContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>;
@@ -333,6 +333,7 @@ declare global {
       onWilliamDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onWilliamDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
       onWilliamError: (cb: (d: { runId: string; error: string }) => void) => void;
+      onWilliamSetup: (cb: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => void;
       onWilliamProgress: (cb: (d: { runId: string; tokens: number }) => void) => void;
       onWilliamTool: (cb: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => void;
       williamApprovalRespond: (id: string, allow: boolean) => Promise<boolean>;

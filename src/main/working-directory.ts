@@ -70,6 +70,13 @@ export function getWorkingDirectory(): string {
   return getPreference<string | null>("workingDirectory", null) || defaultWorkingDirectory();
 }
 
+/** The EXPLICITLY chosen working directory, or null when the user never
+ *  picked one. The agent loop requires an explicit pick — it must never
+ *  silently operate in ~ or wherever the app happened to launch from. */
+export function getExplicitWorkingDirectory(): string | null {
+  return getPreference<string | null>("workingDirectory", null);
+}
+
 /** Most-recently-used folder paths (legacy back-compat surface). */
 export function getWorkingDirRecents(): string[] {
   return getPreference<string[]>("workingDirRecents", []) || [];

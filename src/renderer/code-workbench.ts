@@ -76,7 +76,11 @@ interface TermSlot {
   activeIdx: number;
 }
 interface DiffSlot { id: number; view: "diff"; collapsed?: Set<string> }
-interface PreviewSlot { id: number; view: "preview"; url?: string; viewKey?: string }
+interface PreviewSlot {
+  id: number; view: "preview"; url?: string; viewKey?: string;
+  /** Inline document (William build previews) — runtime-only, never persisted. */
+  html?: string; htmlLabel?: string;
+}
 
 interface PlanSlot {
   id: number; view: "plan";
@@ -1249,6 +1253,14 @@ async function init(): Promise<void> {
     const stub = body.querySelector(".ws-preview-stub") as HTMLElement;
     urlInput.value = slot.url || "";
 
+    function loadHtml(html: string, label: string): void {
+      stub.hidden = true;
+      frame.hidden = false;
+      frame.removeAttribute("src");
+      frame.srcdoc = html;
+      urlInput.value = label;
+    }
+
     function load(u: string): void {
       if (!u) {
         frame.hidden = true;
@@ -1261,8 +1273,9 @@ async function init(): Promise<void> {
       frame.src = u;
     }
 
-    // Initial paint from persisted URL (if any).
-    if (slot.url) load(normalizePreviewUrl(slot.url));
+    // Initial paint: inline build preview wins; else the persisted URL.
+    if (slot.html) loadHtml(slot.html, slot.htmlLabel || "William build");
+    else if (slot.url) load(normalizePreviewUrl(slot.url));
 
     function navigate(): void {
       const u = normalizePreviewUrl(urlInput.value);
@@ -1272,7 +1285,8 @@ async function init(): Promise<void> {
       saveLayout();
       load(u);
     }
-    urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") navigate(); });
+    urlInput.addEventListener("keydown", (e) => {
+      if (slot.html) { slot.html = undefined; slot.htmlLabel = undefined; } if (e.key === "Enter") navigate(); });
     urlInput.addEventListener("blur", () => navigate());
     // Cross-origin frames block contentWindow.location.reload(); re-assigning
     // src reloads regardless of origin.
@@ -1541,6 +1555,22 @@ async function init(): Promise<void> {
 
   // New session: close every rail and reset the folder selection (visual
   // reset only — each folder's saved layout is untouched).
+  // William build previews: show generated HTML in a Preview slot (opens
+  // one if none), live across repair attempts. Runtime-only content.
+  (window as unknown as { __wbPreviewHtml?: (html: string, label?: string) => void }).__wbPreviewHtml = (html, label) => {
+    let slot = rails.flatMap((r) => r.slots).find((s) => s.view === "preview") as PreviewSlot | undefined;
+    if (!slot) {
+      slot = makeSlot("preview") as PreviewSlot;
+      slot.html = html;
+      slot.htmlLabel = label;
+      placeSlot(slot);
+      return; // placeSlot renders
+    }
+    slot.html = html;
+    slot.htmlLabel = label;
+    renderRails();
+  };
+
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession = () => {
     rails.length = 0;
     maximizedSlotId = null;

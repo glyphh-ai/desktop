@@ -397,8 +397,8 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("ada-recall", { query, k }) as Promise<Array<{ content: string; score: number }>>,
   adaAsk: (op: unknown) => ipcRenderer.invoke("ada-ask", { op }) as Promise<{ ok: boolean; answer?: string; error?: string }>,
   adaStats: () => ipcRenderer.invoke("ada-stats") as Promise<{ thoughts: number; slots: number; keys: number }>,
-  williamTrainingStats: () =>
-    ipcRenderer.invoke("william-training-stats") as Promise<{ files: number; bytes: number; dir: string; enabled: boolean }>,
+  williamModelsList: () =>
+    ipcRenderer.invoke("william-models-list") as Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; status: string; usage: string; downloaded: boolean }> }>,
   williamContextUsage: (chatId: string) =>
     ipcRenderer.invoke("william-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>,
   williamStop: () => ipcRenderer.invoke("william-stop") as Promise<boolean>,
@@ -411,6 +411,9 @@ contextBridge.exposeInMainWorld("yo", {
   },
   onWilliamError: (callback: (d: { runId: string; error: string }) => void) => {
     ipcRenderer.on("william:error", (_event, d) => callback(d));
+  },
+  onWilliamSetup: (callback: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => {
+    ipcRenderer.on("william:setup", (_event, d) => callback(d));
   },
   onWilliamProgress: (callback: (d: { runId: string; tokens: number }) => void) => {
     ipcRenderer.on("william:progress", (_event, d) => callback(d));
