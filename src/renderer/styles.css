@@ -11781,3 +11781,51 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   color: var(--text-bright);
   border-color: var(--accent);
 }
+
+/* Screen-layout split preview — mini screen mockup under the mode picker. */
+.sl-preview {
+  margin-top: 12px;
+  width: 320px;
+  max-width: 100%;
+  height: 180px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--border);
+  overflow: hidden;
+}
+.sl-preview .sl-glyphh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  border-radius: 7px;
+  flex: 0 0 50%;
+  min-width: 0;
+  min-height: 0;
+}
+.sl-preview .sl-glyphh img { width: 26px; height: 26px; opacity: 0.9; }
+.sl-preview .sl-workspace {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border-radius: 7px;
+  color: var(--text-3);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  min-width: 0;
+  min-height: 0;
+}
+/* Orientation per mode: the Glyphh side sits on its docked edge. */
+.sl-preview.sl-mode-left { flex-direction: row; }
+.sl-preview.sl-mode-right { flex-direction: row-reverse; }
+.sl-preview.sl-mode-top { flex-direction: column; }
+.sl-preview.sl-mode-bottom { flex-direction: column-reverse; }
+.sl-preview.sl-mode-full { flex-direction: row; }
+.sl-preview.sl-mode-full .sl-workspace { display: none; }
+.sl-preview.sl-mode-full .sl-glyphh { flex: 1 1 100%; }

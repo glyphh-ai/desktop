@@ -72,16 +72,6 @@
                   </button>
                 </div>
 
-                <h3 class="settings-subheading">Screen layout</h3>
-                <p class="section-desc">Dock Glyphh to one edge of the screen — apps and layouts open in the remaining workspace. Drag the shared edge to resize the split.</p>
-                <div id="screen-layout-picker" class="layout-mode-picker">
-                  <button class="layout-mode-btn" data-mode="full" type="button">Full</button>
-                  <button class="layout-mode-btn" data-mode="left" type="button">Left</button>
-                  <button class="layout-mode-btn" data-mode="right" type="button">Right</button>
-                  <button class="layout-mode-btn" data-mode="top" type="button">Top</button>
-                  <button class="layout-mode-btn" data-mode="bottom" type="button">Bottom</button>
-                </div>
-
                 <h3 class="settings-subheading">Browser</h3>
                 <div class="settings-form">
                   <label class="settings-label">Default Homepage</label>
@@ -95,6 +85,23 @@
                   </div>
                   <div id="browser-home-custom-row" class="settings-inline hidden" style="margin-top:6px">
                     <input id="settings-browser-home-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" />
+                  </div>
+                </div>
+
+                <h3 class="settings-subheading">Screen layout</h3>
+                <div class="settings-form">
+                  <label class="settings-label">Dock Glyphh</label>
+                  <div id="screen-layout-picker" class="layout-mode-picker">
+                    <button class="layout-mode-btn" data-mode="full" type="button">Full</button>
+                    <button class="layout-mode-btn" data-mode="left" type="button">Left</button>
+                    <button class="layout-mode-btn" data-mode="right" type="button">Right</button>
+                    <button class="layout-mode-btn" data-mode="top" type="button">Top</button>
+                    <button class="layout-mode-btn" data-mode="bottom" type="button">Bottom</button>
+                  </div>
+                  <span class="settings-hint" style="margin-top:6px;display:block;font-size:11px;color:var(--text-3);">Apps and layouts open in the workspace. Drag the shared window edge to resize the split.</span>
+                  <div id="screen-layout-preview" class="sl-preview sl-mode-full">
+                    <div class="sl-glyphh"><img src="brand/glyphh-mark.png" alt="Glyphh" /></div>
+                    <div class="sl-workspace"><span>Workspace</span></div>
                   </div>
                 </div>
               </div>

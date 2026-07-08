@@ -24,14 +24,26 @@ function initSettings() {
   settingsSaveBtn.addEventListener("click", saveSettings);
 
   // Theme picker
-  // Screen layout — dock mode picker (fraction comes from dragging the edge).
+  // Screen layout — dock mode picker + split preview (fraction comes from
+  // dragging the shared window edge; the mockup mirrors mode + fraction).
   const slPicker = document.getElementById("screen-layout-picker");
+  const slPreview = document.getElementById("screen-layout-preview");
   if (slPicker) {
+    let slFraction = 0.5;
     const paintSl = (mode: string) => {
       slPicker.querySelectorAll<HTMLElement>(".layout-mode-btn").forEach((b) =>
         b.classList.toggle("active", b.dataset.mode === mode));
+      if (!slPreview) return;
+      slPreview.className = `sl-preview sl-mode-${mode}`;
+      const glyphhSide = slPreview.querySelector<HTMLElement>(".sl-glyphh");
+      if (glyphhSide) {
+        glyphhSide.style.flexBasis = mode === "full" ? "100%" : `${Math.round(slFraction * 100)}%`;
+      }
     };
-    void window.yo.screenLayoutGet?.().then((sl) => paintSl(sl?.mode || "full")).catch(() => paintSl("full"));
+    void window.yo.screenLayoutGet?.().then((sl) => {
+      slFraction = sl?.fraction ?? 0.5;
+      paintSl(sl?.mode || "full");
+    }).catch(() => paintSl("full"));
     slPicker.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>(".layout-mode-btn");
       if (!btn) return;
