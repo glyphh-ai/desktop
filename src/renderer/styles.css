@@ -11446,10 +11446,16 @@ body.wb-max .code-wb-edge { display: none; }
 body.wb-max .code-workbench { flex: 1; }
 body.wb-max .ws-right-rails { width: 100%; }
 
-/* Whole-workbench edge drag handle (left edge of the rails aside). */
+/* Whole-workbench edge drag handle — absolutely positioned over the aside's
+   left border so it adds no layout width (the border IS the divider). */
+.code-workbench { position: relative; }
 .code-wb-edge {
-  flex: 0 0 4px;
-  width: 4px;
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  z-index: 5;
   cursor: col-resize;
   background: transparent;
 }
@@ -11574,9 +11580,10 @@ body.wb-max .ws-right-rails { width: 100%; }
   margin: 1px 8px;
   border-radius: 2px;
   cursor: row-resize;
-  background: transparent;
+  background: var(--border);
+  opacity: 0.5;
 }
-.recents-vsplit:hover { background: var(--border-2); }
+.recents-vsplit:hover { opacity: 1; }
 body.code-vdragging { cursor: row-resize; user-select: none; }
 .app-rail-search { padding: 0 10px 6px; }
 .app-rail-search input {
@@ -11720,3 +11727,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 }
 .tile-layout .mini img { width: 100%; height: 100%; object-fit: cover; }
 .tile-layout .tile-mini-initial { font-size: 8px; font-weight: 600; color: var(--text-3); }
+
+/* Slim the leading drop strip inside the rails (between-rail strips keep
+   their drop-target width). */
+#code-wb-rails > .ws-rail-dropstrip:first-child { width: 2px; flex-basis: 2px; }
