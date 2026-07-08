@@ -482,12 +482,40 @@ function renderThread(): void {
     startGhostRotation(quote);
     return;
   }
+  // Consecutive tool breadcrumbs group into one collapsible row ("Ran N
+  // tool calls · M failed ›") once a run is over — quiet by default,
+  // inspectable on click. The ACTIVE run's steps stay expanded live.
+  const blocks: Array<{ tool: true; msgs: CodeMsg[] } | { tool: false; msg: CodeMsg }> = [];
   for (const m of c.messages) {
-    const bubble = document.createElement("div");
-    bubble.className = m.kind === "tool" ? "code-tool-line" : `code-msg ${m.role}`;
-    bubble.textContent = m.text;
-    inner.appendChild(bubble);
+    const last = blocks[blocks.length - 1];
+    if (m.kind === "tool") {
+      if (last && last.tool) last.msgs.push(m);
+      else blocks.push({ tool: true, msgs: [m] });
+    } else {
+      blocks.push({ tool: false, msg: m });
+    }
   }
+  const liveRun = thinking && workingChatId === c.id;
+  blocks.forEach((b, i) => {
+    if (!b.tool) {
+      const bubble = document.createElement("div");
+      bubble.className = `code-msg ${b.msg.role}`;
+      bubble.textContent = b.msg.text;
+      inner.appendChild(bubble);
+      return;
+    }
+    // The trailing group of an active run renders expanded (live progress).
+    if (liveRun && i === blocks.length - 1) {
+      for (const m of b.msgs) {
+        const line = document.createElement("div");
+        line.className = "code-tool-line";
+        line.textContent = m.text;
+        inner.appendChild(line);
+      }
+      return;
+    }
+    inner.appendChild(toolGroupEl(c.id, b.msgs));
+  });
   // Working state — spinner while thinking; once tokens flow the streamed
   // reply renders live in its own bubble.
   spinner?.destroy();
@@ -510,6 +538,38 @@ function renderThread(): void {
     }
   }
   thread.scrollTop = thread.scrollHeight;
+}
+
+// Expanded tool groups (keyed chatId:firstMsgTimestamp) — transient UI state.
+const expandedToolGroups = new Set<string>();
+
+function toolGroupEl(chatId: string, msgs: CodeMsg[]): HTMLElement {
+  const key = `${chatId}:${msgs[0]?.at ?? 0}`;
+  const open = expandedToolGroups.has(key);
+  const wrap = document.createElement("div");
+  wrap.className = "code-tool-group";
+  const failed = msgs.filter((m) => m.text.startsWith("✕")).length;
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "code-tool-summary" + (open ? " open" : "");
+  head.innerHTML = `<span></span><svg class="tg-chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+  (head.firstChild as HTMLElement).textContent =
+    `Ran ${msgs.length} tool call${msgs.length === 1 ? "" : "s"}${failed ? ` · ${failed} failed` : ""}`;
+  head.addEventListener("click", () => {
+    if (expandedToolGroups.has(key)) expandedToolGroups.delete(key);
+    else expandedToolGroups.add(key);
+    renderThread();
+  });
+  wrap.appendChild(head);
+  if (open) {
+    for (const m of msgs) {
+      const line = document.createElement("div");
+      line.className = "code-tool-line";
+      line.textContent = m.text;
+      wrap.appendChild(line);
+    }
+  }
+  return wrap;
 }
 
 // ── Composer ─────────────────────────────────────────────────────────────

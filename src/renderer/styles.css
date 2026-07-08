@@ -12144,3 +12144,26 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   cursor: pointer;
 }
 .ada-hit:hover { color: var(--text); border-color: var(--border-3); background: var(--hover); }
+
+/* Collapsed tool-run groups — quiet summary, click to inspect */
+.code-tool-group {
+  align-self: flex-start;
+  max-width: 720px;
+  width: 100%;
+}
+.code-tool-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.code-tool-summary:hover { color: var(--text-2); background: var(--hover); }
+.code-tool-summary .tg-chev { transition: transform 0.15s ease; }
+.code-tool-summary.open .tg-chev { transform: rotate(90deg); }
+.code-tool-group .code-tool-line { padding-left: 14px; margin-top: 2px; }
