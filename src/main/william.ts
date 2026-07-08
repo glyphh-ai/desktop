@@ -22,6 +22,7 @@ import { captureRun, trainingStats } from "./william-training";
 import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
+import { downloadWilliamModel } from "./william-models";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -107,12 +108,20 @@ async function ensureInner(): Promise<void> {
   }
   if (managed) { try { managed.kill(); } catch { /* already gone */ } managed = null; }
 
-  const model = findModel();
+  let model = findModel();
   if (!model) {
-    throw new Error(
-      `William model not found. Put ${MODEL_FILE} in ${join(app.getPath("userData"), "models")} ` +
-      "(or point the williamModelPath preference at it).",
-    );
+    // Transparent setup: pull the right tier from the manifest (progress
+    // rides william:setup → the composer spinner). Signed-out or offline
+    // surfaces the manifest error with the manual path as fallback.
+    try {
+      model = await downloadWilliamModel();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `${msg}. Manual fallback: put ${MODEL_FILE} in ${join(app.getPath("userData"), "models")} ` +
+        "(or point the williamModelPath preference at it).",
+      );
+    }
   }
   const bin = findServerBin();
   const args = [

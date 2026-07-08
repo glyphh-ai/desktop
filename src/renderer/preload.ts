@@ -412,6 +412,9 @@ contextBridge.exposeInMainWorld("yo", {
   onWilliamError: (callback: (d: { runId: string; error: string }) => void) => {
     ipcRenderer.on("william:error", (_event, d) => callback(d));
   },
+  onWilliamSetup: (callback: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number }) => void) => {
+    ipcRenderer.on("william:setup", (_event, d) => callback(d));
+  },
   onWilliamProgress: (callback: (d: { runId: string; tokens: number }) => void) => {
     ipcRenderer.on("william:progress", (_event, d) => callback(d));
   },

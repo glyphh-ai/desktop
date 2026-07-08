@@ -333,8 +333,13 @@ function fmtElapsed(ms: number): string {
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 }
 
+// While William sets himself up (first-run model download), the setup
+// line owns the spinner meta; the token meter takes over once ready.
+let setupMeta = "";
+
 function paintRunMeta(): void {
   if (!runStartAt) return;
+  if (setupMeta) { spinner?.setMeta(setupMeta); return; }
   spinner?.setMeta(`${fmtElapsed(Date.now() - runStartAt)} · ${runTokens.toLocaleString()} token${runTokens === 1 ? "" : "s"}`);
 }
 
@@ -739,6 +744,16 @@ function approvalCard(a: { id: string; kind: string; title: string; detail: stri
 /** Wire the stream events once — deltas paint the live bubble (or just
  *  accumulate when another session is in view). */
 function initWilliamEvents(): void {
+  window.yo.onWilliamSetup?.((d) => {
+    if (d.phase === "downloading") {
+      setupMeta = `Downloading ${d.model || "William"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
+    } else if (d.phase === "manifest") {
+      setupMeta = "Fetching model manifest…";
+    } else {
+      setupMeta = "";
+    }
+    paintRunMeta();
+  });
   window.yo.onWilliamProgress?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
     runTokens = d.tokens;
