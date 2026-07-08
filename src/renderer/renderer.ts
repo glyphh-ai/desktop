@@ -323,6 +323,7 @@ declare global {
       williamSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
       williamRemember: (fact: string) => Promise<boolean>;
       adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
+      williamModelsList: () => Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; downloaded: boolean }> }>;
       williamTrainingStats: () => Promise<{ files: number; bytes: number; dir: string; enabled: boolean }>;
       adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
       adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;

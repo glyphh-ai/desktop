@@ -12,7 +12,9 @@ import { app, webContents } from "electron";
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
 import { serverGetAuthed } from "./auth";
+import { getPreference } from "./stores/preferences-db";
 
 export interface WilliamModelEntry {
   id: string;
@@ -28,6 +30,41 @@ export interface WilliamModelEntry {
 
 let downloading: Promise<string> | null = null;
 
+// ── Manifest cache (disk) — offline resolution + the selector's list ──────
+const manifestPath = () => join(app.getPath("userData"), "william", "manifest.json");
+
+function saveManifest(models: WilliamModelEntry[]): void {
+  try { writeFileSync(manifestPath(), JSON.stringify(models.map(({ url: _url, ...m }) => m))); } catch { /* best-effort */ }
+}
+
+export function cachedManifest(): Array<Omit<WilliamModelEntry, "url">> {
+  try { return JSON.parse(readFileSync(manifestPath(), "utf8")) as Array<Omit<WilliamModelEntry, "url">>; } catch { return []; }
+}
+
+export function selectedModelId(): string {
+  return String(getPreference("williamModel", "auto"));
+}
+
+/** The model the client should run: explicit selection when it exists in
+ *  the manifest, else the RAM auto-pick. Null when the cache is empty. */
+export function resolveDesiredModel(): Omit<WilliamModelEntry, "url"> | null {
+  const models = cachedManifest();
+  if (!models.length) return null;
+  const sel = selectedModelId();
+  if (sel !== "auto") {
+    const hit = models.find((m) => m.id === sel);
+    if (hit) return hit;
+  }
+  return pickModel(models as WilliamModelEntry[]);
+}
+
+/** Local file for a manifest entry, when present (userData models dir). */
+export function localModelPath(entry: { file: string; size: number }): string | null {
+  const p = join(app.getPath("userData"), "models", entry.file);
+  try { if (existsSync(p) && statSync(p).size === entry.size) return p; } catch { /* fs race */ }
+  return null;
+}
+
 function broadcast(data: Record<string, unknown>): void {
   for (const wc of webContents.getAllWebContents()) {
     try { if (!wc.isDestroyed()) wc.send("william:setup", data); } catch { /* gone */ }
@@ -42,7 +79,7 @@ function modelsDir(): string {
 
 /** Pick the tier for this machine (default tier when RAM allows, else the
  *  smallest that fits; null when nothing fits). */
-function pickModel(models: WilliamModelEntry[]): WilliamModelEntry | null {
+function pickModel<T extends { minRamGB: number; default: boolean }>(models: T[]): T | null {
   const ramGB = Math.round(require("node:os").totalmem() / 1e9);
   const fits = models.filter((m) => ramGB >= m.minRamGB);
   if (!fits.length) return null;
@@ -65,7 +102,9 @@ async function downloadInner(): Promise<string> {
   const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
   const models = r.models || [];
   if (!models.length) throw new Error("no William models published yet");
-  const model = pickModel(models);
+  saveManifest(models);
+  const sel = selectedModelId();
+  const model = (sel !== "auto" && models.find((m) => m.id === sel)) || pickModel(models);
   if (!model) {
     const min = Math.min(...models.map((m) => m.minRamGB));
     throw new Error(`this machine is below William's smallest tier (${min}GB RAM needed) — the hosted tier lands soon`);

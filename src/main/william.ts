@@ -22,7 +22,7 @@ import { captureRun, trainingStats } from "./william-training";
 import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
-import { downloadWilliamModel } from "./william-models";
+import { downloadWilliamModel, resolveDesiredModel, localModelPath, cachedManifest, selectedModelId } from "./william-models";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -73,17 +73,28 @@ function findServerBin(): string {
   return "llama-server";
 }
 
-/** Model weights: preference → app-support models dir → dev checkout. */
+/** Model weights for the SELECTED tier: explicit path pref → the selected
+ *  manifest entry's local file → dev-checkout fallback (14B). */
 function findModel(): string | null {
   const pref = String(getPreference("williamModelPath", "")).trim();
+  if (pref && existsSync(pref)) return pref;
+  const desired = resolveDesiredModel();
+  if (desired) {
+    const local = localModelPath(desired);
+    if (local) return local;
+    // Selected tier not downloaded yet — the ensure path downloads it.
+    return null;
+  }
   const candidates = [
-    ...(pref ? [pref] : []),
     join(app.getPath("userData"), "models", MODEL_FILE),
     join(homedir(), "development", "yo", "glyphh-william", "models", MODEL_FILE),
   ];
   for (const c of candidates) if (existsSync(c)) return c;
   return null;
 }
+
+/** The managed child's model path — a selection change restarts lazily. */
+let managedModelPath: string | null = null;
 
 async function healthy(timeoutMs = 1200): Promise<boolean> {
   try {
@@ -101,6 +112,14 @@ export async function ensureWilliamServing(): Promise<void> {
 }
 
 async function ensureInner(): Promise<void> {
+  // A selection change invalidates the managed child — kill it so the new
+  // tier spawns below (adopted external servers are the user's business).
+  const want = findModel();
+  if (managed && want && managedModelPath && want !== managedModelPath) {
+    try { managed.kill(); } catch { /* gone */ }
+    managed = null;
+    await new Promise((r) => setTimeout(r, 400));
+  }
   if (await healthy()) return; // adopted (external terminal) or our child
   const port = localPort();
   if (port == null) {
@@ -124,6 +143,7 @@ async function ensureInner(): Promise<void> {
     }
   }
   const bin = findServerBin();
+  managedModelPath = model;
   const args = [
     "-m", model,
     "--host", "127.0.0.1", "--port", String(port),
@@ -229,6 +249,18 @@ export function registerWilliamIpc(): void {
   });
 
   ipcMain.handle("william-training-stats", () => trainingStats());
+  ipcMain.handle("william-models-list", () => {
+    const models = cachedManifest();
+    const desired = resolveDesiredModel();
+    return {
+      selected: selectedModelId(),
+      resolved: desired?.id ?? null,
+      models: models.map((m) => ({
+        id: m.id, name: m.name, minRamGB: m.minRamGB, size: m.size,
+        downloaded: !!localModelPath(m),
+      })),
+    };
+  });
   ipcMain.handle("william-status", async () => {
     const up = await healthy(1500);
     return { up, mode: up ? (managed ? "managed" : "external") : "down" };

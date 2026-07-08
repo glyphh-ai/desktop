@@ -79,6 +79,69 @@ function setEffort(id: (typeof EFFORTS)[number]["id"]): void {
   paintChips();
 }
 
+// ── Model selector (drop-up) — william-7b-mini / 14b-base / 34b-pro ──
+let modelList: Array<{ id: string; name: string; minRamGB: number; downloaded: boolean }> = [];
+let modelSelected = "auto";
+let modelResolved: string | null = null;
+
+const shortModel = (name: string) => name.replace(/^William\s+/i, "");
+
+function paintModelChip(): void {
+  const mc = el("code-model-chip");
+  if (!mc) return;
+  const resolvedName = modelList.find((m) => m.id === modelResolved)?.name;
+  if (modelSelected === "auto") {
+    mc.textContent = resolvedName ? `Auto · ${shortModel(resolvedName)}` : "Auto";
+    mc.title = "Model — picked by hardware; click to choose";
+  } else {
+    const selName = modelList.find((m) => m.id === modelSelected)?.name || modelSelected;
+    mc.textContent = shortModel(selName);
+    mc.title = `Model: ${selName} — click to change`;
+  }
+  mc.className = "code-chip";
+}
+
+async function refreshModelList(): Promise<void> {
+  try {
+    const r = await window.yo.williamModelsList?.();
+    if (!r) return;
+    modelList = r.models;
+    modelSelected = r.selected;
+    modelResolved = r.resolved;
+    paintModelChip();
+  } catch { /* main not ready */ }
+}
+
+function renderModelMenu(): void {
+  const menu = el("code-model-menu");
+  if (!menu) return;
+  menu.textContent = "";
+  const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  const mk = (id: string, label: string, hint: string, extra?: string) => {
+    const item = document.createElement("button");
+    item.className = "code-drop-item" + (id === modelSelected ? " selected" : "");
+    item.type = "button";
+    item.title = hint;
+    const span = document.createElement("span");
+    span.textContent = label + (extra ? ` ${extra}` : "");
+    item.appendChild(span);
+    if (id === modelSelected) item.insertAdjacentHTML("beforeend", check);
+    item.addEventListener("click", () => {
+      modelSelected = id;
+      void window.yo.setPreference?.("williamModel", id);
+      paintModelChip();
+      el("code-model-menu")?.classList.add("hidden");
+      // A different tier spawns on the next send (downloading first if
+      // needed — the spinner narrates).
+    });
+    menu.appendChild(item);
+  };
+  mk("auto", "Auto", "Picked by hardware");
+  for (const m of modelList) {
+    mk(m.id, m.name, `${m.minRamGB}GB+ RAM${m.downloaded ? "" : " — downloads on first use"}`, m.downloaded ? "" : "↓");
+  }
+}
+
 // ── Mode drop-up ──
 function renderModeMenu(): void {
   const menu = el("code-mode-menu");
@@ -219,7 +282,23 @@ function refreshCtxMeter(): void {
 function initComposerControls(): void {
   const modeWrap = el("code-mode-wrap");
   const effortWrap = el("code-effort-wrap");
+  const modelWrap = el("code-model-wrap");
   if (!modeWrap || !effortWrap) return;
+  if (modelWrap) {
+    const mmenu = document.createElement("div");
+    mmenu.id = "code-model-menu";
+    mmenu.className = "code-drop-up hidden";
+    modelWrap.appendChild(mmenu);
+    el("code-model-chip")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      el("code-effort-pop")?.classList.add("hidden");
+      el("code-mode-menu")?.classList.add("hidden");
+      void refreshModelList().then(() => renderModelMenu());
+      renderModelMenu();
+      mmenu.classList.toggle("hidden");
+    });
+    void refreshModelList();
+  }
   // Menus are built once; rows re-render on open/select.
   const menu = document.createElement("div");
   menu.id = "code-mode-menu";
@@ -255,6 +334,7 @@ function initComposerControls(): void {
     const t = e.target as Node;
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
     if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
+    if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
   });
   // Meter click → compact modal (optional focus steers this fold).
   el("code-ctx-meter")?.addEventListener("click", () => {
