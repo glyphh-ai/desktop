@@ -831,6 +831,13 @@ function initWilliamEvents(): void {
       setupMeta = "Fetching model manifest…";
     } else if (d.phase === "building") {
       setupMeta = String((d as { text?: string }).text || "");
+    } else if (d.phase === "preview") {
+      const { html, label } = d as { html?: string; label?: string };
+      if (html) {
+        const stub = `<script>window.glyphh={call:async()=>({ok:false,error:"preview"}),app:{slug:"preview"}};</script>`;
+        const doc = html.includes("<head>") ? html.replace("<head>", `<head>${stub}`) : stub + html;
+        (window as unknown as { __wbPreviewHtml?: (h: string, l?: string) => void }).__wbPreviewHtml?.(doc, label);
+      }
     } else {
       setupMeta = "";
     }

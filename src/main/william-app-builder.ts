@@ -39,6 +39,13 @@ function say(text: string): void {
   }
 }
 
+/** Show the generated UI in the workbench Preview rail as it evolves. */
+function showPreview(html: string, label: string): void {
+  for (const wc of webContents.getAllWebContents()) {
+    try { if (!wc.isDestroyed()) wc.send("william:setup", { phase: "preview", html, label }); } catch { /* gone */ }
+  }
+}
+
 /** Live grounding: every connected account's real tools (training format). */
 async function liveGrounding(): Promise<{ block: string; lookup: (slug: string) => string[] | null }> {
   const bySlug: Record<string, LiveConnectorTool[]> = {};
@@ -81,6 +88,7 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
 
     say(`Building app — attempt ${attempt}/${budget}, validating…`);
     const bundle: Bundle = parseEmission(raw);
+    if (bundle["index.html"]) showPreview(bundle["index.html"], `William build — attempt ${attempt}`);
     const v = validateBundle(bundle, lookup);
     if (!v.ok) { lastErrors = v.errors; continue; }
 
@@ -95,6 +103,7 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
       const r = await installGlyphhAppBundle(tmp);
       if (!r.ok) { lastErrors = [r.error || "install failed"]; continue; }
       say("");
+      if (bundle["index.html"]) showPreview(bundle["index.html"], `${r.name || v.manifest!.name} — installed ✓`);
       return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, attempts: attempt, warnings: v.warnings };
     } finally {
       try { fs.unlinkSync(tmp); } catch { /* tmp gone */ }
