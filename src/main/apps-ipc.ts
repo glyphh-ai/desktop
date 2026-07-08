@@ -1,4 +1,5 @@
 import { app, ipcMain, dialog } from "electron";
+import { openAppByRef } from "./app-resolver.js";
 import fs from "fs";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
@@ -33,13 +34,21 @@ function registerPanelAppsIpc(): void {
   // Launch an app the way its config says to (native-OS model):
   //   - native app (isBrowser=false) → launch its executable + archetype config
   //   - web app → its URL in the configured real browser (window or tab)
-  ipcMain.handle("app-launch", (_e, spec: {
+  ipcMain.handle("app-launch", async (_e, spec: {
     slug: string; name: string; url?: string | null;
     isBrowser?: boolean;
     execPath?: string | null; appArchetype?: string | null;
     launchConfig?: Record<string, unknown> | null;
   }) => {
     if (!spec) return { ok: false, error: "No app given" };
+    // One controller for every open path: the Apps page and the rail resolve
+    // through openAppByRef — the same launch + WORKSPACE placement + tracked
+    // focus that .dip and the command palette use. The raw branches below
+    // remain only as a fallback for specs not in the library.
+    try {
+      await openAppByRef(spec.slug || spec.name);
+      return { ok: true };
+    } catch { /* not resolvable by ref — raw launch below */ }
     // Installed Glyphh app (marketplace unit) → open its capability-scoped window.
     if (isGlyphhAppRow(spec)) {
       return openGlyphhApp({ name: spec.name, slug: spec.slug, execPath: spec.execPath, launchConfig: spec.launchConfig });
