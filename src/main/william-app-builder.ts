@@ -68,23 +68,38 @@ async function liveGrounding(): Promise<{ block: string; lookup: (slug: string) 
 export interface BuildResult { slug: string; name: string; attempts: number; warnings: string[]; sourceDir?: string }
 
 /** Drop the FULL passing bundle (every emitted file, index.html included)
- *  into <workdir>/<slug>/ so the Files rail shows exactly what shipped and
- *  the user can iterate. Best-effort git commit when the folder's a repo. */
+ *  at the WORKING FOLDER ROOT — the picked folder IS the app's home (Files
+ *  rail shows exactly what shipped; iteration overwrites in place with git
+ *  underneath). One guard: if the root already holds a DIFFERENT app's
+ *  manifest.json (or a foreign one), nest to <slug>/ instead of clobbering.
+ *  Best-effort git commit of the written files when the folder's a repo. */
 function writeSourceToWorkdir(bundle: Bundle, slug: string): string | undefined {
   const wd = getExplicitWorkingDirectory();
   if (!wd) return undefined;
   try {
-    const dir = path.join(wd, slug);
+    let dir = wd;
+    const existing = path.join(wd, "manifest.json");
+    if (fs.existsSync(existing)) {
+      let sameApp = false;
+      try {
+        const m = JSON.parse(fs.readFileSync(existing, "utf8"));
+        sameApp = m?.kind === "glyphh-app" && String(m?.slug || "").toLowerCase() === slug;
+      } catch { /* unparseable → foreign → nest */ }
+      if (!sameApp) dir = path.join(wd, slug);
+    }
     fs.mkdirSync(dir, { recursive: true });
+    const written: string[] = [];
     for (const [file, content] of Object.entries(bundle)) {
       const abs = path.join(dir, file);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, content);
+      written.push(path.relative(wd, abs));
     }
     try {
       execSync("git rev-parse --is-inside-work-tree", { cwd: wd, stdio: "ignore" });
-      execSync(`git add ${JSON.stringify(slug)}`, { cwd: wd, stdio: "ignore" });
-      execSync(`git commit -m ${JSON.stringify(`William: build ${slug}`)} -- ${JSON.stringify(slug)}`, { cwd: wd, stdio: "ignore" });
+      const pathsArg = written.map((p) => JSON.stringify(p)).join(" ");
+      execSync(`git add ${pathsArg}`, { cwd: wd, stdio: "ignore" });
+      execSync(`git commit -m ${JSON.stringify(`William: build ${slug}`)} -- ${pathsArg}`, { cwd: wd, stdio: "ignore" });
     } catch { /* not a repo / nothing changed — the source is still there */ }
     return dir;
   } catch {
