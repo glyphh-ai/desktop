@@ -306,11 +306,18 @@ async function agentRun(
     const apps = await cachedServerGet<Array<{ slug?: string | null; name: string }>>("/api/panel-apps");
     appList = apps.slice(0, 48).map((a) => a.slug || a.name).join(", ");
   } catch { /* offline — open_app still resolves by name */ }
+  let connList = "";
+  try {
+    const { serverGetAuthed } = await import("./auth");
+    const r = await serverGetAuthed<{ connections?: Array<{ appSlug?: string }> }>("/api/connections");
+    connList = [...new Set((r.connections || []).map((c) => String(c.appSlug || "")).filter(Boolean))].join(", ");
+  } catch { /* signed out */ }
   const toolsMsg: ChatMessage = {
     role: "system",
     content:
       "You are an agent loop with tools. Available tools:\n" + williamToolsPrompt() +
       (appList ? `\n\nThe user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "") +
+      (connList ? `\n\nConnected accounts (connection_tools/connection_call): ${connList}` : "") +
       "\n\nRULE: before your FIRST connection_call to any connector in a session, call connection_tools(connector) — connector tool names are exact strings you cannot guess. " +
       "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly." +
       "\n\nEach turn reply as JSON: {\"thought\": \"one short sentence\", \"action\": {\"name\": \"tool\", \"arguments\": {…}}} to use a tool, " +

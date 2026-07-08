@@ -84,6 +84,19 @@ const NAME_CACHE_TTL = 10 * 60_000;
 async function connectorToolNames(scope: Set<string>, connector: string): Promise<string[]> {
   const hit = connectorNameCache.get(connector);
   if (hit && Date.now() - hit.at < NAME_CACHE_TTL) return hit.names;
+  // Ada FIRST — she's the catalog brain (boot + heartbeat sync keep her
+  // current); instant, offline, exact. The live API is the fallback for a
+  // connector she hasn't seen, and its fetch feeds her right back.
+  try {
+    const fromAda = adaExecuteOp({ op: "who", conditions: { "entity.kind": "tool", "relational.object": connector } });
+    if (fromAda && fromAda !== "none") {
+      const names = fromAda.split(", ").filter(Boolean);
+      if (names.length) {
+        connectorNameCache.set(connector, { names, at: Date.now() });
+        return names;
+      }
+    }
+  } catch { /* store not ready — fall through */ }
   const tools = await connectorTools(scope, { connector });
   const names = tools.map((t) => t.name);
   connectorNameCache.set(connector, { names, at: Date.now() });
