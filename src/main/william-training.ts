@@ -6,14 +6,15 @@
  * pair (prose fact → schema slots) appends to local, daily-rotated JSONL
  * under userData/william/training/. This is exactly the Track B "operate"
  * data the next glyphh-william training run consumes — guess→rejection→
- * recovery sequences especially. Local only; toggle in Settings → William
- * (williamTrainingCapture, default on).
+ * recovery sequences especially. INTERNAL ONLY: users don't train their
+ * own William (they receive released weights via the model manifest), so
+ * capture is gated by the WILLIAM_TRAINING_CAPTURE env var — off in every
+ * end-user build, on in our dev script.
  */
 
 import { app } from "electron";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { getPreference } from "./stores/preferences-db";
 
 export function trainingDir(): string {
   const d = join(app.getPath("userData"), "william", "training");
@@ -21,7 +22,7 @@ export function trainingDir(): string {
   return d;
 }
 
-const enabled = () => getPreference<boolean>("williamTrainingCapture", true) !== false;
+const enabled = () => process.env.WILLIAM_TRAINING_CAPTURE === "1";
 const fileFor = (kind: string) => join(trainingDir(), `${kind}-${new Date().toISOString().slice(0, 10)}.jsonl`);
 
 function append(kind: string, record: Record<string, unknown>): void {
@@ -34,15 +35,3 @@ function append(kind: string, record: Record<string, unknown>): void {
 export const captureRun = (record: Record<string, unknown>): void => append("runs", record);
 export const captureEnrich = (record: Record<string, unknown>): void => append("enrich", record);
 
-export function trainingStats(): { files: number; bytes: number; dir: string; enabled: boolean } {
-  const d = trainingDir();
-  let files = 0, bytes = 0;
-  try {
-    for (const f of readdirSync(d)) {
-      if (!f.endsWith(".jsonl")) continue;
-      files++;
-      try { bytes += statSync(join(d, f)).size; } catch { /* racing rotation */ }
-    }
-  } catch { /* dir gone */ }
-  return { files, bytes, dir: d, enabled: enabled() };
-}

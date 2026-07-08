@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { getPreference } from "./stores/preferences-db";
 import { effortMaxTokens, effortMaxTurns, williamEffort, williamMode, registerWilliamPermissionIpc } from "./william-permissions";
-import { captureRun, trainingStats } from "./william-training";
+import { captureRun } from "./william-training";
 import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
@@ -248,7 +248,6 @@ export function registerWilliamIpc(): void {
     return true;
   });
 
-  ipcMain.handle("william-training-stats", () => trainingStats());
   ipcMain.handle("william-models-list", () => {
     const models = cachedManifest();
     const desired = resolveDesiredModel();

@@ -17,7 +17,11 @@ import { getLocalDb } from "../local-db";
  * Get a preference value by key. Returns `defaultValue` if not found.
  */
 export function getPreference<T = unknown>(key: string, defaultValue?: T): T {
-  const db = getLocalDb();
+  // Resilient by contract: IPC handlers race boot (before initLocalDb) and
+  // quit (after close) — a preference read answers its default instead of
+  // throwing through the handler.
+  let db;
+  try { db = getLocalDb(); } catch { return defaultValue as T; }
   const row = db.prepare(
     "SELECT value FROM preferences WHERE key = ?"
   ).get(key) as { value: string } | undefined;
