@@ -284,6 +284,7 @@ function initRailSplitter(): void {
 async function applyPanelPrefs(): Promise<void> {
   const railCollapsed = ((await window.yo.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
   el("app-rail")?.classList.toggle("collapsed", railCollapsed);
+  document.body.classList.toggle("rail-collapsed", railCollapsed);
   const railW = Number(await window.yo.getPreference?.("codeRailWidth", 0)) || 0;
   const rail = el("app-rail");
   if (rail && railW > 0) { rail.style.width = `${railW}px`; rail.style.minWidth = `${railW}px`; }
@@ -320,6 +321,7 @@ export function initCode(): void {
   ta?.addEventListener("input", () => autoGrow(ta!));
   el("code-rail-toggle")?.addEventListener("click", () => {
     const collapsed = el("app-rail")!.classList.toggle("collapsed");
+    document.body.classList.toggle("rail-collapsed", collapsed);
     void window.yo.setPreference?.("codeRailCollapsed", collapsed);
   });
   document.addEventListener("mousedown", (e) => {

@@ -11234,9 +11234,16 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  min-height: 38px;
+  padding: 4px 12px;
   border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
 }
+.code-agent-head button,
+.code-agent-head .code-wd-btn { -webkit-app-region: no-drag; }
+/* Rail collapsed → the fixed chrome cluster floats over the page; shove the
+   header content right so they don't overlap. */
+body.rail-collapsed .code-agent-head { padding-left: 196px; }
 .code-spacer { flex: 1; }
 .code-icon-btn {
   display: inline-flex;
@@ -11534,31 +11541,17 @@ body.wb-max .ws-right-rails { width: 100%; }
   gap: 8px;
   padding-left: 14px;
   z-index: 300;
-  -webkit-app-region: no-drag;
 }
+#panel-wc,
+#panel-wc * { -webkit-app-region: no-drag; }
+#panel-wc .app-rail-mark { margin: 0 4px 0 6px; }
+#panel-wc .code-icon-btn { width: 26px; height: 26px; }
 .app-rail-top {
   flex: 0 0 38px;
   height: 38px;
-  display: flex;
-  align-items: center;
-  /* Reading order across the top-left: traffic lights (fixed) | mark, then
-     the page-top strip continues with rail toggle | command. */
-  justify-content: flex-start;
-  padding: 0 12px 0 84px;
   -webkit-app-region: drag;
 }
 .app-rail-mark { width: 16px; height: 16px; opacity: 0.9; }
-#page-top {
-  flex: 0 0 38px;
-  height: 38px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 10px;
-  -webkit-app-region: drag;
-}
-#page-top button { -webkit-app-region: no-drag; }
-.page-top-spacer { flex: 1; }
 
 /* Recents vertical resize + Recent apps search */
 .recents-vsplit {
