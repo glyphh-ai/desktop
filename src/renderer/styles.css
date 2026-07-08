@@ -11549,6 +11549,11 @@ body.wb-max .ws-right-rails { width: 100%; }
 .app-rail-top {
   flex: 0 0 38px;
   height: 38px;
+  /* Drag surface for the gap right of the chrome cluster — starts past the
+     cluster so the fixed overlay never sits on a drag region (that overlap
+     is what used to eat clicks). */
+  margin-left: 176px;
+  -webkit-app-region: drag;
 }
 .app-rail-mark { width: 16px; height: 16px; opacity: 0.9; }
 
