@@ -117,16 +117,42 @@ export async function buildGlyphhApp(description: string, signal?: AbortSignal):
   const budget = repairBudget();
   let lastErrors: string[] = [];
   let lastEmission = "";
+  // Live narration: the emission streams through us, so the meta line can
+  // say what William is writing RIGHT NOW (manifest → worker → UI).
+  const sectionLabel = (file: string): string =>
+    file === "manifest.json" ? "shaping the manifest"
+    : file === "worker.js" ? "wiring the worker"
+    : file === "index.html" ? "designing the UI"
+    : `writing ${file}`;
+
   for (let attempt = 1; attempt <= budget; attempt++) {
     if (signal?.aborted) { say(""); throw new Error("aborted"); }
-    say(`Building app — pass ${attempt}/${budget}, generating…`);
+    say(`Building app — pass ${attempt}/${budget}: thinking it through…`);
     const user = attempt === 1
       ? baseUser
       : `${baseUser}\n\nYour previous attempt failed validation:\n${lastErrors.map((e) => `- ${e}`).join("\n")}\n\nPrevious emission:\n${lastEmission.slice(0, 6000)}\n\nFix every error and re-emit the FULL corrected bundle.`;
+    let streamed = "";
+    let tokens = 0;
+    let lastSay = 0;
+    let label = "thinking it through";
     const raw = await williamComplete([
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: user },
-    ], { temperature: 0.3, maxTokens: Math.max(4096, effortMaxTokens()), signal });
+    ], {
+      temperature: 0.3,
+      maxTokens: Math.max(4096, effortMaxTokens()),
+      signal,
+      onDelta: (d) => {
+        streamed += d;
+        tokens++;
+        const now = Date.now();
+        if (now - lastSay < 300) return;
+        lastSay = now;
+        const sections = [...streamed.matchAll(/^===\s*(.+?)\s*===\s*$/gm)];
+        if (sections.length) label = sectionLabel(sections[sections.length - 1][1].trim());
+        say(`Building app — pass ${attempt}/${budget}: ${label} · ${tokens.toLocaleString()} tokens`);
+      },
+    });
     lastEmission = raw;
 
     say(`Building app — pass ${attempt}/${budget}, validating…`);
