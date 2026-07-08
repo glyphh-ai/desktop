@@ -11201,11 +11201,13 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 10px;
-  border-radius: 8px;
+  padding: 3px 10px;
+  border-radius: 7px;
   cursor: pointer;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  min-height: 24px;
 }
 .code-history-item:hover { background: var(--hover); }
 .code-history-item.active { background: var(--active-bg); color: var(--text); }
