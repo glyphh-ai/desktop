@@ -23,6 +23,37 @@ const STUB_REPLY =
   "This is the Code surface: sessions on the left, the agent here, and the workbench " +
   "rails on the right (Files / Terminal / Diff / Preview / Plan) where builds land.";
 
+// Ghost empty-state quotes — the spirit of Ada & William Lovelace, with
+// peace and love woven in. Rotates while the thread is empty.
+const GHOST_QUOTES = [
+  "The Engine weaves algebraic patterns as the loom weaves flowers — may it weave peace, too.",
+  "Imagination is the discovering faculty. Love is what it keeps discovering.",
+  "Poetical science: half proof, half devotion.",
+  "Build gently — even engines can be kind.",
+  "Understanding is love's slow algorithm.",
+  "We weave what we love into everything we make.",
+  "Peace resolves like a well-run loop: no conflicts left.",
+  "First, do the loveliest math: care.",
+];
+let ghostIdx = Math.floor(Math.random() * GHOST_QUOTES.length);
+let ghostTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopGhostRotation(): void {
+  if (ghostTimer) { clearInterval(ghostTimer); ghostTimer = null; }
+}
+function startGhostRotation(quoteEl: HTMLElement): void {
+  stopGhostRotation();
+  ghostTimer = setInterval(() => {
+    if (!quoteEl.isConnected) { stopGhostRotation(); return; }
+    quoteEl.style.opacity = "0";
+    setTimeout(() => {
+      ghostIdx = (ghostIdx + 1) % GHOST_QUOTES.length;
+      quoteEl.textContent = GHOST_QUOTES[ghostIdx];
+      quoteEl.style.opacity = "";
+    }, 500);
+  }, 7000);
+}
+
 let chats: CodeChat[] = [];
 let currentId = "";
 let inited = false;
@@ -126,12 +157,21 @@ function renderThread(): void {
   const inner = document.createElement("div");
   inner.className = "code-thread-inner";
   thread.appendChild(inner);
+  stopGhostRotation();
   const c = current();
   if (!c || !c.messages.length) {
-    const empty = document.createElement("div");
-    empty.className = "code-empty";
-    empty.textContent = "Describe the app you want William to build.";
-    inner.appendChild(empty);
+    const ghost = document.createElement("div");
+    ghost.className = "code-ghost";
+    const mark = document.createElement("img");
+    mark.className = "code-ghost-mark";
+    mark.src = "brand/glyphh-mark.png";
+    mark.alt = "";
+    const quote = document.createElement("div");
+    quote.className = "code-ghost-quote";
+    quote.textContent = GHOST_QUOTES[ghostIdx];
+    ghost.append(mark, quote);
+    inner.appendChild(ghost);
+    startGhostRotation(quote);
     return;
   }
   for (const m of c.messages) {

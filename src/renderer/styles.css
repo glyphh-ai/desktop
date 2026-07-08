@@ -11575,3 +11575,42 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   outline: none;
 }
 .app-rail-search input:focus { border-color: var(--accent); }
+
+/* Base-window no-drag hole for the full-bleed chrome cluster. */
+#fullbleed-nodrag { display: none; }
+body.fullbleed-active #fullbleed-nodrag {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 200px;
+  height: 38px;
+  -webkit-app-region: no-drag;
+}
+
+/* Ghost empty state — Glyphh mark + rotating Lovelace-spirited quotes. */
+.code-ghost {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+}
+.code-ghost-mark {
+  width: 96px;
+  height: 96px;
+  opacity: 0.10;
+  filter: grayscale(1);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.code-ghost-quote {
+  max-width: 440px;
+  text-align: center;
+  color: var(--white);
+  opacity: 0.8;
+  font-size: 13.5px;
+  line-height: 1.65;
+  transition: opacity 0.5s ease;
+}

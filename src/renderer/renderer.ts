@@ -607,12 +607,24 @@ initDrip();
 // and yo://dashboard-settings system-app panels through the same
 // panel-manager mechanism the old rail used (openWorkspaceApp) — a deliberate
 // stopgap; the real Panel Manager rewrite is sub-phase 5b.
+let dashboardChromeInited = false;
 function initDashboard(): void {
   // The titlebar tab strip is gone — the Code-primary home panel carries its
   // own app rail (Home|Code, sections, user area). Just hide legacy chrome;
   // main opened + activated the "dashboard" panel at boot (openHomePanelOnly).
   document.getElementById("files-rail")?.classList.add("dashboard-hidden");
   document.getElementById("tab-bar")?.classList.add("dashboard-hidden");
+  if (dashboardChromeInited) return;
+  dashboardChromeInited = true;
+  // Full-bleed sync: while the unlocked home panel (it owns the chrome
+  // cluster) is active, punch a no-drag hole in THIS page's titlebar drag
+  // claim — base-window drag regions bleed through BrowserViews.
+  const syncFullbleed = (activeId: string) => {
+    const on = activeId === "dashboard" || /^dashboard-\d+$/.test(activeId);
+    document.body.classList.toggle("fullbleed-active", on);
+  };
+  syncFullbleed("dashboard");
+  window.yo.onTabState((state) => syncFullbleed(state.activeId));
 }
 
 // -- Boot gate --
