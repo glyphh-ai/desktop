@@ -80,7 +80,7 @@ import { registerWilliamIpc, shutdownWilliam } from "./william";
 import { retileWorkspace } from "./app-resolver";
 import { retileFullWindows } from "./app-window-manager";
 import { initScreenLayout, onWorkspaceChange } from "./screen-layout";
-import { DripManager, BUILTIN_EFFECTS } from "./drip-manager";
+import { DripManager, BUILTIN_EFFECTS, setDripManagerInstance } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc } from "./settings-ipc";
@@ -742,6 +742,7 @@ async function boot() {
 
   // Drip effects
   dripManager = new DripManager();
+  setDripManagerInstance(dripManager);
   if (mainWindow) dripManager.setMainWindow(mainWindow);
   commandParser.setDripManager(dripManager);
   yoInterceptor.setDripCustomsGetter(() => dripManager!.listCustoms());

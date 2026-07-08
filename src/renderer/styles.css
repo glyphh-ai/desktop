@@ -2425,7 +2425,10 @@ body.account-locked #dl-btn-wrap {
   border: 1px solid var(--border-3);
   border-radius: 10px;
   padding: 24px 28px;
-  max-width: 340px;
+  /* Half the chat content width (composer maxes at 780px) — one
+     consistent modal width everywhere. */
+  width: min(390px, 86vw);
+  box-sizing: border-box;
   text-align: center;
 }
 .confirm-box p {

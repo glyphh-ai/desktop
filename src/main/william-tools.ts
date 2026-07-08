@@ -5,11 +5,13 @@
  * search_files, run_command. Paths resolve inside the working folder;
  * anything escaping it escalates to a "dangerous" gate action.
  *
- * Workspace windows & apps: open_app (any library app/builtin — lands in
- * the workspace like every other open path), list_windows, plus the
- * RPA-class surface: app_list_tools / app_call_tool run installed Glyphh
- * apps' declared MCP tools headlessly (deterministic — preferred over
- * pixel-driving).
+ * Workspace windows & apps: open_app / open_layout (unified resolver —
+ * everything lands in the workspace), list_windows / list_layouts, plus
+ * the RPA-class surface: app_list_tools / app_call_tool run installed
+ * Glyphh apps' declared MCP tools headlessly, and connection_tools /
+ * connection_call reach the user's connected accounts (Slack, GitHub, …)
+ * through yo-server's Pipedream auth. list_drips / run_drip for
+ * celebrations. Deterministic beats pixel-driving throughout.
  *
  * Every execution passes gateWilliamAction() first (mode model: ask /
  * plan / acceptEdits / auto / bypass) — a denial returns "DENIED: …" as
@@ -22,7 +24,11 @@ import { dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateWilliamAction, type WilliamActionKind } from "./william-permissions";
 import { getWorkingDirectory } from "./working-directory";
-import { openAppByRef, listOpenAppWindows } from "./app-resolver";
+import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { serverGetAuthed } from "./auth";
+import { cachedServerGet } from "./server-cache";
+import { connectorTools, connectorCall } from "./glyphh-app-services";
+import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 
 const OUTPUT_CAP = 8000;
@@ -64,6 +70,15 @@ function runShell(command: string, cwd: string): Promise<string> {
       else res(cap(out || "(no output)"));
     });
   });
+}
+
+/** The user's connected connector slugs — William acts as the user, so
+ *  every connected account is in scope (the server still owns all auth). */
+async function connectedSlugs(): Promise<Set<string>> {
+  const r = await serverGetAuthed<{ connections?: Array<Record<string, unknown>> }>("/api/connections");
+  const slugs = (r.connections || [])
+    .map((c) => String(c.pipedreamSlug || c.slug || c.app || c.nameSlug || "")).filter(Boolean);
+  return new Set(slugs);
 }
 
 const TOOLS: ToolDef[] = [
@@ -153,6 +168,81 @@ const TOOLS: ToolDef[] = [
     doc: "list_windows() — the app windows currently open in the workspace",
     action: () => ({ kind: "read", title: "List open windows" }),
     run: async () => cap(JSON.stringify(await listOpenAppWindows(), null, 1)),
+  },
+  {
+    name: "list_layouts",
+    doc: "list_layouts() — the user's saved layouts (open one with open_layout)",
+    action: () => ({ kind: "read", title: "List layouts" }),
+    run: async () => {
+      const layouts = await cachedServerGet<Array<{ name: string; cols?: number; rows?: number }>>("/api/layouts");
+      return cap(layouts.map((l) => `${l.name}${l.cols && l.rows ? ` (${l.cols}×${l.rows})` : ""}`).join("\n") || "(none saved)");
+    },
+  },
+  {
+    name: "open_layout",
+    doc: "open_layout(name) — open a saved layout: tiles its apps into the workspace",
+    action: (a) => ({ kind: "command", title: `Open layout "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const r = await openLayoutByName(String(a.name ?? ""));
+      return `opened layout ${r.layout} — apps: ${r.apps.join(", ")}`;
+    },
+  },
+  {
+    name: "list_connections",
+    doc: "list_connections() — the user's connected accounts (Slack, GitHub, …)",
+    action: () => ({ kind: "read", title: "List connections" }),
+    run: async () => {
+      const r = await serverGetAuthed<{ connections?: Array<Record<string, unknown>> }>("/api/connections");
+      const rows = (r.connections || []).map((c) =>
+        `${String(c.pipedreamSlug || c.slug || c.app || "?")}${c.label ? ` — ${String(c.label)}` : ""}`);
+      return cap(rows.join("\n") || "(no connected accounts)");
+    },
+  },
+  {
+    name: "connection_tools",
+    doc: "connection_tools(connector) — the API tools a connected account exposes",
+    action: (a) => ({ kind: "read", title: `List ${String(a.connector ?? "?")} tools` }),
+    run: async (a) => {
+      const tools = await connectorTools(await connectedSlugs(), { connector: String(a.connector ?? "") });
+      return cap(JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description })), null, 1));
+    },
+  },
+  {
+    name: "connection_call",
+    doc: "connection_call(connector, tool, arguments?) — call a connected account's API tool (send a message, create an issue, …)",
+    action: (a) => ({
+      kind: "network",
+      title: `Call ${String(a.connector ?? "?")} → ${String(a.tool ?? "?")}`,
+      detail: JSON.stringify(a.arguments ?? {}, null, 1).slice(0, 500),
+    }),
+    run: async (a) => {
+      const r = await connectorCall(await connectedSlugs(), {
+        connector: String(a.connector ?? ""),
+        tool: String(a.tool ?? ""),
+        args: (a.arguments as Record<string, unknown>) ?? {},
+      });
+      return cap(r.result);
+    },
+  },
+  {
+    name: "list_drips",
+    doc: "list_drips() — available drip effects (fun visual overlays)",
+    action: () => ({ kind: "read", title: "List drips" }),
+    run: async () => {
+      const customs = getDripManagerInstance()?.listCustoms() ?? [];
+      return cap(`built-in: ${BUILTIN_EFFECTS.join(", ")}${customs.length ? `\ncustom: ${customs.map((c) => c.name).join(", ")}` : ""}`);
+    },
+  },
+  {
+    name: "run_drip",
+    doc: "run_drip(effect?) — play a drip effect over the screen (celebration!)",
+    action: (a) => ({ kind: "command", title: `Play drip${a.effect ? ` "${String(a.effect)}"` : ""}` }),
+    run: async (a) => {
+      const dm = getDripManagerInstance();
+      if (!dm) return "ERROR: drips unavailable";
+      const out = dm.execute(String(a.effect ?? "").trim().split(/\s+/).filter(Boolean));
+      return out || "playing";
+    },
   },
   {
     name: "app_list_tools",
