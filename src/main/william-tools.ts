@@ -29,6 +29,8 @@ import { serverGetAuthed } from "./auth";
 import { cachedServerGet } from "./server-cache";
 import { connectorTools, connectorCall } from "./glyphh-app-services";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
+import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
+import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 
 const OUTPUT_CAP = 8000;
@@ -285,6 +287,45 @@ const TOOLS: ToolDef[] = [
       if (!dm) return "ERROR: drips unavailable";
       const out = dm.execute(String(a.effect ?? "").trim().split(/\s+/).filter(Boolean));
       return out || "playing";
+    },
+  },
+  {
+    name: "ada_remember",
+    doc: "ada_remember(fact, key?) — store a fact in Ada (schema-on-write memory; same key = new version)",
+    action: (a) => ({ kind: "edit", title: "Remember fact", detail: String(a.fact ?? "").slice(0, 300) }),
+    run: async (a) => {
+      const fact = String(a.fact ?? "").trim();
+      if (!fact) return "ERROR: fact is required";
+      const facts = await enrichFact(fact);
+      const r = adaTellRaw(fact, facts, { key: a.key ? String(a.key) : undefined, speaker: "william" });
+      return `remembered (${r.slots} slots${r.version ? `, v${r.version}` : ""})`;
+    },
+  },
+  {
+    name: "ada_ask",
+    doc: "ada_ask(op) — exact query over Ada's facts. op ∈ {lookup(person,slot), prev(person,slot), count(conditions), count_not(slot,value), top(slot,k?), who(conditions), compare(slot,a,b)}; slots are layer.role (entity.kind, spatial.location, relational.object, …)",
+    action: () => ({ kind: "read", title: "Ask Ada" }),
+    run: async (a) => {
+      try { return adaExecuteOp((a.op ?? a) as AdaOp); }
+      catch (err) { return `ERROR: ${err instanceof Error ? err.message : String(err)}`; }
+    },
+  },
+  {
+    name: "ada_recall",
+    doc: "ada_recall(query, k?) — lexical recall of stored facts (exact prose back, scored)",
+    action: (a) => ({ kind: "read", title: `Recall "${String(a.query ?? "").slice(0, 60)}"` }),
+    run: async (a) => {
+      const hits = adaRecall(String(a.query ?? ""), Math.max(1, Math.min(10, Number(a.k) || 5)));
+      return cap(hits.map((h) => `${h.score.toFixed(2)} ${h.content}`).join("\n") || "(nothing recalled)");
+    },
+  },
+  {
+    name: "ada_history",
+    doc: "ada_history(key) — the versioned chain of a keyed fact (v1, v2, …)",
+    action: (a) => ({ kind: "read", title: `History of "${String(a.key ?? "")}"` }),
+    run: async (a) => {
+      const rows = adaHistory(String(a.key ?? ""));
+      return cap(rows.map((r) => `v${r.version}: ${r.content}`).join("\n") || "(no versions)");
     },
   },
   {

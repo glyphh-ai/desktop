@@ -45,6 +45,8 @@ import { AppConnector } from "./app-connector";
 import { canAddApp, canSaveLayout, canUseMcp } from "./entitlements";
 import { executeCommand } from "./dom-bridge";
 import { getPreference, setPreference } from "./stores/preferences-db";
+import { initAdaStore } from "./ada/store";
+import { getLocalDb } from "./local-db";
 import { YoInterceptor } from "./yo-interceptor";
 import { SessionCache } from "./session-cache";
 import { smartGrab } from "./smart-grab";
@@ -274,6 +276,7 @@ async function boot() {
 
   // Initialize local SQLite database (agents, layouts, preferences)
   initLocalDb();
+  initAdaStore(getLocalDb()); // Ada — schema-on-write fact memory
   const migrationResult = migrateFromFiles();
   if (migrationResult.migrated) {
     console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs, ${migrationResult.prefsV2} stranded prefs`);
