@@ -674,11 +674,13 @@ async function init(): Promise<void> {
     header.addEventListener("dragstart", (e) => {
       dragSlotId = slot.id;
       wrap.classList.add("dragging");
+      document.body.classList.add("wb-mouse-drag");
       (e as DragEvent).dataTransfer!.effectAllowed = "move";
       (e as DragEvent).dataTransfer!.setData("text/plain", String(slot.id));
     });
     header.addEventListener("dragend", () => {
       wrap.classList.remove("dragging");
+      document.body.classList.remove("wb-mouse-drag");
       dragSlotId = null;
       document.querySelectorAll(".ws-rail-slot.drop-above, .ws-rail-slot.drop-below")
         .forEach((el) => el.classList.remove("drop-above", "drop-below"));
@@ -1408,6 +1410,7 @@ async function init(): Promise<void> {
     handle.addEventListener("mousedown", (e) => {
       e.preventDefault();
       handle.classList.add("dragging");
+      document.body.classList.add("wb-mouse-drag");
       const startX = e.clientX;
       const startW = railEl.getBoundingClientRect().width;
       // Resolve which rail this handle belongs to so we can update its
@@ -1440,6 +1443,7 @@ async function init(): Promise<void> {
       };
       const onUp = () => {
         handle.classList.remove("dragging");
+        document.body.classList.remove("wb-mouse-drag");
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         // Persist the user's intent (preferred width). applyResponsiveWidths
@@ -1455,6 +1459,7 @@ async function init(): Promise<void> {
     vsep.addEventListener("mousedown", (e) => {
       e.preventDefault();
       vsep.classList.add("dragging");
+      document.body.classList.add("wb-mouse-drag");
       const rect = railEl.getBoundingClientRect();
       const topSlot = railEl.querySelector(".ws-rail-slot") as HTMLElement;
       const onMove = (ev: MouseEvent) => {
@@ -1463,6 +1468,7 @@ async function init(): Promise<void> {
       };
       const onUp = () => {
         vsep.classList.remove("dragging");
+        document.body.classList.remove("wb-mouse-drag");
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         saveLayout();
@@ -1490,6 +1496,7 @@ async function init(): Promise<void> {
     e.preventDefault();
     if (rails.length === 0) return;
     edge.classList.add("dragging");
+    document.body.classList.add("wb-mouse-drag");
     const startX = e.clientX;
     const railEls = Array.from(document.querySelectorAll<HTMLElement>("#code-wb-rails .ws-right-rail"));
     const startW = railEls.map((r) => r.getBoundingClientRect().width);
@@ -1506,6 +1513,7 @@ async function init(): Promise<void> {
     };
     const onUp = () => {
       edge.classList.remove("dragging");
+      document.body.classList.remove("wb-mouse-drag");
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
       for (const railEl of railEls) {

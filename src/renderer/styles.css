@@ -12224,3 +12224,10 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   opacity: 0.65;
 }
 .code-input-wrap.gated .code-send { opacity: 0.35; pointer-events: none; }
+
+/* While any workbench drag is live, iframes must not swallow the pointer —
+   otherwise a rail-resize freezes the instant it crosses the Preview frame
+   and the mouseup is never seen. */
+body.wb-mouse-drag iframe { pointer-events: none !important; }
+body.code-dragging iframe,
+body.code-vdragging iframe { pointer-events: none !important; }
