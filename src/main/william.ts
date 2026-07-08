@@ -376,6 +376,12 @@ async function agentRun(
   const messages: ChatMessage[] = [base[0], toolsMsg, ...base.slice(1)];
   const maxTurns = effortMaxTurns();
   let turnsUsed = 0;
+  // Identical-failure breaker: one real retry is allowed; the third copy of
+  // the same failing call is intercepted with a hard redirect instead of
+  // burning another execution.
+  let lastSig = "";
+  let lastFailed = false;
+  let repeatFails = 0;
   let finalText = "";
   let runError = "";
   // Generated-token counter (one SSE delta ≈ one token) — throttled to the
@@ -410,8 +416,21 @@ async function agentRun(
         break;
       }
       if (parsed.action?.name) {
+        const sig = parsed.action.name + JSON.stringify(parsed.action.arguments ?? {});
+        if (sig === lastSig && lastFailed) repeatFails++;
+        else repeatFails = 0;
+        if (repeatFails >= 2) {
+          emit("william:tool", { phase: "start", name: parsed.action.name, thought: parsed.thought || "" });
+          emit("william:tool", { phase: "done", name: parsed.action.name, title: `Repeated failing call intercepted (${parsed.action.name})`, failed: true, preview: "same call, same failure — redirected" });
+          messages.push({ role: "assistant", content: raw });
+          messages.push({ role: "user", content: "<tool_response>\nSTOP: this exact call has now failed with the same error multiple times. Do NOT repeat it. Do something DIFFERENT: fix the underlying cause, use another tool, or finish and tell the user honestly what worked and what didn't.\n</tool_response>" });
+          lastSig = sig;
+          continue;
+        }
         emit("william:tool", { phase: "start", name: parsed.action.name, thought: parsed.thought || "" });
         const outcome = await executeWilliamTool(wc, parsed.action, ctrl.signal);
+        lastSig = sig;
+        lastFailed = outcome.denied || outcome.result.startsWith("ERROR");
         emit("william:tool", {
           phase: "done",
           name: parsed.action.name,

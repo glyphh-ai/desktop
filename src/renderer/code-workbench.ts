@@ -1575,9 +1575,9 @@ async function init(): Promise<void> {
     rails.length = 0;
     maximizedSlotId = null;
     renderRails();
-    cwd = "";
-    lastCwd = "";
-    void paintWorkdirBar("");
+    // Sessions inherit the working folder (last-used carries) — blanking
+    // cwd here made every post-new-session terminal spawn at ~.
+    void paintWorkdirBar(cwd);
   };
 
   let lastCwd = cwd;

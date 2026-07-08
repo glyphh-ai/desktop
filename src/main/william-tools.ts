@@ -421,7 +421,21 @@ const TOOLS: ToolDef[] = [
       detail: JSON.stringify(a.arguments ?? {}, null, 1).slice(0, 500),
     }),
     run: async (a) => {
-      const out = await callAppTool(String(a.app ?? ""), String(a.tool ?? ""), (a.arguments as Record<string, unknown>) ?? {});
+      const app = String(a.app ?? "");
+      const tool = String(a.tool ?? "");
+      // Oracle-style local validation: unknown tools die instantly WITH the
+      // app's real list (same treatment connectors got).
+      try {
+        const apps = await listInstalledAppTools();
+        const entry = apps.find((x) => x.app === app);
+        if (entry) {
+          const names = (entry.tools || []).map((t) => t.name);
+          if (names.length && !names.includes(tool)) {
+            return `ERROR: "${tool}" is not a ${app} tool. Available ${app} tools: ${names.join(", ")}. (If you just edited the app's source, call update_app() first — the installed app runs the last installed version.)`;
+          }
+        }
+      } catch { /* listing unavailable — let the host answer */ }
+      const out = await callAppTool(app, tool, (a.arguments as Record<string, unknown>) ?? {});
       return cap(typeof out === "string" ? out : JSON.stringify(out, null, 1));
     },
   },
