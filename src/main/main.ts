@@ -94,6 +94,7 @@ import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
 import { setUserScopeReloader, onUserChange } from "./user-scope";
+import { syncPreferencesFromServer } from "./stores/preferences-db";
 import { migrateFromFiles } from "./stores/migrate-from-files";
 import { getAgentMode } from "./action-gate";
 
@@ -343,6 +344,9 @@ async function boot() {
     appConnector?.rescopeForUserChange();
     connectorManager?.clearUserState();
     mcpManager?.setConnectorCatalog([]);
+    // Roaming prefs reconcile for the new identity: push offline edits,
+    // pull server truth, seed first-sync keys. Fire-and-forget.
+    void syncPreferencesFromServer();
   });
 
   // Pipedream Connectors — managed OAuth connections (Advanced tier)
