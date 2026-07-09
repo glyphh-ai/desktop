@@ -26,7 +26,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 import { getPreference } from "./stores/preferences-db";
 import { effortMaxTokens, effortMaxTurns, williamEffort, williamMode, registerWilliamPermissionIpc } from "./william-permissions";
 import { captureRun } from "./william-training";
-import { executeWilliamTool, williamToolDefs } from "./william-tools";
+import { executeWilliamTool, williamToolDefs, connectorWireTools, type ConnectorWireDef } from "./william-tools";
 import { GLYPHH_APP_SPEC } from "./glyphh-app-spec";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
@@ -356,7 +356,7 @@ export async function williamComplete(messages: ChatMessage[], opts: WilliamComp
 // cards) fires inside each execution exactly as before.
 
 /** Extra workspace context appended to the system prompt (app library +
- *  connected accounts) so open_app / connection_call target real names. */
+ *  connected accounts) so open_app and connector tools target real names. */
 async function workspaceExtras(): Promise<string> {
   let appList = "";
   try {
@@ -371,10 +371,9 @@ async function workspaceExtras(): Promise<string> {
   } catch { /* signed out */ }
   return [
     appList ? `The user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "",
-    connList ? `Connected accounts (connection_tools/connection_call): ${connList}` : "",
+    connList ? `Connected accounts: ${connList} — each one's API tools are FIRST-CLASS tools in your toolset (real schemas; call them directly, never invent names).` : "",
     "RULE: the working folder ROOT holds the current app's project — build it there, then call update_app() to ship it (it packages the built dist/, never your source). After any change, rebuild + update_app or tool calls run the stale installed version.",
     GLYPHH_APP_SPEC,
-    "RULE: before your FIRST connection_call to any connector in a session, call connection_tools(connector) — connector tool names are exact strings you cannot guess. " +
     "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
   ].filter(Boolean).join("\n\n");
 }
@@ -390,17 +389,28 @@ async function sdkRun(
   };
 
   const defs = williamToolDefs();
+  // Connected accounts ride as FIRST-CLASS tools with their real input
+  // schemas (governed catalog; refreshes when stale) — no meta-tool, no
+  // guessed slugs. Offline/signed-out just means an empty set.
+  const connDefs = await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
 
-  // The Glyphh surface as an in-process MCP server. Raw JSON schemas (open
-  // objects described by each tool's doc line) — the executor validates, and
-  // both the local model and Claude work from the same prose contract.
+  // The Glyphh surface as an in-process MCP server. Builtins ride as open
+  // objects described by each tool's doc line (the executor validates);
+  // connector tools carry their true JSON schemas from the catalog.
   const mcp = new McpServer({ name: "glyphh", version: "1.0.0" }, { capabilities: { tools: {} } });
   mcp.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: defs.map((d) => ({
-      name: d.name,
-      description: d.doc,
-      inputSchema: { type: "object" as const, additionalProperties: true },
-    })),
+    tools: [
+      ...defs.map((d) => ({
+        name: d.name,
+        description: d.doc,
+        inputSchema: { type: "object" as const, additionalProperties: true },
+      })),
+      ...connDefs.map((d) => ({
+        name: d.name,
+        description: d.description,
+        inputSchema: d.inputSchema as { type: "object"; [k: string]: unknown },
+      })),
+    ],
   }));
   mcp.server.setRequestHandler(CallToolRequestSchema, async (rq) => {
     const name = String(rq.params.name || "");
@@ -449,7 +459,7 @@ async function sdkRun(
         settingSources: [],
         tools: [], // no built-ins — the Glyphh surface is the whole toolset
         mcpServers: { glyphh: { type: "sdk", name: "glyphh", instance: mcp as never } },
-        allowedTools: defs.map((d) => `mcp__glyphh__${d.name}`),
+        allowedTools: [...defs, ...connDefs].map((d) => `mcp__glyphh__${d.name}`),
         // Gating lives inside executeWilliamTool (mode model + approval
         // cards) — the SDK's own prompt layer always defers to it.
         canUseTool: async (_tool, input) => ({ behavior: "allow" as const, updatedInput: input }),

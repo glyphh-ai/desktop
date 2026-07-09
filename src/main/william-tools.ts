@@ -8,10 +8,12 @@
  * Workspace windows & apps: open_app / open_layout (unified resolver —
  * everything lands in the workspace), list_windows / list_layouts, plus
  * the RPA-class surface: app_list_tools / app_call_tool run installed
- * Glyphh apps' declared MCP tools headlessly, and connection_tools /
- * connection_call reach the user's connected accounts (Slack, GitHub, …)
- * through yo-server's Pipedream auth. list_drips / run_drip for
- * celebrations. Deterministic beats pixel-driving throughout.
+ * Glyphh apps' declared MCP tools headlessly. The user's connected
+ * accounts (Slack, GitHub, …) ride as FIRST-CLASS tools — each governed
+ * catalog entry becomes its own MCP tool with its real input schema
+ * (connectorWireTools), so the model never guesses a slug or a tool name.
+ * yo-server owns all auth (Pipedream) and metering. list_drips / run_drip
+ * for celebrations. Deterministic beats pixel-driving throughout.
  *
  * Every execution passes gateWilliamAction() first (mode model: ask /
  * plan / acceptEdits / auto / bypass) — a denial returns "DENIED: …" as
@@ -27,7 +29,7 @@ import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { serverGetAuthed } from "./auth";
 import { cachedServerGet } from "./server-cache";
-import { connectorTools, connectorCall } from "./glyphh-app-services";
+import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
@@ -82,41 +84,90 @@ function runShell(command: string, cwd: string, signal?: AbortSignal): Promise<s
   });
 }
 
-// Tool-name registry per connector — populated by connection_tools and by
-// the first connection_call; lets the executor validate names LOCALLY so a
-// guessed tool dies instantly with the real list (no server round-trip).
-const connectorNameCache = new Map<string, { names: string[]; at: number }>();
-const NAME_CACHE_TTL = 10 * 60_000;
+// ── First-class connector tools ────────────────────────────────────────────
+// Every entry of the governed connector catalog (yo-server enforces role
+// scope, auth, and metering) is exposed to the loop as its OWN MCP tool
+// with its REAL input schema — no meta-tool, no guessed slugs, no two-step
+// discovery dance. Wire names must fit the API tool-name grammar
+// ([a-zA-Z0-9_-], ≤64 chars including the "mcp__glyphh__" prefix), so
+// catalog names are sanitized/deduped/clamped; wireMap holds the reverse
+// mapping the executor dispatches through.
 
-async function connectorToolNames(scope: Set<string>, connector: string): Promise<string[]> {
-  const hit = connectorNameCache.get(connector);
-  if (hit && Date.now() - hit.at < NAME_CACHE_TTL) return hit.names;
-  // Ada FIRST — she's the catalog brain (boot + heartbeat sync keep her
-  // current); instant, offline, exact. The live API is the fallback for a
-  // connector she hasn't seen, and its fetch feeds her right back.
-  try {
-    const fromAda = adaExecuteOp({ op: "who", conditions: { "entity.kind": "tool", "relational.object": connector } });
-    if (fromAda && fromAda !== "none") {
-      const names = fromAda.split(", ").filter(Boolean);
-      if (names.length) {
-        connectorNameCache.set(connector, { names, at: Date.now() });
-        return names;
-      }
-    }
-  } catch { /* store not ready — fall through */ }
-  const tools = await connectorTools(scope, { connector });
-  const names = tools.map((t) => t.name);
-  connectorNameCache.set(connector, { names, at: Date.now() });
-  indexConnectorTools(connector, tools); // fresh truth → Ada, opportunistically
-  return names;
+const WIRE_MAX = 48; // 64 minus the mcp__glyphh__ prefix, with margin
+const CATALOG_STALE_MS = 5 * 60_000;
+
+const wireMap = new Map<string, { slug: string; tool: string }>();
+
+const sanitizeWire = (s: string) =>
+  s.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, WIRE_MAX);
+
+export interface ConnectorWireDef {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
 }
 
-/** The user's connected connector slugs — William acts as the user, so
- *  every connected account is in scope (the server still owns all auth). */
-async function connectedSlugs(): Promise<Set<string>> {
-  // /api/connections rows: { appSlug, appName, label, healthy, … }
-  const r = await serverGetAuthed<{ connections?: Array<{ appSlug?: string }> }>("/api/connections");
-  return new Set((r.connections || []).map((c) => String(c.appSlug || "")).filter(Boolean));
+/** Refresh (if stale) and wire the connector catalog as first-class tool
+ *  defs. Called at every agent-run start; rebuilds wireMap from scratch so
+ *  a changed catalog (new connection, tightened role) takes effect on the
+ *  very next run. Ada learns the fresh truth as a side effect. */
+export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
+  if (getCatalogAge() > CATALOG_STALE_MS) {
+    try { await refreshConnectorCatalog(); } catch { /* offline — wire what we have */ }
+  }
+  const catalog = getConnectorCatalog();
+  wireMap.clear();
+  const builtin = new Set(TOOLS.map((t) => t.name));
+  const slugs = new Set<string>();
+  const defs: ConnectorWireDef[] = [];
+  for (const t of catalog) {
+    // Pipedream names are app-prefixed ("gmail-find-email") — prefer them
+    // bare; any collision (cross-app duplicate, builtin shadow) gets the
+    // slug prefix, and clamp collisions get a numeric suffix.
+    let wire = sanitizeWire(t.name);
+    if (!wire || builtin.has(wire) || wireMap.has(wire)) wire = sanitizeWire(`${t.slug}__${t.name}`);
+    for (let n = 2; wireMap.has(wire) || builtin.has(wire); n++) {
+      wire = `${sanitizeWire(t.name).slice(0, WIRE_MAX - 4)}-${n}`;
+    }
+    wireMap.set(wire, { slug: t.slug, tool: t.name });
+    const schema = t.inputSchema && typeof t.inputSchema === "object" && Object.keys(t.inputSchema).length
+      ? t.inputSchema
+      : { type: "object", additionalProperties: true };
+    defs.push({
+      name: wire,
+      description: `[${t.slug}] ${String(t.description || t.name).slice(0, 280)}`,
+      inputSchema: schema,
+    });
+    slugs.add(t.slug);
+  }
+  for (const slug of slugs) {
+    const tools = catalog.filter((t) => t.slug === slug).map((t) => ({ name: t.name, description: t.description }));
+    try { indexConnectorTools(slug, tools); } catch { /* Ada not ready — she catches up on heartbeat */ }
+  }
+  return defs;
+}
+
+/** Gate → call a wired connector tool through yo-server (which owns auth,
+ *  role governance, and metering — a role change bites on the next call). */
+async function executeConnectorWire(
+  wc: WebContents,
+  wired: { slug: string; tool: string },
+  args: Record<string, unknown>,
+): Promise<ToolOutcome> {
+  const action = {
+    kind: (READ_TOOL_RE.test(wired.tool) ? "read" : "network") as WilliamActionKind,
+    title: `Call ${wired.slug} → ${wired.tool}`,
+    detail: JSON.stringify(args, null, 1).slice(0, 500),
+  };
+  const gate = await gateWilliamAction(wc, action);
+  if (!gate.allowed) {
+    return { result: `DENIED: ${gate.reason || "not allowed"}`, denied: true, title: action.title };
+  }
+  try {
+    return { result: cap(await callConnectorTool(wired.slug, wired.tool, args)), denied: false, title: action.title };
+  } catch (err) {
+    return { result: `ERROR: ${err instanceof Error ? err.message : String(err)}`, denied: false, title: action.title };
+  }
 }
 
 // create_app (the one-shot LLM builder) is retired — frontier agents build
@@ -207,12 +258,15 @@ const TOOLS: ToolDef[] = [
     doc: "update_app() — build-then-ship the app in the working folder: packages the compiled dist/ (Vite project) or the folder's files (legacy single-file app) and installs it. For a Vite project, run `npm run build` FIRST. Call after every change or tool calls run the OLD version",
     action: () => ({ kind: "edit", title: "Update app from source" }),
     run: async () => {
-      const scope = await connectedSlugs().catch(() => new Set<string>());
+      // Declared-connector validation reads the governed catalog (fresh at
+      // agent-run start via connectorWireTools; refresh here if stale).
+      if (getCatalogAge() > CATALOG_STALE_MS) {
+        try { await refreshConnectorCatalog(); } catch { /* offline — validate with what we have */ }
+      }
       const lookup = (slug: string) => {
-        const hit = connectorNameCache.get(slug);
-        return hit ? hit.names : null;
+        const names = getConnectorCatalog().filter((t) => t.slug === slug).map((t) => t.name);
+        return names.length ? names : null;
       };
-      void scope; // scope warms via connection_tools; cache-based lookup here
       const r = await updateAppFromWorkdir(lookup);
       return `updated "${r.name}" (${r.slug}) from source${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files.`;
     },
@@ -338,62 +392,6 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "connection_tools",
-    doc: "connection_tools(connector) — the EXACT tool names a connected account exposes (always call before connection_call)",
-    action: (a) => ({ kind: "read", title: `List ${String(a.connector ?? "?")} tools` }),
-    run: async (a) => {
-      const connector = String(a.connector ?? "");
-      const tools = await connectorTools(await connectedSlugs(), { connector });
-      connectorNameCache.set(connector, { names: tools.map((t) => t.name), at: Date.now() });
-      indexConnectorTools(connector, tools);
-      return cap(JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description })), null, 1));
-    },
-  },
-  {
-    name: "connection_call",
-    doc: "connection_call(connector, tool, arguments?) — call a connected account's API tool. Tool names MUST come from connection_tools — never guess them",
-    action: (a) => ({
-      kind: READ_TOOL_RE.test(String(a.tool ?? "")) ? "read" : "network",
-      title: `Call ${String(a.connector ?? "?")} → ${String(a.tool ?? "?")}`,
-      detail: JSON.stringify(a.arguments ?? {}, null, 1).slice(0, 500),
-    }),
-    run: async (a) => {
-      const connector = String(a.connector ?? "");
-      const scope = await connectedSlugs();
-      const tool = String(a.tool ?? "");
-      // Validate the name locally first — a guessed tool never even leaves
-      // the machine; the rejection carries the real names (oracle pattern).
-      try {
-        const names = await connectorToolNames(scope, connector);
-        if (names.length && !names.includes(tool)) {
-          const ci = names.find((n) => n.toLowerCase() === tool.toLowerCase());
-          if (!ci) {
-            return `ERROR: "${tool}" is not a ${connector} tool. Available ${connector} tools: ${names.slice(0, 20).join(", ")}`;
-          }
-        }
-      } catch { /* listing unavailable — let the server answer */ }
-      try {
-        const r = await connectorCall(scope, {
-          connector,
-          tool,
-          args: (a.arguments as Record<string, unknown>) ?? {},
-        });
-        return cap(r.result);
-      } catch (err) {
-        // Unknown-tool errors answer like the William oracle: reject WITH
-        // the real names, so recovery is one turn instead of a guess loop.
-        let msg = err instanceof Error ? err.message : String(err);
-        if (/-32602|not found|unknown tool|invalid/i.test(msg)) {
-          try {
-            const names = await connectorToolNames(scope, connector);
-            if (names.length) msg += `\nAvailable ${connector} tools: ${names.slice(0, 20).join(", ")}`;
-          } catch { /* listing failed too — plain error stands */ }
-        }
-        throw new Error(msg);
-      }
-    },
-  },
-  {
     name: "list_drips",
     doc: "list_drips() — available drip effects (fun visual overlays)",
     action: () => ({ kind: "read", title: "List drips" }),
@@ -504,7 +502,16 @@ export async function executeWilliamTool(
 ): Promise<ToolOutcome> {
   const tool = TOOLS.find((t) => t.name === call.name);
   if (!tool) {
-    return { result: `ERROR: unknown tool "${call.name}" — available: ${TOOLS.map((t) => t.name).join(", ")}`, denied: false, title: call.name };
+    // Not a builtin — a wired connector tool dispatches through yo-server.
+    const wired = wireMap.get(call.name);
+    if (wired) return executeConnectorWire(wc, wired, call.arguments ?? {});
+    const wires = [...wireMap.keys()];
+    const available = [...TOOLS.map((t) => t.name), ...wires.slice(0, 40)].join(", ");
+    return {
+      result: `ERROR: unknown tool "${call.name}" — available: ${available}${wires.length > 40 ? ", …" : ""}`,
+      denied: false,
+      title: call.name,
+    };
   }
   const args = call.arguments ?? {};
   let action;

@@ -89,7 +89,7 @@ export async function syncWorkspaceFacts(): Promise<{ facts: number }> {
       if (!slug) continue;
       facts += tellCatalog(
         `connection:${slug}`,
-        `${c.appName || slug} (${slug}) — connected account${c.healthy === false ? " (unhealthy)" : ""}; tools via connection_call`,
+        `${c.appName || slug} (${slug}) — connected account${c.healthy === false ? " (unhealthy)" : ""}; its API tools are first-class agent tools`,
         {
           entity: { name: slug, kind: "connection" },
           epistemic: { source: "pipedream", certainty: c.healthy === false ? "unhealthy" : "healthy" },
