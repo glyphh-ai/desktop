@@ -46,11 +46,9 @@
 
               <div id="code-thread" class="code-thread"></div>
               <div class="code-composer">
+                <div id="code-ask-dock" class="code-ask-dock" hidden></div>
                 <div id="code-attach-chips" class="code-attach-chips" hidden></div>
                 <div class="code-input-wrap">
-                  <button id="code-attach" class="code-attach-btn" type="button" title="Attach images, files, or folders (paste and drag-drop work too)">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                  </button>
                   <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
                   <button id="code-send" class="code-send" title="Send">
                     <svg class="icon-return" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
@@ -60,6 +58,11 @@
                 <div class="code-composer-bar">
                   <div id="code-mode-wrap" class="code-chipwrap">
                     <button id="code-mode-chip" class="code-chip" type="button"></button>
+                  </div>
+                  <div id="code-plus-wrap" class="code-chipwrap">
+                    <button id="code-plus-chip" class="code-chip code-plus-chip" type="button" title="Add to this session — files, folders, images (paste and drag-drop work too)">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
                   </div>
                   <div class="code-bar-right">
                     <div id="code-model-wrap" class="code-chipwrap">

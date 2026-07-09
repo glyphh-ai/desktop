@@ -24,7 +24,7 @@ import { exec } from "child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
-import { gateWilliamAction, type WilliamActionKind } from "./william-permissions";
+import { gateWilliamAction, askUserQuestions, type WilliamActionKind } from "./william-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { serverGetAuthed } from "./auth";
@@ -45,7 +45,7 @@ interface ToolDef {
   name: string;
   /** One line shown to the model in the system prompt. */
   doc: string;
-  run: (args: Record<string, unknown>, signal?: AbortSignal) => Promise<string>;
+  run: (args: Record<string, unknown>, signal?: AbortSignal, wc?: WebContents) => Promise<string>;
   /** Gate classification for a concrete call. */
   action: (args: Record<string, unknown>) => { kind: WilliamActionKind; title: string; detail?: string };
 }
@@ -398,6 +398,32 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "ask_user",
+    doc: "ask_user(questions) — put real questions to the user and WAIT for answers. questions: [{question, options?: string[]}] (max 4 per call; options ≤ 5, short labels — the user can always type a custom answer instead). Use when a decision is genuinely the user's: ambiguous requirements, a fork in the design, destructive trade-offs. Returns the answers in order; an empty answer means the user skipped it.",
+    action: (a) => {
+      const qs = Array.isArray(a.questions) ? (a.questions as Array<{ question?: unknown }>) : [];
+      const first = String(qs[0]?.question ?? "").slice(0, 80);
+      return { kind: "read", title: qs.length > 1 ? `Ask: ${first} (+${qs.length - 1} more)` : `Ask: ${first}` };
+    },
+    run: async (a, _signal, wc) => {
+      if (!wc) return "ERROR: no panel available to ask";
+      const raw = Array.isArray(a.questions) ? (a.questions as Array<Record<string, unknown>>) : [];
+      const questions = raw
+        .map((q) => ({
+          question: String(q.question ?? "").trim().slice(0, 500),
+          options: Array.isArray(q.options)
+            ? (q.options as unknown[]).map((o) => String(o).slice(0, 120)).filter(Boolean).slice(0, 5)
+            : undefined,
+        }))
+        .filter((q) => q.question)
+        .slice(0, 4);
+      if (!questions.length) return "ERROR: questions is required — [{question, options?}]";
+      const answers = await askUserQuestions(wc, questions);
+      if (!answers.length) return "(the user did not answer — proceed with your best judgment and say what you assumed)";
+      return questions.map((q, i) => `Q: ${q.question}\nA: ${answers[i] || "(skipped)"}`).join("\n\n");
+    },
+  },
+  {
     name: "list_connections",
     doc: "list_connections() — the user's connected accounts (Slack, GitHub, …)",
     action: () => ({ kind: "read", title: "List connections" }),
@@ -542,7 +568,7 @@ export async function executeWilliamTool(
     return { result: `DENIED: ${gate.reason || "not allowed"}`, denied: true, title: action.title };
   }
   try {
-    return { result: await tool.run(args, signal), denied: false, title: action.title };
+    return { result: await tool.run(args, signal, wc), denied: false, title: action.title };
   } catch (err) {
     return { result: `ERROR: ${err instanceof Error ? err.message : String(err)}`, denied: false, title: action.title };
   }

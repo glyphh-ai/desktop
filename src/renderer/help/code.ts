@@ -43,7 +43,12 @@ const EFFORTS = [
 let williamMode: (typeof MODES)[number]["id"] = "ask";
 let williamEffort: (typeof EFFORTS)[number]["id"] = "medium";
 // Approval cards awaiting a decision (rendered inline in the thread).
-let pendingApprovals: Array<{ id: string; kind: string; title: string; detail: string }> = [];
+// Ask dock queue — approvals and agent questions render one at a time in a
+// card docked just above the composer (never inline in the thread).
+type AskDockItem =
+  | { type: "approval"; id: string; kind: string; title: string; detail: string }
+  | { type: "ask"; id: string; questions: Array<{ question: string; options?: string[] }>; answers: string[]; step: number };
+let askQueue: AskDockItem[] = [];
 
 function paintChips(): void {
   const mc = el("code-mode-chip");
@@ -548,6 +553,8 @@ function initComposerControls(): void {
     if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
+    const plusWrap = el("code-plus-wrap");
+    if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
   });
 }
 
@@ -835,7 +842,6 @@ function renderThread(): void {
   spinner = null;
   streamBubble = null;
   if (thinking && workingChatId === c.id) {
-    for (const a of pendingApprovals) inner.appendChild(approvalCard(a));
     if (streamText && streamChatId === c.id) {
       streamBubble = document.createElement("div");
       streamBubble.className = "code-agent-text";
@@ -1069,9 +1075,42 @@ async function handleComposerPaste(e: ClipboardEvent): Promise<void> {
 }
 
 function wireComposerAttachments(): void {
-  el("code-attach")?.addEventListener("click", () => {
-    void window.yo.williamPickAttachments().then((refs) => { if (refs.length) queueAttachments(refs); });
-  });
+  // The + menu (right of the mode chip) — everything a user ADDS to the
+  // session lives here; paste and drag-drop stay as shortcuts.
+  const plusWrap = el("code-plus-wrap");
+  if (plusWrap) {
+    const menu = document.createElement("div");
+    menu.id = "code-plus-menu";
+    menu.className = "code-drop-up hidden";
+    const mkItem = (label: string, hint: string, pick: () => void) => {
+      const b = document.createElement("button");
+      b.className = "code-drop-item";
+      b.type = "button";
+      b.title = hint;
+      const span = document.createElement("span");
+      span.textContent = label;
+      b.appendChild(span);
+      b.addEventListener("click", () => { menu.classList.add("hidden"); pick(); });
+      return b;
+    };
+    menu.append(
+      mkItem("Attach files…", "Images and documents ride the next message", () => {
+        void window.yo.williamPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
+      }),
+      mkItem("Add folder…", "Give William read access to another directory", () => {
+        void window.yo.williamPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
+      }),
+    );
+    plusWrap.appendChild(menu);
+    el("code-plus-chip")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      el("code-mode-menu")?.classList.add("hidden");
+      el("code-effort-pop")?.classList.add("hidden");
+      el("code-model-menu")?.classList.add("hidden");
+      el("code-ctx-pop")?.classList.add("hidden");
+      menu.classList.toggle("hidden");
+    });
+  }
   input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });
   const comp = document.querySelector<HTMLElement>(".code-composer");
   if (!comp) return;
@@ -1234,7 +1273,8 @@ function finishRun(text: string, stopped = false): void {
   streamChatId = null;
   streamText = "";
   streamBubble = null;
-  pendingApprovals = [];
+  askQueue = [];
+  paintAskDock();
   broadcastTimeline(false);
   stopRunTicker();
   setThinking(false);
@@ -1242,40 +1282,128 @@ function finishRun(text: string, stopped = false): void {
   refreshCtxMeter();
 }
 
-/** Inline approval card — Approve / Deny answer main's gate and the card
- *  leaves the thread. */
-function approvalCard(a: { id: string; kind: string; title: string; detail: string }): HTMLElement {
-  const card = document.createElement("div");
-  card.className = "code-approval";
-  const kind = document.createElement("div");
-  kind.className = "code-approval-kind";
-  kind.textContent = a.kind;
-  const title = document.createElement("div");
-  title.className = "code-approval-title";
-  title.textContent = a.title;
-  card.append(kind, title);
-  if (a.detail) {
-    const det = document.createElement("pre");
-    det.className = "code-approval-detail";
-    det.textContent = a.detail;
-    card.appendChild(det);
+// ── Ask dock — approvals + agent questions above the composer ─────────────
+//
+// One card at a time; a queue counter ("1 of 3") shows what's stacked and a
+// step chip ("Step 1 of 2") walks multi-question asks. Every question keeps
+// a free-text answer available — options are shortcuts, never a cage.
+
+function askDockShift(): void {
+  askQueue.shift();
+  paintAskDock();
+}
+
+function dockHead(label: string, tone: string, item: AskDockItem): HTMLElement {
+  const head = document.createElement("div");
+  head.className = "cad-head";
+  const chip = document.createElement("span");
+  chip.className = `cad-kind ${tone}`;
+  chip.textContent = label;
+  head.appendChild(chip);
+  if (item.type === "ask" && item.questions.length > 1) {
+    const step = document.createElement("span");
+    step.className = "cad-step";
+    step.textContent = `Step ${item.step + 1} of ${item.questions.length}`;
+    head.appendChild(step);
   }
-  const actions = document.createElement("div");
-  actions.className = "code-approval-actions";
-  const mk = (label: string, allow: boolean, cls: string) => {
-    const b = document.createElement("button");
-    b.className = `action-btn ${cls}`;
-    b.textContent = label;
-    b.addEventListener("click", () => {
-      pendingApprovals = pendingApprovals.filter((p) => p.id !== a.id);
-      void window.yo.williamApprovalRespond?.(a.id, allow);
-      renderThread();
-    });
-    return b;
+  if (askQueue.length > 1) {
+    const count = document.createElement("span");
+    count.className = "cad-count";
+    count.textContent = `1 of ${askQueue.length} waiting`;
+    head.appendChild(count);
+  }
+  return head;
+}
+
+function paintAskDock(): void {
+  const dock = el<HTMLDivElement>("code-ask-dock");
+  if (!dock) return;
+  const item = askQueue[0];
+  dock.hidden = !item;
+  dock.textContent = "";
+  if (!item) return;
+
+  if (item.type === "approval") {
+    dock.appendChild(dockHead(item.kind, "warn", item));
+    const title = document.createElement("div");
+    title.className = "cad-title";
+    title.textContent = item.title;
+    dock.appendChild(title);
+    if (item.detail) {
+      const det = document.createElement("pre");
+      det.className = "cad-detail";
+      det.textContent = item.detail;
+      dock.appendChild(det);
+    }
+    const actions = document.createElement("div");
+    actions.className = "cad-actions";
+    const mk = (label: string, allow: boolean, cls: string) => {
+      const b = document.createElement("button");
+      b.className = `action-btn ${cls}`;
+      b.textContent = label;
+      b.addEventListener("click", () => {
+        void window.yo.williamApprovalRespond?.(item.id, allow);
+        askDockShift();
+      });
+      return b;
+    };
+    actions.append(mk("Deny", false, "secondary"), mk("Approve", true, "primary"));
+    dock.appendChild(actions);
+    return;
+  }
+
+  // Agent question — options as one-click answers plus a custom input.
+  const q = item.questions[item.step];
+  dock.appendChild(dockHead("William asks", "ask", item));
+  const title = document.createElement("div");
+  title.className = "cad-title";
+  title.textContent = q.question;
+  dock.appendChild(title);
+  const answer = (value: string) => {
+    item.answers[item.step] = value;
+    item.step += 1;
+    if (item.step >= item.questions.length) {
+      void window.yo.williamAskRespond?.(item.id, item.questions.map((_x, i) => item.answers[i] ?? ""));
+      askDockShift();
+    } else {
+      paintAskDock();
+    }
   };
-  actions.append(mk("Deny", false, "secondary"), mk("Approve", true, "primary"));
-  card.appendChild(actions);
-  return card;
+  if (q.options?.length) {
+    const opts = document.createElement("div");
+    opts.className = "cad-options";
+    for (const o of q.options) {
+      const b = document.createElement("button");
+      b.className = "cad-option";
+      b.type = "button";
+      b.textContent = o;
+      b.addEventListener("click", () => answer(o));
+      opts.appendChild(b);
+    }
+    dock.appendChild(opts);
+  }
+  const custom = document.createElement("div");
+  custom.className = "cad-custom";
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.placeholder = q.options?.length ? "Or type your own answer…" : "Type your answer…";
+  inp.spellcheck = false;
+  const sendBtn = document.createElement("button");
+  sendBtn.className = "action-btn primary";
+  sendBtn.type = "button";
+  sendBtn.textContent = "Answer";
+  const submitCustom = () => { if (inp.value.trim()) answer(inp.value.trim()); };
+  sendBtn.addEventListener("click", submitCustom);
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submitCustom(); } });
+  const skip = document.createElement("button");
+  skip.className = "cad-skip";
+  skip.type = "button";
+  skip.textContent = "Skip";
+  skip.title = "Answer nothing — William proceeds on his best judgment";
+  skip.addEventListener("click", () => answer(""));
+  custom.append(inp, sendBtn, skip);
+  dock.appendChild(custom);
+  if (!q.options?.length) inp.focus();
 }
 
 /** Wire the stream events once — deltas paint the live bubble (or just
@@ -1306,8 +1434,12 @@ function initWilliamEvents(): void {
     paintRunMeta();
   });
   window.yo.onWilliamApproval?.((a) => {
-    pendingApprovals.push(a);
-    if (currentId === streamChatId || currentId === workingChatId) renderThread();
+    askQueue.push({ type: "approval", ...a });
+    paintAskDock();
+  });
+  window.yo.onWilliamAsk?.((d) => {
+    askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0 });
+    paintAskDock();
   });
   // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
   // so a re-render or restart keeps the run's story).

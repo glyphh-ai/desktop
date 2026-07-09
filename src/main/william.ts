@@ -280,7 +280,7 @@ export function registerWilliamIpc(): void {
   });
 
   // ── Composer attachments ──────────────────────────────────────────────
-  ipcMain.handle("william-pick-attachments", () => pickAttachments());
+  ipcMain.handle("william-pick-attachments", (_e, p?: { mode?: "files" | "folder" }) => pickAttachments(p?.mode));
   ipcMain.handle("william-classify-paths", (_e, p: { paths?: unknown[] }) =>
     classifyPaths(((p?.paths ?? []) as unknown[]).map(String)));
   ipcMain.handle("william-save-clipboard-image", (_e, p: { bytes?: ArrayBuffer }) => {

@@ -128,12 +128,53 @@ function requestApproval(wc: WebContents, action: WilliamAction): Promise<{ allo
   });
 }
 
+// ── Agent questions (ask_user) ─────────────────────────────────────────────
+//
+// The loop can put a real question to the user — options plus a free-text
+// escape hatch — and wait on the answer. Rendered in the same ask dock as
+// approvals, one step at a time ("1 of 2"). A timeout answers with nothing
+// so an unattended run re-plans instead of hanging forever.
+
+export interface AskQuestion { question: string; options?: string[] }
+
+const pendingAsks = new Map<string, (answers: string[]) => void>();
+const ASK_TIMEOUT_MS = 10 * 60_000;
+
+export function askUserQuestions(wc: WebContents, questions: AskQuestion[]): Promise<string[]> {
+  return new Promise((resolve) => {
+    const id = `ask-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    const timer = setTimeout(() => {
+      pendingAsks.delete(id);
+      resolve([]);
+    }, ASK_TIMEOUT_MS);
+    pendingAsks.set(id, (answers) => {
+      clearTimeout(timer);
+      resolve(answers);
+    });
+    try {
+      if (wc.isDestroyed()) throw new Error("panel gone");
+      wc.send("william:ask", { id, questions });
+    } catch {
+      clearTimeout(timer);
+      pendingAsks.delete(id);
+      resolve([]);
+    }
+  });
+}
+
 export function registerWilliamPermissionIpc(): void {
   ipcMain.handle("william-approval-respond", (_e, p: { id?: string; allow?: boolean }) => {
     const entry = pending.get(String(p?.id ?? ""));
     if (!entry) return false;
     pending.delete(String(p?.id));
     entry(!!p?.allow);
+    return true;
+  });
+  ipcMain.handle("william-ask-respond", (_e, p: { id?: string; answers?: unknown[] }) => {
+    const entry = pendingAsks.get(String(p?.id ?? ""));
+    if (!entry) return false;
+    pendingAsks.delete(String(p?.id));
+    entry((Array.isArray(p?.answers) ? p.answers : []).map(String));
     return true;
   });
 }

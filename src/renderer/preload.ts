@@ -388,8 +388,8 @@ contextBridge.exposeInMainWorld("yo", {
   },
   williamRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }> }) =>
     ipcRenderer.invoke("william-run", p) as Promise<{ runId: string }>,
-  williamPickAttachments: () =>
-    ipcRenderer.invoke("william-pick-attachments") as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
+  williamPickAttachments: (mode?: "files" | "folder") =>
+    ipcRenderer.invoke("william-pick-attachments", { mode }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
   williamClassifyPaths: (paths: string[]) =>
     ipcRenderer.invoke("william-classify-paths", { paths }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
   williamSaveClipboardImage: (bytes: ArrayBuffer) =>
@@ -433,6 +433,11 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("william-approval-respond", { id, allow }) as Promise<boolean>,
   onWilliamApproval: (callback: (d: { id: string; kind: string; title: string; detail: string }) => void) => {
     ipcRenderer.on("william:approval", (_event, d) => callback(d));
+  },
+  williamAskRespond: (id: string, answers: string[]) =>
+    ipcRenderer.invoke("william-ask-respond", { id, answers }) as Promise<boolean>,
+  onWilliamAsk: (callback: (d: { id: string; questions: Array<{ question: string; options?: string[] }> }) => void) => {
+    ipcRenderer.on("william:ask", (_event, d) => callback(d));
   },
   onThemeChanged: (callback: (theme: string) => void) => {
     ipcRenderer.on("theme-changed", (_event, theme) => callback(theme));

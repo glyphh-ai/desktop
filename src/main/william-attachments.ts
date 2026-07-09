@@ -50,12 +50,17 @@ export function classifyPaths(paths: string[]): AttachRef[] {
   return out;
 }
 
-/** OS picker — files, folders, and images in one multi-select dialog. */
-export async function pickAttachments(): Promise<AttachRef[]> {
+/** OS picker. "files" and "folder" narrow the dialog (the + menu offers
+ *  them as separate actions); default allows both in one multi-select. */
+export async function pickAttachments(mode?: "files" | "folder"): Promise<AttachRef[]> {
+  const properties: Array<"openFile" | "openDirectory" | "multiSelections"> =
+    mode === "files" ? ["openFile", "multiSelections"]
+    : mode === "folder" ? ["openDirectory", "multiSelections"]
+    : ["openFile", "openDirectory", "multiSelections"];
   const r = await dialog.showOpenDialog({
-    title: "Attach to William",
-    buttonLabel: "Attach",
-    properties: ["openFile", "openDirectory", "multiSelections"],
+    title: mode === "folder" ? "Add folder — William can read it" : "Attach to William",
+    buttonLabel: mode === "folder" ? "Add folder" : "Attach",
+    properties,
   });
   return r.canceled ? [] : classifyPaths(r.filePaths);
 }

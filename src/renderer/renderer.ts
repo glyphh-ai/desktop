@@ -319,7 +319,7 @@ declare global {
       screenLayoutGet: () => Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>;
       screenLayoutSet: (v: { mode?: string; fraction?: number }) => Promise<{ mode: string; fraction: number }>;
       williamRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }> }) => Promise<{ runId: string }>;
-      williamPickAttachments: () => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
+      williamPickAttachments: (mode?: "files" | "folder") => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
       williamClassifyPaths: (paths: string[]) => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
       williamSaveClipboardImage: (bytes: ArrayBuffer) => Promise<{ kind: "image"; path: string; name: string }>;
       williamSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
@@ -342,6 +342,8 @@ declare global {
       onWilliamTool: (cb: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => void;
       williamApprovalRespond: (id: string, allow: boolean) => Promise<boolean>;
       onWilliamApproval: (cb: (d: { id: string; kind: string; title: string; detail: string }) => void) => void;
+      williamAskRespond: (id: string, answers: string[]) => Promise<boolean>;
+      onWilliamAsk: (cb: (d: { id: string; questions: Array<{ question: string; options?: string[] }> }) => void) => void;
       railCollapseGet: () => Promise<boolean>;
       railCollapseToggle: () => Promise<boolean>;
       railCollapseSet: (on: boolean) => Promise<boolean>;

@@ -11516,23 +11516,14 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
 }
 .code-attach-chip .cac-x:hover { color: var(--text); }
 
-.code-attach-btn {
-  align-self: flex-end;
-  flex: 0 0 auto;
+/* The + chip (right of the mode chip) — the "add to this session" menu. */
+.code-plus-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin: 0 0 6px 8px;
-  border: none;
-  background: none;
-  border-radius: 7px;
-  color: var(--text-3);
-  cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease;
+  padding: 0;
+  width: 24px;
 }
-.code-attach-btn:hover { color: var(--text); background: var(--surface); }
 
 /* Drag-over target state for the whole composer. */
 .code-composer.dropping { outline: 1px dashed var(--text-3); outline-offset: -6px; border-radius: 12px; }
@@ -12361,25 +12352,33 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-chip.mode-auto { color: #ffbd2e; border-color: rgba(255, 189, 46, 0.4); }
 .code-chip.mode-bypass { color: #ff5f56; border-color: rgba(255, 95, 86, 0.45); }
 
-/* Inline approval card (ask flow) */
-.code-approval {
-  align-self: flex-start;
-  max-width: 720px;
+/* Ask dock — approvals + agent questions, docked just above the composer.
+   One card at a time; slides up like it belongs to the input. */
+.code-ask-dock {
+  margin: 0 0 8px;
+  padding: 12px 14px;
   border: 1px solid var(--border-2);
   border-radius: 12px;
-  padding: 12px 14px;
   background: var(--surface-2);
+  animation: askDockIn 0.16s ease;
 }
-.code-approval-kind {
+@keyframes askDockIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.cad-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.cad-kind {
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--accent);
-  margin-bottom: 3px;
 }
-.code-approval-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-.code-approval-detail {
+.cad-kind.ask { color: var(--text-bright); }
+.cad-step, .cad-count { font-size: 10.5px; color: var(--text-3); }
+.cad-count { margin-left: auto; }
+.cad-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.cad-detail {
   margin: 0 0 10px;
   font-family: "SF Mono", "Fira Code", monospace;
   font-size: 11.5px;
@@ -12393,7 +12392,40 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   max-height: 130px;
   overflow-y: auto;
 }
-.code-approval-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.cad-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.cad-options { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 9px; }
+.cad-option {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.cad-option:hover { border-color: var(--text-3); background: var(--surface-3, var(--surface)); }
+.cad-custom { display: flex; gap: 8px; align-items: center; }
+.cad-custom input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+.cad-custom input:focus { border-color: var(--white, #fff); }
+.cad-skip {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+.cad-skip:hover { color: var(--text); text-decoration: underline; }
 
 /* Prompt modal textarea (skill-ask-user — restored for compact/steer) */
 #skill-ask-user-answer {
