@@ -135,6 +135,37 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Vector memory — sqlite IS the vector db. Embeddings ride as Float32
+    // BLOBs (unit-normalized, so cosine = dot product); at session and
+    // workspace scale a brute-force scan is sub-millisecond, no extension.
+    //   turn_vectors      — short-term memory over a chat's own turns
+    //   workspace_vectors — chunked semantic index of the working folder
+    version: 5,
+    sql: `
+      CREATE TABLE IF NOT EXISTS turn_vectors (
+        chat_id TEXT NOT NULL,
+        at INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        text TEXT NOT NULL,
+        embedding BLOB NOT NULL,
+        PRIMARY KEY (chat_id, at, role)
+      );
+      CREATE INDEX IF NOT EXISTS idx_turn_vectors_chat ON turn_vectors (chat_id);
+      CREATE TABLE IF NOT EXISTS workspace_vectors (
+        root TEXT NOT NULL,
+        path TEXT NOT NULL,
+        chunk_no INTEGER NOT NULL,
+        start_line INTEGER NOT NULL,
+        end_line INTEGER NOT NULL,
+        mtime INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        embedding BLOB NOT NULL,
+        PRIMARY KEY (root, path, chunk_no)
+      );
+      CREATE INDEX IF NOT EXISTS idx_workspace_vectors_root ON workspace_vectors (root);
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

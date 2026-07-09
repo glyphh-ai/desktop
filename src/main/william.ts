@@ -31,6 +31,9 @@ import {
   pickAttachments, classifyPaths, saveClipboardImage, validAttachments,
   attachmentPromptBlock, attachmentVisionBlocks, type AttachRef,
 } from "./william-attachments";
+import { indexChatTurns, shortTermRecallBlock, pruneTurnVectors } from "./william-recall";
+import { refreshWorkspaceIndex, relevantFilesHint } from "./workspace-index";
+import { stopEmbedServer } from "./william-embeddings";
 import { GLYPHH_APP_SPEC } from "./glyphh-app-spec";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
@@ -210,6 +213,7 @@ async function ensureInner(): Promise<void> {
 export function shutdownWilliam(): void {
   active?.ctrl.abort();
   stopModelRouter();
+  stopEmbedServer();
   if (managed) { try { managed.kill(); } catch { /* already gone */ } managed = null; }
 }
 
@@ -254,13 +258,19 @@ export function registerWilliamIpc(): void {
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     const ctrl = new AbortController();
     active = { id, ctrl };
-    void sdkRun(e.sender, id, messages, ctrl, attachments).finally(() => {
+    void sdkRun(e.sender, id, messages, ctrl, attachments, chatId).finally(() => {
       if (active?.id === id) active = null;
       // Fold history AFTER the reply lands — a send never waits on it.
       // (The renderer saves the assistant turn right away; a short delay
       // lets that write land before compaction reads the store.)
       setTimeout(() => {
         void compactIfNeeded(chatId, replyBudget, (msgs, opts) => williamComplete(msgs, opts));
+        // Memory housekeeping rides the same idle window: embed the new
+        // turns (short-term recall) and freshen the workspace index.
+        void indexChatTurns(chatId);
+        pruneTurnVectors();
+        const wd = getExplicitWorkingDirectory();
+        if (wd) void refreshWorkspaceIndex(wd);
       }, 1500);
     });
     return { runId: id };
@@ -392,6 +402,7 @@ async function workspaceExtras(): Promise<string> {
     "RULE: the working folder ROOT holds the current app's project — build it there, then call update_app() to ship it (it packages the built dist/, never your source). After any change, rebuild + update_app or tool calls run the stale installed version.",
     GLYPHH_APP_SPEC,
     "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
+    "MEMORY: you have layers — Ada (long-term facts), the rolling summary (mid-term), and <relevant_earlier_context> blocks (short-term recall of this session's own turns). On unfamiliar code, semantic_search(query) FIRST — it finds the right spans by meaning; read_file the spans it names instead of whole files.",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -401,6 +412,7 @@ async function sdkRun(
   base: ChatMessage[],
   ctrl: AbortController,
   attachments: AttachRef[] = [],
+  chatId = "",
 ): Promise<void> {
   const emit = (channel: string, data: Record<string, unknown>) => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
@@ -447,21 +459,41 @@ async function sdkRun(
   });
 
   // System prompt = assembled base system (persona + memory + summary) +
-  // workspace extras + prior turns. The SDK owns the live loop; our
-  // compactor still owns long-term history budget upstream of this.
+  // workspace extras — and NOTHING that changes per turn. Anthropic's
+  // prompt cache is prefix-based (tools → system → messages): keeping this
+  // block byte-stable between runs means every send within the cache TTL
+  // re-reads the big prefix at 10% price instead of re-writing it. Prior
+  // turns ride the USER message instead (messages churn anyway).
   const history = base.slice(1, -1)
     .map((m) => `${m.role === "user" ? "User" : "William"}: ${m.content}`)
     .join("\n");
   const system = [
     base[0]?.content ?? "",
     await workspaceExtras(),
-    history ? `<conversation_so_far>\n${history}\n</conversation_so_far>` : "",
   ].filter(Boolean).join("\n\n");
   // Attachments append a path manifest to the user turn; attached images
   // ALSO ride as real vision blocks (the router sees them and escalates —
   // local models are text-only).
   const attBlock = attachmentPromptBlock(attachments);
-  const lastUser = [String(base[base.length - 1]?.content ?? ""), attBlock].filter(Boolean).join("\n\n");
+  const ask = String(base[base.length - 1]?.content ?? "");
+  // Layered memory, injected on the USER turn (messages churn anyway — the
+  // cached system prefix stays untouched): short-term recall brings back
+  // verbatim earlier turns that match this ask; the workspace hint points
+  // at the semantically closest files before the first tool call.
+  const [recallBlock, filesHint] = await Promise.all([
+    chatId ? shortTermRecallBlock(chatId, ask).catch(() => "") : Promise.resolve(""),
+    (async () => {
+      const wd = getExplicitWorkingDirectory();
+      return wd ? relevantFilesHint(wd, ask).catch(() => "") : "";
+    })(),
+  ]);
+  const lastUser = [
+    history ? `<conversation_so_far>\n${history}\n</conversation_so_far>` : "",
+    recallBlock,
+    ask,
+    attBlock,
+    filesHint,
+  ].filter(Boolean).join("\n\n");
   const visionBlocks = attachmentVisionBlocks(attachments);
   const prompt: string | AsyncIterable<SDKUserMessage> = visionBlocks.length
     ? (async function* (): AsyncGenerator<SDKUserMessage> {

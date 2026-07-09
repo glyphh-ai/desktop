@@ -132,7 +132,11 @@ export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
   if (getCatalogAge() > CATALOG_STALE_MS) {
     try { await refreshConnectorCatalog(); } catch { /* offline — wire what we have */ }
   }
-  const catalog = getConnectorCatalog();
+  // Deterministic order — the tool list is the FIRST block of the prompt
+  // cache prefix, so order jitter between catalog refreshes would bust the
+  // whole cache for no reason.
+  const catalog = [...getConnectorCatalog()].sort((a, b) =>
+    a.slug === b.slug ? a.name.localeCompare(b.name) : a.slug.localeCompare(b.slug));
   wireMap.clear();
   const builtin = new Set(TOOLS.map((t) => t.name));
   const slugs = new Set<string>();
@@ -258,6 +262,24 @@ const TOOLS: ToolDef[] = [
       const { abs } = resolveReadPath(a.path);
       const pat = String(a.pattern ?? "").replace(/'/g, "'\\''");
       return runShell(`grep -rniI --exclude-dir=node_modules --exclude-dir=.git -m 5 '${pat}' . | head -80`, abs);
+    },
+  },
+  {
+    name: "semantic_search",
+    doc: "semantic_search(query, k?) — meaning-based search over the indexed working folder. Finds code by INTENT (\"where do we validate cron ids\") and returns the exact file spans — use it FIRST on unfamiliar code, then read_file the spans it names. Sharper and far cheaper than grepping blind.",
+    action: (a) => ({ kind: "read", title: `Semantic search "${String(a.query ?? "").slice(0, 60)}"` }),
+    run: async (a) => {
+      const query = String(a.query ?? "").trim();
+      if (!query) return "ERROR: query is required";
+      const root = workdir();
+      const { semanticSearchWorkspace, refreshWorkspaceIndex, workspaceIndexSize } = await import("./workspace-index");
+      if (!workspaceIndexSize(root)) await refreshWorkspaceIndex(root); // first touch — build it now
+      const hits = await semanticSearchWorkspace(root, query, Math.max(1, Math.min(10, Number(a.k) || 5)));
+      if (hits === null) return "semantic search unavailable (local runtime is down) — fall back to search_files";
+      if (!hits.length) return "(no indexed matches — the folder may still be indexing; search_files works meanwhile)";
+      return cap(hits.map((h) =>
+        `${h.path}:${h.startLine}-${h.endLine} (${h.score.toFixed(2)})\n${h.text}`,
+      ).join("\n\n---\n\n"));
     },
   },
   {

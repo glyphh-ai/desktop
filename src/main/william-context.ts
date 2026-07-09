@@ -26,7 +26,7 @@ import { getPreference } from "./stores/preferences-db";
 import { williamMode } from "./william-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
 
-export interface StoredMsg { role: "user" | "assistant"; text: string; at: number }
+export interface StoredMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" }
 export interface StoredChat {
   id: string;
   title: string;
