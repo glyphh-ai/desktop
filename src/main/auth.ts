@@ -557,15 +557,31 @@ function startHeartbeat(): void {
   }, HEARTBEAT_INTERVAL);
 }
 
+// Offline → online transition hooks: server-authoritative stores (prefs,
+// chats, app schedules) reconcile the moment connectivity returns instead
+// of waiting for the next restart.
+let heartbeatDown = false;
+const reconnectHooks: Array<() => void> = [];
+export function onServerReconnect(fn: () => void): void {
+  reconnectHooks.push(fn);
+}
+
 async function fetchHeartbeat(): Promise<HeartbeatResult | null> {
   try {
     const result = await serverGetAuthed<HeartbeatResult>("/api/heartbeat");
     cachedHeartbeat = result;
+    if (heartbeatDown) {
+      heartbeatDown = false;
+      for (const fn of reconnectHooks) {
+        try { fn(); } catch { /* a hook must not break the poll */ }
+      }
+    }
     // Notify the observer so the app can gate access when an account is
     // disabled — the heartbeat is the authoritative account-status check.
     try { heartbeatObserver?.(result); } catch { /* observer must not break the poll */ }
     return result;
   } catch {
+    heartbeatDown = true;
     return null;
   }
 }

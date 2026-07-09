@@ -33,6 +33,7 @@ import cron, { ScheduledTask } from "node-cron";
 import fs from "fs";
 import path from "path";
 import { initLocalDb } from "./local-db.js";
+import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { glyphhPath } from "./app-paths.js";
 import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
 import { serverGetAuthed } from "./auth.js";
@@ -170,6 +171,7 @@ export function cronSchedule(slug: string, args: Record<string, unknown>): { sch
   `).run(slug, id, expr, handler, argsJson);
 
   arm({ app_slug: slug, id, cron: expr, handler, args_json: argsJson });
+  queueScheduleOp({ op: "put", slug, id, cron: expr, handler, args: args.args ?? null, stamp: Date.now() });
   return { scheduled: true, id };
 }
 
@@ -178,6 +180,7 @@ export function cronCancel(slug: string, args: Record<string, unknown>): { cance
   if (!id) throw new Error("id is required");
   disarm(slug, id);
   const info = initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ? AND id = ?").run(slug, id);
+  queueScheduleOp({ op: "del", slug, id });
   return { cancelled: info.changes > 0 };
 }
 
@@ -217,6 +220,7 @@ export function resetAppSchedules(slug: string): void {
     }
   }
   initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ?").run(slug);
+  queueScheduleOp({ op: "reset", slug });
 }
 
 /** Stop every armed cron task (app shutdown) so node-cron timers don't keep the
@@ -226,6 +230,127 @@ export function stopAllSchedules(): void {
     try { task.stop(); } catch { /* ignore */ }
   }
   armedTasks.clear();
+}
+
+// ── Schedule sync — server-authoritative definitions, local execution ──────
+//
+// The server can't run app workers, so schedules FIRE here; their
+// DEFINITIONS live in /api/me/app-schedules so they roam and survive
+// reinstalls. Every local mutation queues an op (full payload snapshot,
+// persisted under a device-local pref key) that a debounced flush replays
+// server-side; syncSchedulesFromServer (boot, user switch, reconnect)
+// flushes first, replaces the local table with server truth, re-applies
+// still-unpushed ops, and re-arms. Offline the local cache keeps firing.
+
+type ScheduleOp =
+  | { op: "put"; slug: string; id: string; cron: string; handler: string; args: unknown; stamp: number }
+  | { op: "del"; slug: string; id: string }
+  | { op: "reset"; slug: string };
+
+const SCHEDULE_PENDING_KEY = "__schedulePending";
+const SCHEDULE_FLUSH_DEBOUNCE_MS = 2000;
+let scheduleFlushTimer: NodeJS.Timeout | null = null;
+
+function readScheduleOps(): ScheduleOp[] {
+  return getPreference<ScheduleOp[]>(SCHEDULE_PENDING_KEY, []) ?? [];
+}
+function writeScheduleOps(ops: ScheduleOp[]): void {
+  setPreference(SCHEDULE_PENDING_KEY, ops);
+}
+
+function queueScheduleOp(op: ScheduleOp): void {
+  const ops = readScheduleOps().filter((o) => {
+    if (op.op === "reset") return o.slug !== op.slug;                    // reset supersedes the app's ops
+    if (o.op === "reset") return true;                                   // keep earlier resets
+    return !(o.slug === op.slug && o.id === (op as { id: string }).id);  // same key: last op wins
+  });
+  ops.push(op);
+  writeScheduleOps(ops);
+  if (scheduleFlushTimer) clearTimeout(scheduleFlushTimer);
+  scheduleFlushTimer = setTimeout(() => { scheduleFlushTimer = null; void flushScheduleOps(); }, SCHEDULE_FLUSH_DEBOUNCE_MS);
+}
+
+/** Replay queued ops in order. Network failure keeps the rest queued
+ *  (order preserved); a validation rejection drops the op — it can never
+ *  succeed and must not wedge the queue. */
+async function flushScheduleOps(): Promise<void> {
+  let ops = readScheduleOps();
+  if (!ops.length) return;
+  let auth: typeof import("./auth.js");
+  try { auth = await import("./auth.js"); } catch { return; }
+  while (ops.length) {
+    const op = ops[0];
+    try {
+      if (op.op === "put") {
+        await auth.serverPutAuthed(`/api/me/app-schedules/${encodeURIComponent(op.slug)}/${encodeURIComponent(op.id)}`, {
+          cron: op.cron, handler: op.handler, args: op.args, updatedAtMs: op.stamp,
+        });
+      } else if (op.op === "del") {
+        await auth.serverDeleteAuthed(`/api/me/app-schedules/${encodeURIComponent(op.slug)}/${encodeURIComponent(op.id)}`);
+      } else {
+        await auth.serverDeleteAuthed(`/api/me/app-schedules/${encodeURIComponent(op.slug)}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/^bad |too large|limit reached/i.test(msg)) break; // offline — retry later
+      console.warn(`[glyphh-app] schedule op rejected (dropped): ${msg}`);
+    }
+    ops = ops.slice(1);
+    writeScheduleOps(ops);
+  }
+}
+
+/** Apply a still-unpushed op to the LOCAL table (used after a server pull
+ *  so local = server ⊕ pending). */
+function applyOpLocally(op: ScheduleOp): void {
+  const db = initLocalDb();
+  if (op.op === "put") {
+    if (!cron.validate(op.cron)) return;
+    const argsJson = op.args != null ? JSON.stringify(op.args) : null;
+    db.prepare(`
+      INSERT INTO app_schedules (app_slug, id, cron, handler, args_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT (app_slug, id) DO UPDATE SET
+        cron = excluded.cron, handler = excluded.handler,
+        args_json = excluded.args_json, updated_at = excluded.updated_at
+    `).run(op.slug, op.id, op.cron, op.handler, argsJson);
+    arm({ app_slug: op.slug, id: op.id, cron: op.cron, handler: op.handler, args_json: argsJson });
+  } else if (op.op === "del") {
+    disarm(op.slug, op.id);
+    db.prepare("DELETE FROM app_schedules WHERE app_slug = ? AND id = ?").run(op.slug, op.id);
+  } else {
+    for (const key of [...armedTasks.keys()]) {
+      if (key.startsWith(`${op.slug}\n`)) { armedTasks.get(key)?.stop(); armedTasks.delete(key); }
+    }
+    db.prepare("DELETE FROM app_schedules WHERE app_slug = ?").run(op.slug);
+  }
+}
+
+/** Full reconcile — boot, user switch, and connection recovery. Push-first,
+ *  then the server's definition set replaces the local table wholesale
+ *  (server-authoritative), then still-unpushed ops re-apply on top. */
+export async function syncSchedulesFromServer(): Promise<void> {
+  await flushScheduleOps();
+  let schedules: Array<{ appSlug: string; id: string; cron: string; handler: string; args: unknown }>;
+  try {
+    const auth = await import("./auth.js");
+    const r = await auth.serverGetAuthed<{ ok: boolean; schedules?: typeof schedules }>("/api/me/app-schedules");
+    if (!r.ok) return;
+    schedules = r.schedules ?? [];
+  } catch { return; } // offline / signed out — the local cache keeps firing
+  const db = initLocalDb();
+  stopAllSchedules();
+  db.prepare("DELETE FROM app_schedules").run();
+  const insert = db.prepare(`
+    INSERT INTO app_schedules (app_slug, id, cron, handler, args_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+  `);
+  for (const s of schedules) {
+    if (!cron.validate(s.cron)) continue;
+    insert.run(s.appSlug, s.id, s.cron, s.handler, s.args != null ? JSON.stringify(s.args) : null);
+  }
+  armAllSchedules();
+  for (const op of readScheduleOps()) applyOpLocally(op);
 }
 
 // ── connectors (connector.status / connector.tools / connector.call) ──

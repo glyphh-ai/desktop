@@ -96,6 +96,8 @@ import { initLocalDb, closeLocalDb } from "./local-db";
 import { setUserScopeReloader, onUserChange } from "./user-scope";
 import { syncPreferencesFromServer } from "./stores/preferences-db";
 import { syncChatsWithServer } from "./william-context";
+import { syncSchedulesFromServer } from "./glyphh-app-services";
+import { onServerReconnect } from "./auth";
 import { migrateFromFiles } from "./stores/migrate-from-files";
 import { getAgentMode } from "./action-gate";
 
@@ -345,10 +347,18 @@ async function boot() {
     appConnector?.rescopeForUserChange();
     connectorManager?.clearUserState();
     mcpManager?.setConnectorCatalog([]);
-    // Roaming prefs + chat sessions reconcile for the new identity: push
-    // offline edits first, then pull server truth. Fire-and-forget.
+    // Roaming prefs + chat sessions + app schedules reconcile for the new
+    // identity: push offline edits first, then pull server truth.
     void syncPreferencesFromServer();
     void syncChatsWithServer();
+    void syncSchedulesFromServer();
+  });
+  // Same reconcile the moment connectivity RETURNS (heartbeat recovers) —
+  // "server-authoritative, reconcile on restart or connection loss".
+  onServerReconnect(() => {
+    void syncPreferencesFromServer();
+    void syncChatsWithServer();
+    void syncSchedulesFromServer();
   });
 
   // Pipedream Connectors — managed OAuth connections (Advanced tier)
