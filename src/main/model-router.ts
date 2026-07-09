@@ -141,6 +141,13 @@ function decide(body: MessagesBody): Decision {
     return { at: Date.now(), route: "frontier", reason: "turn exceeds local context", score: 99 };
   }
 
+  // Vision: local models are text-only — an attached image forces the
+  // frontier lane so the model can actually SEE it (the Local pin above
+  // still wins; the image then rides as its path in the manifest only).
+  const hasImage = messages.some((m) =>
+    m.role === "user" && Array.isArray(m.content) && m.content.some((b) => b?.type === "image"));
+  if (hasImage) return { at: Date.now(), route: "frontier", reason: "image attached (vision)", score: 99 };
+
   if (/\b(escalate|use claude|ask claude)\b/i.test(ask)) bump(99, "explicit escalation ask");
   const fails = Math.min(failStreak(messages), 3);
   if (fails) bump(fails, `local flailing (${fails} failed/denied tool results)`);

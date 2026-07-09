@@ -11470,6 +11470,83 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
 }
 .code-run-card.failed { border-color: rgba(248, 81, 73, 0.4); }
 .code-run-card.failed .crc-cmd { color: #f85149; }
+
+/* Composer attachments — chips queue above the input and ride the send. */
+.code-attach-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+.code-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.code-attach-chip img {
+  width: 26px;
+  height: 26px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+.code-attach-chip .cac-ic { display: inline-flex; opacity: 0.75; }
+.code-attach-chip .cac-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+.code-attach-chip .cac-x {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 0 0 2px;
+  cursor: pointer;
+}
+.code-attach-chip .cac-x:hover { color: var(--text); }
+
+.code-attach-btn {
+  align-self: flex-end;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0 0 6px 8px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.code-attach-btn:hover { color: var(--text); background: var(--surface); }
+
+/* Drag-over target state for the whole composer. */
+.code-composer.dropping { outline: 1px dashed var(--text-3); outline-offset: -6px; border-radius: 12px; }
+
+/* Sent attachments under the user pill — same right alignment, no remove. */
+.code-msg-atts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  margin: 4px 0 2px;
+}
+.code-msg-atts .code-attach-chip { cursor: default; }
+
 .code-composer {
   width: 100%;
   max-width: 780px;

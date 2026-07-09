@@ -318,7 +318,10 @@ declare global {
       // Recents (rich)
       screenLayoutGet: () => Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>;
       screenLayoutSet: (v: { mode?: string; fraction?: number }) => Promise<{ mode: string; fraction: number }>;
-      williamRun: (p: { chatId: string }) => Promise<{ runId: string }>;
+      williamRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }> }) => Promise<{ runId: string }>;
+      williamPickAttachments: () => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
+      williamClassifyPaths: (paths: string[]) => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
+      williamSaveClipboardImage: (bytes: ArrayBuffer) => Promise<{ kind: "image"; path: string; name: string }>;
       williamSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
       williamSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
       williamRemember: (fact: string) => Promise<boolean>;

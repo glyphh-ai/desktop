@@ -58,12 +58,29 @@ function workdir(): string {
   return wd;
 }
 
+// Paths the user attached to the CURRENT run (composer chips) — attaching
+// is consent, so reads of these gate as plain reads even when they live
+// outside the working folder. Replaced wholesale at every run start.
+let runAttachments: string[] = [];
+export function setRunAttachments(paths: string[]): void {
+  runAttachments = paths.filter(Boolean);
+}
+const isAttachedPath = (abs: string) =>
+  runAttachments.some((p) => abs === p || abs.startsWith(p + sep));
+
 /** Resolve inside the working folder; escapes are flagged, not thrown —
  *  the gate decides (dangerous), so bypass mode can still allow them. */
 function resolvePath(p: unknown): { abs: string; escapes: boolean } {
   const wd = workdir();
   const abs = resolve(wd, String(p ?? "."));
   return { abs, escapes: abs !== wd && !abs.startsWith(wd + sep) };
+}
+
+/** resolvePath for READ-shaped tools: attached paths never count as
+ *  escapes (attach = consent to read). Writes keep the strict check. */
+function resolveReadPath(p: unknown): { abs: string; escapes: boolean } {
+  const r = resolvePath(p);
+  return { abs: r.abs, escapes: r.escapes && !isAttachedPath(r.abs) };
 }
 
 /** Read-shaped tool names (find/get/list/…) gate as reads — summarizing an
@@ -177,11 +194,11 @@ const TOOLS: ToolDef[] = [
     name: "list_dir",
     doc: "list_dir(path?) — list a folder in the workspace (name, type, size)",
     action: (a) => {
-      const { abs, escapes } = resolvePath(a.path);
+      const { abs, escapes } = resolveReadPath(a.path);
       return { kind: escapes ? "dangerous" : "read", title: `List ${abs}` };
     },
     run: async (a) => {
-      const { abs } = resolvePath(a.path);
+      const { abs } = resolveReadPath(a.path);
       const rows = readdirSync(abs).slice(0, 400).map((n) => {
         try {
           const st = statSync(join(abs, n));
@@ -193,13 +210,13 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "read_file",
-    doc: "read_file(path) — read a file in the workspace",
+    doc: "read_file(path) — read a file in the workspace (attached files too)",
     action: (a) => {
-      const { abs, escapes } = resolvePath(a.path);
+      const { abs, escapes } = resolveReadPath(a.path);
       return { kind: escapes ? "dangerous" : "read", title: `Read ${abs}` };
     },
     run: async (a) => {
-      const { abs } = resolvePath(a.path);
+      const { abs } = resolveReadPath(a.path);
       return cap(readFileSync(abs, "utf8"), READ_CAP);
     },
   },
@@ -234,11 +251,11 @@ const TOOLS: ToolDef[] = [
     name: "search_files",
     doc: "search_files(pattern, path?) — grep the workspace (regex, case-insensitive)",
     action: (a) => {
-      const { abs, escapes } = resolvePath(a.path);
+      const { abs, escapes } = resolveReadPath(a.path);
       return { kind: escapes ? "dangerous" : "read", title: `Search "${String(a.pattern ?? "")}" in ${abs}` };
     },
     run: async (a) => {
-      const { abs } = resolvePath(a.path);
+      const { abs } = resolveReadPath(a.path);
       const pat = String(a.pattern ?? "").replace(/'/g, "'\\''");
       return runShell(`grep -rniI --exclude-dir=node_modules --exclude-dir=.git -m 5 '${pat}' . | head -80`, abs);
     },

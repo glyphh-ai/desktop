@@ -20,13 +20,17 @@ import { spawn, type ChildProcess } from "child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { getPreference } from "./stores/preferences-db";
 import { effortMaxTokens, effortMaxTurns, williamEffort, williamMode, registerWilliamPermissionIpc } from "./william-permissions";
 import { captureRun } from "./william-training";
-import { executeWilliamTool, williamToolDefs, connectorWireTools, type ConnectorWireDef } from "./william-tools";
+import { executeWilliamTool, williamToolDefs, connectorWireTools, setRunAttachments, type ConnectorWireDef } from "./william-tools";
+import {
+  pickAttachments, classifyPaths, saveClipboardImage, validAttachments,
+  attachmentPromptBlock, attachmentVisionBlocks, type AttachRef,
+} from "./william-attachments";
 import { GLYPHH_APP_SPEC } from "./glyphh-app-spec";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
@@ -231,13 +235,17 @@ export function registerWilliamIpc(): void {
   registerWilliamPermissionIpc();
   registerWilliamContextIpc();
   registerModelRouterIpc();
-  ipcMain.handle("william-run", async (e, payload: { chatId: string }) => {
+  ipcMain.handle("william-run", async (e, payload: { chatId: string; attachments?: AttachRef[] }) => {
     if (active) throw new Error("a run is already in progress");
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Sessions run inside a folder the USER chose — never ~/, never the
     // launch cwd. The renderer turns this into the folder picker.
     if (!getExplicitWorkingDirectory()) throw new Error("NO_WORKDIR: pick a working folder to start");
+    // Composer attachments: validate paths, then whitelist them for reads
+    // (attach = consent) for the duration of this run.
+    const attachments = validAttachments(payload?.attachments);
+    setRunAttachments(attachments.map((a) => a.path));
     // Assembly is token-true (needs the server for /tokenize) — bring the
     // runtime up first so counting and completion share one warm process.
     await ensureWilliamServing();
@@ -246,7 +254,7 @@ export function registerWilliamIpc(): void {
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     const ctrl = new AbortController();
     active = { id, ctrl };
-    void sdkRun(e.sender, id, messages, ctrl).finally(() => {
+    void sdkRun(e.sender, id, messages, ctrl, attachments).finally(() => {
       if (active?.id === id) active = null;
       // Fold history AFTER the reply lands — a send never waits on it.
       // (The renderer saves the assistant turn right away; a short delay
@@ -269,6 +277,15 @@ export function registerWilliamIpc(): void {
   ipcMain.handle("william-stop", () => {
     active?.ctrl.abort();
     return true;
+  });
+
+  // ── Composer attachments ──────────────────────────────────────────────
+  ipcMain.handle("william-pick-attachments", () => pickAttachments());
+  ipcMain.handle("william-classify-paths", (_e, p: { paths?: unknown[] }) =>
+    classifyPaths(((p?.paths ?? []) as unknown[]).map(String)));
+  ipcMain.handle("william-save-clipboard-image", (_e, p: { bytes?: ArrayBuffer }) => {
+    if (!p?.bytes) throw new Error("no image bytes");
+    return saveClipboardImage(p.bytes);
   });
 
   ipcMain.handle("william-models-list", async () => {
@@ -383,6 +400,7 @@ async function sdkRun(
   runId: string,
   base: ChatMessage[],
   ctrl: AbortController,
+  attachments: AttachRef[] = [],
 ): Promise<void> {
   const emit = (channel: string, data: Record<string, unknown>) => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
@@ -439,7 +457,22 @@ async function sdkRun(
     await workspaceExtras(),
     history ? `<conversation_so_far>\n${history}\n</conversation_so_far>` : "",
   ].filter(Boolean).join("\n\n");
-  const lastUser = String(base[base.length - 1]?.content ?? "");
+  // Attachments append a path manifest to the user turn; attached images
+  // ALSO ride as real vision blocks (the router sees them and escalates —
+  // local models are text-only).
+  const attBlock = attachmentPromptBlock(attachments);
+  const lastUser = [String(base[base.length - 1]?.content ?? ""), attBlock].filter(Boolean).join("\n\n");
+  const visionBlocks = attachmentVisionBlocks(attachments);
+  const prompt: string | AsyncIterable<SDKUserMessage> = visionBlocks.length
+    ? (async function* (): AsyncGenerator<SDKUserMessage> {
+        yield {
+          type: "user",
+          session_id: "",
+          parent_tool_use_id: null,
+          message: { role: "user", content: [...visionBlocks, { type: "text", text: lastUser }] },
+        } as SDKUserMessage;
+      })()
+    : lastUser;
 
   const routerPort = await startModelRouter();
 
@@ -449,7 +482,7 @@ async function sdkRun(
   let tokens = 0;
   try {
     const q = query({
-      prompt: lastUser,
+      prompt,
       options: {
         cwd: getExplicitWorkingDirectory() ?? undefined,
         // The model the frontier slice runs on — the user's pick constrained

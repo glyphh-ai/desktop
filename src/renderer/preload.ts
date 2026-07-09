@@ -386,8 +386,14 @@ contextBridge.exposeInMainWorld("yo", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
-  williamRun: (p: { chatId: string }) =>
+  williamRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }> }) =>
     ipcRenderer.invoke("william-run", p) as Promise<{ runId: string }>,
+  williamPickAttachments: () =>
+    ipcRenderer.invoke("william-pick-attachments") as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
+  williamClassifyPaths: (paths: string[]) =>
+    ipcRenderer.invoke("william-classify-paths", { paths }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
+  williamSaveClipboardImage: (bytes: ArrayBuffer) =>
+    ipcRenderer.invoke("william-save-clipboard-image", { bytes }) as Promise<{ kind: "image"; path: string; name: string }>,
   williamSessionsLoad: () =>
     ipcRenderer.invoke("william-sessions-load") as Promise<{ chats: unknown[]; currentId: string }>,
   williamSessionsSave: (chats: unknown[], currentId: string) =>

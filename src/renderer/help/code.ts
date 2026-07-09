@@ -15,7 +15,8 @@ import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" }
+interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool"; attachments?: AttachRef[] }
 interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
 
 const STORE_KEY = "codeChats";
@@ -804,6 +805,15 @@ function renderThread(): void {
       if (b.msg.role === "user") {
         el.className = "code-msg user";
         el.textContent = b.msg.text;
+        // Attachment chips ride under the pill, same right alignment.
+        if (b.msg.attachments?.length) {
+          const atts = document.createElement("div");
+          atts.className = "code-msg-atts";
+          for (const a of b.msg.attachments) atts.appendChild(attachChipEl(a));
+          if (b.msg.text) inner.appendChild(el);
+          inner.appendChild(atts);
+          return;
+        }
       } else {
         el.className = "code-agent-text";
         el.innerHTML = formatMarkdown(b.msg.text);
@@ -844,6 +854,7 @@ function renderThread(): void {
 
 const FILE_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
 const TERM_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
+const FOLDER_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
 
 function diffBadgeHtml(text: string): { rest: string; badge: string } {
   const diff = /\s\[\+(\d+) -(\d+)\]\s*$/.exec(text);
@@ -972,6 +983,111 @@ function initWorkdirGate(): void {
   });
 }
 
+// ── Composer attachments ─────────────────────────────────────────────────
+// Images (pasted screenshots, picked files), files, and folders queue as
+// chips and ride the next send. Pasted image DATA saves to the user-scoped
+// attachments dir in main; everything else is a path reference.
+let pendingAttach: AttachRef[] = [];
+
+function attachChipEl(a: AttachRef, onRemove?: () => void): HTMLElement {
+  const chip = document.createElement("div");
+  chip.className = `code-attach-chip ${a.kind}`;
+  chip.title = a.path;
+  if (a.kind === "image") {
+    const img = document.createElement("img");
+    img.src = `file://${encodeURI(a.path)}`;
+    img.alt = "";
+    // Unloadable thumb (moved file, odd format) degrades to the file glyph.
+    img.onerror = () => {
+      const ic = document.createElement("span");
+      ic.className = "cac-ic";
+      ic.innerHTML = FILE_ICON;
+      img.replaceWith(ic);
+    };
+    chip.appendChild(img);
+  } else {
+    const ic = document.createElement("span");
+    ic.className = "cac-ic";
+    ic.innerHTML = a.kind === "folder" ? FOLDER_ICON : FILE_ICON;
+    chip.appendChild(ic);
+  }
+  const name = document.createElement("span");
+  name.className = "cac-name";
+  name.textContent = a.name;
+  chip.appendChild(name);
+  if (onRemove) {
+    const x = document.createElement("button");
+    x.className = "cac-x";
+    x.type = "button";
+    x.textContent = "×";
+    x.title = "Remove";
+    x.addEventListener("click", (e) => { e.stopPropagation(); onRemove(); });
+    chip.appendChild(x);
+  }
+  return chip;
+}
+
+function paintAttachChips(): void {
+  const wrap = el<HTMLDivElement>("code-attach-chips");
+  if (!wrap) return;
+  wrap.hidden = !pendingAttach.length;
+  wrap.textContent = "";
+  pendingAttach.forEach((a, i) => {
+    wrap.appendChild(attachChipEl(a, () => { pendingAttach.splice(i, 1); paintAttachChips(); }));
+  });
+}
+
+function queueAttachments(refs: AttachRef[]): void {
+  // Same path twice = once (re-dropping a folder shouldn't stack chips).
+  for (const r of refs) if (!pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
+  paintAttachChips();
+}
+
+/** Paste: Finder files carry paths (classify), raw image data (screenshots)
+ *  saves through main. Plain-text pastes keep their default behavior. */
+async function handleComposerPaste(e: ClipboardEvent): Promise<void> {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  const files: File[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.kind === "file") { const f = it.getAsFile(); if (f) files.push(f); }
+  }
+  if (!files.length) return;
+  e.preventDefault();
+  const paths: string[] = [];
+  const refs: AttachRef[] = [];
+  for (const f of files) {
+    const p = window.yo.getPathForFile(f);
+    if (p) { paths.push(p); continue; }
+    if (!f.type.startsWith("image/")) continue;
+    try { refs.push(await window.yo.williamSaveClipboardImage(await f.arrayBuffer())); }
+    catch { /* oversized/empty clipboard image — skip */ }
+  }
+  if (paths.length) refs.push(...await window.yo.williamClassifyPaths(paths));
+  if (refs.length) queueAttachments(refs);
+}
+
+function wireComposerAttachments(): void {
+  el("code-attach")?.addEventListener("click", () => {
+    void window.yo.williamPickAttachments().then((refs) => { if (refs.length) queueAttachments(refs); });
+  });
+  input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });
+  const comp = document.querySelector<HTMLElement>(".code-composer");
+  if (!comp) return;
+  comp.addEventListener("dragover", (e) => { e.preventDefault(); comp.classList.add("dropping"); });
+  comp.addEventListener("dragleave", (e) => {
+    if (!comp.contains(e.relatedTarget as Node)) comp.classList.remove("dropping");
+  });
+  comp.addEventListener("drop", (e) => {
+    e.preventDefault();
+    comp.classList.remove("dropping");
+    const paths = Array.from(e.dataTransfer?.files ?? []).map((f) => window.yo.getPathForFile(f)).filter(Boolean);
+    if (!paths.length) return;
+    void window.yo.williamClassifyPaths(paths).then((refs) => { if (refs.length) queueAttachments(refs); });
+  });
+}
+
 // ── Composer ─────────────────────────────────────────────────────────────
 function autoGrow(ta: HTMLTextAreaElement): void {
   // Grow with input up to ~10 lines, then scroll internally.
@@ -1001,7 +1117,7 @@ function send(): void {
   const ta = input();
   if (!ta) return;
   const text = ta.value.trim();
-  if (!text) return;
+  if (!text && !pendingAttach.length) return;
   // Dot-commands (.dip slack, .drip rain, …) run through the command parser —
   // the composer doubles as the command input.
   // `.compact [focus]` → fold the session's older turns now, optionally
@@ -1050,8 +1166,14 @@ function send(): void {
   }
   if (!current()) newChat();
   const c = current()!;
-  c.messages.push({ role: "user", text, at: Date.now() });
-  if (c.title === "New session") c.title = text.length > 42 ? text.slice(0, 42) + "…" : text;
+  const attachments = pendingAttach.slice();
+  pendingAttach = [];
+  paintAttachChips();
+  c.messages.push({ role: "user", text, at: Date.now(), ...(attachments.length ? { attachments } : {}) });
+  if (c.title === "New session") {
+    const t = text || attachments.map((a) => a.name).join(", ");
+    c.title = t.length > 42 ? t.slice(0, 42) + "…" : t;
+  }
   ta.value = "";
   autoGrow(ta);
   void saveStore();
@@ -1067,7 +1189,7 @@ function send(): void {
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
   const launch = (retried: boolean): Promise<void> =>
-    window.yo.williamRun({ chatId: c.id })
+    window.yo.williamRun({ chatId: c.id, attachments })
       .then((r) => { activeRunId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -1655,6 +1777,7 @@ export function initCode(): void {
     setRecentsOpen(open, true);
   });
   el("code-send")?.addEventListener("click", send);
+  wireComposerAttachments();
   initWilliamEvents();
   initWorkdirGate();
   initComposerControls();
