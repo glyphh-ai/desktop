@@ -1,10 +1,12 @@
 /**
- * William model delivery (client) — download weights from the manifest.
+ * Glyphh model delivery (client) — download stock weights from the registry.
  *
- * yo-server's /api/william/models returns presigned R2 URLs + sha256; this
- * streams the GGUF to userData/models (hashing as it writes), verifies,
- * and renames into place. Progress broadcasts as william:setup to every
- * panel so the composer spinner can read "Downloading William — 42%".
+ * yo-server's /api/william/models returns the model registry: public HF URLs
+ * (pinned to a commit revision) + sha256. This streams the GGUF to
+ * userData/models (hashing as it writes), verifies, and renames into place.
+ * A compiled-in copy of the registry covers signed-out and offline installs —
+ * Will and William are always present. Progress broadcasts as william:setup
+ * to every panel so the composer spinner can read "Downloading William — 42%".
  * One download at a time; a failed/mismatched file never lands.
  */
 
@@ -31,6 +33,61 @@ export interface WilliamModelEntry {
   url: string | null;
 }
 
+// Compiled-in registry fallback — the two stock models are ALWAYS available,
+// signed-out and offline-first-run included. The server manifest wins when
+// reachable (that's the registry control plane); these mirror its entries.
+// Stock open weights (Apache-2.0), pinned to HF commit revisions.
+const DEFAULT_MODELS: WilliamModelEntry[] = [
+  {
+    id: "will-7b-mini",
+    name: "will-7b-mini",
+    file: "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    url: "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/8911e8a47f92bac19d6f5c64a2e2095bd2f7d031/Qwen2.5-7B-Instruct-Q4_K_M.gguf?download=true",
+    size: 4683074240,
+    sha256: "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+    context: 32768,
+    minRamGB: 8,
+    default: false,
+    status: "available",
+    creditMultiplier: 1,
+    usage: "Your workspace assistant — opens apps, arranges layouts, runs your connected tools. Free on your hardware.",
+  },
+  {
+    id: "william-14b-base",
+    name: "william-14b-base",
+    file: "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+    url: "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/d0a692ef765eefbf2fabb130b3cb2e8917e3d225/qwen2.5-coder-14b-instruct-q4_k_m.gguf?download=true",
+    size: 8988110272,
+    sha256: "c1e659736d89ac1065fb495330fb824d94001974a4bfa78e7270e43476a8d940",
+    context: 32768,
+    minRamGB: 16,
+    default: true,
+    status: "available",
+    creditMultiplier: 2,
+    usage: "Light coding assistant — edits files and works the workspace on this machine. Free on your hardware.",
+  },
+];
+
+// The old fine-tune era left this on disk; replaced by stock weights, it is
+// deleted after a successful stock download (never before — offline users
+// keep a working model until the replacement has landed).
+const LEGACY_FILES = ["william-14b-q4km.gguf"];
+
+type ManifestModel = Omit<WilliamModelEntry, "url"> & { url?: string | null };
+
+/** Merge a server/cache list over the compiled-in registry. Entries whose
+ *  file is a retired artifact are dropped (the blob no longer exists — a
+ *  pre-cutover cache or a not-yet-deployed server still lists it), and any
+ *  compiled-in model missing from the list is appended, so Will and William
+ *  are always present no matter what the manifest source still says. */
+function mergeWithDefaults(models: ManifestModel[]): ManifestModel[] {
+  const live: ManifestModel[] = models.filter((m) => !LEGACY_FILES.includes(m.file));
+  for (const d of DEFAULT_MODELS) {
+    if (!live.some((m) => m.id === d.id)) live.push(d);
+  }
+  return live;
+}
+
 let downloading: Promise<string> | null = null;
 
 // ── Manifest cache (disk) — offline resolution + the selector's list ──────
@@ -55,22 +112,23 @@ function readManifestFile(): { at: number; models: Array<Omit<WilliamModelEntry,
 }
 
 export function cachedManifest(): Array<Omit<WilliamModelEntry, "url">> {
-  return readManifestFile().models;
+  return mergeWithDefaults(readManifestFile().models).map(({ url: _url, ...m }) => m);
 }
 
 /** Fresh manifest for the selector: refetch when the cache is empty or
  *  stale (signed-out/offline falls back to whatever the cache holds). */
 export async function refreshManifestIfStale(): Promise<Array<Omit<WilliamModelEntry, "url">>> {
   const { at, models } = readManifestFile();
-  if (models.length && Date.now() - at < MANIFEST_STALE_MS) return models;
+  if (models.length && Date.now() - at < MANIFEST_STALE_MS) return cachedManifest();
   try {
     const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
     if (r.models?.length) {
-      saveManifest(r.models);
-      return r.models.map(({ url: _url, ...m }) => m);
+      const merged = mergeWithDefaults(r.models);
+      saveManifest(merged as WilliamModelEntry[]);
+      return merged.map(({ url: _url, ...m }) => m);
     }
   } catch { /* signed out / offline */ }
-  return models;
+  return cachedManifest();
 }
 
 export function selectedModelId(): string {
@@ -131,9 +189,17 @@ export async function downloadWilliamModel(): Promise<string> {
 
 async function downloadInner(): Promise<string> {
   broadcast({ phase: "manifest" });
-  const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
-  const models = r.models || [];
-  if (!models.length) throw new Error("no William models published yet");
+  // Server registry when reachable; compiled-in stock entries otherwise —
+  // the free local tier never requires an account or a connection to exist.
+  // Either way the result is merged over the compiled-in registry so retired
+  // artifacts drop out and both models are always offered.
+  let models: WilliamModelEntry[];
+  try {
+    const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
+    models = mergeWithDefaults(r.models ?? []) as WilliamModelEntry[];
+  } catch {
+    models = DEFAULT_MODELS;
+  }
   saveManifest(models);
   const sel = selectedModelId();
   const avail = models.filter((m) => (m.status ?? "available") === "available");
@@ -190,6 +256,10 @@ async function downloadInner(): Promise<string> {
     throw new Error("model download corrupted (checksum mismatch) — try again");
   }
   renameSync(tmp, dest);
+  for (const legacy of LEGACY_FILES) {
+    const p = join(modelsDir(), legacy);
+    try { if (existsSync(p)) unlinkSync(p); } catch { /* best-effort */ }
+  }
   broadcast({ phase: "ready", model: model.name });
   return dest;
 }

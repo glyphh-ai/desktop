@@ -13,10 +13,11 @@
  * renders inline (william:approval → william-approval-respond), defaulting
  * to DENY after a timeout or if the panel is gone.
  *
- * Effort (williamEffort preference): low | medium | high. llama.cpp has no
- * native reasoning-effort for this model, so effort is OUR lever — it sets
- * the response token budget today and the repair-pass budget once the
- * generate→validate→repair loop lands.
+ * Effort (williamEffort preference) is the SLICER DIAL: far-left pins every
+ * turn to the local model (zero cost), Superfly sends every turn to Claude,
+ * and the middle stops escalate on evidence (see model-router.ts). The same
+ * setting still budgets local token/turn spend below — one lever, one story:
+ * more effort = more frontier = more credits.
  */
 
 import { ipcMain, type WebContents } from "electron";
@@ -45,6 +46,20 @@ export function williamMode(): WilliamMode {
 export function williamEffort(): WilliamEffort {
   const e = String(getPreference("williamEffort", "medium"));
   return e === "low" || e === "high" || e === "superfly" ? e : "medium";
+}
+
+/** The routing policy the slicer applies per turn (see model-router.ts):
+ *  local = never escalate · assist = escalate on strong evidence ·
+ *  eager = escalate readily · frontier = every turn goes to Claude. */
+export type EscalationPolicy = "local" | "assist" | "eager" | "frontier";
+
+export function escalationPolicy(): EscalationPolicy {
+  switch (williamEffort()) {
+    case "low": return "local";
+    case "high": return "eager";
+    case "superfly": return "frontier";
+    default: return "assist";
+  }
 }
 
 /** Agent-loop turn budget per effort tier (tool calls per run). */

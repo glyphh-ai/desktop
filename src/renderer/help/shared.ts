@@ -48,25 +48,59 @@ export function cssVar(name: string): string {
 
 // ── Confirm modal ──────────────────────────────────────────
 
-export function confirmAction(message: string): Promise<boolean> {
+export interface ConfirmOptions {
+  /** Header — the question, short and specific ("Delete this layout?"). */
+  title: string;
+  /** Body — optional consequence line ("It disappears from your library."). */
+  body?: string;
+  /** Footer primary label; defaults to "Confirm". */
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Destructive action → filled red confirm button. */
+  danger?: boolean;
+}
+
+/**
+ * The standard confirm dialog — header / body / footer, one look everywhere.
+ * Enter confirms, Escape or clicking the backdrop cancels.
+ */
+export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => {
     const overlay = document.getElementById("confirm-modal")!;
-    document.getElementById("confirm-message")!.textContent = message;
-    overlay.classList.remove("hidden");
+    const titleEl = document.getElementById("confirm-title")!;
+    const bodyWrap = overlay.querySelector<HTMLElement>(".confirm-body")!;
+    const msgEl = document.getElementById("confirm-message")!;
+    const yesBtn = document.getElementById("confirm-yes") as HTMLButtonElement;
+    const noBtn = document.getElementById("confirm-no") as HTMLButtonElement;
 
-    const yesBtn = document.getElementById("confirm-yes")!;
-    const noBtn = document.getElementById("confirm-no")!;
+    titleEl.textContent = opts.title;
+    msgEl.textContent = opts.body || "";
+    bodyWrap.classList.toggle("hidden", !opts.body);
+    yesBtn.textContent = opts.confirmLabel || "Confirm";
+    noBtn.textContent = opts.cancelLabel || "Cancel";
+    yesBtn.classList.toggle("danger", !!opts.danger);
+    overlay.classList.remove("hidden");
+    yesBtn.focus();
 
     function cleanup() {
       overlay.classList.add("hidden");
       yesBtn.removeEventListener("click", onYes);
       noBtn.removeEventListener("click", onNo);
+      overlay.removeEventListener("mousedown", onOverlay);
+      document.removeEventListener("keydown", onKey);
     }
     function onYes() { cleanup(); resolve(true); }
     function onNo() { cleanup(); resolve(false); }
+    function onOverlay(e: MouseEvent) { if (e.target === overlay) onNo(); }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") { e.preventDefault(); onNo(); }
+      else if (e.key === "Enter") { e.preventDefault(); onYes(); }
+    }
 
     yesBtn.addEventListener("click", onYes);
     noBtn.addEventListener("click", onNo);
+    overlay.addEventListener("mousedown", onOverlay);
+    document.addEventListener("keydown", onKey);
   });
 }
 

@@ -50,13 +50,17 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
     interface CreditsResp { balance?: number; allowance?: number }
+    interface MeCreditsResp { roleName?: string | null; uncapped?: boolean; capCredits?: number | null; spentCredits?: number; remainingCredits?: number | null; windowEnd?: string | null }
     interface UsageResp { totals?: { credits?: number; requests?: number } }
     interface DailyDay { day: string; credits?: number; requests?: number }
     interface DailyResp { days?: DailyDay[] }
     interface PanelApp { system?: boolean; url?: string | null; isBrowser?: boolean }
 
-    const [credits, usage, daily, apps] = await Promise.all([
+    const [credits, me, usage, daily, apps] = await Promise.all([
+      // Org pool — admins only; members get a 403 (→ null) and the personal
+      // allocation card below renders from /api/me/credits instead.
       serverGetAuthed<CreditsResp>("/api/billing/credits").catch(() => null),
+      serverGetAuthed<MeCreditsResp>("/api/me/credits").catch(() => null),
       // scope=me → the desktop dashboard always shows THIS user's spend, never
       // the org's. `to` is the current instant (not a date) so tonight's usage
       // isn't clipped for users in timezones behind UTC.
@@ -83,6 +87,10 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     return {
       name: (acct?.firstName || "").trim(),
       plan: getAuthStatus().tier || "",
+      // null credits = the org pool is admin-only for this account — the
+      // renderer swaps in the member card fed by `me`.
+      orgCredits: credits != null,
+      me,
       credits: Math.floor((credits?.balance || 0) / MICRO),
       allowance: Math.floor((credits?.allowance || 0) / MICRO),
       spendCredits: Math.floor((usage?.totals?.credits || 0) / MICRO),

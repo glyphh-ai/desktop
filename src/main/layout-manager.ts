@@ -8,7 +8,7 @@
 import fs from "fs";
 import path from "path";
 import { BrowserWindow } from "electron";
-import { glyphhPath } from "./app-paths.js";
+import { userScopedPath } from "./app-paths.js";
 import { PanelManager } from "./panel-manager";
 import { serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
 import { cachedServerGet, invalidateServerCache } from "./server-cache";
@@ -94,7 +94,9 @@ interface LegacyLayout {
 
 // ── Constants ───────────────────────────────────────────────
 
-const LAYOUTS_FILE = glyphhPath(".layouts");
+// Per-user offline cache of the server layout library — resolved at CALL
+// time (not import) so it follows the signed-in account (app-paths scoping).
+const layoutsFile = () => userScopedPath(".layouts");
 const TITLEBAR_HEIGHT = 38;
 const SPLIT_GAP = 8;
 const CELL_URL_HEIGHT = 22;
@@ -334,13 +336,17 @@ export class LayoutManager {
   async refreshAndList(): Promise<GridLayout[]> {
     try {
       const serverLayouts = await cachedServerGet<ServerLayout[]>("/api/layouts");
+      // Server is TRUTH: replace, never merge. Merging kept locally-cached
+      // entries (deleted elsewhere, or a previous signed-in account's) alive
+      // forever — the local file is only an offline stand-in.
+      this.layouts.clear();
       this.serverIds.clear();
       for (const sl of serverLayouts) {
         this.serverIds.set(sl.name, sl.id);
         this.layouts.set(sl.name, this.fromServer(sl));
       }
       this.persist();
-    } catch { /* keep local cache */ }
+    } catch { /* offline / pre-auth — keep local cache */ }
     return this.listLayouts();
   }
 
@@ -672,7 +678,7 @@ export class LayoutManager {
 
   private load() {
     try {
-      const raw = JSON.parse(fs.readFileSync(LAYOUTS_FILE, "utf-8")) as unknown[];
+      const raw = JSON.parse(fs.readFileSync(layoutsFile(), "utf-8")) as unknown[];
       let needsMigration = false;
       for (const item of raw) {
         const obj = item as Record<string, unknown>;
@@ -693,12 +699,22 @@ export class LayoutManager {
   }
 
   private persist() {
-    fs.mkdirSync(path.dirname(LAYOUTS_FILE), { recursive: true });
+    fs.mkdirSync(path.dirname(layoutsFile()), { recursive: true });
     fs.writeFileSync(
-      LAYOUTS_FILE,
+      layoutsFile(),
       JSON.stringify(Array.from(this.layouts.values()), null, 2),
       "utf-8",
     );
+  }
+
+  /** Identity switch: drop the previous account's layouts entirely, reload
+   *  the (re-scoped) local cache, then pull server truth. Without this, the
+   *  in-main-process map keeps serving the OLD user's layouts forever. */
+  resetForUserChange(): void {
+    this.layouts.clear();
+    this.serverIds.clear();
+    this.load();
+    void this.refreshAndList().catch(() => {});
   }
 
   private migrateLayout(legacy: LegacyLayout): GridLayout {

@@ -87,12 +87,13 @@ import { initScreenLayout, onWorkspaceChange } from "./screen-layout";
 import { DripManager, BUILTIN_EFFECTS, setDripManagerInstance } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
-import { registerSettingsIpc } from "./settings-ipc";
+import { registerSettingsIpc, migrateLocalByokKey } from "./settings-ipc";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
+import { setUserScopeReloader, onUserChange } from "./user-scope";
 import { migrateFromFiles } from "./stores/migrate-from-files";
 import { getAgentMode } from "./action-gate";
 
@@ -332,12 +333,29 @@ async function boot() {
     mainWindow?.webContents.send("mcp-changed");
   });
 
+  // Identity switch → hard renderer reload so no DOM/JS state from the
+  // previous account survives (per-user stores re-scope in user-scope.ts).
+  setUserScopeReloader(() => { mainWindow?.webContents.reload(); });
+  // …and reset every main-process singleton holding per-user state in memory
+  // (closures over the `let` bindings — all assigned long before any switch).
+  onUserChange(() => {
+    layoutManager?.resetForUserChange();
+    appConnector?.rescopeForUserChange();
+    connectorManager?.clearUserState();
+    mcpManager?.setConnectorCatalog([]);
+  });
+
   // Pipedream Connectors — managed OAuth connections (Advanced tier)
   connectorManager = new ConnectorManager();
   connectorManager.setMcpManager(mcpManager);
   connectorManager.setAppConnector(appConnector);
   connectorManager.on("changed", () => {
     mainWindow?.webContents.send("connectors-changed");
+  });
+  // Connect-flow progress (OAuth window closed → verifying → done) — drives
+  // the renderer's app-level loading overlay.
+  connectorManager.on("connect-progress", (p) => {
+    mainWindow?.webContents.send("connectors-connect-progress", p);
   });
 
   // Terminal manager — pty processes for terminal panels
@@ -1244,6 +1262,10 @@ async function boot() {
   // Initialize auth — restore session, schedule refresh, start heartbeat.
   // Hard 3s timeout so splash never hangs if server is unreachable.
   await Promise.race([initAuth(), new Promise((r) => setTimeout(r, 3000))]);
+
+  // One-time: any pre-cutover locally-stored Anthropic key moves server-side
+  // (encrypted) and is purged from this machine. Fire-and-forget.
+  void migrateLocalByokKey();
 
   // Working directory — the single project folder the app is focused on.
   if (!ipcMain.listenerCount("working-dir:get")) {

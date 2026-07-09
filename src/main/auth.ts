@@ -15,6 +15,7 @@ import fs from "fs";
 import path from "path";
 import { BrowserWindow, net, shell } from "electron";
 import { GLYPHH_DIR } from "./app-paths.js";
+import { setActiveUser } from "./user-scope.js";
 
 const CONFIG_DIR = GLYPHH_DIR;
 const SESSION_FILE = path.join(CONFIG_DIR, ".session");
@@ -118,10 +119,24 @@ function readSessionFile(): SessionData | null {
   }
 }
 
+/** The user id (JWT `sub`) inside our own access token — used only to scope
+ *  local state per account, never for authorization (the server does that). */
+function tokenSub(accessToken: string): string | null {
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString("utf8"));
+    return typeof payload.sub === "string" && payload.sub ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 function saveSessionFile(session: SessionData): void {
   secureWrite(SESSION_FILE, JSON.stringify(session));
   currentSession = session;
   scheduleRefresh(session);
+  // Every session write is an identity checkpoint: login as a DIFFERENT
+  // account re-scopes all per-user local state (no-op when unchanged).
+  setActiveUser(tokenSub(session.accessToken));
 }
 
 function clearSessionFile(): void {
@@ -130,6 +145,9 @@ function clearSessionFile(): void {
   cachedHeartbeat = null;
   if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
   try { fs.unlinkSync(SESSION_FILE); } catch { /* ignore */ }
+  // Signed out — per-user stores close and scope drops back to neutral so
+  // the next account can never read this one's local state.
+  setActiveUser(null);
 }
 
 // ── Token refresh ────────────────────────────────────────────
@@ -252,6 +270,8 @@ export async function initAuth(): Promise<void> {
   const saved = readSessionFile();
   if (saved) {
     currentSession = saved;
+    // Scope local state to the restored account before anything reads it.
+    setActiveUser(tokenSub(saved.accessToken));
     if (saved.expiresAt - Date.now() < REFRESH_MARGIN) {
       await refreshTokens();
     } else {

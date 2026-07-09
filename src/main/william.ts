@@ -1,14 +1,18 @@
 /**
- * William — the local agent loop's serving bridge.
+ * William — the agent loop, now the Claude Agent SDK's loop over the slicer.
  *
- * Streams chat completions from the William model served by llama-server
- * (OpenAI-compatible /v1/chat/completions, default 127.0.0.1:8089) into the
- * renderer: `william-run` starts a streamed run and deltas arrive on
- * `william:delta`, terminated by `william:done` (or `william:error`).
+ * One loop, sliced serving: `william-run` drives a Claude Agent SDK session
+ * whose every model call lands on the local model router (model-router.ts).
+ * The router serves routine turns from the on-device model (llama-server,
+ * OpenAI-compatible, default 127.0.0.1:8089) and escalates hard turns to the
+ * real Claude endpoint per the effort dial — local is free, credits only
+ * burn on frontier turns.
+ *
+ * The Glyphh tool surface rides into the loop as an in-process MCP server
+ * (william-tools.ts defs; every execution still passes gateWilliamAction).
+ * Renderer contract is unchanged: deltas on `william:delta`, tool activity
+ * on `william:tool`, termination via `william:done` / `william:error`.
  * One run at a time; `william-stop` aborts the active one.
- *
- * v1 = prompt → thinking → streamed response. The generate→validate→repair
- * bundle loop (emission format + oracle) layers on top of this later.
  */
 
 import { ipcMain, app, type WebContents } from "electron";
@@ -16,14 +20,19 @@ import { spawn, type ChildProcess } from "child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { getPreference } from "./stores/preferences-db";
 import { effortMaxTokens, effortMaxTurns, williamEffort, williamMode, registerWilliamPermissionIpc } from "./william-permissions";
 import { captureRun } from "./william-training";
-import { williamToolsPrompt, TURN_SCHEMA, executeWilliamTool } from "./william-tools";
+import { executeWilliamTool, williamToolDefs } from "./william-tools";
+import { GLYPHH_APP_SPEC } from "./glyphh-app-spec";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
 import { downloadWilliamModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId } from "./william-models";
 import { getExplicitWorkingDirectory } from "./working-directory";
+import { startModelRouter, stopModelRouter, registerModelRouterIpc, effectiveFrontierModel } from "./model-router";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -31,6 +40,12 @@ let active: { id: string; ctrl: AbortController } | null = null;
 
 function baseUrl(): string {
   return String(getPreference("williamBaseUrl", "http://127.0.0.1:8089")).replace(/\/+$/, "");
+}
+
+/** The local runtime's OpenAI-compatible endpoint — the slicer serves local
+ *  turns through this. */
+export function williamBaseUrl(): string {
+  return baseUrl();
 }
 
 export function isWilliamRunActive(): boolean {
@@ -46,7 +61,7 @@ export function isWilliamRunActive(): boolean {
 // configured base URL points at another machine, we never spawn — reach it
 // or fail with a clear error.
 
-const MODEL_FILE = "william-14b-q4km.gguf";
+const MODEL_FILE = "qwen2.5-coder-14b-instruct-q4_k_m.gguf";
 
 let managed: ChildProcess | null = null;
 let ensuring: Promise<void> | null = null; // single-flight
@@ -148,7 +163,9 @@ async function ensureInner(): Promise<void> {
   const args = [
     "-m", model,
     "--host", "127.0.0.1", "--port", String(port),
-    "--jinja", "-c", "16384", "-ngl", "99",
+    // 32k window: the SDK loop's system prompt + tool declarations are
+    // bigger than the old prose loop's — 16k left no room to work.
+    "--jinja", "-c", "32768", "-ngl", "99",
   ];
   const child = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
   let stderrTail = "";
@@ -156,7 +173,7 @@ async function ensureInner(): Promise<void> {
   managed = child;
   child.on("exit", () => { if (managed === child) managed = null; });
 
-  // Wait through the model load (8.4GB) — /health turns 200 when ready.
+  // Wait through the model load (several GB) — /health turns 200 when ready.
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     const deadline = Date.now() + 180_000;
@@ -184,10 +201,11 @@ async function ensureInner(): Promise<void> {
   });
 }
 
-/** Kill the managed server (no-op for an adopted external one). Wired to
- *  app will-quit — the runtime never outlives the client. */
+/** Kill the managed server + the slicer (no-op for an adopted external
+ *  runtime). Wired to app will-quit — nothing outlives the client. */
 export function shutdownWilliam(): void {
   active?.ctrl.abort();
+  stopModelRouter();
   if (managed) { try { managed.kill(); } catch { /* already gone */ } managed = null; }
 }
 
@@ -212,6 +230,7 @@ export function assertWilliamExternalAllowed(via: "relay" | "local-mcp"): void {
 export function registerWilliamIpc(): void {
   registerWilliamPermissionIpc();
   registerWilliamContextIpc();
+  registerModelRouterIpc();
   ipcMain.handle("william-run", async (e, payload: { chatId: string }) => {
     if (active) throw new Error("a run is already in progress");
     const chatId = String(payload?.chatId || "");
@@ -227,7 +246,7 @@ export function registerWilliamIpc(): void {
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     const ctrl = new AbortController();
     active = { id, ctrl };
-    void agentRun(e.sender, id, messages, replyBudget, ctrl).finally(() => {
+    void sdkRun(e.sender, id, messages, ctrl).finally(() => {
       if (active?.id === id) active = null;
       // Fold history AFTER the reply lands — a send never waits on it.
       // (The renderer saves the assistant turn right away; a short delay
@@ -272,18 +291,18 @@ export function registerWilliamIpc(): void {
   });
 }
 
-// ── Completion core — the ONE William call path ───────────────────────────
+// ── Completion core — direct local completion (compaction, relay tools) ───
 //
-// Everything that runs William goes through this: the composer's IPC runs
-// today, the generate→validate→repair loop and any relay/MCP tools next.
-// Ensures the runtime, streams, returns the full text. No re-wiring later.
+// The agent loop no longer calls this (the SDK loop talks to the slicer);
+// it remains the ONE path for utility completions that must stay local and
+// cheap: history folding, summarize-on-demand, relay/MCP one-shots.
 
 export interface WilliamCompleteOpts {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
-  /** Grammar-constrain the reply to this JSON schema (agent turns). */
+  /** Grammar-constrain the reply to this JSON schema (structured turns). */
   schema?: object;
 }
 
@@ -329,26 +348,16 @@ export async function williamComplete(messages: ChatMessage[], opts: WilliamComp
   return text;
 }
 
-/**
- * The agent loop: schema-constrained turns ({thought, action|final}) — the
- * grammar guarantees every turn parses, the gate clears every action, and
- * tool observations feed back until a final lands or the effort turn
- * budget runs out. Thought/tool activity streams to the panel as
- * william:tool events; the final answer arrives as one delta.
- */
-async function agentRun(
-  wc: WebContents,
-  runId: string,
-  base: ChatMessage[],
-  replyBudget: number,
-  ctrl: AbortController,
-): Promise<void> {
-  const emit = (channel: string, data: Record<string, unknown>) => {
-    try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
-  };
-  // Tool instructions ride as a second system message so the cached prefix
-  // (system + memory + summary) stays byte-stable across runs. The app
-  // library is inlined so open_app targets real slugs (not guesses).
+// ── The loop — Claude Agent SDK over the slicer ────────────────────────────
+//
+// query() runs the SDK's own agent loop; ANTHROPIC_BASE_URL points its every
+// model call at the router, which serves locally or escalates per the dial.
+// Tools ride as an in-process MCP server; the gate (mode model + approval
+// cards) fires inside each execution exactly as before.
+
+/** Extra workspace context appended to the system prompt (app library +
+ *  connected accounts) so open_app / connection_call target real names. */
+async function workspaceExtras(): Promise<string> {
   let appList = "";
   try {
     const apps = await cachedServerGet<Array<{ slug?: string | null; name: string }>>("/api/panel-apps");
@@ -360,122 +369,175 @@ async function agentRun(
     const r = await serverGetAuthed<{ connections?: Array<{ appSlug?: string }> }>("/api/connections");
     connList = [...new Set((r.connections || []).map((c) => String(c.appSlug || "")).filter(Boolean))].join(", ");
   } catch { /* signed out */ }
-  const toolsMsg: ChatMessage = {
-    role: "system",
-    content:
-      "You are an agent loop with tools. Available tools:\n" + williamToolsPrompt() +
-      (appList ? `\n\nThe user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "") +
-      (connList ? `\n\nConnected accounts (connection_tools/connection_call): ${connList}` : "") +
-      "\n\nRULE: the working folder ROOT holds the current app's source (manifest.json, worker.js, index.html) — edit THOSE files directly, never create nested app folders. After editing app source, call update_app() or tool calls run the stale installed version. " +
-      "\n\nRULE: before your FIRST connection_call to any connector in a session, call connection_tools(connector) — connector tool names are exact strings you cannot guess. " +
-      "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly." +
-      "\n\nEach turn reply as JSON: {\"thought\": \"one short sentence\", \"action\": {\"name\": \"tool\", \"arguments\": {…}}} to use a tool, " +
-      "or {\"thought\": \"…\", \"final\": \"your complete answer\"} when done. " +
-      "Tool results arrive as <tool_response> messages. If a tool is DENIED, adapt or finish. Never invent tool output.",
+  return [
+    appList ? `The user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "",
+    connList ? `Connected accounts (connection_tools/connection_call): ${connList}` : "",
+    "RULE: the working folder ROOT holds the current app's project — build it there, then call update_app() to ship it (it packages the built dist/, never your source). After any change, rebuild + update_app or tool calls run the stale installed version.",
+    GLYPHH_APP_SPEC,
+    "RULE: before your FIRST connection_call to any connector in a session, call connection_tools(connector) — connector tool names are exact strings you cannot guess. " +
+    "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
+  ].filter(Boolean).join("\n\n");
+}
+
+async function sdkRun(
+  wc: WebContents,
+  runId: string,
+  base: ChatMessage[],
+  ctrl: AbortController,
+): Promise<void> {
+  const emit = (channel: string, data: Record<string, unknown>) => {
+    try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
   };
-  const messages: ChatMessage[] = [base[0], toolsMsg, ...base.slice(1)];
-  const maxTurns = effortMaxTurns();
-  let turnsUsed = 0;
-  // Identical-failure breaker: one real retry is allowed; the third copy of
-  // the same failing call is intercepted with a hard redirect instead of
-  // burning another execution.
-  let lastSig = "";
-  let lastFailed = false;
-  let repeatFails = 0;
-  // Same-tool streak: varying inputs into the same failing tool is still a
-  // spiral (the fox/finance runs) — escalate guidance at 3, force a finish
-  // at 6.
-  let failToolName = "";
-  let failToolStreak = 0;
+
+  const defs = williamToolDefs();
+
+  // The Glyphh surface as an in-process MCP server. Raw JSON schemas (open
+  // objects described by each tool's doc line) — the executor validates, and
+  // both the local model and Claude work from the same prose contract.
+  const mcp = new McpServer({ name: "glyphh", version: "1.0.0" }, { capabilities: { tools: {} } });
+  mcp.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: defs.map((d) => ({
+      name: d.name,
+      description: d.doc,
+      inputSchema: { type: "object" as const, additionalProperties: true },
+    })),
+  }));
+  mcp.server.setRequestHandler(CallToolRequestSchema, async (rq) => {
+    const name = String(rq.params.name || "");
+    const args = (rq.params.arguments ?? {}) as Record<string, unknown>;
+    emit("william:tool", { phase: "start", name });
+    const outcome = await executeWilliamTool(wc, { name, arguments: args }, ctrl.signal);
+    emit("william:tool", {
+      phase: "done",
+      name,
+      title: outcome.title,
+      denied: outcome.denied,
+      failed: outcome.result.startsWith("ERROR"),
+      preview: outcome.result.slice(0, 160),
+    });
+    return { content: [{ type: "text" as const, text: outcome.result }], isError: outcome.result.startsWith("ERROR") };
+  });
+
+  // System prompt = assembled base system (persona + memory + summary) +
+  // workspace extras + prior turns. The SDK owns the live loop; our
+  // compactor still owns long-term history budget upstream of this.
+  const history = base.slice(1, -1)
+    .map((m) => `${m.role === "user" ? "User" : "William"}: ${m.content}`)
+    .join("\n");
+  const system = [
+    base[0]?.content ?? "",
+    await workspaceExtras(),
+    history ? `<conversation_so_far>\n${history}\n</conversation_so_far>` : "",
+  ].filter(Boolean).join("\n\n");
+  const lastUser = String(base[base.length - 1]?.content ?? "");
+
+  const routerPort = await startModelRouter();
+
   let finalText = "";
   let runError = "";
-  // Generated-token counter (one SSE delta ≈ one token) — throttled to the
-  // panel so the spinner can read "1m 34s · 260 tokens".
+  let turnsUsed = 0;
   let tokens = 0;
-  let lastProgress = 0;
-  const countDelta = () => {
-    tokens++;
-    const now = Date.now();
-    if (now - lastProgress > 250) {
-      lastProgress = now;
-      emit("william:progress", { tokens });
-    }
-  };
   try {
-    for (let turn = 0; turn < maxTurns; turn++) {
-      if (ctrl.signal.aborted) throw new Error("aborted");
-      turnsUsed = turn + 1;
-      const raw = await williamComplete(messages, {
-        signal: ctrl.signal,
-        maxTokens: replyBudget,
-        temperature: 0.15,
-        schema: TURN_SCHEMA,
-        onDelta: countDelta,
-      });
-      let parsed: { thought?: string; action?: { name: string; arguments?: Record<string, unknown> }; final?: string };
-      try {
-        parsed = JSON.parse(raw) as typeof parsed;
-      } catch {
-        // Grammar should make this impossible — treat raw text as the final.
-        emit("william:delta", { delta: raw });
-        break;
-      }
-      if (parsed.action?.name) {
-        const sig = parsed.action.name + JSON.stringify(parsed.action.arguments ?? {});
-        if (sig === lastSig && lastFailed) repeatFails++;
-        else repeatFails = 0;
-        if (repeatFails >= 2) {
-          emit("william:tool", { phase: "start", name: parsed.action.name, thought: parsed.thought || "" });
-          emit("william:tool", { phase: "done", name: parsed.action.name, title: `Repeated failing call intercepted (${parsed.action.name})`, failed: true, preview: "same call, same failure — redirected" });
-          messages.push({ role: "assistant", content: raw });
-          messages.push({ role: "user", content: "<tool_response>\nSTOP: this exact call has now failed with the same error multiple times. Do NOT repeat it. Do something DIFFERENT: fix the underlying cause, use another tool, or finish and tell the user honestly what worked and what didn't.\n</tool_response>" });
-          lastSig = sig;
-          continue;
+    const q = query({
+      prompt: lastUser,
+      options: {
+        cwd: getExplicitWorkingDirectory() ?? undefined,
+        // The model the frontier slice runs on — the user's pick constrained
+        // to the org's allow-list (gateway lane). Local turns ignore it.
+        model: await effectiveFrontierModel(),
+        systemPrompt: system,
+        settingSources: [],
+        tools: [], // no built-ins — the Glyphh surface is the whole toolset
+        mcpServers: { glyphh: { type: "sdk", name: "glyphh", instance: mcp as never } },
+        allowedTools: defs.map((d) => `mcp__glyphh__${d.name}`),
+        // Gating lives inside executeWilliamTool (mode model + approval
+        // cards) — the SDK's own prompt layer always defers to it.
+        canUseTool: async (_tool, input) => ({ behavior: "allow" as const, updatedInput: input }),
+        permissionMode: "default",
+        maxTurns: effortMaxTurns(),
+        persistSession: false,
+        executable: "node",
+        // Token-level partials — the thread streams live instead of getting
+        // each turn's text dumped whole at message end.
+        includePartialMessages: true,
+        abortController: ctrl,
+        env: {
+          ...process.env,
+          ANTHROPIC_BASE_URL: `http://127.0.0.1:${routerPort}`,
+          // The router injects the real key upstream on escalated turns —
+          // the loop subprocess never holds it.
+          ANTHROPIC_API_KEY: "glyphh-router",
+          ANTHROPIC_AUTH_TOKEN: undefined,
+          CLAUDE_CODE_USE_BEDROCK: undefined,
+          CLAUDE_CODE_USE_VERTEX: undefined,
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+          DISABLE_TELEMETRY: "1",
+        },
+      },
+    });
+
+    // Live token stream (includePartialMessages). `sawPartials` guards the
+    // fallback: an SDK without partial support still paints whole messages.
+    let sawPartials = false;
+    let pendingSep = false; // separate consecutive assistant turns with \n\n
+    let lastProgressAt = 0;
+    for await (const msg of q as AsyncIterable<SDKMessage>) {
+      if (ctrl.signal.aborted) break;
+      if (msg.type === "stream_event") {
+        const ev = (msg as unknown as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+        if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
+          sawPartials = true;
+          if (pendingSep && finalText) { finalText += "\n\n"; emit("william:delta", { delta: "\n\n" }); }
+          pendingSep = false;
+          finalText += ev.delta.text;
+          emit("william:delta", { delta: ev.delta.text });
+          tokens = Math.ceil(finalText.length / 4);
+          const now = Date.now();
+          if (now - lastProgressAt > 400) { lastProgressAt = now; emit("william:progress", { tokens }); }
         }
-        emit("william:tool", { phase: "start", name: parsed.action.name, thought: parsed.thought || "" });
-        const outcome = await executeWilliamTool(wc, parsed.action, ctrl.signal);
-        lastSig = sig;
-        lastFailed = outcome.denied || outcome.result.startsWith("ERROR");
-        if (lastFailed && parsed.action.name === failToolName) failToolStreak++;
-        else if (lastFailed) { failToolName = parsed.action.name; failToolStreak = 1; }
-        else { failToolName = ""; failToolStreak = 0; }
-        let streakNote = "";
-        if (failToolStreak === 3) {
-          streakNote = `\n\nNOTE: ${parsed.action.name} has now failed 3 times in a row with different inputs. The approach itself may be impossible under the platform's constraints — re-read the error CAREFULLY, change strategy entirely, or finish and explain the constraint honestly.`;
-        } else if (failToolStreak >= 6) {
-          streakNote = `\n\nSTOP. Finish NOW ({"thought": "…", "final": "…"}): summarize what was built, what works, and exactly which platform constraint blocked the rest. Do not call ${parsed.action.name} again.`;
+      } else if (msg.type === "assistant") {
+        turnsUsed++;
+        const text = (msg.message.content as Array<{ type: string; text?: string }>)
+          .filter((b) => b.type === "text")
+          .map((b) => b.text || "")
+          .join("");
+        if (text) {
+          if (sawPartials) {
+            // Already streamed token-by-token — just mark the turn boundary
+            // so the NEXT turn's first token gets a paragraph break.
+            pendingSep = true;
+          } else {
+            finalText = finalText ? `${finalText}\n\n${text}` : text;
+            emit("william:delta", { delta: finalText === text ? text : `\n\n${text}` });
+          }
+          tokens = Math.ceil(finalText.length / 4);
+          emit("william:progress", { tokens });
         }
-        emit("william:tool", {
-          phase: "done",
-          name: parsed.action.name,
-          title: outcome.title,
-          denied: outcome.denied,
-          failed: outcome.result.startsWith("ERROR"),
-          preview: outcome.result.slice(0, 160),
-        });
-        messages.push({ role: "assistant", content: raw });
-        messages.push({ role: "user", content: `<tool_response>\n${outcome.result}${streakNote}\n</tool_response>` });
-        if (ctrl.signal.aborted) throw new Error("aborted");
-        continue;
+      } else if (msg.type === "result") {
+        const r = msg as { subtype: string; result?: string; num_turns?: number };
+        if (r.subtype === "success") {
+          if (!finalText && r.result) { finalText = r.result; emit("william:delta", { delta: finalText }); }
+        } else {
+          runError = `run ended: ${r.subtype.replaceAll("_", " ")}`;
+        }
+        if (typeof r.num_turns === "number") turnsUsed = r.num_turns;
       }
-      finalText = parsed.final || parsed.thought || "";
-      messages.push({ role: "assistant", content: raw });
-      emit("william:delta", { delta: finalText });
-      break;
     }
+    if (ctrl.signal.aborted) throw new Error("aborted");
     emit("william:progress", { tokens });
-    emit("william:done", { stopped: false });
+    if (runError) emit("william:error", { error: runError });
+    else emit("william:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) {
       emit("william:done", { stopped: true });
-      captureRun({ kind: "agent", effort: williamEffort(), mode: williamMode(), turnsUsed, stopped: true, messages });
+      captureRun({ kind: "agent", effort: williamEffort(), mode: williamMode(), turnsUsed, stopped: true, messages: base });
       return;
     }
     runError = err instanceof Error ? err.message : String(err);
     emit("william:error", { error: runError });
   }
-  // The flywheel: the full transcript (memory + history + constrained
-  // turns + tool observations + final) is next-run training data.
+  // The flywheel: transcript + outcome are next-era training data (the
+  // tripwire corpus — frontier turns teach the local model by example).
   captureRun({
     kind: "agent",
     effort: williamEffort(),
@@ -483,6 +545,6 @@ async function agentRun(
     turnsUsed,
     final: finalText,
     ...(runError ? { error: runError } : {}),
-    messages,
+    messages: [...base, { role: "assistant", content: finalText }],
   });
 }

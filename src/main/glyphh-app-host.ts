@@ -47,6 +47,7 @@ import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
+import { lintNoRemoteAssets } from "./glyphh-app-spec.js";
 import {
   initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend,
   connectorStatus, connectorTools, connectorCall,
@@ -202,6 +203,18 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   if (recursiveTool) {
     return { ok: false, error: `Tool "${recursiveTool.name}" cannot expose agent.run as a tool` };
   }
+
+  // Defense in depth over the runtime CSP: refuse a bundle whose HTML/CSS/JS
+  // references remote code (CDN, external <script>/<link>, remote import) —
+  // catches hand-crafted or imported .glyphh files, not just update_app builds.
+  const textEntries: Record<string, string> = {};
+  for (const e of zip.getEntries()) {
+    if (e.isDirectory || !/\.(html?|css|m?js|jsx|ts|tsx)$/i.test(e.entryName)) continue;
+    if (e.header.size > 2_000_000) continue;
+    try { textEntries[e.entryName] = e.getData().toString("utf8"); } catch { /* skip */ }
+  }
+  const remote = lintNoRemoteAssets(textEntries);
+  if (remote.length) return { ok: false, error: `Bundle references remote assets (bundle them at build time): ${remote[0]}` };
 
   const dir = path.join(customAppsDir(), manifest.slug);
   fs.mkdirSync(dir, { recursive: true });

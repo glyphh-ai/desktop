@@ -14,7 +14,16 @@ declare const Chart: any;
 interface DashboardData {
   name: string;
   plan: string;           // org tier slug (free / basic / pro / advanced)
-  credits: number;        // whole credits available
+  orgCredits: boolean;    // false = org pool is admin-only for this account
+  me: {                   // the member's own allocation (role cap + spend)
+    roleName?: string | null;
+    uncapped?: boolean;
+    capCredits?: number | null;
+    spentCredits?: number;
+    remainingCredits?: number | null;
+    windowEnd?: string | null;
+  } | null;
+  credits: number;        // whole credits available (admins only)
   allowance: number;      // whole credits/month included in the plan
   spendCredits: number;   // whole credits used this calendar month
   requests: number;       // billable calls this month
@@ -108,11 +117,28 @@ export async function loadDashboard(): Promise<void> {
 
     $a("dash-greeting").textContent = greeting(data.name);
 
-    $a("dash-credits-value").textContent = fmtInt(data.credits);
     const planName = data.plan ? data.plan.charAt(0).toUpperCase() + data.plan.slice(1) : "";
-    $a("dash-credits-sub").textContent = data.allowance > 0
-      ? `${planName ? `${planName} plan · ` : ""}${fmtInt(data.allowance)} credits/mo`
-      : (planName ? `${planName} plan` : "available");
+    if (data.orgCredits === false) {
+      // Member view — the org pool is admin-only; show THEIR allocation
+      // (role cap, spend across LLM + compute, reset date).
+      $a("dash-credits-label").textContent = "Your credits";
+      if (data.me?.uncapped ?? true) {
+        $a("dash-credits-value").textContent = "Pooled";
+        $a("dash-credits-sub").textContent = `no personal cap — you draw from the team pool${data.me?.roleName ? ` · ${data.me.roleName}` : ""}`;
+      } else {
+        $a("dash-credits-value").textContent = fmtInt(data.me?.remainingCredits ?? 0);
+        const resets = data.me?.windowEnd
+          ? new Date(data.me.windowEnd).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+          : "soon";
+        $a("dash-credits-sub").textContent = `${fmtInt(data.me?.spentCredits ?? 0)} of ${fmtInt(data.me?.capCredits ?? 0)} used · resets ${resets}`;
+      }
+    } else {
+      $a("dash-credits-label").textContent = "Organization credits";
+      $a("dash-credits-value").textContent = fmtInt(data.credits);
+      $a("dash-credits-sub").textContent = data.allowance > 0
+        ? `${planName ? `${planName} plan · ` : ""}${fmtInt(data.allowance)} credits/mo`
+        : (planName ? `${planName} plan` : "available");
+    }
 
     $a("dash-spend-value").textContent = fmtInt(data.spendCredits);
     $a("dash-spend-sub").textContent = `credits used${data.requests ? ` · ${fmtInt(data.requests)} calls` : ""}`;

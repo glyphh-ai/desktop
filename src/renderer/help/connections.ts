@@ -8,6 +8,7 @@
 
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { confirmAction } from "./shared.js";
+import { showAppOverlay, hideAppOverlay } from "../app-overlay.js";
 
 type Conn = Awaited<ReturnType<typeof window.yo.connectionsList>>["connections"][number];
 type CatalogApp = Awaited<ReturnType<typeof window.yo.connectorsGetApps>>["apps"][number];
@@ -193,6 +194,14 @@ export function initConnections(): void {
   catalogSearch = document.getElementById("conn-catalog-search") as HTMLInputElement;
   catalogMore = document.getElementById("conn-catalog-more")!;
 
+  // Connect-flow overlay — from the moment the OAuth window closes until the
+  // connection is verified (or ruled cancelled), the standard spinner covers
+  // the whole app so the handoff never looks dead.
+  window.yo.onConnectorsConnectProgress?.((p) => {
+    if (p.phase === "verifying") showAppOverlay(`Finishing ${p.appSlug}`);
+    else hideAppOverlay();
+  });
+
   searchEl.addEventListener("input", () => { connSearch = searchEl.value; renderConnectionsList(); });
   document.getElementById("conn-add-btn")!.addEventListener("click", openCatalog);
   document.getElementById("conn-modal-close")!.addEventListener("click", closeCatalog);
@@ -234,7 +243,12 @@ export function initConnections(): void {
     if (!currentConnId) return;
     const c = connections.find((x) => x.id === currentConnId);
     const label = c ? (c.label || c.appName) : "this connection";
-    if (!(await confirmAction(`Disconnect “${label}”? Your AI will lose access to its tools.`))) return;
+    if (!(await confirmAction({
+      title: `Disconnect “${label}”?`,
+      body: "Your AI loses access to its tools until you reconnect the account.",
+      confirmLabel: "Disconnect",
+      danger: true,
+    }))) return;
     disc.disabled = true;
     const res = await window.yo.connectionDisconnect(currentConnId);
     disc.disabled = false;

@@ -380,6 +380,8 @@ contextBridge.exposeInMainWorld("yo", {
   userTimezoneSet: (tz: string) => ipcRenderer.invoke("user-timezone-set", tz) as Promise<{ ok: boolean; error?: string }>,
   orgGuardrailsGet: () => ipcRenderer.invoke("org-guardrails-get") as Promise<{ ok: boolean; policy?: Record<string, number> | null; error?: string }>,
   orgGuardrailsSet: (policy: Record<string, number> | null) => ipcRenderer.invoke("org-guardrails-set", policy) as Promise<{ ok: boolean; error?: string }>,
+  // AI Gateway — escalation models (org-governed), slicer usage, org governance.
+  gatewayModelsList: () => ipcRenderer.invoke("gateway-models-list") as Promise<{ models: Array<{ model: string; display_name: string; input_credits_per_mtok: number | null; output_credits_per_mtok: number | null }>; default: string | null; selected: string | null; effective: string; lanes: { byok: boolean; gateway: boolean } }>,
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
@@ -400,7 +402,7 @@ contextBridge.exposeInMainWorld("yo", {
   williamModelsList: () =>
     ipcRenderer.invoke("william-models-list") as Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; status: string; usage: string; downloaded: boolean }> }>,
   williamContextUsage: (chatId: string) =>
-    ipcRenderer.invoke("william-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>,
+    ipcRenderer.invoke("william-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   williamStop: () => ipcRenderer.invoke("william-stop") as Promise<boolean>,
   williamStatus: () => ipcRenderer.invoke("william-status") as Promise<{ up: boolean }>,
   onWilliamDelta: (callback: (d: { runId: string; delta: string }) => void) => {
@@ -574,6 +576,12 @@ contextBridge.exposeInMainWorld("yo", {
   connectorsRefreshMcp: () => ipcRenderer.invoke("connectors-refresh-mcp") as Promise<{ ok: boolean; error?: string; toolCount: number }>,
   connectorsListTools: () => ipcRenderer.invoke("connectors-list-tools") as Promise<Array<{ slug: string; name: string; description: string }>>,
   onConnectorsChanged: (cb: () => void) => { ipcRenderer.on("connectors-changed", cb); },
+  providerKeyStatus: () => ipcRenderer.invoke("provider-key-status") as Promise<{ provider: string; hasKey: boolean; lastTestOk: boolean | null; lastTestError: string | null; lastTestedAt: string | null } | null>,
+  providerKeySet: (key: string) => ipcRenderer.invoke("provider-key-set", key) as Promise<{ ok: boolean; testOk: boolean; testError?: string }>,
+  providerKeyDelete: () => ipcRenderer.invoke("provider-key-delete") as Promise<{ ok: boolean }>,
+  onConnectorsConnectProgress: (cb: (p: { phase: "verifying" | "done"; appSlug: string; ok?: boolean; error?: string }) => void) => {
+    ipcRenderer.on("connectors-connect-progress", (_e, p) => cb(p));
+  },
 
   // Apps registry live-reload — fired when ~/.glyphh/apps changes on disk so the
   // registry + picker refresh without a restart.

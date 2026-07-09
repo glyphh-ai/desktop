@@ -170,6 +170,13 @@ export class ConnectorManager extends EventEmitter {
     return this.cachedAccounts;
   }
 
+  /** Identity switch: drop the previous account's cached accounts/catalog so
+   *  an error-path fallback can never serve them to the next user. */
+  clearUserState(): void {
+    this.cachedAccounts = [];
+    this.cachedApps = [];
+  }
+
   async disconnectAccount(accountId: string): Promise<boolean> {
     try {
       const removed = this.cachedAccounts.find((a) => a.id === accountId);
@@ -245,9 +252,22 @@ export class ConnectorManager extends EventEmitter {
       );
 
       let resolved = false;
+      const done = (ok: boolean, error?: string) => {
+        // Renderer drops its app-level overlay on this.
+        this.emit("connect-progress", { phase: "done", appSlug, ok, error });
+        resolve({ ok, error });
+      };
       const finish = async (success: boolean, error?: string) => {
         if (resolved) return;
         resolved = true;
+
+        // Outcome is known — close the OAuth window right away and let the
+        // app-level overlay narrate the verification (account sync + tool
+        // catalog refresh take a few seconds).
+        this.emit("connect-progress", { phase: "verifying", appSlug });
+        if (this.oauthWindow && !this.oauthWindow.isDestroyed()) {
+          this.oauthWindow.close();
+        }
 
         if (success) {
           const accounts = await this.getAccounts();
@@ -257,10 +277,7 @@ export class ConnectorManager extends EventEmitter {
           this.emit("changed");
         }
 
-        if (this.oauthWindow && !this.oauthWindow.isDestroyed()) {
-          this.oauthWindow.close();
-        }
-        resolve({ ok: success, error });
+        done(success, error);
       };
 
       // Open external links (Google Cloud Console, etc.) in system browser
@@ -285,22 +302,25 @@ export class ConnectorManager extends EventEmitter {
         }
       });
 
-      // If user closes the window, check if they completed OAuth
+      // If user closes the window, check if they completed OAuth — the same
+      // overlay covers this check so the close never feels like a dead end.
       this.oauthWindow.on("closed", () => {
         this.oauthWindow = null;
         if (!resolved) {
+          resolved = true;
+          this.emit("connect-progress", { phase: "verifying", appSlug });
           this.getAccounts().then((accounts) => {
             const wasAdded = accounts.some((a) => a.appSlug === appSlug);
             if (wasAdded) {
               this.refreshMcp().then(() => {
                 this.emit("changed");
-                resolve({ ok: true });
+                done(true);
               });
             } else {
-              resolve({ ok: false, error: "Connection cancelled" });
+              done(false, "Connection cancelled");
             }
           }).catch(() => {
-            resolve({ ok: false, error: "Connection cancelled" });
+            done(false, "Connection cancelled");
           });
         }
       });

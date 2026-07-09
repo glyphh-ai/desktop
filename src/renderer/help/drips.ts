@@ -242,7 +242,12 @@ async function saveDrip() {
 
 async function deleteDrip() {
   if (!editingDripName) return;
-  const confirmed = await confirmAction(`Delete drip "${editingDripName}"?`);
+  const confirmed = await confirmAction({
+    title: `Delete “${editingDripName}”?`,
+    body: "The drip disappears from your library.",
+    confirmLabel: "Delete drip",
+    danger: true,
+  });
   if (!confirmed) return;
   await window.yo.dripsDelete(editingDripName);
   closeDripEditor();

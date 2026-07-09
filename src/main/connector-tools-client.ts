@@ -52,6 +52,14 @@ export function getConnectorCatalog(): ConnectorTool[] { return cached; }
 export function isConnectorSlug(slug: string): boolean { return slugs.has(slug); }
 export function getCatalogAge(): number { return lastRefresh ? Date.now() - lastRefresh : Infinity; }
 
+/** Drop the in-process catalog — called when the signed-in user changes so
+ *  one account's tool list can never bleed into the next. */
+export function clearConnectorCatalog(): void {
+  cached = [];
+  slugs = new Set();
+  lastRefresh = 0;
+}
+
 /** Invoke a connector tool via yo-server. Returns the coerced text result. */
 export async function callConnectorTool(
   slug: string,

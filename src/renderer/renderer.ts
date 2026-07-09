@@ -324,9 +324,10 @@ declare global {
       williamRemember: (fact: string) => Promise<boolean>;
       adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
       williamModelsList: () => Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; status: string; usage: string; downloaded: boolean }> }>;
+      gatewayModelsList: () => Promise<{ models: Array<{ model: string; display_name: string; input_credits_per_mtok: number | null; output_credits_per_mtok: number | null }>; default: string | null; selected: string | null; effective: string; lanes: { byok: boolean; gateway: boolean } }>;
       adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
       adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
-      williamContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }>;
+      williamContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;
       williamCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
       williamStop: () => Promise<boolean>;
       williamStatus: () => Promise<{ up: boolean }>;
@@ -364,6 +365,10 @@ declare global {
       connectorsRefreshMcp: () => Promise<{ ok: boolean; error?: string; toolCount: number }>;
       connectorsListTools: () => Promise<Array<{ slug: string; name: string; description: string }>>;
       onConnectorsChanged: (cb: () => void) => void;
+      providerKeyStatus: () => Promise<{ provider: string; hasKey: boolean; lastTestOk: boolean | null; lastTestError: string | null; lastTestedAt: string | null } | null>;
+      providerKeySet: (key: string) => Promise<{ ok: boolean; testOk: boolean; testError?: string }>;
+      providerKeyDelete: () => Promise<{ ok: boolean }>;
+      onConnectorsConnectProgress: (cb: (p: { phase: "verifying" | "done"; appSlug: string; ok?: boolean; error?: string }) => void) => void;
       // Auto-update
       onUpdateStatus: (cb: (info: { status: string; version?: string; percent?: number; error?: string }) => void) => void;
       updateInstall: () => void;

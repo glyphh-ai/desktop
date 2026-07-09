@@ -202,23 +202,27 @@
         <!-- Settings -->
         <!--#include sections/settings.html -->
 
-        <!-- Confirm modal -->
+        <!-- Standard dialogs — one skeleton everywhere: head (title), body
+             (detail / input), foot (Cancel + primary action). -->
         <div id="skill-ask-user-modal" class="confirm-overlay hidden">
-          <div class="confirm-box">
-            <p id="skill-ask-user-question"></p>
-            <textarea id="skill-ask-user-answer" rows="3" spellcheck="false"></textarea>
-            <div class="confirm-actions">
-              <button id="skill-ask-user-cancel" class="action-btn secondary">Cancel</button>
-              <button id="skill-ask-user-submit" class="action-btn primary">OK</button>
+          <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="skill-ask-user-question">
+            <div class="confirm-head"><h3 id="skill-ask-user-question"></h3></div>
+            <div class="confirm-body">
+              <textarea id="skill-ask-user-answer" rows="3" spellcheck="false"></textarea>
+            </div>
+            <div class="confirm-foot">
+              <button id="skill-ask-user-cancel" class="action-btn secondary" type="button">Cancel</button>
+              <button id="skill-ask-user-submit" class="action-btn primary" type="button">OK</button>
             </div>
           </div>
         </div>
         <div id="confirm-modal" class="confirm-overlay hidden">
-          <div class="confirm-box">
-            <p id="confirm-message"></p>
-            <div class="confirm-actions">
-              <button id="confirm-no" class="action-btn secondary">Cancel</button>
-              <button id="confirm-yes" class="action-btn primary">Delete</button>
+          <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div class="confirm-head"><h3 id="confirm-title"></h3></div>
+            <div class="confirm-body"><p id="confirm-message"></p></div>
+            <div class="confirm-foot">
+              <button id="confirm-no" class="action-btn secondary" type="button">Cancel</button>
+              <button id="confirm-yes" class="action-btn primary" type="button">Confirm</button>
             </div>
           </div>
         </div>

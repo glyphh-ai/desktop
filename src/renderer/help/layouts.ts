@@ -501,7 +501,12 @@ async function saveLayout() {
 
 async function deleteLayout() {
   if (!editingLayoutName) return;
-  const confirmed = await confirmAction(`Delete layout "${editingLayoutName}"?`);
+  const confirmed = await confirmAction({
+    title: `Delete “${editingLayoutName}”?`,
+    body: "The layout disappears from your library — the apps it arranged are untouched.",
+    confirmLabel: "Delete layout",
+    danger: true,
+  });
   if (!confirmed) return;
   await window.yo.layoutsDelete(editingLayoutName);
   cancelLayout();

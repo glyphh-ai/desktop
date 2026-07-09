@@ -9,10 +9,11 @@
  * center header carries its workdir controls and view toggles.
  */
 
-import { confirmAction, promptAction } from "./shared.js";
+import { confirmAction } from "./shared.js";
 import { gotoSection } from "./navigation.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
+import { formatMarkdown } from "../format-markdown.js";
 
 interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" }
 interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
@@ -33,10 +34,10 @@ const MODES = [
   { id: "bypass", label: "Bypass permissions", hint: "Everything auto-approved — trusted sessions only" },
 ] as const;
 const EFFORTS = [
-  { id: "low", label: "Low", hint: "Quick replies (1k token budget)" },
-  { id: "medium", label: "Med", hint: "Balanced (4k token budget)" },
-  { id: "high", label: "High", hint: "Thorough (8k token budget)" },
-  { id: "superfly", label: "Superfly", hint: "Absolute max — the context is the budget" },
+  { id: "low", label: "Local", hint: "Everything on-device — never escalates, never burns credits" },
+  { id: "medium", label: "Assist", hint: "Local first; hard turns escalate to Claude" },
+  { id: "high", label: "Boost", hint: "Escalates readily — Claude takes the heavy turns" },
+  { id: "superfly", label: "Superfly", hint: "All Claude, every turn — max capability, credits burn" },
 ] as const;
 let williamMode: (typeof MODES)[number]["id"] = "ask";
 let williamEffort: (typeof EFFORTS)[number]["id"] = "medium";
@@ -79,22 +80,25 @@ function setEffort(id: (typeof EFFORTS)[number]["id"]): void {
   paintChips();
 }
 
-// ── Model selector (drop-up) — william-7b-mini / 14b-base / 34b-pro ──
-let modelList: Array<{ id: string; name: string; minRamGB: number; status?: string; usage?: string; downloaded: boolean }> = [];
+// ── Model selector (drop-up) — Will (will-7b-mini) / William (william-14b-base) ──
+let modelList: Array<{ id: string; name: string; minRamGB: number; size?: number; status?: string; usage?: string; downloaded: boolean }> = [];
 let modelSelected = "auto";
 let modelResolved: string | null = null;
+// Escalation (Claude) models — org-allowed list; the pick is per-user.
+let gwModels: Array<{ model: string; display_name: string; input_credits_per_mtok: number | null; output_credits_per_mtok: number | null }> = [];
+let gwDefault: string | null = null;
+let gwEffective = "";
 
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
-  const resolvedName = modelList.find((m) => m.id === modelResolved)?.name;
+  // Model ids ARE the display names (will-7b-mini / william-14b-base).
   if (modelSelected === "auto") {
-    mc.textContent = resolvedName ? `Auto · ${resolvedName}` : "Auto";
+    mc.textContent = modelResolved ? `Auto · ${modelResolved}` : "Auto";
     mc.title = "Model — picked by hardware; click to choose";
   } else {
-    const selName = modelList.find((m) => m.id === modelSelected)?.name || modelSelected;
-    mc.textContent = selName;
-    mc.title = `Model: ${selName} — click to change`;
+    mc.textContent = modelSelected;
+    mc.title = `Model: ${modelSelected} — click to change`;
   }
   mc.className = "code-chip";
 }
@@ -102,11 +106,18 @@ function paintModelChip(): void {
 async function refreshModelList(): Promise<void> {
   try {
     const r = await window.yo.williamModelsList?.();
-    if (!r) return;
-    modelList = r.models;
-    modelSelected = r.selected;
-    modelResolved = r.resolved;
-    paintModelChip();
+    if (r) {
+      modelList = r.models;
+      modelSelected = r.selected;
+      modelResolved = r.resolved;
+      paintModelChip();
+    }
+    const g = await window.yo.gatewayModelsList?.();
+    if (g) {
+      gwModels = g.models;
+      gwDefault = g.default;
+      gwEffective = g.effective;
+    }
   } catch { /* main not ready */ }
 }
 
@@ -115,16 +126,39 @@ function renderModelMenu(): void {
   if (!menu) return;
   menu.textContent = "";
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const mk = (id: string, label: string, sub: string, extra?: string) => {
+  const closeTips = () => menu.querySelectorAll(".model-info-tip").forEach((t) => t.classList.add("hidden"));
+  const mk = (id: string, label: string, sub: string, opts?: { extra?: string; info?: string; selected?: boolean; onClick?: () => void }) => {
+    const isSelected = opts?.selected ?? (id === modelSelected);
     const item = document.createElement("button");
-    item.className = "code-drop-item drop-item-2line" + (id === modelSelected ? " selected" : "");
+    item.className = "code-drop-item drop-item-2line" + (isSelected ? " selected" : "");
     item.type = "button";
     const main = document.createElement("div");
     main.className = "drop-main";
     const span = document.createElement("span");
-    span.textContent = label + (extra ? ` ${extra}` : "");
+    span.textContent = label + (opts?.extra ? ` ${opts.extra}` : "");
     main.appendChild(span);
-    if (id === modelSelected) main.insertAdjacentHTML("beforeend", check);
+    if (isSelected) main.insertAdjacentHTML("beforeend", check);
+    if (opts?.info) {
+      // ⓘ — the one-line sub stays scannable; the full story lives in a
+      // themed tooltip that never triggers a model switch.
+      const btn = document.createElement("button");
+      btn.className = "model-info-btn";
+      btn.type = "button";
+      btn.title = "About this model";
+      btn.textContent = "i";
+      const tip = document.createElement("div");
+      tip.className = "model-info-tip hidden";
+      tip.textContent = opts.info;
+      tip.addEventListener("click", (ev) => ev.stopPropagation());
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const wasHidden = tip.classList.contains("hidden");
+        closeTips();
+        if (wasHidden) tip.classList.remove("hidden");
+      });
+      main.appendChild(btn);
+      item.appendChild(tip);
+    }
     item.appendChild(main);
     if (sub) {
       const subEl = document.createElement("span");
@@ -133,22 +167,69 @@ function renderModelMenu(): void {
       item.appendChild(subEl);
     }
     item.addEventListener("click", () => {
-      modelSelected = id;
-      void window.yo.setPreference?.("williamModel", id);
-      paintModelChip();
+      if (opts?.onClick) {
+        opts.onClick();
+      } else {
+        modelSelected = id;
+        void window.yo.setPreference?.("williamModel", id);
+        paintModelChip();
+        // A different model spawns on the next send (downloading first if
+        // needed — the spinner narrates).
+      }
+      closeTips();
       el("code-model-menu")?.classList.add("hidden");
-      // A different tier spawns on the next send (downloading first if
-      // needed — the spinner narrates).
     });
     menu.appendChild(item);
   };
-  mk("auto", "Auto", "Picks the best tier for this machine.");
+  const header = (text: string) => {
+    const h = document.createElement("div");
+    h.className = "yo-model-section-header";
+    h.textContent = text;
+    menu.appendChild(h);
+  };
+
+  if (gwModels.length) header("On this machine");
+  mk("auto", "Auto", "Picks the best model for this machine.");
   for (const m of modelList) {
     // Only released models list — future tiers appear when they exist.
     if ((m.status || "available") !== "available") continue;
-    const sub = [m.usage || "", `${m.minRamGB}GB+ RAM${m.downloaded ? "" : " · downloads on first use"}`]
-      .filter(Boolean).join(" ");
-    mk(m.id, m.name, sub, m.downloaded ? "" : "↓");
+    const oneLine = (m.usage || "").split(" — ")[0] || m.name;
+    const sizeGB = m.size ? ` · ${(m.size / 1e9).toFixed(1)} GB download` : "";
+    const info = [
+      m.usage || "",
+      `${m.minRamGB} GB+ RAM${sizeGB}`,
+      m.downloaded ? "On this machine." : "Downloads on first use.",
+    ].filter(Boolean).join("\n");
+    // Ids ARE the canonical display names (will-7b-mini / william-14b-base) —
+    // render the id so stale cached manifests can't show retired names.
+    mk(m.id, m.id, oneLine, { extra: m.downloaded ? "" : "↓", info });
+  }
+
+  // Escalation pick — which Claude model hard turns go to. Org-governed
+  // list, per-user choice; separate from the local-model selection above.
+  if (gwModels.length) {
+    header("Escalates to Model");
+    const cr = (v: number | null) => (v == null ? "—" : String(Math.round(v / 1e6)));
+    const gwDesc = (id: string) =>
+      id.includes("opus") ? "Deep reasoning — the heavy hitter"
+        : id.includes("haiku") ? "Quick and light for easy turns"
+          : "Balanced coder — fast and capable";
+    for (const m of gwModels) {
+      const isDefault = gwDefault === m.model;
+      const info = [
+        `${m.display_name} — ${gwDesc(m.model)}.`,
+        `${cr(m.input_credits_per_mtok)}/${cr(m.output_credits_per_mtok)} credits per 1M tokens.`,
+        isDefault ? "Org default." : "",
+      ].filter(Boolean).join("\n");
+      mk(m.model, m.display_name + (isDefault ? " (org default)" : ""), gwDesc(m.model), {
+        info,
+        selected: m.model === gwEffective,
+        onClick: () => {
+          gwEffective = m.model;
+          void window.yo.setPreference?.("frontierModel", m.model);
+        },
+      });
+    }
   }
 }
 
@@ -267,6 +348,77 @@ async function runManualCompact(focus: string): Promise<void> {
   refreshCtxMeter();
 }
 
+// ── Context panel (meter click) — one shared history, one row per model
+//    lane that might serve it. Local is the binding lane (compaction keys
+//    off it — declined escalations fall back to local, so the history must
+//    always stay local-servable); remote lanes show how far the SAME history
+//    sits from their windows. Extensible: renders whatever lanes main sends.
+async function renderCtxPop(): Promise<void> {
+  const pop = el("code-ctx-pop");
+  if (!pop || !currentId) return;
+  pop.innerHTML = `<div class="ctx-pop-empty">Measuring…</div>`;
+  const u = await window.yo.williamContextUsage?.(currentId).catch(() => null);
+  if (!u) { pop.innerHTML = `<div class="ctx-pop-empty">Context unavailable.</div>`; return; }
+  const lanes = u.lanes?.length
+    ? u.lanes
+    : [{ id: "local", kind: "local" as const, tokens: u.tokens, budget: u.budget, ratio: u.ratio, foldAt: u.foldAt }];
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n));
+  pop.innerHTML = `
+    <div class="effort-head">
+      <span class="effort-title">Compaction</span>
+      <button id="ctx-info-btn" class="model-info-btn" type="button" title="How compaction works">i</button>
+    </div>
+    <div id="ctx-info-tip" class="model-info-tip hidden"></div>
+    <div class="effort-desc">How close each model is to folding.</div>
+    ${lanes.map((l) => {
+      const pct = Math.round(l.ratio * 100);
+      const hot = l.foldAt != null && l.ratio >= l.foldAt;
+      return `
+      <div class="ctx-lane">
+        <div class="ctx-lane-head">
+          <span class="ctx-lane-name">${esc(l.id)}</span>
+          <span class="ctx-lane-kind">${l.kind === "local" ? "local" : "remote"}</span>
+        </div>
+        <div class="ctx-lane-bar">
+          ${l.foldAt != null ? `<div class="ctx-lane-tick" style="left:${l.foldAt * 100}%"></div>` : ""}
+          <div class="ctx-lane-fill${hot ? " hot" : ""}" style="width:${pct}%"></div>
+        </div>
+        <div class="ctx-lane-stats">${fmt(l.tokens)} of ${fmt(l.budget)} tokens · ${pct}%${l.foldAt != null ? ` — compacts at ${Math.round(l.foldAt * 100)}%` : ""}</div>
+      </div>`;
+    }).join("")}
+    <div class="ctx-compact-row">
+      <input id="ctx-compact-focus" type="text" placeholder="what the summary must keep (optional)" spellcheck="false" />
+      <button id="ctx-compact-btn" type="button" class="ctx-compact-btn"${thinking ? " disabled" : ""}>Compact now</button>
+    </div>`;
+  const ctxTip = pop.querySelector<HTMLElement>("#ctx-info-tip");
+  if (ctxTip) {
+    ctxTip.textContent = [
+      "One shared history, measured against every model that can serve it.",
+      "",
+      "The local lane is the binding one — declined escalations fall back to the local model, so the history must always fit it. When it crosses the tick, older turns fold into a summary and every lane shrinks together.",
+      "",
+      "Compact now folds immediately; the optional focus tells the summary what it must keep.",
+    ].join("\n");
+    ctxTip.addEventListener("click", (ev) => ev.stopPropagation());
+    pop.querySelector<HTMLButtonElement>("#ctx-info-btn")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      ctxTip.classList.toggle("hidden");
+    });
+  }
+  const focusEl = pop.querySelector<HTMLInputElement>("#ctx-compact-focus");
+  focusEl?.addEventListener("click", (ev) => ev.stopPropagation());
+  const go = () => {
+    el("code-ctx-pop")?.classList.add("hidden");
+    void runManualCompact((focusEl?.value || "").trim());
+  };
+  focusEl?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !thinking) go(); });
+  pop.querySelector<HTMLButtonElement>("#ctx-compact-btn")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (!thinking) go();
+  });
+}
+
 // ── Compaction meter — how full the fold window is (tick = fold point) ──
 let meterTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -284,7 +436,10 @@ function refreshCtxMeter(): void {
       fill.style.width = `${pct}%`;
       fill.classList.toggle("hot", u.ratio >= u.foldAt);
       tick.style.left = `${u.foldAt * 100}%`;
-      meter.title = `Context ${pct}% (${u.tokens.toLocaleString()} of ${u.budget.toLocaleString()} tokens) — compacts at ${Math.round(u.foldAt * 100)}%`;
+      // Bar tracks the local lane (the one compaction keys off); the title
+      // sketches every lane, the click panel has the full picture.
+      const laneBits = (u.lanes || []).map((l) => `${l.id} ${Math.round(l.ratio * 100)}%`).join(" · ");
+      meter.title = `Context — ${laneBits || `${pct}%`} — compacts at ${Math.round(u.foldAt * 100)}% of local. Click for details.`;
     }).catch(() => { /* meter is cosmetic */ });
   }, 350);
 }
@@ -303,6 +458,7 @@ function initComposerControls(): void {
       e.stopPropagation();
       el("code-effort-pop")?.classList.add("hidden");
       el("code-mode-menu")?.classList.add("hidden");
+      el("code-ctx-pop")?.classList.add("hidden");
       void refreshModelList().then(() => renderModelMenu());
       renderModelMenu();
       mmenu.classList.toggle("hidden");
@@ -318,12 +474,34 @@ function initComposerControls(): void {
   pop.id = "code-effort-pop";
   pop.className = "code-drop-up code-effort-pop hidden";
   pop.innerHTML = `
+    <div class="effort-head">
+      <span class="effort-title">Effort</span>
+      <button id="effort-info-btn" class="model-info-btn" type="button" title="How effort works">i</button>
+    </div>
+    <div id="effort-info-tip" class="model-info-tip hidden"></div>
+    <div class="effort-desc">How eagerly turns escalate from the free local model to your escalation model.</div>
     <div class="effort-labels">${EFFORTS.map((x) => `<span class="effort-label${x.id === "superfly" ? " sf" : ""}">${x.label}</span>`).join("")}</div>
     <div class="effort-track">
       <canvas id="effort-matrix"></canvas>
       <input type="range" min="0" max="3" step="1" value="1" aria-label="Effort" />
     </div>`;
   effortWrap.appendChild(pop);
+  const effortTip = pop.querySelector<HTMLElement>("#effort-info-tip")!;
+  effortTip.textContent = [
+    "Effort sets how eagerly each turn escalates from the free local model to your escalation model.",
+    "",
+    "Local — everything on-device. Free and private; never escalates.",
+    "Assist — local first; turns the local model can't handle escalate.",
+    "Boost — escalates readily; the escalation model takes the heavy turns.",
+    "Superfly — every turn escalates. Max capability; credits burn.",
+    "",
+    "Credits burn only on escalated turns. If escalation is declined — credit cap, rate limit, offline — the turn runs locally instead of failing.",
+  ].join("\n");
+  effortTip.addEventListener("click", (ev) => ev.stopPropagation());
+  pop.querySelector<HTMLButtonElement>("#effort-info-btn")!.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    effortTip.classList.toggle("hidden");
+  });
   pop.querySelector<HTMLInputElement>("input[type=range]")!.addEventListener("input", (e) => {
     const idx = Math.max(0, Math.min(3, Number((e.target as HTMLInputElement).value) || 0));
     setEffort(EFFORTS[idx].id);
@@ -331,33 +509,44 @@ function initComposerControls(): void {
   el("code-mode-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
     el("code-effort-pop")?.classList.add("hidden");
+    el("code-ctx-pop")?.classList.add("hidden");
     renderModeMenu();
     el("code-mode-menu")?.classList.toggle("hidden");
   });
   el("code-effort-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
     el("code-mode-menu")?.classList.add("hidden");
+    el("code-ctx-pop")?.classList.add("hidden");
+    el("effort-info-tip")?.classList.add("hidden"); // fresh open = tip closed
     el("code-effort-pop")?.classList.toggle("hidden");
     syncEffortPop();
+  });
+  // Context panel — per-lane distance to compaction, anchored to the meter.
+  const ctxWrap = el("code-ctx-wrap");
+  if (ctxWrap) {
+    const cpop = document.createElement("div");
+    cpop.id = "code-ctx-pop";
+    cpop.className = "code-drop-up code-ctx-pop hidden";
+    ctxWrap.appendChild(cpop);
+  }
+  el("code-ctx-meter")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!current()) return;
+    el("code-mode-menu")?.classList.add("hidden");
+    el("code-effort-pop")?.classList.add("hidden");
+    el("code-model-menu")?.classList.add("hidden");
+    const cpop = el("code-ctx-pop");
+    if (!cpop) return;
+    const opening = cpop.classList.contains("hidden");
+    cpop.classList.toggle("hidden");
+    if (opening) void renderCtxPop();
   });
   document.addEventListener("click", (e) => {
     const t = e.target as Node;
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
     if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
-  });
-  // Meter click → compact modal (optional focus steers this fold).
-  el("code-ctx-meter")?.addEventListener("click", () => {
-    if (thinking || !current()) return;
-    void promptAction(
-      "Compact this session now — optionally tell William what the summary must keep.",
-      "",
-      "e.g. keep the API decisions, file paths, and open bugs",
-      "Compact now",
-    ).then((focus) => {
-      if (focus === null) return; // cancelled
-      void runManualCompact(focus.trim());
-    });
+    if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
   });
 }
 
@@ -503,7 +692,12 @@ function newChat(): void {
 }
 
 async function deleteChat(chat: CodeChat): Promise<void> {
-  if (!(await confirmAction(`Delete "${chat.title}"?`))) return;
+  if (!(await confirmAction({
+    title: `Delete “${chat.title}”?`,
+    body: "This session's history is gone for good.",
+    confirmLabel: "Delete session",
+    danger: true,
+  }))) return;
   chats = chats.filter((x) => x.id !== chat.id);
   if (currentId === chat.id) currentId = chats[0]?.id || "";
   void saveStore();
@@ -604,26 +798,29 @@ function renderThread(): void {
   const liveRun = thinking && workingChatId === c.id;
   blocks.forEach((b, i) => {
     if (!b.tool) {
-      const bubble = document.createElement("div");
-      bubble.className = `code-msg ${b.msg.role}`;
-      bubble.textContent = b.msg.text;
-      inner.appendChild(bubble);
+      // User = right-aligned pill; agent = markdown transcript text (no
+      // bubble) — headings, lists, links, and code blocks render for real.
+      const el = document.createElement("div");
+      if (b.msg.role === "user") {
+        el.className = "code-msg user";
+        el.textContent = b.msg.text;
+      } else {
+        el.className = "code-agent-text";
+        el.innerHTML = formatMarkdown(b.msg.text);
+      }
+      inner.appendChild(el);
       return;
     }
     // The trailing group of an active run renders expanded (live progress).
     if (liveRun && i === blocks.length - 1) {
-      for (const m of b.msgs) {
-        const line = document.createElement("div");
-        line.className = "code-tool-line";
-        line.textContent = m.text;
-        inner.appendChild(line);
-      }
+      for (const m of b.msgs) inner.appendChild(toolLineEl(m.text));
       return;
     }
     inner.appendChild(toolGroupEl(c.id, b.msgs));
   });
-  // Working state — spinner while thinking; once tokens flow the streamed
-  // reply renders live in its own bubble.
+  // Working state — the streamed reply renders as plain agent text, and a
+  // working spinner ALWAYS sits at the bottom while thinking (through tool
+  // execution and inter-turn waits, not just before the first token).
   spinner?.destroy();
   spinner = null;
   streamBubble = null;
@@ -631,19 +828,75 @@ function renderThread(): void {
     for (const a of pendingApprovals) inner.appendChild(approvalCard(a));
     if (streamText && streamChatId === c.id) {
       streamBubble = document.createElement("div");
-      streamBubble.className = "code-msg assistant";
-      streamBubble.textContent = streamText;
+      streamBubble.className = "code-agent-text";
+      streamBubble.innerHTML = formatMarkdown(streamText);
       inner.appendChild(streamBubble);
-    } else {
-      spinner = createGlyphhSpinner();
-      paintRunMeta();
-      const row = document.createElement("div");
-      row.className = "code-msg assistant code-working";
-      row.appendChild(spinner.el);
-      inner.appendChild(row);
     }
+    spinner = createGlyphhSpinner();
+    paintRunMeta();
+    const row = document.createElement("div");
+    row.className = "code-working";
+    row.appendChild(spinner.el);
+    inner.appendChild(row);
   }
   thread.scrollTop = thread.scrollHeight;
+}
+
+const FILE_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+const TERM_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
+
+function diffBadgeHtml(text: string): { rest: string; badge: string } {
+  const diff = /\s\[\+(\d+) -(\d+)\]\s*$/.exec(text);
+  if (!diff) return { rest: text, badge: "" };
+  return {
+    rest: text.slice(0, diff.index),
+    badge: `<span class="code-diff-badge"><span class="diff-add">+${diff[1]}</span> <span class="diff-del">-${diff[2]}</span></span>`,
+  };
+}
+
+const escAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** One tool breadcrumb. File writes and shell runs render as CARDS that open
+ *  the matching workbench view (Monaco tab / terminal); everything else is a
+ *  quiet line. "+N -M" splits out as a colored diff badge. */
+function toolLineEl(text: string): HTMLElement {
+  const { rest, badge } = diffBadgeHtml(text);
+
+  // "✓ Write /abs/path" → file card, click opens the file in Monaco.
+  const write = /^([✓✕⚙]) Write (\/\S.*?)\s*$/.exec(rest);
+  if (write && write[1] === "✓") {
+    const path = write[2];
+    const base = path.split("/").pop() || path;
+    const dir = path.slice(0, path.length - base.length).replace(/\/$/, "");
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "code-file-card";
+    card.dataset.path = path;
+    card.title = "Open in the workbench editor";
+    card.innerHTML = `${FILE_ICON}<span class="cfc-name">${escAttr(base)}</span><span class="cfc-dir">${escAttr(dir)}</span>${badge}`;
+    return card;
+  }
+
+  // "✓ Run: cmd" → terminal card, click reveals the workbench terminal.
+  const run = /^([✓✕]) Run: (.+)$/.exec(rest);
+  if (run) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "code-run-card" + (run[1] === "✕" ? " failed" : "");
+    card.title = "Open the workbench terminal";
+    card.innerHTML = `${TERM_ICON}<span class="crc-cmd">${escAttr(run[2].slice(0, 120))}</span>`;
+    return card;
+  }
+
+  const line = document.createElement("div");
+  line.className = "code-tool-line";
+  if (badge) {
+    line.textContent = rest + " ";
+    line.insertAdjacentHTML("beforeend", badge);
+  } else {
+    line.textContent = text;
+  }
+  return line;
 }
 
 // Expanded tool groups (keyed chatId:firstMsgTimestamp) — transient UI state.
@@ -668,12 +921,7 @@ function toolGroupEl(chatId: string, msgs: CodeMsg[]): HTMLElement {
   });
   wrap.appendChild(head);
   if (open) {
-    for (const m of msgs) {
-      const line = document.createElement("div");
-      line.className = "code-tool-line";
-      line.textContent = m.text;
-      wrap.appendChild(line);
-    }
+    for (const m of msgs) wrap.appendChild(toolLineEl(m.text));
   }
   return wrap;
 }
@@ -955,9 +1203,10 @@ function initWilliamEvents(): void {
     } else if (d.phase === "done") {
       const bad = d.denied || d.failed;
       // Failures surface the tool's own first line — the model can gloss,
-      // the breadcrumb doesn't.
+      // the breadcrumb doesn't. Successful edits keep their "+N -M" diff badge.
       const reason = d.denied ? " — denied" : d.failed ? ` — ${String(d.preview || "").split("\n")[0].slice(0, 90)}` : "";
-      const text = `${bad ? "✕" : "✓"} ${d.title || d.name}${reason}`;
+      const diff = !bad ? (/\[\+\d+ -\d+\]/.exec(String(d.preview || ""))?.[0] ?? "") : "";
+      const text = `${bad ? "✕" : "✓"} ${d.title || d.name}${reason}${diff ? ` ${diff}` : ""}`;
       const last = chat.messages[chat.messages.length - 1];
       if (last?.kind === "tool" && last.text.startsWith(`⚙ ${d.name}`)) last.text = text;
       else chat.messages.push({ role: "assistant", kind: "tool", text, at: Date.now() });
@@ -965,17 +1214,26 @@ function initWilliamEvents(): void {
     void saveStore();
     if (currentId === streamChatId) renderThread();
   });
+  // Streamed tokens re-render the live block as MARKDOWN, throttled to one
+  // paint per animation frame — smooth at token rate, code fences and lists
+  // take shape as they arrive.
+  let streamPaintQueued = false;
+  const paintStream = () => {
+    streamPaintQueued = false;
+    const thread = el<HTMLDivElement>("code-thread");
+    if (streamBubble && streamBubble.isConnected) {
+      streamBubble.innerHTML = formatMarkdown(streamText);
+      if (thread) thread.scrollTop = thread.scrollHeight;
+    } else {
+      renderThread(); // first token — adds the live block under the spinner
+    }
+  };
   window.yo.onWilliamDelta?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
     streamText += d.delta;
-    if (currentId === streamChatId) {
-      const thread = el<HTMLDivElement>("code-thread");
-      if (streamBubble && streamBubble.isConnected) {
-        streamBubble.textContent = streamText;
-        if (thread) thread.scrollTop = thread.scrollHeight;
-      } else {
-        renderThread(); // first token — swaps the spinner for the live bubble
-      }
+    if (currentId === streamChatId && !streamPaintQueued) {
+      streamPaintQueued = true;
+      requestAnimationFrame(paintStream);
     }
   });
   window.yo.onWilliamDone?.((d) => {
@@ -1363,6 +1621,30 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   el("code-new-chat")?.addEventListener("click", newChat);
+  // One delegated handler for everything interactive inside the thread —
+  // survives every re-render: code-block copy buttons, file cards (→ Monaco),
+  // run cards (→ terminal).
+  el("code-thread")?.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const copyBtn = t.closest<HTMLElement>(".yo-md-copy-btn");
+    if (copyBtn) {
+      const block = copyBtn.closest(".yo-md-codeblock");
+      const code = block?.querySelector("pre code")?.textContent ?? "";
+      void navigator.clipboard.writeText(code).then(() => {
+        copyBtn.textContent = "Copied ✓";
+        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
+      });
+      return;
+    }
+    const fileCard = t.closest<HTMLElement>(".code-file-card");
+    if (fileCard?.dataset.path) {
+      (window as unknown as { __wbOpenFile?: (p: string) => void }).__wbOpenFile?.(fileCard.dataset.path);
+      return;
+    }
+    if (t.closest(".code-run-card")) {
+      (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
+    }
+  });
   el("apps-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("apps"); });
   // Live updates: Apps/Layouts CRUD announces itself (same renderer); running
   // OS apps poll on a change-detecting 6s loop.
@@ -1416,9 +1698,14 @@ export function initCode(): void {
   });
   // The rail is global (outside the section switcher) — populate Recents and
   // apply collapse/width prefs at boot so it's live on every section.
-  loadStore();
-  if (!currentId && chats.length) currentId = chats[0].id;
-  renderHistory();
+  // loadStore is ASYNC: render only after the sessions actually arrive, or
+  // boot paints an empty Recents that never refreshes until the Code tab
+  // re-runs loadCode().
+  void (async () => {
+    await loadStore();
+    if (!currentId && chats.length) currentId = chats[0].id;
+    renderHistory();
+  })();
   void loadRecentApps();
   void applyPanelPrefs();
 }

@@ -11,13 +11,15 @@
  * OS permission prompt.
  */
 
-import path from "path";
 import fs from "fs";
 import Database from "better-sqlite3";
 import { safeStorage } from "electron";
-import { GLYPHH_DIR } from "./app-paths.js";
+import { userScopedDir, userScopedPath } from "./app-paths.js";
 
-const DB_PATH = path.join(GLYPHH_DIR, "user-state.sqlite");
+// Per-user: ~/.glyphh/users/<id>/user-state.sqlite once a session is known;
+// the legacy machine-global ~/.glyphh/user-state.sqlite pre-auth (adopted by
+// the first login — see user-scope.ts). Resolved per open, NOT at import.
+const dbPath = () => userScopedPath("user-state.sqlite");
 
 let db: Database.Database | null = null;
 
@@ -166,8 +168,8 @@ function runMigrations(database: Database.Database): void {
  */
 export function initLocalDb(): Database.Database {
   if (db) return db;
-  fs.mkdirSync(GLYPHH_DIR, { recursive: true });
-  db = new Database(DB_PATH);
+  fs.mkdirSync(userScopedDir(), { recursive: true });
+  db = new Database(dbPath());
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   runMigrations(db);

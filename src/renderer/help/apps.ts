@@ -216,7 +216,7 @@ function syncMcpTabsFromForm(): void {
   const { mcpApproved, guardrails } = readMcpConfig(); // preserve current selections
   const synthetic: PanelApp = {
     ...currentApp,
-    appArchetype: type === "llm" ? "llm" : (type === "native" ? (currentApp.appArchetype || "terminal") : null),
+    appArchetype: type === "llm" ? "llm" : (type === "native" ? (currentApp.appArchetype || "generic") : null),
     launchConfig: {
       ...(currentApp.launchConfig || {}),
       llm: { provider },
@@ -966,7 +966,12 @@ async function loadConfigVarsTab() {
     del.style.cssText = "height:24px;font-size:11px;padding:0 10px;";
     del.textContent = "Delete";
     del.addEventListener("click", async () => {
-      if (!(await confirmAction(`Delete config var ${s.key}? Apps that need it will stop working until it's re-added.`))) return;
+      if (!(await confirmAction({
+        title: `Delete config var ${s.key}?`,
+        body: "Apps that need it stop working until it's re-added.",
+        confirmLabel: "Delete var",
+        danger: true,
+      }))) return;
       await window.yo.appSecretsDelete(currentAppId, s.key);
       void loadConfigVarsTab();
     });
@@ -1085,7 +1090,7 @@ async function openPanelAppDetail(app: PanelApp) {
     (document.getElementById("app-detail-http-target") as HTMLInputElement).value = String(lc.httpTarget || "");
   }
   (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
-  const detailArchetype = (app.appArchetype as Archetype) || "terminal";
+  const detailArchetype = (app.appArchetype as Archetype) || "generic";
   (document.getElementById("app-detail-archetype") as HTMLSelectElement).value = detailArchetype;
   writeLaunchConfig("app-detail", detailArchetype, app.launchConfig);
   toggleTypeFields("app-detail", detailType);
@@ -1630,10 +1635,10 @@ function initApps() {
     (document.getElementById("app-add-browser") as HTMLSelectElement).value = "default";
     (document.getElementById("app-add-open-as") as HTMLSelectElement).value = "window";
     addExecPath.value = "";
-    addArchetypeSelect.value = "terminal";
-    writeLaunchConfig("app-add", "terminal", null);
+    addArchetypeSelect.value = "generic";
+    writeLaunchConfig("app-add", "generic", null);
     toggleTypeFields("app-add", "browser");
-    toggleArchetypeFields("app-add", "terminal");
+    toggleArchetypeFields("app-add", "generic");
     appFormError.classList.add("hidden");
     appsList.classList.add("hidden");
     appsToolbar.classList.add("hidden");
@@ -1911,7 +1916,12 @@ function initApps() {
   // Delete
   document.getElementById("app-detail-delete")!.addEventListener("click", async () => {
     if (!currentAppId) return;
-    const confirmed = await confirmAction(`Delete app "${appDetailName.value}"?`);
+    const confirmed = await confirmAction({
+      title: `Delete “${appDetailName.value}”?`,
+      body: "The app leaves your library — connected accounts stay intact.",
+      confirmLabel: "Delete app",
+      danger: true,
+    });
     if (!confirmed) return;
     await window.yo.panelAppsDelete(currentAppId);
     closeAppDetail();

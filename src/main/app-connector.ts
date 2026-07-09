@@ -11,7 +11,7 @@
 import fs from "fs";
 import path from "path";
 import { encryptJson, decryptJson } from "./secure-store";
-import { glyphhPath } from "./app-paths.js";
+import { userScopedPath } from "./app-paths.js";
 // ── Types ───────────────────────────────────────────────
 
 /** Execution intelligence attached to a command — makes the agent reliable. */
@@ -218,10 +218,25 @@ export class AppConnector {
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    this.appsDir = glyphhPath("apps");
+    this.appsDir = userScopedPath("apps");
     fs.mkdirSync(this.appsDir, { recursive: true });
     this.loadAll();
     this.ensureDefaults();
+  }
+
+  /** Identity switch: re-point at the new account's apps dir, drop the old
+   *  map, reload, and re-arm the watcher. Without this the main-process map
+   *  keeps serving the previous user's local app registry. */
+  rescopeForUserChange(): void {
+    const wasWatching = !!this.watcher;
+    this.stopWatching();
+    this.apps.clear();
+    this.appsDir = userScopedPath("apps");
+    fs.mkdirSync(this.appsDir, { recursive: true });
+    this.loadAll();
+    this.ensureDefaults();
+    if (wasWatching) this.startWatching();
+    this.onChange?.();
   }
 
   /** Register a callback fired (debounced) whenever the apps directory changes

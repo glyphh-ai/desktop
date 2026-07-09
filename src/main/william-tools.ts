@@ -31,7 +31,8 @@ import { connectorTools, connectorCall } from "./glyphh-app-services";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
-import { buildGlyphhApp, updateAppFromWorkdir } from "./william-app-builder";
+import { updateAppFromWorkdir } from "./william-app-builder";
+import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 
@@ -118,16 +119,9 @@ async function connectedSlugs(): Promise<Set<string>> {
   return new Set((r.connections || []).map((c) => String(c.appSlug || "")).filter(Boolean));
 }
 
+// create_app (the one-shot LLM builder) is retired — frontier agents build
+// apps as real projects in the workspace and ship them with update_app.
 const TOOLS: ToolDef[] = [
-  {
-    name: "create_app",
-    doc: "create_app(description) — BUILD and install a new Glyphh app from a plain description (beautiful single-file UI + worker tools; connectors auto-grounded). THE tool for 'create/build me an app'",
-    action: (a) => ({ kind: "edit", title: "Create app", detail: String(a.description ?? "").slice(0, 400) }),
-    run: async (a, signal) => {
-      const r = await buildGlyphhApp(String(a.description ?? ""), signal);
-      return `installed "${r.name}" (${r.slug}) — clean on pass ${r.attempts} of the build${r.sourceDir ? `; source at ${r.sourceDir}` : ""}${r.warnings.length ? `; notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Open it with open_app("${r.slug}").`;
-    },
-  },
   {
     name: "list_dir",
     doc: "list_dir(path?) — list a folder in the workspace (name, type, size)",
@@ -173,9 +167,16 @@ const TOOLS: ToolDef[] = [
     run: async (a) => {
       const { abs } = resolvePath(a.path);
       const content = String(a.content ?? "");
+      // Line-count delta vs the prior file (if any) — the thread shows it as
+      // "+N -M" next to the breadcrumb.
+      let prevLines = 0;
+      try { if (existsSync(abs)) prevLines = readFileSync(abs, "utf8").split("\n").length; } catch { /* new file */ }
+      const nextLines = content ? content.split("\n").length : 0;
+      const added = Math.max(0, nextLines - prevLines);
+      const removed = Math.max(0, prevLines - nextLines);
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, content);
-      return `wrote ${content.length} chars to ${abs}`;
+      return `wrote ${content.length} chars to ${abs} [+${added} -${removed}]`;
     },
   },
   {
@@ -194,15 +195,16 @@ const TOOLS: ToolDef[] = [
   {
     name: "run_command",
     doc: "run_command(command) — run a shell command in the working folder (60s cap)",
+    // (title carries the command so the thread's run card shows WHAT ran)
     action: (a) => {
       const cmd = String(a.command ?? "");
-      return { kind: DANGEROUS_CMD.test(cmd) ? "dangerous" : "command", title: "Run command", detail: cmd };
+      return { kind: DANGEROUS_CMD.test(cmd) ? "dangerous" : "command", title: `Run: ${cmd.slice(0, 80)}`, detail: cmd };
     },
     run: async (a, signal) => runShell(String(a.command ?? ""), workdir(), signal),
   },
   {
     name: "update_app",
-    doc: "update_app() — re-validate + re-install the app from the working folder's source. ALWAYS call after editing manifest.json/worker.js/index.html, or tool calls run the OLD version",
+    doc: "update_app() — build-then-ship the app in the working folder: packages the compiled dist/ (Vite project) or the folder's files (legacy single-file app) and installs it. For a Vite project, run `npm run build` FIRST. Call after every change or tool calls run the OLD version",
     action: () => ({ kind: "edit", title: "Update app from source" }),
     run: async () => {
       const scope = await connectedSlugs().catch(() => new Set<string>());
@@ -216,10 +218,46 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "git_init",
+    doc: "git_init() — version-control the working folder: init the repo (if needed), write a .gitignore (node_modules/, dist/, .env), ensure a git identity, and make the first commit. Call this BEFORE building a new app.",
+    action: () => ({ kind: "command", title: "Git init + first commit" }),
+    run: async () => {
+      const wd = workdir();
+      // Idempotent — never clobbers an existing repo or a hand-written ignore.
+      const already = (await runShell("git rev-parse --is-inside-work-tree 2>/dev/null", wd)).trim() === "true";
+      if (!already) await runShell("git init -q", wd);
+      const ignorePath = join(wd, ".gitignore");
+      if (!existsSync(ignorePath)) writeFileSync(ignorePath, APP_GITIGNORE, "utf8");
+      // Repo-local identity only when the machine has none — never overrides a
+      // real global config the user set.
+      const haveName = (await runShell("git config user.name 2>/dev/null", wd)).trim();
+      if (!haveName) {
+        await runShell("git config user.name 'Glyphh Agent' && git config user.email 'agent@glyphh.local'", wd);
+      }
+      if (already) return "repo already initialized — .gitignore ensured. Work on a branch (git_branch) and commit in small steps.";
+      return runShell(`git add -A && git commit -q -m ${JSON.stringify("Initial commit")} && git log --oneline -n 1`, wd);
+    },
+  },
+  {
     name: "git_status",
     doc: "git_status() — branch + changed files in the working folder",
     action: () => ({ kind: "read", title: "Git status" }),
     run: async () => runShell("git status --porcelain=v1 -b", workdir()),
+  },
+  {
+    name: "git_branch",
+    doc: "git_branch(name?) — with a name, create+switch to it (branch-first: never build on the default branch); without, list branches",
+    action: (a) => ({ kind: a.name ? "command" : "read", title: a.name ? `Git branch ${String(a.name)}` : "Git branches" }),
+    run: async (a) => {
+      const wd = workdir();
+      const raw = String(a.name ?? "").trim();
+      if (!raw) return runShell("git branch -vv", wd);
+      // Slugify to a safe ref (no spaces/quotes/control chars).
+      const name = raw.replace(/[^a-zA-Z0-9._/-]+/g, "-").replace(/^[-/]+|[-/]+$/g, "").slice(0, 80);
+      if (!name) return "ERROR: branch name has no usable characters";
+      // Switch if it exists, else create — either way end up ON the branch.
+      return runShell(`git switch ${JSON.stringify(name)} 2>/dev/null || git switch -c ${JSON.stringify(name)}`, wd);
+    },
   },
   {
     name: "git_diff",
@@ -238,13 +276,21 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "git_commit",
-    doc: "git_commit(message, paths?) — stage (given paths, or everything) and commit in the working folder",
+    doc: "git_commit(message, paths?) — stage (given paths, or everything tracked+new) and commit. Build artifacts (node_modules/, dist/) are ignored via .gitignore — run git_init first so they never get staged.",
     action: (a) => ({ kind: "command", title: "Git commit", detail: String(a.message ?? "") }),
     run: async (a) => {
+      const wd = workdir();
       const msg = String(a.message ?? "").trim();
       if (!msg) return "ERROR: commit message is required";
+      const isRepo = (await runShell("git rev-parse --is-inside-work-tree 2>/dev/null", wd)).trim() === "true";
+      if (!isRepo) return "ERROR: not a git repository — call git_init() first (it sets up the repo + .gitignore).";
+      // Guard: an `add -A` with no .gitignore would stage node_modules/dist.
+      // Refuse rather than poison history — git_init writes the ignore file.
+      if (!Array.isArray(a.paths) && !existsSync(join(wd, ".gitignore"))) {
+        return "ERROR: no .gitignore — call git_init() first so node_modules/ and dist/ aren't committed (or pass explicit paths).";
+      }
       const paths = Array.isArray(a.paths) ? (a.paths as unknown[]).map((p) => `'${String(p).replace(/'/g, "")}'`).join(" ") : "";
-      return runShell(`git add ${paths || "-A"} && git commit -m ${JSON.stringify(msg)}`, workdir());
+      return runShell(`git add ${paths || "-A"} && git commit -m ${JSON.stringify(msg)}`, wd);
     },
   },
   {
@@ -441,26 +487,11 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
-/** Compact tool list for the agent system prompt. */
-export function williamToolsPrompt(): string {
-  return TOOLS.map((t) => `- ${t.doc}`).join("\n");
+/** Name + doc line per tool — the agent loop declares these over MCP (args
+ *  ride as free-form objects described by the doc; the executor validates). */
+export function williamToolDefs(): Array<{ name: string; doc: string }> {
+  return TOOLS.map((t) => ({ name: t.name, doc: t.doc }));
 }
-
-/** The constrained turn shape — llama.cpp grammar-enforces this, so every
- *  agent turn parses (the fine-tune's tag discipline can't drift out of it). */
-export const TURN_SCHEMA = {
-  type: "object",
-  properties: {
-    thought: { type: "string", description: "One short sentence: what you are doing and why" },
-    action: {
-      type: "object",
-      properties: { name: { type: "string" }, arguments: { type: "object" } },
-      required: ["name", "arguments"],
-    },
-    final: { type: "string", description: "The final answer to the user, when no more tools are needed" },
-  },
-  required: ["thought"],
-} as const;
 
 export interface ToolOutcome { result: string; denied: boolean; title: string }
 

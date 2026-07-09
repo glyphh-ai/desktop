@@ -1613,6 +1613,20 @@ async function init(): Promise<void> {
     renderRails();
   };
 
+  // Thread → workbench bridges: the Code thread's file cards open a Monaco
+  // tab; its run cards reveal (or spawn) a terminal slot.
+  (window as unknown as { __wbOpenFile?: (path: string) => void }).__wbOpenFile = (path) => {
+    const name = path.split("/").pop() || path;
+    void window.wb.readFile(path).then((res) => {
+      openFileInMonaco({ name, path }, res.error ? `// error: ${res.error}` : res.content);
+    });
+  };
+  (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal = () => {
+    const existing = rails.flatMap((r) => r.slots).find((s) => s.view === "terminal");
+    if (existing) { renderRails(); return; }
+    placeSlot(makeSlot("terminal"));
+  };
+
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession = () => {
     rails.length = 0;
     maximizedSlotId = null;

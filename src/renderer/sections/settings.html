@@ -6,7 +6,8 @@
               <button class="settings-nav-item" data-sub="account">Account</button>
               <button class="settings-nav-item" data-sub="mcp">MCP Server</button>
               <button class="settings-nav-item" data-sub="security">Security</button>
-              <button class="settings-nav-item" data-sub="william">William</button>
+              <button class="settings-nav-item" data-sub="gateway">AI Gateway</button>
+              <button class="settings-nav-item" data-sub="william">Compaction</button>
               <button class="settings-nav-item" data-sub="about">About</button>
             </nav>
             <div class="settings-panels">
@@ -302,13 +303,33 @@
                 </div>
               </div>
 
+              <div class="settings-panel" data-sub="gateway">
+                <h2>AI Gateway</h2>
+                <p class="section-desc">Every escalated turn rides Glyphh's gateway. Add your own Anthropic key and the gateway uses it upstream — your key pays for tokens, so no token credits burn (model access and rate limits still apply). Without one, escalations burn org credits. Local turns are always free.</p>
+                <div class="settings-form" style="max-width:460px;">
+                  <label class="settings-label">Escalation model</label>
+                  <select id="gw-model" class="settings-input"></select>
+                  <span id="gw-model-hint" class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);"></span>
+
+                  <label class="settings-label" style="margin-top:14px;">Your Anthropic API key <span style="color:var(--text-2);font-weight:400;">— optional (BYOK)</span></label>
+                  <input id="gw-byok" type="password" class="settings-input" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
+                  <span id="gw-byok-status" class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Encrypted and stored server-side — this app never keeps a copy.</span>
+
+                  <div class="settings-actions" style="margin-top:14px;">
+                    <button id="gw-save" class="action-btn primary">Save</button>
+                    <button id="gw-byok-remove" class="action-btn" style="display:none;">Remove key</button>
+                    <span id="gw-status" style="font-size:12px;color:var(--text-3);"></span>
+                  </div>
+                </div>
+
+              </div>
+
               <div class="settings-panel" data-sub="william">
-                <h2>William</h2>
-                <p class="section-desc">Glyphh's local coding agent — runs entirely on this machine.</p>
+                <h2>Compaction</h2>
+                <p class="section-desc">Folded into every session compaction — automatic and manual. One-shot focus from the compact dialog rides on top.</p>
                 <div class="settings-form">
                   <label class="settings-label">Compaction guidance</label>
                   <textarea id="william-compact-prompt" class="settings-input" rows="4" spellcheck="false" placeholder="e.g. Always keep API decisions, file paths, and open bugs."></textarea>
-                  <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Folded into every session compaction — automatic and manual. One-shot focus from the compact dialog rides on top.</span>
                   <div class="settings-actions" style="margin-top:14px;">
                     <button id="william-compact-save" class="action-btn primary">Save</button>
                     <span id="william-compact-status" style="font-size:12px;color:var(--text-3);"></span>

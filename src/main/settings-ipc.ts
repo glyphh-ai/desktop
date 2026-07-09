@@ -4,7 +4,25 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { generateGlyphhSkill } from "./glyphh-skill-export";
-import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, serverGetAuthed, serverPatchAuthed } from "./auth";
+import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, serverGetAuthed, serverPatchAuthed, serverPutAuthed, serverDeleteAuthed, isAuthenticated } from "./auth";
+import { getPreference as prefGet, setPreference as prefSet } from "./stores/preferences-db";
+
+// ── BYOK migration (one-time) ────────────────────────────────
+// Pre-cutover builds kept the user's Anthropic key in the LOCAL preferences
+// store. The key now lives server-side (encrypted, user_provider_keys) and
+// the client never holds it — so on boot, push any lingering local key up
+// and purge it. Safe to call every boot; no-op once clean.
+export async function migrateLocalByokKey(): Promise<void> {
+  const local = String(prefGet("anthropicApiKey", "")).trim();
+  if (!local || !isAuthenticated()) return;
+  try {
+    await serverPutAuthed("/api/me/provider-keys/anthropic", { key: local });
+    prefSet("anthropicApiKey", "");
+    console.log("[byok] local Anthropic key migrated server-side and purged from this machine");
+  } catch (err) {
+    console.warn("[byok] key migration deferred (offline?):", err instanceof Error ? err.message : err);
+  }
+}
 import type { SessionCache } from "./session-cache";
 import type { PanelManager } from "./panel-manager";
 
@@ -120,6 +138,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     }
   });
 
+
   // Per-user usage + credit balance, straight from the server (the proxy meters
   // this org/user). Replaces the old local UsageTracker numbers on the dashboard.
 
@@ -135,6 +154,28 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("copy-to-clipboard", (_e, text: string) => {
     clipboard.writeText(text);
   });
+  // ── BYOK provider key — server-side, encrypted; the client never stores
+  // it. Status/set/delete proxy straight to /api/me/provider-keys. ──
+  ipcMain.handle("provider-key-status", async () => {
+    try {
+      const r = await serverGetAuthed<{ keys: Array<{ provider: string; hasKey: boolean; lastTestOk: boolean | null; lastTestError: string | null; lastTestedAt: string | null }> }>("/api/me/provider-keys");
+      return r.keys.find((k) => k.provider === "anthropic") ?? null;
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle("provider-key-set", async (_e, key: string) => {
+    try {
+      return await serverPutAuthed<{ ok: boolean; testOk: boolean; testError?: string }>("/api/me/provider-keys/anthropic", { key: String(key || "") });
+    } catch (err) {
+      return { ok: false, testOk: false, testError: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("provider-key-delete", async () => {
+    try { return await serverDeleteAuthed<{ ok: boolean }>("/api/me/provider-keys/anthropic"); }
+    catch { return { ok: false }; }
+  });
+
   ipcMain.handle("logout", () => {
     const mainWindow = getMainWindow();
     logout();

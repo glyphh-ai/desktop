@@ -2423,25 +2423,53 @@ body.account-locked #dl-btn-wrap {
 .confirm-box {
   background: var(--surface-2);
   border: 1px solid var(--border-3);
-  border-radius: 10px;
-  padding: 24px 28px;
+  border-radius: 12px;
+  padding: 0; /* head/body/foot own their padding */
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
   /* Half the chat content width (composer maxes at 780px) — one
      consistent modal width everywhere. */
-  width: min(390px, 86vw);
+  width: min(420px, 86vw);
   box-sizing: border-box;
   text-align: center;
 }
-.confirm-box p {
-  margin: 0 0 18px;
-  font-size: 14px;
-  color: var(--text-bright);
-  line-height: 1.5;
+/* One dialog skeleton everywhere: head (title), body (detail / input),
+   foot (Cancel + primary action, right-aligned). */
+.confirm-head {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
 }
-.confirm-actions {
+.confirm-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-bright);
+  line-height: 1.4;
+}
+.confirm-body { padding: 14px 18px; }
+.confirm-body.hidden { display: none; }
+.confirm-body p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+.confirm-body textarea { width: 100%; box-sizing: border-box; }
+.confirm-foot {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
+/* Destructive confirms get a filled red primary. */
+#confirm-yes.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+#confirm-yes.danger:hover { filter: brightness(1.1); }
 
 /* ── Panel screenshots (freeze-frame) ────────────────────── */
 
@@ -8582,6 +8610,55 @@ select.settings-input {
 }
 .yo-model-option.disabled:hover { background: transparent; }
 
+/* Composer model menu — ⓘ info button + themed tooltip. The sub line stays
+   a one-line summary; the full story (role, RAM, download size, state)
+   opens in a small themed tip that never triggers a model switch. */
+#code-model-menu .code-drop-item { position: relative; }
+
+.model-info-btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1;
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.model-info-btn:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.model-info-tip {
+  position: absolute;
+  right: 10px;
+  bottom: calc(100% - 4px);
+  z-index: 40;
+  width: 230px;
+  padding: 9px 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+  white-space: pre-line;
+  text-align: left;
+  cursor: default;
+}
+
 /* The model dropdown lives on the RIGHT side of the controls row. Anchor
    its menu to the trigger's right edge so it doesn't overflow the panel.
    Also bump the min-width so the descriptions don't wrap awkwardly. */
@@ -11321,7 +11398,78 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
   word-break: break-word;
 }
 .code-msg.user { align-self: flex-end; background: var(--active-bg); border: 1px solid var(--border); color: var(--text); }
-.code-msg.assistant { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+/* Agent replies read as plain transcript text — no bubble, full width. */
+.code-agent-text {
+  align-self: stretch;
+  max-width: 720px;
+  padding: 2px 2px 6px;
+  font-size: 13.5px;
+  line-height: 1.62;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+/* "+N -M" diff badge on edit breadcrumbs. */
+.code-diff-badge { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; }
+.code-diff-badge .diff-add { color: #3fb950; }
+.code-diff-badge .diff-del { color: #f85149; }
+
+/* Markdown rhythm inside agent transcript text. */
+.code-agent-text { white-space: normal; }
+.code-agent-text .yo-md-p { margin: 0 0 10px; }
+.code-agent-text .yo-md-p:last-child { margin-bottom: 0; }
+.code-agent-text .yo-md-h1, .code-agent-text .yo-md-h2,
+.code-agent-text .yo-md-h3, .code-agent-text .yo-md-h4 {
+  margin: 16px 0 8px;
+  color: var(--text-bright);
+  line-height: 1.3;
+}
+.code-agent-text .yo-md-h1 { font-size: 17px; }
+.code-agent-text .yo-md-h2 { font-size: 15.5px; }
+.code-agent-text .yo-md-h3 { font-size: 14px; }
+.code-agent-text .yo-md-h4 { font-size: 13.5px; }
+.code-agent-text .yo-md-ul, .code-agent-text .yo-md-ol { margin: 4px 0 10px; padding-left: 22px; }
+.code-agent-text .yo-md-ul li, .code-agent-text .yo-md-ol li { margin: 3px 0; }
+.code-agent-text .yo-md-codeblock { margin: 10px 0; }
+.code-agent-text .yo-md-pre { overflow-x: auto; }
+
+/* File card — a written file the workbench can open (Monaco tab). */
+.code-file-card, .code-run-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 640px;
+  margin: 2px 0;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.code-file-card:hover, .code-run-card:hover { border-color: var(--text-3); color: var(--text); }
+.code-file-card svg, .code-run-card svg { flex: 0 0 auto; opacity: 0.75; }
+.code-file-card .cfc-name { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; color: var(--text); }
+.code-file-card .cfc-dir {
+  font-size: 10.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+.code-run-card .crc-cmd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.code-run-card.failed { border-color: rgba(248, 81, 73, 0.4); }
+.code-run-card.failed .crc-cmd { color: #f85149; }
 .code-composer {
   width: 100%;
   max-width: 780px;
@@ -11871,6 +12019,22 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 #workspace-collapse-toggle.active { color: var(--accent); }
 
 /* ── Glyphh spinner — tumbling wireframe cube + typed working phrase ────── */
+/* App-level loading overlay — the standard spinner over the entire app,
+   blocking interaction (e.g. verifying a Pipedream connection after the
+   OAuth window closes). Shown/hidden by app-overlay.ts. */
+.app-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.app-overlay.visible { display: flex; }
+
 .glyphh-spinner {
   display: inline-flex;
   align-items: center;
@@ -11901,10 +12065,11 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 @keyframes gs-caret { 50% { opacity: 0; } }
 
 /* Spinner row in the Code thread — no bubble chrome, just the spinner. */
-.code-msg.code-working {
+.code-working {
+  align-self: flex-start;
   background: none;
   border: none;
-  padding: 2px 0;
+  padding: 4px 0;
 }
 
 /* ── Composer bar — permission mode + effort chips ──────────────────────── */
@@ -11945,6 +12110,68 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   width: 1.5px;
   background: var(--text-faint);
 }
+
+/* Drop-up headers (effort + context panels) */
+.effort-head { display: flex; align-items: center; gap: 6px; }
+.effort-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.effort-desc { font-size: 11px; color: var(--text-3); line-height: 1.45; margin: 3px 0 10px; }
+
+/* Compaction panel — one row per model lane, distance to fold. The meter is
+   the rightmost trigger; anchor right but pull the panel WELL left of it.
+   Compound selector on purpose: the .code-drop-up base rule (left:0,
+   min-width:190px) sits later in this file and silently won the cascade at
+   equal specificity — this must outrank it, not out-position it. */
+.code-drop-up.code-ctx-pop {
+  left: auto;
+  right: 20px;
+  min-width: 320px;
+  max-width: calc(100vw - 48px);
+  padding: 16px 18px 17px;
+}
+.ctx-lane { margin-top: 10px; }
+.ctx-lane-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ctx-lane-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--text-2); }
+.ctx-lane-kind {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.ctx-lane-bar { position: relative; height: 4px; border-radius: 2px; background: var(--border); margin-top: 5px; overflow: visible; }
+.ctx-lane-fill { position: absolute; inset: 0 auto 0 0; width: 0%; border-radius: 2px; background: var(--text-3); }
+.ctx-lane-fill.hot { background: var(--accent); box-shadow: 0 0 6px rgba(140, 59, 242, 0.5); }
+.ctx-lane-tick { position: absolute; top: -2px; bottom: -2px; width: 1.5px; background: var(--text-faint); }
+.ctx-lane-stats { margin-top: 4px; font-size: 10.5px; color: var(--text-3); }
+.ctx-pop-empty { font-size: 11px; color: var(--text-3); }
+.ctx-compact-row { display: flex; gap: 6px; margin-top: 12px; }
+.ctx-compact-row input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--text);
+  outline: none;
+}
+.ctx-compact-row input:focus { border-color: var(--accent); }
+.ctx-compact-btn {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctx-compact-btn:hover:not(:disabled) { border-color: var(--text-3); color: var(--text); }
+.ctx-compact-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* Drop-UP panels anchored to the chips */
 .code-drop-up {

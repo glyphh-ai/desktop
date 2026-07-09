@@ -18,9 +18,10 @@
  * store/UI — summaries only shape the prompt.
  */
 
-import { ipcMain, app } from "electron";
+import { ipcMain } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
+import { userScopedPath } from "./app-paths";
 import { getPreference } from "./stores/preferences-db";
 import { williamMode } from "./william-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
@@ -30,7 +31,11 @@ export interface StoredChat { id: string; title: string; createdAt: number; mess
 interface SummaryEntry { summary: string; upTo: number }
 interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
-const CTX_TOKENS = 16384;
+/** Local runtime window — must match llama-server's `-c 32768` (william.ts). */
+const CTX_TOKENS = 32768;
+/** Frontier (Claude) window. One constant for now; per-model values can come
+ *  from the gateway's model list when tiers start to differ. */
+const FRONTIER_CTX_TOKENS = 200_000;
 const ASSEMBLE_MARGIN = 256;
 /** Compact when the tail crosses this share of its budget. */
 const COMPACT_AT = 0.6;
@@ -45,7 +50,9 @@ const PLAN_ADDENDUM =
   "no full implementations. End with open questions if anything is unclear.";
 
 function dir(): string {
-  const d = join(app.getPath("userData"), "william");
+  // Per-user: chats/summaries/memory belong to the signed-in account. The
+  // legacy userData/william dir is adopted by the first login (user-scope.ts).
+  const d = userScopedPath("william");
   if (!existsSync(d)) mkdirSync(d, { recursive: true });
   return d;
 }
@@ -263,21 +270,64 @@ export async function compactIfNeeded(chatId: string, replyBudget: number, compl
   } catch { /* best-effort — next turn just carries more tail */ }
 }
 
+/** One lane per model that might serve this session's history. */
+export interface ContextLane {
+  id: string;
+  kind: "local" | "frontier";
+  tokens: number;
+  budget: number;
+  ratio: number;
+  /** Fold-trigger share for this lane — null when compaction never keys off it. */
+  foldAt: number | null;
+}
+
 /**
  * How full the compaction window is — the SAME measure compactIfNeeded
  * triggers on (tail tokens vs the history budget), so the meter and the
  * fold behave identically. Estimate-only when the server is down (never
  * wakes the runtime just to paint a meter).
+ *
+ * One shared history, measured against every lane that might serve it. The
+ * LOCAL lane is the binding constraint — gateway declines degrade to local,
+ * so the history must always stay local-servable; compaction keys off it.
+ * The frontier lane is informational (top-level fields mirror the local lane
+ * for existing callers).
  */
-export async function contextUsage(chatId: string, replyBudget: number): Promise<{ tokens: number; budget: number; ratio: number; foldAt: number }> {
-  const budget = CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
+export async function contextUsage(chatId: string, replyBudget: number): Promise<{
+  tokens: number; budget: number; ratio: number; foldAt: number; lanes: ContextLane[];
+}> {
+  const localBudget = CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
+  const frontierBudget = FRONTIER_CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
   const { chats } = loadSessions();
   const chat = chats.find((c) => c.id === chatId);
-  if (!chat) return { tokens: 0, budget, ratio: 0, foldAt: COMPACT_AT };
-  const upTo = loadSummaries()[chatId]?.upTo ?? 0;
-  const tailText = chat.messages.slice(upTo).map((m) => `${m.role}: ${m.text}`).join("\n");
+  const upTo = chat ? (loadSummaries()[chatId]?.upTo ?? 0) : 0;
+  const tailText = chat ? chat.messages.slice(upTo).map((m) => `${m.role}: ${m.text}`).join("\n") : "";
   const tokens = tailText ? await countTokens(tailText) : 0;
-  return { tokens, budget, ratio: Math.min(1, tokens / Math.max(1, budget)), foldAt: COMPACT_AT };
+
+  // Lane labels — best-effort, dynamic imports to dodge the william/model-router
+  // cycle; a failed lookup never breaks the meter.
+  let localId = "local";
+  let frontierId = "frontier";
+  try {
+    const wm = await import("./william-models");
+    localId = wm.resolveDesiredModel()?.id ?? wm.selectedModelId();
+  } catch { /* label only */ }
+  try {
+    const mr = await import("./model-router");
+    frontierId = await mr.effectiveFrontierModel();
+  } catch { /* label only */ }
+
+  const ratio = Math.min(1, tokens / Math.max(1, localBudget));
+  return {
+    tokens, budget: localBudget, ratio, foldAt: COMPACT_AT,
+    lanes: [
+      { id: localId, kind: "local", tokens, budget: localBudget, ratio, foldAt: COMPACT_AT },
+      {
+        id: frontierId, kind: "frontier", tokens, budget: frontierBudget,
+        ratio: Math.min(1, tokens / Math.max(1, frontierBudget)), foldAt: null,
+      },
+    ],
+  };
 }
 
 // ── IPC ────────────────────────────────────────────────────────────────────

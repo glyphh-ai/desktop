@@ -26,6 +26,41 @@ export function glyphhPath(...segments: string[]): string {
   return path.join(GLYPHH_DIR, ...segments);
 }
 
+// ── Per-user scoping ─────────────────────────────────────────
+//
+// The client respects the authenticated user: everything user-owned
+// (user-state.sqlite, William chats, …) resolves under
+// ~/.glyphh/users/<userId>/ once a session is known, so two accounts on one
+// machine can never see each other's local state. Before auth resolves,
+// scoped paths fall back to the legacy machine-global locations — the first
+// real login ADOPTS those files (they were that user's) via user-scope.ts.
+//
+// State lives here (the import root — nothing imports into app-paths) so
+// local-db / william-context / user-scope can all read it without cycles.
+
+let activeUserId: string | null = null;
+
+/** State-only setter — orchestration (closing stores, cache flushes, window
+ *  reload) lives in user-scope.ts's setActiveUser(). */
+export function setActiveUserIdState(id: string | null): void {
+  activeUserId = id;
+}
+
+export function getActiveUserId(): string | null {
+  return activeUserId;
+}
+
+/** This user's private data dir (~/.glyphh/users/<id>), or GLYPHH_DIR when no
+ *  session is known yet (pre-auth boot — legacy behavior). */
+export function userScopedDir(): string {
+  return activeUserId ? path.join(GLYPHH_DIR, "users", activeUserId) : GLYPHH_DIR;
+}
+
+/** Join segments under the ACTIVE USER's data dir. */
+export function userScopedPath(...segments: string[]): string {
+  return path.join(userScopedDir(), ...segments);
+}
+
 /**
  * Move ~/yo → ~/.glyphh once, in place. Guarded so it only fires when the
  * legacy dir exists and the new one does not (never clobbers newer data), and

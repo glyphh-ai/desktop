@@ -1,130 +1,13 @@
 /**
- * William's app-build oracle — the emission parser + install-truth validator.
- *
- * KEEP IN SYNC with glyphh-william/src/gen/{system-prompt,emit-format,
- * validate}.ts (the training-side copies) and the install gates in
- * glyphh-app-host.ts. Electron-free by design so the exact compiled module
- * is testable outside the app. Connector grounding is injected: the caller
- * supplies live tool names per connected slug (better than a static
- * catalog — it IS the user's account).
+ * Glyphh app install-truth validator — the manifest + worker checks the
+ * legacy single-file install path runs before packaging. (The one-shot LLM
+ * builder and its emission format are retired — apps are Vite projects built
+ * by frontier agents now; see glyphh-app-spec.ts. This module keeps only the
+ * validation the legacy update path still uses.) Electron-free by design so
+ * the exact compiled module is testable outside the app.
  */
 
 export type Bundle = Record<string, string>;
-
-export const SYSTEM_PROMPT = `You are William, a code generator that builds Glyphh apps.
-
-A Glyphh app is a portable ".glyphh" bundle: a manifest, a UI, and optional
-headless worker logic that exposes tools. You output the bundle and NOTHING else.
-
-## Output format — EXACT
-Emit the bundle as fenced sections, in this order, with no prose before, between,
-or after them:
-
-=== manifest.json ===
-{ ... }
-=== worker.js ===
-// ... (OMIT this whole section if the app declares no handler-backed tools)
-=== index.html ===
-<!doctype html> ...
-
-## manifest.json
-STRICT JSON only — no comments, no trailing commas, every key quoted.
-Required: "manifestVersion": 2, "kind": "glyphh-app", "name", "slug"
-(lowercase [a-z0-9_-], no leading underscore), "entry": "index.html",
-"description" (one-line tagline).
-Marketplace listing (include all): "version" (semver e.g. "1.0.0"), "icon" (an
-emoji), "category" (one of productivity, communication, developer, data, crm,
-finance, personal, fun, other), "keywords" (array), "about" (a short markdown
-description).
-Optional: "worker": "worker.js" (required IF any tool uses a handler),
-"window": { "width", "height" }, "capabilities": [...], "connectors": [...]
-(Pipedream app slugs), "tools": [...].
-
-Each tool: { "name", "description", "handler" XOR "capability", "inputSchema" }
-where inputSchema is a JSON Schema object. RULES:
-- exactly ONE of "handler" (a worker function) or "capability" (a host call).
-- every "capability" used by a tool must also appear in top-level "capabilities".
-- any "connector.*" capability requires a non-empty "connectors" list.
-- NEVER expose "agent.run" as a tool.
-
-## Capabilities (the ONLY host calls that exist)
-db.exec {sql,params?} · cron.schedule {id,cron,handler,args?} · cron.cancel · cron.list
-· notify.send {title,body} · llm.embed · llm.chunk · llm.complete {prompt,system?}
-· agent.run {prompt,...} · vector.upsert/search/delete · graph.cypher {query,params?}
-· secrets.get {key} · secrets.list · web.read {url} (clean page/RSS text — THE way to read the web) · web.fetch {url} (raw) · connector.status · connector.tools · connector.call
-{connector,tool,args?} · contacts.search · messages.send {to,body}.
-
-When a "Connectors available to this app" section is provided with the request, use
-ONLY those exact connector tool names and arg names in connector.call — never guess,
-prefix, or abbreviate. The host injects the connected account; never put it in args.
-
-## worker.js (headless, sandboxed)
-SDK ONLY: glyphh.handle("name", async (args) => { ... return result }) registers a
-tool/cron handler (its return value IS the tool result); await glyphh.call(cap, args)
-→ { ok, result } | { ok:false, error }; glyphh.app.slug. Register handlers at the top
-level. NO fetch, NO require/import, NO network, NO node — every side effect goes
-through glyphh.call(). State lives in db.exec, not in memory.
-
-## index.html (the UI — make it genuinely beautiful)
-A single self-contained file. Talk to the host via window.glyphh.call(method, args).
-No build step, no external network/CDN. Host libraries are available relatively:
-<script src="../_libs/chart.js"></script> exposes window.Chart (Chart.js 4);
-../_libs/three.js → window.THREE; ../_libs/flow.js → window.GlyphhFlow. Inline all
-your own CSS/JS. Gate any connector UI on connector.status.
-
-Emit only the bundle.`;
-
-// ── Emission parsing (=== file === sections; fence-tolerant) ──────────────
-
-const DELIM = /^===\s*(.+?)\s*===\s*$/;
-
-function stripFence(s: string): string {
-  const t = s.trim();
-  const f = t.match(/^```[a-z0-9]*\n([\s\S]*?)\n```$/i);
-  return (f ? f[1] : t).replace(/\s+$/, "") + "\n";
-}
-
-export function parseEmission(text: string): Bundle {
-  let body = text.trim();
-  const outer = body.match(/^```[a-z0-9]*\n([\s\S]*?)\n```$/i);
-  if (outer) body = outer[1];
-  const files: Bundle = {};
-  let current: string | null = null;
-  let buf: string[] = [];
-  const flush = () => { if (current) files[current] = stripFence(buf.join("\n")); buf = []; };
-  for (const line of body.split("\n")) {
-    const m = line.match(DELIM);
-    if (m) { flush(); current = m[1].trim(); continue; }
-    if (current) buf.push(line);
-  }
-  flush();
-  return files;
-}
-
-// ── Grounding block (training format, built from LIVE connector tools) ────
-
-export interface LiveConnectorTool { name: string; description?: string; inputSchema?: Record<string, unknown> }
-
-export function buildGroundingBlock(toolsBySlug: Record<string, LiveConnectorTool[]>): string {
-  const blocks: string[] = [];
-  for (const [slug, tools] of Object.entries(toolsBySlug)) {
-    if (!tools.length) continue;
-    const lines = tools.slice(0, 40).map((t) => {
-      const props = (t.inputSchema as { properties?: Record<string, unknown>; required?: string[] } | undefined);
-      const req = new Set(props?.required ?? []);
-      const args = Object.keys(props?.properties ?? {}).map((a) => (req.has(a) ? a : `${a}?`)).join(", ");
-      const desc = (t.description || "").split("\n")[0].slice(0, 110);
-      return `  - ${t.name}${desc ? ` — ${desc}` : ""}${args ? `  [args: ${args}]` : ""}`;
-    });
-    blocks.push(`### ${slug}\n${lines.join("\n")}`);
-  }
-  if (!blocks.length) return "";
-  return [
-    "## Connectors available to this app",
-    "Call these with connector.call({ connector, tool, args }). Use these EXACT `tool` names and arg names verbatim — never invent, prefix, or abbreviate them. The connected account is injected by the host; never put it in args.",
-    ...blocks,
-  ].join("\n");
-}
 
 // ── The validator (install gates + stricter runtime checks) ───────────────
 
