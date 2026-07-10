@@ -142,3 +142,12 @@ export function resolveBrowser(id: string | undefined | null): InstalledBrowser 
   if (id && id !== "default") return getBrowser(id);
   return getDefaultBrowser();
 }
+
+/** The installed browser this executable path points at (a saved "native"
+ *  app card whose binary IS a browser), or null. Matched by bundle/exe
+ *  basename so path casing or install root differences don't matter. */
+export function browserForExecPath(execPath: string | null | undefined): InstalledBrowser | null {
+  const base = (execPath || "").trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop()?.toLowerCase();
+  if (!base) return null;
+  return detectBrowsers().find((b) => (b.appPath.split(/[\\/]/).pop() || "").toLowerCase() === base) || null;
+}

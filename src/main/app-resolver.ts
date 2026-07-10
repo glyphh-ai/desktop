@@ -17,8 +17,8 @@ import {
   openAppWindowAt, openAppWindowSlide, focusAppWindow, closeAppWindow, listAppWindows,
   resolveBrowserHomeUrl, type AppWindowSpec, type LayoutSpec,
 } from "./app-window-manager.js";
-import { launchNativeApp, launchWebApp, focusExistingBrowserTab, type LaunchResult } from "./native-launch.js";
-import { resolveBrowser, type InstalledBrowser } from "./browser-detect.js";
+import { launchNativeApp, launchWebApp, launchBrowserWindow, focusExistingBrowserTab, type LaunchResult } from "./native-launch.js";
+import { resolveBrowser, browserForExecPath, type InstalledBrowser } from "./browser-detect.js";
 import { getPreference } from "./stores/preferences-db.js";
 import {
   positionAppWindow, focusWindow, setWindowBounds, listWindows, minimizeWindow,
@@ -144,6 +144,20 @@ async function openNativeTracked(
     adoptExisting?: () => Promise<{ winId: string | null } | null>;
   },
 ): Promise<void> {
+  // A saved "native" app whose binary IS a browser (a Chrome/Safari library
+  // card): the default `open -a` launch can't create a window when the
+  // browser is already running, so adoption finds nothing (every existing
+  // window belongs to another config) and the open silently no-ops. Launch a
+  // real NEW window instead; alwaysNewWindow keeps the adopt from ever
+  // latching the user's personal window. Custom args keep the default path.
+  if (!launch && app.execPath) {
+    const lc = (app.launchConfig || {}) as Record<string, unknown>;
+    const hasArgs = Array.isArray(lc.args) && lc.args.length > 0;
+    const asBrowser = hasArgs ? null : browserForExecPath(app.execPath);
+    if (asBrowser) {
+      launch = { hint: asBrowser.proc, run: () => launchBrowserWindow(asBrowser), alwaysNewWindow: true };
+    }
+  }
   const hint = launch?.hint ?? ((app.execPath || "").split("/").pop()?.replace(/\.app$/, "") || app.name);
   wlog("openNativeTracked ENTER", { id: app.id, slug: app.slug, name: app.name, hint, exec: app.execPath, archetype: app.appArchetype, launchConfig: app.launchConfig, retileOnFocus, rect, map: trackedSnapshot() });
 
@@ -336,7 +350,12 @@ async function openWebTracked(app: ServerApp, rect: OsRect, retileOnFocus: boole
     run: () => launchWebApp(url, browser, "window"),
     alwaysNewWindow: true,
     adoptExisting: async () => {
-      if (!(await focusExistingBrowserTab(url, browser))) return null;
+      // Solo-window hits only: a matching tab buried in the user's own
+      // multi-tab window must NOT claim it — placing that window into the
+      // app's rect hijacks the user's whole browser, and two apps whose
+      // tabs share a window would thrash it between their rects. No solo
+      // hit → fall through and open a real new window.
+      if (!(await focusExistingBrowserTab(url, browser, { soloWindowOnly: true }))) return null;
       // The hunt raised the tab's window — identify it so it can be
       // tracked and placed like a window we opened ourselves.
       await sleep(250);

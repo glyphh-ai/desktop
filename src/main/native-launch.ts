@@ -12,7 +12,7 @@
 
 import { execFile, spawn } from "child_process";
 import { shell } from "electron";
-import type { InstalledBrowser } from "./browser-detect.js";
+import { browserForExecPath, type InstalledBrowser } from "./browser-detect.js";
 
 export type LaunchResult = { ok: boolean; error?: string };
 
@@ -86,12 +86,9 @@ function launchMacTerminal(lc: Record<string, unknown>, mode: string): void {
  *  Match = exact URL, or the URL followed by /, ? or # — so a configured
  *  "https://mail.google.com" claims the signed-in "…/mail/u/0/#inbox" tab
  *  without also claiming unrelated prefixed hosts. */
-function tabHuntScript(appName: string, target: string, sel: string): string {
+function tabHuntScript(appName: string, target: string, sel: string, soloOnly = false): string {
   const t = appleEscape(target);
-  return `tell application "${appleEscape(appName)}"
-  repeat with w in windows
-    try
-      set i to 0
+  const hunt = `set i to 0
       repeat with t in tabs of w
         set i to i + 1
         try
@@ -103,7 +100,13 @@ function tabHuntScript(appName: string, target: string, sel: string): string {
             return "1"
           end if
         end try
-      end repeat
+      end repeat`;
+  return `tell application "${appleEscape(appName)}"
+  repeat with w in windows
+    try
+      ${soloOnly ? `if (count of tabs of w) is 1 then
+      ${hunt}
+      end if` : hunt}
     end try
   end repeat
 end tell
@@ -116,17 +119,27 @@ return "0"`;
  * opening a duplicate. Safari + Chromium only (Firefox has no tab
  * scripting); non-mac, unscriptable browsers, denied Automation permission,
  * or any script error resolve false so opening proceeds normally.
+ *
+ * `soloWindowOnly` — only match a tab that is the ONLY tab of its window.
+ * Window-mode dedupe needs this: a matching tab buried among the user's
+ * other tabs must not claim the whole hosting window (the caller would then
+ * place the user's personal browser window into the app's rect).
  */
-export async function focusExistingBrowserTab(url: string, browser: InstalledBrowser): Promise<boolean> {
+export async function focusExistingBrowserTab(
+  url: string,
+  browser: InstalledBrowser,
+  opts?: { soloWindowOnly?: boolean },
+): Promise<boolean> {
   if (process.platform !== "darwin") return false;
   const target = url.replace(/\/+$/, "");
   const appName = (browser.appPath.split("/").pop() || "").replace(/\.app$/, "");
   if (!appName || !/^https?:\/\//.test(target)) return false;
+  const solo = !!opts?.soloWindowOnly;
   let script: string;
   if (browser.id === "safari") {
-    script = tabHuntScript(appName, target, "set current tab of w to t");
+    script = tabHuntScript(appName, target, "set current tab of w to t", solo);
   } else if (browser.chromium) {
-    script = tabHuntScript(appName, target, "set active tab index of w to i");
+    script = tabHuntScript(appName, target, "set active tab index of w to i", solo);
   } else {
     return false;
   }
@@ -135,6 +148,34 @@ export async function focusExistingBrowserTab(url: string, browser: InstalledBro
       resolve(!err && String(stdout).trim() === "1");
     });
   });
+}
+
+/**
+ * Open a NEW empty browser window (lands on the browser's new-tab/home page).
+ * Needed when a saved "native" app's binary IS a browser: `open -a` on an
+ * already-running browser only activates it — no window is created, so a
+ * tracked open has nothing to adopt (or worse, latches the user's personal
+ * window and resizes it).
+ */
+export function launchBrowserWindow(browser: InstalledBrowser): LaunchResult {
+  try {
+    if (process.platform === "darwin") {
+      if (browser.chromium) {
+        safeSpawn("open", ["-na", browser.appPath, "--args", "--new-window"]);
+      } else if (browser.id === "firefox") {
+        safeSpawn("open", ["-na", browser.appPath, "--args", "-new-window"]);
+      } else if (browser.id === "safari") {
+        runOsascript(['tell application "Safari"', "activate", "make new document", "end tell"]);
+      } else {
+        safeSpawn("open", ["-na", browser.appPath]);
+      }
+    } else {
+      safeSpawn(browser.appPath, [browser.chromium ? "--new-window" : "-new-window"]);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /**
@@ -232,6 +273,14 @@ export function launchNativeApp(
   const genericArgs = archetype === "generic" && Array.isArray(lc.args)
     ? (lc.args as unknown[]).map(str).filter(Boolean)
     : [];
+
+  // The executable IS a browser (a saved Chrome/Safari card). `open -a` on a
+  // running browser activates it without creating a window — open a real NEW
+  // window instead. Custom args (profiles etc.) keep the generic path.
+  if (!pathArg && genericArgs.length === 0) {
+    const asBrowser = browserForExecPath(exec);
+    if (asBrowser) return launchBrowserWindow(asBrowser);
+  }
 
   try {
     if (process.platform === "darwin" && exec.endsWith(".app")) {

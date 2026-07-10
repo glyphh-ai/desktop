@@ -80,5 +80,10 @@
     "three": "^0.184.0",
     "ws": "^8.21.0",
     "zod": "^4.3.6"
+  },
+  "overrides": {
+    "monaco-editor": {
+      "dompurify": "^3.4.11"
+    }
   }
 }

@@ -70,6 +70,11 @@ export function isWilliamRunActive(): boolean {
 
 const MODEL_FILE = "qwen2.5-coder-14b-instruct-q4_k_m.gguf";
 
+/** The managed llama-server's context window (`-c` below). The router
+ *  budgets every local turn against this — william-context's CTX_TOKENS
+ *  mirrors it (kept private there to avoid the module cycle). */
+export const LOCAL_CTX_TOKENS = 32768;
+
 let managed: ChildProcess | null = null;
 let ensuring: Promise<void> | null = null; // single-flight
 
@@ -172,7 +177,7 @@ async function ensureInner(): Promise<void> {
     "--host", "127.0.0.1", "--port", String(port),
     // 32k window: the SDK loop's system prompt + tool declarations are
     // bigger than the old prose loop's — 16k left no room to work.
-    "--jinja", "-c", "32768", "-ngl", "99",
+    "--jinja", "-c", String(LOCAL_CTX_TOKENS), "-ngl", "99",
   ];
   const child = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
   let stderrTail = "";

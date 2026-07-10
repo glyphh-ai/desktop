@@ -22,7 +22,7 @@ import http from "node:http";
 import { ipcMain } from "electron";
 import { getPreference } from "./stores/preferences-db";
 import { escalationPolicy, effortMaxTokens } from "./william-permissions";
-import { ensureWilliamServing, williamBaseUrl } from "./william";
+import { ensureWilliamServing, williamBaseUrl, LOCAL_CTX_TOKENS } from "./william";
 import { adaRecall, adaTellRaw } from "./ada/store";
 import { AUTH_SERVER, getAuthToken, serverGetAuthed } from "./auth";
 
@@ -135,18 +135,28 @@ function decide(body: MessagesBody): Decision {
   const reasons: string[] = [];
   const bump = (n: number, why: string) => { score += n; reasons.push(why); };
 
-  const totalChars = JSON.stringify(messages).length;
-  if (totalChars > 110_000) {
-    // Too big for the local context no matter how we squeeze — forced up.
-    return { at: Date.now(), route: "frontier", reason: "turn exceeds local context", score: 99 };
-  }
-
   // Vision: local models are text-only — an attached image forces the
   // frontier lane so the model can actually SEE it (the Local pin above
   // still wins; the image then rides as its path in the manifest only).
+  // Checked before the size guard so the decision names the real reason
+  // (base64 image bytes would otherwise read as "oversized").
   const hasImage = messages.some((m) =>
     m.role === "user" && Array.isArray(m.content) && m.content.some((b) => b?.type === "image"));
   if (hasImage) return { at: Date.now(), route: "frontier", reason: "image attached (vision)", score: 99 };
+
+  // The WHOLE request renders into the local prompt — system + tool schemas
+  // + messages, not just messages. Bigger than the window → forced up; the
+  // squeeze (completeLocal) only exists for lanes that can't escalate.
+  const cost = promptCost(body);
+  if (cost.total > localPromptBudget()) {
+    return {
+      at: Date.now(),
+      route: "frontier",
+      reason: `turn exceeds local context (~${Math.round(cost.total / 1000)}k tokens: ` +
+        `${Math.round(cost.system / 1000)}k system + ${Math.round(cost.tools / 1000)}k tools + ${Math.round(cost.messages / 1000)}k messages)`,
+      score: 99,
+    };
+  }
 
   if (/\b(escalate|use claude|ask claude)\b/i.test(ask)) bump(99, "explicit escalation ask");
   const fails = Math.min(failStreak(messages), 3);
@@ -167,7 +177,7 @@ function decide(body: MessagesBody): Decision {
   if (/(refactor|migrat|architect|debug|test suite|across (the )?(repo|project)|multi.?file|plan (out|the))/i.test(ask)) {
     bump(1, "heavy-lift keywords");
   }
-  if (totalChars > 24_000) bump(1, "long transcript");
+  if (cost.messages > 7_500) bump(1, "long transcript");
   if (messages.length > 28) bump(1, "long horizon");
   if (pressure > 0) bump(2, "recent escalation (sticky)");
 
@@ -210,19 +220,7 @@ function toOpenAiMessages(body: MessagesBody): OpenAiMessage[] {
   const sys = systemText(body.system);
   if (sys) out.push({ role: "system", content: sys });
 
-  let messages = body.messages ?? [];
-  // Squeeze oversized turns into the local window: keep the head (the task
-  // framing) and the recent tail (the live work); the middle is history the
-  // compactor already summarized upstream anyway.
-  if (JSON.stringify(messages).length > 90_000 && messages.length > 16) {
-    messages = [
-      ...messages.slice(0, 2),
-      { role: "user", content: "[…older turns elided to fit the local model's context…]" },
-      ...messages.slice(-12),
-    ];
-  }
-
-  for (const m of messages) {
+  for (const m of body.messages ?? []) {
     if (typeof m.content === "string") {
       out.push({ role: m.role, content: m.content });
       continue;
@@ -247,6 +245,137 @@ function toOpenAiMessages(body: MessagesBody): OpenAiMessage[] {
   return out;
 }
 
+// ── Local window budgeting ─────────────────────────────────────────────────
+//
+// llama-server 400s any request whose rendered prompt exceeds `-c` (n_ctx),
+// and EVERYTHING renders into that prompt: system, tool schemas, messages.
+// The budget measures all three on the TRANSLATED payload (translation drops
+// image blocks, which never reach the local prompt). The estimate skews high
+// (JSON escaping) — the safe direction; llama's own 400 is the backstop.
+
+const estTokens = (s: string) => Math.ceil(s.length / 3.2);
+/** Room kept for the reply + chat-template glue. */
+const LOCAL_REPLY_ROOM = 2048;
+const localPromptBudget = () => LOCAL_CTX_TOKENS - LOCAL_REPLY_ROOM;
+
+interface PromptCost { system: number; tools: number; messages: number; total: number }
+
+function promptCost(body: MessagesBody): PromptCost {
+  const system = estTokens(systemText(body.system));
+  const tools = body.tools?.length ? estTokens(JSON.stringify(body.tools)) : 0;
+  const messages = estTokens(JSON.stringify(toOpenAiMessages({ ...body, system: undefined })));
+  return { system, tools, messages, total: system + tools + messages + 64 };
+}
+
+// ── Squeeze: make an oversized turn servable locally ───────────────────────
+//
+// Escalation is the first choice for oversized turns (decide()); the squeeze
+// serves the lanes that MUST answer locally — dial pinned local, signed out,
+// or the gateway declined. It only ever shrinks `messages`: system and tools
+// render verbatim, so when those alone bust the budget no squeeze can save
+// the turn and the caller reports that honestly.
+
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+interface SqueezeLevel { resultCap: number; textCap: number; keepHead: number; keepTail: number }
+const SQUEEZE: SqueezeLevel[] = [
+  { resultCap: 6000, textCap: 24_000, keepHead: 2, keepTail: 12 },
+  { resultCap: 2500, textCap: 12_000, keepHead: 2, keepTail: 8 },
+  { resultCap: 1200, textCap: 8_000, keepHead: 1, keepTail: 6 },
+  { resultCap: 700, textCap: 5_000, keepHead: 1, keepTail: 4 },
+];
+
+function truncateText(s: string, cap: number): string {
+  if (s.length <= cap) return s;
+  const head = Math.floor(cap * 0.7);
+  const tail = cap - head;
+  return `${s.slice(0, head)}\n[…${(s.length - cap).toLocaleString()} chars elided to fit the local model's context…]\n${s.slice(s.length - tail)}`;
+}
+
+/** Cap tool_result payloads (the usual bulk) and oversized text in place. */
+function capBlocks(messages: AnthropicMessage[], resultCap: number, textCap: number): void {
+  for (const m of messages) {
+    if (typeof m.content === "string") {
+      if (m.content.length > textCap) m.content = truncateText(m.content, textCap);
+      continue;
+    }
+    for (const b of m.content) {
+      if (b.type === "tool_result") {
+        const text = blockContentToString(b.content);
+        if (text.length > resultCap) b.content = truncateText(text, resultCap);
+      } else if (b.type === "text" && b.text && b.text.length > textCap) {
+        b.text = truncateText(b.text, textCap);
+      }
+    }
+  }
+}
+
+/** Drop the middle of the transcript — keep the head (task framing) and the
+ *  recent tail (live work). Tool linkage the cut orphans is flattened to
+ *  text so the chat template never sees a result without its call or a call
+ *  without its result. */
+function elideMiddle(messages: AnthropicMessage[], keepHead: number, keepTail: number): AnthropicMessage[] {
+  if (messages.length <= keepHead + keepTail + 1) return messages;
+  const kept: AnthropicMessage[] = [
+    ...messages.slice(0, keepHead),
+    { role: "user", content: "[…older turns elided to fit the local model's context…]" },
+    ...messages.slice(-keepTail),
+  ];
+  const liveToolUse = new Set<string>();
+  const answered = new Set<string>();
+  for (const m of kept) {
+    if (typeof m.content === "string") continue;
+    for (const b of m.content) {
+      if (m.role === "assistant" && b.type === "tool_use" && b.id) liveToolUse.add(b.id);
+      if (m.role === "user" && b.type === "tool_result") answered.add(String(b.tool_use_id));
+    }
+  }
+  for (const m of kept) {
+    if (typeof m.content === "string") continue;
+    m.content = m.content.map((b) => {
+      if (m.role === "user" && b.type === "tool_result" && !liveToolUse.has(String(b.tool_use_id))) {
+        return { type: "text", text: "[tool output from an elided earlier turn]" };
+      }
+      if (m.role === "assistant" && b.type === "tool_use" && !answered.has(String(b.id))) {
+        return { type: "text", text: `[called ${b.name || "a tool"} — output elided]` };
+      }
+      return b;
+    });
+  }
+  return kept;
+}
+
+/** Body at squeeze level `n` — a fresh clone each time; levels re-derive
+ *  from the original rather than compounding. */
+function squeezeAt(body: MessagesBody, level: SqueezeLevel): MessagesBody {
+  const msgs = elideMiddle(clone(body.messages ?? []), level.keepHead, level.keepTail);
+  capBlocks(msgs, level.resultCap, level.textCap);
+  return { ...body, messages: msgs };
+}
+
+/** The lightest body that fits the budget — or the heaviest squeeze when
+ *  nothing fits (estimates skew high, so the attempt still goes out; llama
+ *  has the final word). */
+function fitForLocal(body: MessagesBody): { body: MessagesBody; level: number } {
+  const budget = localPromptBudget();
+  if (promptCost(body).total <= budget) return { body, level: -1 };
+  for (let i = 0; i < SQUEEZE.length; i++) {
+    const squeezed = squeezeAt(body, SQUEEZE[i]);
+    if (promptCost(squeezed).total <= budget) return { body: squeezed, level: i };
+  }
+  return { body: squeezeAt(body, SQUEEZE[SQUEEZE.length - 1]), level: SQUEEZE.length - 1 };
+}
+
+/** Local turn that cannot fit the window even fully squeezed. */
+class LocalContextOverflowError extends Error {
+  constructor(detail: string, public readonly cost: PromptCost) {
+    super(detail);
+  }
+}
+
+const isContextOverflow = (status: number, text: string) =>
+  status === 400 && /exceed.*context|context size|n_ctx/i.test(text);
+
 interface LocalResult {
   blocks: AnthropicBlock[];
   stopReason: "end_turn" | "tool_use" | "max_tokens";
@@ -254,8 +383,10 @@ interface LocalResult {
   outputTokens: number;
 }
 
-async function completeLocal(body: MessagesBody): Promise<LocalResult> {
-  await ensureWilliamServing();
+/** One attempt against llama-server. Throws LocalContextOverflowError on
+ *  the window-overflow 400 so the caller can squeeze and go again. */
+async function callLocal(body: MessagesBody): Promise<LocalResult> {
+  const cost = promptCost(body);
   const payload = {
     messages: toOpenAiMessages(body),
     tools: (body.tools ?? []).map((t) => ({
@@ -264,7 +395,8 @@ async function completeLocal(body: MessagesBody): Promise<LocalResult> {
     })),
     tool_choice: (body.tools?.length ? "auto" : "none") as "auto" | "none",
     temperature: 0.15,
-    max_tokens: Math.min(Number(body.max_tokens) || effortMaxTokens(), 16384),
+    // The reply must fit what's left of the window after the prompt.
+    max_tokens: Math.max(256, Math.min(Number(body.max_tokens) || effortMaxTokens(), 16384, LOCAL_CTX_TOKENS - cost.total - 128)),
     stream: false,
   };
   const res = await fetch(`${williamBaseUrl()}/v1/chat/completions`, {
@@ -272,7 +404,11 @@ async function completeLocal(body: MessagesBody): Promise<LocalResult> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`local model answered HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) {
+    const text = (await res.text()).slice(0, 300);
+    if (isContextOverflow(res.status, text)) throw new LocalContextOverflowError(text, cost);
+    throw new Error(`local model answered HTTP ${res.status}: ${text}`);
+  }
   const j = await res.json() as {
     choices?: Array<{ finish_reason?: string; message?: { content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -296,6 +432,23 @@ async function completeLocal(body: MessagesBody): Promise<LocalResult> {
     inputTokens: j.usage?.prompt_tokens ?? 0,
     outputTokens: j.usage?.completion_tokens ?? 0,
   };
+}
+
+/** Serve a turn locally: fit to the window up front (estimate), then let
+ *  llama's own overflow 400 drive progressively harder squeezes. Throws
+ *  LocalContextOverflowError only when the hardest squeeze still overflows. */
+async function completeLocal(body: MessagesBody): Promise<LocalResult> {
+  await ensureWilliamServing();
+  const fitted = fitForLocal(body);
+  let attempt = fitted.body;
+  for (let level = fitted.level; ; level++) {
+    try {
+      return await callLocal(attempt);
+    } catch (err) {
+      if (!(err instanceof LocalContextOverflowError) || level >= SQUEEZE.length - 1) throw err;
+      attempt = squeezeAt(body, SQUEEZE[level + 1]);
+    }
+  }
 }
 
 function anthropicMessageJson(body: MessagesBody, r: LocalResult): Record<string, unknown> {
@@ -487,6 +640,7 @@ async function handleMessages(req: http.IncomingMessage, res: http.ServerRespons
   }
   recordDecision(decision, lastUserText(body.messages ?? []).slice(0, 80));
 
+  let frontierDeclined = false;
   if (decision.route === "frontier" && lane) {
     // The gateway 403s models outside the org allow-list — resolve to the
     // effective (allowed) model up front so a stale pref can't fail turns.
@@ -494,9 +648,39 @@ async function handleMessages(req: http.IncomingMessage, res: http.ServerRespons
     const handled = await forwardFrontier(req, res, body, lane);
     if (handled) return;
     // Governance decline (cap/rate/role) — degrade to local, keep working.
+    frontierDeclined = true;
   }
 
-  const r = await completeLocal(body);
+  let r: LocalResult;
+  try {
+    r = await completeLocal(body);
+  } catch (err) {
+    if (!(err instanceof LocalContextOverflowError)) throw err;
+    // The hardest squeeze still overflowed — system + tools render verbatim,
+    // so no message trimming can save this turn. Escalate when the dial and
+    // the gateway allow it; otherwise say exactly what's full (a plain 400 —
+    // NOT a "temporary server error" the client tells the user to wait out).
+    if (lane && !frontierDeclined && escalationPolicy() !== "local") {
+      const d: Decision = { at: Date.now(), route: "frontier", reason: "local context overflow after squeeze — escalated", score: 99 };
+      recordDecision(d, lastUserText(body.messages ?? []).slice(0, 80));
+      body.model = await effectiveFrontierModel();
+      if (await forwardFrontier(req, res, body, lane)) return;
+    }
+    const c = err.cost;
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message:
+          `This turn doesn't fit the local model's ${LOCAL_CTX_TOKENS.toLocaleString()}-token window even after squeezing ` +
+          `(≈${c.system.toLocaleString()} system + ${c.tools.toLocaleString()} tools + ${c.messages.toLocaleString()} message tokens). ` +
+          (lane ? "" : "Sign in to escalate big turns to Claude, or ") +
+          "start a fresh chat, or disconnect unused connector accounts to shrink the toolset.",
+      },
+    }));
+    return;
+  }
   usage.localTurns++;
   if (body.stream) emitAnthropicSse(res, body, r);
   else {
