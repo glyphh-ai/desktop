@@ -9424,6 +9424,13 @@ select.settings-input {
   padding-right: 0;
 }
 
+/* Editing a connection is a full-bleed two-column detail — drop the page's
+   right gutter so the tools pane and its scrollbar reach the window's right
+   edge (only in edit mode; the connections LIST keeps the normal gutter). */
+#page-body:has(.help-section[data-section="connections"] #conn-detail:not(.hidden)) {
+  padding-right: 0;
+}
+
 /* Settings sits tighter into the corner — trim the page's 32/40px gutters. */
 #page-body:has(.help-section[data-section="settings"].active) {
   padding-top: 12px;
