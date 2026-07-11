@@ -604,10 +604,6 @@ contextBridge.exposeInMainWorld("yo", {
   // for the user's external tools.
   relayReconnect: () => ipcRenderer.invoke("relay-reconnect") as Promise<void>,
   relayStatus: () => ipcRenderer.invoke("relay-status") as Promise<{ enabled: boolean; signedIn: boolean; state: "off" | "connecting" | "connected" | "disconnected" }>,
-  relayTokensList: () => ipcRenderer.invoke("relay-tokens-list") as Promise<Array<{ id: string; label: string; type: string; userId: string | null; createdAt: string; expiresAt: string }> | { error: string }>,
-  relayTokensCreate: (label: string) => ipcRenderer.invoke("relay-tokens-create", label) as Promise<{ ok: boolean; id: string; token: string; expiresAt: string } | { error: string }>,
-  relayTokensRevoke: (id: string) => ipcRenderer.invoke("relay-tokens-revoke", id) as Promise<{ ok: boolean } | { error: string }>,
-  relayInstallClaude: (token: string) => ipcRenderer.invoke("relay-install-claude", token) as Promise<{ ok: boolean; path: string } | { error: string }>,
 
   // Local MCP server (127.0.0.1) — the no-cloud alternative to the relay.
   localMcpSetEnabled: (enabled: boolean) => ipcRenderer.invoke("local-mcp-set-enabled", enabled) as Promise<{ ok: boolean; error?: string }>,

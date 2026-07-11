@@ -168,40 +168,12 @@
 
                       <!-- Connect (recommended) — OAuth, no token to copy -->
                       <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Connect (recommended)</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">In a client that supports it (Claude's Connections settings, etc.), add this MCP endpoint and approve the connection — no token to copy.</p>
+                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">In a client that supports it (Claude's Connections settings, etc.), add the MCP endpoint above and approve the connection — no token to copy.</p>
 
-                      <!-- Manual config (clients without OAuth support) -->
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Manual config (clients without OAuth support)</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 6px;">Add this to the external tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a token generated below.</p>
-                      <div style="position:relative;">
-                        <pre id="relay-config-example" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
-                        <button id="relay-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
-                      </div>
-
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Or, for Claude code (CLI)</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 6px;">Run this in your terminal to register the relay with the <code>claude</code> CLI — replace <code style="color:var(--accent);">&lt;your-token&gt;</code>:</p>
-                      <div style="position:relative;">
-                        <pre id="relay-claude-cmd" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre-wrap;word-break:break-all;"></pre>
-                        <button id="relay-copy-claude-cmd" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
-                      </div>
-
-                      <!-- Access Tokens — fallback for clients without OAuth support -->
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Access Tokens</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">Generate a token for each tool that doesn't support OAuth. Tokens are shown <strong>once</strong> on creation — copy immediately.</p>
-                      <div id="relay-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-                        <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
-                        <div style="display:flex;gap:6px;align-items:center;">
-                          <code id="relay-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
-                          <button id="relay-copy-new-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
-                          <button id="relay-install-claude" class="action-btn" style="font-size:11px;padding:4px 12px;white-space:nowrap;" title="Write this token into ~/.claude.json so the claude CLI picks up the relay automatically">Install in Claude code</button>
-                        </div>
-                        <p id="relay-install-status" style="font-size:11px;color:var(--text-3);margin:6px 0 0;display:none;"></p>
-                      </div>
-                      <div id="relay-tokens-list" style="margin-bottom:10px;"></div>
-                      <div style="display:flex;gap:6px;align-items:center;">
-                        <input id="relay-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude code, ChatGPT)" style="flex:1;font-size:12px;padding:5px 8px;" />
-                        <button id="relay-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
-                      </div>
+                      <!-- Manual (remote) tokens live on the platform, not here — they're
+                           org-managed API keys with per-key usage. -->
+                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Manual tokens</h4>
+                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">For clients without OAuth, create an <strong>API key</strong> in the Glyphh dashboard (Manage → API keys). Keys are org-managed and their usage is tracked per key.</p>
                       </div>
                     </div>
                   </div>

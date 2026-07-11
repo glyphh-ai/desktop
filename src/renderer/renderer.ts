@@ -374,10 +374,6 @@ declare global {
       // Remote relay
       relayReconnect: () => Promise<void>;
       relayStatus: () => Promise<{ enabled: boolean; signedIn: boolean; state: "off" | "connecting" | "connected" | "disconnected" }>;
-      relayTokensList: () => Promise<Array<{ id: string; label: string; type: string; userId: string | null; createdAt: string; expiresAt: string }> | { error: string }>;
-      relayTokensCreate: (label: string) => Promise<{ ok: boolean; id: string; token: string; expiresAt: string } | { error: string }>;
-      relayTokensRevoke: (id: string) => Promise<{ ok: boolean } | { error: string }>;
-      relayInstallClaude: (token: string) => Promise<{ ok: boolean; path: string } | { error: string }>;
 
       // Local MCP server (127.0.0.1)
       localMcpSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;

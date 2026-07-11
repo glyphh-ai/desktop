@@ -6,9 +6,6 @@
  */
 
 import { ipcMain } from "electron";
-import path from "path";
-import os from "os";
-import fs from "fs";
 import type { McpManager } from "./mcp-manager";
 import type { ConnectorManager } from "./connectors";
 import { reconnectRelay, getRelayStatus } from "./relay-client";
@@ -21,7 +18,7 @@ import {
   localMcpRevokeToken,
 } from "./local-mcp-server";
 import { setPreference } from "./stores/preferences-db";
-import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, getAccountInfo, getAuthStatus } from "./auth";
+import { serverGetAuthed, getAccountInfo, getAuthStatus } from "./auth";
 
 interface HomeIpcDeps {
   mcpManager: McpManager | null;
@@ -46,8 +43,6 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const now = new Date();
     const windowStart = new Date(now); windowStart.setDate(now.getDate() - (WINDOW - 1));
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
     interface CreditsResp { balance?: number; allowance?: number }
     interface MeCreditsResp { roleName?: string | null; uncapped?: boolean; capCredits?: number | null; spentCredits?: number; remainingCredits?: number | null; windowEnd?: string | null }
@@ -62,10 +57,12 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       serverGetAuthed<CreditsResp>("/api/billing/credits").catch(() => null),
       serverGetAuthed<MeCreditsResp>("/api/me/credits").catch(() => null),
       // scope=me → the desktop dashboard always shows THIS user's spend, never
-      // the org's. `to` is the current instant (not a date) so tonight's usage
-      // isn't clipped for users in timezones behind UTC.
-      serverGetAuthed<UsageResp>(`/api/usage?from=${encodeURIComponent(monthStart.toISOString())}&to=${encodeURIComponent(now.toISOString())}&scope=me`).catch(() => null),
-      serverGetAuthed<DailyResp>(`/api/usage/daily?from=${ymd(windowStart)}&to=${encodeURIComponent(now.toISOString())}&tz=${encodeURIComponent(tz)}&scope=me`).catch(() => null),
+      // the org's. period=mtd + no tz param: the SERVER owns the month
+      // boundary and buckets by the user's stored profile timezone, so this
+      // number matches what an org admin sees for the same user on the
+      // platform (both surfaces read the same resolved-timezone math).
+      serverGetAuthed<UsageResp>(`/api/usage?period=mtd&to=${encodeURIComponent(now.toISOString())}&scope=me`).catch(() => null),
+      serverGetAuthed<DailyResp>(`/api/usage/daily?from=${ymd(windowStart)}&to=${encodeURIComponent(now.toISOString())}&scope=me`).catch(() => null),
       serverGetAuthed<PanelApp[]>("/api/panel-apps").catch(() => null),
     ]);
 
@@ -107,63 +104,8 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   });
 
   // Relay: bouncing the WS after the user flips the toggle, and proxying
-  // token CRUD to yo-server (the JWT authenticates these calls — same one
-  // the WS uses, so signed-in org admins can manage their own server tokens
-  // without ever opening the platform).
   ipcMain.handle("relay-reconnect", () => { reconnectRelay(); });
   ipcMain.handle("relay-status", () => getRelayStatus());
-  ipcMain.handle("relay-tokens-list", async () => {
-    try { return await serverGetAuthed<unknown[]>("/api/mcp/tokens?type=EXTERNAL"); }
-    catch (err) { return { error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("relay-tokens-create", async (_e, label: string) => {
-    try {
-      return await serverPostAuthed<{ ok: boolean; id: string; token: string; expiresAt: string }>(
-        "/api/mcp/tokens",
-        { label: label || "default", type: "EXTERNAL" },
-      );
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("relay-tokens-revoke", async (_e, id: string) => {
-    try { return await serverDeleteAuthed<{ ok: boolean }>(`/api/mcp/tokens/${encodeURIComponent(id)}`); }
-    catch (err) { return { error: err instanceof Error ? err.message : String(err) }; }
-  });
-
-  // Install the relay into the user's ~/.claude.json so Claude code picks it
-  // up without hand-editing. Idempotent: only touches the "yo-relay" entry
-  // under mcpServers; everything else (other servers, projects, settings)
-  // round-trips untouched. Returns the resolved path on success.
-  ipcMain.handle("relay-install-claude", async (_e, token: string) => {
-    if (!token || typeof token !== "string") return { error: "token is required" };
-    const cfgPath = path.join(os.homedir(), ".claude.json");
-    let existing: Record<string, unknown> = {};
-    try {
-      if (fs.existsSync(cfgPath)) {
-        const raw = fs.readFileSync(cfgPath, "utf8");
-        if (raw.trim()) existing = JSON.parse(raw) as Record<string, unknown>;
-      }
-    } catch (err) {
-      return { error: `Could not read ${cfgPath}: ${err instanceof Error ? err.message : String(err)}` };
-    }
-    const mcpServers = (existing.mcpServers && typeof existing.mcpServers === "object")
-      ? existing.mcpServers as Record<string, unknown>
-      : {};
-    mcpServers["yo-relay"] = {
-      type: "http",
-      url: `${AUTH_SERVER}/mcp`,
-      headers: { Authorization: `Bearer ${token}` },
-    };
-    existing.mcpServers = mcpServers;
-    try {
-      fs.writeFileSync(cfgPath, JSON.stringify(existing, null, 2) + "\n", { mode: 0o600 });
-      return { ok: true, path: cfgPath };
-    } catch (err) {
-      return { error: `Could not write ${cfgPath}: ${err instanceof Error ? err.message : String(err)}` };
-    }
-  });
-
   // ── Local MCP server (127.0.0.1) — the no-cloud alternative to the relay ──
   ipcMain.handle("local-mcp-set-enabled", async (_e, enabled: boolean) => {
     setPreference("localMcpEnabled", !!enabled);

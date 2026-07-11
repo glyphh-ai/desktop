@@ -69,34 +69,14 @@ function initSettings() {
   // eligible, and this section just shows status + connection config. ──
   const relaySection = document.getElementById("relay-section");
   const relayStatusText = document.getElementById("relay-status-text");
-  const relayConfigExample = document.getElementById("relay-config-example");
-  const relayTokensList = document.getElementById("relay-tokens-list");
-  const relayNewTokenBox = document.getElementById("relay-new-token");
-  const relayNewTokenValue = document.getElementById("relay-new-token-value");
-  const relayLabelInput = document.getElementById("relay-token-label") as HTMLInputElement;
 
   function renderRelayConfig(): void {
-    const relayUrl = `${window.yo.serverUrl}/mcp`;
     const endpointEl = document.getElementById("relay-endpoint");
-    if (endpointEl) endpointEl.textContent = `POST ${relayUrl}`;
-    if (relayConfigExample) {
-      relayConfigExample.textContent = `{
-  "mcpServers": {
-    "yo-relay": {
-      "type": "http",
-      "url": "${relayUrl}",
-      "headers": {
-        "Authorization": "Bearer <your-token>"
-      }
-    }
+    if (endpointEl) endpointEl.textContent = `POST ${window.yo.serverUrl}/mcp`;
   }
-}`;
-    }
-    const claudeCmd = document.getElementById("relay-claude-cmd");
-    if (claudeCmd) {
-      claudeCmd.textContent =
-        `claude mcp add --transport http yo-relay ${relayUrl} --header "Authorization: Bearer <your-token>"`;
-    }
+
+  function escapeHtmlLocal(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
   async function refreshRelayStatus(): Promise<void> {
@@ -111,117 +91,6 @@ function initSettings() {
     relayStatusText.textContent = label;
     relayStatusText.style.color = s.state === "connected" ? "var(--accent)" : "var(--text-3)";
   }
-
-  function tokenRow(t: { id: string; label: string; createdAt: string; expiresAt: string }): HTMLElement {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface-2);border:1px solid var(--border-2);border-radius:6px;margin-bottom:4px;font-size:12px;";
-    const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "";
-    const expires = t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : "";
-    row.innerHTML = `
-      <span style="flex:1;color:var(--text);">${escapeHtmlLocal(t.label || "(unnamed)")}</span>
-      <span style="color:var(--text-3);font-size:11px;">${created} → ${expires}</span>
-      <button class="action-btn danger" data-revoke="${escapeHtmlLocal(t.id)}" style="font-size:11px;padding:3px 10px;">Revoke</button>`;
-    row.querySelector("[data-revoke]")!.addEventListener("click", async () => {
-      if (!(await confirmAction({
-        title: `Revoke “${t.label || "this token"}”?`,
-        body: "External tools using it stop working immediately.",
-        confirmLabel: "Revoke token",
-        danger: true,
-      }))) return;
-      const res = await window.yo.relayTokensRevoke(t.id);
-      if ("error" in res) { flashRelayError(`Could not revoke: ${res.error}`); return; }
-      void refreshRelayTokens();
-    });
-    return row;
-  }
-
-  function escapeHtmlLocal(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-
-  /** Transient inline error for the relay-token section — no native popups. */
-  function flashRelayError(msg: string): void {
-    if (!relayTokensList) return;
-    const el = document.createElement("div");
-    el.style.cssText = "font-size:12px;color:#d44a4a;margin-bottom:6px;";
-    el.textContent = msg;
-    relayTokensList.prepend(el);
-    setTimeout(() => el.remove(), 4000);
-  }
-
-  async function refreshRelayTokens(): Promise<void> {
-    if (!relayTokensList) return;
-    relayTokensList.innerHTML = "";
-    const res = await window.yo.relayTokensList();
-    if ("error" in res) {
-      relayTokensList.innerHTML = `<div style="font-size:12px;color:var(--text-3);">Could not load tokens: ${escapeHtmlLocal(res.error)}</div>`;
-      return;
-    }
-    const tokens = res as Array<{ id: string; label: string; createdAt: string; expiresAt: string }>;
-    if (tokens.length === 0) {
-      relayTokensList.innerHTML = `<div style="font-size:12px;color:var(--text-3);">No tokens yet — generate one below.</div>`;
-      return;
-    }
-    for (const t of tokens) relayTokensList.appendChild(tokenRow(t));
-  }
-
-  document.getElementById("relay-gen-token")!.addEventListener("click", async () => {
-    const label = relayLabelInput.value.trim() || "default";
-    const res = await window.yo.relayTokensCreate(label);
-    if ("error" in res) { flashRelayError(`Could not create token: ${res.error}`); return; }
-    relayLabelInput.value = "";
-    if (relayNewTokenBox && relayNewTokenValue) {
-      relayNewTokenValue.textContent = res.token;
-      relayNewTokenBox.classList.remove("hidden");
-    }
-    void refreshRelayTokens();
-  });
-
-  document.getElementById("relay-copy-new-token")!.addEventListener("click", () => {
-    const val = relayNewTokenValue?.textContent || "";
-    window.yo.copyToClipboard(val);
-    const btn = document.getElementById("relay-copy-new-token") as HTMLButtonElement;
-    btn.textContent = "Copied";
-    setTimeout(() => { btn.textContent = "Copy"; }, 2000);
-  });
-
-  document.getElementById("relay-install-claude")!.addEventListener("click", async () => {
-    const token = relayNewTokenValue?.textContent || "";
-    if (!token) return;
-    const btn = document.getElementById("relay-install-claude") as HTMLButtonElement;
-    const status = document.getElementById("relay-install-status");
-    btn.disabled = true;
-    btn.textContent = "Installing…";
-    const res = await window.yo.relayInstallClaude(token);
-    btn.disabled = false;
-    btn.textContent = "Install in Claude code";
-    if (status) {
-      status.style.display = "block";
-      if ("error" in res) {
-        status.textContent = `✗ ${res.error}`;
-        status.style.color = "var(--danger)";
-      } else {
-        status.textContent = `✓ Installed to ${res.path}`;
-        status.style.color = "var(--text)";
-      }
-    }
-  });
-
-  document.getElementById("relay-copy-config")!.addEventListener("click", () => {
-    const val = relayConfigExample?.textContent || "";
-    window.yo.copyToClipboard(val);
-    const btn = document.getElementById("relay-copy-config") as HTMLButtonElement;
-    btn.textContent = "Copied";
-    setTimeout(() => { btn.textContent = "Copy"; }, 2000);
-  });
-
-  document.getElementById("relay-copy-claude-cmd")!.addEventListener("click", () => {
-    const val = document.getElementById("relay-claude-cmd")?.textContent || "";
-    window.yo.copyToClipboard(val);
-    const btn = document.getElementById("relay-copy-claude-cmd") as HTMLButtonElement;
-    btn.textContent = "Copied";
-    setTimeout(() => { btn.textContent = "Copy"; }, 2000);
-  });
 
   // Gate the whole subsection to org_admin / super_admin. Non-admins see
   // nothing (the platform UI is also admin-only, so this is consistent).
@@ -244,7 +113,6 @@ function initSettings() {
     }
     renderRelayConfig();
     void refreshRelayStatus();
-    void refreshRelayTokens();
     setInterval(refreshRelayStatus, 3_000);
   })();
 
@@ -551,7 +419,6 @@ function initSettings() {
   // Expose the MCP refreshers so the MCP tab can refresh on open.
   mcpSectionRefresh = () => {
     void refreshRelayStatus();
-    void refreshRelayTokens();
     void refreshLocalMcp();
     void renderLocalMcpTokens();
   };
