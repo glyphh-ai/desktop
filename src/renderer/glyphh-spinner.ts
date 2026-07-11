@@ -63,7 +63,7 @@ export function createGlyphhSpinner(opts?: { size?: number; phrases?: boolean })
   const ctx = canvas.getContext("2d")!;
 
   // ── Cube geometry ──
-  const s = size * 0.165; // half-edge (CSS px)
+  const s = size * 0.135; // half-edge (CSS px)
   const V: Array<[number, number, number]> = [];
   for (const x of [-s, s]) for (const y of [-s, s]) for (const z of [-s, s]) V.push([x, y, z]);
   const E = [[0, 1], [0, 2], [1, 3], [2, 3], [4, 5], [4, 6], [5, 7], [6, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
@@ -175,7 +175,7 @@ export function createGlyphhSpinner(opts?: { size?: number; phrases?: boolean })
     for (let e = 0; e < emits && parts.length < 70; e++) {
       const [px, py] = proj[Math.floor(Math.random() * proj.length)];
       const ang = Math.atan2(py - cy, px - cx) + rnd(-0.6, 0.6);
-      const sp = rnd(0.12, 0.5);
+      const sp = rnd(0.16, 0.66);
       const max = Math.round(rnd(34, 70));
       parts.push({
         x: px, y: py,
