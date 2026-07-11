@@ -27,6 +27,7 @@ import { getPreference } from "./stores/preferences-db";
 import { effortMaxTokens, effortMaxTurns, williamEffort, williamMode, registerWilliamPermissionIpc } from "./william-permissions";
 import { captureRun } from "./william-training";
 import { executeWilliamTool, williamToolDefs, connectorWireTools, setRunAttachments, type ConnectorWireDef } from "./william-tools";
+import { selectConnectorTools } from "./tool-vectors";
 import {
   pickAttachments, classifyPaths, saveClipboardImage, validAttachments,
   attachmentPromptBlock, attachmentVisionBlocks, type AttachRef,
@@ -425,9 +426,14 @@ async function sdkRun(
 
   const defs = williamToolDefs();
   // Connected accounts ride as FIRST-CLASS tools with their real input
-  // schemas (governed catalog; refreshes when stale) — no meta-tool, no
-  // guessed slugs. Offline/signed-out just means an empty set.
-  const connDefs = await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
+  // schemas (governed catalog; refreshes when stale) — no guessed slugs.
+  // Offline/signed-out just means an empty set. The FULL catalog would blow
+  // the local model's 32k window (tool defs are un-squeezable prompt
+  // prefix), so the ask selects a subset from the pre-encoded catalog;
+  // find_tools/call_tool built-ins reach everything else mid-run.
+  const connCatalog = await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
+  const ask = String(base[base.length - 1]?.content ?? "");
+  const connDefs = await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
 
   // The Glyphh surface as an in-process MCP server. Builtins ride as open
   // objects described by each tool's doc line (the executor validates);
@@ -480,7 +486,6 @@ async function sdkRun(
   // ALSO ride as real vision blocks (the router sees them and escalates —
   // local models are text-only).
   const attBlock = attachmentPromptBlock(attachments);
-  const ask = String(base[base.length - 1]?.content ?? "");
   // Layered memory, injected on the USER turn (messages churn anyway — the
   // cached system prefix stays untouched): short-term recall brings back
   // verbatim earlier turns that match this ask; the workspace hint points

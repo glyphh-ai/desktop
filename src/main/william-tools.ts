@@ -33,6 +33,7 @@ import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnec
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
+import { indexToolVectors, rankConnectorTools } from "./tool-vectors";
 import { updateAppFromWorkdir } from "./william-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { enrichFact } from "./ada/enricher";
@@ -124,6 +125,11 @@ export interface ConnectorWireDef {
   inputSchema: Record<string, unknown>;
 }
 
+// The FULL wired catalog from the latest connectorWireTools() pass — the
+// loop preselects a per-ask subset, but find_tools searches (and call_tool
+// reaches, via wireMap) everything here.
+let lastWireDefs: ConnectorWireDef[] = [];
+
 /** Refresh (if stale) and wire the connector catalog as first-class tool
  *  defs. Called at every agent-run start; rebuilds wireMap from scratch so
  *  a changed catalog (new connection, tightened role) takes effect on the
@@ -165,6 +171,11 @@ export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
     const tools = catalog.filter((t) => t.slug === slug).map((t) => ({ name: t.name, description: t.description }));
     try { indexConnectorTools(slug, tools); } catch { /* Ada not ready — she catches up on heartbeat */ }
   }
+  lastWireDefs = defs;
+  // Encode the catalog for per-ask tool selection (incremental — only new or
+  // changed descriptions embed). Fire-and-forget: the first run after a
+  // catalog change may select lexically while this catches up.
+  void indexToolVectors(defs).catch(() => {});
   return defs;
 }
 
@@ -280,6 +291,40 @@ const TOOLS: ToolDef[] = [
       return cap(hits.map((h) =>
         `${h.path}:${h.startLine}-${h.endLine} (${h.score.toFixed(2)})\n${h.text}`,
       ).join("\n\n---\n\n"));
+    },
+  },
+  {
+    name: "find_tools",
+    doc: "find_tools(query, k?) — search ALL connected-account tools by meaning. Only the tools relevant to the original ask are preloaded, so when you need one that isn't wired (a different app, an unexpected follow-up), find it here, then run it with call_tool. Read-only.",
+    action: (a) => ({ kind: "read", title: `Find tools "${String(a.query ?? "").slice(0, 60)}"` }),
+    run: async (a) => {
+      const query = String(a.query ?? "").trim();
+      if (!query) return "ERROR: query is required";
+      const k = Math.max(1, Math.min(20, Number(a.k) || 10));
+      const hits = (await rankConnectorTools(query, lastWireDefs)).filter((r) => r.score > 0).slice(0, k);
+      if (!hits.length) return "(no connected-account tools match — the account may not be connected)";
+      return cap(hits.map((r) => `${r.def.name} — ${r.def.description}`).join("\n"));
+    },
+  },
+  {
+    name: "call_tool",
+    doc: "call_tool(name, arguments?) — run a connected-account tool by its exact find_tools name, including tools not preloaded for this turn. arguments must match the tool's schema.",
+    // Gate on the INNER tool, exactly like a directly-wired connector call —
+    // reads pass quietly, sends/creates/deletes prompt per the mode model.
+    action: (a) => {
+      const inner = String(a.name ?? "");
+      const wired = wireMap.get(inner);
+      return {
+        kind: (wired && READ_TOOL_RE.test(wired.tool) ? "read" : "network") as WilliamActionKind,
+        title: wired ? `Call ${wired.slug} → ${wired.tool}` : `Call ${inner}`,
+        detail: JSON.stringify(a.arguments ?? {}, null, 1).slice(0, 500),
+      };
+    },
+    run: async (a) => {
+      const inner = String(a.name ?? "");
+      const wired = wireMap.get(inner);
+      if (!wired) return `ERROR: unknown tool "${inner}" — use find_tools to get the exact name`;
+      return cap(await callConnectorTool(wired.slug, wired.tool, (a.arguments ?? {}) as Record<string, unknown>));
     },
   },
   {

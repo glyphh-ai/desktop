@@ -166,6 +166,21 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_workspace_vectors_root ON workspace_vectors (root);
     `,
   },
+  {
+    // Connector tool catalog embeddings — the loop wires only the tools
+    // relevant to the ask (the full catalog overflows the local model's 32k
+    // window; tool defs are un-squeezable prompt prefix). Encoded once per
+    // catalog change, keyed by wire name, content-hashed for incremental
+    // re-encoding. find_tools/call_tool reach whatever isn't preselected.
+    version: 6,
+    sql: `
+      CREATE TABLE IF NOT EXISTS tool_vectors (
+        name TEXT PRIMARY KEY,
+        hash TEXT NOT NULL,
+        embedding BLOB NOT NULL
+      );
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {
