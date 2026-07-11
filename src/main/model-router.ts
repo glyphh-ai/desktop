@@ -506,9 +506,12 @@ function frontierLane(): FrontierLane | null {
 
 // ── Org-governed escalation models (gateway lane) ──────────────────────────
 //
-// /api/models?proxy=1 is the server's word on which Claude models THIS user
-// may escalate to (plan ∩ org ∩ user allow-lists) and the org default.
-// Cached; refreshed lazily. Offline or BYOK falls back to the raw pref.
+// /api/models/catalog is the server's word on which models THIS user may use:
+// the org's curated catalog intersected with their role's allow-list, plus the
+// org default. We take the PROXIED entries (the gateway escalation targets;
+// open-weight models run on-device and are picked separately). Multi-provider —
+// whatever the admin added. Cached; refreshed lazily. Offline falls back to the
+// raw pref.
 
 export interface GatewayModelInfo {
   model: string;
@@ -530,18 +533,25 @@ async function gatewayModels(force = false): Promise<{ models: GatewayModelInfo[
   if (!force && gwCache && Date.now() - gwCache.at < GW_CACHE_TTL_MS) return gwCache;
   try {
     const r = await serverGetAuthed<{
-      models?: Array<{ model: string; display_name: string; input_credits_per_mtok?: number | null; output_credits_per_mtok?: number | null }>;
-      default_model?: string | null;
-    }>("/api/models?proxy=1");
+      models?: Array<{
+        key: string; kind: string; model: string | null; displayName: string;
+        inputCreditsPerMtok?: number | null; outputCreditsPerMtok?: number | null;
+      }>;
+      default?: string | null;
+    }>("/api/models/catalog");
+    // Escalation targets are the proxied models; the gateway takes a bare model
+    // id (the org catalog key is provider::model). The default arrives as a key.
+    const proxied = (r.models ?? []).filter((m) => m.kind === "proxied" && m.model);
+    const def = proxied.find((m) => m.key === r.default)?.model ?? proxied[0]?.model ?? null;
     gwCache = {
       at: Date.now(),
-      models: (r.models ?? []).map((m) => ({
-        model: m.model,
-        display_name: m.display_name,
-        input_credits_per_mtok: m.input_credits_per_mtok ?? null,
-        output_credits_per_mtok: m.output_credits_per_mtok ?? null,
+      models: proxied.map((m) => ({
+        model: m.model!,
+        display_name: m.displayName,
+        input_credits_per_mtok: m.inputCreditsPerMtok ?? null,
+        output_credits_per_mtok: m.outputCreditsPerMtok ?? null,
       })),
-      def: r.default_model ?? null,
+      def,
     };
   } catch { /* signed out / offline — keep whatever we had */ }
   return gwCache ?? { models: [], def: null };
