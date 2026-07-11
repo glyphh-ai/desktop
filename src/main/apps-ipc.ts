@@ -4,7 +4,7 @@ import fs from "fs";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./glyphh-app-package";
-import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverPutAuthed, serverDeleteAuthed } from "./auth";
+import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverPutAuthed, serverDeleteAuthed, AUTH_SERVER } from "./auth";
 import { cachedServerGet, invalidateServerCache } from "./server-cache";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 
@@ -181,7 +181,13 @@ function registerPanelAppsIpc(): void {
   // ── Custom MCP connections (server-side, like every other connection —
   // the server opens the MCP client; header values are write-only) ──────────
   ipcMain.handle("mcp-connections-list", async () => {
-    try { const r = await serverGetAuthed<{ connections: unknown[] }>("/api/mcp-connections"); return { ok: true, connections: r.connections || [] }; }
+    try {
+      const r = await serverGetAuthed<{ connections: Array<{ iconSha?: string | null }> }>("/api/mcp-connections");
+      return { ok: true, connections: (r.connections || []).map((c) => ({
+        ...c,
+        iconUrl: c.iconSha ? `${AUTH_SERVER}/api/mcp-icons/${c.iconSha}` : null,
+      })) };
+    }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
   });
   ipcMain.handle("mcp-connections-create", async (_e, fields: { name: string; url: string; headers?: Record<string, string> }) => {
@@ -199,6 +205,23 @@ function registerPanelAppsIpc(): void {
   ipcMain.handle("mcp-connections-tools", async (_e, slug: string) => {
     try { return await serverGetAuthed<{ ok: boolean; error?: string; tools: unknown[] }>(`/api/mcp-connections/${slug}/tools`); }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }; }
+  });
+  // Org-published connections a member can install; icon shas become URLs
+  // here (the renderer's <img> can't send auth headers, so icons are served
+  // publicly by content hash).
+  const withIconUrl = <T extends { iconSha?: string | null }>(c: T) => ({
+    ...c,
+    iconUrl: c.iconSha ? `${AUTH_SERVER}/api/mcp-icons/${c.iconSha}` : null,
+  });
+  ipcMain.handle("mcp-connections-catalog", async () => {
+    try {
+      const r = await serverGetAuthed<{ connections: Array<{ iconSha?: string | null }> }>("/api/mcp-connections/catalog");
+      return { ok: true, connections: (r.connections || []).map(withIconUrl) };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
+  });
+  ipcMain.handle("mcp-connections-install", async (_e, slug: string) => {
+    try { await serverPostAuthed("/api/mcp-connections/install", { slug }); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
   // ── App proxies (public <slug>.glyphh.app tunnels) ─────────────

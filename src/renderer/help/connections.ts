@@ -108,11 +108,14 @@ function renderConnectionsList(): void {
     const card = document.createElement("div");
     card.className = "app-card";
     const initial = (c.name || "?").charAt(0).toUpperCase();
+    const icon = c.iconUrl
+      ? `<img src="${esc(c.iconUrl)}" style="width:100%;height:100%;object-fit:contain;border-radius:8px;" onerror="this.outerHTML='<span class=\\'app-card-initial\\'>${initial}</span>'" />`
+      : `<span class="app-card-initial">${esc(initial)}</span>`;
     card.innerHTML = `
       ${c.enabled ? "" : `<span class="app-card-badge badge-connection">Disabled</span>`}
-      <div class="app-card-icon"><span class="app-card-initial">${esc(initial)}</span></div>
+      <div class="app-card-icon">${icon}</div>
       <div class="app-card-name">${esc(c.name)}</div>
-      <div class="app-card-id">Custom MCP</div>`;
+      <div class="app-card-id">${c.kind === "org" ? "Org connection" : "Custom MCP"}</div>`;
     card.addEventListener("click", () => openCustomDetail(c.slug));
     grid.appendChild(card);
   }
@@ -129,6 +132,9 @@ async function openConnDetail(id: string): Promise<void> {
   customConfigEl.classList.add("hidden");
   disconnectBtn.classList.remove("hidden");
   disconnectBtn.textContent = "Disconnect";
+  nameInput.disabled = false;
+  saveBtn.classList.remove("hidden");
+  customToggle.classList.remove("hidden");
   setBtnBusy(saveBtn, false, "Save");
   detailErr.classList.add("hidden");
   listEl.classList.add("hidden");
@@ -189,6 +195,9 @@ function closeConnDetail(): void {
   customConfigEl.classList.add("hidden");
   disconnectBtn.classList.remove("hidden");
   disconnectBtn.textContent = "Disconnect";
+  nameInput.disabled = false;
+  saveBtn.classList.remove("hidden");
+  customToggle.classList.remove("hidden");
   setBtnBusy(saveBtn, false, "Save");
   document.getElementById("connections-toolbar")?.classList.remove("hidden");
   listEl.classList.remove("hidden");
@@ -219,6 +228,9 @@ function openCustomForm(mode: "new" | "edit", c?: McpConn): void {
       <div class="app-card-icon"><span class="app-card-initial">+</span></div>
       <div class="edit-head-name">New custom MCP connection<span class="edit-head-slug">a remote MCP server</span></div>`;
     nameInput.value = "";
+    nameInput.disabled = false;
+    saveBtn.classList.remove("hidden");
+    customToggle.classList.remove("hidden");
     nameInput.placeholder = "My MCP server";
     urlInput.value = "";
     headersInput.value = "";
@@ -233,27 +245,40 @@ function openCustomForm(mode: "new" | "edit", c?: McpConn): void {
   }
 
   const conn = c!;
+  const isOrg = conn.kind === "org";
   const initial = (conn.name || "?").charAt(0).toUpperCase();
+  const icon = conn.iconUrl
+    ? `<img src="${esc(conn.iconUrl)}" style="width:100%;height:100%;object-fit:contain;border-radius:8px;" />`
+    : `<span class="app-card-initial">${esc(initial)}</span>`;
   detailHead.innerHTML = `
-    <div class="app-card-icon"><span class="app-card-initial">${esc(initial)}</span></div>
-    <div class="edit-head-name">${esc(conn.name)}<span class="edit-head-slug">${esc(conn.slug)}</span></div>`;
+    <div class="app-card-icon">${icon}</div>
+    <div class="edit-head-name">${esc(conn.name)}<span class="edit-head-slug">${esc(conn.slug)}${isOrg ? " · published by your org" : ""}</span></div>`;
   nameInput.value = conn.name;
   nameInput.placeholder = conn.name;
-  urlInput.value = conn.url;
-  headersInput.value = "";
-  headersInput.placeholder = "leave blank to keep the saved headers";
-  // Values are write-only — show WHICH headers are saved, never what's in them.
-  if (conn.headerKeys.length) {
-    headersHint.textContent = `Saved headers (values hidden): ${conn.headerKeys.join(", ")}. Enter new lines to replace them all.`;
-    headersHint.classList.remove("hidden");
-  } else {
-    headersHint.classList.add("hidden");
+  // Org-published connections are admin-owned: config is read-only here,
+  // enable/disable is the admin's switch, and Save has nothing to save
+  // (tool exposure below auto-saves). Remove = uninstall for this user.
+  nameInput.disabled = isOrg;
+  customConfigEl.classList.toggle("hidden", isOrg);
+  saveBtn.classList.toggle("hidden", isOrg);
+  customToggle.classList.toggle("hidden", isOrg);
+  if (!isOrg) {
+    urlInput.value = conn.url;
+    headersInput.value = "";
+    headersInput.placeholder = "leave blank to keep the saved headers";
+    // Values are write-only — show WHICH headers are saved, never what's in them.
+    if (conn.headerKeys.length) {
+      headersHint.textContent = `Saved headers (values hidden): ${conn.headerKeys.join(", ")}. Enter new lines to replace them all.`;
+      headersHint.classList.remove("hidden");
+    } else {
+      headersHint.classList.add("hidden");
+    }
+    customToggle.textContent = conn.enabled ? "Disable" : "Enable";
   }
   customStatusEl.classList.remove("hidden");
   disconnectBtn.classList.remove("hidden");
   disconnectBtn.textContent = "Remove";
   setBtnBusy(saveBtn, false, "Save");
-  customToggle.textContent = conn.enabled ? "Disable" : "Enable";
   void loadCustomStatus(conn);
 }
 
@@ -374,12 +399,59 @@ async function saveCustomForm(): Promise<void> {
 }
 
 // ── Catalog modal ────────────────────────────────────────
+// Org-published MCP connections ride at the top of the catalog — they're
+// "just connections" to members: click = install, no OAuth dance.
+let orgCatalog: Awaited<ReturnType<typeof window.yo.mcpConnectionsCatalog>>["connections"] = [];
+
 function openCatalog(): void {
   modalEl.classList.remove("hidden");
   catalogSearch.value = "";
   catalogOffset = 0;
+  orgCatalog = [];
+  void window.yo.mcpConnectionsCatalog().then((r) => {
+    orgCatalog = r.ok ? r.connections : [];
+    // Re-render the first page so the org section appears once it's known.
+    if (catalogOffset === 0 && !modalEl.classList.contains("hidden")) {
+      void loadCatalog(catalogSearch.value.trim() || undefined);
+    }
+  }).catch(() => { /* offline — Pipedream section still renders */ });
   void loadCatalog();
   catalogSearch.focus();
+}
+
+function renderOrgCatalogSection(search?: string): void {
+  const q = (search || "").toLowerCase();
+  const items = orgCatalog.filter((c) => !c.installed &&
+    (!q || c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q)));
+  if (!items.length) return;
+  const label = document.createElement("div");
+  label.textContent = "From your organization";
+  label.style.cssText = "grid-column:1/-1;font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;margin:2px 2px 0;";
+  catalogGrid.appendChild(label);
+  for (const oc of items) {
+    const card = document.createElement("div");
+    card.className = "connector-card";
+    const initial = (oc.name || "?").charAt(0).toUpperCase();
+    card.innerHTML = `
+      ${oc.iconUrl
+        ? `<img class="connector-card-icon" src="${esc(oc.iconUrl)}" onerror="this.outerHTML='<span class=\\'connector-card-initial\\'>${initial}</span>'" />`
+        : `<span class="connector-card-initial">${initial}</span>`}
+      <div class="connector-card-info"><div class="connector-card-name">${esc(oc.name)}</div></div>`;
+    card.addEventListener("click", async () => {
+      const nameEl = card.querySelector(".connector-card-name")!;
+      nameEl.textContent = "Installing…";
+      const r = await window.yo.mcpConnectionsInstall(oc.slug);
+      if (!r.ok) { nameEl.textContent = r.error || "Failed"; setTimeout(() => { nameEl.textContent = oc.name; }, 2500); return; }
+      closeCatalog();
+      await loadConnections();
+      openCustomDetail(oc.slug);
+    });
+    catalogGrid.appendChild(card);
+  }
+  const all = document.createElement("div");
+  all.textContent = "All apps";
+  all.style.cssText = label.style.cssText;
+  catalogGrid.appendChild(all);
 }
 function closeCatalog(): void { modalEl.classList.add("hidden"); }
 
@@ -389,7 +461,10 @@ async function loadCatalog(search?: string): Promise<void> {
   try { ({ apps, hasMore } = await window.yo.connectorsGetApps(search, catalogOffset)); }
   catch { catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Couldn't load apps.</div>`; return; }
 
-  if (catalogOffset === 0) catalogGrid.innerHTML = "";
+  if (catalogOffset === 0) {
+    catalogGrid.innerHTML = "";
+    renderOrgCatalogSection(search);
+  }
   for (const app of apps) {
     const card = document.createElement("div");
     card.className = "connector-card";

@@ -181,8 +181,18 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   ipcMain.handle("local-mcp-tokens-revoke", (_e, id: string) => { localMcpRevokeToken(id); return { ok: true }; });
 
   // Custom MCP connections live server-side (apps-ipc: mcp-connections-*);
-  // this gate only drives the Connections page's show/hide.
-  ipcMain.handle("mcp-custom-allowed", () => canUseCustomMcp());
+  // this gate only drives the Connections page's show/hide. Ask the SERVER
+  // fresh — the heartbeat copy refreshes every 4h, which made the org's
+  // allow-toggle look like it never took effect. Offline falls back to the
+  // cached heartbeat entitlement.
+  ipcMain.handle("mcp-custom-allowed", async () => {
+    try {
+      const r = await serverGetAuthed<{ allowed: boolean }>("/api/mcp-connections/policy");
+      return { allowed: !!r.allowed };
+    } catch {
+      return canUseCustomMcp();
+    }
+  });
 
   ipcMain.handle("connectors-get-apps", async (_e, search?: string, offset?: number) => {
     if (!connectorManager) return { apps: [], hasMore: false };

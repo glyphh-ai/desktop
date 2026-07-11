@@ -398,7 +398,9 @@ declare global {
       // BYOK gate — Anthropic API key saved via the Claude Code bootstrap gate.
       // Custom MCP connections (server-side; header values write-only)
       mcpCustomAllowed: () => Promise<{ allowed: boolean; reason?: string }>;
-      mcpConnectionsList: () => Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; url: string; headerKeys: string[]; enabled: boolean; hiddenTools: string[]; createdAt: string }> }>;
+      mcpConnectionsList: () => Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; url: string; headerKeys: string[]; enabled: boolean; hiddenTools: string[]; createdAt: string; kind: "personal" | "org"; iconUrl: string | null }> }>;
+      mcpConnectionsCatalog: () => Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; installed: boolean; iconUrl: string | null }> }>;
+      mcpConnectionsInstall: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       mcpConnectionsCreate: (fields: { name: string; url: string; headers?: Record<string, string> }) => Promise<{ ok: boolean; error?: string; connection?: { slug: string; name: string }; toolCount?: number }>;
       mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; connection?: unknown }>;
       mcpConnectionsDelete: (slug: string) => Promise<{ ok: boolean; error?: string }>;
