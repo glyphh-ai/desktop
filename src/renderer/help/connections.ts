@@ -97,10 +97,10 @@ function renderConnectionsList(): void {
     const card = document.createElement("div");
     card.className = "app-card";
     card.innerHTML = `
-      ${c.healthy === false ? `<span class="app-card-badge badge-connection">Reconnect</span>` : ""}
+      ${c.healthy === false ? `<span class="app-card-badge badge-connection">Reconnect</span>` : (c.org ? `<span class="app-card-badge badge-connection">Org</span>` : "")}
       <div class="app-card-icon">${appIconInner(connIconApp(c), c.appName, "app-card-initial")}</div>
       <div class="app-card-name">${esc(c.label || c.appName)}</div>
-      <div class="app-card-id">${esc(c.appName)}</div>`;
+      <div class="app-card-id">${c.org ? "Org connection" : esc(c.appName)}</div>`;
     card.addEventListener("click", () => void openConnDetail(c.id));
     grid.appendChild(card);
   }
@@ -130,11 +130,14 @@ async function openConnDetail(id: string): Promise<void> {
   customMode = null;
   customStatusEl.classList.add("hidden");
   customConfigEl.classList.add("hidden");
-  disconnectBtn.classList.remove("hidden");
+  // Org-shared connections are managed by an admin (Configure → Connections):
+  // read-only here — no rename, no disconnect, no per-user tool hiding.
+  const isOrg = !!c.org;
+  disconnectBtn.classList.toggle("hidden", isOrg);
   disconnectBtn.textContent = "Disconnect";
-  nameInput.disabled = false;
-  saveBtn.classList.remove("hidden");
-  customToggle.classList.remove("hidden");
+  nameInput.disabled = isOrg;
+  saveBtn.classList.toggle("hidden", isOrg);
+  customToggle.classList.toggle("hidden", isOrg);
   setBtnBusy(saveBtn, false, "Save");
   detailErr.classList.add("hidden");
   listEl.classList.add("hidden");
@@ -143,7 +146,7 @@ async function openConnDetail(id: string): Promise<void> {
 
   detailHead.innerHTML = `
     <div class="app-card-icon">${appIconInner(connIconApp(c), c.appName, "app-card-initial")}</div>
-    <div class="edit-head-name">${esc(c.label || c.appName)}<span class="edit-head-slug">${esc(c.appSlug)}</span></div>`;
+    <div class="edit-head-name">${esc(c.label || c.appName)}<span class="edit-head-slug">${isOrg ? "Org connection · " : ""}${esc(c.appSlug)}</span></div>`;
   nameInput.value = c.label || c.appName;   // default to the Pipedream app name
   nameInput.placeholder = c.appName;
 
@@ -159,7 +162,7 @@ async function openConnDetail(id: string): Promise<void> {
     // Checkbox = expose/hide. Description is collapsed by default inside a
     // <details> — click the tool name to expand it.
     row.innerHTML = `
-      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} title="Expose this tool to your AI" />
+      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} ${c.org ? "disabled" : ""} title="${c.org ? "Managed by your org admin" : "Expose this tool to your AI"}" />
       ${t.description
         ? `<details class="conn-tool-details">
              <summary class="conn-tool-name">${esc(t.name)}</summary>
@@ -314,7 +317,7 @@ async function loadCustomStatus(c: McpConn): Promise<void> {
     const row = document.createElement("div");
     row.className = "conn-tool-row";
     row.innerHTML = `
-      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} title="Expose this tool to your AI" />
+      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} ${c.org ? "disabled" : ""} title="${c.org ? "Managed by your org admin" : "Expose this tool to your AI"}" />
       ${t.description
         ? `<details class="conn-tool-details">
              <summary class="conn-tool-name">${esc(t.name)}</summary>

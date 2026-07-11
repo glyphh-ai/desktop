@@ -1,7 +1,7 @@
 {
   "name": "glyphh-apps",
   "productName": "Glyphh Desktop",
-  "version": "1.6.5",
+  "version": "1.6.6",
   "description": "Glyphh Desktop — Your AI workspace.",
   "main": "dist/main/main.js",
   "scripts": {

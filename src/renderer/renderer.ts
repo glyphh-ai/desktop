@@ -48,6 +48,7 @@ type SavedPanelApp = {
 type Connection = {
   id: string; accountId: string; appSlug: string; appName: string;
   label: string | null; healthy: boolean; hiddenTools: string[]; createdAt: string;
+  org?: boolean;
 };
 
 // Mirrors preload.ts AppProxyRow — a public <slug>.glyphh.app tunnel.

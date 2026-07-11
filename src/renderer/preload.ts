@@ -39,6 +39,8 @@ export interface Connection {
   healthy: boolean;
   hiddenTools: string[];
   createdAt: string;
+  /** Org-SHARED connection (Configure → Connections) — read-only here. */
+  org?: boolean;
 }
 
 /** One public <slug>.glyphh.app tunnel (server AppProxyRow, sanitized). */
