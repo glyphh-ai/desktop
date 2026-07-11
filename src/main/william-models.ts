@@ -40,7 +40,7 @@ export interface WilliamModelEntry {
 const DEFAULT_MODELS: WilliamModelEntry[] = [
   {
     id: "will-7b-mini",
-    name: "will-7b-mini",
+    name: "Qwen2.5 7B Instruct",
     file: "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
     url: "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/8911e8a47f92bac19d6f5c64a2e2095bd2f7d031/Qwen2.5-7B-Instruct-Q4_K_M.gguf?download=true",
     size: 4683074240,
@@ -50,11 +50,11 @@ const DEFAULT_MODELS: WilliamModelEntry[] = [
     default: false,
     status: "available",
     creditMultiplier: 1,
-    usage: "Your workspace assistant — opens apps, arranges layouts, runs your connected tools. Free on your hardware.",
+    usage: "Fast on-device model — opens apps, arranges layouts, runs your connected tools. Free on your hardware.",
   },
   {
     id: "william-14b-base",
-    name: "william-14b-base",
+    name: "Qwen2.5 Coder 14B",
     file: "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
     url: "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/d0a692ef765eefbf2fabb130b3cb2e8917e3d225/qwen2.5-coder-14b-instruct-q4_k_m.gguf?download=true",
     size: 8988110272,
@@ -64,7 +64,7 @@ const DEFAULT_MODELS: WilliamModelEntry[] = [
     default: true,
     status: "available",
     creditMultiplier: 2,
-    usage: "Light coding assistant — edits files and works the workspace on this machine. Free on your hardware.",
+    usage: "On-device coding model — edits files and works the workspace on this machine. Free on your hardware.",
   },
 ];
 

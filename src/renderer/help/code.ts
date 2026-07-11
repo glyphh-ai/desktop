@@ -104,16 +104,22 @@ let gwModels: Array<{ model: string; display_name: string; input_credits_per_mto
 let gwDefault: string | null = null;
 let gwEffective = "";
 
+/** The real display name for a local model id (e.g. "Qwen2.5 Coder 14B"),
+ *  falling back to the id for anything not in the current list. */
+function modelName(id: string | null): string {
+  if (!id) return "";
+  return modelList.find((m) => m.id === id)?.name || id;
+}
+
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
-  // Model ids ARE the display names (will-7b-mini / william-14b-base).
   if (modelSelected === "auto") {
-    mc.textContent = modelResolved ? `Auto · ${modelResolved}` : "Auto";
+    mc.textContent = modelResolved ? `Auto · ${modelName(modelResolved)}` : "Auto";
     mc.title = "Model — picked by hardware; click to choose";
   } else {
-    mc.textContent = modelSelected;
-    mc.title = `Model: ${modelSelected} — click to change`;
+    mc.textContent = modelName(modelSelected);
+    mc.title = `Model: ${modelName(modelSelected)} — click to change`;
   }
   mc.className = "code-chip";
 }
@@ -215,9 +221,9 @@ function renderModelMenu(): void {
       `${m.minRamGB} GB+ RAM${sizeGB}`,
       m.downloaded ? "On this machine." : "Downloads on first use.",
     ].filter(Boolean).join("\n");
-    // Ids ARE the canonical display names (will-7b-mini / william-14b-base) —
-    // render the id so stale cached manifests can't show retired names.
-    mk(m.id, m.id, oneLine, { extra: m.downloaded ? "" : "↓", info });
+    // Render the real model NAME (e.g. "Qwen2.5 Coder 14B"); the id stays the
+    // stable pref key. Fall back to the id for any manifest without a name.
+    mk(m.id, m.name || m.id, oneLine, { extra: m.downloaded ? "" : "↓", info });
   }
 
   // Escalation pick — which Claude model hard turns go to. Org-governed
