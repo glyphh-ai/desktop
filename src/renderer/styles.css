@@ -11565,7 +11565,10 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
   resize: none;
   min-height: 40px;
   max-height: 220px;
-  padding: 10px 44px 10px 14px;
+  /* Symmetric text insets — the left once held an attach icon; with it gone
+     the text sits the same distance from both edges (the right side also
+     clears the in-input send button). */
+  padding: 10px 44px;
   border: 1px solid var(--border-2);
   border-radius: 12px;
   background: var(--surface);
@@ -12164,6 +12167,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   padding: 0 4px;
 }
 .code-chipwrap { position: relative; }
+.code-bar-left { display: flex; align-items: center; gap: 8px; }
 .code-bar-right { display: flex; align-items: center; gap: 10px; }
 
 /* Compaction meter — fills toward the fold tick (compaction point). */
@@ -12288,6 +12292,36 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-drop-item:hover { background: var(--hover); color: var(--text); }
 .code-drop-item.selected { color: var(--text); }
 .code-drop-item .drop-check { color: var(--white); flex-shrink: 0; }
+
+/* Mode menu — two-line items (label + one-line description) with a header
+   row whose ⓘ opens the full permission-modes explainer. */
+#code-mode-menu { width: 264px; }
+.code-drop-item .drop-lines { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.code-drop-item .drop-hint { font-size: 11px; color: var(--text-3); line-height: 1.35; white-space: normal; }
+.code-drop-item:hover .drop-hint { color: var(--text-2); }
+.code-drop-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 10px 7px; margin-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 600; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.drop-info-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border: 1px solid var(--border-3); border-radius: 50%;
+  background: none; color: var(--text-3); font-size: 10px; font-style: italic;
+  font-family: Georgia, serif; line-height: 1; cursor: pointer;
+}
+.drop-info-btn:hover { color: var(--text); border-color: var(--text-3); }
+
+/* Permission-modes explainer — the one dialog that runs wider than the
+   standard 420px confirm box: five modes with real paragraphs need room. */
+.mode-info-box { width: min(560px, 90vw) !important; text-align: left !important; }
+.mode-info-box .confirm-body { max-height: 60vh; overflow-y: auto; }
+.mode-info-entry { padding: 10px 0; }
+.mode-info-entry + .mode-info-entry { border-top: 1px solid var(--border); }
+.mode-info-entry h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--text-bright); }
+.mode-info-entry p { margin: 0; font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
 
 /* Effort drop-up — labels over a 4-stop slider */
 .code-effort-pop { min-width: 236px; padding: 12px 14px 13px; }

@@ -34,6 +34,15 @@ const MODES = [
   { id: "auto", label: "Auto mode", hint: "Workspace actions auto-approved; risky ones ask" },
   { id: "bypass", label: "Bypass permissions", hint: "Everything auto-approved — trusted sessions only" },
 ] as const;
+// The ⓘ explainer — what each mode ACTUALLY gates (mirrors the enforcement
+// in william-permissions.ts: reads are always free; the mode decides the rest).
+const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
+  ask: "The safest mode. William can read files freely, but every change — file edits, shell commands, and calls to your connected accounts — pops an approval card above the composer before it runs. Nothing happens without your explicit yes.",
+  plan: "Strictly read-only. William can explore the folder, search, and reason, but every edit, command, or account call is refused outright — he tells you what he WOULD do instead. Use it to get a plan or a review you can act on in another mode.",
+  acceptEdits: "File edits inside the working folder run without asking, so refactors flow uninterrupted. Everything else — shell commands, and anything that leaves your machine (connected-account calls, network) — still stops for approval.",
+  auto: "Routine work runs unattended: edits, shell commands, and connected-account calls are auto-approved. Only actions flagged dangerous — destructive commands (rm -rf, sudo, force-push) or writes escaping the working folder — still stop and ask.",
+  bypass: "No gates at all: every action runs without asking, including dangerous commands and writes outside the working folder. Only for sessions you fully trust — prefer Auto mode for everyday unattended runs.",
+};
 const EFFORTS = [
   { id: "low", label: "Local", hint: "Everything on-device — never escalates, never burns credits" },
   { id: "medium", label: "Assist", hint: "Local first; hard turns escalate to Claude" },
@@ -244,14 +253,37 @@ function renderModeMenu(): void {
   const menu = el("code-mode-menu");
   if (!menu) return;
   menu.textContent = "";
+  // Header — section label + ⓘ opening the full explainer modal.
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  const headLabel = document.createElement("span");
+  headLabel.textContent = "Permissions";
+  const info = document.createElement("button");
+  info.className = "drop-info-btn";
+  info.type = "button";
+  info.title = "What each mode allows";
+  info.textContent = "i";
+  info.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.add("hidden");
+    showModeInfoModal();
+  });
+  head.append(headLabel, info);
+  menu.appendChild(head);
+
   for (const m of MODES) {
     const item = document.createElement("button");
     item.className = "code-drop-item";
     item.type = "button";
-    item.title = m.hint;
+    const lines = document.createElement("span");
+    lines.className = "drop-lines";
     const label = document.createElement("span");
     label.textContent = m.label;
-    item.appendChild(label);
+    const hint = document.createElement("span");
+    hint.className = "drop-hint";
+    hint.textContent = m.hint;
+    lines.append(label, hint);
+    item.appendChild(lines);
     if (m.id === williamMode) {
       item.classList.add("selected");
       item.insertAdjacentHTML("beforeend",
@@ -263,6 +295,33 @@ function renderModeMenu(): void {
     });
     menu.appendChild(item);
   }
+}
+
+/** The permission-modes explainer — the standard dialog skeleton, a bit
+ *  wider than the 420px confirm box (five modes with real paragraphs). */
+function showModeInfoModal(): void {
+  const overlay = document.createElement("div");
+  overlay.className = "confirm-overlay";
+  const entries = MODES.map((m) => `
+    <div class="mode-info-entry">
+      <h4>${m.label}</h4>
+      <p>${MODE_DETAILS[m.id]}</p>
+    </div>`).join("");
+  overlay.innerHTML = `
+    <div class="confirm-box mode-info-box">
+      <div class="confirm-head"><h3>Permission modes</h3></div>
+      <div class="confirm-body">
+        <p style="margin:0 0 2px;">Reading files is always allowed — the mode decides what William may DO. Shift+Tab cycles modes from the composer.</p>
+        ${entries}
+      </div>
+      <div class="confirm-foot"><button class="action-btn primary" type="button">Got it</button></div>
+    </div>`;
+  const close = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector("button")!.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
 }
 
 // ── Effort drop-up: labels over a 4-stop slider; superfly = matrix ──
