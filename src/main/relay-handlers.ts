@@ -71,33 +71,15 @@ export function installRelayHandlers(deps: Deps): void {
     return openLayoutByName(name);
   });
 
-  // ── Local MCP servers only — Pipedream-connected apps go via the ─
-  // server-side connector path (relay's connector_list_tools /
-  // connector_call_tool), not through here. getLocalTools filters those
-  // out, so local_mcp_* never returns duplicates.
+  // ── Local MCP servers are retired — custom MCP connections execute
+  // server-side and surface through the connector lane (connector_list_tools /
+  // connector_call_tool). The local_mcp_* relay contract stays answerable so
+  // older callers get an empty list / a pointer instead of a dead socket.
 
-  registerRelayHandler("mcp.list_tools", () => {
-    const mm = getMcpManager();
-    if (!mm) return [];
-    return mm.getLocalTools().map((t) => ({
-      serverId: t.serverId,
-      serverName: t.serverName,
-      name: t.name,
-      qualifiedName: t.qualifiedName,
-      description: t.description,
-      inputSchema: t.inputSchema,
-    }));
-  });
+  registerRelayHandler("mcp.list_tools", () => []);
 
-  registerRelayHandler("mcp.call_tool", async (params) => {
-    const p = params as { serverId?: string; name?: string; args?: Record<string, unknown> } | null;
-    const serverId = String(p?.serverId || "");
-    const name = String(p?.name || "");
-    if (!serverId || !name) throw new Error("mcp.call_tool requires { serverId, name }");
-    const mm = getMcpManager();
-    if (!mm) throw new Error("MCP manager not initialized");
-    const result = await mm.callToolDirect(serverId, name, p?.args || {});
-    return { result };
+  registerRelayHandler("mcp.call_tool", async () => {
+    throw new Error("local MCP servers are retired — custom MCP connections run server-side; use connector_call_tool");
   });
 
   // ── Installed Glyphh apps — discover, invoke, deploy (GLYPHH-APP-SPEC §5) ─

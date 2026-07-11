@@ -219,10 +219,11 @@ export function importApp(appConnector: AppConnector, srcPath: string): ImportRe
   try {
     const app = appConnector.add(appId, manifest.name, url);
     // Re-attach the rest of the manifest fields that add() doesn't take.
+    // (Legacy manifest.mcp configs are ignored — local MCP execution is
+    // retired; custom MCP connections live server-side.)
     if (manifest.commands && Object.keys(manifest.commands).length) {
       appConnector.updateCommands(appId, manifest.commands);
     }
-    if (manifest.mcp) appConnector.setMcp(appId, manifest.mcp);
     void app;
     return { ok: true, appId };
   } catch (err) {

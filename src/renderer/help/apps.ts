@@ -17,7 +17,6 @@ const APPS_PER_PAGE = 24;
 const appsList = document.getElementById("apps-list")!;
 const appDetail = document.getElementById("app-detail")!;
 const appAddForm = document.getElementById("app-add-form")!;
-const mcpAddForm = document.getElementById("mcp-add-form")!;
 const appDetailId = document.getElementById("app-detail-id") as HTMLInputElement;
 const appDetailName = document.getElementById("app-detail-name") as HTMLInputElement;
 const appDetailUrl = document.getElementById("app-detail-url") as HTMLInputElement;
@@ -351,7 +350,6 @@ async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: str
 async function loadApps() {
   appDetail.classList.add("hidden");
   appAddForm.classList.add("hidden");
-  mcpAddForm.classList.add("hidden");
 
   document.getElementById("apps-pro-gate")!.classList.add("hidden");
   appsList.classList.remove("hidden");
@@ -1124,7 +1122,6 @@ async function openPanelAppDetail(app: PanelApp) {
   appsList.classList.add("hidden");
   appsToolbar.classList.add("hidden");
   appAddForm.classList.add("hidden");
-  mcpAddForm.classList.add("hidden");
   appDetail.classList.remove("hidden");
 
   switchAppTab("dashboard");
@@ -1653,64 +1650,6 @@ function initApps() {
     const picked = await window.yo.pickExecutable();
     if (picked) addExecPath.value = picked;
   });
-
-  // MCP add form transport toggle
-  document.getElementById("mcp-add-transport")!.addEventListener("change", () => {
-    const transport = (document.getElementById("mcp-add-transport") as HTMLSelectElement).value;
-    document.getElementById("mcp-add-stdio-fields")!.classList.toggle("hidden", transport !== "stdio");
-    document.getElementById("mcp-add-sse-fields")!.classList.toggle("hidden", transport !== "sse");
-  });
-
-  // MCP add form save
-  document.getElementById("mcp-add-save")!.addEventListener("click", async () => {
-    const name = (document.getElementById("mcp-add-name") as HTMLInputElement).value.trim();
-    const transport = (document.getElementById("mcp-add-transport") as HTMLSelectElement).value as "stdio" | "sse";
-    const errEl = document.getElementById("mcp-form-error")!;
-
-    if (!name) { errEl.textContent = "Name required"; errEl.classList.remove("hidden"); return; }
-
-    const mcpConfig: Record<string, unknown> = { transport, enabled: false };
-    if (transport === "stdio") {
-      const command = (document.getElementById("mcp-add-command") as HTMLInputElement).value.trim();
-      if (!command) { errEl.textContent = "Command required"; errEl.classList.remove("hidden"); return; }
-      mcpConfig.command = command;
-      const args = (document.getElementById("mcp-add-args") as HTMLInputElement).value.trim();
-      if (args) mcpConfig.args = args.split(/\s+/);
-      const envText = (document.getElementById("mcp-add-env") as HTMLTextAreaElement).value.trim();
-      if (envText) {
-        const env: Record<string, string> = {};
-        for (const line of envText.split("\n")) {
-          const eq = line.indexOf("=");
-          if (eq > 0) env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
-        }
-        mcpConfig.env = env;
-      }
-    } else {
-      const url = (document.getElementById("mcp-add-url") as HTMLInputElement).value.trim();
-      if (!url) { errEl.textContent = "URL required"; errEl.classList.remove("hidden"); return; }
-      mcpConfig.url = url;
-    }
-
-    // KNOWN GAP: headless MCP-only entries (no panel URL) stay local — the
-    // server's saved_apps.url column is NOT NULL, so this path can't move to
-    // /api/panel-apps without a schema change. Flagged, not fixed here since
-    // it's a server-side ask outside this pass's scope.
-    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
-    await window.yo.appsAdd(id, name);
-    await window.yo.appsSetMcp(id, mcpConfig as any);
-    await window.yo.mcpAddServer({ id, name, ...mcpConfig } as any);
-
-    mcpAddForm.classList.add("hidden");
-    const apps = await window.yo.panelAppsList();
-    reloadPanelApps(apps.map(toPanelApp));
-    const created = panelApps.find((a) => a.id === id);
-    if (created) openPanelAppDetail(created);
-    else loadApps();
-  });
-
-  // MCP add form cancel
-  document.getElementById("mcp-add-cancel")!.addEventListener("click", () => loadApps());
-  document.getElementById("mcp-add-cancel-btn")!.addEventListener("click", () => loadApps());
 
   // App add form save
   document.getElementById("app-add-save")!.addEventListener("click", async () => {

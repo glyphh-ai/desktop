@@ -26,11 +26,11 @@ import { serverGetAuthed, serverPostAuthed, serverDeleteAuthed, AUTH_SERVER, get
 interface HomeIpcDeps {
   mcpManager: McpManager | null;
   connectorManager: ConnectorManager | null;
-  canUseMcp: () => { allowed: boolean; reason?: string };
+  canUseCustomMcp: () => { allowed: boolean; reason?: string };
 }
 
 export function registerHomeIpc(deps: HomeIpcDeps): void {
-  const { mcpManager, connectorManager, canUseMcp } = deps;
+  const { mcpManager, connectorManager, canUseCustomMcp } = deps;
 
   // ── Home dashboard ──────────────────────────────────────────────────────
   // Credits, month spend, apps deployed, and a per-day usage series (credits
@@ -180,50 +180,9 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   ipcMain.handle("local-mcp-tokens-create", (_e, label: string) => localMcpGenToken(label));
   ipcMain.handle("local-mcp-tokens-revoke", (_e, id: string) => { localMcpRevokeToken(id); return { ok: true }; });
 
-  ipcMain.handle("mcp-get-servers", () => {
-    if (!mcpManager) return [];
-    return mcpManager.getServerStates().map((s) => ({
-      config: s.config,
-      status: s.status,
-      error: s.error,
-      tools: s.tools.map((t) => ({ name: t.name, description: t.description })),
-    }));
-  });
-  ipcMain.handle("mcp-add-server", (_e, config: Record<string, unknown>) => {
-    const gate = canUseMcp();
-    if (!gate.allowed) throw new Error((gate as any).reason);
-    mcpManager!.addServer(config as any);
-  });
-  ipcMain.handle("mcp-update-server", (_e, id: string, updates: Record<string, unknown>) => {
-    mcpManager!.updateServer(id, updates as any);
-  });
-  ipcMain.handle("mcp-remove-server", (_e, id: string) => {
-    mcpManager!.removeServer(id);
-  });
-  ipcMain.handle("mcp-connect-server", async (_e, id: string) => {
-    const gate = canUseMcp();
-    if (!gate.allowed) return { ok: false, error: (gate as any).reason };
-    const state = mcpManager!.getServerState(id);
-    if (!state) return { ok: false, error: "Server not found" };
-    try {
-      await mcpManager!.connectServer(state.config);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("mcp-disconnect-server", async (_e, id: string) => {
-    await mcpManager!.disconnectServer(id);
-  });
-  ipcMain.handle("mcp-get-tool-override", (_e, serverId: string, toolName: string) => {
-    return mcpManager!.getToolOverride(serverId, toolName);
-  });
-  ipcMain.on("mcp-set-tool-override", (_e, serverId: string, toolName: string, override: string) => {
-    mcpManager!.setToolOverride(serverId, toolName, override as any);
-  });
-  ipcMain.on("mcp-set-server-override", (_e, serverId: string, override: string) => {
-    mcpManager!.setServerOverride(serverId, override as any);
-  });
+  // Custom MCP connections live server-side (apps-ipc: mcp-connections-*);
+  // this gate only drives the Connections page's show/hide.
+  ipcMain.handle("mcp-custom-allowed", () => canUseCustomMcp());
 
   ipcMain.handle("connectors-get-apps", async (_e, search?: string, offset?: number) => {
     if (!connectorManager) return { apps: [], hasMore: false };

@@ -559,56 +559,10 @@ export class AppConnector {
     return null;
   }
 
-  // ── MCP (external tool server) ─────────────────────
-
-  setMcp(id: string, mcp: McpConfig): boolean {
-    const app = this.apps.get(id);
-    if (!app) return false;
-    app.mcp = this.preserveOAuthSecret(mcp, app.mcp);
-    this.save(app);
-    return true;
-  }
-
-  updateMcp(id: string, updates: Partial<McpConfig>): boolean {
-    const app = this.apps.get(id);
-    if (!app || !app.mcp) return false;
-    const merged = { ...app.mcp, ...updates };
-    app.mcp = this.preserveOAuthSecret(merged, app.mcp);
-    this.save(app);
-    return true;
-  }
-
-  /** The OAuth client secret is redacted before it ever reaches the renderer
-   *  (see apps-ipc), so an incoming config with a blank secret means "keep the
-   *  one already on disk". Only a non-empty secret actually replaces it. */
-  private preserveOAuthSecret(next: McpConfig, prev: McpConfig | undefined): McpConfig {
-    if (next.oauth && !next.oauth.clientSecret && prev?.oauth?.clientSecret) {
-      return { ...next, oauth: { ...next.oauth, clientSecret: prev.oauth.clientSecret } };
-    }
-    return next;
-  }
-
-  removeMcp(id: string): boolean {
-    const app = this.apps.get(id);
-    if (!app || !app.mcp) return false;
-    delete app.mcp;
-    this.save(app);
-    return true;
-  }
-
-  /** All apps that have an MCP server configured */
-  listMcp(): AppConfig[] {
-    return [...this.apps.values()].filter((a) => a.mcp);
-  }
-
-  /** Get MCP configs in the format McpManager expects */
-  getMcpConfigs(): Array<McpConfig & { id: string; name: string }> {
-    return this.listMcp().map((a) => ({
-      ...a.mcp!,
-      id: a.id,
-      name: a.name,
-    }));
-  }
+  // MCP configs no longer have setters — custom MCP connections are
+  // server-side rows now. The AppConfig.mcp field survives only so legacy
+  // app files still parse; main.ts's migrateLocalCustomMcp lifts remote-URL
+  // configs to the server and removes their headless carrier apps.
 
   // ── Persistence ─────────────────────────────────────
   //

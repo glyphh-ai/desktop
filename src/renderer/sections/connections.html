@@ -4,6 +4,8 @@
 
           <div id="connections-toolbar" class="crud-toolbar">
             <input id="conn-search" type="text" class="crud-search" placeholder="Search connections..." spellcheck="false" autocomplete="off" />
+            <!-- Shown only when the org policy (allow_custom_mcp) permits it -->
+            <button id="conn-add-custom-btn" class="action-btn hidden">+ Custom MCP</button>
             <button id="conn-add-btn" class="action-btn primary">+ New</button>
           </div>
 
@@ -23,6 +25,24 @@
                 <div id="conn-detail-head" class="edit-head"></div>
                 <label class="settings-label">Name</label>
                 <input id="conn-name" type="text" class="settings-input" placeholder="e.g. Gmail — work" spellcheck="false" autocomplete="off" />
+                <!-- Custom MCP only: remote server config — the add AND edit
+                     form. The SERVER dials the endpoint; header values are
+                     write-only (saved encrypted, never shown again). -->
+                <div id="conn-custom-config" class="hidden">
+                  <label class="settings-label">Server URL</label>
+                  <input id="conn-custom-url" type="text" class="settings-input" placeholder="https://mcp.example.com/mcp" spellcheck="false" autocomplete="off" />
+                  <label class="settings-label">Headers <span style="color:var(--text-2);font-weight:400;">(Name: value, one per line)</span></label>
+                  <textarea id="conn-custom-headers" class="settings-input" rows="3" placeholder="Authorization: Bearer sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                  <p id="conn-custom-headers-hint" class="settings-hint hidden" style="margin-top:4px;"></p>
+                </div>
+                <!-- Custom MCP only (saved connections): live status + enable/disable -->
+                <div id="conn-custom-status" class="hidden" style="margin-top:16px;">
+                  <label class="settings-label">Status</label>
+                  <div style="display:flex;gap:12px;align-items:center;">
+                    <span id="conn-custom-status-text" class="settings-hint" style="margin:0;"></span>
+                    <button id="conn-custom-toggle" class="action-btn" type="button">Disable</button>
+                  </div>
+                </div>
                 <!-- Same button row as the App edit form: Delete/Disconnect left, Cancel/Save right -->
                 <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
                   <button id="conn-disconnect" class="action-btn danger" type="button">Disconnect</button>
@@ -35,7 +55,7 @@
               <div class="app-builder-preview">
                 <div class="conn-tools-pane">
                   <h3 class="settings-subheading" style="margin:0 0 4px;">Tools exposed to your AI</h3>
-                  <p class="settings-hint" style="margin-top:2px;">Uncheck a tool to hide it — your AI won't see or be able to call it.</p>
+                  <p id="conn-tools-hint" class="settings-hint" style="margin-top:2px;">Uncheck a tool to hide it — your AI won't see or be able to call it.</p>
                   <div id="conn-tools" class="conn-tools"></div>
                 </div>
               </div>

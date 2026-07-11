@@ -122,38 +122,6 @@
             </div>
           </div>
 
-          <!-- MCP add form -->
-          <div id="mcp-add-form" class="crud-inline-form hidden">
-            <div class="crud-inline-header">
-              <a class="crud-breadcrumb-back" id="mcp-add-cancel">← Apps</a>
-              <div class="crud-spacer"></div>
-            </div>
-            <div id="mcp-form-error" class="crud-form-error hidden"></div>
-            <label class="settings-label">Name</label>
-            <input id="mcp-add-name" type="text" class="settings-input" placeholder="My Server" spellcheck="false" autocomplete="off" />
-            <label class="settings-label">Transport</label>
-            <select id="mcp-add-transport" class="settings-input">
-              <option value="stdio">stdio (local process)</option>
-              <option value="sse">SSE (HTTP server)</option>
-            </select>
-            <div id="mcp-add-stdio-fields">
-              <label class="settings-label">Command</label>
-              <input id="mcp-add-command" type="text" class="settings-input" placeholder="npx -y @modelcontextprotocol/server-..." spellcheck="false" autocomplete="off" />
-              <label class="settings-label">Arguments <span style="color:var(--text-2);font-weight:400;">(space-separated)</span></label>
-              <input id="mcp-add-args" type="text" class="settings-input" placeholder="--flag value" spellcheck="false" autocomplete="off" />
-              <label class="settings-label">Environment <span style="color:var(--text-2);font-weight:400;">(KEY=VALUE, one per line)</span></label>
-              <textarea id="mcp-add-env" class="settings-input" rows="3" placeholder="API_KEY=sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
-            </div>
-            <div id="mcp-add-sse-fields" class="hidden">
-              <label class="settings-label">Server URL</label>
-              <input id="mcp-add-url" type="text" class="settings-input" placeholder="http://localhost:3000/sse" spellcheck="false" autocomplete="off" />
-            </div>
-            <div class="settings-actions" style="margin-top:8px;">
-              <button id="mcp-add-cancel-btn" class="action-btn">Cancel</button>
-              <button id="mcp-add-save" class="action-btn primary">Save</button>
-            </div>
-          </div>
-
           <!-- App detail (tabbed) -->
           <div id="app-detail" class="hidden">
             <div class="crud-inline-header" style="padding:0 16px;">

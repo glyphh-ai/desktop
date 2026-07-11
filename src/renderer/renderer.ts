@@ -177,8 +177,6 @@ declare global {
       appSecretsDelete: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
       appExport: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
-      appsSetMcp: (id: string, mcp: { transport: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; enabled: boolean; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string } }) => Promise<unknown>;
-      appsRemoveMcp: (id: string) => Promise<boolean>;
       appsRemove: (id: string) => Promise<boolean>;
       appsSetConnection: (id: string, pipedreamSlug: string) => Promise<boolean>;
       appsRemoveConnection: (id: string) => Promise<boolean>;
@@ -398,17 +396,13 @@ declare global {
       // BYOK provider key — only the Claude Code bootstrap gate path remains.
 
       // BYOK gate — Anthropic API key saved via the Claude Code bootstrap gate.
-      // MCP Servers (custom user-configured)
-      mcpGetServers: () => Promise<Array<{ config: { id: string; name: string; transport: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; enabled: boolean }; status: string; error?: string; tools: Array<{ name: string; description?: string }> }>>;
-      mcpAddServer: (config: Record<string, unknown>) => Promise<void>;
-      mcpUpdateServer: (id: string, updates: Record<string, unknown>) => Promise<void>;
-      mcpRemoveServer: (id: string) => Promise<void>;
-      mcpConnectServer: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      mcpDisconnectServer: (id: string) => Promise<void>;
-      mcpGetToolOverride: (serverId: string, toolName: string) => Promise<string>;
-      mcpSetToolOverride: (serverId: string, toolName: string, override: string) => void;
-      mcpSetServerOverride: (serverId: string, override: string) => void;
-      onMcpChanged: (cb: () => void) => void;
+      // Custom MCP connections (server-side; header values write-only)
+      mcpCustomAllowed: () => Promise<{ allowed: boolean; reason?: string }>;
+      mcpConnectionsList: () => Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; url: string; headerKeys: string[]; enabled: boolean; hiddenTools: string[]; createdAt: string }> }>;
+      mcpConnectionsCreate: (fields: { name: string; url: string; headers?: Record<string, string> }) => Promise<{ ok: boolean; error?: string; connection?: { slug: string; name: string }; toolCount?: number }>;
+      mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; connection?: unknown }>;
+      mcpConnectionsDelete: (slug: string) => Promise<{ ok: boolean; error?: string }>;
+      mcpConnectionsTools: (slug: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;
       onAppsChanged: (cb: () => void) => void;
     };
   }

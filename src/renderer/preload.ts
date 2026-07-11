@@ -338,9 +338,6 @@ contextBridge.exposeInMainWorld("yo", {
   // yo app package (import / export)
   appImport: () => ipcRenderer.invoke("app-import") as Promise<{ ok: boolean; appId?: string; error?: string }>,
   appExport: (appId: string) => ipcRenderer.invoke("app-export", appId) as Promise<{ ok: boolean; path?: string; error?: string }>,
-  appsSetMcp: (id: string, mcp: { transport: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; enabled: boolean; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string } }) =>
-    ipcRenderer.invoke("apps-set-mcp", id, mcp),
-  appsRemoveMcp: (id: string) => ipcRenderer.invoke("apps-remove-mcp", id) as Promise<boolean>,
   appsRemove: (id: string) => ipcRenderer.invoke("apps-remove", id) as Promise<boolean>,
   appsSetConnection: (id: string, pipedreamSlug: string) => ipcRenderer.invoke("apps-set-connection", id, pipedreamSlug) as Promise<boolean>,
   appsRemoveConnection: (id: string) => ipcRenderer.invoke("apps-remove-connection", id) as Promise<boolean>,
@@ -635,20 +632,14 @@ contextBridge.exposeInMainWorld("yo", {
   // BYOK gate status — true when an Anthropic API key is configured.
 
 
-  // MCP Servers (custom user-configured servers — Advanced plan)
-  mcpGetServers: () => ipcRenderer.invoke("mcp-get-servers") as Promise<Array<{ config: { id: string; name: string; transport: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; enabled: boolean }; status: string; error?: string; tools: Array<{ name: string; description?: string }> }>>,
-  mcpAddServer: (config: Record<string, unknown>) => ipcRenderer.invoke("mcp-add-server", config) as Promise<void>,
-  mcpUpdateServer: (id: string, updates: Record<string, unknown>) => ipcRenderer.invoke("mcp-update-server", id, updates) as Promise<void>,
-  mcpRemoveServer: (id: string) => ipcRenderer.invoke("mcp-remove-server", id) as Promise<void>,
-  mcpConnectServer: (id: string) => ipcRenderer.invoke("mcp-connect-server", id) as Promise<{ ok: boolean; error?: string }>,
-  mcpDisconnectServer: (id: string) => ipcRenderer.invoke("mcp-disconnect-server", id) as Promise<void>,
-  mcpGetToolOverride: (serverId: string, toolName: string) => ipcRenderer.invoke("mcp-get-tool-override", serverId, toolName) as Promise<string>,
-  mcpSetToolOverride: (serverId: string, toolName: string, override: string) => ipcRenderer.send("mcp-set-tool-override", serverId, toolName, override),
-  mcpSetServerOverride: (serverId: string, override: string) => ipcRenderer.send("mcp-set-server-override", serverId, override),
-  onMcpChanged: (cb: () => void) => {
-    ipcRenderer.on("mcp-changed", () => cb());
-  },
-
+  // Custom MCP connections — server-side rows; the server dials the MCP
+  // endpoint, header values are write-only (never come back down).
+  mcpCustomAllowed: () => ipcRenderer.invoke("mcp-custom-allowed") as Promise<{ allowed: boolean; reason?: string }>,
+  mcpConnectionsList: () => ipcRenderer.invoke("mcp-connections-list") as Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; url: string; headerKeys: string[]; enabled: boolean; hiddenTools: string[]; createdAt: string }> }>,
+  mcpConnectionsCreate: (fields: { name: string; url: string; headers?: Record<string, string> }) => ipcRenderer.invoke("mcp-connections-create", fields) as Promise<{ ok: boolean; error?: string; connection?: { slug: string; name: string }; toolCount?: number }>,
+  mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => ipcRenderer.invoke("mcp-connections-update", slug, fields) as Promise<{ ok: boolean; error?: string; connection?: unknown }>,
+  mcpConnectionsDelete: (slug: string) => ipcRenderer.invoke("mcp-connections-delete", slug) as Promise<{ ok: boolean; error?: string }>,
+  mcpConnectionsTools: (slug: string) => ipcRenderer.invoke("mcp-connections-tools", slug) as Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>,
   // Workspace / context panel
   onContextUpdate: (cb: (entry: {id: string; source: string; created: number; workspace?: string}) => void) => {
     ipcRenderer.on("context-update", (_e, entry) => cb(entry));

@@ -42,7 +42,7 @@ import { registerHotkey } from "./hotkey";
 import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, serverPostAuthed, serverGetAuthed, getAuthToken } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
-import { canAddApp, canSaveLayout, canUseMcp } from "./entitlements";
+import { canAddApp, canSaveLayout, canUseCustomMcp } from "./entitlements";
 import { executeCommand } from "./dom-bridge";
 import { getPreference, setPreference } from "./stores/preferences-db";
 import { initAdaStore } from "./ada/store";
@@ -320,11 +320,9 @@ async function boot() {
   // Core services
   appConnector = new AppConnector();
 
-  // MCP Manager — always init so tools are ready when the agent needs them.
-  // Tier gates apply at the UI level (add/connect), not at boot.
+  // MCP Manager — the client-side catalog view; all MCP execution is
+  // server-side (connector tools + custom MCP connections).
   mcpManager = new McpManager();
-  mcpManager.setAppConnector(appConnector);
-  mcpManager.init().catch((err) => console.error("[mcp-manager]", err));
 
   // Relay client — persistent WebSocket to yo-server so external MCP callers
   // can drive this instance. No-op until the user sets a client token.
@@ -333,9 +331,6 @@ async function boot() {
   // Local MCP server — the no-cloud alternative. Starts only if the user has
   // opted in (localMcpEnabled). Uses the same handler registry as the relay.
   void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
-  mcpManager.on("changed", () => {
-    mainWindow?.webContents.send("mcp-changed");
-  });
 
   // Identity switch → hard renderer reload so no DOM/JS state from the
   // previous account survives (per-user stores re-scope in user-scope.ts).
@@ -1232,12 +1227,47 @@ async function boot() {
   // workspace: hide the panels and raise the lockout overlay in the renderer.
   // Registered BEFORE initAuth so the first heartbeat (fired fire-and-forget
   // inside initAuth) can never slip past us.
+  // Legacy local custom MCP configs → server-side custom MCP connections.
+  // Remote URLs migrate up (name + url + headers); stdio/localhost configs
+  // can't execute server-side and are dropped. Headless MCP-only local apps
+  // existed solely to carry the config, so they're removed once lifted.
+  const migrateLocalCustomMcp = async (): Promise<void> => {
+    if (getPreference("customMcpMigratedV1", false)) return;
+    for (const app of appConnector?.list() ?? []) {
+      const mcp = app.mcp;
+      if (!mcp) continue;
+      const url = mcp.url || "";
+      const localOnly = mcp.transport === "stdio" || !url ||
+        /^https?:\/\/(localhost|127\.|0\.0\.0\.0)/i.test(url);
+      if (localOnly) {
+        console.log(`[mcp-migrate] dropping local-only MCP config "${app.id}" — custom MCP runs server-side now`);
+      } else {
+        try {
+          await serverPostAuthed("/api/mcp-connections", { name: app.name, url, headers: mcp.headers ?? {} });
+          console.log(`[mcp-migrate] lifted "${app.id}" to a server-side custom MCP connection`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!/already exists/i.test(msg)) {
+            console.error(`[mcp-migrate] failed for "${app.id}" (will retry next heartbeat):`, msg);
+            return;
+          }
+        }
+      }
+      if (!app.url) appConnector?.remove(app.id);
+    }
+    setPreference("customMcpMigratedV1", true);
+  };
+
   let accountLocked = false;
   setHeartbeatObserver((hb) => {
     // Tier may have changed (free <-> paid). The relay is paid-only, so
     // re-evaluate it on every heartbeat — this also starts it once the boot
     // heartbeat finally lands, and tears it down on a downgrade.
     reconnectRelay();
+    // One-shot: lift legacy LOCAL custom MCP servers (the old client-side
+    // path) up to the server as custom MCP connections. Runs on heartbeat
+    // because it needs an authenticated session; retries next beat on error.
+    void migrateLocalCustomMcp();
     const locked = hb.status === "disabled";
     if (locked === accountLocked) return;
     accountLocked = locked;
@@ -1780,7 +1810,7 @@ async function boot() {
 
   // Settings / home panel IPC — dashboard, MCP servers (relay), connectors, prompts.
   registerHomeIpc({
-    mcpManager, connectorManager, canUseMcp,
+    mcpManager, connectorManager, canUseCustomMcp,
   });
 
   // IPC: tabs + URL bar (extracted to tab-ipc.ts)
@@ -2011,7 +2041,6 @@ function cleanupAll() {
     }
   } catch {}
   terminalManager?.killAll();
-  mcpManager?.disconnectAll();
   connectorManager?.cleanup();
   dripManager?.cleanup();
   // Close the background handles that otherwise keep the Node event loop alive

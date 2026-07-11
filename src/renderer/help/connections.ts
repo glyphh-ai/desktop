@@ -12,10 +12,18 @@ import { showAppOverlay, hideAppOverlay } from "../app-overlay.js";
 
 type Conn = Awaited<ReturnType<typeof window.yo.connectionsList>>["connections"][number];
 type CatalogApp = Awaited<ReturnType<typeof window.yo.connectorsGetApps>>["apps"][number];
+type McpConn = Awaited<ReturnType<typeof window.yo.mcpConnectionsList>>["connections"][number];
 
 let connections: Conn[] = [];
+// Custom MCP connections — server-side rows like any other connection; the
+// server dials the endpoint and holds the (write-only) auth headers.
+let customServers: McpConn[] = [];
+let customAllowed = false;   // org × role policy (server-enforced; this only shows/hides UI)
 let connSearch = "";
 let currentConnId: string | null = null;
+let currentCustomSlug: string | null = null;
+// "new" = the + Custom MCP form; "edit" = a saved custom connection's detail.
+let customMode: "new" | "edit" | null = null;
 let catalogOffset = 0;
 
 function esc(s: string): string {
@@ -28,12 +36,29 @@ function connIconApp(c: { accountId: string; appSlug: string }) {
 // DOM (resolved in initConnections)
 let listEl: HTMLElement, detailEl: HTMLElement, searchEl: HTMLInputElement;
 let nameInput: HTMLInputElement, toolsEl: HTMLElement, detailHead: HTMLElement, detailErr: HTMLElement;
+let customStatusEl: HTMLElement, customStatusText: HTMLElement, customToggle: HTMLButtonElement;
+let customConfigEl: HTMLElement, disconnectBtn: HTMLButtonElement, saveBtn: HTMLButtonElement;
 let modalEl: HTMLElement, catalogGrid: HTMLElement, catalogSearch: HTMLInputElement, catalogMore: HTMLElement;
+
+/** Swap a button into/out of a busy state with an inline spinner. */
+function setBtnBusy(btn: HTMLButtonElement, busy: boolean, label: string): void {
+  btn.disabled = busy;
+  btn.innerHTML = busy ? `<span class="btn-spinner"></span>${esc(label)}` : esc(label);
+}
 
 export async function loadConnections(): Promise<void> {
   listEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
-  const res = await window.yo.connectionsList();
+  // The org × role policy can change with any heartbeat, so re-check it on
+  // every load — it hides the "+ Custom MCP" button AND the custom cards.
+  const [res, custom, gate] = await Promise.all([
+    window.yo.connectionsList(),
+    window.yo.mcpConnectionsList().catch(() => ({ ok: false, connections: [] })),
+    window.yo.mcpCustomAllowed().catch(() => ({ allowed: false })),
+  ]);
   connections = res.ok ? res.connections : [];
+  customServers = custom.ok ? custom.connections : [];
+  customAllowed = !!gate.allowed;
+  document.getElementById("conn-add-custom-btn")!.classList.toggle("hidden", !customAllowed);
   renderConnectionsList();
   // Real Pipedream catalog icons, then re-render.
   void primeConnectedIcons(connections.map(connIconApp), renderConnectionsList);
@@ -44,6 +69,13 @@ function renderConnectionsList(): void {
   const items = q
     ? connections.filter((c) => (c.label || c.appName).toLowerCase().includes(q) || c.appSlug.toLowerCase().includes(q))
     : connections;
+  // Role-gated: when custom MCP is disallowed the cards disappear entirely —
+  // the rows stay on the server (inert; the catalog and call path exclude
+  // them), so they reappear if the policy is turned back on.
+  const visibleCustom = customAllowed ? customServers : [];
+  const customItems = q
+    ? visibleCustom.filter((c) => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q))
+    : visibleCustom;
 
   // Same wrapper class the Apps list uses — the grid CSS is `.app-list-wrap .app-grid`.
   // Preserve the hidden state: an async icon re-render must not pop the list
@@ -51,8 +83,8 @@ function renderConnectionsList(): void {
   const wasHidden = listEl.classList.contains("hidden") || !detailEl.classList.contains("hidden");
   listEl.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
   listEl.innerHTML = "";
-  if (items.length === 0) {
-    listEl.innerHTML = connections.length === 0
+  if (items.length === 0 && customItems.length === 0) {
+    listEl.innerHTML = connections.length === 0 && visibleCustom.length === 0
       ? `<div class="crud-empty">No connections yet. Click “+ New” to connect an account.</div>`
       : `<div class="crud-empty">No connections match your search.</div>`;
     return;
@@ -72,6 +104,18 @@ function renderConnectionsList(): void {
     card.addEventListener("click", () => void openConnDetail(c.id));
     grid.appendChild(card);
   }
+  for (const c of customItems) {
+    const card = document.createElement("div");
+    card.className = "app-card";
+    const initial = (c.name || "?").charAt(0).toUpperCase();
+    card.innerHTML = `
+      ${c.enabled ? "" : `<span class="app-card-badge badge-connection">Disabled</span>`}
+      <div class="app-card-icon"><span class="app-card-initial">${esc(initial)}</span></div>
+      <div class="app-card-name">${esc(c.name)}</div>
+      <div class="app-card-id">Custom MCP</div>`;
+    card.addEventListener("click", () => openCustomDetail(c.slug));
+    grid.appendChild(card);
+  }
   listEl.appendChild(grid);
 }
 
@@ -79,6 +123,13 @@ async function openConnDetail(id: string): Promise<void> {
   const c = connections.find((x) => x.id === id);
   if (!c) return;
   currentConnId = id;
+  currentCustomSlug = null;
+  customMode = null;
+  customStatusEl.classList.add("hidden");
+  customConfigEl.classList.add("hidden");
+  disconnectBtn.classList.remove("hidden");
+  disconnectBtn.textContent = "Disconnect";
+  setBtnBusy(saveBtn, false, "Save");
   detailErr.classList.add("hidden");
   listEl.classList.add("hidden");
   document.getElementById("connections-toolbar")?.classList.add("hidden");
@@ -132,9 +183,194 @@ async function saveHiddenTools(): Promise<void> {
 function closeConnDetail(): void {
   detailEl.classList.add("hidden");
   currentConnId = null;
+  currentCustomSlug = null;
+  customMode = null;
+  customStatusEl.classList.add("hidden");
+  customConfigEl.classList.add("hidden");
+  disconnectBtn.classList.remove("hidden");
+  disconnectBtn.textContent = "Disconnect";
+  setBtnBusy(saveBtn, false, "Save");
   document.getElementById("connections-toolbar")?.classList.remove("hidden");
   listEl.classList.remove("hidden");
   renderConnectionsList();   // reflect any label change
+}
+
+// ── Custom MCP detail (the add + edit form) ───────────────
+
+/** Open the detail split as the custom MCP form — "new" (blank) or "edit"
+ *  (prefilled from a saved connection). The left column's edit-head is the
+ *  page header in both modes. */
+function openCustomForm(mode: "new" | "edit", c?: McpConn): void {
+  customMode = mode;
+  currentCustomSlug = mode === "edit" && c ? c.slug : null;
+  currentConnId = null;
+  detailErr.classList.add("hidden");
+  listEl.classList.add("hidden");
+  document.getElementById("connections-toolbar")?.classList.add("hidden");
+  detailEl.classList.remove("hidden");
+  customConfigEl.classList.remove("hidden");
+
+  const urlInput = document.getElementById("conn-custom-url") as HTMLInputElement;
+  const headersInput = document.getElementById("conn-custom-headers") as HTMLTextAreaElement;
+  const headersHint = document.getElementById("conn-custom-headers-hint")!;
+
+  if (mode === "new") {
+    detailHead.innerHTML = `
+      <div class="app-card-icon"><span class="app-card-initial">+</span></div>
+      <div class="edit-head-name">New custom MCP connection<span class="edit-head-slug">a remote MCP server</span></div>`;
+    nameInput.value = "";
+    nameInput.placeholder = "My MCP server";
+    urlInput.value = "";
+    headersInput.value = "";
+    headersInput.placeholder = "Authorization: Bearer sk-...";
+    headersHint.classList.add("hidden");
+    customStatusEl.classList.add("hidden");
+    disconnectBtn.classList.add("hidden");
+    setBtnBusy(saveBtn, false, "Add & Connect");
+    toolsEl.innerHTML = `<div class="crud-empty">Add the connection to see its tools.</div>`;
+    nameInput.focus();
+    return;
+  }
+
+  const conn = c!;
+  const initial = (conn.name || "?").charAt(0).toUpperCase();
+  detailHead.innerHTML = `
+    <div class="app-card-icon"><span class="app-card-initial">${esc(initial)}</span></div>
+    <div class="edit-head-name">${esc(conn.name)}<span class="edit-head-slug">${esc(conn.slug)}</span></div>`;
+  nameInput.value = conn.name;
+  nameInput.placeholder = conn.name;
+  urlInput.value = conn.url;
+  headersInput.value = "";
+  headersInput.placeholder = "leave blank to keep the saved headers";
+  // Values are write-only — show WHICH headers are saved, never what's in them.
+  if (conn.headerKeys.length) {
+    headersHint.textContent = `Saved headers (values hidden): ${conn.headerKeys.join(", ")}. Enter new lines to replace them all.`;
+    headersHint.classList.remove("hidden");
+  } else {
+    headersHint.classList.add("hidden");
+  }
+  customStatusEl.classList.remove("hidden");
+  disconnectBtn.classList.remove("hidden");
+  disconnectBtn.textContent = "Remove";
+  setBtnBusy(saveBtn, false, "Save");
+  customToggle.textContent = conn.enabled ? "Disable" : "Enable";
+  void loadCustomStatus(conn);
+}
+
+function openCustomDetail(slug: string): void {
+  const c = customServers.find((x) => x.slug === slug);
+  if (c) openCustomForm("edit", c);
+}
+
+/** Live-check the connection (the server dials it) and fill status + tools. */
+async function loadCustomStatus(c: McpConn): Promise<void> {
+  if (!c.enabled) {
+    customStatusText.textContent = "disabled";
+    toolsEl.innerHTML = `<div class="crud-empty">Enable the connection to see its tools.</div>`;
+    return;
+  }
+  customStatusText.textContent = "checking…";
+  toolsEl.innerHTML = `<div class="crud-empty">Loading tools…</div>`;
+  const res = await window.yo.mcpConnectionsTools(c.slug);
+  if (currentCustomSlug !== c.slug) return;   // user navigated away meanwhile
+  if (!res.ok) {
+    customStatusText.textContent = `unreachable — ${res.error || "connection failed"}`;
+    toolsEl.innerHTML = `<div class="crud-empty">Couldn't reach the server.</div>`;
+    return;
+  }
+  customStatusText.textContent = `connected · ${res.tools.length} tool${res.tools.length === 1 ? "" : "s"}`;
+  if (res.tools.length === 0) {
+    toolsEl.innerHTML = `<div class="crud-empty">This server publishes no tools yet.</div>`;
+    return;
+  }
+  // Same exposure UI as any connection: uncheck to hide a tool from the AI.
+  toolsEl.innerHTML = "";
+  for (const t of res.tools) {
+    const row = document.createElement("div");
+    row.className = "conn-tool-row";
+    row.innerHTML = `
+      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} title="Expose this tool to your AI" />
+      ${t.description
+        ? `<details class="conn-tool-details">
+             <summary class="conn-tool-name">${esc(t.name)}</summary>
+             <div class="conn-tool-desc">${esc(t.description)}</div>
+           </details>`
+        : `<span class="conn-tool-name conn-tool-name-flat">${esc(t.name)}</span>`}`;
+    toolsEl.appendChild(row);
+  }
+  toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check").forEach((cb) => {
+    cb.addEventListener("change", () => void saveCustomHiddenTools());
+  });
+}
+
+async function saveCustomHiddenTools(): Promise<void> {
+  if (!currentCustomSlug) return;
+  const hidden = Array.from(toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check"))
+    .filter((cb) => !cb.checked)
+    .map((cb) => cb.dataset.tool || "");
+  const res = await window.yo.mcpConnectionsUpdate(currentCustomSlug, { hiddenTools: hidden });
+  if (res.ok) {
+    const c = customServers.find((x) => x.slug === currentCustomSlug);
+    if (c) c.hiddenTools = hidden;
+  }
+}
+
+/** Parse the headers textarea: "Name: value" (or "Name=value"), one per
+ *  line. Returns null when the box is blank (edit mode: keep saved values). */
+function collectCustomHeaders(): Record<string, string> | null {
+  const raw = (document.getElementById("conn-custom-headers") as HTMLTextAreaElement).value.trim();
+  if (!raw) return null;
+  const headers: Record<string, string> = {};
+  for (const line of raw.split("\n")) {
+    const sep = line.match(/[:=]/)?.index ?? -1;
+    if (sep > 0) headers[line.slice(0, sep).trim()] = line.slice(sep + 1).trim();
+  }
+  return headers;
+}
+
+async function refreshCustomList(): Promise<void> {
+  const r = await window.yo.mcpConnectionsList().catch(() => ({ ok: false as const, connections: [] }));
+  if (r.ok) customServers = r.connections;
+}
+
+/** Save the custom form — create (server runs a connect test; the spinner
+ *  waits on it) or update. Policy failures come back as server errors. */
+async function saveCustomForm(): Promise<void> {
+  const fail = (msg: string): void => { detailErr.textContent = msg; detailErr.classList.remove("hidden"); };
+  detailErr.classList.add("hidden");
+
+  const name = nameInput.value.trim();
+  if (!name) { fail("Name is required."); nameInput.focus(); return; }
+  const url = (document.getElementById("conn-custom-url") as HTMLInputElement).value.trim();
+  if (!url) { fail("Server URL is required."); return; }
+  const headers = collectCustomHeaders();
+
+  if (customMode === "new") {
+    setBtnBusy(saveBtn, true, "Connecting…");
+    const res = await window.yo.mcpConnectionsCreate({ name, url, headers: headers ?? {} });
+    if (!res.connection) {
+      setBtnBusy(saveBtn, false, "Add & Connect");
+      fail(res.error || "Couldn't create the connection.");
+      return;
+    }
+    await refreshCustomList();
+    openCustomDetail(res.connection.slug);   // edit mode: live status + tools (or the connect error)
+    return;
+  }
+
+  if (customMode === "edit" && currentCustomSlug) {
+    setBtnBusy(saveBtn, true, "Saving…");
+    const fields: Record<string, unknown> = { name, url };
+    if (headers) fields.headers = headers;   // blank box = keep saved values
+    const res = await window.yo.mcpConnectionsUpdate(currentCustomSlug, fields);
+    if (!res.ok) {
+      setBtnBusy(saveBtn, false, "Save");
+      fail(res.error || "Couldn't save the connection.");
+      return;
+    }
+    await refreshCustomList();
+    closeConnDetail();
+  }
 }
 
 // ── Catalog modal ────────────────────────────────────────
@@ -193,6 +429,12 @@ export function initConnections(): void {
   catalogGrid = document.getElementById("conn-catalog-grid")!;
   catalogSearch = document.getElementById("conn-catalog-search") as HTMLInputElement;
   catalogMore = document.getElementById("conn-catalog-more")!;
+  customStatusEl = document.getElementById("conn-custom-status")!;
+  customStatusText = document.getElementById("conn-custom-status-text")!;
+  customToggle = document.getElementById("conn-custom-toggle") as HTMLButtonElement;
+  customConfigEl = document.getElementById("conn-custom-config")!;
+  disconnectBtn = document.getElementById("conn-disconnect") as HTMLButtonElement;
+  saveBtn = document.getElementById("conn-name-save") as HTMLButtonElement;
 
   // Connect-flow overlay — from the moment the OAuth window closes until the
   // connection is verified (or ruled cancelled), the standard spinner covers
@@ -204,6 +446,24 @@ export function initConnections(): void {
 
   searchEl.addEventListener("input", () => { connSearch = searchEl.value; renderConnectionsList(); });
   document.getElementById("conn-add-btn")!.addEventListener("click", openCatalog);
+  document.getElementById("conn-add-custom-btn")!.addEventListener("click", () => openCustomForm("new"));
+  customToggle.addEventListener("click", async () => {
+    if (!currentCustomSlug) return;
+    const c = customServers.find((x) => x.slug === currentCustomSlug);
+    if (!c) return;
+    const enabling = !c.enabled;
+    setBtnBusy(customToggle, true, enabling ? "Enabling…" : "Disabling…");
+    detailErr.classList.add("hidden");
+    const res = await window.yo.mcpConnectionsUpdate(c.slug, { enabled: enabling });
+    if (!res.ok) {
+      detailErr.textContent = res.error || "Couldn't update the connection.";
+      detailErr.classList.remove("hidden");
+    } else {
+      c.enabled = enabling;
+    }
+    setBtnBusy(customToggle, false, c.enabled ? "Disable" : "Enable");
+    void loadCustomStatus(c);
+  });
   document.getElementById("conn-modal-close")!.addEventListener("click", closeCatalog);
   modalEl.querySelector(".conn-modal-backdrop")!.addEventListener("click", closeCatalog);
   document.getElementById("conn-detail-back")!.addEventListener("click", closeConnDetail);
@@ -216,8 +476,8 @@ export function initConnections(): void {
   });
   catalogMore.addEventListener("click", () => { catalogOffset += 30; void loadCatalog(catalogSearch.value.trim() || undefined); });
 
-  document.getElementById("conn-name-save")!.addEventListener("click", async () => {
-    if (!currentConnId) return;
+  saveBtn.addEventListener("click", async () => {
+    if (customMode) { await saveCustomForm(); return; }   // custom MCP: full config form
     const name = nameInput.value.trim();
     if (!name) {   // a connection must have a name
       detailErr.textContent = "Name is required.";
@@ -226,6 +486,7 @@ export function initConnections(): void {
       return;
     }
     detailErr.classList.add("hidden");
+    if (!currentConnId) return;
     const res = await window.yo.connectionRename(currentConnId, name);
     if (res.ok && res.connection) {
       const c = connections.find((x) => x.id === currentConnId);
@@ -237,9 +498,30 @@ export function initConnections(): void {
     }
   });
 
-  // Disconnect — the app's standard confirm modal.
-  const disc = document.getElementById("conn-disconnect") as HTMLButtonElement;
+  // Disconnect (Pipedream) / Remove (custom MCP) — the app's standard confirm modal.
+  const disc = disconnectBtn;
   disc.addEventListener("click", async () => {
+    if (currentCustomSlug) {
+      const c = customServers.find((x) => x.slug === currentCustomSlug);
+      const label = c?.name || "this connection";
+      if (!(await confirmAction({
+        title: `Remove “${label}”?`,
+        body: "Its tools disappear from your AI. The MCP server itself is not touched.",
+        confirmLabel: "Remove",
+        danger: true,
+      }))) return;
+      disc.disabled = true;
+      const res = await window.yo.mcpConnectionsDelete(currentCustomSlug);
+      disc.disabled = false;
+      if (!res.ok) {
+        detailErr.textContent = res.error || "Couldn't remove the connection.";
+        detailErr.classList.remove("hidden");
+        return;
+      }
+      closeConnDetail();
+      await loadConnections();
+      return;
+    }
     if (!currentConnId) return;
     const c = connections.find((x) => x.id === currentConnId);
     const label = c ? (c.label || c.appName) : "this connection";

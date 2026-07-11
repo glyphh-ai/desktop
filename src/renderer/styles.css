@@ -11152,6 +11152,13 @@ select:focus {
 
 /* ── Connections section ─────────────────────────────────────────── */
 .conn-tools-pane { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
+/* Inline button spinner — Add & Connect / Connect while an MCP server dials. */
+.btn-spinner {
+  display: inline-block; width: 11px; height: 11px; margin-right: 7px;
+  border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
+  vertical-align: -1px; animation: btn-spin .7s linear infinite;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
 /* Shared edit-form header: icon (or icon-list) + NAME + slug. Used by the
    Apps, Connections, Layouts and Drips editors for a consistent look. */
 .edit-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }

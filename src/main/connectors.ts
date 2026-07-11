@@ -62,9 +62,6 @@ interface DisconnectResponse {
   error?: string;
 }
 
-// Legacy Pipedream server ID prefix — cleaned up on init
-const LEGACY_PIPEDREAM_PREFIX = "pipedream-connect";
-
 // ── ConnectorManager ──────────────────────────────────────
 
 export class ConnectorManager extends EventEmitter {
@@ -349,10 +346,6 @@ export class ConnectorManager extends EventEmitter {
   async refreshMcp(): Promise<{ ok: boolean; error?: string; toolCount: number }> {
     if (!this.mcpManager) return { ok: false, error: "MCP manager not available", toolCount: 0 };
 
-    // One-time cleanup of any legacy ephemeral Pipedream servers from the
-    // pre-refactor code path.
-    this.removeLegacyPipedreamServers();
-
     try {
       const tools = await refreshConnectorCatalog();
       this.mcpManager.setConnectorCatalog(tools);
@@ -371,19 +364,8 @@ export class ConnectorManager extends EventEmitter {
     return tools;
   }
 
-  private pipedreamServerIds = new Set<string>();
-
-  private removeLegacyPipedreamServers(): void {
-    if (!this.mcpManager) return;
-    for (const id of this.pipedreamServerIds) {
-      this.mcpManager.removeEphemeralServer(id);
-    }
-    this.pipedreamServerIds.clear();
-  }
-
   /** Initialize — load accounts and set up MCP if any exist. */
   async init(): Promise<void> {
-    this.cleanupLegacyServers();
     try {
       const accounts = await this.getAccounts();
       console.log(`[connectors] init: ${accounts.length} accounts found`);
@@ -393,16 +375,6 @@ export class ConnectorManager extends EventEmitter {
       }
     } catch (err) {
       console.warn("[connectors] init failed:", err);
-    }
-  }
-
-  private cleanupLegacyServers(): void {
-    if (!this.mcpManager) return;
-    for (const state of this.mcpManager.getServerStates()) {
-      if (state.config.id === LEGACY_PIPEDREAM_PREFIX || state.config.id.startsWith(`${LEGACY_PIPEDREAM_PREFIX}-`)) {
-        this.mcpManager.removeServer(state.config.id);
-        console.log(`[connectors] removed legacy server: ${state.config.id}`);
-      }
     }
   }
 

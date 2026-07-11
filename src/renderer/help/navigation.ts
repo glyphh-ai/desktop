@@ -88,7 +88,6 @@ export function resetEditors() {
     document.getElementById("apps-list")?.classList.remove("hidden");
     document.getElementById("apps-toolbar")?.classList.remove("hidden");
   }
-  document.getElementById("mcp-add-form")?.classList.add("hidden");
 }
 
 function switchToSection(sectionId: string) {

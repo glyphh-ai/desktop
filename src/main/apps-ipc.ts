@@ -178,6 +178,29 @@ function registerPanelAppsIpc(): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
+  // ── Custom MCP connections (server-side, like every other connection —
+  // the server opens the MCP client; header values are write-only) ──────────
+  ipcMain.handle("mcp-connections-list", async () => {
+    try { const r = await serverGetAuthed<{ connections: unknown[] }>("/api/mcp-connections"); return { ok: true, connections: r.connections || [] }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
+  });
+  ipcMain.handle("mcp-connections-create", async (_e, fields: { name: string; url: string; headers?: Record<string, string> }) => {
+    try { return { ok: true, ...(await serverPostAuthed("/api/mcp-connections", fields) as Record<string, unknown>) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("mcp-connections-update", async (_e, slug: string, fields: Record<string, unknown>) => {
+    try { const r = await serverPatchAuthed(`/api/mcp-connections/${slug}`, fields); return { ok: true, connection: (r as { connection: unknown }).connection }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("mcp-connections-delete", async (_e, slug: string) => {
+    try { const r = await serverDeleteAuthed<{ ok?: boolean }>(`/api/mcp-connections/${slug}`); return { ok: r?.ok !== false }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("mcp-connections-tools", async (_e, slug: string) => {
+    try { return await serverGetAuthed<{ ok: boolean; error?: string; tools: unknown[] }>(`/api/mcp-connections/${slug}/tools`); }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }; }
+  });
+
   // ── App proxies (public <slug>.glyphh.app tunnels) ─────────────
   // CRUD passes straight through to the server; every mutation drops the
   // stream handler's slug→target cache so edits take effect immediately.
@@ -381,16 +404,12 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // direct IPC call would otherwise still mutate them.
   const refuseIfInternal = (id: string) => appConnector.isInternal(id);
   ipcMain.handle("apps-remove", (_e, id: string) => refuseIfInternal(id) ? false : appConnector.remove(id));
-  // Connections are available to all tiers — no pay gate. (MCP server config
-  // below stays gated.) refuseIfInternal still blocks editing built-in apps.
+  // Connections are available to all tiers — no pay gate. refuseIfInternal
+  // still blocks editing built-in apps.
   ipcMain.handle("apps-set-connection", (_e, id: string, pipedreamSlug: string) =>
     refuseIfInternal(id) ? false : appConnector.setConnection(id, { pipedreamSlug }));
   ipcMain.handle("apps-remove-connection", (_e, id: string) =>
     refuseIfInternal(id) ? false : appConnector.removeConnection(id));
-  ipcMain.handle("apps-set-mcp", (_e, id: string, mcp: any) =>
-    refuseIfInternal(id) ? false : appConnector.setMcp(id, mcp));
-  ipcMain.handle("apps-remove-mcp", (_e, id: string) =>
-    refuseIfInternal(id) ? false : appConnector.removeMcp(id));
   ipcMain.handle("apps-update-id", (_e, oldId: string, newId: string) => {
     if (refuseIfInternal(oldId)) return false;
     const ok = appConnector.updateId(oldId, newId);

@@ -6,7 +6,7 @@
  * during the transition. They always return { allowed: true }.
  */
 
-import { hasMcpAccess } from "./auth";
+import { hasMcpAccess, getHeartbeatInfo } from "./auth";
 
 export type GateResult = { allowed: true } | { allowed: false; reason: string };
 
@@ -20,6 +20,18 @@ export function canUseMcp(): GateResult {
   return hasMcpAccess() ? ALLOWED : { allowed: false, reason: "MCP requires a Pro plan." };
 }
 export function canUseCustomDrips(): GateResult { return ALLOWED; }
+// Custom MCP connections (user-supplied stdio/HTTP servers) can be switched
+// off org-wide via the allow_custom_mcp org policy, delivered through
+// heartbeat entitlements. Absent flag (solo user, stale heartbeat) = allowed.
+export function canUseCustomMcp(): GateResult {
+  const mcp = canUseMcp();
+  if (!mcp.allowed) return mcp;
+  const ents = getHeartbeatInfo()?.entitlements;
+  if (ents && ents.allowCustomMcp === false) {
+    return { allowed: false, reason: "Custom MCP connections are disabled by your organization." };
+  }
+  return ALLOWED;
+}
 
 export function getCurrentLimits() {
   return {
