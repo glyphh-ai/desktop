@@ -168,15 +168,14 @@ function initSettings() {
     });
   })();
 
-  // ── AI Gateway (Settings > AI Gateway) — escalation model + BYOK key +
-  // slicer burn visibility; org model governance for org admins (same gate
-  // and server-authoritative pattern as guardrails above). ──
+  // ── AI Gateway (Settings > AI Gateway) — the escalation-model pick only.
+  // BYOK keys and per-model proxy/byok lanes are ADMIN-managed on the
+  // platform now (Roles → Models), not here. ──
   void (async () => {
     const modelSel = document.getElementById("gw-model") as HTMLSelectElement | null;
     const modelHint = document.getElementById("gw-model-hint");
-    const byokEl = document.getElementById("gw-byok") as HTMLInputElement | null;
     const statusEl = document.getElementById("gw-status");
-    if (!modelSel || !byokEl) return;
+    if (!modelSel) return;
 
     const fmtCr = (micro: number | null | undefined) => (micro == null ? "—" : String(Math.round(micro / 1e6)));
 
@@ -197,86 +196,18 @@ function initSettings() {
       modelSel.appendChild(opt);
     }
     if (modelHint) {
-      modelHint.textContent = gw.lanes.byok
-        ? "Your key is on file — escalations ride the gateway on YOUR key: no token credits, governance still applies."
-        : gw.lanes.gateway
-          ? "No key on file — escalations route through Glyphh's gateway and burn org credits."
-          : "Sign in to enable escalation — until then every turn stays local.";
+      modelHint.textContent = gw.models.length
+        ? "Which model hard turns escalate to. Billing (org credits vs your org's key) is set per model by your admin."
+        : "Sign in to enable escalation — until then every turn stays local.";
     }
 
-    // BYOK key lives SERVER-side (encrypted) — the input is write-only. When
-    // a key is on file it shows a masked "key set" sentinel (never the key);
-    // focusing clears it so a NEW key can be typed, and Save ignores the
-    // sentinel so it can never be pushed as a key.
-    const KEY_SET_SENTINEL = "•••••••• ✓ key set";
-    const byokStatusEl = document.getElementById("gw-byok-status");
-    const byokRemoveBtn = document.getElementById("gw-byok-remove") as HTMLButtonElement | null;
-    let byokOnFile = false;
-    const paintByok = async () => {
-      const st = await window.yo.providerKeyStatus?.();
-      byokOnFile = !!st?.hasKey;
-      if (byokOnFile) {
-        byokEl.type = "text";
-        byokEl.value = KEY_SET_SENTINEL;
-      } else if (byokEl.value === KEY_SET_SENTINEL) {
-        byokEl.type = "password";
-        byokEl.value = "";
-      }
-      if (byokStatusEl) {
-        byokStatusEl.textContent = st?.hasKey
-          ? st.lastTestOk
-            ? "Verified ✓ — encrypted server-side; this app never keeps a copy."
-            : `On file, but it failed its last check: ${st.lastTestError || "unknown error"}`
-          : "Encrypted and stored server-side — this app never keeps a copy.";
-      }
-      if (byokRemoveBtn) byokRemoveBtn.style.display = st?.hasKey ? "" : "none";
-    };
-    void paintByok();
-
-    byokEl.addEventListener("focus", () => {
-      if (byokEl.value === KEY_SET_SENTINEL) {
-        byokEl.value = "";
-        byokEl.type = "password";
-      }
-    });
-    byokEl.addEventListener("blur", () => {
-      // Nothing typed and a key is on file → back to the sentinel.
-      if (byokOnFile && !byokEl.value.trim()) {
-        byokEl.type = "text";
-        byokEl.value = KEY_SET_SENTINEL;
-      }
-    });
-
     document.getElementById("gw-save")?.addEventListener("click", () => {
-      void (async () => {
-        if (modelSel.value) window.yo.setPreference?.("frontierModel", modelSel.value);
-        const key = byokEl.value.trim();
-        let note = "Saved ✓";
-        // Only push a key the user actually TYPED — the sentinel means
-        // "unchanged, already on the server".
-        if (key && key !== KEY_SET_SENTINEL) {
-          const r = await window.yo.providerKeySet(key);
-          note = r.ok ? (r.testOk ? "Key saved & verified ✓" : `Key saved — but Anthropic rejected it: ${r.testError || "check the key"}`) : (r.testError || "Key save failed");
-          await paintByok();
-        }
-        if (statusEl) {
-          statusEl.textContent = note;
-          setTimeout(() => { if (statusEl.textContent === note) statusEl.textContent = ""; }, 4000);
-        }
-      })();
+      if (modelSel.value) window.yo.setPreference?.("frontierModel", modelSel.value);
+      if (statusEl) {
+        statusEl.textContent = "Saved ✓";
+        setTimeout(() => { if (statusEl.textContent === "Saved ✓") statusEl.textContent = ""; }, 4000);
+      }
     });
-
-    byokRemoveBtn?.addEventListener("click", () => {
-      void (async () => {
-        const r = await window.yo.providerKeyDelete();
-        if (statusEl) {
-          statusEl.textContent = r.ok ? "Key removed — escalations burn org credits again." : "Could not remove the key.";
-          setTimeout(() => { statusEl.textContent = ""; }, 4000);
-        }
-        void paintByok();
-      })();
-    });
-
   })();
 
   // ── Local MCP server (127.0.0.1) — the no-cloud alternative. Available to

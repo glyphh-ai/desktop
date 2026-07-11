@@ -362,9 +362,6 @@ declare global {
       connectorsRefreshMcp: () => Promise<{ ok: boolean; error?: string; toolCount: number }>;
       connectorsListTools: () => Promise<Array<{ slug: string; name: string; description: string }>>;
       onConnectorsChanged: (cb: () => void) => void;
-      providerKeyStatus: () => Promise<{ provider: string; hasKey: boolean; lastTestOk: boolean | null; lastTestError: string | null; lastTestedAt: string | null } | null>;
-      providerKeySet: (key: string) => Promise<{ ok: boolean; testOk: boolean; testError?: string }>;
-      providerKeyDelete: () => Promise<{ ok: boolean }>;
       onConnectorsConnectProgress: (cb: (p: { phase: "verifying" | "done"; appSlug: string; ok?: boolean; error?: string }) => void) => void;
       // Auto-update
       onUpdateStatus: (cb: (info: { status: string; version?: string; percent?: number; error?: string }) => void) => void;

@@ -577,9 +577,6 @@ contextBridge.exposeInMainWorld("yo", {
   connectorsRefreshMcp: () => ipcRenderer.invoke("connectors-refresh-mcp") as Promise<{ ok: boolean; error?: string; toolCount: number }>,
   connectorsListTools: () => ipcRenderer.invoke("connectors-list-tools") as Promise<Array<{ slug: string; name: string; description: string }>>,
   onConnectorsChanged: (cb: () => void) => { ipcRenderer.on("connectors-changed", cb); },
-  providerKeyStatus: () => ipcRenderer.invoke("provider-key-status") as Promise<{ provider: string; hasKey: boolean; lastTestOk: boolean | null; lastTestError: string | null; lastTestedAt: string | null } | null>,
-  providerKeySet: (key: string) => ipcRenderer.invoke("provider-key-set", key) as Promise<{ ok: boolean; testOk: boolean; testError?: string }>,
-  providerKeyDelete: () => ipcRenderer.invoke("provider-key-delete") as Promise<{ ok: boolean }>,
   onConnectorsConnectProgress: (cb: (p: { phase: "verifying" | "done"; appSlug: string; ok?: boolean; error?: string }) => void) => {
     ipcRenderer.on("connectors-connect-progress", (_e, p) => cb(p));
   },

@@ -149,28 +149,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("copy-to-clipboard", (_e, text: string) => {
     clipboard.writeText(text);
   });
-  // ── BYOK provider key — server-side, encrypted; the client never stores
-  // it. Status/set/delete proxy straight to /api/me/provider-keys. ──
-  ipcMain.handle("provider-key-status", async () => {
-    try {
-      const r = await serverGetAuthed<{ keys: Array<{ provider: string; hasKey: boolean; lastTestOk: boolean | null; lastTestError: string | null; lastTestedAt: string | null }> }>("/api/me/provider-keys");
-      return r.keys.find((k) => k.provider === "anthropic") ?? null;
-    } catch {
-      return null;
-    }
-  });
-  ipcMain.handle("provider-key-set", async (_e, key: string) => {
-    try {
-      return await serverPutAuthed<{ ok: boolean; testOk: boolean; testError?: string }>("/api/me/provider-keys/anthropic", { key: String(key || "") });
-    } catch (err) {
-      return { ok: false, testOk: false, testError: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("provider-key-delete", async () => {
-    try { return await serverDeleteAuthed<{ ok: boolean }>("/api/me/provider-keys/anthropic"); }
-    catch { return { ok: false }; }
-  });
-
   ipcMain.handle("logout", () => {
     const mainWindow = getMainWindow();
     logout();

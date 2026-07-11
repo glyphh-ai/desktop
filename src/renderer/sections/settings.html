@@ -261,19 +261,14 @@
 
               <div class="settings-panel" data-sub="gateway">
                 <h2>AI Gateway</h2>
-                <p class="section-desc">Every escalated turn rides Glyphh's gateway. Add your own Anthropic key and the gateway uses it upstream — your key pays for tokens, so no token credits burn (model access and rate limits still apply). Without one, escalations burn org credits. Local turns are always free.</p>
+                <p class="section-desc">Every escalated turn rides Glyphh's gateway. Which models your org exposes — and whether each is billed to org credits or your org's own provider key (BYOK) — is managed by your admin in the dashboard (Roles → Models). Local turns are always free.</p>
                 <div class="settings-form" style="max-width:460px;">
                   <label class="settings-label">Escalation model</label>
                   <select id="gw-model" class="settings-input"></select>
                   <span id="gw-model-hint" class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);"></span>
 
-                  <label class="settings-label" style="margin-top:14px;">Your Anthropic API key <span style="color:var(--text-2);font-weight:400;">— optional (BYOK)</span></label>
-                  <input id="gw-byok" type="password" class="settings-input" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
-                  <span id="gw-byok-status" class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Encrypted and stored server-side — this app never keeps a copy.</span>
-
                   <div class="settings-actions" style="margin-top:14px;">
                     <button id="gw-save" class="action-btn primary">Save</button>
-                    <button id="gw-byok-remove" class="action-btn" style="display:none;">Remove key</button>
                     <span id="gw-status" style="font-size:12px;color:var(--text-3);"></span>
                   </div>
                 </div>
