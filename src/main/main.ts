@@ -1196,7 +1196,14 @@ async function boot() {
           console.log(`[mcp-migrate] lifted "${app.id}" to a server-side custom MCP connection`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          if (!/already exists/i.test(msg)) {
+          if (/already exists|already in use/i.test(msg)) {
+            // Lifted on an earlier pass — fall through and drop the carrier.
+          } else if (/HTTP 4\d\d/.test(msg)) {
+            // The server rejected the CONFIG (bad url, reserved slug…) — it
+            // will never succeed; drop it instead of retrying every heartbeat.
+            console.warn(`[mcp-migrate] dropping unmigratable config "${app.id}": ${msg}`);
+          } else {
+            // Network/server hiccup — leave everything for the next beat.
             console.error(`[mcp-migrate] failed for "${app.id}" (will retry next heartbeat):`, msg);
             return;
           }
