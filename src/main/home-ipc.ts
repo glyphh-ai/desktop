@@ -93,7 +93,9 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       me,
       credits: Math.floor((credits?.balance || 0) / MICRO),
       allowance: Math.floor((credits?.allowance || 0) / MICRO),
-      spendCredits: Math.floor((usage?.totals?.credits || 0) / MICRO),
+      // Math.round to match the platform's usage math — floor here made the
+      // client read up to a credit lower than the admin view for identical rows.
+      spendCredits: Math.round((usage?.totals?.credits || 0) / MICRO),
       requests: usage?.totals?.requests || 0,
       // Count visible apps only, exactly like the Apps tab: the seeded Glyphh
       // system app (system:true — hidden + undeletable) is not a deployed app.
