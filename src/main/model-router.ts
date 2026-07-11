@@ -534,14 +534,15 @@ async function gatewayModels(force = false): Promise<{ models: GatewayModelInfo[
   try {
     const r = await serverGetAuthed<{
       models?: Array<{
-        key: string; kind: string; model: string | null; displayName: string;
+        key: string; kind: string; model: string | null; displayName: string; active?: boolean;
         inputCreditsPerMtok?: number | null; outputCreditsPerMtok?: number | null;
       }>;
       default?: string | null;
     }>("/api/models/catalog");
-    // Escalation targets are the proxied models; the gateway takes a bare model
-    // id (the org catalog key is provider::model). The default arrives as a key.
-    const proxied = (r.models ?? []).filter((m) => m.kind === "proxied" && m.model);
+    // Escalation targets are the ACTIVE proxied models — a BYOK model with no
+    // provider key set is inactive and never shown. The gateway takes a bare
+    // model id (the org catalog key is provider::model); default is a key.
+    const proxied = (r.models ?? []).filter((m) => m.kind === "proxied" && m.model && m.active !== false);
     const def = proxied.find((m) => m.key === r.default)?.model ?? proxied[0]?.model ?? null;
     gwCache = {
       at: Date.now(),
