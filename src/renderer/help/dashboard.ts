@@ -160,7 +160,7 @@ export function initDashboardEvents(): void {
   wired = true;
 
   document.getElementById("dash-add-funds")?.addEventListener("click", () => {
-    window.yo.openExternal?.(`${window.yo.platformUrl}/dashboard/manage/billing`);
+    window.yo.openExternal?.(`${window.yo.platformUrl}/billing`);
   });
   // "Connect MCP" → open the Settings tab (its MCP panel has the connection
   // URL + token). Open it as its own shell tab rather than switching sections

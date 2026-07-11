@@ -507,7 +507,7 @@ contextBridge.exposeInMainWorld("yo", {
   discordInvite: process.env.YO_DISCORD_INVITE || "https://discord.gg/cHGZR764D",
   hasMcpAccess: () => ipcRenderer.invoke("has-mcp-access") as Promise<boolean>,
   openAccountDashboard: () => ipcRenderer.send("open-external", (process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai")),
-  openBilling: () => ipcRenderer.send("open-external", (process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai") + "/dashboard/billing"),
+  openBilling: () => ipcRenderer.send("open-external", (process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai") + "/billing"),
   // Support
   submitSupportTicket: (ticket: { subject: string; description: string }) =>
     ipcRenderer.invoke("submit-support-ticket", ticket) as Promise<{ ok: boolean; error?: string }>,

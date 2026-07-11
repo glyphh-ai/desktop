@@ -209,7 +209,7 @@ function dismissSplash(cb: BootGateCallbacks): void {
 // ── Account lockout (admin-disabled account) ────────────────────────────────
 
 let accountLocked = false;
-let manageUrl = `${window.yo.platformUrl}/dashboard/billing`;
+let manageUrl = `${window.yo.platformUrl}/billing`;
 
 /** Raise the full-window lockout gate. The user keeps the titlebar (so they
  *  can quit) but everything else is sealed until the account is active. */
