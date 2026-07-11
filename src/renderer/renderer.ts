@@ -103,7 +103,6 @@ declare global {
   interface Window {
     yo: {
       copyToClipboard: (text: string) => void;
-      commandToggle: () => void;
       getPathForFile: (file: File) => string;
       windowClose: () => void;
       windowMinimize: () => void;
@@ -130,7 +129,6 @@ declare global {
       appsAdd: (id: string, name: string, url?: string) => Promise<unknown>;
       // Dashboard shell (5a): server-authoritative Apps tab CRUD — see
       // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
-      appWindowOpen: (spec: { slug: string; name: string; url: string }) => Promise<{ ok: boolean; error?: string }>;
       browsersDetect: () => Promise<Array<{ id: string; name: string; chromium: boolean }>>;
       appFileIcon: (execPath: string) => Promise<string>;
       appLaunch: (spec: {
@@ -314,8 +312,6 @@ declare global {
       filesRailWidthSave: (width: number) => void;
       filesRailGetWidth: () => Promise<number>;
       // Recents (rich)
-      screenLayoutGet: () => Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>;
-      screenLayoutSet: (v: { mode?: string; fraction?: number }) => Promise<{ mode: string; fraction: number }>;
       williamRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }> }) => Promise<{ runId: string }>;
       williamPickAttachments: (mode?: "files" | "folder") => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
       williamClassifyPaths: (paths: string[]) => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
@@ -345,8 +341,6 @@ declare global {
       railCollapseGet: () => Promise<boolean>;
       railCollapseToggle: () => Promise<boolean>;
       railCollapseSet: (on: boolean) => Promise<boolean>;
-      commandOsApps: () => Promise<Array<{ proc: string; path: string }>>;
-      commandFocusApp: (proc: string) => Promise<{ ok: boolean; error?: string }>;
       recentsList: () => Promise<Array<{
         kind: "app" | "layout"; id: string; name: string; folder: string; ts: number;
       }>>;
@@ -400,6 +394,8 @@ declare global {
       mcpCustomAllowed: () => Promise<{ allowed: boolean; reason?: string }>;
       mcpConnectionsList: () => Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; url: string; headerKeys: string[]; enabled: boolean; hiddenTools: string[]; createdAt: string; kind: "personal" | "org"; iconUrl: string | null }> }>;
       mcpConnectionsCatalog: () => Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; installed: boolean; iconUrl: string | null }> }>;
+      wbAppsChanged: (apps: Array<{ slug: string; name: string }>) => void;
+      onWbAppCommand: (cb: (cmd: { action: string; app?: { slug: string; name: string; url: string; glyphh?: boolean }; apps?: Array<{ slug: string; name: string; url: string; glyphh?: boolean }>; slug?: string }) => void) => void;
       mcpConnectionsInstall: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       mcpConnectionsCreate: (fields: { name: string; url: string; headers?: Record<string, string> }) => Promise<{ ok: boolean; error?: string; connection?: { slug: string; name: string }; toolCount?: number }>;
       mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; connection?: unknown }>;
@@ -439,7 +435,6 @@ document.getElementById("btn-close")!.addEventListener("click", () => window.yo.
 document.getElementById("btn-minimize")!.addEventListener("click", () => window.yo.windowMinimize());
 document.getElementById("btn-maximize")!.addEventListener("click", () => window.yo.windowMaximize());
 document.getElementById("splash-close")?.addEventListener("click", () => window.yo.windowClose());
-document.getElementById("header-command-center")?.addEventListener("click", () => window.yo.commandToggle());
 
 // -- Titlebar label -> open home tab --
 

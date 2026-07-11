@@ -1037,7 +1037,6 @@ body.account-locked #dl-btn-wrap {
 }
 /* Pull Command Center in tighter against the left-rail toggle than the
    titlebar's normal 12px gap — the pair reads as a related group. */
-#header-command-center { margin-left: -6px; }
 
 #titlebar-label {
   display: flex;
@@ -1423,22 +1422,6 @@ body.account-locked #dl-btn-wrap {
 .titlebar-logout:hover { color: var(--text); background: var(--surface-2); border-color: var(--border-3); }
 
 /* Command overlay launcher — icon button right of the Glyphh mark. */
-.titlebar-cmd {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 26px;
-  margin-left: 8px;
-  background: none;
-  border: 1px solid var(--border-2);
-  border-radius: 6px;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: all 0.12s;
-  -webkit-app-region: no-drag;
-}
-.titlebar-cmd:hover { color: var(--text); background: var(--surface-2); border-color: var(--border-3); }
 
 /* MCP indicator */
 .mcp-indicator {
@@ -3507,237 +3490,6 @@ ol.docs-list li::before {
   color: var(--text-2);
   font-size: 11px;
   font-weight: 600;
-}
-
-/* ── Command overlay (full-screen OS launcher: apps + layouts) ────────────── */
-.command-center {
-  position: fixed;
-  inset: 0;
-  z-index: 9000;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(18px) saturate(140%);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  overflow: auto;
-}
-.cc-inner { width: min(1200px, 92vw); padding: 64px 28px 48px; }
-.cc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
-.cc-title { font-size: 18px; font-weight: 700; color: var(--text); }
-.cc-close {
-  margin-left: auto; width: 30px; height: 30px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
-  font-size: 20px; line-height: 1; cursor: pointer;
-}
-.cc-close:hover { color: var(--text); border-color: var(--accent); }
-.cc-apps {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 14px;
-  margin-bottom: 32px;
-}
-.cc-card {
-  display: flex; flex-direction: column; gap: 8px; padding: 0; cursor: pointer;
-  border: none; background: transparent; text-align: center;
-  transition: transform .16s cubic-bezier(.2,.8,.2,1);
-}
-.cc-card:hover { transform: scale(1.06); }
-.cc-card-shot {
-  aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden;
-  background: var(--surface-2); border: 1px solid var(--border);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 5px;
-  box-shadow: 0 8px 28px rgba(0,0,0,.25);
-}
-.cc-card-shot img { width: 46px; height: 46px; object-fit: contain; border-radius: 10px; }
-.cc-card-initial {
-  width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #fff; font-size: 26px; font-weight: 700; border-radius: 14px;
-}
-.cc-card-name {
-  font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-/* Slug inside the tile, right under the icon — what you'd type to open it. */
-.cc-card-slug {
-  font-size: 10px; color: var(--text-3); font-family: var(--font-mono);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 90%;
-}
-
-/* ── Drip control: droplet button + effects dropdown (cc-header) ── */
-.cc-drip-wrap { position: relative; flex-shrink: 0; }
-.cc-drip-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 9px; cursor: pointer;
-  background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text-2); transition: color .12s, border-color .12s;
-}
-.cc-drip-btn:hover { color: var(--accent); border-color: var(--border-2); }
-.cc-drip-menu {
-  position: absolute; top: 40px; right: 0; z-index: 30;
-  min-width: 180px; max-height: 320px; overflow-y: auto;
-  background: var(--surface); border: 1px solid var(--border-2);
-  border-radius: 10px; padding: 6px;
-  box-shadow: 0 12px 40px rgba(0,0,0,.4);
-}
-.cc-drip-label {
-  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--text-3); padding: 6px 8px 4px;
-}
-.cc-drip-item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 6px 8px; border: none; border-radius: 6px; cursor: pointer;
-  background: transparent; color: var(--text); font-size: 12.5px; text-align: left;
-}
-.cc-drip-item:hover { background: var(--hover); }
-.cc-drip-emoji { width: 18px; text-align: center; }
-.cc-section-label {
-  font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase;
-  letter-spacing: .06em; margin-bottom: 12px;
-}
-.cc-layouts { display: flex; flex-wrap: wrap; gap: 16px; }
-.cc-layout-card {
-  display: flex; flex-direction: column; gap: 8px; cursor: pointer;
-  border: none; background: transparent; align-items: center;
-  transition: transform .16s cubic-bezier(.2,.8,.2,1);
-}
-.cc-layout-card:hover { transform: scale(1.06); }
-.cc-mini {
-  position: relative; width: 150px; height: 94px; border-radius: 10px;
-  background: var(--surface-2); border: 1px solid var(--border); overflow: hidden;
-}
-.cc-mini-cell {
-  position: absolute; background: var(--hover); border: 1px solid var(--border-2); border-radius: 3px;
-  display: flex; align-items: center; justify-content: center; overflow: hidden;
-}
-.cc-mini-ico { display: flex; align-items: center; justify-content: center; width: 60%; height: 60%; }
-.cc-mini-ico img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
-.cc-mini-initial {
-  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
-  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px;
-}
-.cc-empty { color: var(--text-3); font-size: 13px; padding: 8px 0; }
-
-/* Running apps NOT managed by Glyphh — lighter cards; click switches to them. */
-.cc-os-wrap { margin-top: 8px; }
-.cc-card--os .cc-card-shot {
-  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
-  border: 1px dashed var(--border-2);
-  box-shadow: none;
-}
-.cc-card--os .cc-card-name { color: var(--text-3); }
-.cc-card--os .cc-card-initial {
-  background: var(--hover);
-  color: var(--text-2);
-}
-
-/* Command overlay input (auto-focused .dip command / filter bar). */
-.cc-input {
-  flex: 1;
-  height: 42px;
-  padding: 0 16px;
-  font-size: 15px;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  outline: none;
-}
-.cc-input:focus { border-color: var(--accent); }
-.cc-input::placeholder { color: var(--text-3); }
-.cc-header .cc-close { margin-left: 12px; }
-.cc-pager { display: flex; justify-content: center; margin: 6px 0 30px; }
-.cc-pager:empty { display: none; }
-
-.crud-card-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.crud-card-name {
-  font-size: 14px;
-  color: var(--text);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.crud-card-meta {
-  font-size: 12px;
-  color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-
-.crud-card-badge {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text);
-  background: var(--active-bg);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  padding: 1px 5px;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-
-.crud-card-dir {
-  font-size: 11px;
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.crud-card-agents {
-  font-size: 12px;
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.crud-card-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-.crud-card:hover .crud-card-actions { opacity: 1; }
-
-.crud-card-btn {
-  width: 30px;
-  height: 30px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-3);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-.crud-card-btn:hover { background: var(--hover); color: var(--white); }
-.crud-card-btn.danger { color: var(--danger); }
-.crud-card-btn.danger:hover { background: var(--danger-bg); color: var(--danger); }
-.crud-card-btn.crud-open-btn { color: var(--text); }
-.crud-card-btn.crud-open-btn:hover { background: var(--accent-bg); color: var(--text); }
-
-.crud-empty {
-  padding: 40px 16px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
 }
 
 /* ── Schedules ──────────────────────────────────────────── */
@@ -10041,6 +9793,65 @@ select.settings-input {
   background: #fff;
 }
 .ws-preview-frame[hidden] { display: none; }
+
+/* ── App slots — in-workbench apps (the OS-window replacement) ──────────
+   The slot body holds only a placeholder rect; the live <webview> sits in
+   the fixed #code-wb-applayer and follows the placeholder each frame
+   (webviews reload when reparented, so they never ride the rails DOM). */
+.ws-app-placeholder { flex: 1 1 auto; align-self: stretch; width: 100%; height: 100%; background: var(--surface); }
+#code-wb-applayer { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+.ws-app-holder {
+  position: fixed;
+  pointer-events: auto;
+  overflow: hidden;
+  background: var(--surface);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.ws-app-holder webview { width: 100%; height: 100%; border: none; }
+/* Slide in left→right; out right→left. */
+.ws-app-holder.entering { transform: translateX(-26px); opacity: 0; }
+.ws-app-holder.leaving { transform: translateX(-40px); opacity: 0; }
+.ws-rail-slot.flash { outline: 2px solid var(--accent); outline-offset: -2px; transition: outline-color 0.6s ease; }
+
+/* The switch — app switcher overlay docked over the rails side. */
+#code-app-switcher {
+  position: absolute;
+  top: 46px;
+  right: 10px;
+  width: 260px;
+  max-height: min(480px, 70vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
+  z-index: 80;
+  overflow: hidden;
+  animation: casIn 0.14s ease;
+}
+@keyframes casIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+#code-app-switcher .cas-head { padding: 8px; border-bottom: 1px solid var(--border); }
+#code-app-switcher .cas-search {
+  width: 100%; box-sizing: border-box; padding: 7px 10px;
+  border: 1px solid var(--border-2); border-radius: 8px;
+  background: var(--surface-2); color: var(--text); font-size: 12.5px;
+}
+#code-app-switcher .cas-list { overflow-y: auto; padding: 5px; }
+#code-app-switcher .cas-empty { padding: 14px 10px; font-size: 12px; color: var(--text-3); text-align: center; }
+#code-app-switcher .cas-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 7px 9px; border: none; background: none; border-radius: 8px;
+  color: var(--text-2); font-size: 12.5px; cursor: pointer; text-align: left;
+}
+#code-app-switcher .cas-item:hover { background: var(--hover); color: var(--text); }
+#code-app-switcher .cas-item.open .cas-name::after { content: " · open"; color: var(--text-3); font-size: 11px; }
+#code-app-switcher .cas-initial {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  background: var(--surface-2); color: var(--text); font-weight: 600; font-size: 11px;
+}
+
 .ws-preview-stub { text-align: center; color: var(--ws-text-faint); }
 .ws-preview-stub-title { font-size: 14px; color: var(--ws-text-muted); margin-bottom: 4px; }
 .ws-preview-stub-sub { font-size: 12px; }
@@ -12033,72 +11844,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .rail-label-btn:hover { background: var(--hover); color: var(--text); }
 .app-rail-tile--os { opacity: 0.78; }
 .app-rail-tile--os:hover { opacity: 1; }
-
-/* Screen layout picker (Settings → Appearance) */
-.layout-mode-picker { display: flex; gap: 6px; }
-.layout-mode-btn {
-  padding: 6px 14px;
-  border: 1px solid var(--border-2);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text-2);
-  font-size: 12.5px;
-  cursor: pointer;
-}
-.layout-mode-btn:hover { color: var(--text); border-color: var(--border-3); }
-.layout-mode-btn.active {
-  background: rgba(140, 59, 242, 0.14);
-  color: var(--text-bright);
-  border-color: var(--accent);
-}
-
-/* Screen-layout split preview — mini screen mockup under the mode picker. */
-.sl-preview {
-  margin-top: 12px;
-  width: 320px;
-  max-width: 100%;
-  height: 180px;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  box-sizing: border-box;
-  border: 1px solid var(--border-2);
-  border-radius: 10px;
-  background: var(--border);
-  overflow: hidden;
-}
-.sl-preview .sl-glyphh {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-3);
-  border-radius: 7px;
-  flex: 0 0 50%;
-  min-width: 0;
-  min-height: 0;
-}
-.sl-preview .sl-glyphh img { width: 26px; height: 26px; opacity: 0.9; }
-.sl-preview .sl-workspace {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  border-radius: 7px;
-  color: var(--text-3);
-  font-size: 12px;
-  letter-spacing: 0.03em;
-  min-width: 0;
-  min-height: 0;
-}
-/* Orientation per mode: the Glyphh side sits on its docked edge. */
-.sl-preview.sl-mode-left { flex-direction: row; }
-.sl-preview.sl-mode-right { flex-direction: row-reverse; }
-.sl-preview.sl-mode-top { flex-direction: column; }
-.sl-preview.sl-mode-bottom { flex-direction: column-reverse; }
-.sl-preview.sl-mode-full { flex-direction: row; }
-.sl-preview.sl-mode-full .sl-workspace { display: none; }
-.sl-preview.sl-mode-full .sl-glyphh { flex: 1 1 100%; }
 
 /* Collapse-to-rail toggle — accent when the window is railed. */
 #workspace-collapse-toggle.active { color: var(--accent); }

@@ -34,7 +34,6 @@
  */
 
 import { BrowserWindow, ipcMain, webContents, session } from "electron";
-import { workspaceArea } from "./screen-layout";
 import { execFile } from "child_process";
 import AdmZip from "adm-zip";
 import fs from "fs";
@@ -291,7 +290,6 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
 
 // ── run ─────────────────────────────────────────────────────
 
-const windows = new Map<string, BrowserWindow>();          // slug → window
 
 export interface GlyphhAppRow {
   name: string;
@@ -334,52 +332,6 @@ function attachAppWindowEgressGuards(wc: Electron.WebContents, appDir: string): 
   };
   wc.on("will-navigate", guard);
   wc.on("will-redirect", guard);
-}
-
-/** Open (or focus) an installed Glyphh app from its saved-app row. */
-export function openGlyphhApp(row: GlyphhAppRow): { ok: boolean; error?: string } {
-  const entryPath = String(row.execPath || "");
-  if (!entryPath || !fs.existsSync(entryPath)) {
-    return { ok: false, error: "App bundle is missing on this machine — re-install it" };
-  }
-  const existing = windows.get(row.slug);
-  if (existing && !existing.isDestroyed()) {
-    if (existing.isMinimized()) existing.restore();
-    existing.focus();
-    return { ok: true };
-  }
-
-  const lc = (row.launchConfig || {}) as { window?: { width?: number; height?: number } | null };
-  const { caps, connectors } = grantsFromRow(row);
-  // Center the app window in the WORKSPACE region (screen-layout aware) —
-  // not the whole display, so docked mode keeps apps beside Glyphh.
-  const winW = lc.window?.width || 460;
-  const winH = lc.window?.height || 640;
-  const wa = workspaceArea();
-  const win = new BrowserWindow({
-    x: Math.round(wa.x + Math.max(0, (wa.width - winW) / 2)),
-    y: Math.round(wa.y + Math.max(0, (wa.height - winH) / 2)),
-    width: winW,
-    height: winH,
-    title: row.name,
-    show: false,
-    webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: path.join(__dirname, "glyphh-app-preload.js"),
-    },
-  });
-  grantAppCaps(win.webContents.id, row.slug, row.name, caps, connectors);
-  attachAppWindowEgressGuards(win.webContents, path.dirname(entryPath));
-  void win.loadFile(entryPath);
-  win.once("ready-to-show", () => win.show());
-  win.on("closed", () => {
-    if (windows.get(row.slug) === win) windows.delete(row.slug);
-  });
-  win.webContents.on("destroyed", () => revokeAppCaps(win.webContents.id));
-  windows.set(row.slug, win);
-  return { ok: true };
 }
 
 // ── capabilities (macOS AppleScript) ────────────────────────
@@ -718,9 +670,9 @@ export function registerGlyphhAppHost(): void {
       return row ? workerSpecFromRow(row) : null;
     },
     openApp: (slug) => {
-      void findAppRow(slug).then((row) => {
-        if (row) openGlyphhApp({ name: row.name, slug: row.slug, execPath: row.execPath, launchConfig: row.launchConfig as Record<string, unknown> | null });
-      });
+      // Workbench panel beside the agent — OS app windows are retired.
+      // (Dynamic import: app-resolver imports this module for isGlyphhAppRow.)
+      void import("./app-resolver.js").then((m) => m.openAppByRef(slug)).catch(() => {});
     },
   });
 

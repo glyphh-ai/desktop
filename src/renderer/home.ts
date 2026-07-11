@@ -39,7 +39,6 @@ window.yo.refreshAuth?.().catch(() => {});
 document.getElementById("panel-btn-close")?.addEventListener("click", () => window.yo.windowClose());
 document.getElementById("panel-btn-minimize")?.addEventListener("click", () => window.yo.windowMinimize());
 document.getElementById("panel-btn-maximize")?.addEventListener("click", () => window.yo.windowMaximize());
-document.getElementById("page-command-center")?.addEventListener("click", () => window.yo.commandToggle());
 // Collapse-to-rail toggle — the whole window shrinks to the rail (workspace
 // apps slide to reclaim the space) and back.
 const wsToggle = document.getElementById("workspace-collapse-toggle");

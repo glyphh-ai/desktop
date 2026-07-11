@@ -1,5 +1,4 @@
 import { app, ipcMain, dialog } from "electron";
-import { openAppByRef } from "./app-resolver.js";
 import fs from "fs";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
@@ -8,11 +7,10 @@ import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, ser
 import { cachedServerGet, invalidateServerCache } from "./server-cache";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 
-import { launchNativeApp, launchWebApp } from "./native-launch";
-import { resolveBrowser, detectBrowsers } from "./browser-detect";
-import { openLayoutByName } from "./app-resolver";
+import { detectBrowsers } from "./browser-detect";
+import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
-import { isGlyphhAppBundle, installGlyphhAppBundle, openGlyphhApp, isGlyphhAppRow } from "./glyphh-app-host";
+import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
 import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
 import { invalidateProxyCache } from "./app-proxy-stream";
 
@@ -22,18 +20,9 @@ import { invalidateProxyCache } from "./app-proxy-stream";
  *  { ok: false, error } rather than throwing, so the renderer can show a
  *  message instead of crashing on a network hiccup. */
 function registerPanelAppsIpc(): void {
-  // 5b Panel Manager: open a server app in its own native OS window.
-  ipcMain.handle("app-window-open", (_e, spec: { slug: string; name: string; url: string }) => {
-    if (!spec?.url || (!spec.url.startsWith("http://") && !spec.url.startsWith("https://"))) {
-      return { ok: false, error: "App has no web URL" };
-    }
-    // Native-OS model: URLs open in the user's real default browser.
-    return launchWebApp(spec.url, null, "window");
-  });
-
-  // Launch an app the way its config says to (native-OS model):
-  //   - native app (isBrowser=false) → launch its executable + archetype config
-  //   - web app → its URL in the configured real browser (window or tab)
+  // Launch an app — every path opens a workbench panel beside the agent
+  // (openAppByRef sends wb:app-cmd). OS windows and real-browser launches
+  // are retired; a raw web URL not in the library still opens as a panel.
   ipcMain.handle("app-launch", async (_e, spec: {
     slug: string; name: string; url?: string | null;
     isBrowser?: boolean;
@@ -41,28 +30,12 @@ function registerPanelAppsIpc(): void {
     launchConfig?: Record<string, unknown> | null;
   }) => {
     if (!spec) return { ok: false, error: "No app given" };
-    // One controller for every open path: the Apps page and the rail resolve
-    // through openAppByRef — the same launch + WORKSPACE placement + tracked
-    // focus that .dip and the command palette use. The raw branches below
-    // remain only as a fallback for specs not in the library.
     try {
       await openAppByRef(spec.slug || spec.name);
       return { ok: true };
-    } catch { /* not resolvable by ref — raw launch below */ }
-    // Installed Glyphh app (marketplace unit) → open its capability-scoped window.
-    if (isGlyphhAppRow(spec)) {
-      return openGlyphhApp({ name: spec.name, slug: spec.slug, execPath: spec.execPath, launchConfig: spec.launchConfig });
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
-    const isBrowser = spec.isBrowser !== false; // legacy rows default to browser
-    if (!isBrowser) {
-      return launchNativeApp(spec.execPath ?? "", spec.appArchetype, spec.launchConfig);
-    }
-    const url = String(spec.url || "");
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      return { ok: false, error: "App has no web URL" };
-    }
-    const lc = (spec.launchConfig || {}) as Record<string, unknown>;
-    return launchWebApp(url, resolveBrowser(typeof lc.browser === "string" ? lc.browser : null), lc.openAs === "tab" ? "tab" : "window");
   });
 
   // Installed real browsers — feeds the app editor's Browser dropdown.

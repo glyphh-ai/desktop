@@ -433,7 +433,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "open_app",
-    doc: "open_app(name) — open an app from the user's library (or 'browser'/'terminal') into the workspace",
+    doc: "open_app(name) — open an app from the user's library (or 'browser'/'terminal') as a panel beside this conversation",
     action: (a) => ({ kind: "command", title: `Open app "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const r = await openAppByRef(String(a.name ?? ""));
@@ -442,7 +442,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "list_windows",
-    doc: "list_windows() — the app windows currently open in the workspace",
+    doc: "list_windows() — the app panels currently open beside this conversation",
     action: () => ({ kind: "read", title: "List open windows" }),
     run: async () => cap(JSON.stringify(await listOpenAppWindows(), null, 1)),
   },
@@ -457,7 +457,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "open_layout",
-    doc: "open_layout(name) — open a saved layout: tiles its apps into the workspace",
+    doc: "open_layout(name) — open a saved layout: its apps tile as panels beside this conversation",
     action: (a) => ({ kind: "command", title: `Open layout "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const r = await openLayoutByName(String(a.name ?? ""));

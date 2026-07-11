@@ -66,12 +66,8 @@ function isNewerVersion(latest: string, current: string): boolean {
   }
   return false;
 }
-import { startOverlay } from "./overlay-bridge";
-import { registerCommandWindow, disposeCommandWindow } from "./command-window";
-import { initOsWindowManager, disposeOsWindowManager } from "./os-window-manager";
 import { setMainWindowRef } from "./main-window-ref";
-import { initThinkingOverlay } from "./thinking-overlay";
-import { runDip } from "./dip-commands";
+import { initRailCollapse } from "./screen-layout";
 import { McpManager } from "./mcp-manager";
 import { initRelayClient, reconnectRelay, stopRelayClient } from "./relay-client";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
@@ -81,9 +77,7 @@ import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWilliamIpc, shutdownWilliam } from "./william";
-import { retileWorkspace } from "./app-resolver";
-import { retileFullWindows } from "./app-window-manager";
-import { initScreenLayout, onWorkspaceChange } from "./screen-layout";
+import { registerWbAppRegistry } from "./app-resolver";
 import { DripManager, BUILTIN_EFFECTS, setDripManagerInstance } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
@@ -210,6 +204,7 @@ async function createWindow() {
   // Share the main-window handle with modules that can't import main.ts
   // (app-resolver focuses it when the "Glyphh" system app is opened).
   setMainWindowRef(mainWindow);
+  initRailCollapse(mainWindow);
 
   // Request macOS mic entitlement (triggers OS permission dialog on first use)
   if (process.platform === "darwin") {
@@ -605,47 +600,10 @@ async function boot() {
   let restoring = false;
 
 
-  // OS window control (.dip grid/split/min/exp, layout tiling) drives other
-  // apps' windows through the native backends (macOS: bundled Swift AX helper;
-  // Windows: koffi→user32). Pre-spawn the helper and prompt for Accessibility
-  // once (no-op if already granted) so commands don't silently fail.
-  initOsWindowManager();
-  if (process.platform === "darwin") {
-    try { systemPreferences.isTrustedAccessibilityClient(true); } catch { /* noop */ }
-  }
-
-  // Global keytap (macOS): native CGEventTap helper that intercepted dot-commands
-  // typed in ANY text box. RETIRED as a default — the caret spinner kept getting
-  // stranded (focus moves when windows open), so commands now live in the
-  // command overlay (Cmd+Shift+Space) instead. Opt back in with the
-  // `overlayEnabled` pref if you want the in-text-field triggers regardless.
-  if (getPreference<boolean>("overlayEnabled", false)) {
-    const overlayBin = app.isPackaged
-      ? path.join(process.resourcesPath, "overlay", "keytap")
-      : path.join(__dirname, "overlay", "keytap");
-    const overlayTriggers = ".dip,.drip";
-    startOverlay(
-      async (cmd) => {
-        if (/^dip\b/.test(cmd)) {
-          const r = await runDip(cmd);
-          if (!r.ok) console.error("[dip] failed:", r.error);
-          return "";
-        }
-        return commandParser.execute(cmd);
-      },
-      () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } },
-      overlayBin,
-      overlayTriggers,
-    );
-  }
-
-  // Full-screen command overlay (apps + layouts launcher) + its global hotkey
-  // (Cmd+Shift+Space). Opens apps/layouts as real OS windows; ".drip <effect>"
-  // typed in its command bar routes through the command parser.
-  registerCommandWindow((cmd) => commandParser.execute(cmd));
-  // Pre-create the (hidden) thinking scrim so the first palette click shows it
-  // instantly instead of paying window-creation cost mid-operation.
-  initThinkingOverlay();
+  // OS windows, the command palette, and the keytap overlay are retired —
+  // apps open as workbench panels beside the agent (wb:app-cmd), reported
+  // back by the renderer for panels_list / William's list tools.
+  registerWbAppRegistry();
 
   // Give interceptor access to visible panel IDs (for multi-panel grab)
   yoInterceptor.setVisiblePanelsGetter(() => {
@@ -697,15 +655,6 @@ async function boot() {
   };
 
   const execCommand = async (cmd: string, sourcePanelId?: string) => {
-    // Modern dip first — the OS-window resolver (same routing the overlay
-    // path uses). The legacy commandParser's dip drives the retired
-    // BrowserView panel system and answers "Unknown panel"; it goes with
-    // cleanup 5g. This keeps the composer/rail-search `.dip` on the same
-    // path as the command palette.
-    if (/^\.?dip\b/i.test(cmd.trim())) {
-      const r = await runDip(cmd.trim());
-      return r.ok ? (r.message || "→ done") : `⚠ ${r.error || "dip failed"}`;
-    }
     const result = await commandParser.execute(cmd, sourcePanelId);
 
     const gridInfo = layoutManager.getGridInfo();
@@ -1371,15 +1320,9 @@ async function boot() {
 
   // Screen layout — apply the cached dock (full/left/right/top/bottom),
   // reconcile with the server profile, and track edge drags.
-  if (mainWindow) initScreenLayout(mainWindow);
   // When Glyphh's footprint changes (rail collapse/expand, dock change) the
   // open workspace apps slide to fit: re-run the last placement (single app
   // full-workspace, or a layout's grid re-tiled into the new region).
-  onWorkspaceChange(() => {
-    retileFullWindows();
-    void retileWorkspace();
-  });
-
   // Only restore panels if not gated by onboarding
   if (!needsOnboarding) {
     restoring = true;
@@ -2031,8 +1974,6 @@ function cleanupAll() {
   if (cleanedUp) return;
   cleanedUp = true;
   globalShortcut.unregisterAll();
-  disposeCommandWindow();
-  disposeOsWindowManager();
   cleanupAuthTimers();
   try {
     const tabs = getPreference<string[]>("openTabs", []);

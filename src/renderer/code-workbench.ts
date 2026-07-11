@@ -51,7 +51,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "app";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -89,7 +89,20 @@ interface PlanSlot {
    *  "code" shows the raw Monaco editor for direct editing. */
   mode: "preview" | "code";
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot;
+/** An app rendered IN the workbench — the replacement for OS app windows.
+ *  The slot body is only a placeholder rectangle; the real <webview> lives in
+ *  a stable overlay layer (webviews reload when reparented, and renderRails
+ *  rebuilds the DOM constantly) and is position-synced onto the placeholder
+ *  every frame while any app slot is open. */
+interface AppSlot {
+  id: number; view: "app";
+  slug: string; name: string;
+  /** Web apps: the URL to load. Installed Glyphh apps resolve their file://
+   *  entry at mount time (glyphh-app:preview-open grants caps + returns it). */
+  url: string;
+  glyphh?: boolean;
+}
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number }
 
@@ -116,6 +129,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   preview:  { title: "Preview",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>` },
   monaco:   { title: "Editor",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
+  app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
 };
 
 // ── Monaco loader (AMD path: window.require + monaco/ assets in dist) ──
@@ -303,7 +317,8 @@ async function init(): Promise<void> {
   // Persists the toggleable views' positions only (Files/Terminal/Diff/Preview).
   // Monaco is spawned on demand by clicking a file in the tree — its tabs are
   // runtime state and would feel surprising to restore.
-  type SavedLayout = { rails: { width?: number; topSlotHeight?: number; views: ViewKind[] }[] };
+  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean };
+  type SavedLayout = { rails: { width?: number; topSlotHeight?: number; views: SavedView[] }[] };
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   function saveLayout(): void {
     try {
@@ -323,7 +338,10 @@ async function init(): Promise<void> {
           // this when the container can't fit everything at preference.
           width: r.prefWidth,
           topSlotHeight: r.slots.length === 2 ? topHeightByIdx.get(i) : undefined,
-          views: r.slots.filter((s) => s.view !== "monaco").map((s) => s.view),
+          views: r.slots.filter((s) => s.view !== "monaco").map((s): SavedView =>
+            s.view === "app"
+              ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh }
+              : s.view),
         })).filter((r) => r.views.length > 0),
       };
       localStorage.setItem(layoutKey(), JSON.stringify(data));
@@ -344,7 +362,9 @@ async function init(): Promise<void> {
     for (const savedRail of data.rails || []) {
       const slots: Slot[] = [];
       for (const v of (savedRail.views || []).slice(0, 2)) {
-        if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan") {
+        if (typeof v === "object" && v !== null && v.view === "app" && v.slug) {
+          slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh });
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan") {
           slots.push(makeSlot(v));
         }
       }
@@ -637,7 +657,7 @@ async function init(): Promise<void> {
 
   function renderSlot(slot: Slot, railIdx: number, slotIdx: number): HTMLElement {
     const meta = VIEW_META[slot.view] || { title: slot.view, icon: "" };
-    const title = meta.title;
+    const title = slot.view === "app" ? slot.name : meta.title;
     const icon = meta.icon;
     const wrap = document.createElement("div");
     wrap.className = "ws-rail-slot";
@@ -718,7 +738,225 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
+    else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
+  }
+
+  // ── App view — in-workbench apps (the OS-window replacement) ──
+  // The slot body is a placeholder; the live <webview> sits in a stable
+  // fixed-position layer and follows the placeholder's rect each frame.
+  function renderAppIntoSlot(body: HTMLElement, slot: AppSlot): void {
+    body.innerHTML = `<div class="ws-app-placeholder" data-app-slot="${slot.id}"></div>`;
+    scheduleAppSync();
+  }
+
+  type WebviewEl = HTMLElement & { getWebContentsId?: () => number };
+  interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
+  const appViews = new Map<number, AppView>();
+  let appLayer: HTMLDivElement | null = null;
+  let appSyncRaf = 0;
+
+  function ensureAppLayer(): HTMLDivElement {
+    if (appLayer && appLayer.isConnected) return appLayer;
+    appLayer = document.createElement("div");
+    appLayer.id = "code-wb-applayer";
+    document.body.appendChild(appLayer);
+    return appLayer;
+  }
+
+  function appSlots(): AppSlot[] {
+    return rails.flatMap((r) => r.slots).filter((s): s is AppSlot => s.view === "app");
+  }
+
+  function mountAppView(slot: AppSlot): AppView {
+    const holder = document.createElement("div");
+    holder.className = "ws-app-holder entering";
+    const webview = document.createElement("webview") as WebviewEl;
+    webview.setAttribute("partition", "persist:yo");
+    webview.setAttribute("allowpopups", "true");
+    if (slot.glyphh) {
+      // Installed Glyphh app: attach first (about:blank), then grant its caps
+      // against the guest webContents and load the on-disk entry — the exact
+      // preview-open flow the Apps page already uses.
+      webview.setAttribute("src", "about:blank");
+      webview.addEventListener("dom-ready", () => {
+        const yo = (window as unknown as { yo?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }> } }).yo;
+        const wcId = webview.getWebContentsId?.();
+        void yo?.glyphhAppPreviewOpen?.(slot.slug, wcId).then((res) => {
+          if (res?.ok && res.fileUrl && webview.getAttribute("src") === "about:blank") {
+            webview.setAttribute("src", res.fileUrl);
+          }
+        });
+      }, { once: true });
+    } else {
+      webview.setAttribute("src", slot.url);
+    }
+    holder.appendChild(webview);
+    ensureAppLayer().appendChild(holder);
+    // Slide in (left → right), then settle.
+    requestAnimationFrame(() => requestAnimationFrame(() => holder.classList.remove("entering")));
+    const view: AppView = { holder, webview, slug: slot.slug };
+    appViews.set(slot.id, view);
+    return view;
+  }
+
+  /** Reconcile the overlay layer against the current app slots and mirror
+   *  each placeholder's rect. Runs as a rAF loop only while app slots exist —
+   *  a handful of getBoundingClientRect calls per frame at most. */
+  function syncAppViews(): void {
+    const slots = appSlots();
+    const live = new Set<number>();
+    for (const slot of slots) {
+      live.add(slot.id);
+      let view = appViews.get(slot.id);
+      if (view && view.slug !== slot.slug) {   // switched app in place
+        view.holder.remove();
+        appViews.delete(slot.id);
+        view = undefined;
+      }
+      if (!view) view = mountAppView(slot);
+      const ph = document.querySelector<HTMLElement>(`.ws-app-placeholder[data-app-slot="${slot.id}"]`);
+      const rect = ph?.getBoundingClientRect();
+      const visible = !!rect && rect.width > 24 && rect.height > 24 && ph!.offsetParent !== null;
+      view.holder.style.display = visible ? "" : "none";
+      if (visible && rect) {
+        view.holder.style.left = `${Math.round(rect.left)}px`;
+        view.holder.style.top = `${Math.round(rect.top)}px`;
+        view.holder.style.width = `${Math.round(rect.width)}px`;
+        view.holder.style.height = `${Math.round(rect.height)}px`;
+      }
+    }
+    for (const [id, view] of appViews) {
+      if (!live.has(id)) { view.holder.remove(); appViews.delete(id); }
+    }
+    notifyOpenApps();
+    if (slots.length) appSyncRaf = requestAnimationFrame(syncAppViews);
+    else { appSyncRaf = 0; if (appLayer) appLayer.innerHTML = ""; appViews.clear(); }
+  }
+  function scheduleAppSync(): void {
+    if (!appSyncRaf) appSyncRaf = requestAnimationFrame(syncAppViews);
+  }
+
+  let lastAppsJson = "";
+  function notifyOpenApps(): void {
+    const open = appSlots().map((s) => ({ slug: s.slug, name: s.name }));
+    const json = JSON.stringify(open);
+    if (json === lastAppsJson) return;
+    lastAppsJson = json;
+    (window as unknown as { yo?: { wbAppsChanged?: (apps: Array<{ slug: string; name: string }>) => void } }).yo?.wbAppsChanged?.(open);
+  }
+
+  interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
+
+  /** Open an app in the workbench. Default = "the switch": reuse the first
+   *  app slot (slide the old app out right-to-left, the new one in) so one
+   *  panel swaps apps; newPanel forces an additional slot (layouts). */
+  function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean } = {}): void {
+    const existing = appSlots().find((s) => s.slug === app.slug);
+    if (existing) { focusAppSlot(existing.id); return; }
+    const target = opts.newPanel ? undefined : appSlots()[0];
+    if (target) {
+      const view = appViews.get(target.id);
+      const apply = (): void => {
+        target.slug = app.slug;
+        target.name = app.name;
+        target.url = app.url;
+        target.glyphh = app.glyphh;
+        renderRails();   // header title; syncAppViews swaps the webview
+        saveLayout();
+        scheduleAppSync();
+      };
+      if (view) {
+        view.holder.classList.add("leaving");   // slide out (→ left)
+        setTimeout(apply, 150);
+      } else apply();
+      return;
+    }
+    const slot: AppSlot = { id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url, glyphh: app.glyphh };
+    placeSlot(slot);
+    scheduleAppSync();
+  }
+
+  function focusAppSlot(slotId: number): void {
+    if (maximizedSlotId !== null && maximizedSlotId !== slotId) {
+      maximizedSlotId = null;
+      paintFullscreenClasses();
+    }
+    const el = document.querySelector<HTMLElement>(`.ws-rail-slot[data-slot-id="${slotId}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    el?.classList.add("flash");
+    setTimeout(() => el?.classList.remove("flash"), 700);
+  }
+
+  function closeWbApp(slug: string): boolean {
+    const slot = appSlots().find((s) => s.slug === slug);
+    if (!slot) return false;
+    if (maximizedSlotId === slot.id) maximizedSlotId = null;
+    closeSlot(slot.id);
+    scheduleAppSync();
+    return true;
+  }
+
+  // ── The switch — app switcher overlay over the rails side ──
+  let switcherEl: HTMLDivElement | null = null;
+  function toggleAppSwitcher(): void {
+    if (switcherEl) { switcherEl.remove(); switcherEl = null; return; }
+    const root = document.querySelector<HTMLElement>(".code-root");
+    if (!root) return;
+    const el = document.createElement("div");
+    el.id = "code-app-switcher";
+    el.innerHTML = `
+      <div class="cas-head">
+        <input class="cas-search" type="text" placeholder="Switch app…" spellcheck="false" />
+      </div>
+      <div class="cas-list"><div class="cas-empty">Loading…</div></div>`;
+    root.appendChild(el);
+    switcherEl = el;
+    const input = el.querySelector<HTMLInputElement>(".cas-search")!;
+    const list = el.querySelector<HTMLElement>(".cas-list")!;
+    input.focus();
+    const dismiss = (ev: MouseEvent): void => {
+      if (switcherEl && !switcherEl.contains(ev.target as Node)) {
+        switcherEl.remove(); switcherEl = null;
+        document.removeEventListener("mousedown", dismiss);
+      }
+    };
+    document.addEventListener("mousedown", dismiss);
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { switcherEl?.remove(); switcherEl = null; }
+    });
+
+    type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; kind?: string };
+    const yo = (window as unknown as { yo?: { panelAppsList?: () => Promise<PanelAppRow[]> } }).yo;
+    void yo?.panelAppsList?.().then((rows) => {
+      const apps: WbAppRef[] = (rows || []).map((a) => ({
+        slug: a.slug || a.id,
+        name: a.name,
+        url: a.url || "",
+        glyphh: !a.url,
+      }));
+      const paint = (): void => {
+        const q = input.value.trim().toLowerCase();
+        const items = q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.slug.includes(q)) : apps;
+        list.innerHTML = items.length ? "" : `<div class="cas-empty">No apps match.</div>`;
+        const openSlugs = new Set(appSlots().map((s) => s.slug));
+        for (const a of items) {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "cas-item" + (openSlugs.has(a.slug) ? " open" : "");
+          row.innerHTML = `<span class="cas-initial">${(a.name || "?").charAt(0).toUpperCase()}</span><span class="cas-name"></span>`;
+          (row.querySelector(".cas-name") as HTMLElement).textContent = a.name;
+          row.addEventListener("click", (ev) => {
+            openAppInWorkbench(a, { newPanel: (ev as MouseEvent).altKey });
+            switcherEl?.remove(); switcherEl = null;
+            document.removeEventListener("mousedown", dismiss);
+          });
+          list.appendChild(row);
+        }
+      };
+      input.addEventListener("input", paint);
+      paint();
+    }).catch(() => { list.innerHTML = `<div class="cas-empty">Couldn't load apps.</div>`; });
   }
 
   // ── Files view ──
@@ -1626,6 +1864,32 @@ async function init(): Promise<void> {
     if (existing) { renderRails(); return; }
     placeSlot(makeSlot("terminal"));
   };
+
+  // App bridges — the OS-window replacement surface. main (william tools,
+  // relay panels_*, the Apps/Layouts pages' IPC) drives these through
+  // help/code.ts, which also flips the UI to the Code section first.
+  const wbApp = window as unknown as {
+    __wbOpenApp?: (app: WbAppRef, newPanel?: boolean) => void;
+    __wbOpenApps?: (apps: WbAppRef[]) => void;
+    __wbListApps?: () => Array<{ slug: string; name: string }>;
+    __wbCloseApp?: (slug: string) => boolean;
+    __wbFocusApp?: (slug: string) => boolean;
+    __wbToggleAppSwitcher?: () => void;
+  };
+  wbApp.__wbOpenApp = (app, newPanel) => openAppInWorkbench(app, { newPanel });
+  wbApp.__wbOpenApps = (apps) => {
+    for (const a of apps) openAppInWorkbench(a, { newPanel: true });
+  };
+  wbApp.__wbListApps = () => appSlots().map((s) => ({ slug: s.slug, name: s.name }));
+  wbApp.__wbCloseApp = (slug) => closeWbApp(slug);
+  wbApp.__wbFocusApp = (slug) => {
+    const slot = appSlots().find((s) => s.slug === slug);
+    if (!slot) return false;
+    focusAppSlot(slot.id);
+    return true;
+  };
+  wbApp.__wbToggleAppSwitcher = () => toggleAppSwitcher();
+  document.getElementById("code-apps-btn")?.addEventListener("click", () => toggleAppSwitcher());
 
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession = () => {
     rails.length = 0;

@@ -35,14 +35,11 @@ function appParam(params: unknown): string {
 export function installRelayHandlers(deps: Deps): void {
   const { getMcpManager } = deps;
 
-  // ── panels — one real OS window per app ─────────────────
+  // ── panels — workbench app panels beside the agent (OS windows retired) ──
 
   registerRelayHandler("panels.list", () => listOpenAppWindows());
 
   registerRelayHandler("panels.open", async (params) => {
-    // openAppByRef mirrors the Apps page's full launch dispatch — web apps
-    // (real browser windows), native apps, AND installed Glyphh apps
-    // (capability windows, no url).
     const r = await openAppByRef(appParam(params));
     return { app: r.slug, name: r.name, opened: true };
   });
@@ -50,15 +47,14 @@ export function installRelayHandlers(deps: Deps): void {
   registerRelayHandler("panels.switch", async (params) => {
     const app = appParam(params);
     if (!app) throw new Error("panels.switch requires { app }");
-    if (!(await focusOpenApp(app))) throw new Error(`app window not open: ${app}`);
+    focusOpenApp(app);
     return { app, switched: true };
   });
 
   registerRelayHandler("panels.close", async (params) => {
     const app = appParam(params);
     if (!app) throw new Error("panels.close requires { app }");
-    // Tracked OS windows (browser/native) minimize — AX close isn't wired yet.
-    if (!(await closeOpenApp(app))) throw new Error(`app window not open: ${app}`);
+    closeOpenApp(app);
     return { app, closed: true };
   });
 

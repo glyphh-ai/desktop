@@ -1578,11 +1578,9 @@ interface RailApp {
 interface RailLayout { name: string; splits: Array<{ panelId: string }> }
 let railApps: RailApp[] = [];
 let railLayouts: RailLayout[] = [];
-let railOsApps: Array<{ proc: string; path: string }> = [];
 let railRecentTs: Record<string, number> = {};
 let railAppsPage = 0;
 let railLayoutsPage = 0;
-let railOsPage = 0;
 const RAIL_APPS_PER_PAGE = 9;
 const RAIL_LAYOUTS_PER_PAGE = 6;
 
@@ -1645,35 +1643,6 @@ async function loadRecentApps(): Promise<void> {
   // same as the palette / Apps page.
   void primeConnectedIcons(railApps as never, renderRecentApps);
   void primeNativeIcons(railApps as never, renderRecentApps);
-  void refreshOsApps();
-}
-
-/** Running OS apps outside the library (osascript enumeration), deduped by
- *  name / executable basename exactly like the palette. Only re-renders when
- *  the set actually changed, so the 6s poll (apps opening/closing show and
- *  hide live) doesn't churn the grid. */
-async function refreshOsApps(): Promise<void> {
-  try {
-    const list = (await window.yo.commandOsApps?.()) || [];
-    const libNames = new Set(railApps.map((x) => (x.name || "").trim().toLowerCase()));
-    const libExecs = new Set(railApps.map((x) => execKey(x.execPath)).filter(Boolean));
-    const next = list.filter((o) =>
-      !libNames.has(o.proc.trim().toLowerCase()) && !libExecs.has(execKey(o.path)));
-    const sig = (arr: Array<{ proc: string; path: string }>) => arr.map((o) => `${o.proc}\u0000${o.path}`).sort().join("|");
-    if (sig(next) === sig(railOsApps)) return;
-    railOsApps = next;
-    renderRecentApps();
-    void primeNativeIcons(railOsApps.map((o) => ({ execPath: o.path || null })) as never, renderRecentApps);
-  } catch { /* keep the last known list */ }
-}
-
-let railPollTimer: ReturnType<typeof setInterval> | null = null;
-function startRailPolling(): void {
-  if (railPollTimer) return;
-  railPollTimer = setInterval(() => {
-    if (document.hidden) return;
-    void refreshOsApps();
-  }, 6000);
 }
 
 function renderRecentApps(): void {
@@ -1762,31 +1731,7 @@ function renderRecentApps(): void {
     if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRecentApps(); }));
   }
 
-  // ── Running apps outside the library — click to focus (palette parity) ──
-  const os = railOsApps.filter((o) => !q || o.proc.toLowerCase().includes(q));
-  if (os.length) {
-    list.appendChild(gridLabel("Running apps"));
-    const op = railPaginate(os, railOsPage, RAIL_APPS_PER_PAGE);
-    railOsPage = op.page;
-    for (const o of op.items) {
-      const tile = document.createElement("button");
-      tile.className = "app-rail-tile app-rail-tile--os";
-      tile.type = "button";
-      tile.title = `Switch to ${o.proc}`;
-      const icon = document.createElement("div");
-      icon.className = "tile-icon";
-      icon.innerHTML = appIconInner({ execPath: o.path || null }, o.proc, "tile-initial");
-      const nm = document.createElement("span");
-      nm.className = "tile-name";
-      nm.textContent = o.proc;
-      tile.append(icon, nm);
-      tile.addEventListener("click", () => { void window.yo.commandFocusApp?.(o.proc); });
-      list.appendChild(tile);
-    }
-    if (op.totalPages > 1) list.appendChild(railPager(op.page, op.totalPages, (pg) => { railOsPage = pg; renderRecentApps(); }));
-  }
-
-  if (!apps.length && !layouts.length && !os.length) {
+  if (!apps.length && !layouts.length) {
     if (q) {
       renderAdaFallback(list, q);
     } else {
@@ -1934,6 +1879,27 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   el("code-new-chat")?.addEventListener("click", newChat);
+  // Apps open as workbench panels beside the agent (the OS-window
+  // replacement). Every main-side opener — William's open_app, the relay's
+  // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure
+  // the workbench booted, then drive the wb bridge.
+  window.yo.onWbAppCommand?.((cmd) => {
+    gotoSection("code");
+    (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
+    const w = window as unknown as {
+      __wbOpenApp?: (app: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
+      __wbOpenApps?: (apps: Array<{ slug: string; name: string; url: string; glyphh?: boolean }>) => void;
+      __wbCloseApp?: (slug: string) => boolean;
+      __wbFocusApp?: (slug: string) => boolean;
+      __wbToggleAppSwitcher?: () => void;
+    };
+    if (cmd.action === "open" && cmd.app) w.__wbOpenApp?.(cmd.app);
+    else if (cmd.action === "terminal") (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
+    else if (cmd.action === "open-many" && cmd.apps) w.__wbOpenApps?.(cmd.apps);
+    else if (cmd.action === "close" && cmd.slug) w.__wbCloseApp?.(cmd.slug);
+    else if (cmd.action === "focus" && cmd.slug) w.__wbFocusApp?.(cmd.slug);
+    else if (cmd.action === "switcher") w.__wbToggleAppSwitcher?.();
+  });
   // One delegated handler for everything interactive inside the thread —
   // survives every re-render: code-block copy buttons, file cards (→ Monaco),
   // run cards (→ terminal).
@@ -1959,10 +1925,8 @@ export function initCode(): void {
     }
   });
   el("apps-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("apps"); });
-  // Live updates: Apps/Layouts CRUD announces itself (same renderer); running
-  // OS apps poll on a change-detecting 6s loop.
+  // Live updates: Apps/Layouts CRUD announces itself (same renderer).
   document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
-  startRailPolling();
   el("recents-toggle")?.addEventListener("click", () => {
     const open = el("recents-toggle")!.classList.contains("closed");
     setRecentsOpen(open, true);
@@ -2001,7 +1965,7 @@ export function initCode(): void {
   initRailSplitter();
   initRecentsVsplit();
   el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", () => {
-    railAppsPage = 0; railLayoutsPage = 0; railOsPage = 0;
+    railAppsPage = 0; railLayoutsPage = 0;
     renderRecentApps();
   });
   // Enter runs the text as a command — same as the palette input (dip x, …).

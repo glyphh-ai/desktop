@@ -118,7 +118,6 @@ export interface MarketplaceAppDetail extends MarketplaceApp {
 contextBridge.exposeInMainWorld("yo", {
   copyToClipboard: (text: string) => ipcRenderer.invoke("copy-to-clipboard", text),
   // Toggle the full-screen command overlay (also bound to a global hotkey).
-  commandToggle: () => ipcRenderer.send("command:toggle"),
   // Resolve a dropped/selected File to its absolute on-disk path. Electron 32+
   // removed File.path; webUtils.getPathForFile is the supported replacement.
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },
@@ -126,8 +125,6 @@ contextBridge.exposeInMainWorld("yo", {
   windowMinimize: () => ipcRenderer.send("window-minimize"),
   windowMaximize: () => ipcRenderer.send("window-maximize"),
   // Screen layout (Settings → Appearance): dock mode + draggable fraction.
-  screenLayoutGet: () => ipcRenderer.invoke("screen-layout-get") as Promise<{ mode: "full" | "left" | "right" | "top" | "bottom"; fraction: number }>,
-  screenLayoutSet: (v: { mode?: string; fraction?: number }) => ipcRenderer.invoke("screen-layout-set", v) as Promise<{ mode: string; fraction: number }>,
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,
   railCollapseToggle: () => ipcRenderer.invoke("rail-collapse-toggle") as Promise<boolean>,
   railCollapseSet: (on: boolean) => ipcRenderer.invoke("rail-collapse-set", on) as Promise<boolean>,
@@ -267,8 +264,6 @@ contextBridge.exposeInMainWorld("yo", {
   // main-process-mediated, JWT-authed request to yo-server's /api/panel-apps
   // (see panel-apps-* handlers in apps-ipc.ts) — no local mirror.
   // 5b Panel Manager: open a server app in its own native OS window.
-  appWindowOpen: (spec: { slug: string; name: string; url: string; forceWeb?: boolean }) =>
-    ipcRenderer.invoke("app-window-open", spec) as Promise<{ ok: boolean; error?: string }>,
   // Launch an app the way its config dictates (native exec / real browser) —
   // see the app-launch handler in apps-ipc.ts.
   appLaunch: (spec: {
@@ -549,8 +544,6 @@ contextBridge.exposeInMainWorld("yo", {
   // Recents (rich: app/layout + folder pairs)
   // Command-palette parity for the rail search — same global channels the
   // command overlay uses (registered in command-window.ts).
-  commandOsApps: () => ipcRenderer.invoke("command:os-apps") as Promise<Array<{ proc: string; path: string }>>,
-  commandFocusApp: (proc: string) => ipcRenderer.invoke("command:focus-app", proc) as Promise<{ ok: boolean; error?: string }>,
   recentsList: () => ipcRenderer.invoke("recents:list") as Promise<Array<{
     kind: "app" | "layout"; id: string; name: string; folder: string; ts: number;
   }>>,
@@ -642,6 +635,13 @@ contextBridge.exposeInMainWorld("yo", {
   mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => ipcRenderer.invoke("mcp-connections-update", slug, fields) as Promise<{ ok: boolean; error?: string; connection?: unknown }>,
   mcpConnectionsDelete: (slug: string) => ipcRenderer.invoke("mcp-connections-delete", slug) as Promise<{ ok: boolean; error?: string }>,
   mcpConnectionsTools: (slug: string) => ipcRenderer.invoke("mcp-connections-tools", slug) as Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>,
+  // Workbench apps — the OS-window replacement. The renderer reports its
+  // open app panels; main drives open/close/focus/switcher via wb:app-cmd.
+  wbAppsChanged: (apps: Array<{ slug: string; name: string }>) => ipcRenderer.send("wb-apps-changed", apps),
+  onWbAppCommand: (cb: (cmd: { action: string; app?: { slug: string; name: string; url: string; glyphh?: boolean }; apps?: Array<{ slug: string; name: string; url: string; glyphh?: boolean }>; slug?: string }) => void) => {
+    ipcRenderer.on("wb:app-cmd", (_e, cmd) => cb(cmd));
+  },
+
   // Workspace / context panel
   onContextUpdate: (cb: (entry: {id: string; source: string; created: number; workspace?: string}) => void) => {
     ipcRenderer.on("context-update", (_e, entry) => cb(entry));
