@@ -12396,6 +12396,12 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
    and the mouseup is never seen. */
 body.wb-mouse-drag iframe { pointer-events: none !important; }
 body.code-dragging iframe { pointer-events: none !important; }
+/* App panels are <webview>s in the overlay layer, not iframes — they'd swallow
+   the drag's mousemove the instant the cursor crossed a panel (e.g. resizing a
+   rail rightward, over its own webview), freezing the resize. Disable the whole
+   holder during a workbench drag so events reach the document. */
+body.wb-mouse-drag .ws-app-holder,
+body.code-dragging .ws-app-holder { pointer-events: none !important; }
 
 /* Monaco save button — appears when the file is dirty */
 .ws-monaco-save {
