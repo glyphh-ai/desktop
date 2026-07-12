@@ -34,7 +34,9 @@ function registerPanelAppsIpc(): void {
       await openAppByRef(spec.slug || spec.name);
       return { ok: true };
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[app-launch] "${spec.slug || spec.name}" failed:`, msg);
+      return { ok: false, error: msg };
     }
   });
 

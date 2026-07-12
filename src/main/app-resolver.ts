@@ -97,12 +97,19 @@ function builtinRef(key: string): WbAppRef | "terminal" | null {
   return null;
 }
 
-/** A library row as a workbench panel ref. Native rows have no web surface —
- *  OS windows are retired, so they can't open anymore. */
+/** A library row as a workbench panel ref. Native OS windows are DISABLED for
+ *  now — every app opens as a webview panel beside the agent. Anything with a
+ *  web surface (top-level url, or a url stashed in launchConfig for legacy
+ *  "browser" rows) opens; the native execPath path is kept in the codebase
+ *  (desktop-app scraping may revive it) but never taken here. */
 function toWbRef(app: ServerApp): WbAppRef {
   if (isGlyphhAppRow(app)) return { slug: app.slug, name: app.name, url: "", glyphh: true };
-  if (app.url) return { slug: app.slug, name: app.name, url: app.url };
-  throw new Error(`"${app.name}" is a native app — native windows are retired; apps open as panels beside the agent`);
+  const lc = app.launchConfig as { url?: unknown; homepage?: unknown } | null | undefined;
+  const url = app.url
+    || (typeof lc?.url === "string" ? lc.url : "")
+    || (typeof lc?.homepage === "string" ? lc.homepage : "");
+  if (url) return { slug: app.slug, name: app.name, url };
+  throw new Error(`"${app.name}" has no web address to open as a panel.`);
 }
 
 /**
@@ -159,7 +166,9 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     return { slug: app.slug, name: app.name };
   }
 
-  sendWbCmd({ action: "open", app: toWbRef(app) });
+  const wbRef = toWbRef(app);
+  console.log(`[app-open] "${app.name}" → panel`, JSON.stringify(wbRef));
+  sendWbCmd({ action: "open", app: wbRef });
   return { slug: app.slug, name: app.name };
 }
 

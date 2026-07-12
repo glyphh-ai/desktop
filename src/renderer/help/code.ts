@@ -1861,6 +1861,7 @@ export function initCode(): void {
   // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure
   // the workbench booted, then drive the wb bridge.
   window.yo.onWbAppCommand?.((cmd) => {
+    console.log("[wb] onWbAppCommand", JSON.stringify(cmd));
     gotoSection("code");
     (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
     const w = window as unknown as {
@@ -1870,7 +1871,7 @@ export function initCode(): void {
       __wbFocusApp?: (slug: string) => boolean;
       __wbToggleAppSwitcher?: () => void;
     };
-    if (cmd.action === "open" && cmd.app) w.__wbOpenApp?.(cmd.app);
+    if (cmd.action === "open" && cmd.app) { console.log("[wb] __wbOpenApp present?", !!w.__wbOpenApp); w.__wbOpenApp?.(cmd.app); }
     else if (cmd.action === "terminal") (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
     else if (cmd.action === "open-many" && cmd.apps) w.__wbOpenApps?.(cmd.apps);
     else if (cmd.action === "close" && cmd.slug) w.__wbCloseApp?.(cmd.slug);

@@ -769,11 +769,15 @@ async function init(): Promise<void> {
   }
 
   function mountAppView(slot: AppSlot): AppView {
+    console.log(`[wb] mountAppView slug=${slot.slug} glyphh=${!!slot.glyphh} url=${slot.url}`);
     const holder = document.createElement("div");
     holder.className = "ws-app-holder entering";
     const webview = document.createElement("webview") as WebviewEl;
     webview.setAttribute("partition", "persist:yo");
     webview.setAttribute("allowpopups", "true");
+    webview.addEventListener("dom-ready", () => console.log(`[wb] webview dom-ready slug=${slot.slug}`));
+    webview.addEventListener("did-finish-load", () => console.log(`[wb] webview loaded slug=${slot.slug}`));
+    webview.addEventListener("did-fail-load", (e) => console.error(`[wb] webview FAIL slug=${slot.slug}`, (e as unknown as { errorCode?: number; errorDescription?: string }).errorCode, (e as unknown as { errorDescription?: string }).errorDescription));
     if (slot.glyphh) {
       // Installed Glyphh app: attach first (about:blank), then grant its caps
       // against the guest webContents and load the on-disk entry — the exact
