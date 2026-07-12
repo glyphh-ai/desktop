@@ -11443,6 +11443,41 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
   word-break: break-word;
   color: var(--text);
 }
+/* Gateway-decline card (out of credits / role / rate) — replaces raw error text. */
+.code-decline-wrap { align-self: stretch; max-width: 720px; }
+.decline-card {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-2);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.decline-card--credits { border-left-color: #ffbd2e; }
+.decline-card--role { border-left-color: #ff5f56; }
+.decline-card-icon {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  color: var(--text-3);
+}
+.decline-card-icon svg { width: 22px; height: 22px; }
+.decline-card--credits .decline-card-icon { color: #ffbd2e; }
+.decline-card-main { flex: 1; min-width: 0; }
+.decline-card-title { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.decline-card-body { font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.decline-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.decline-card-cta {
+  padding: 6px 14px; border: none; border-radius: 8px; cursor: pointer;
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 500;
+}
+.decline-card-cta:hover { filter: brightness(1.08); }
+.decline-card-alt {
+  padding: 6px 14px; border: 1px solid var(--border-2); border-radius: 8px; cursor: pointer;
+  background: none; color: var(--text-2); font-size: 12.5px;
+}
+.decline-card-alt:hover { border-color: var(--border-3); color: var(--text); }
+
 /* "+N -M" diff badge on edit breadcrumbs. */
 .code-diff-badge { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; }
 .code-diff-badge .diff-add { color: #3fb950; }

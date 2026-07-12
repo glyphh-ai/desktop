@@ -15,7 +15,7 @@ import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool"; attachments?: AttachRef[] }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline"; attachments?: AttachRef[]; decline?: { kind: string; url: string } }
 interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
 
 const STORE_KEY = "codeChats";
@@ -799,6 +799,38 @@ function renderHistory(): void {
   }
 }
 
+const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+/** A styled card for a gateway decline (out of credits / role / rate) — replaces
+ *  the raw "API Error: 400 …" text with a title, explanation, and one-click
+ *  actions (buy credits / manage plan; and switch to a free on-device model). */
+function declineCardEl(d: { kind: string; url: string }): HTMLElement {
+  const COPY: Record<string, { title: string; body: string; cta: string }> = {
+    credits: { title: "Out of credits", body: "The Claude model you picked needs gateway credits to run. Buy more, or switch to an on-device model — those run free on your machine.", cta: "Buy more credits" },
+    role: { title: "Model not allowed", body: "This model isn't enabled for your account or role. Manage your plan, or switch to a free on-device model.", cta: "Manage plan" },
+    rate: { title: "Rate limited", body: "The gateway is busy right now. Try again in a moment, or switch to a free on-device model.", cta: "Open account" },
+    generic: { title: "Model unavailable", body: "The gateway declined this model. Check your account, or switch to a free on-device model.", cta: "Open account" },
+  };
+  const c = COPY[d.kind] || COPY.generic;
+  const card = document.createElement("div");
+  card.className = `decline-card decline-card--${d.kind}`;
+  card.innerHTML = `
+    <div class="decline-card-icon">${DECLINE_WARN_SVG}</div>
+    <div class="decline-card-main">
+      <div class="decline-card-title"></div>
+      <div class="decline-card-body"></div>
+      <div class="decline-card-actions">
+        ${d.url ? `<button class="decline-card-cta" type="button"></button>` : ""}
+        <button class="decline-card-alt" type="button">Pick an on-device model</button>
+      </div>
+    </div>`;
+  (card.querySelector(".decline-card-title") as HTMLElement).textContent = c.title;
+  (card.querySelector(".decline-card-body") as HTMLElement).textContent = c.body;
+  const cta = card.querySelector<HTMLButtonElement>(".decline-card-cta");
+  if (cta) { cta.textContent = c.cta; cta.addEventListener("click", () => window.yo.openExternal?.(d.url)); }
+  card.querySelector<HTMLButtonElement>(".decline-card-alt")?.addEventListener("click", () => el("code-model-chip")?.click());
+  return card;
+}
+
 function renderThread(): void {
   const thread = el<HTMLDivElement>("code-thread");
   if (!thread) return;
@@ -854,6 +886,9 @@ function renderThread(): void {
           inner.appendChild(atts);
           return;
         }
+      } else if (b.msg.kind === "decline" && b.msg.decline) {
+        el.className = "code-decline-wrap";
+        el.appendChild(declineCardEl(b.msg.decline));
       } else {
         el.className = "code-agent-text";
         el.innerHTML = formatMarkdown(b.msg.text);
@@ -1589,6 +1624,17 @@ function initWilliamEvents(): void {
   });
   window.yo.onWilliamError?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
+    // A picked-frontier decline (out of credits / role / rate) arrives with a
+    // %%GLYPHHERR:<kind>:<url>%% marker — render a styled card, not the raw
+    // "API Error: 400 …" echo. Look in both the stream buffer and the error.
+    const marker = /%%GLYPHHERR:([a-z]+):([^%]*)%%/.exec(`${streamText}\n${d.error}`);
+    if (marker) {
+      const chat = chats.find((ch) => ch.id === streamChatId);
+      if (chat) chat.messages.push({ role: "assistant", kind: "decline", text: "", decline: { kind: marker[1], url: marker[2].trim() }, at: Date.now() });
+      streamText = "";
+      finishRun("");
+      return;
+    }
     finishRun(streamText ? `${streamText}\n\n⚠ ${d.error}` : `⚠ ${d.error}`);
   });
 }

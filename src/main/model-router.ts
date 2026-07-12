@@ -696,25 +696,17 @@ async function forwardFrontier(req: http.IncomingMessage, res: http.ServerRespon
 }
 
 /** Actionable chat error when a USER-PICKED frontier model is declined by the
- *  gateway — never a silent downgrade to local. */
+ *  gateway — never a silent downgrade to local. Leads with a machine marker the
+ *  client parses into a styled card (%%GLYPHHERR:<kind>:<url>%%); the trailing
+ *  line is a plain-text fallback for any surface that shows the raw message. */
 function frontierDeclineError(status: number, why: string): string {
-  const billing = `${PLATFORM_URL}/billing`;
-  if (status === 402) {
-    return `Out of credits — the Claude model you picked couldn't run.\n\n`
-      + `• Buy more credits: ${billing}\n`
-      + `• Or pick an on-device model (free) from the model menu.`;
-  }
-  if (status === 403) {
-    return `That model isn't allowed on your account${why ? ` (${why})` : ""}.\n\n`
-      + `• Manage your plan and models: ${PLATFORM_URL}\n`
-      + `• Or pick an on-device model (free) from the model menu.`;
-  }
-  if (status === 429) {
-    return `The gateway is rate-limiting right now${why ? ` (${why})` : ""}. `
-      + `Try again in a moment, or pick an on-device model from the model menu.`;
-  }
-  return `The gateway declined this model${why ? ` (${why})` : ""}. `
-    + `Pick an on-device model from the model menu, or check your account: ${PLATFORM_URL}`;
+  const kind = status === 402 ? "credits" : status === 403 ? "role" : status === 429 ? "rate" : "generic";
+  const url = status === 402 ? `${PLATFORM_URL}/billing` : PLATFORM_URL;
+  const human = kind === "credits" ? "Out of credits — buy more or pick an on-device model."
+    : kind === "role" ? `That model isn't allowed on your account${why ? ` (${why})` : ""}.`
+    : kind === "rate" ? "The gateway is rate-limiting right now — try again shortly, or pick an on-device model."
+    : `The gateway declined this model${why ? ` (${why})` : ""}.`;
+  return `%%GLYPHHERR:${kind}:${url}%%\n${human}`;
 }
 
 // ── The server ─────────────────────────────────────────────────────────────
