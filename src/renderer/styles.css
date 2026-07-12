@@ -4281,6 +4281,14 @@ ol.docs-list li::before {
   font-family: inherit;
   font-style: italic;
 }
+/* Group headers in the cell picker (Workbench tools / Apps). */
+.cell-panel-group-label {
+  padding: 8px 12px 3px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+}
 /* Sticky toggle in the cell picker — marks this panel as the app-switch target. */
 .cell-panel-sticky {
   display: flex;

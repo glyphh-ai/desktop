@@ -3,6 +3,7 @@
  */
 
 import { confirmAction } from "./shared.js";
+import { gotoSection } from "./navigation.js";
 
 // ── Settings ─────────────────────────────────────────────
 
@@ -394,10 +395,23 @@ function initSettings() {
 
   // (Glyphh Skill export moved to its own Skills page — see help/skills.ts.)
 
-  // Manage Account — open the platform inside the app (a panel tab), the same
-  // way the left-rail Platform button does (.dip <platformUrl>).
+  // Manage Account — open the platform as a WORKBENCH app panel (beside the
+  // agent), not the retired BrowserView. Flip to Code, boot the workbench
+  // engine (async init), then drive the wb bridge once __wbOpenApp exists.
   document.getElementById("account-dashboard-btn")?.addEventListener("click", () => {
-    void window.yo.execCommand(`dip ${window.yo.platformUrl}`);
+    gotoSection("code");
+    const w = window as unknown as {
+      __initCodeWorkbench?: () => void;
+      __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
+    };
+    w.__initCodeWorkbench?.();
+    const app = { slug: "manage-account", name: "Manage Account", url: window.yo.platformUrl };
+    let tries = 0;
+    const open = (): void => {
+      if (w.__wbOpenApp) { w.__wbOpenApp(app); return; }
+      if (tries++ < 40) setTimeout(open, 50);
+    };
+    open();
   });
 
   // Refresh plan status — after an in-app upgrade/downgrade the cached session

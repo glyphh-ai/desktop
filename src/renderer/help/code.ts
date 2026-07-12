@@ -1271,10 +1271,13 @@ function send(): void {
       // Otherwise an app by slug/name — resolved by the SAME main-side resolver a
       // card click uses (findLibraryApp: slug/name/fuzzy; toWbRef: launchConfig
       // urls + glyphh apps), which opens it into the workbench via wb:app-cmd.
-      const res = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }));
+      const res = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }) as { ok: boolean; error?: string });
       if (res?.ok) return;
       if (!current()) newChat();
-      current()!.messages.push({ role: "assistant", text: `⚠ .dip: no app or layout named "${ref}".`, at: Date.now() });
+      // Surface the real reason — a native app row resolves by slug but has no
+      // web surface to render as a panel ("…has no web address…"), which the old
+      // blanket "not found" message misreported.
+      current()!.messages.push({ role: "assistant", text: res?.error ? `⚠ .dip: ${res.error}` : `⚠ .dip: no app or layout named "${ref}".`, at: Date.now() });
       void saveStore(); renderHistory(); renderThread();
     })();
     return;
@@ -1653,10 +1656,35 @@ export function loadCode(): void {
   (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
 }
 
+/** Open the command center (app/layout launcher) from ANY section — even before
+ *  the Code workbench has ever mounted. Flips to the agent surface, boots the
+ *  workbench (idempotent async init), then retries the toggle over rAF because
+ *  __wbToggleAppSwitcher isn't assigned until that init() resolves. */
+export function openCommandCenter(): void {
+  gotoSection("code");
+  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void };
+  w.__initCodeWorkbench?.();
+  let tries = 0;
+  const go = (): void => {
+    if (w.__wbToggleAppSwitcher) w.__wbToggleAppSwitcher();
+    else if (tries++ < 20) requestAnimationFrame(go);
+  };
+  go();
+}
+
 export function initCode(): void {
   if (inited) return;
   inited = true;
   el("code-new-chat")?.addEventListener("click", newChat);
+  // Cmd+. / Ctrl+. opens the command center from any section. Registered in
+  // the home-panel document (owns gotoSection + the switcher overlay), NOT
+  // renderer.ts (the index shell — different webContents, no overlay reach).
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "." && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
+  });
+  // Header launcher button — bound here (home-panel startup) through the
+  // cold-safe path, so it works even before the Code workbench first mounts.
+  el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());
   // Apps open as workbench panels beside the agent (the OS-window
   // replacement). Every main-side opener — William's open_app, the relay's
   // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure
@@ -1676,7 +1704,7 @@ export function initCode(): void {
     else if (cmd.action === "open-many" && cmd.apps) w.__wbOpenApps?.(cmd.apps);
     else if (cmd.action === "close" && cmd.slug) w.__wbCloseApp?.(cmd.slug);
     else if (cmd.action === "focus" && cmd.slug) w.__wbFocusApp?.(cmd.slug);
-    else if (cmd.action === "switcher") w.__wbToggleAppSwitcher?.();
+    else if (cmd.action === "switcher") openCommandCenter();
   });
   // One delegated handler for everything interactive inside the thread —
   // survives every re-render: code-block copy buttons, file cards (→ Monaco),

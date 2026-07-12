@@ -974,7 +974,7 @@ async function init(): Promise<void> {
   }
 
   interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
-  interface WbLayoutCell extends WbAppRef { col: number; row: number; sticky?: boolean }
+  interface WbLayoutCell extends WbAppRef { col: number; row: number; sticky?: boolean; tool?: string }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 
   /** Open an app in the workbench. Default = "the switch": reuse the sticky app
@@ -1142,6 +1142,7 @@ async function init(): Promise<void> {
     };
     const openLayout = (layout: LayoutRow): void => {
       const cells = layout.splits.map((c): WbLayoutCell | null => {
+        if (c.panelId?.startsWith("tool:")) return { slug: c.panelId, name: c.panelId.slice(5), url: "", col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky, tool: c.panelId.slice(5) };
         const app = resolveCell(c.panelId);
         return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky } : null;
       }).filter((c): c is WbLayoutCell => c !== null);
@@ -2216,9 +2217,12 @@ async function init(): Promise<void> {
     for (let col = 0; col < cols; col++) {
       const colCells = layout.cells.filter((c) => c.col === col).sort((a, b) => a.row - b.row);
       if (!colCells.length) continue;
-      const slots: Slot[] = colCells.map((c) => ({
-        id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault(),
-      }));
+      const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan"]);
+      const slots: Slot[] = colCells.map((c) =>
+        c.tool && TOOL_VIEWS.has(c.tool)
+          ? makeSlot(c.tool as Exclude<ViewKind, "monaco">)
+          : { id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault() },
+      );
       const frac = layout.colWidths[col] ?? 1 / cols;
       rails.push({ id: nextRailId++, slots, prefWidth: Math.max(240, Math.round(usable * frac)) });
       railCols.push(col);
@@ -2264,7 +2268,8 @@ async function init(): Promise<void> {
     return true;
   };
   wbApp.__wbToggleAppSwitcher = () => toggleAppSwitcher();
-  document.getElementById("code-apps-btn")?.addEventListener("click", () => toggleAppSwitcher());
+  // #code-apps-btn is bound in help/code.ts initCode() via openCommandCenter so
+  // it works cold (before this async init runs) and Cmd+. shares the same path.
 
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession = () => {
     rails.length = 0;

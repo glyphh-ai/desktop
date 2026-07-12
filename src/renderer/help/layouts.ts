@@ -15,11 +15,17 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.yo.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
-  const cells: Array<{ slug: string; name: string; url: string; glyphh: boolean; col: number; row: number; sticky?: boolean }> = [];
+  const cells: Array<{ slug: string; name: string; url: string; glyphh: boolean; col: number; row: number; sticky?: boolean; tool?: string }> = [];
   for (const s of layout.splits) {
+    const sticky = !!(s as { sticky?: boolean }).sticky;
+    if (isToolPanel(s.panelId)) {
+      // Workbench tool panel — carry its ViewKind; the receiver builds the slot.
+      cells.push({ slug: s.panelId, name: toolPanelLabel(s.panelId), url: "", glyphh: false, col: s.col ?? 0, row: s.row ?? 0, sticky, tool: s.panelId.slice(5) });
+      continue;
+    }
     const app = resolveApp(s.panelId);
     if (!app?.url) continue;
-    cells.push({ slug: app.id, name: app.name, url: app.url, glyphh: false, col: s.col ?? 0, row: s.row ?? 0, sticky: !!(s as { sticky?: boolean }).sticky });
+    cells.push({ slug: app.id, name: app.name, url: app.url, glyphh: false, col: s.col ?? 0, row: s.row ?? 0, sticky });
   }
   if (!cells.length) return;
   gotoSection("code");   // shows the agent surface + boots the workbench
@@ -66,6 +72,19 @@ function resolveApp(panelId: string): LayoutApp | undefined {
 function panelLabel(panelId: string): string {
   return resolveApp(panelId)?.name || panelId;
 }
+/** Built-in workbench tool panels selectable in a layout cell. id = `tool:<ViewKind>`:
+ *  namespaced (never collides with an app id/UUID) and the suffix IS the
+ *  workbench ViewKind, so code-workbench maps it straight to makeSlot(view).
+ *  Stored verbatim as the schema's panelId string — round-trips, no migration. */
+const TOOL_PANELS: Array<{ id: string; label: string }> = [
+  { id: "tool:files",    label: "Files" },
+  { id: "tool:terminal", label: "Terminal" },
+  { id: "tool:diff",     label: "Diff" },
+  { id: "tool:preview",  label: "Preview" },
+  { id: "tool:plan",     label: "Plan" },
+];
+const isToolPanel = (id: string): boolean => id.startsWith("tool:");
+const toolPanelLabel = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.label || id.slice(5);
 /** One app-icon square for a layout card — identical icon resolution to the
  *  Apps page (Pipedream catalog icon → favicon → initial), via the shared
  *  appIconInner helper. */
@@ -231,7 +250,7 @@ function updateMergeButtons() {
 let namesRefreshing = false;
 function healUnresolvedNames(): void {
   if (namesRefreshing) return;
-  const unresolved = builderCells.some((c) => c.panelId && !c.panelId.startsWith("agent:") && c.panelId !== "agents-tabbed" && !resolveApp(c.panelId));
+  const unresolved = builderCells.some((c) => c.panelId && !isToolPanel(c.panelId) && !c.panelId.startsWith("agent:") && c.panelId !== "agents-tabbed" && !resolveApp(c.panelId));
   if (!unresolved) return;
   namesRefreshing = true;
   void ensureAppNames().then(() => {
@@ -254,7 +273,8 @@ function renderGridPreview() {
       if (i === builderSelected) cls.push("selected");
       if (cell.sticky) cls.push("sticky");
       let label = cell.panelId ? panelLabel(cell.panelId) : "\u2014";
-      if (cell.panelId?.startsWith("agent:")) label = cell.panelId.slice(6);
+      if (cell.panelId && isToolPanel(cell.panelId)) label = toolPanelLabel(cell.panelId);
+      else if (cell.panelId?.startsWith("agent:")) label = cell.panelId.slice(6);
       else if (cell.panelId === "agents-tabbed") label = "Agents (tabbed)";
       const pin = cell.sticky
         ? `<span class="grid-cell-sticky" title="Sticky \u2014 apps open here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.7-6.8a2 2 0 0 0-1-1.3L15 8V4h-6v4l-1.3.9a2 2 0 0 0-1 1.3z"/></svg></span>`
@@ -318,6 +338,9 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     `<input class="cell-panel-search" placeholder="Search…" autocomplete="off" spellcheck="false" />`,
     `<div class="cell-panel-options">`,
     `<div class="cell-panel-option empty" data-id="">Empty</div>`,
+    `<div class="cell-panel-group-label">Workbench tools</div>`,
+    ...TOOL_PANELS.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
+    options.length ? `<div class="cell-panel-group-label">Apps</div>` : "",
     ...options.map((o) => `<div class="cell-panel-option" data-id="${o.id}">${o.label}</div>`),
     `</div>`,
     stickyBtn,
