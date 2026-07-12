@@ -17,6 +17,7 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
+import { appIconInner, primeNativeIcons } from "./help/app-icon.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
@@ -913,80 +914,265 @@ async function init(): Promise<void> {
     return true;
   }
 
-  // ── The switch — app switcher overlay over the rails side ──
+  // ── Command center — the full-screen apps/layouts launcher ──
+  // Faithful rebuild of the removed command-center overlay (was its own
+  // always-on-top window opening OS windows); now an in-renderer overlay on
+  // <body> (above the z-120 webview layer) that opens apps into workbench
+  // panels and layouts into the workbench grid.
   let switcherEl: HTMLDivElement | null = null;
+  function closeSwitcher(): void { switcherEl?.remove(); switcherEl = null; }
   function toggleAppSwitcher(): void {
     if (switcherEl) { closeSwitcher(); return; }
-    // Full-screen launcher over the whole app (above the webview layer). Lives
-    // on <body> so it clears the workbench webviews (z-index 120).
+
+    type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; execPath?: string | null; appArchetype?: string | null };
+    type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }> };
+    type CcYo = {
+      panelAppsList?: () => Promise<PanelAppRow[]>;
+      layoutsList?: () => Promise<LayoutRow[]>;
+      dripsList?: () => Promise<Array<{ name: string; recipe: string }>>;
+      dripsBuiltinEffects?: () => Promise<string[]>;
+      dripsPreview?: (recipe: string) => Promise<string>;
+      adaRecall?: (q: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
+    };
+    const yo = (window as unknown as { yo?: CcYo }).yo;
+
+    const APPS_PER_PAGE = 14;
+    const LAYOUTS_PER_PAGE = 8;
+    let appRows: PanelAppRow[] = [];
+    let layouts: LayoutRow[] = [];
+    let query = "";
+    let appsPage = 0;
+    let layoutsPage = 0;
+
+    const toRef = (a: PanelAppRow): WbAppRef => ({ slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app" });
+    const iconApp = (a: PanelAppRow): { slug: string; url: string | null; execPath: string | null } => ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null });
+    const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
+    const matches = (name: string): boolean => !query || name.toLowerCase().includes(query);
+
     const el = document.createElement("div");
-    el.id = "code-app-switcher";
+    el.id = "command-center";
+    el.className = "command-center";
     el.innerHTML = `
-      <div class="cas-panel" role="dialog" aria-modal="true">
-        <input class="cas-search" type="text" placeholder="Open an app or layout…" spellcheck="false" />
-        <div class="cas-list"><div class="cas-empty">Loading…</div></div>
+      <div class="cc-inner">
+        <div class="cc-header">
+          <input id="cc-input" class="cc-input" type="text" autocomplete="off" autocorrect="off" spellcheck="false"
+                 placeholder="Search apps and layouts — Enter opens the top match" />
+          <div class="cc-drip-wrap">
+            <button class="cc-drip-btn" title="Play a drip effect">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7 6.6 9.2a6.6 6.6 0 1 0 10.8 0z"/></svg>
+            </button>
+            <div class="cc-drip-menu hidden"></div>
+          </div>
+          <button class="cc-close" title="Close (Esc)">&times;</button>
+        </div>
+        <div class="cc-apps"></div>
+        <div class="cc-apps-pager cc-pager"></div>
+        <div class="cc-layouts-wrap hidden">
+          <div class="cc-section-label">Layouts</div>
+          <div class="cc-layouts"></div>
+          <div class="cc-layouts-pager cc-pager"></div>
+        </div>
+        <div class="cc-empty hidden">No apps yet — add one from the Apps tab.</div>
       </div>`;
     document.body.appendChild(el);
     switcherEl = el;
-    const input = el.querySelector<HTMLInputElement>(".cas-search")!;
-    const list = el.querySelector<HTMLElement>(".cas-list")!;
-    input.focus();
-    // Backdrop click (outside the panel) and Escape both close.
-    el.addEventListener("mousedown", (ev) => { if (ev.target === el) closeSwitcher(); });
-    input.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeSwitcher(); });
 
-    type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; appArchetype?: string | null };
-    type LayoutRow = { name: string; cols: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number }> };
-    const yo = (window as unknown as { yo?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).yo;
-    void Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).then(([rows, layouts]) => {
-      const appRows = rows || [];
-      const byId = new Map(appRows.map((a) => [a.id, a]));
-      const apps: WbAppRef[] = appRows.filter((a) => a.url).map((a) => ({
-        slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app",
-      }));
-      const mkItem = (initial: string, name: string, open: boolean, onClick: (ev: MouseEvent) => void): HTMLButtonElement => {
+    const input = el.querySelector<HTMLInputElement>("#cc-input")!;
+    const appsEl = el.querySelector<HTMLElement>(".cc-apps")!;
+    const appsPagerEl = el.querySelector<HTMLElement>(".cc-apps-pager")!;
+    const layoutsWrapEl = el.querySelector<HTMLElement>(".cc-layouts-wrap")!;
+    const layoutsEl = el.querySelector<HTMLElement>(".cc-layouts")!;
+    const layoutsPagerEl = el.querySelector<HTMLElement>(".cc-layouts-pager")!;
+    const emptyEl = el.querySelector<HTMLElement>(".cc-empty")!;
+    input.focus();
+
+    // Close: Esc, the × button, and clicking the darkened backdrop.
+    el.querySelector(".cc-close")?.addEventListener("click", () => closeSwitcher());
+    input.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeSwitcher(); });
+    el.addEventListener("mousedown", (ev) => {
+      const t = ev.target as HTMLElement;
+      if (t === el || t.classList.contains("cc-inner")) closeSwitcher();
+      else if (!t.closest(".cc-drip-wrap")) dripMenu.classList.add("hidden");
+    });
+
+    function paginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; totalPages: number } {
+      const totalPages = Math.max(1, Math.ceil(items.length / size));
+      const p = Math.max(0, Math.min(page, totalPages - 1));
+      return { items: items.slice(p * size, (p + 1) * size), page: p, totalPages };
+    }
+    function pager(page: number, totalPages: number, onPage: (p: number) => void): HTMLElement {
+      const bar = document.createElement("div");
+      bar.className = "pagination-bar";
+      if (totalPages <= 1) return bar;
+      const nav = document.createElement("div");
+      nav.className = "pagination-nav";
+      const mk = (label: string, to: number, disabled: boolean): HTMLButtonElement => {
+        const b = document.createElement("button");
+        b.className = "pagination-btn";
+        b.textContent = label;
+        b.disabled = disabled;
+        b.addEventListener("click", () => onPage(to));
+        return b;
+      };
+      nav.appendChild(mk("‹ Prev", page - 1, page === 0));
+      const info = document.createElement("span");
+      info.className = "pagination-info";
+      info.textContent = `${page + 1} / ${totalPages}`;
+      nav.appendChild(info);
+      nav.appendChild(mk("Next ›", page + 1, page >= totalPages - 1));
+      bar.appendChild(nav);
+      return bar;
+    }
+
+    const resolveCell = (panelId: string): PanelAppRow | undefined => {
+      const key = panelId.trim().toLowerCase();
+      return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
+    };
+    const openLayout = (layout: LayoutRow): void => {
+      const cells = layout.splits.map((c) => {
+        const app = resolveCell(c.panelId);
+        return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0 } : null;
+      }).filter((c): c is WbLayoutCell => c !== null);
+      if (cells.length) openLayoutInWorkbench({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
+    };
+
+    function renderApps(): void {
+      const all = appRows.filter((a) => matches(a.name) || matches(a.slug || ""));
+      const { items, page, totalPages } = paginate(all, appsPage, APPS_PER_PAGE);
+      appsPage = page;
+      appsEl.innerHTML = "";
+      const openSlugs = new Set(appSlots().map((s) => s.slug));
+      for (const a of items) {
+        const ref = toRef(a);
+        const card = document.createElement("button");
+        card.className = "cc-card" + (openSlugs.has(ref.slug) ? " open" : "");
+        card.innerHTML = `
+          <div class="cc-card-shot">
+            ${appIconInner(iconApp(a), a.name, "cc-card-initial")}
+            ${a.slug ? `<span class="cc-card-slug">${esc(a.slug)}</span>` : ""}
+          </div>
+          <span class="cc-card-name">${esc(a.name)}</span>`;
+        card.addEventListener("click", (ev) => { openAppInWorkbench(ref, { newPanel: (ev as MouseEvent).altKey }); closeSwitcher(); });
+        appsEl.appendChild(card);
+      }
+      appsPagerEl.innerHTML = "";
+      if (totalPages > 1) appsPagerEl.appendChild(pager(page, totalPages, (p) => { appsPage = p; renderApps(); }));
+      emptyEl.classList.toggle("hidden", all.length > 0 || layouts.length > 0);
+      renderAda();
+    }
+
+    function renderLayouts(): void {
+      const all = layouts.filter((l) => matches(l.name));
+      layoutsEl.innerHTML = "";
+      layoutsPagerEl.innerHTML = "";
+      if (!all.length) { layoutsWrapEl.classList.add("hidden"); return; }
+      layoutsWrapEl.classList.remove("hidden");
+      const { items, page, totalPages } = paginate(all, layoutsPage, LAYOUTS_PER_PAGE);
+      layoutsPage = page;
+      for (const layout of items) {
+        const cols = layout.cols || 1, rows = layout.rows || 1;
+        const cells = layout.splits.map((c) => {
+          const left = (c.col / cols) * 100, top = (c.row / rows) * 100;
+          const w = (c.colSpan / cols) * 100, h = (c.rowSpan / rows) * 100;
+          const app = resolveCell(c.panelId);
+          const ico = app ? `<span class="cc-mini-ico">${appIconInner(iconApp(app), app.name, "cc-mini-initial")}</span>` : "";
+          return `<div class="cc-mini-cell" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%">${ico}</div>`;
+        }).join("");
+        const card = document.createElement("button");
+        card.className = "cc-layout-card";
+        card.innerHTML = `<div class="cc-mini">${cells}</div><span class="cc-card-name">${esc(layout.name)}</span>`;
+        card.addEventListener("click", () => { openLayout(layout); closeSwitcher(); });
+        layoutsEl.appendChild(card);
+      }
+      if (totalPages > 1) layoutsPagerEl.appendChild(pager(page, totalPages, (p) => { layoutsPage = p; renderLayouts(); }));
+    }
+
+    // Ada fallback — nothing matched by name → surface fact-memory hits; a hit
+    // naming an open_app("x")/open_layout("y") we recognize becomes clickable.
+    let adaSeq = 0;
+    function renderAda(): void {
+      el.querySelector(".cc-ada")?.remove();
+      const shown = appsEl.children.length > 0 || layoutsEl.children.length > 0;
+      if (!query || shown || !yo?.adaRecall) return;
+      const seq = ++adaSeq;
+      void yo.adaRecall(query, 4).then((hits) => {
+        if (seq !== adaSeq || !switcherEl || !hits?.length) return;
+        const wrap = document.createElement("div");
+        wrap.className = "cc-ada";
+        for (const h of hits) {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "cc-ada-hit";
+          row.textContent = h.content.length > 110 ? `${h.content.slice(0, 110)}…` : h.content;
+          const m = /open_(?:app|layout)\("([^"]+)"\)/.exec(h.content);
+          const ref = m?.[1];
+          const app = ref ? resolveCell(ref) : undefined;
+          const layout = ref ? layouts.find((l) => l.name.toLowerCase() === ref.toLowerCase()) : undefined;
+          if (app) row.addEventListener("click", () => { openAppInWorkbench(toRef(app), {}); closeSwitcher(); });
+          else if (layout) row.addEventListener("click", () => { openLayout(layout); closeSwitcher(); });
+          else row.disabled = true;
+          wrap.appendChild(row);
+        }
+        appsEl.after(wrap);
+      }).catch(() => { /* quiet */ });
+    }
+
+    function renderAll(): void { renderApps(); renderLayouts(); }
+
+    // Filter as you type; Enter opens the top match.
+    input.addEventListener("input", () => {
+      query = input.value.trim().toLowerCase();
+      appsPage = 0; layoutsPage = 0;
+      renderAll();
+    });
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      const a = appRows.find((x) => matches(x.name) || matches(x.slug || ""));
+      if (a) { openAppInWorkbench(toRef(a), {}); closeSwitcher(); return; }
+      const l = layouts.find((x) => matches(x.name));
+      if (l) { openLayout(l); closeSwitcher(); }
+    });
+
+    // Drip control — the built-in effects + the user's saved presets, played
+    // through the main-process drip engine (window.yo.dripsPreview).
+    const dripBtn = el.querySelector<HTMLButtonElement>(".cc-drip-btn")!;
+    const dripMenu = el.querySelector<HTMLElement>(".cc-drip-menu")!;
+    const DRIP_EMOJI: Record<string, string> = { fireworks: "🎆", hearts: "❤️", confetti: "🎊", stars: "⭐", rain: "🌧️", bubbles: "🫧", sparkle: "✨", spiral: "🌀", wave: "🌊", matrix: "🟩", aurora: "🌌", nebula: "💜", plasma: "🔮", fireflies: "🪲", starfield: "🌠", peace: "☮️", cat: "🐱", thumbsup: "👍" };
+    let dripsLoaded = false;
+    async function populateDrips(): Promise<void> {
+      if (dripsLoaded) return;
+      dripsLoaded = true;
+      const [customs, builtins] = await Promise.all([
+        yo?.dripsList?.().catch(() => []) ?? [],
+        yo?.dripsBuiltinEffects?.().catch(() => []) ?? [],
+      ]);
+      dripMenu.innerHTML = "";
+      const addRow = (label: string, cmd: string, emoji: string): void => {
         const row = document.createElement("button");
-        row.type = "button";
-        row.className = "cas-item" + (open ? " open" : "");
-        row.innerHTML = `<span class="cas-initial">${initial}</span><span class="cas-name"></span>`;
-        (row.querySelector(".cas-name") as HTMLElement).textContent = name;
-        row.addEventListener("click", (ev) => onClick(ev as MouseEvent));
-        return row;
+        row.className = "cc-drip-item";
+        row.innerHTML = `<span class="cc-drip-emoji">${emoji}</span><span></span>`;
+        (row.querySelector("span:last-child") as HTMLElement).textContent = label;
+        row.addEventListener("click", () => { dripMenu.classList.add("hidden"); void yo?.dripsPreview?.(cmd); });
+        dripMenu.appendChild(row);
       };
-      const paint = (): void => {
-        const q = input.value.trim().toLowerCase();
-        const fa = q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.slug.includes(q)) : apps;
-        const fl = q ? (layouts || []).filter((l) => l.name.toLowerCase().includes(q)) : (layouts || []);
-        list.innerHTML = "";
-        if (!fa.length && !fl.length) { list.innerHTML = `<div class="cas-empty">Nothing matches.</div>`; return; }
-        const openSlugs = new Set(appSlots().map((s) => s.slug));
-        if (fa.length) {
-          const h = document.createElement("div"); h.className = "cas-section"; h.textContent = "Apps"; list.appendChild(h);
-          for (const a of fa) {
-            list.appendChild(mkItem((a.name || "?").charAt(0).toUpperCase(), a.name, openSlugs.has(a.slug), (ev) => {
-              openAppInWorkbench(a, { newPanel: ev.altKey }); closeSwitcher();
-            }));
-          }
-        }
-        if (fl.length) {
-          const h = document.createElement("div"); h.className = "cas-section"; h.textContent = "Layouts"; list.appendChild(h);
-          for (const l of fl) {
-            list.appendChild(mkItem("▦", l.name, false, () => {
-              const cells = l.splits.map((s) => {
-                const app = byId.get(s.panelId);
-                return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: s.col ?? 0, row: s.row ?? 0 } : null;
-              }).filter((c): c is WbLayoutCell => c !== null);
-              if (cells.length) openLayoutInWorkbench({ cols: l.cols || 2, colWidths: l.colWidths || [], rowHeights: l.rowHeights || [], cells });
-              closeSwitcher();
-            }));
-          }
-        }
-      };
-      input.addEventListener("input", paint);
-      paint();
-    }).catch(() => { list.innerHTML = `<div class="cas-empty">Couldn't load.</div>`; });
+      if (customs.length) {
+        const l = document.createElement("div"); l.className = "cc-drip-label"; l.textContent = "My drips"; dripMenu.appendChild(l);
+        for (const d of customs) addRow(d.name, d.name, "💧");
+        const l2 = document.createElement("div"); l2.className = "cc-drip-label"; l2.textContent = "Effects"; dripMenu.appendChild(l2);
+      }
+      for (const name of builtins) addRow(name, name, DRIP_EMOJI[name] || "💧");
+    }
+    dripBtn.addEventListener("click", (e) => { e.stopPropagation(); void populateDrips(); dripMenu.classList.toggle("hidden"); });
+
+    // Load apps + layouts, paint, then stream native-app icons in.
+    void Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).then(([rows, ls]) => {
+      appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app");
+      appRows.sort((x, y) => Number(y.appArchetype === "glyphh-app") - Number(x.appArchetype === "glyphh-app"));
+      layouts = ls || [];
+      renderAll();
+      void primeNativeIcons(appRows.map((a) => ({ execPath: a.execPath || null })), renderAll);
+    }).catch(() => { appRows = []; layouts = []; renderAll(); });
   }
-  function closeSwitcher(): void { switcherEl?.remove(); switcherEl = null; }
 
   // ── Files view ──
   async function renderFilesIntoSlot(body: HTMLElement, slot: FilesSlot): Promise<void> {

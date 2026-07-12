@@ -25,6 +25,19 @@ export const connectedIconCache: Record<string, string | null> = {};
 // OS icon (data URL) per native app's execPath, via the app-file-icon IPC.
 export const nativeIconCache: Record<string, string> = {};
 
+// window.yo is globally typed in the renderer program (via renderer.ts), but
+// this module is also compiled into the main-process typecheck through
+// code-workbench.ts's import, where that global augmentation isn't in scope.
+// Reach the two IPC methods through a locally typed accessor so both programs
+// type-check identically.
+const yoIcons = (): {
+  appFileIcon: (execPath: string) => Promise<string | null>;
+  connectorsGetApps: (slug: string) => Promise<{ apps: Array<{ id: string; icon?: string | null }> }>;
+} => (window as unknown as { yo: {
+  appFileIcon: (execPath: string) => Promise<string | null>;
+  connectorsGetApps: (slug: string) => Promise<{ apps: Array<{ id: string; icon?: string | null }> }>;
+} }).yo;
+
 /** Resolve the icon URL for an app ("" when only the initial fallback applies). */
 export function appIconUrl(app: IconApp): string {
   // The Glyphh system app always shows the brand mark (shipped next to every
@@ -65,7 +78,7 @@ export async function primeNativeIcons(
   )].filter((p) => !(p in nativeIconCache));
   if (paths.length === 0) return;
   await Promise.all(paths.map(async (p) => {
-    try { nativeIconCache[p] = (await window.yo.appFileIcon(p)) || ""; }
+    try { nativeIconCache[p] = (await yoIcons().appFileIcon(p)) || ""; }
     catch { nativeIconCache[p] = ""; }
   }));
   onLoaded();
@@ -85,7 +98,7 @@ export async function primeConnectedIcons(
   if (slugs.length === 0) return;
   await Promise.all(slugs.map(async (slug) => {
     try {
-      const { apps: catalog } = await window.yo.connectorsGetApps(slug);
+      const { apps: catalog } = await yoIcons().connectorsGetApps(slug);
       connectedIconCache[slug] = catalog.find((a) => a.id === slug)?.icon || null;
     } catch {
       connectedIconCache[slug] = null;
