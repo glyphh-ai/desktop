@@ -378,6 +378,15 @@ function initSettings() {
     }
   });
 
+  // Show the address bar on app panels by default (roams to the server, since
+  // it's not device-local). The workbench listens for the change to apply it
+  // to newly-opened panels live.
+  const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
+  appUrlBar?.addEventListener("change", () => {
+    void window.yo.setPreference("showAppUrlBar", appUrlBar.checked);
+    document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
+  });
+
   // Relaunch button
   document.getElementById("settings-relaunch-btn")?.addEventListener("click", () => {
     window.yo.relaunch();
@@ -474,6 +483,8 @@ async function loadSettings() {
   if (homePref === "custom") {
     settingsBrowserHomeUrl.value = await window.yo.getPreference("browserHomepageUrl", "") as string;
   }
+  const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
+  if (appUrlBar) appUrlBar.checked = await window.yo.getPreference("showAppUrlBar", true) as boolean;
 }
 
 async function saveSettings() {

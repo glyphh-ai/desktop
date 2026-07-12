@@ -177,6 +177,14 @@ async function init(): Promise<void> {
 
   let cwd = await window.wb.getCwd().catch(() => "");
 
+  // Default address-bar visibility for app panels — a roaming pref set in
+  // Settings → Appearance. New app slots inherit it; the per-panel header
+  // toggle overrides. Settings dispatches an event so changes apply live.
+  const yoPrefs = (window as unknown as { yo?: { getPreference?: (k: string, d?: unknown) => Promise<unknown> } }).yo;
+  let appUrlBarShow = (await yoPrefs?.getPreference?.("showAppUrlBar", true)) !== false;
+  const urlBarHiddenDefault = (): boolean => !appUrlBarShow;
+  document.addEventListener("glyphh:app-urlbar-default", (e) => { appUrlBarShow = !!(e as CustomEvent).detail; });
+
   // ── Workdir bar — mirrors agent.ts ──
   const workdirBtn = document.getElementById("code-workdir-btn") as HTMLButtonElement | null;
   const workdirName = document.getElementById("code-workdir-name");
@@ -370,7 +378,7 @@ async function init(): Promise<void> {
       const slots: Slot[] = [];
       for (const v of (savedRail.views || []).slice(0, 2)) {
         if (typeof v === "object" && v !== null && v.view === "app" && v.slug) {
-          slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky });
+          slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
         } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan") {
           slots.push(makeSlot(v));
         }
@@ -993,7 +1001,7 @@ async function init(): Promise<void> {
       } else apply();
       return;
     }
-    const slot: AppSlot = { id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url, glyphh: app.glyphh };
+    const slot: AppSlot = { id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url, glyphh: app.glyphh, urlBarHidden: urlBarHiddenDefault() };
     placeSlot(slot);
     scheduleAppSync();
   }
@@ -2209,7 +2217,7 @@ async function init(): Promise<void> {
       const colCells = layout.cells.filter((c) => c.col === col).sort((a, b) => a.row - b.row);
       if (!colCells.length) continue;
       const slots: Slot[] = colCells.map((c) => ({
-        id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky,
+        id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault(),
       }));
       const frac = layout.colWidths[col] ?? 1 / cols;
       rails.push({ id: nextRailId++, slots, prefWidth: Math.max(240, Math.round(usable * frac)) });
