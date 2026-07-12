@@ -3394,10 +3394,10 @@ ol.docs-list li::before {
 }
 
 /* Empty-state — a rotating saying (peace/love/object) over a muted how-to.
-   Sized to sit quietly with the rest of the page, not shout at default. */
+   Left-aligned and tucked just under the toolbar for natural spacing. */
 .crud-empty {
-  padding: 34px 20px;
-  text-align: center;
+  padding: 12px 2px 24px;
+  text-align: left;
   color: var(--text-2);
   font-size: 13px;
 }
@@ -3407,12 +3407,11 @@ ol.docs-list li::before {
   color: var(--text-2);
   line-height: 1.55;
   max-width: 440px;
-  margin: 0 auto;
 }
 .crud-empty-hint {
   font-size: 12px;
   color: var(--text-3);
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .crud-card {
