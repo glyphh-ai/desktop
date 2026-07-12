@@ -3394,9 +3394,11 @@ ol.docs-list li::before {
 }
 
 /* Empty-state — a rotating saying (peace/love/object) over a muted how-to.
-   Left-aligned and tucked just under the toolbar for natural spacing. */
+   Left-aligned and pulled tight under the toolbar (its 16px margin already
+   supplies the gap — no extra top padding). */
 .crud-empty {
-  padding: 12px 2px 24px;
+  margin-top: -4px;
+  padding: 0 2px 24px;
   text-align: left;
   color: var(--text-2);
   font-size: 13px;
@@ -11371,7 +11373,11 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
   justify-content: center;
   padding: 0;
   width: 24px;
+  /* Just a + sign — no pill border (that read as an empty circle). */
+  border: none;
+  color: var(--text-2);
 }
+.code-plus-chip:hover { color: var(--text); border-color: transparent; }
 
 /* Drag-over target state for the whole composer. */
 .code-composer.dropping { outline: 1px dashed var(--text-3); outline-offset: -6px; border-radius: 12px; }
@@ -11388,7 +11394,10 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
 
 .code-composer {
   width: 100%;
-  max-width: 780px;
+  /* Mirror the thread EXACTLY: 780px content + 44px gutters = 868px. The
+     gutters never collapse (so the input keeps its padding when the pane is
+     narrow), and the 780px content lines up with the thread above. */
+  max-width: 868px;
   margin: 0 auto;
   padding: 4px 44px 18px;
   box-sizing: border-box;
