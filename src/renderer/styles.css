@@ -9831,10 +9831,58 @@ select.settings-input {
   position: fixed;
   pointer-events: auto;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
-.ws-app-holder webview { width: 100%; height: 100%; border: none; }
+.ws-app-holder webview { flex: 1 1 auto; min-height: 0; width: 100%; border: none; }
+/* Per-panel browser chrome — back/fwd/reload + address bar + hide toggle. */
+.ws-app-chrome {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 6px;
+  background: var(--ws-bg-rail, var(--surface-2));
+  border-bottom: 1px solid var(--ws-line, var(--border));
+}
+.ws-app-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0;
+}
+.ws-app-nav svg { width: 15px; height: 15px; }
+.ws-app-nav:hover { background: var(--hover); color: var(--text); }
+.ws-app-nav[disabled] { opacity: 0.35; cursor: default; }
+.ws-app-nav[disabled]:hover { background: none; color: var(--text-2); }
+.ws-app-urlbar {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.ws-app-urlbar:focus { border-color: var(--accent); }
+.ws-app-urltoggle { margin-left: auto; }
+.ws-app-holder.urlbar-hidden .ws-app-urlbar,
+.ws-app-holder.urlbar-hidden .ws-app-nav:not(.ws-app-urltoggle) { display: none; }
+.ws-app-holder.urlbar-hidden .ws-app-chrome { height: 26px; }
 /* Slide in left→right; out right→left. */
 .ws-app-holder.entering { transform: translateX(-26px); opacity: 0; }
 .ws-app-holder.leaving { transform: translateX(-40px); opacity: 0; }

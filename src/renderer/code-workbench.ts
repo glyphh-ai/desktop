@@ -751,7 +751,16 @@ async function init(): Promise<void> {
     scheduleAppSync();
   }
 
-  type WebviewEl = HTMLElement & { getWebContentsId?: () => number };
+  type WebviewEl = HTMLElement & {
+    getWebContentsId?: () => number;
+    loadURL?: (url: string) => void;
+    reload?: () => void;
+    goBack?: () => void;
+    goForward?: () => void;
+    canGoBack?: () => boolean;
+    canGoForward?: () => boolean;
+    getURL?: () => string;
+  };
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
   let appLayer: HTMLDivElement | null = null;
@@ -769,9 +778,27 @@ async function init(): Promise<void> {
     return rails.flatMap((r) => r.slots).filter((s): s is AppSlot => s.view === "app");
   }
 
+  // Normalize a url-bar entry: pass http(s) through; localhost/IP/host.tld → a
+  // URL; anything else → a Google search. (Mirrors browser.html's normalizeUrl.)
+  function normalizeAppUrl(input: string): string {
+    const s = input.trim();
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/|$)/i.test(s)) return `http://${s}`;
+    if (/^[^\s.]+\.[^\s]+$/.test(s)) return `https://${s}`;
+    return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
+  }
+  const NAV_SVG = {
+    back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+    forward: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+    reload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
+    toggle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>`,
+  };
+
   function mountAppView(slot: AppSlot): AppView {
     const holder = document.createElement("div");
     holder.className = "ws-app-holder entering";
+
     const webview = document.createElement("webview") as WebviewEl;
     webview.setAttribute("partition", "persist:yo");
     webview.setAttribute("allowpopups", "true");
@@ -785,6 +812,62 @@ async function init(): Promise<void> {
         (window as unknown as { yo?: { wbLog?: (s: string) => void } }).yo?.wbLog?.(m);
       }
     });
+
+    // Browser chrome: back / fwd / reload + address bar + hide toggle. It lives
+    // inside the holder (which persists across renderRails) so it stays wired to
+    // the webview it drives.
+    const chrome = document.createElement("div");
+    chrome.className = "ws-app-chrome";
+    const navBtn = (svg: string, title: string, extra = ""): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ws-app-nav" + (extra ? ` ${extra}` : "");
+      b.title = title;
+      b.innerHTML = svg;
+      return b;
+    };
+    const backBtn = navBtn(NAV_SVG.back, "Back");
+    const fwdBtn = navBtn(NAV_SVG.forward, "Forward");
+    const reloadBtn = navBtn(NAV_SVG.reload, "Reload");
+    const urlbar = document.createElement("input");
+    urlbar.className = "ws-app-urlbar";
+    urlbar.spellcheck = false;
+    urlbar.placeholder = "Enter a URL or search";
+    const toggleBtn = navBtn(NAV_SVG.toggle, "Hide address bar", "ws-app-urltoggle");
+    chrome.append(backBtn, fwdBtn, reloadBtn, urlbar, toggleBtn);
+
+    const updateNav = (): void => {
+      backBtn.toggleAttribute("disabled", !webview.canGoBack?.());
+      fwdBtn.toggleAttribute("disabled", !webview.canGoForward?.());
+    };
+    const setUrl = (u?: string): void => {
+      if (u && u !== "about:blank" && document.activeElement !== urlbar) urlbar.value = u;
+    };
+    webview.addEventListener("did-navigate", (e) => { setUrl((e as unknown as { url?: string }).url); updateNav(); });
+    webview.addEventListener("did-navigate-in-page", (e) => {
+      const ev = e as unknown as { url?: string; isMainFrame?: boolean };
+      if (ev.isMainFrame) setUrl(ev.url);
+      updateNav();
+    });
+    webview.addEventListener("page-title-updated", (e) => {
+      const t = (e as unknown as { title?: string }).title;
+      if (!t) return;
+      slot.name = t;
+      const titleEl = document.querySelector<HTMLElement>(`.ws-rail-slot[data-slot-id="${slot.id}"] .title`);
+      if (titleEl) titleEl.textContent = t;
+    });
+    webview.addEventListener("did-stop-loading", updateNav);
+    backBtn.addEventListener("click", () => webview.goBack?.());
+    fwdBtn.addEventListener("click", () => webview.goForward?.());
+    reloadBtn.addEventListener("click", () => webview.reload?.());
+    urlbar.addEventListener("focus", () => urlbar.select());
+    urlbar.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key !== "Enter") return;
+      const target = normalizeAppUrl(urlbar.value);
+      if (target) { webview.loadURL?.(target); urlbar.blur(); }
+    });
+    toggleBtn.addEventListener("click", () => holder.classList.toggle("urlbar-hidden"));
+
     if (slot.glyphh) {
       // Installed Glyphh app: attach first (about:blank), then grant its caps
       // against the guest webContents and load the on-disk entry — the exact
@@ -801,8 +884,10 @@ async function init(): Promise<void> {
       }, { once: true });
     } else {
       webview.setAttribute("src", slot.url);
+      urlbar.value = slot.url;
     }
-    holder.appendChild(webview);
+
+    holder.append(chrome, webview);
     ensureAppLayer().appendChild(holder);
     // Slide in (left → right), then settle.
     requestAnimationFrame(() => requestAnimationFrame(() => holder.classList.remove("entering")));
