@@ -11375,8 +11375,8 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
   border: none;
   background: none;
   color: var(--text-2);
-  font-size: 28px;
-  font-weight: 300;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1;
 }
 .code-plus-chip:hover { color: var(--text); }
