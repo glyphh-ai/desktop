@@ -1243,12 +1243,12 @@ function send(): void {
     const w = window as unknown as {
       __initCodeWorkbench?: () => void;
       __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
-      __wbOpenLayout?: (l: { cols: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ slug: string; name: string; url: string; col: number; row: number }> }) => void;
+      __wbOpenLayout?: (l: { cols: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ slug: string; name: string; url: string; col: number; row: number; sticky?: boolean }> }) => void;
     };
     w.__initCodeWorkbench?.();
     const yo = window.yo as unknown as {
       panelAppsList?: () => Promise<Array<{ id: string; slug?: string; name: string; url?: string | null; appArchetype?: string | null }>>;
-      layoutsList?: () => Promise<Array<{ name: string; cols: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number }> }>>;
+      layoutsList?: () => Promise<Array<{ name: string; cols: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; sticky?: boolean }> }>>;
     };
     void (async () => {
       const key = ref.toLowerCase();
@@ -1264,10 +1264,10 @@ function send(): void {
           const k = pid.trim().toLowerCase();
           return apps.find((a) => a.id.toLowerCase() === k || (a.slug || "").toLowerCase() === k);
         };
-        const cells = layout.splits.map((s) => {
+        const cells = layout.splits.map((s): { slug: string; name: string; url: string; col: number; row: number; sticky?: boolean } | null => {
           const a = resolve(s.panelId);
-          return a?.url ? { slug: a.slug || a.id, name: a.name, url: a.url, col: s.col ?? 0, row: s.row ?? 0 } : null;
-        }).filter((c): c is { slug: string; name: string; url: string; col: number; row: number } => c !== null);
+          return a?.url ? { slug: a.slug || a.id, name: a.name, url: a.url, col: s.col ?? 0, row: s.row ?? 0, sticky: s.sticky } : null;
+        }).filter((c): c is { slug: string; name: string; url: string; col: number; row: number; sticky?: boolean } => c !== null);
         if (cells.length) w.__wbOpenLayout?.({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
         return;
       }

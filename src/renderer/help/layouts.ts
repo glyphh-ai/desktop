@@ -15,11 +15,11 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.yo.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
-  const cells: Array<{ slug: string; name: string; url: string; glyphh: boolean; col: number; row: number }> = [];
+  const cells: Array<{ slug: string; name: string; url: string; glyphh: boolean; col: number; row: number; sticky?: boolean }> = [];
   for (const s of layout.splits) {
     const app = resolveApp(s.panelId);
     if (!app?.url) continue;
-    cells.push({ slug: app.id, name: app.name, url: app.url, glyphh: false, col: s.col ?? 0, row: s.row ?? 0 });
+    cells.push({ slug: app.id, name: app.name, url: app.url, glyphh: false, col: s.col ?? 0, row: s.row ?? 0, sticky: !!(s as { sticky?: boolean }).sticky });
   }
   if (!cells.length) return;
   gotoSection("code");   // shows the agent surface + boots the workbench
@@ -126,6 +126,14 @@ interface BuilderCell {
   row: number;
   colSpan: number;
   rowSpan: number;
+  /** The app-switch target: opening an app reuses THIS panel. At most one cell
+   *  per layout is sticky; if none, the workbench falls back to the first. */
+  sticky?: boolean;
+}
+
+/** Mark exactly one cell sticky (or clear it). Enforces single-sticky. */
+function setStickyCell(idx: number, on: boolean): void {
+  builderCells.forEach((c, i) => { c.sticky = on && i === idx; });
 }
 
 let builderCols = 2;
@@ -244,12 +252,16 @@ function renderGridPreview() {
       const cls = ["grid-cell"];
       if (cell.panelId) cls.push("assigned");
       if (i === builderSelected) cls.push("selected");
+      if (cell.sticky) cls.push("sticky");
       let label = cell.panelId ? panelLabel(cell.panelId) : "\u2014";
       if (cell.panelId?.startsWith("agent:")) label = cell.panelId.slice(6);
       else if (cell.panelId === "agents-tabbed") label = "Agents (tabbed)";
+      const pin = cell.sticky
+        ? `<span class="grid-cell-sticky" title="Sticky \u2014 apps open here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.7-6.8a2 2 0 0 0-1-1.3L15 8V4h-6v4l-1.3.9a2 2 0 0 0-1 1.3z"/></svg></span>`
+        : "";
       return `<div class="${cls.join(" ")}" data-index="${i}"
         style="grid-column: ${cell.col + 1} / span ${cell.colSpan}; grid-row: ${cell.row + 1} / span ${cell.rowSpan}">
-        ${label}
+        ${pin}${label}
       </div>`;
     })
     .join("");
@@ -294,12 +306,21 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
   picker.className = "cell-panel-picker";
   picker.style.left = `${rect.left}px`;
 
+  const isSticky = !!builderCells[cellIndex].sticky;
+  // The sticky toggle only makes sense once a panel holds an app (empty cells
+  // aren't rendered as workbench slots, so they can't be the app-switch target).
+  const stickyBtn = builderCells[cellIndex].panelId
+    ? `<button type="button" class="cell-panel-sticky${isSticky ? " on" : ""}" title="Apps you open land in this panel">`
+      + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.7-6.8a2 2 0 0 0-1-1.3L15 8V4h-6v4l-1.3.9a2 2 0 0 0-1 1.3z"/></svg>`
+      + `<span>${isSticky ? "Sticky app panel" : "Make sticky app panel"}</span></button>`
+    : "";
   picker.innerHTML = [
     `<input class="cell-panel-search" placeholder="Search…" autocomplete="off" spellcheck="false" />`,
     `<div class="cell-panel-options">`,
     `<div class="cell-panel-option empty" data-id="">Empty</div>`,
     ...options.map((o) => `<div class="cell-panel-option" data-id="${o.id}">${o.label}</div>`),
     `</div>`,
+    stickyBtn,
   ].join("");
 
   document.body.appendChild(picker);
@@ -344,6 +365,14 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
       picker.remove();
       renderGridPreview();
     });
+  });
+
+  picker.querySelector(".cell-panel-sticky")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    setStickyCell(cellIndex, !builderCells[cellIndex].sticky);
+    picker.remove();
+    document.removeEventListener("click", closePicker);
+    renderGridPreview();
   });
 
   setTimeout(() => document.addEventListener("click", closePicker), 0);
@@ -433,6 +462,7 @@ async function editLayout(name: string) {
         cell.panelId = s.panelId;
         cell.colSpan = s.colSpan ?? 1;
         cell.rowSpan = s.rowSpan ?? 1;
+        cell.sticky = !!(s as { sticky?: boolean }).sticky;
       }
     }
     // Drop the freshly-initialized 1×1 cells that a merged cell's span now

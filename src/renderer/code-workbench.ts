@@ -105,6 +105,9 @@ interface AppSlot {
   /** Runtime: the browser chrome (address bar row) is collapsed. Toggled from
    *  the panel header, applied to the overlay holder. */
   urlBarHidden?: boolean;
+  /** The app-switch target: opening an app reuses THIS panel. Set when a
+   *  layout designates a sticky cell; at most one app slot is sticky. */
+  sticky?: boolean;
 }
 type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AppSlot;
 
@@ -321,7 +324,7 @@ async function init(): Promise<void> {
   // Persists the toggleable views' positions only (Files/Terminal/Diff/Preview).
   // Monaco is spawned on demand by clicking a file in the tree — its tabs are
   // runtime state and would feel surprising to restore.
-  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean };
+  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; views: SavedView[] }[] };
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   function saveLayout(): void {
@@ -344,7 +347,7 @@ async function init(): Promise<void> {
           topSlotHeight: r.slots.length === 2 ? topHeightByIdx.get(i) : undefined,
           views: r.slots.filter((s) => s.view !== "monaco").map((s): SavedView =>
             s.view === "app"
-              ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh }
+              ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh, sticky: s.sticky }
               : s.view),
         })).filter((r) => r.views.length > 0),
       };
@@ -367,7 +370,7 @@ async function init(): Promise<void> {
       const slots: Slot[] = [];
       for (const v of (savedRail.views || []).slice(0, 2)) {
         if (typeof v === "object" && v !== null && v.view === "app" && v.slug) {
-          slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh });
+          slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky });
         } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan") {
           slots.push(makeSlot(v));
         }
@@ -970,16 +973,16 @@ async function init(): Promise<void> {
   }
 
   interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
-  interface WbLayoutCell extends WbAppRef { col: number; row: number }
+  interface WbLayoutCell extends WbAppRef { col: number; row: number; sticky?: boolean }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 
-  /** Open an app in the workbench. Default = "the switch": reuse the first
-   *  app slot (slide the old app out right-to-left, the new one in) so one
-   *  panel swaps apps; newPanel forces an additional slot (layouts). */
+  /** Open an app in the workbench. Default = "the switch": reuse the sticky app
+   *  slot (the one a layout designated), else the first — slide the old app out
+   *  and the new one in, so one panel swaps apps. newPanel forces a new slot. */
   function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean } = {}): void {
     const existing = appSlots().find((s) => s.slug === app.slug);
     if (existing) { focusAppSlot(existing.id); return; }
-    const target = opts.newPanel ? undefined : appSlots()[0];
+    const target = opts.newPanel ? undefined : (appSlots().find((s) => s.sticky) ?? appSlots()[0]);
     if (target) {
       const view = appViews.get(target.id);
       const apply = (): void => {
@@ -1033,7 +1036,7 @@ async function init(): Promise<void> {
     if (switcherEl) { closeSwitcher(); return; }
 
     type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; execPath?: string | null; appArchetype?: string | null };
-    type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }> };
+    type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
     type CcYo = {
       panelAppsList?: () => Promise<PanelAppRow[]>;
       layoutsList?: () => Promise<LayoutRow[]>;
@@ -1137,9 +1140,9 @@ async function init(): Promise<void> {
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
     };
     const openLayout = (layout: LayoutRow): void => {
-      const cells = layout.splits.map((c) => {
+      const cells = layout.splits.map((c): WbLayoutCell | null => {
         const app = resolveCell(c.panelId);
-        return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0 } : null;
+        return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky } : null;
       }).filter((c): c is WbLayoutCell => c !== null);
       if (cells.length) openLayoutInWorkbench({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
     };
@@ -2213,7 +2216,7 @@ async function init(): Promise<void> {
       const colCells = layout.cells.filter((c) => c.col === col).sort((a, b) => a.row - b.row);
       if (!colCells.length) continue;
       const slots: Slot[] = colCells.map((c) => ({
-        id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh,
+        id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky,
       }));
       const frac = layout.colWidths[col] ?? 1 / cols;
       rails.push({ id: nextRailId++, slots, prefWidth: Math.max(240, Math.round(usable * frac)) });

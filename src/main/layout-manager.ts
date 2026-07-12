@@ -22,7 +22,7 @@ interface ServerLayout {
   name: string;
   cols: number;
   rows: number;
-  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }>;
+  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>;
   folderMode: "single" | "multi";
 }
 
@@ -34,6 +34,8 @@ export interface GridCell {
   row: number;      // 0-based row
   colSpan: number;
   rowSpan: number;
+  /** At most one cell per layout: the app-switch target ("sticky" panel). */
+  sticky?: boolean;
 }
 
 /** Folder-binding mode for layouts that contain any folder-bound app
@@ -373,7 +375,7 @@ export class LayoutManager {
       name: grid.name,
       cols: grid.cols,
       rows: grid.rows,
-      cells: grid.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan })),
+      cells: grid.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky })),
       folderMode: grid.folderMode ?? "single",
     };
     const id = this.serverIds.get(grid.name);

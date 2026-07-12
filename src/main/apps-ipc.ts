@@ -319,7 +319,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       rows: l.rows,
       colWidths: l.colWidths,
       rowHeights: l.rowHeights,
-      splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan })),
+      splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky })),
     }))
   );
   ipcMain.handle("layouts-save", (_e, name: string, panelIds: string[]) => {
@@ -346,7 +346,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }>; folderMode?: "single" | "multi" }) => {
+  ipcMain.handle("layouts-save-grid", (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi" }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);
