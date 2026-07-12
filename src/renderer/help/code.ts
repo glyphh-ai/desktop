@@ -1222,6 +1222,61 @@ function send(): void {
       .then(() => { void saveStore(); renderHistory(); renderThread(); });
     return;
   }
+  // `.drip <effect>` → play a drip effect (server-backed engine). Not the agent.
+  const drip = /^\.drip(?:\s+(.+))?$/is.exec(text);
+  if (drip) {
+    ta.value = "";
+    autoGrow(ta);
+    void (window.yo as unknown as { dripsPreview?: (r: string) => Promise<string> })
+      .dripsPreview?.((drip[1] || "fireworks").trim());
+    return;
+  }
+  // `.dip <app-or-layout>` → open it in the workbench (app first, then layout).
+  // Routes through the workbench hooks — NOT execCommand, which drives the
+  // retired OS-window surface and never touches the visible workbench.
+  const dip = /^\.dip\s+(.+)$/is.exec(text);
+  if (dip) {
+    const ref = dip[1].trim();
+    ta.value = "";
+    autoGrow(ta);
+    gotoSection("code");
+    const w = window as unknown as {
+      __initCodeWorkbench?: () => void;
+      __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
+      __wbOpenLayout?: (l: { cols: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ slug: string; name: string; url: string; col: number; row: number }> }) => void;
+    };
+    w.__initCodeWorkbench?.();
+    const yo = window.yo as unknown as {
+      panelAppsList?: () => Promise<Array<{ id: string; slug?: string; name: string; url?: string | null; appArchetype?: string | null }>>;
+      layoutsList?: () => Promise<Array<{ name: string; cols: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number }> }>>;
+    };
+    void (async () => {
+      const key = ref.toLowerCase();
+      const [apps, layouts] = await Promise.all([yo.panelAppsList?.() ?? [], yo.layoutsList?.() ?? []]);
+      const app = apps.find((a) => (a.slug || "").toLowerCase() === key || a.id.toLowerCase() === key);
+      if (app && (app.url || app.appArchetype === "glyphh-app")) {
+        w.__wbOpenApp?.({ slug: app.slug || app.id, name: app.name, url: app.url || "", glyphh: app.appArchetype === "glyphh-app" });
+        return;
+      }
+      const layout = layouts.find((l) => l.name.toLowerCase() === key);
+      if (layout) {
+        const resolve = (pid: string): typeof apps[number] | undefined => {
+          const k = pid.trim().toLowerCase();
+          return apps.find((a) => a.id.toLowerCase() === k || (a.slug || "").toLowerCase() === k);
+        };
+        const cells = layout.splits.map((s) => {
+          const a = resolve(s.panelId);
+          return a?.url ? { slug: a.slug || a.id, name: a.name, url: a.url, col: s.col ?? 0, row: s.row ?? 0 } : null;
+        }).filter((c): c is { slug: string; name: string; url: string; col: number; row: number } => c !== null);
+        if (cells.length) w.__wbOpenLayout?.({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
+        return;
+      }
+      if (!current()) newChat();
+      current()!.messages.push({ role: "assistant", text: `⚠ .dip: no app or layout named "${ref}".`, at: Date.now() });
+      void saveStore(); renderHistory(); renderThread();
+    })();
+    return;
+  }
   if (text.startsWith(".") && text.length > 1) {
     if (!current()) newChat();
     const cc = current()!;
