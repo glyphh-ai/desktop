@@ -29,7 +29,7 @@ const CURRENT_KEY = "codeCurrentChat";
 // turns the track into a particle matrix and maxes the reply budget.
 const MODES = [
   { id: "ask", label: "Ask mode", hint: "Every action needs your approval" },
-  { id: "plan", label: "Plan mode", hint: "Read-only — William plans, changes nothing" },
+  { id: "plan", label: "Plan mode", hint: "Read-only — Glyphh plans, changes nothing" },
   { id: "acceptEdits", label: "Accept edits", hint: "File edits auto-approved; commands still ask" },
   { id: "auto", label: "Auto mode", hint: "Workspace actions auto-approved; risky ones ask" },
   { id: "bypass", label: "Bypass permissions", hint: "Everything auto-approved — trusted sessions only" },
@@ -37,8 +37,8 @@ const MODES = [
 // The ⓘ explainer — what each mode ACTUALLY gates (mirrors the enforcement
 // in william-permissions.ts: reads are always free; the mode decides the rest).
 const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
-  ask: "The safest mode. William can read files freely, but every change — file edits, shell commands, and calls to your connected accounts — pops an approval card above the composer before it runs. Nothing happens without your explicit yes.",
-  plan: "Strictly read-only. William can explore the folder, search, and reason, but every edit, command, or account call is refused outright — he tells you what he WOULD do instead. Use it to get a plan or a review you can act on in another mode.",
+  ask: "The safest mode. Glyphh can read files freely, but every change — file edits, shell commands, and calls to your connected accounts — pops an approval card above the composer before it runs. Nothing happens without your explicit yes.",
+  plan: "Strictly read-only. Glyphh can explore the folder, search, and reason, but every edit, command, or account call is refused outright — it tells you what it WOULD do instead. Use it to get a plan or a review you can act on in another mode.",
   acceptEdits: "File edits inside the working folder run without asking, so refactors flow uninterrupted. Everything else — shell commands, and anything that leaves your machine (connected-account calls, network) — still stops for approval.",
   auto: "Routine work runs unattended: edits, shell commands, and connected-account calls are auto-approved. Only actions flagged dangerous — destructive commands (rm -rf, sudo, force-push) or writes escaping the working folder — still stop and ask.",
   bypass: "No gates at all: every action runs without asking, including dangerous commands and writes outside the working folder. Only for sessions you fully trust — prefer Auto mode for everyday unattended runs.",
@@ -48,7 +48,7 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
 // never took an effort param); the williamEffort preference still exists for
 // the slicer's escalation budget but is no longer surfaced here.
 let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }> = [
-  { id: "default", name: "Default", description: "The standard William agent loop.", builtIn: true },
+  { id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true },
 ];
 let loopsCanBuild = false;
 let williamLoop = "default";
@@ -331,7 +331,7 @@ function showModeInfoModal(): void {
     <div class="confirm-box mode-info-box">
       <div class="confirm-head"><h3>Permission modes</h3></div>
       <div class="confirm-body">
-        <p style="margin:0 0 2px;">Reading files is always allowed — the mode decides what William may DO. Shift+Tab cycles modes from the composer.</p>
+        <p style="margin:0 0 2px;">Reading files is always allowed — the mode decides what Glyphh may DO. Shift+Tab cycles modes from the composer.</p>
         ${entries}
       </div>
       <div class="confirm-foot"><button class="action-btn primary" type="button">Got it</button></div>
@@ -1131,7 +1131,7 @@ function wireComposerAttachments(): void {
       mkItem("Attach files…", "Images and documents ride the next message", () => {
         void window.yo.williamPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
-      mkItem("Add folder…", "Give William read access to another directory", () => {
+      mkItem("Add folder…", "Give Glyphh read access to another directory", () => {
         void window.yo.williamPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
     );
@@ -1271,7 +1271,7 @@ function send(): void {
           return launch(true);
         }
         if (msg.includes("NO_WORKDIR")) {
-          finishRun("⚠ Pick a working folder to start — William works inside the folder you choose (folder button at the top of this pane).");
+          finishRun("⚠ Pick a working folder to start — Glyphh works inside the folder you choose (folder button at the top of this pane).");
           return;
         }
         finishRun(`⚠ ${msg}`);
@@ -1281,11 +1281,11 @@ function send(): void {
 
 // Stopping isn't failure — it's a choice. All peace, no violence.
 const STOP_LINES = [
-  "You paused the vibe — William set his tools down gently.",
+  "You paused the vibe — Glyphh set its tools down gently.",
   "Peace restored. Everything finished so far stays yours.",
   "The loop rests — happy to pick this back up whenever.",
-  "Gently stopped. William tucked the work away, mid-glyph.",
-  "You called it — William bowed out with grace.",
+  "Gently stopped. Glyphh tucked the work away, mid-glyph.",
+  "You called it — Glyphh bowed out with grace.",
   "Stillness. The trail so far is saved.",
 ];
 
@@ -1388,7 +1388,7 @@ function paintAskDock(): void {
 
   // Agent question — options as one-click answers plus a custom input.
   const q = item.questions[item.step];
-  dock.appendChild(dockHead("William asks", "ask", item));
+  dock.appendChild(dockHead("Glyphh asks", "ask", item));
   const title = document.createElement("div");
   title.className = "cad-title";
   title.textContent = q.question;
@@ -1433,7 +1433,7 @@ function paintAskDock(): void {
   skip.className = "cad-skip";
   skip.type = "button";
   skip.textContent = "Skip";
-  skip.title = "Answer nothing — William proceeds on his best judgment";
+  skip.title = "Answer nothing — Glyphh proceeds on its best judgment";
   skip.addEventListener("click", () => answer(""));
   custom.append(inp, sendBtn, skip);
   dock.appendChild(custom);
@@ -1445,7 +1445,7 @@ function paintAskDock(): void {
 function initWilliamEvents(): void {
   window.yo.onWilliamSetup?.((d) => {
     if (d.phase === "downloading") {
-      setupMeta = `Downloading ${d.model || "William"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
+      setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
     } else if (d.phase === "manifest") {
       setupMeta = "Fetching model manifest…";
     } else if (d.phase === "building") {

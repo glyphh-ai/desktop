@@ -211,7 +211,7 @@ async function downloadInner(): Promise<string> {
   const model = (sel !== "auto" && avail.find((m) => m.id === sel)) || pickModel(avail);
   if (!model) {
     const min = Math.min(...models.map((m) => m.minRamGB));
-    throw new Error(`this machine is below William's smallest tier (${min}GB RAM needed) — the hosted tier lands soon`);
+    throw new Error(`this machine is below the smallest on-device model tier (${min}GB RAM needed) — the hosted tier lands soon`);
   }
 
   const dest = join(modelsDir(), model.file);

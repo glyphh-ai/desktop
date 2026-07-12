@@ -133,7 +133,7 @@ function registerPanelAppsIpc(): void {
   // Offline / signed-out falls back to the built-in Default so the composer's
   // loop picker always has something to show.
   ipcMain.handle("loops-list", async () => {
-    const fallback = { loops: [{ id: "default", name: "Default", description: "The standard William agent loop.", builtIn: true }], canBuild: false };
+    const fallback = { loops: [{ id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true }], canBuild: false };
     try {
       const r = await serverGetAuthed<{ loops?: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild?: boolean }>("/api/loops");
       return { ok: true, loops: r.loops?.length ? r.loops : fallback.loops, canBuild: !!r.canBuild };

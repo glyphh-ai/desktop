@@ -156,7 +156,7 @@ async function ensureInner(): Promise<void> {
   if (await healthy()) return; // adopted (external terminal) or our child
   const port = localPort();
   if (port == null) {
-    throw new Error(`William server at ${baseUrl()} is unreachable (remote URL — Glyphh only manages a local one)`);
+    throw new Error(`The local model server at ${baseUrl()} is unreachable (remote URL — Glyphh only manages a local one)`);
   }
   if (managed) { try { managed.kill(); } catch { /* already gone */ } managed = null; }
 
@@ -361,7 +361,7 @@ export async function williamComplete(messages: ChatMessage[], opts: WilliamComp
     }),
     signal: opts.signal,
   });
-  if (!res.ok || !res.body) throw new Error(`William server answered HTTP ${res.status}`);
+  if (!res.ok || !res.body) throw new Error(`The local model server answered HTTP ${res.status}`);
 
   // OpenAI-style SSE: "data: {json}" lines, closed by "data: [DONE]".
   const reader = res.body.getReader();

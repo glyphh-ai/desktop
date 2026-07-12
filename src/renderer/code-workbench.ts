@@ -1333,7 +1333,7 @@ async function init(): Promise<void> {
   async function renderPlanIntoSlot(body: HTMLElement, slot: PlanSlot): Promise<void> {
     body.innerHTML = `
       <div class="ws-plan-timeline hidden">
-        <div class="ws-plan-timeline-title">William — run timeline</div>
+        <div class="ws-plan-timeline-title">Glyphh — run timeline</div>
         <div class="ws-plan-timeline-rows"></div>
       </div>
       <div class="ws-plan-status">
@@ -1548,7 +1548,7 @@ async function init(): Promise<void> {
     }
 
     // Initial paint: inline build preview wins; else the persisted URL.
-    if (slot.html) loadHtml(slot.html, slot.htmlLabel || "William build");
+    if (slot.html) loadHtml(slot.html, slot.htmlLabel || "Glyphh build");
     else if (slot.url) load(normalizePreviewUrl(slot.url));
 
     function navigate(): void {

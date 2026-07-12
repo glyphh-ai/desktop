@@ -58,7 +58,7 @@ export async function pickAttachments(mode?: "files" | "folder"): Promise<Attach
     : mode === "folder" ? ["openDirectory", "multiSelections"]
     : ["openFile", "openDirectory", "multiSelections"];
   const r = await dialog.showOpenDialog({
-    title: mode === "folder" ? "Add folder — William can read it" : "Attach to William",
+    title: mode === "folder" ? "Add folder — Glyphh can read it" : "Attach to Glyphh",
     buttonLabel: mode === "folder" ? "Add folder" : "Attach",
     properties,
   });

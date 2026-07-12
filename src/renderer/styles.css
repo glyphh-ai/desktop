@@ -11376,10 +11376,9 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
   resize: none;
   min-height: 40px;
   max-height: 220px;
-  /* Symmetric text insets — the left once held an attach icon; with it gone
-     the text sits the same distance from both edges (the right side also
-     clears the in-input send button). */
-  padding: 10px 44px;
+  /* Text insets: normal on the left (the attach icon that once lived there
+     is gone), 44px on the right to clear the in-input send button. */
+  padding: 10px 44px 10px 14px;
   border: 1px solid var(--border-2);
   border-radius: 12px;
   background: var(--surface);

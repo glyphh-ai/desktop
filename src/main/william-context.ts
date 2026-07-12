@@ -51,7 +51,7 @@ const COMPACT_AT = 0.6;
 const TAIL_KEEP = 6;
 
 const WILLIAM_SYSTEM =
-  "You are William, Glyphh's local coding agent — warm, precise, and direct. " +
+  "You are Glyphh, a local coding agent — warm, precise, and direct. " +
   "Answer concretely; when writing code, write complete runnable code.";
 const PLAN_ADDENDUM =
   " PLAN MODE: reply with a concise numbered plan of what you would build or change — " +

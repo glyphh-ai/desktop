@@ -74,7 +74,7 @@ export async function shortTermRecallBlock(chatId: string, ask: string): Promise
     .sort((a, b) => a.r.at - b.r.at); // chronological reads better
   if (!scored.length) return "";
   const lines = scored.map(({ r }) => {
-    const who = r.role === "user" ? "User" : "William";
+    const who = r.role === "user" ? "User" : "Glyphh";
     const text = r.text.length > RECALL_SNIPPET_CHARS ? `${r.text.slice(0, RECALL_SNIPPET_CHARS)}…` : r.text;
     return `${who} (earlier): ${text}`;
   });
