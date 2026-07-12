@@ -2,9 +2,38 @@
  * Layouts section — grid builder, layout CRUD.
  */
 
-import { paginate, renderPaginationBar, confirmAction, clearInvalid, closeHelp } from "./shared.js";
+import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { LAYOUTS_EMPTY, emptyStateHtml } from "./empty-sayings.js";
+import { gotoSection } from "./navigation.js";
+
+/** Open a saved layout INTO the workbench (agent pinned left, grid to its
+ *  right) instead of tiling OS windows. Resolves each cell's panel to its
+ *  web app; native/unresolved panels are skipped (they can't run in a
+ *  webview). Switches to the agent surface so the workbench is visible. */
+async function openLayoutInWorkbench(name: string): Promise<void> {
+  await ensureAppNames();
+  const layout = (await window.yo.layoutsList()).find((l) => l.name === name);
+  if (!layout) return;
+  const cells: Array<{ slug: string; name: string; url: string; glyphh: boolean; col: number; row: number }> = [];
+  for (const s of layout.splits) {
+    const app = resolveApp(s.panelId);
+    if (!app?.url) continue;
+    cells.push({ slug: app.id, name: app.name, url: app.url, glyphh: false, col: s.col ?? 0, row: s.row ?? 0 });
+  }
+  if (!cells.length) return;
+  gotoSection("code");   // shows the agent surface + boots the workbench
+  const payload = { cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells };
+  const w = window as unknown as { __wbOpenLayout?: (l: typeof payload) => void };
+  // The workbench init runs on the code section's first load; wait a few
+  // frames for __wbOpenLayout to exist rather than dropping the click.
+  let tries = 0;
+  const go = () => {
+    if (w.__wbOpenLayout) w.__wbOpenLayout(payload);
+    else if (tries++ < 20) requestAnimationFrame(go);
+  };
+  go();
+}
 
 
 let layoutsPage = 0;
@@ -371,12 +400,16 @@ function renderLayoutsList() {
 
     const card = document.createElement("div");
     card.className = "app-card";
+    card.style.position = "relative";
     card.innerHTML = `
+      <button class="layout-card-edit" title="Edit layout" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--text-3);cursor:pointer;font-size:12px;padding:2px;line-height:1;">✎</button>
       <div class="layout-card-icons">${iconsHtml}</div>
       <div class="app-card-name"></div>
       <div class="app-card-id">${uniqueIds.length} app${uniqueIds.length === 1 ? "" : "s"}</div>`;
     card.querySelector(".app-card-name")!.textContent = layout.name;
-    card.addEventListener("click", () => editLayout(layout.name));
+    // Click opens the layout in the workbench; the ✎ edits it.
+    card.querySelector(".layout-card-edit")!.addEventListener("click", (e) => { e.stopPropagation(); void editLayout(layout.name); });
+    card.addEventListener("click", () => void openLayoutInWorkbench(layout.name));
     grid.appendChild(card);
   }
   layoutsList.appendChild(grid);
@@ -527,8 +560,7 @@ export function initLayoutsEvents() {
   // Open the layout being edited — real OS windows tiled across the display.
   document.getElementById("layout-open-btn")!.addEventListener("click", () => {
     if (!editingLayoutName) return;
-    void window.yo.layoutsOpen(editingLayoutName);
-    closeHelp();
+    void openLayoutInWorkbench(editingLayoutName);
   });
   layoutSearchInput.addEventListener("input", () => { layoutsPage = 0; renderLayoutsList(); });
 

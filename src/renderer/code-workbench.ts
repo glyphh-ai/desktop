@@ -847,6 +847,8 @@ async function init(): Promise<void> {
   }
 
   interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
+  interface WbLayoutCell extends WbAppRef { col: number; row: number }
+  interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 
   /** Open an app in the workbench. Default = "the switch": reuse the first
    *  app slot (slide the old app out right-to-left, the new one in) so one
@@ -1868,9 +1870,51 @@ async function init(): Promise<void> {
   // App bridges — the OS-window replacement surface. main (william tools,
   // relay panels_*, the Apps/Layouts pages' IPC) drives these through
   // help/code.ts, which also flips the UI to the Code section first.
+  // ── Open a saved layout as a workbench grid (agent stays pinned left) ──
+  // The workbench is already a row of columns (rails) of stacked slots, so a
+  // layout maps straight in: each grid COLUMN becomes a rail (width from
+  // colWidths), and the cells in that column (ordered by row) become the
+  // rail's stacked slots (heights from rowHeights). Spanning cells land in
+  // their start column — the rail model has no true cell-merge, so a first
+  // faithful cut treats every cell as a single-column slot.
+  function openLayoutInWorkbench(layout: WbGridLayout): void {
+    rails.length = 0;
+    maximizedSlotId = null;
+    const cols = Math.max(1, layout.cols);
+    const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
+    const railCols: number[] = [];
+    for (let col = 0; col < cols; col++) {
+      const colCells = layout.cells.filter((c) => c.col === col).sort((a, b) => a.row - b.row);
+      if (!colCells.length) continue;
+      const slots: Slot[] = colCells.map((c) => ({
+        id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh,
+      }));
+      const frac = layout.colWidths[col] ?? 1 / cols;
+      rails.push({ id: nextRailId++, slots, prefWidth: Math.max(240, Math.round(usable * frac)) });
+      railCols.push(col);
+    }
+    renderRails();
+    // Proportion the stacked slot heights per rowHeights (post-render so the
+    // slot elements exist).
+    requestAnimationFrame(() => {
+      const railEls = document.querySelectorAll<HTMLElement>("#code-wb-rails .ws-right-rail");
+      rails.forEach((rail, ri) => {
+        const el = railEls[ri];
+        if (!el) return;
+        const colCells = layout.cells.filter((c) => c.col === railCols[ri]).sort((a, b) => a.row - b.row);
+        el.querySelectorAll<HTMLElement>(".ws-rail-slot").forEach((slotEl, si) => {
+          slotEl.style.flex = `${layout.rowHeights[colCells[si]?.row ?? si] ?? 1 / rail.slots.length} 1 0`;
+        });
+      });
+      scheduleAppSync();
+    });
+    saveLayout();
+  }
+
   const wbApp = window as unknown as {
     __wbOpenApp?: (app: WbAppRef, newPanel?: boolean) => void;
     __wbOpenApps?: (apps: WbAppRef[]) => void;
+    __wbOpenLayout?: (layout: WbGridLayout) => void;
     __wbListApps?: () => Array<{ slug: string; name: string }>;
     __wbCloseApp?: (slug: string) => boolean;
     __wbFocusApp?: (slug: string) => boolean;
@@ -1880,6 +1924,7 @@ async function init(): Promise<void> {
   wbApp.__wbOpenApps = (apps) => {
     for (const a of apps) openAppInWorkbench(a, { newPanel: true });
   };
+  wbApp.__wbOpenLayout = (layout) => openLayoutInWorkbench(layout);
   wbApp.__wbListApps = () => appSlots().map((s) => ({ slug: s.slug, name: s.name }));
   wbApp.__wbCloseApp = (slug) => closeWbApp(slug);
   wbApp.__wbFocusApp = (slug) => {
