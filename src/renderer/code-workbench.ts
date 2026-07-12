@@ -102,6 +102,9 @@ interface AppSlot {
    *  entry at mount time (glyphh-app:preview-open grants caps + returns it). */
   url: string;
   glyphh?: boolean;
+  /** Runtime: the browser chrome (address bar row) is collapsed. Toggled from
+   *  the panel header, applied to the overlay holder. */
+  urlBarHidden?: boolean;
 }
 type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AppSlot;
 
@@ -666,10 +669,14 @@ async function init(): Promise<void> {
     wrap.dataset.view = slot.view;
     const isMax = (slot.id === maximizedSlotId);
     if (isMax) wrap.classList.add("fullscreen");
+    const urlToggle = slot.view === "app"
+      ? `<button class="ws-icon-btn slot-urltoggle${(slot as AppSlot).urlBarHidden ? "" : " active"}" title="Address bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>`
+      : "";
     wrap.innerHTML = `
       <div class="ws-rail-slot-header" draggable="true" title="Drag to rearrange">
         ${icon}
         <span class="title"></span>
+        ${urlToggle}
         <button class="ws-icon-btn slot-maximize" title="${isMax ? "Restore" : "Maximize"}">
           ${isMax ? RESTORE_SVG : MAXIMIZE_SVG}
         </button>
@@ -690,6 +697,17 @@ async function init(): Promise<void> {
       if (maximizedSlotId === slot.id) maximizedSlotId = null;
       closeSlot(slot.id);
     });
+    // App panels: the header toggle collapses/shows the browser chrome bar
+    // (which lives in the overlay holder, not this rebuilt header).
+    if (slot.view === "app") {
+      wrap.querySelector(".slot-urltoggle")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const s = slot as AppSlot;
+        s.urlBarHidden = !s.urlBarHidden;
+        appViews.get(slot.id)?.holder.classList.toggle("urlbar-hidden", !!s.urlBarHidden);
+        (ev.currentTarget as HTMLElement).classList.toggle("active", !s.urlBarHidden);
+      });
+    }
 
     // ── Drag-and-drop ──
     const header = wrap.querySelector(".ws-rail-slot-header") as HTMLElement;
@@ -760,6 +778,7 @@ async function init(): Promise<void> {
     canGoBack?: () => boolean;
     canGoForward?: () => boolean;
     getURL?: () => string;
+    downloadURL?: (url: string) => void;
   };
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
@@ -792,7 +811,7 @@ async function init(): Promise<void> {
     back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
     forward: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
     reload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
-    toggle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>`,
+    download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
   };
 
   function mountAppView(slot: AppSlot): AppView {
@@ -833,8 +852,8 @@ async function init(): Promise<void> {
     urlbar.className = "ws-app-urlbar";
     urlbar.spellcheck = false;
     urlbar.placeholder = "Enter a URL or search";
-    const toggleBtn = navBtn(NAV_SVG.toggle, "Hide address bar", "ws-app-urltoggle");
-    chrome.append(backBtn, fwdBtn, reloadBtn, urlbar, toggleBtn);
+    const downloadBtn = navBtn(NAV_SVG.download, "Download this page", "ws-app-download");
+    chrome.append(backBtn, fwdBtn, reloadBtn, urlbar, downloadBtn);
 
     const updateNav = (): void => {
       backBtn.toggleAttribute("disabled", !webview.canGoBack?.());
@@ -866,7 +885,10 @@ async function init(): Promise<void> {
       const target = normalizeAppUrl(urlbar.value);
       if (target) { webview.loadURL?.(target); urlbar.blur(); }
     });
-    toggleBtn.addEventListener("click", () => holder.classList.toggle("urlbar-hidden"));
+    downloadBtn.addEventListener("click", () => {
+      const u = webview.getURL?.() || slot.url;
+      if (u) webview.downloadURL?.(u);
+    });
 
     if (slot.glyphh) {
       // Installed Glyphh app: attach first (about:blank), then grant its caps
@@ -888,6 +910,7 @@ async function init(): Promise<void> {
     }
 
     holder.append(chrome, webview);
+    if (slot.urlBarHidden) holder.classList.add("urlbar-hidden");
     ensureAppLayer().appendChild(holder);
     // Slide in (left → right), then settle.
     requestAnimationFrame(() => requestAnimationFrame(() => holder.classList.remove("entering")));

@@ -9879,10 +9879,10 @@ select.settings-input {
   outline: none;
 }
 .ws-app-urlbar:focus { border-color: var(--accent); }
-.ws-app-urltoggle { margin-left: auto; }
-.ws-app-holder.urlbar-hidden .ws-app-urlbar,
-.ws-app-holder.urlbar-hidden .ws-app-nav:not(.ws-app-urltoggle) { display: none; }
-.ws-app-holder.urlbar-hidden .ws-app-chrome { height: 26px; }
+.ws-app-download { margin-left: auto; }
+/* Header toggle collapses the whole chrome bar (the toggle itself lives in the
+   panel header, so it stays reachable). */
+.ws-app-holder.urlbar-hidden .ws-app-chrome { display: none; }
 /* Slide in left→right; out right→left. */
 .ws-app-holder.entering { transform: translateX(-26px); opacity: 0; }
 .ws-app-holder.leaving { transform: translateX(-40px); opacity: 0; }
@@ -10273,6 +10273,17 @@ select.settings-input {
 }
 .ws-rail-slot-header .slot-maximize:hover { background: var(--hover); color: var(--ws-text); }
 .ws-rail-slot-header .slot-maximize svg { width: 12px; height: 12px; }
+/* App-panel address-bar toggle — lives beside Expand; accent when the bar shows. */
+.ws-rail-slot-header .slot-urltoggle {
+  background: transparent; border: none; padding: 0;
+  width: 24px; height: 24px; border-radius: 4px;
+  color: var(--ws-text-faint); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.10s, color 0.10s;
+}
+.ws-rail-slot-header .slot-urltoggle:hover { background: var(--hover); color: var(--ws-text); }
+.ws-rail-slot-header .slot-urltoggle.active { color: var(--accent); }
+.ws-rail-slot-header .slot-urltoggle svg { width: 13px; height: 13px; }
 
 /* Fullscreen state: collapse everything except the maximized slot. The
    maximized slot's rail expands to fill the container, and inside that
