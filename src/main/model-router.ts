@@ -235,9 +235,9 @@ function blockContentToString(content: unknown): string {
   return content == null ? "" : JSON.stringify(content);
 }
 
-function toOpenAiMessages(body: MessagesBody): OpenAiMessage[] {
+function toOpenAiMessages(body: MessagesBody, systemSuffix = ""): OpenAiMessage[] {
   const out: OpenAiMessage[] = [];
-  const sys = systemText(body.system);
+  const sys = systemText(body.system) + systemSuffix;
   if (sys) out.push({ role: "system", content: sys });
 
   for (const m of body.messages ?? []) {
@@ -403,17 +403,48 @@ interface LocalResult {
   outputTokens: number;
 }
 
+// Local models over-eagerly tool-call: a small model reads "tools present" as
+// "must use a tool," firing a search on a bare "hi" or "what model are you?".
+// Two harness guards (the real fix is the loop rewrite — see rotors epic):
+//   1) a system nudge that tools are OPTIONAL — answer directly when able;
+//   2) drop tools entirely on a clearly-conversational opening turn, so the
+//      model literally can't tool-call. Default is to KEEP tools (safe) —
+//      only a short, plainly-conversational ask with no tool loop in the tail
+//      loses them.
+const TOOLS_OPTIONAL_NUDGE =
+  "\n\nTools are optional. If the user is greeting you, asking about you or " +
+  "your capabilities, or anything you can answer from what you already know, " +
+  "reply directly in plain text — do NOT call a tool. Call a tool only when the " +
+  "task genuinely needs external data or an action.";
+
+const CONVERSATIONAL_RE =
+  /^(hi|hey|hello|yo|sup|thanks|thank you|thx|ok|okay|cool|nice|lol|good (morning|afternoon|evening|night)|how are you|how's it going|who are you|what('| a)re you|what model|what are you called|what can you do|what do you do|help)\b/i;
+
+/** Whether THIS turn should be offered tools at all. Mid-task turns (a
+ *  tool_use/tool_result in the recent tail) always keep them; a short,
+ *  plainly-conversational opener does not. Everything else keeps them. */
+function turnNeedsTools(body: MessagesBody): boolean {
+  const msgs = body.messages ?? [];
+  const inToolLoop = msgs.slice(-4).some((m) => Array.isArray(m.content)
+    && m.content.some((b) => b?.type === "tool_use" || b?.type === "tool_result"));
+  if (inToolLoop) return true;
+  const ask = lastUserText(msgs).trim();
+  if (!ask) return true;
+  return !(CONVERSATIONAL_RE.test(ask) && ask.length < 80);
+}
+
 /** One attempt against llama-server. Throws LocalContextOverflowError on
  *  the window-overflow 400 so the caller can squeeze and go again. */
 async function callLocal(body: MessagesBody): Promise<LocalResult> {
   const cost = promptCost(body);
+  const withTools = (body.tools?.length ?? 0) > 0 && turnNeedsTools(body);
   const payload = {
-    messages: toOpenAiMessages(body),
-    tools: (body.tools ?? []).map((t) => ({
+    messages: toOpenAiMessages(body, withTools ? TOOLS_OPTIONAL_NUDGE : ""),
+    tools: withTools ? (body.tools ?? []).map((t) => ({
       type: "function",
       function: { name: t.name, description: t.description ?? "", parameters: t.input_schema ?? { type: "object", additionalProperties: true } },
-    })),
-    tool_choice: (body.tools?.length ? "auto" : "none") as "auto" | "none",
+    })) : [],
+    tool_choice: (withTools ? "auto" : "none") as "auto" | "none",
     temperature: 0.15,
     // The reply must fit what's left of the window after the prompt.
     max_tokens: Math.max(256, Math.min(Number(body.max_tokens) || effortMaxTokens(), 16384, LOCAL_CTX_TOKENS - cost.total - 128)),
