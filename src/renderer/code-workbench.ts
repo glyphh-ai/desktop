@@ -753,6 +753,7 @@ async function init(): Promise<void> {
   type WebviewEl = HTMLElement & { getWebContentsId?: () => number };
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
+  const wbSyncLogged = new Set<number>();   // one-time per-slot sync diagnostic
   let appLayer: HTMLDivElement | null = null;
   let appSyncRaf = 0;
 
@@ -823,6 +824,16 @@ async function init(): Promise<void> {
       const ph = document.querySelector<HTMLElement>(`.ws-app-placeholder[data-app-slot="${slot.id}"]`);
       const rect = ph?.getBoundingClientRect();
       const visible = !!rect && rect.width > 24 && rect.height > 24 && ph!.offsetParent !== null;
+      if (!wbSyncLogged.has(slot.id)) {
+        wbSyncLogged.add(slot.id);
+        let chain = "", node: HTMLElement | null = ph;
+        while (node && node !== document.body) {
+          const r = node.getBoundingClientRect(); const cs = getComputedStyle(node);
+          chain += `${(node.className || node.id || node.tagName).toString().split(" ")[0]}[${Math.round(r.width)}x${Math.round(r.height)} d=${cs.display} z=${cs.zIndex}] < `;
+          node = node.parentElement;
+        }
+        wbdbg(`[wb] sync slot=${slot.slug} ph=${!!ph} rect=${rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}@${Math.round(rect.left)},${Math.round(rect.top)}` : "null"} offParent=${ph && ph.offsetParent ? "yes" : "NULL"} visible=${visible} | ${chain}`);
+      }
       view.holder.style.display = visible ? "" : "none";
       if (visible && rect) {
         view.holder.style.left = `${Math.round(rect.left)}px`;

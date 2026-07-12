@@ -10,7 +10,7 @@
  * the relay's panels_* surface.
  */
 
-import { ipcMain } from "electron";
+import { ipcMain, webContents } from "electron";
 import { cachedServerGet } from "./server-cache.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { normKey, isSubsequence } from "./installed-apps.js";
@@ -81,7 +81,16 @@ function sendWbCmd(cmd: WbCmd): void {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
-  win.webContents.send("wb:app-cmd", cmd);
+  // The workbench UI runs in the home.html PANEL (a BrowserView), NOT the
+  // index.html shell that owns mainWindow.webContents — so wb:app-cmd must go
+  // to the home panel(s), or onWbAppCommand never fires. Fall back to the
+  // shell only if no home panel is up yet.
+  const homeWcs = webContents.getAllWebContents().filter((wc) => {
+    try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
+  });
+  const targets = homeWcs.length ? homeWcs : [win.webContents];
+  console.log(`[wb] dispatch ${cmd.action} → ${targets.length} home panel(s)`);
+  for (const wc of targets) wc.send("wb:app-cmd", cmd);
 }
 
 /** The seeded "Glyphh" system app (archetype 'glyphh-self') — opening it
