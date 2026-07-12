@@ -75,17 +75,13 @@ const LEGACY_FILES = ["william-14b-q4km.gguf"];
 
 type ManifestModel = Omit<WilliamModelEntry, "url"> & { url?: string | null };
 
-/** Merge a server/cache list over the compiled-in registry. Entries whose
- *  file is a retired artifact are dropped (the blob no longer exists — a
- *  pre-cutover cache or a not-yet-deployed server still lists it), and any
- *  compiled-in model missing from the list is appended, so Will and William
- *  are always present no matter what the manifest source still says. */
-function mergeWithDefaults(models: ManifestModel[]): ManifestModel[] {
-  const live: ManifestModel[] = models.filter((m) => !LEGACY_FILES.includes(m.file));
-  for (const d of DEFAULT_MODELS) {
-    if (!live.some((m) => m.id === d.id)) live.push(d);
-  }
-  return live;
+/** THE RULE: there are exactly two model lists — the full list (the server's
+ *  answer for an uncurated org / signed-out user) or the org-scoped list.
+ *  The server's answer is AUTHORITATIVE and is never merged with the
+ *  compiled-in registry. DEFAULT_MODELS exist solely as the bootstrap for a
+ *  client that has never reached the server (fresh install, offline). */
+function dropLegacy(models: ManifestModel[]): ManifestModel[] {
+  return models.filter((m) => !LEGACY_FILES.includes(m.file));
 }
 
 let downloading: Promise<string> | null = null;
@@ -112,20 +108,27 @@ function readManifestFile(): { at: number; models: Array<Omit<WilliamModelEntry,
 }
 
 export function cachedManifest(): Array<Omit<WilliamModelEntry, "url">> {
-  return mergeWithDefaults(readManifestFile().models).map(({ url: _url, ...m }) => m);
+  const { at, models } = readManifestFile();
+  // No manifest ever fetched (at=0, nothing cached) → bootstrap registry.
+  // A fetched manifest — even an EMPTY one (org scoped everything away) —
+  // stands as-is.
+  const list = at === 0 && models.length === 0 ? DEFAULT_MODELS : models;
+  return dropLegacy(list).map(({ url: _url, ...m }) => m);
 }
 
 /** Fresh manifest for the selector: refetch when the cache is empty or
  *  stale (signed-out/offline falls back to whatever the cache holds). */
-export async function refreshManifestIfStale(): Promise<Array<Omit<WilliamModelEntry, "url">>> {
+export async function refreshManifestIfStale(force = false): Promise<Array<Omit<WilliamModelEntry, "url">>> {
   const { at, models } = readManifestFile();
-  if (models.length && Date.now() - at < MANIFEST_STALE_MS) return cachedManifest();
+  if (!force && models.length && Date.now() - at < MANIFEST_STALE_MS) return cachedManifest();
   try {
     const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
-    if (r.models?.length) {
-      const merged = mergeWithDefaults(r.models);
-      saveManifest(merged as WilliamModelEntry[]);
-      return merged.map(({ url: _url, ...m }) => m);
+    if (r.ok && Array.isArray(r.models)) {
+      // Authoritative — saved verbatim, empty included (an org that scoped
+      // every open-weight model away means the client runs none).
+      const list = dropLegacy(r.models);
+      saveManifest(list as WilliamModelEntry[]);
+      return list.map(({ url: _url, ...m }) => m);
     }
   } catch { /* signed out / offline */ }
   return cachedManifest();
@@ -189,18 +192,20 @@ export async function downloadWilliamModel(): Promise<string> {
 
 async function downloadInner(): Promise<string> {
   broadcast({ phase: "manifest" });
-  // Server registry when reachable; compiled-in stock entries otherwise —
-  // the free local tier never requires an account or a connection to exist.
-  // Either way the result is merged over the compiled-in registry so retired
-  // artifacts drop out and both models are always offered.
+  // Server registry when reachable — AUTHORITATIVE, even when empty (an org
+  // that scoped every open-weight model away downloads nothing). Compiled-in
+  // stock entries only when the server can't be reached at all.
   let models: WilliamModelEntry[];
   try {
     const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
-    models = mergeWithDefaults(r.models ?? []) as WilliamModelEntry[];
+    models = (r.ok && Array.isArray(r.models) ? dropLegacy(r.models) : DEFAULT_MODELS) as WilliamModelEntry[];
   } catch {
     models = DEFAULT_MODELS;
   }
   saveManifest(models);
+  if (!models.length) {
+    throw new Error("your organization hasn't enabled any on-device models — an org admin can add them under Configure → Models");
+  }
   const sel = selectedModelId();
   const avail = models.filter((m) => (m.status ?? "available") === "available");
   const model = (sel !== "auto" && avail.find((m) => m.id === sel)) || pickModel(avail);

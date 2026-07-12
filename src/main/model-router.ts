@@ -541,9 +541,10 @@ async function gatewayModels(force = false): Promise<{ models: GatewayModelInfo[
     }>("/api/models/catalog");
     // Escalation targets are the ACTIVE proxied models — a BYOK model with no
     // provider key set is inactive and never shown. The gateway takes a bare
-    // model id (the org catalog key is provider::model); default is a key.
+    // model id (the org catalog key is provider::model). The default is only
+    // what the server says an admin set — never invented from list position.
     const proxied = (r.models ?? []).filter((m) => m.kind === "proxied" && m.model && m.active !== false);
-    const def = proxied.find((m) => m.key === r.default)?.model ?? proxied[0]?.model ?? null;
+    const def = proxied.find((m) => m.key === r.default)?.model ?? null;
     gwCache = {
       at: Date.now(),
       models: proxied.map((m) => ({

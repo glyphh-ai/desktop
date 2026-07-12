@@ -38,7 +38,7 @@ import { stopEmbedServer } from "./william-embeddings";
 import { GLYPHH_APP_SPEC } from "./glyphh-app-spec";
 import { cachedServerGet } from "./server-cache";
 import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
-import { downloadWilliamModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId } from "./william-models";
+import { downloadWilliamModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId, cachedManifest } from "./william-models";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { startModelRouter, stopModelRouter, registerModelRouterIpc, effectiveFrontierModel } from "./model-router";
 
@@ -69,8 +69,6 @@ export function isWilliamRunActive(): boolean {
 // configured base URL points at another machine, we never spawn — reach it
 // or fail with a clear error.
 
-const MODEL_FILE = "qwen2.5-coder-14b-instruct-q4_k_m.gguf";
-
 /** The managed llama-server's context window (`-c` below). The router
  *  budgets every local turn against this — william-context's CTX_TOKENS
  *  mirrors it (kept private there to avoid the module cycle). */
@@ -78,6 +76,21 @@ export const LOCAL_CTX_TOKENS = 32768;
 
 let managed: ChildProcess | null = null;
 let ensuring: Promise<void> | null = null; // single-flight
+
+/** HARD GATE: a managed model that is no longer in the manifest (the org
+ *  scoped it away) is shut down immediately — the list governs live
+ *  processes, not just the picker. Runs after every manifest refresh. */
+export function gateManagedModel(): void {
+  if (!managed || !managedModelPath) return;
+  const files = new Set(cachedManifest().map((m) => m.file));
+  const base = managedModelPath.split("/").pop() || managedModelPath;
+  if (!files.has(base)) {
+    console.warn(`[william] ${base} is no longer org-approved — shutting the local model down`);
+    try { managed.kill(); } catch { /* already gone */ }
+    managed = null;
+    managedModelPath = null;
+  }
+}
 
 /** Port to manage, or null when the base URL isn't this machine. */
 function localPort(): number | null {
@@ -102,24 +115,15 @@ function findServerBin(): string {
   return "llama-server";
 }
 
-/** Model weights for the SELECTED tier: explicit path pref → the selected
- *  manifest entry's local file → dev-checkout fallback (14B). */
+/** Model weights for the SELECTED tier — resolved from the manifest ONLY.
+ *  THE RULE: the manifest (server-scoped, or the bootstrap registry when the
+ *  server has never been reached) is the one list; a file on disk that isn't
+ *  in it never starts. No path prefs, no dev fallbacks. */
 function findModel(): string | null {
-  const pref = String(getPreference("williamModelPath", "")).trim();
-  if (pref && existsSync(pref)) return pref;
   const desired = resolveDesiredModel();
-  if (desired) {
-    const local = localModelPath(desired);
-    if (local) return local;
-    // Selected tier not downloaded yet — the ensure path downloads it.
-    return null;
-  }
-  const candidates = [
-    join(app.getPath("userData"), "models", MODEL_FILE),
-    join(homedir(), "development", "yo", "glyphh-william", "models", MODEL_FILE),
-  ];
-  for (const c of candidates) if (existsSync(c)) return c;
-  return null;
+  if (!desired) return null;
+  // Selected tier not downloaded yet → the ensure path downloads it.
+  return localModelPath(desired);
 }
 
 /** The managed child's model path — a selection change restarts lazily. */
@@ -165,10 +169,7 @@ async function ensureInner(): Promise<void> {
       model = await downloadWilliamModel();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(
-        `${msg}. Manual fallback: put ${MODEL_FILE} in ${join(app.getPath("userData"), "models")} ` +
-        "(or point the williamModelPath preference at it).",
-      );
+      throw new Error(msg);
     }
   }
   const bin = findServerBin();
@@ -304,8 +305,15 @@ export function registerWilliamIpc(): void {
     return saveClipboardImage(p.bytes);
   });
 
+  // The gate needs current truth: re-pull the org-scoped manifest every
+  // 15 minutes and shut down anything that fell off the list.
+  setInterval(() => {
+    void refreshManifestIfStale(true).then(() => gateManagedModel()).catch(() => { /* offline */ });
+  }, 15 * 60_000).unref?.();
+
   ipcMain.handle("william-models-list", async () => {
     const models = await refreshManifestIfStale();
+    gateManagedModel();
     const desired = resolveDesiredModel();
     return {
       selected: selectedModelId(),
