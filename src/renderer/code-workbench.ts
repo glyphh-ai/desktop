@@ -624,7 +624,7 @@ async function init(): Promise<void> {
     return strip;
   }
   function paintSectionToggles(): void {
-    document.querySelectorAll<HTMLButtonElement>(".code-view-btn").forEach((btn) => {
+    document.querySelectorAll<HTMLButtonElement>(".code-view-btn[data-view]").forEach((btn) => {
       const v = btn.dataset.view as ViewKind;
       btn.classList.toggle("active", viewIsOpen(v));
     });
@@ -1780,7 +1780,12 @@ async function init(): Promise<void> {
   }
 
   // ── Section toggle wiring ──
-  document.querySelectorAll<HTMLButtonElement>(".code-view-btn").forEach((btn) => {
+  // Only the real view toggles carry a data-view. The Apps/command button
+  // (#code-apps-btn) shares the .code-view-btn class for styling but has NO
+  // data-view — without this [data-view] guard it fell through to
+  // placeView(undefined) → makeSlot's default "preview" slot, so every launcher
+  // click also spawned a blank preview panel.
+  document.querySelectorAll<HTMLButtonElement>(".code-view-btn[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => {
       // The header toggles cover every view except Monaco (spawned by the
       // Files tree, never toggled directly).
