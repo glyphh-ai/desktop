@@ -101,9 +101,9 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --text:        #f1f1f1;
   --text-bright: #ffffff;
   --text-2:      #c4c4c4;
-  --text-3:      #9a9a9a;
+  --text-3:      #a7a7a7;
   --text-muted:  #828282;
-  --text-faint:  #6a6a6a;
+  --text-faint:  #808080;
   --white:       #ffffff;
   --hover:       #303035;
   --active-bg:   rgba(140, 59, 242, 0.08);
