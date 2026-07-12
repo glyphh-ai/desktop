@@ -8,6 +8,7 @@
 
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { confirmAction } from "./shared.js";
+import { CONNECTIONS_EMPTY, emptyStateHtml } from "./empty-sayings.js";
 import { showAppOverlay, hideAppOverlay } from "../app-overlay.js";
 
 type Conn = Awaited<ReturnType<typeof window.yo.connectionsList>>["connections"][number];
@@ -85,7 +86,7 @@ function renderConnectionsList(): void {
   listEl.innerHTML = "";
   if (items.length === 0 && customItems.length === 0) {
     listEl.innerHTML = connections.length === 0 && visibleCustom.length === 0
-      ? `<div class="crud-empty">No connections yet. Click “+ New” to connect an account.</div>`
+      ? emptyStateHtml(CONNECTIONS_EMPTY, 'No connections yet — click “+ New” to connect an account.')
       : `<div class="crud-empty">No connections match your search.</div>`;
     return;
   }

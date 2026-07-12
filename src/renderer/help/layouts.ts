@@ -4,6 +4,7 @@
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid, closeHelp } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
+import { LAYOUTS_EMPTY, emptyStateHtml } from "./empty-sayings.js";
 
 
 let layoutsPage = 0;
@@ -348,7 +349,7 @@ function renderLayoutsList() {
   layoutsList.innerHTML = "";
 
   if (allLayouts.length === 0) {
-    layoutsList.innerHTML = `<div class="crud-empty">No layouts yet. Click "+ New" to create one.</div>`;
+    layoutsList.innerHTML = emptyStateHtml(LAYOUTS_EMPTY, 'No layouts yet — click "+ New" to create one.');
     return;
   }
   if (filtered.length === 0) {

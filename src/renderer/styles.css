@@ -3393,6 +3393,28 @@ ol.docs-list li::before {
   gap: 4px;
 }
 
+/* Empty-state — a rotating saying (peace/love/object) over a muted how-to.
+   Sized to sit quietly with the rest of the page, not shout at default. */
+.crud-empty {
+  padding: 34px 20px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.crud-empty-saying {
+  font-size: 13.5px;
+  font-style: italic;
+  color: var(--text-2);
+  line-height: 1.55;
+  max-width: 440px;
+  margin: 0 auto;
+}
+.crud-empty-hint {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 10px;
+}
+
 .crud-card {
   display: flex;
   align-items: center;
