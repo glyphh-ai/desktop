@@ -1837,7 +1837,9 @@ async function applyPanelPrefs(): Promise<void> {
 export function loadCode(): void {
   void (async () => {
     await loadStore();
-    if (!currentId && chats.length) currentId = chats[0].id;
+    // Don't auto-select a session on load — a fresh open highlights no Recent
+    // (the composer opens ready; typing starts a new session). A saved
+    // currentId still resumes, and only highlights while on the agent.
     renderHistory();
     renderThread();
     refreshCtxMeter();
@@ -1957,7 +1959,9 @@ export function initCode(): void {
   // re-runs loadCode().
   void (async () => {
     await loadStore();
-    if (!currentId && chats.length) currentId = chats[0].id;
+    // Don't auto-select a session on load — a fresh open highlights no Recent
+    // (the composer opens ready; typing starts a new session). A saved
+    // currentId still resumes, and only highlights while on the agent.
     renderHistory();
   })();
   void loadRecentApps();

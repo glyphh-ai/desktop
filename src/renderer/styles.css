@@ -11169,7 +11169,9 @@ select:focus {
   50% { opacity: 0.95; box-shadow: 0 0 7px rgba(52, 211, 153, 0.6); }
 }
 .code-history-item:hover { background: var(--hover); color: var(--text-2); }
-.code-history-item.active { background: var(--rail-active-bg); color: var(--white); }
+/* The Recent-session highlight only shows while the agent (code) is the
+   active section — so the rail never shows two highlights at once. */
+body[data-rail-section="code"] .code-history-item.active { background: var(--rail-active-bg); color: var(--white); }
 .code-history-title { flex: 1; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-chat-menu-btn {
   display: inline-flex;
@@ -11187,7 +11189,7 @@ select:focus {
   opacity: 0;
 }
 .code-history-item:hover .code-chat-menu-btn,
-.code-history-item.active .code-chat-menu-btn { opacity: 1; }
+body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { opacity: 1; }
 .code-chat-menu-btn:hover { color: var(--text); background: var(--hover); }
 
 /* Center — agent */

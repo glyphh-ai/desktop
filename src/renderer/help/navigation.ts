@@ -92,6 +92,10 @@ export function resetEditors() {
 
 function switchToSection(sectionId: string) {
   resetEditors();
+  // The active section drives the rail's single highlight: on the agent
+  // (code) the current session highlights in Recents; on any other section
+  // the nav item highlights and the Recents highlight is suppressed (CSS).
+  document.body.dataset.railSection = sectionId;
   navItems.forEach((n) => n.classList.remove("active"));
   sections.forEach((s) => s.classList.remove("active"));
   const navItem = document.querySelector(`.help-nav-item[data-section="${sectionId}"]`) as HTMLElement;
