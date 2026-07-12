@@ -11792,6 +11792,8 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   cursor: pointer;
   text-align: left;
 }
+/* Breathing room between the nav and the Recents header. */
+#recents-toggle { margin-top: 14px; }
 .code-rail-disclosure .disc-chevron {
   width: 11px;
   height: 11px;
