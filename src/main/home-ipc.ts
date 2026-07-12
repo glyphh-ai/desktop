@@ -8,7 +8,6 @@
 import { ipcMain } from "electron";
 import type { McpManager } from "./mcp-manager";
 import type { ConnectorManager } from "./connectors";
-import { reconnectRelay, getRelayStatus } from "./relay-client";
 import {
   syncLocalMcpServer,
   stopLocalMcpServer,
@@ -103,10 +102,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     };
   });
 
-  // Relay: bouncing the WS after the user flips the toggle, and proxying
-  ipcMain.handle("relay-reconnect", () => { reconnectRelay(); });
-  ipcMain.handle("relay-status", () => getRelayStatus());
-  // ── Local MCP server (127.0.0.1) — the no-cloud alternative to the relay ──
+  // ── Local MCP server (127.0.0.1) — the loopback MCP surface ──
   ipcMain.handle("local-mcp-set-enabled", async (_e, enabled: boolean) => {
     setPreference("localMcpEnabled", !!enabled);
     return await syncLocalMcpServer();

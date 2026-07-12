@@ -65,57 +65,11 @@ function initSettings() {
   });
 
 
-  // ── MCP relay wiring (org-admin only). The relay is the only MCP surface,
-  // so there is no enable toggle — it connects whenever the account is
-  // eligible, and this section just shows status + connection config. ──
-  const relaySection = document.getElementById("relay-section");
-  const relayStatusText = document.getElementById("relay-status-text");
-
-  function renderRelayConfig(): void {
-    const endpointEl = document.getElementById("relay-endpoint");
-    if (endpointEl) endpointEl.textContent = `POST ${window.yo.serverUrl}/mcp`;
-  }
-
+  // The cloud relay (external LLMs driving this machine) was removed. Its
+  // in-page helper survives — escapeHtmlLocal is reused by the token list below.
   function escapeHtmlLocal(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-
-  async function refreshRelayStatus(): Promise<void> {
-    if (!relayStatusText) return;
-    const s = await window.yo.relayStatus();
-    const label = !s.signedIn ? "Sign in first."
-      : !s.enabled ? "Disabled."
-      : s.state === "connected" ? `Connected to ${new URL(window.yo.serverUrl).host}`
-      : s.state === "connecting" ? "Connecting…"
-      : s.state === "disconnected" ? "Disconnected — retrying"
-      : "Off";
-    relayStatusText.textContent = label;
-    relayStatusText.style.color = s.state === "connected" ? "var(--accent)" : "var(--text-3)";
-  }
-
-  // Gate the whole subsection to org_admin / super_admin. Non-admins see
-  // nothing (the platform UI is also admin-only, so this is consistent).
-  void (async () => {
-    const acct = await window.yo.getAccountInfo();
-    const role = acct?.role || "";
-    const allowed = role === "org_admin" || role === "super_admin";
-    if (!allowed) return;                              // leave .hidden
-    relaySection?.classList.remove("hidden");
-    // Enable/disable toggle — lets the user turn the cloud relay off (e.g. to
-    // use only the local server). Flips the pref, then bounces the WS.
-    const relayToggle = document.getElementById("relay-enabled-toggle") as HTMLInputElement | null;
-    if (relayToggle) {
-      relayToggle.checked = (await window.yo.getPreference("relayEnabled", true)) as boolean;
-      relayToggle.addEventListener("change", async () => {
-        await window.yo.setPreference("relayEnabled", relayToggle.checked);
-        await window.yo.relayReconnect();
-        void refreshRelayStatus();
-      });
-    }
-    renderRelayConfig();
-    void refreshRelayStatus();
-    setInterval(refreshRelayStatus, 3_000);
-  })();
 
   // ── Org-wide guardrails (Settings > Security). org_admin only; non-admins
   // see the read-only note. Server-authoritative via /api/org/guardrails. ──
@@ -350,7 +304,6 @@ function initSettings() {
 
   // Expose the MCP refreshers so the MCP tab can refresh on open.
   mcpSectionRefresh = () => {
-    void refreshRelayStatus();
     void refreshLocalMcp();
     void renderLocalMcpTokens();
   };

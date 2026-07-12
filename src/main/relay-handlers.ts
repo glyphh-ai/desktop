@@ -35,6 +35,13 @@ function appParam(params: unknown): string {
 export function installRelayHandlers(deps: Deps): void {
   const { getMcpManager } = deps;
 
+  // Smoke-test handler — the loopback local-MCP relay_ping tool routes here.
+  // (Formerly registered by relay-client's now-deleted initRelayClient.)
+  registerRelayHandler("relay.ping", (params) => {
+    const message = (params as { message?: string } | null | undefined)?.message ?? "ping";
+    return { echoed: message, at: new Date().toISOString() };
+  });
+
   // ── panels — workbench app panels beside the agent (OS windows retired) ──
 
   registerRelayHandler("panels.list", () => listOpenAppWindows());

@@ -69,7 +69,6 @@ function isNewerVersion(latest: string, current: string): boolean {
 import { setMainWindowRef } from "./main-window-ref";
 import { initRailCollapse } from "./screen-layout";
 import { McpManager } from "./mcp-manager";
-import { initRelayClient, reconnectRelay, stopRelayClient } from "./relay-client";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
@@ -319,12 +318,9 @@ async function boot() {
   // server-side (connector tools + custom MCP connections).
   mcpManager = new McpManager();
 
-  // Relay client — persistent WebSocket to yo-server so external MCP callers
-  // can drive this instance. No-op until the user sets a client token.
-  initRelayClient();
-
-  // Local MCP server — the no-cloud alternative. Starts only if the user has
-  // opted in (localMcpEnabled). Uses the same handler registry as the relay.
+  // Local MCP server — the loopback (127.0.0.1) MCP surface for same-machine
+  // LLMs. The cloud relay that let external callers reach in was removed; this
+  // is the only remaining MCP surface, and it shares the handler registry.
   void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
 
   // Identity switch → hard renderer reload so no DOM/JS state from the
@@ -1216,10 +1212,6 @@ async function boot() {
 
   let accountLocked = false;
   setHeartbeatObserver((hb) => {
-    // Tier may have changed (free <-> paid). The relay is paid-only, so
-    // re-evaluate it on every heartbeat — this also starts it once the boot
-    // heartbeat finally lands, and tears it down on a downgrade.
-    reconnectRelay();
     // One-shot: lift legacy LOCAL custom MCP servers (the old client-side
     // path) up to the server as custom MCP connections. Runs on heartbeat
     // because it needs an authenticated session; retries next beat on error.
@@ -1993,7 +1985,6 @@ function cleanupAll() {
   dripManager?.cleanup();
   // Close the background handles that otherwise keep the Node event loop alive
   // (and hidden app-worker windows that keep window-all-closed from firing).
-  stopRelayClient();
   stopLocalMcpServer();
   stopAllAppWorkers();
   stopAllSchedules();

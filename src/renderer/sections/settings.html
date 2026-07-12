@@ -137,7 +137,7 @@
               <!-- MCP Server -->
         <div class="settings-panel" data-sub="mcp">
                 <h2>MCP Server</h2>
-                <p class="section-desc">Let external LLM tools — Claude, ChatGPT, Cursor — drive your Glyphh workspace: open apps and layouts, click, type, read, and screenshot. Use the <strong>cloud relay</strong> (works anywhere your LLM runs) or a <strong>local server</strong> on this machine (lowest latency, no cloud).</p>
+                <p class="section-desc">Let a local LLM tool — Claude Desktop, Cursor, the claude CLI — drive your Glyphh workspace over MCP: open apps and layouts, click, type, read, and screenshot. Runs as a <strong>local server</strong> on this machine (lowest latency, no cloud).</p>
 
                 <!-- Glyphh Skill — teaches the connected assistant how to drive
                      this workspace. Claude installs straight into
@@ -153,39 +153,6 @@
                 </div>
 
                 <div id="mcp-section-wrap" class="settings-form">
-                  <!-- ── Cloud relay (org-admin only). User-toggleable — off by
-                       preference, or connected/connecting when on. ── -->
-                  <div id="relay-section" class="hidden">
-                    <h3 class="settings-subheading" style="margin:0 0 4px;">Cloud relay</h3>
-                    <label class="settings-toggle" style="margin-bottom:10px;">
-                      <input type="checkbox" id="relay-enabled-toggle" checked />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Enable cloud relay</span>
-                        <span class="toggle-desc">Connect this workspace to the Glyphh cloud so your LLM can reach it from anywhere. Turn off to use only the local server.</span>
-                      </div>
-                    </label>
-                    <div style="margin-bottom:8px;">
-                      <span id="relay-status-text" style="font-size:11px;color:var(--text-3);margin-top:4px;display:inline-block;">Not connected.</span>
-
-                      <div id="relay-settings">
-
-                      <!-- MCP Endpoint -->
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">MCP Endpoint</h4>
-                      <code id="relay-endpoint" style="display:block;background:var(--surface-2);padding:8px 10px;border-radius:6px;font-size:11px;font-family:'SF Mono','Fira Code',monospace;color:var(--text);word-break:break-all;user-select:all;"></code>
-
-                      <!-- Connect (recommended) — OAuth, no token to copy -->
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Connect (recommended)</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">In a client that supports it (Claude's Connections settings, etc.), add the MCP endpoint above and approve the connection — no token to copy.</p>
-
-                      <!-- Manual (remote) tokens live on the platform, not here — they're
-                           org-managed API keys with per-key usage. -->
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Manual tokens</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">For clients without OAuth, create an <strong>API key</strong> in the Glyphh dashboard (Manage → API keys). Keys are org-managed and their usage is tracked per key.</p>
-                      </div>
-                    </div>
-                  </div>
-
                   <!-- ── Local MCP server (this machine). Opt-in: runs a
                        127.0.0.1 HTTP MCP server so a local LLM (Claude Desktop,
                        Cursor, the claude CLI) connects directly — no cloud,

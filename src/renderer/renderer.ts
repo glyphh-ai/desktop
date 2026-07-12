@@ -371,8 +371,6 @@ declare global {
       checkForUpdates: () => Promise<string | null>;
       getUpdateStatus: () => Promise<{ version: string; ready: boolean } | null>;
       // Remote relay
-      relayReconnect: () => Promise<void>;
-      relayStatus: () => Promise<{ enabled: boolean; signedIn: boolean; state: "off" | "connecting" | "connected" | "disconnected" }>;
 
       // Local MCP server (127.0.0.1)
       localMcpSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;

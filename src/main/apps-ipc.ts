@@ -12,7 +12,6 @@ import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
 import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
-import { invalidateProxyCache } from "./app-proxy-stream";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -222,11 +221,11 @@ function registerPanelAppsIpc(): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), proxy: null }; }
   });
   ipcMain.handle("app-proxy-create", async (_e, body: Record<string, unknown>) => {
-    try { const proxy = await serverPostAuthed("/api/apps/proxies", body); invalidateProxyCache(); return { ok: true, proxy }; }
+    try { const proxy = await serverPostAuthed("/api/apps/proxies", body); return { ok: true, proxy }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("app-proxy-update", async (_e, id: string, body: Record<string, unknown>) => {
-    try { const proxy = await serverPatchAuthed(`/api/apps/proxies/${id}`, body); invalidateProxyCache(); return { ok: true, proxy }; }
+    try { const proxy = await serverPatchAuthed(`/api/apps/proxies/${id}`, body); return { ok: true, proxy }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-set-mcp", async (_e, id: string, mcp: Record<string, unknown>) => {

@@ -603,8 +603,6 @@ contextBridge.exposeInMainWorld("yo", {
   // Remote relay — settings UI uses these. The JWT authenticates the WS,
   // so there's no client-token to manage; only the external (server) tokens
   // for the user's external tools.
-  relayReconnect: () => ipcRenderer.invoke("relay-reconnect") as Promise<void>,
-  relayStatus: () => ipcRenderer.invoke("relay-status") as Promise<{ enabled: boolean; signedIn: boolean; state: "off" | "connecting" | "connected" | "disconnected" }>,
 
   // Local MCP server (127.0.0.1) — the no-cloud alternative to the relay.
   localMcpSetEnabled: (enabled: boolean) => ipcRenderer.invoke("local-mcp-set-enabled", enabled) as Promise<{ ok: boolean; error?: string }>,
