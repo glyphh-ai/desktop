@@ -1860,9 +1860,7 @@ export function initCode(): void {
   // replacement). Every main-side opener — William's open_app, the relay's
   // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure
   // the workbench booted, then drive the wb bridge.
-  const wbdbg = (m: string) => { console.log(m); (window as unknown as { yo?: { wbLog?: (s: string) => void } }).yo?.wbLog?.(m); };
   window.yo.onWbAppCommand?.((cmd) => {
-    wbdbg("[wb] onWbAppCommand " + JSON.stringify(cmd));
     gotoSection("code");
     (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
     const w = window as unknown as {
@@ -1872,7 +1870,7 @@ export function initCode(): void {
       __wbFocusApp?: (slug: string) => boolean;
       __wbToggleAppSwitcher?: () => void;
     };
-    if (cmd.action === "open" && cmd.app) { wbdbg("[wb] __wbOpenApp present? " + !!w.__wbOpenApp + " codeActive=" + !!document.querySelector('.help-section[data-section="code"].active')); w.__wbOpenApp?.(cmd.app); }
+    if (cmd.action === "open" && cmd.app) w.__wbOpenApp?.(cmd.app);
     else if (cmd.action === "terminal") (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
     else if (cmd.action === "open-many" && cmd.apps) w.__wbOpenApps?.(cmd.apps);
     else if (cmd.action === "close" && cmd.slug) w.__wbCloseApp?.(cmd.slug);

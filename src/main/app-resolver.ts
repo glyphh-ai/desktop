@@ -89,7 +89,6 @@ function sendWbCmd(cmd: WbCmd): void {
     try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
   });
   const targets = homeWcs.length ? homeWcs : [win.webContents];
-  console.log(`[wb] dispatch ${cmd.action} → ${targets.length} home panel(s)`);
   for (const wc of targets) wc.send("wb:app-cmd", cmd);
 }
 
@@ -175,9 +174,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     return { slug: app.slug, name: app.name };
   }
 
-  const wbRef = toWbRef(app);
-  console.log(`[app-open] "${app.name}" → panel`, JSON.stringify(wbRef));
-  sendWbCmd({ action: "open", app: wbRef });
+  sendWbCmd({ action: "open", app: toWbRef(app) });
   return { slug: app.slug, name: app.name };
 }
 

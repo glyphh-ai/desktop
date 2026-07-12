@@ -753,7 +753,6 @@ async function init(): Promise<void> {
   type WebviewEl = HTMLElement & { getWebContentsId?: () => number };
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
-  const wbSyncLogged = new Set<number>();   // one-time per-slot sync diagnostic
   let appLayer: HTMLDivElement | null = null;
   let appSyncRaf = 0;
 
@@ -769,17 +768,22 @@ async function init(): Promise<void> {
     return rails.flatMap((r) => r.slots).filter((s): s is AppSlot => s.view === "app");
   }
 
-  const wbdbg = (m: string) => { console.log(m); (window as unknown as { yo?: { wbLog?: (s: string) => void } }).yo?.wbLog?.(m); };
   function mountAppView(slot: AppSlot): AppView {
-    wbdbg(`[wb] mountAppView slug=${slot.slug} glyphh=${!!slot.glyphh} url=${slot.url}`);
     const holder = document.createElement("div");
     holder.className = "ws-app-holder entering";
     const webview = document.createElement("webview") as WebviewEl;
     webview.setAttribute("partition", "persist:yo");
     webview.setAttribute("allowpopups", "true");
-    webview.addEventListener("dom-ready", () => wbdbg(`[wb] webview dom-ready slug=${slot.slug}`));
-    webview.addEventListener("did-finish-load", () => wbdbg(`[wb] webview loaded slug=${slot.slug}`));
-    webview.addEventListener("did-fail-load", (e) => wbdbg(`[wb] webview FAIL slug=${slot.slug} ${(e as unknown as { errorCode?: number }).errorCode} ${(e as unknown as { errorDescription?: string }).errorDescription}`));
+    // Some sites refuse to embed (X-Frame-Options/CSP) — surface that (to the
+    // main terminal too), since it looks identical to "blank" otherwise.
+    webview.addEventListener("did-fail-load", (e) => {
+      const err = e as unknown as { errorCode?: number; errorDescription?: string };
+      if (err.errorCode && err.errorCode !== -3) {
+        const m = `[wb] "${slot.name}" failed to load (${err.errorCode} ${err.errorDescription || ""}) — it may block embedding.`;
+        console.warn(m);
+        (window as unknown as { yo?: { wbLog?: (s: string) => void } }).yo?.wbLog?.(m);
+      }
+    });
     if (slot.glyphh) {
       // Installed Glyphh app: attach first (about:blank), then grant its caps
       // against the guest webContents and load the on-disk entry — the exact
@@ -824,16 +828,6 @@ async function init(): Promise<void> {
       const ph = document.querySelector<HTMLElement>(`.ws-app-placeholder[data-app-slot="${slot.id}"]`);
       const rect = ph?.getBoundingClientRect();
       const visible = !!rect && rect.width > 24 && rect.height > 24 && ph!.offsetParent !== null;
-      if (!wbSyncLogged.has(slot.id)) {
-        wbSyncLogged.add(slot.id);
-        let chain = "", node: HTMLElement | null = ph;
-        while (node && node !== document.body) {
-          const r = node.getBoundingClientRect(); const cs = getComputedStyle(node);
-          chain += `${(node.className || node.id || node.tagName).toString().split(" ")[0]}[${Math.round(r.width)}x${Math.round(r.height)} d=${cs.display} z=${cs.zIndex}] < `;
-          node = node.parentElement;
-        }
-        wbdbg(`[wb] sync slot=${slot.slug} ph=${!!ph} rect=${rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}@${Math.round(rect.left)},${Math.round(rect.top)}` : "null"} offParent=${ph && ph.offsetParent ? "yes" : "NULL"} visible=${visible} | ${chain}`);
-      }
       view.holder.style.display = visible ? "" : "none";
       if (visible && rect) {
         view.holder.style.left = `${Math.round(rect.left)}px`;

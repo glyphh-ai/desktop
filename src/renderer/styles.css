@@ -9822,7 +9822,11 @@ select.settings-input {
    the fixed #code-wb-applayer and follows the placeholder each frame
    (webviews reload when reparented, so they never ride the rails DOM). */
 .ws-app-placeholder { flex: 1 1 auto; align-self: stretch; width: 100%; height: 100%; background: var(--surface); }
-#code-wb-applayer { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+/* Above the home overlay (z-index 100) — the layer lives on <body>, outside
+   the overlay, so at z-index 40 the whole UI painted over the webviews and you
+   saw the placeholder's surface background instead. Each holder is clipped to
+   its slot rect, so this only covers the workbench slots, not the rest. */
+#code-wb-applayer { position: fixed; inset: 0; pointer-events: none; z-index: 120; }
 .ws-app-holder {
   position: fixed;
   pointer-events: auto;
