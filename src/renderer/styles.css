@@ -11961,12 +11961,16 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  /* Collapse gracefully when the composer narrows (workbench takes width):
+     the right group wraps to its own line instead of overflowing/clipping. */
+  flex-wrap: wrap;
+  row-gap: 6px;
   margin-top: 7px;
   padding: 0 4px;
 }
-.code-chipwrap { position: relative; }
-.code-bar-left { display: flex; align-items: center; gap: 8px; }
-.code-bar-right { display: flex; align-items: center; gap: 10px; }
+.code-chipwrap { position: relative; min-width: 0; }
+.code-bar-left { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; row-gap: 6px; min-width: 0; }
+.code-bar-right { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; row-gap: 6px; min-width: 0; }
 
 /* Compaction meter — fills toward the fold tick (compaction point). */
 .code-ctx-meter {
