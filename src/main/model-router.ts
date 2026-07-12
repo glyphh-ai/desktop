@@ -24,7 +24,7 @@ import { getPreference } from "./stores/preferences-db";
 import { escalationPolicy, effortMaxTokens } from "./william-permissions";
 import { ensureWilliamServing, williamBaseUrl, LOCAL_CTX_TOKENS } from "./william";
 import { adaRecall, adaTellRaw } from "./ada/store";
-import { AUTH_SERVER, getAuthToken, serverGetAuthed } from "./auth";
+import { AUTH_SERVER, getAuthToken, serverGetAuthed, ensureFreshToken } from "./auth";
 
 
 // ── Wire shapes (loose — we translate, we don't validate) ─────────────────
@@ -650,6 +650,7 @@ async function forwardFrontier(req: http.IncomingMessage, res: http.ServerRespon
       const j = await up.json() as { message?: string; error?: string };
       why = j.message || j.error || why;
     } catch { /* body unreadable */ }
+    console.warn(`[model-router] gateway DECLINED the escalation (${up.status}: ${why}) — serving local. This is org governance (credits/role/rate), not the model picker.`);
     decisions.push({ at: Date.now(), route: "local", reason: `gateway declined (${why}) — served locally`, score: 0 });
     if (decisions.length > 50) decisions.shift();
     return false;
@@ -696,9 +697,15 @@ async function forwardFrontier(req: http.IncomingMessage, res: http.ServerRespon
 // ── The server ─────────────────────────────────────────────────────────────
 
 async function handleMessages(req: http.IncomingMessage, res: http.ServerResponse, body: MessagesBody): Promise<void> {
+  // Top up the auth token BEFORE deciding the lane. A stale/expired token makes
+  // frontierLane() null, which silently downgrades every picked-frontier turn to
+  // local — the exact "it always uses the local model" symptom. This proactive
+  // refresh (single-flight, no-ops when the token has life) had no caller.
+  await ensureFreshToken().catch(() => {});
   let decision = decide(body);
   const lane = frontierLane();
   if (decision.route === "frontier" && !lane) {
+    console.warn("[model-router] picked a Claude/gateway model but there's no auth lane — serving local. Token/sign-in issue (getAuthToken returned null).");
     decision = { ...decision, route: "local", reason: `${decision.reason} — but not signed in; staying local` };
   }
   recordDecision(decision, lastUserText(body.messages ?? []).slice(0, 80));
