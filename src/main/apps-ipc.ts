@@ -40,6 +40,10 @@ function registerPanelAppsIpc(): void {
     }
   });
 
+  // Renderer diagnostic bridge — surfaces the main-window renderer's [wb] logs
+  // in the terminal (its own console lives in the window's DevTools).
+  ipcMain.on("wb-log", (_e, msg: unknown) => console.log(String(msg)));
+
   // Installed real browsers — feeds the app editor's Browser dropdown.
   ipcMain.handle("browsers-detect", () => detectBrowsers());
 

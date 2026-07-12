@@ -635,6 +635,7 @@ contextBridge.exposeInMainWorld("yo", {
   // Workbench apps — the OS-window replacement. The renderer reports its
   // open app panels; main drives open/close/focus/switcher via wb:app-cmd.
   wbAppsChanged: (apps: Array<{ slug: string; name: string }>) => ipcRenderer.send("wb-apps-changed", apps),
+  wbLog: (msg: string) => ipcRenderer.send("wb-log", msg),
   onWbAppCommand: (cb: (cmd: { action: string; app?: { slug: string; name: string; url: string; glyphh?: boolean }; apps?: Array<{ slug: string; name: string; url: string; glyphh?: boolean }>; slug?: string }) => void) => {
     ipcRenderer.on("wb:app-cmd", (_e, cmd) => cb(cmd));
   },
