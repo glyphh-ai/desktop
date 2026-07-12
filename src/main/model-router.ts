@@ -24,7 +24,7 @@ import { getPreference } from "./stores/preferences-db";
 import { escalationPolicy, effortMaxTokens } from "./william-permissions";
 import { ensureWilliamServing, williamBaseUrl, LOCAL_CTX_TOKENS } from "./william";
 import { adaRecall, adaTellRaw } from "./ada/store";
-import { AUTH_SERVER, getAuthToken, serverGetAuthed, ensureFreshToken } from "./auth";
+import { AUTH_SERVER, PLATFORM_URL, getAuthToken, serverGetAuthed, ensureFreshToken } from "./auth";
 
 
 // ── Wire shapes (loose — we translate, we don't validate) ─────────────────
@@ -638,7 +638,8 @@ function upstreamHeaders(req: http.IncomingMessage, lane: FrontierLane): Record<
 /** Forward an escalated turn. Returns false when the gateway declined it for
  *  governance reasons (rate limit, credit cap, role) — the caller then serves
  *  the turn locally so the user keeps working instead of erroring. */
-async function forwardFrontier(req: http.IncomingMessage, res: http.ServerResponse, body: MessagesBody, lane: FrontierLane): Promise<boolean> {
+interface FrontierResult { handled: boolean; declined?: { status: number; why: string } }
+async function forwardFrontier(req: http.IncomingMessage, res: http.ServerResponse, body: MessagesBody, lane: FrontierLane): Promise<FrontierResult> {
   const up = await fetch(`${AUTH_SERVER}/api/gateway/v1/messages`, {
     method: "POST",
     headers: upstreamHeaders(req, lane),
@@ -650,10 +651,10 @@ async function forwardFrontier(req: http.IncomingMessage, res: http.ServerRespon
       const j = await up.json() as { message?: string; error?: string };
       why = j.message || j.error || why;
     } catch { /* body unreadable */ }
-    console.warn(`[model-router] gateway DECLINED the escalation (${up.status}: ${why}) — serving local. This is org governance (credits/role/rate), not the model picker.`);
-    decisions.push({ at: Date.now(), route: "local", reason: `gateway declined (${why}) — served locally`, score: 0 });
+    console.warn(`[model-router] gateway DECLINED the escalation (${up.status}: ${why}). This is org governance (credits/role/rate), not the model picker.`);
+    decisions.push({ at: Date.now(), route: "local", reason: `gateway declined (${why})`, score: 0 });
     if (decisions.length > 50) decisions.shift();
-    return false;
+    return { handled: false, declined: { status: up.status, why } };
   }
   usage.frontierTurns++;
   // The gateway says which key paid: byok (the member's own, zero token
@@ -678,7 +679,7 @@ async function forwardFrontier(req: http.IncomingMessage, res: http.ServerRespon
     if (inTok) usage.frontierInputTokens += Number(inTok[1]);
     if (outMatches.length) usage.frontierOutputTokens += Number(outMatches[outMatches.length - 1][1]);
     res.end();
-    return true;
+    return { handled: true };
   }
 
   const text = await up.text();
@@ -691,7 +692,29 @@ async function forwardFrontier(req: http.IncomingMessage, res: http.ServerRespon
   }
   res.writeHead(up.status, { "Content-Type": up.headers.get("content-type") || "application/json" });
   res.end(text);
-  return true;
+  return { handled: true };
+}
+
+/** Actionable chat error when a USER-PICKED frontier model is declined by the
+ *  gateway — never a silent downgrade to local. */
+function frontierDeclineError(status: number, why: string): string {
+  const billing = `${PLATFORM_URL}/billing`;
+  if (status === 402) {
+    return `Out of credits — the Claude model you picked couldn't run.\n\n`
+      + `• Buy more credits: ${billing}\n`
+      + `• Or pick an on-device model (free) from the model menu.`;
+  }
+  if (status === 403) {
+    return `That model isn't allowed on your account${why ? ` (${why})` : ""}.\n\n`
+      + `• Manage your plan and models: ${PLATFORM_URL}\n`
+      + `• Or pick an on-device model (free) from the model menu.`;
+  }
+  if (status === 429) {
+    return `The gateway is rate-limiting right now${why ? ` (${why})` : ""}. `
+      + `Try again in a moment, or pick an on-device model from the model menu.`;
+  }
+  return `The gateway declined this model${why ? ` (${why})` : ""}. `
+    + `Pick an on-device model from the model menu, or check your account: ${PLATFORM_URL}`;
 }
 
 // ── The server ─────────────────────────────────────────────────────────────
@@ -715,10 +738,22 @@ async function handleMessages(req: http.IncomingMessage, res: http.ServerRespons
     // The gateway 403s models outside the org allow-list — resolve to the
     // effective (allowed) model up front so a stale pref can't fail turns.
     body.model = await effectiveFrontierModel();
-    const handled = await forwardFrontier(req, res, body, lane);
-    if (handled) return;
-    // Governance decline (cap/rate/role) — degrade to local, keep working.
+    const fr = await forwardFrontier(req, res, body, lane);
+    if (fr.handled) return;
     frontierDeclined = true;
+    // The user EXPLICITLY picked this frontier model (with BYPASS_LOOP that's
+    // the only way route==="frontier"). A decline (out of credits, role, rate)
+    // must SURFACE as a chat error — never a silent downgrade to the local
+    // model. Auto-escalation (BYPASS_LOOP off) still falls back to local below.
+    if (pickedRoute() === "frontier" && fr.declined) {
+      const { status, why } = fr.declined;
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        type: "error",
+        error: { type: "invalid_request_error", message: frontierDeclineError(status, why) },
+      }));
+      return;
+    }
   }
 
   let r: LocalResult;
@@ -734,7 +769,7 @@ async function handleMessages(req: http.IncomingMessage, res: http.ServerRespons
       const d: Decision = { at: Date.now(), route: "frontier", reason: "local context overflow after squeeze — escalated", score: 99 };
       recordDecision(d, lastUserText(body.messages ?? []).slice(0, 80));
       body.model = await effectiveFrontierModel();
-      if (await forwardFrontier(req, res, body, lane)) return;
+      if ((await forwardFrontier(req, res, body, lane)).handled) return;
     }
     const c = err.cost;
     res.writeHead(400, { "Content-Type": "application/json" });
