@@ -100,6 +100,10 @@ function setLoop(id: string): void {
 let modelList: Array<{ id: string; name: string; minRamGB: number; size?: number; status?: string; usage?: string; downloaded: boolean }> = [];
 let modelSelected = "auto";
 let modelResolved: string | null = null;
+// ONE selection across the whole menu: "auto" | a local id | "gw:<model>".
+// Picking a local model runs it on-device; picking a gateway model makes it
+// the escalation target. Exactly one row ever shows the checkmark.
+let modelPick = "auto";
 // Escalation (Claude) models — org-allowed list; the pick is per-user.
 let gwModels: Array<{ model: string; display_name: string; input_credits_per_mtok: number | null; output_credits_per_mtok: number | null }> = [];
 let gwDefault: string | null = null;
@@ -115,12 +119,17 @@ function modelName(id: string | null): string {
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
-  if (modelSelected === "auto") {
+  if (modelPick.startsWith("gw:")) {
+    const id = modelPick.slice(3);
+    const gm = gwModels.find((m) => m.model === id);
+    mc.textContent = gm?.display_name || id;
+    mc.title = `Model: ${gm?.display_name || id} — click to change`;
+  } else if (modelPick !== "auto") {
+    mc.textContent = modelName(modelPick);
+    mc.title = `Model: ${modelName(modelPick)} — click to change`;
+  } else {
     mc.textContent = modelResolved ? `Auto · ${modelName(modelResolved)}` : "Auto";
     mc.title = "Model — picked by hardware; click to choose";
-  } else {
-    mc.textContent = modelName(modelSelected);
-    mc.title = `Model: ${modelName(modelSelected)} — click to change`;
   }
   mc.className = "code-chip";
 }
@@ -140,6 +149,11 @@ async function refreshModelList(): Promise<void> {
       gwDefault = g.default;
       gwEffective = g.effective;
     }
+    const pick = String((await window.yo.getPreference?.("modelPick", "")) || "");
+    modelPick = pick || (modelSelected !== "auto" ? modelSelected : "auto");
+    // A stale gateway pick (role/org changed) falls back to Auto.
+    if (modelPick.startsWith("gw:") && gwModels.length && !gwModels.some((m) => `gw:${m.model}` === modelPick)) modelPick = "auto";
+    paintModelChip();
   } catch { /* main not ready */ }
 }
 
@@ -150,7 +164,7 @@ function renderModelMenu(): void {
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
   const closeTips = () => menu.querySelectorAll(".model-info-tip").forEach((t) => t.classList.add("hidden"));
   const mk = (id: string, label: string, sub: string, opts?: { extra?: string; info?: string; selected?: boolean; onClick?: () => void }) => {
-    const isSelected = opts?.selected ?? (id === modelSelected);
+    const isSelected = opts?.selected ?? (id === modelPick);
     const item = document.createElement("button");
     item.className = "code-drop-item drop-item-2line" + (isSelected ? " selected" : "");
     item.type = "button";
@@ -193,7 +207,9 @@ function renderModelMenu(): void {
         opts.onClick();
       } else {
         modelSelected = id;
+        modelPick = id;
         void window.yo.setPreference?.("williamModel", id);
+        void window.yo.setPreference?.("modelPick", id);
         paintModelChip();
         // A different model spawns on the next send (downloading first if
         // needed — the spinner narrates).
@@ -239,10 +255,13 @@ function renderModelMenu(): void {
       ].filter(Boolean).join("\n");
       mk(m.model, m.display_name + (isDefault ? " (org default)" : ""), gwDesc(m.model), {
         info,
-        selected: m.model === gwEffective,
+        selected: modelPick === `gw:${m.model}`,
         onClick: () => {
           gwEffective = m.model;
+          modelPick = `gw:${m.model}`;
           void window.yo.setPreference?.("frontierModel", m.model);
+          void window.yo.setPreference?.("modelPick", modelPick);
+          paintModelChip();
         },
       });
     }
