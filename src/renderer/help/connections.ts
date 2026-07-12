@@ -317,7 +317,7 @@ async function loadCustomStatus(c: McpConn): Promise<void> {
     const row = document.createElement("div");
     row.className = "conn-tool-row";
     row.innerHTML = `
-      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} ${c.org ? "disabled" : ""} title="${c.org ? "Managed by your org admin" : "Expose this tool to your AI"}" />
+      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} title="Expose this tool to your AI" />
       ${t.description
         ? `<details class="conn-tool-details">
              <summary class="conn-tool-name">${esc(t.name)}</summary>
