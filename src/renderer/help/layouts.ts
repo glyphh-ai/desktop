@@ -11,7 +11,7 @@ import { gotoSection } from "./navigation.js";
  *  right) instead of tiling OS windows. Resolves each cell's panel to its
  *  web app; native/unresolved panels are skipped (they can't run in a
  *  webview). Switches to the agent surface so the workbench is visible. */
-async function openLayoutInWorkbench(name: string): Promise<void> {
+export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.yo.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
@@ -400,16 +400,13 @@ function renderLayoutsList() {
 
     const card = document.createElement("div");
     card.className = "app-card";
-    card.style.position = "relative";
     card.innerHTML = `
-      <button class="layout-card-edit" title="Edit layout" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--text-3);cursor:pointer;font-size:12px;padding:2px;line-height:1;">✎</button>
       <div class="layout-card-icons">${iconsHtml}</div>
       <div class="app-card-name"></div>
       <div class="app-card-id">${uniqueIds.length} app${uniqueIds.length === 1 ? "" : "s"}</div>`;
     card.querySelector(".app-card-name")!.textContent = layout.name;
-    // Click opens the layout in the workbench; the ✎ edits it.
-    card.querySelector(".layout-card-edit")!.addEventListener("click", (e) => { e.stopPropagation(); void editLayout(layout.name); });
-    card.addEventListener("click", () => void openLayoutInWorkbench(layout.name));
+    // The Layouts page is for EDITING — the left-rail Apps tiles open layouts.
+    card.addEventListener("click", () => editLayout(layout.name));
     grid.appendChild(card);
   }
   layoutsList.appendChild(grid);

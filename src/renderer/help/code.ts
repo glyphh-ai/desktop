@@ -12,6 +12,7 @@
 import { confirmAction } from "./shared.js";
 import { gotoSection } from "./navigation.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
+import { openLayoutInWorkbench } from "./layouts.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 
@@ -1700,7 +1701,7 @@ function renderRecentApps(): void {
       nm.className = "tile-name";
       nm.textContent = l.name;
       tile.append(icon, nm);
-      tile.addEventListener("click", () => { void window.yo.layoutsOpen?.(l.name); });
+      tile.addEventListener("click", () => { void openLayoutInWorkbench(l.name); });
       list.appendChild(tile);
     }
     if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRecentApps(); }));
