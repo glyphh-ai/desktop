@@ -830,9 +830,13 @@ async function init(): Promise<void> {
       const visible = !!rect && rect.width > 24 && rect.height > 24 && ph!.offsetParent !== null;
       view.holder.style.display = visible ? "" : "none";
       if (visible && rect) {
+        // Leave a 7px gutter on the right so the rail's width-resize handle
+        // (.ws-resize-v, absolute at right:0) isn't buried under the webview —
+        // otherwise the app can't be resized. The between-slot handle
+        // (.ws-rail-vsep) already sits in the gap between placeholders.
         view.holder.style.left = `${Math.round(rect.left)}px`;
         view.holder.style.top = `${Math.round(rect.top)}px`;
-        view.holder.style.width = `${Math.round(rect.width)}px`;
+        view.holder.style.width = `${Math.max(0, Math.round(rect.width) - 7)}px`;
         view.holder.style.height = `${Math.round(rect.height)}px`;
       }
     }
@@ -912,64 +916,77 @@ async function init(): Promise<void> {
   // ── The switch — app switcher overlay over the rails side ──
   let switcherEl: HTMLDivElement | null = null;
   function toggleAppSwitcher(): void {
-    if (switcherEl) { switcherEl.remove(); switcherEl = null; return; }
-    const root = document.querySelector<HTMLElement>(".code-root");
-    if (!root) return;
+    if (switcherEl) { closeSwitcher(); return; }
+    // Full-screen launcher over the whole app (above the webview layer). Lives
+    // on <body> so it clears the workbench webviews (z-index 120).
     const el = document.createElement("div");
     el.id = "code-app-switcher";
     el.innerHTML = `
-      <div class="cas-head">
-        <input class="cas-search" type="text" placeholder="Switch app…" spellcheck="false" />
-      </div>
-      <div class="cas-list"><div class="cas-empty">Loading…</div></div>`;
-    root.appendChild(el);
+      <div class="cas-panel" role="dialog" aria-modal="true">
+        <input class="cas-search" type="text" placeholder="Open an app or layout…" spellcheck="false" />
+        <div class="cas-list"><div class="cas-empty">Loading…</div></div>
+      </div>`;
+    document.body.appendChild(el);
     switcherEl = el;
     const input = el.querySelector<HTMLInputElement>(".cas-search")!;
     const list = el.querySelector<HTMLElement>(".cas-list")!;
     input.focus();
-    const dismiss = (ev: MouseEvent): void => {
-      if (switcherEl && !switcherEl.contains(ev.target as Node)) {
-        switcherEl.remove(); switcherEl = null;
-        document.removeEventListener("mousedown", dismiss);
-      }
-    };
-    document.addEventListener("mousedown", dismiss);
-    input.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape") { switcherEl?.remove(); switcherEl = null; }
-    });
+    // Backdrop click (outside the panel) and Escape both close.
+    el.addEventListener("mousedown", (ev) => { if (ev.target === el) closeSwitcher(); });
+    input.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeSwitcher(); });
 
-    type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; kind?: string };
-    const yo = (window as unknown as { yo?: { panelAppsList?: () => Promise<PanelAppRow[]> } }).yo;
-    void yo?.panelAppsList?.().then((rows) => {
-      const apps: WbAppRef[] = (rows || []).map((a) => ({
-        slug: a.slug || a.id,
-        name: a.name,
-        url: a.url || "",
-        glyphh: !a.url,
+    type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; appArchetype?: string | null };
+    type LayoutRow = { name: string; cols: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number }> };
+    const yo = (window as unknown as { yo?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).yo;
+    void Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).then(([rows, layouts]) => {
+      const appRows = rows || [];
+      const byId = new Map(appRows.map((a) => [a.id, a]));
+      const apps: WbAppRef[] = appRows.filter((a) => a.url).map((a) => ({
+        slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app",
       }));
+      const mkItem = (initial: string, name: string, open: boolean, onClick: (ev: MouseEvent) => void): HTMLButtonElement => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "cas-item" + (open ? " open" : "");
+        row.innerHTML = `<span class="cas-initial">${initial}</span><span class="cas-name"></span>`;
+        (row.querySelector(".cas-name") as HTMLElement).textContent = name;
+        row.addEventListener("click", (ev) => onClick(ev as MouseEvent));
+        return row;
+      };
       const paint = (): void => {
         const q = input.value.trim().toLowerCase();
-        const items = q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.slug.includes(q)) : apps;
-        list.innerHTML = items.length ? "" : `<div class="cas-empty">No apps match.</div>`;
+        const fa = q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.slug.includes(q)) : apps;
+        const fl = q ? (layouts || []).filter((l) => l.name.toLowerCase().includes(q)) : (layouts || []);
+        list.innerHTML = "";
+        if (!fa.length && !fl.length) { list.innerHTML = `<div class="cas-empty">Nothing matches.</div>`; return; }
         const openSlugs = new Set(appSlots().map((s) => s.slug));
-        for (const a of items) {
-          const row = document.createElement("button");
-          row.type = "button";
-          row.className = "cas-item" + (openSlugs.has(a.slug) ? " open" : "");
-          row.innerHTML = `<span class="cas-initial">${(a.name || "?").charAt(0).toUpperCase()}</span><span class="cas-name"></span>`;
-          (row.querySelector(".cas-name") as HTMLElement).textContent = a.name;
-          row.addEventListener("click", (ev) => {
-            openAppInWorkbench(a, { newPanel: (ev as MouseEvent).altKey });
-            switcherEl?.remove(); switcherEl = null;
-            document.removeEventListener("mousedown", dismiss);
-          });
-          list.appendChild(row);
+        if (fa.length) {
+          const h = document.createElement("div"); h.className = "cas-section"; h.textContent = "Apps"; list.appendChild(h);
+          for (const a of fa) {
+            list.appendChild(mkItem((a.name || "?").charAt(0).toUpperCase(), a.name, openSlugs.has(a.slug), (ev) => {
+              openAppInWorkbench(a, { newPanel: ev.altKey }); closeSwitcher();
+            }));
+          }
+        }
+        if (fl.length) {
+          const h = document.createElement("div"); h.className = "cas-section"; h.textContent = "Layouts"; list.appendChild(h);
+          for (const l of fl) {
+            list.appendChild(mkItem("▦", l.name, false, () => {
+              const cells = l.splits.map((s) => {
+                const app = byId.get(s.panelId);
+                return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: s.col ?? 0, row: s.row ?? 0 } : null;
+              }).filter((c): c is WbLayoutCell => c !== null);
+              if (cells.length) openLayoutInWorkbench({ cols: l.cols || 2, colWidths: l.colWidths || [], rowHeights: l.rowHeights || [], cells });
+              closeSwitcher();
+            }));
+          }
         }
       };
       input.addEventListener("input", paint);
       paint();
-    }).catch(() => { list.innerHTML = `<div class="cas-empty">Couldn't load apps.</div>`; });
+    }).catch(() => { list.innerHTML = `<div class="cas-empty">Couldn't load.</div>`; });
   }
+  function closeSwitcher(): void { switcherEl?.remove(); switcherEl = null; }
 
   // ── Files view ──
   async function renderFilesIntoSlot(body: HTMLElement, slot: FilesSlot): Promise<void> {

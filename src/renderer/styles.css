@@ -9841,42 +9841,57 @@ select.settings-input {
 .ws-rail-slot.flash { outline: 2px solid var(--accent); outline-offset: -2px; transition: outline-color 0.6s ease; }
 
 /* The switch — app switcher overlay docked over the rails side. */
+/* Full-screen launcher: backdrop over the whole app (above the z-120 webview
+   layer), with a centered command panel. */
 #code-app-switcher {
-  position: absolute;
-  top: 46px;
-  right: 10px;
-  width: 260px;
-  max-height: min(480px, 70vh);
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: casIn 0.14s ease;
+}
+@keyframes casIn { from { opacity: 0; } to { opacity: 1; } }
+#code-app-switcher .cas-panel {
+  width: min(560px, 92vw);
+  max-height: 68vh;
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: 12px;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
-  z-index: 80;
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
   overflow: hidden;
-  animation: casIn 0.14s ease;
+  animation: casPanelIn 0.16s ease;
 }
-@keyframes casIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-#code-app-switcher .cas-head { padding: 8px; border-bottom: 1px solid var(--border); }
+@keyframes casPanelIn { from { opacity: 0; transform: translateY(-10px) scale(0.99); } to { opacity: 1; transform: none; } }
 #code-app-switcher .cas-search {
-  width: 100%; box-sizing: border-box; padding: 7px 10px;
-  border: 1px solid var(--border-2); border-radius: 8px;
-  background: var(--surface-2); color: var(--text); font-size: 12.5px;
+  width: 100%; box-sizing: border-box; padding: 14px 18px;
+  border: none; border-bottom: 1px solid var(--border);
+  background: none; color: var(--text); font-size: 15px; outline: none;
 }
-#code-app-switcher .cas-list { overflow-y: auto; padding: 5px; }
-#code-app-switcher .cas-empty { padding: 14px 10px; font-size: 12px; color: var(--text-3); text-align: center; }
+#code-app-switcher .cas-list { overflow-y: auto; padding: 8px; }
+#code-app-switcher .cas-empty { padding: 22px 10px; font-size: 13px; color: var(--text-3); text-align: center; }
+#code-app-switcher .cas-section {
+  padding: 8px 10px 4px; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3);
+}
 #code-app-switcher .cas-item {
-  display: flex; align-items: center; gap: 9px; width: 100%;
-  padding: 7px 9px; border: none; background: none; border-radius: 8px;
-  color: var(--text-2); font-size: 12.5px; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 9px 10px; border: none; background: none; border-radius: 9px;
+  color: var(--text-2); font-size: 13.5px; cursor: pointer; text-align: left;
 }
 #code-app-switcher .cas-item:hover { background: var(--hover); color: var(--text); }
 #code-app-switcher .cas-item.open .cas-name::after { content: " · open"; color: var(--text-3); font-size: 11px; }
 #code-app-switcher .cas-initial {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
-  background: var(--surface-2); color: var(--text); font-weight: 600; font-size: 11px;
+  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  background: var(--surface-2); color: var(--text); font-weight: 600; font-size: 12px;
 }
 
 .ws-preview-stub { text-align: center; color: var(--ws-text-faint); }
