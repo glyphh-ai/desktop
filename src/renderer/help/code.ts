@@ -1252,12 +1252,9 @@ function send(): void {
     };
     void (async () => {
       const key = ref.toLowerCase();
+      const yo2 = window.yo as unknown as { appLaunch?: (s: { slug: string; name: string }) => Promise<{ ok: boolean; error?: string }> };
       const [apps, layouts] = await Promise.all([yo.panelAppsList?.() ?? [], yo.layoutsList?.() ?? []]);
-      const app = apps.find((a) => (a.slug || "").toLowerCase() === key || a.id.toLowerCase() === key);
-      if (app && (app.url || app.appArchetype === "glyphh-app")) {
-        w.__wbOpenApp?.({ slug: app.slug || app.id, name: app.name, url: app.url || "", glyphh: app.appArchetype === "glyphh-app" });
-        return;
-      }
+      // A saved layout by exact name opens as a grid (keeps arrangement + sticky).
       const layout = layouts.find((l) => l.name.toLowerCase() === key);
       if (layout) {
         const resolve = (pid: string): typeof apps[number] | undefined => {
@@ -1271,6 +1268,11 @@ function send(): void {
         if (cells.length) w.__wbOpenLayout?.({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
         return;
       }
+      // Otherwise an app by slug/name — resolved by the SAME main-side resolver a
+      // card click uses (findLibraryApp: slug/name/fuzzy; toWbRef: launchConfig
+      // urls + glyphh apps), which opens it into the workbench via wb:app-cmd.
+      const res = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }));
+      if (res?.ok) return;
       if (!current()) newChat();
       current()!.messages.push({ role: "assistant", text: `⚠ .dip: no app or layout named "${ref}".`, at: Date.now() });
       void saveStore(); renderHistory(); renderThread();
