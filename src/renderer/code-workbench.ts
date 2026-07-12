@@ -871,13 +871,6 @@ async function init(): Promise<void> {
       if (ev.isMainFrame) setUrl(ev.url);
       updateNav();
     });
-    webview.addEventListener("page-title-updated", (e) => {
-      const t = (e as unknown as { title?: string }).title;
-      if (!t) return;
-      slot.name = t;
-      const titleEl = document.querySelector<HTMLElement>(`.ws-rail-slot[data-slot-id="${slot.id}"] .title`);
-      if (titleEl) titleEl.textContent = t;
-    });
     webview.addEventListener("did-stop-loading", updateNav);
     backBtn.addEventListener("click", () => webview.goBack?.());
     fwdBtn.addEventListener("click", () => webview.goForward?.());
