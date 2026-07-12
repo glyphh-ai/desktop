@@ -123,7 +123,27 @@ function failStreak(messages: AnthropicMessage[]): number {
   return fails;
 }
 
+// TEMPORARY (until the loop logic lands): the composer's model pick IS the
+// lane — no escalation heuristics. Flip to false to restore the full
+// evidence-based router below (heuristicDecide), which is kept intact.
+const BYPASS_LOOP = true;
+
+/** The lane the user's pick selects: "gw:<model>" → frontier with that model;
+ *  "auto" or a local id → local. (code.ts writes modelPick on every pick.) */
+function pickedRoute(): "local" | "frontier" {
+  return String(getPreference("modelPick", "auto")).startsWith("gw:") ? "frontier" : "local";
+}
+
 function decide(body: MessagesBody): Decision {
+  if (BYPASS_LOOP) {
+    return pickedRoute() === "frontier"
+      ? { at: Date.now(), route: "frontier", reason: "model picker: Claude model selected", score: 99 }
+      : { at: Date.now(), route: "local", reason: "model picker: local model selected", score: 0 };
+  }
+  return heuristicDecide(body);
+}
+
+function heuristicDecide(body: MessagesBody): Decision {
   const policy = escalationPolicy();
   const messages = body.messages ?? [];
   const ask = lastUserText(messages);
@@ -672,7 +692,7 @@ async function handleMessages(req: http.IncomingMessage, res: http.ServerRespons
     // so no message trimming can save this turn. Escalate when the dial and
     // the gateway allow it; otherwise say exactly what's full (a plain 400 —
     // NOT a "temporary server error" the client tells the user to wait out).
-    if (lane && !frontierDeclined && escalationPolicy() !== "local") {
+    if (lane && !frontierDeclined && !BYPASS_LOOP && escalationPolicy() !== "local") {
       const d: Decision = { at: Date.now(), route: "frontier", reason: "local context overflow after squeeze — escalated", score: 99 };
       recordDecision(d, lastUserText(body.messages ?? []).slice(0, 80));
       body.model = await effectiveFrontierModel();
