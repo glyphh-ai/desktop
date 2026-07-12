@@ -98,9 +98,8 @@ function switchToSection(sectionId: string) {
   const section = document.querySelector(`.help-section[data-section="${sectionId}"]`) as HTMLElement;
   if (navItem) navItem.classList.add("active");
   if (section) section.classList.add("active");
-  // App rail (Code-primary surface): sync the Home|Code switcher + nav items.
-  document.querySelectorAll<HTMLButtonElement>(".app-rail-switch-btn").forEach((b) =>
-    b.classList.toggle("active", b.dataset.target === sectionId));
+  // App rail: highlight the active nav item (Home / Connections / …). The
+  // agent (code) is the base — no nav item is active while it's showing.
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item").forEach((b) =>
     b.classList.toggle("active", b.dataset.section === sectionId));
 }
@@ -270,11 +269,13 @@ export function initHelp() {
   });
 
   // ── App rail (Code-primary surface) ─────────────────────────────────────
-  document.querySelectorAll<HTMLButtonElement>(".app-rail-switch-btn").forEach((btn) => {
-    btn.addEventListener("click", () => gotoSection(btn.dataset.target!));
-  });
+  // The Home|Code switcher is gone: the agent (code) is the always-present
+  // base, Home is a nav item like the rest, and clicking the ACTIVE section
+  // returns to the agent — so every section toggles back to code.
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item").forEach((btn) => {
-    btn.addEventListener("click", () => gotoSection(btn.dataset.section!));
+    btn.addEventListener("click", () => {
+      gotoSection(btn.classList.contains("active") ? "code" : btn.dataset.section!);
+    });
   });
 
   // User area — dropdown opens upward: Settings / Account / Logout.

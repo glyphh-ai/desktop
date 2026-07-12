@@ -11564,38 +11564,6 @@ body.wb-max .ws-right-rails { width: 100%; }
 .code-wb-edge.dragging { background: var(--border-2); }
 
 /* App rail — Home|Code switcher */
-.app-rail-switch {
-  display: flex;
-  gap: 4px;
-  margin: 12px 10px 4px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface-3);
-}
-.app-rail-switch-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 5px 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--text-3);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.app-rail-switch-btn svg { width: 13px; height: 13px; }
-.app-rail-switch-btn:hover { color: var(--text); }
-.app-rail-switch-btn.active {
-  background: var(--rail-active-bg);
-  color: var(--text-bright);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
-}
-
 /* App rail — section nav */
 .app-rail-nav { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 0; }
 .app-rail-nav-item {
