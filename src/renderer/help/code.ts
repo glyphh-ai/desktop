@@ -826,7 +826,12 @@ function declineCardEl(d: { kind: string; url: string }): HTMLElement {
   (card.querySelector(".decline-card-title") as HTMLElement).textContent = c.title;
   (card.querySelector(".decline-card-body") as HTMLElement).textContent = c.body;
   const cta = card.querySelector<HTMLButtonElement>(".decline-card-cta");
-  if (cta) { cta.textContent = c.cta; cta.addEventListener("click", () => window.yo.openExternal?.(d.url)); }
+  if (cta) {
+    cta.textContent = c.cta;
+    // Open in the in-app workbench browser (same mechanics as Manage Account),
+    // NOT the system browser.
+    cta.addEventListener("click", () => openUrlInWorkbench(d.kind === "credits" ? "Billing" : "Account", d.url));
+  }
   card.querySelector<HTMLButtonElement>(".decline-card-alt")?.addEventListener("click", () => el("code-model-chip")?.click());
   return card;
 }
@@ -1700,6 +1705,25 @@ export function loadCode(): void {
   // Boot the ported workbench engine (idempotent) — it owns the workdir
   // controls, the view toggles, and everything inside #code-workbench.
   (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
+}
+
+/** Open an arbitrary URL as a WORKBENCH browser panel (beside the agent) — the
+ *  same mechanics Settings → Manage Account uses. Cold-safe: flips to Code,
+ *  boots the workbench (async init), then drives __wbOpenApp once it exists. */
+export function openUrlInWorkbench(name: string, url: string): void {
+  gotoSection("code");
+  const w = window as unknown as {
+    __initCodeWorkbench?: () => void;
+    __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
+  };
+  w.__initCodeWorkbench?.();
+  const app = { slug: (name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "page"), name, url };
+  let tries = 0;
+  const open = (): void => {
+    if (w.__wbOpenApp) { w.__wbOpenApp(app); return; }
+    if (tries++ < 40) setTimeout(open, 50);
+  };
+  open();
 }
 
 /** Open the command center (app/layout launcher) from ANY section — even before
