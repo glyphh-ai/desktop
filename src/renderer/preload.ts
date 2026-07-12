@@ -299,6 +299,8 @@ contextBridge.exposeInMainWorld("yo", {
   panelAppsSetConnections: (id: string, connectionIds: string[]) =>
     ipcRenderer.invoke("panel-apps-set-connections", id, connectionIds) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   // First-class Connections (connected accounts + per-connection tool exposure).
+  loopsList: () =>
+    ipcRenderer.invoke("loops-list") as Promise<{ ok: boolean; loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild: boolean }>,
   connectionsList: () =>
     ipcRenderer.invoke("connections-list") as Promise<{ ok: boolean; error?: string; connections: Connection[] }>,
   connectionRename: (id: string, label: string) =>

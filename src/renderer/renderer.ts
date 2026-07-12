@@ -158,6 +158,7 @@ declare global {
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
       panelAppsSetConnections: (id: string, connectionIds: string[]) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
+      loopsList: () => Promise<{ ok: boolean; loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild: boolean }>;
       connectionsList: () => Promise<{ ok: boolean; error?: string; connections: Connection[] }>;
       connectionRename: (id: string, label: string) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
       connectionToolsList: (id: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;

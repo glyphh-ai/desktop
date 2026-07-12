@@ -43,14 +43,16 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
   auto: "Routine work runs unattended: edits, shell commands, and connected-account calls are auto-approved. Only actions flagged dangerous — destructive commands (rm -rf, sudo, force-push) or writes escaping the working folder — still stop and ask.",
   bypass: "No gates at all: every action runs without asking, including dangerous commands and writes outside the working folder. Only for sessions you fully trust — prefer Auto mode for everyday unattended runs.",
 };
-const EFFORTS = [
-  { id: "low", label: "Local", hint: "Everything on-device — never escalates, never burns credits" },
-  { id: "medium", label: "Assist", hint: "Local first; hard turns escalate to Claude" },
-  { id: "high", label: "Boost", hint: "Escalates readily — Claude takes the heavy turns" },
-  { id: "superfly", label: "Superfly", hint: "All Claude, every turn — max capability, credits burn" },
-] as const;
+// Loop: which agent loop runs the session — served by Build → Loops on the
+// platform (role-scoped). This chip replaced the old effort dial (the SDKs
+// never took an effort param); the williamEffort preference still exists for
+// the slicer's escalation budget but is no longer surfaced here.
+let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }> = [
+  { id: "default", name: "Default", description: "The standard William agent loop.", builtIn: true },
+];
+let loopsCanBuild = false;
+let williamLoop = "default";
 let williamMode: (typeof MODES)[number]["id"] = "ask";
-let williamEffort: (typeof EFFORTS)[number]["id"] = "medium";
 // Approval cards awaiting a decision (rendered inline in the thread).
 // Ask dock queue — approvals and agent questions render one at a time in a
 // card docked just above the composer (never inline in the thread).
@@ -69,12 +71,11 @@ function paintChips(): void {
   }
   const ec = el("code-effort-chip");
   if (ec) {
-    const ef = EFFORTS.find((x) => x.id === williamEffort) ?? EFFORTS[1];
-    ec.textContent = ef.id === "superfly" ? "Superfly" : `Effort: ${ef.label}`;
-    ec.title = ef.hint;
-    ec.className = `code-chip effort-${ef.id}`;
+    const lp = loops.find((x) => x.id === williamLoop) ?? loops[0];
+    ec.textContent = `Loop: ${lp?.name ?? "Default"}`;
+    ec.title = lp?.description ?? "Which agent loop runs this session";
+    ec.className = "code-chip";
   }
-  syncEffortPop();
 }
 
 function setMode(id: (typeof MODES)[number]["id"]): void {
@@ -89,9 +90,9 @@ function cycleMode(): void {
   setMode(MODES[(i + 1) % MODES.length].id);
 }
 
-function setEffort(id: (typeof EFFORTS)[number]["id"]): void {
-  williamEffort = id;
-  void window.yo.setPreference?.("williamEffort", id);
+function setLoop(id: string): void {
+  williamLoop = id;
+  void window.yo.setPreference?.("williamLoop", id);
   paintChips();
 }
 
@@ -202,14 +203,9 @@ function renderModelMenu(): void {
     });
     menu.appendChild(item);
   };
-  const header = (text: string) => {
-    const h = document.createElement("div");
-    h.className = "yo-model-section-header";
-    h.textContent = text;
-    menu.appendChild(h);
-  };
-
-  if (gwModels.length) header("On this machine");
+  // ONE list — the server catalog governs both halves: on-device entries come
+  // from /api/william/models and escalation entries from /api/models/catalog,
+  // each already scoped to the org (and, for members, their role).
   mk("auto", "Auto", "Picks the best model for this machine.");
   for (const m of modelList) {
     // Only released models list — future tiers appear when they exist.
@@ -226,10 +222,9 @@ function renderModelMenu(): void {
     mk(m.id, m.name || m.id, oneLine, { extra: m.downloaded ? "" : "↓", info });
   }
 
-  // Escalation pick — which Claude model hard turns go to. Org-governed
-  // list, per-user choice; separate from the local-model selection above.
+  // Escalation pick — which model hard turns go to. Org-governed list,
+  // per-user choice; flows in the same flat list after the on-device models.
   if (gwModels.length) {
-    header("Escalates to Model");
     const cr = (v: number | null) => (v == null ? "—" : String(Math.round(v / 1e6)));
     const gwDesc = (id: string) =>
       id.includes("opus") ? "Deep reasoning — the heavy hitter"
@@ -330,68 +325,54 @@ function showModeInfoModal(): void {
   document.body.appendChild(overlay);
 }
 
-// ── Effort drop-up: labels over a 4-stop slider; superfly = matrix ──
-let matrixRaf = 0;
-
-function syncEffortPop(): void {
-  const pop = el("code-effort-pop");
-  if (!pop || pop.classList.contains("hidden")) return;
-  const idx = EFFORTS.findIndex((x) => x.id === williamEffort);
-  const range = pop.querySelector<HTMLInputElement>("input[type=range]");
-  if (range) range.value = String(idx);
-  pop.querySelectorAll(".effort-label").forEach((n, i) => n.classList.toggle("active", i === idx));
-  const superfly = williamEffort === "superfly";
-  pop.classList.toggle("superfly", superfly);
-  if (superfly) startMatrix();
+// ── Loop drop-up — pick which agent loop runs the session ──
+// Loops come from the server (Build → Loops, role-scoped); offline keeps the
+// built-in Default. canBuild gates the (stub) Loops tab in the nav.
+async function refreshLoops(): Promise<void> {
+  try {
+    const r = await window.yo.loopsList?.();
+    if (r?.loops?.length) { loops = r.loops; loopsCanBuild = !!r.canBuild; }
+    if (!loops.some((l) => l.id === williamLoop)) williamLoop = loops[0]?.id || "default";
+    document.querySelector<HTMLElement>('.help-nav-item[data-section="loops"]')?.classList.toggle("hidden", !loopsCanBuild);
+    paintChips();
+  } catch { /* offline — the built-in default stands */ }
 }
 
-/** The superfly matrix — vertical particle dashes streaming right→left:
- *  hot/dense at the right edge, thinning to sparse at the left. White with
- *  purple flashes (theme-read live). Runs only while visible. */
-function startMatrix(): void {
-  const canvas = el<HTMLCanvasElement>("effort-matrix");
-  if (!canvas || matrixRaf) return;
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const W = canvas.clientWidth || 200;
-  const H = canvas.clientHeight || 26;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  const ctx = canvas.getContext("2d")!;
-  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#8c3bf2";
-  const wire = getComputedStyle(canvas).color || "#fff";
-  const parts: Array<{ x: number; y: number; vx: number; h: number; purple: boolean }> = [];
-  const tick = () => {
-    const pop = el("code-effort-pop");
-    if (!canvas.isConnected || !pop || pop.classList.contains("hidden") || !pop.classList.contains("superfly")) {
-      matrixRaf = 0;
-      return;
+function renderLoopMenu(): void {
+  const pop = el("code-effort-pop");
+  if (!pop) return;
+  pop.textContent = "";
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  const headLabel = document.createElement("span");
+  headLabel.textContent = "Loop";
+  head.appendChild(headLabel);
+  pop.appendChild(head);
+  const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  for (const l of loops) {
+    const item = document.createElement("button");
+    item.className = "code-drop-item drop-item-2line" + (l.id === williamLoop ? " selected" : "");
+    item.type = "button";
+    const main = document.createElement("div");
+    main.className = "drop-main";
+    const span = document.createElement("span");
+    span.textContent = l.name;
+    main.appendChild(span);
+    if (l.id === williamLoop) main.insertAdjacentHTML("beforeend", check);
+    item.appendChild(main);
+    if (l.description) {
+      const sub = document.createElement("span");
+      sub.className = "drop-sub";
+      sub.textContent = l.description;
+      item.appendChild(sub);
     }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-    // Spawn skewed hard toward the hot right edge.
-    for (let i = 0; i < 3; i++) {
-      const bias = Math.pow(Math.random(), 0.3);
-      parts.push({
-        x: W * (0.2 + 0.8 * bias),
-        y: 2 + Math.random() * (H - 8),
-        vx: -(0.45 + Math.random()),
-        h: 3 + Math.random() * 3.5,
-        purple: Math.random() < 0.3,
-      });
-    }
-    for (let i = parts.length - 1; i >= 0; i--) {
-      const p = parts[i];
-      p.x += p.vx;
-      if (p.x < 0) { parts.splice(i, 1); continue; }
-      ctx.globalAlpha = Math.pow(p.x / W, 1.5) * 0.92;
-      ctx.fillStyle = p.purple ? accent : wire;
-      ctx.fillRect(p.x, p.y, 1.3, p.h);
-    }
-    if (parts.length > 260) parts.splice(0, parts.length - 260);
-    ctx.globalAlpha = 1;
-    matrixRaf = requestAnimationFrame(tick);
-  };
-  matrixRaf = requestAnimationFrame(tick);
+    item.addEventListener("click", () => {
+      setLoop(l.id);
+      renderLoopMenu();
+      pop.classList.add("hidden");
+    });
+    pop.appendChild(item);
+  }
 }
 
 /** Manual compaction (meter click / .compact) — steers the fold with an
@@ -541,42 +522,11 @@ function initComposerControls(): void {
   menu.id = "code-mode-menu";
   menu.className = "code-drop-up hidden";
   modeWrap.appendChild(menu);
+  // The loop drop-up (repurposed effort slot) — rows render on open.
   const pop = document.createElement("div");
   pop.id = "code-effort-pop";
-  pop.className = "code-drop-up code-effort-pop hidden";
-  pop.innerHTML = `
-    <div class="effort-head">
-      <span class="effort-title">Effort</span>
-      <button id="effort-info-btn" class="model-info-btn" type="button" title="How effort works">i</button>
-    </div>
-    <div id="effort-info-tip" class="model-info-tip hidden"></div>
-    <div class="effort-desc">How eagerly turns escalate from the free local model to your escalation model.</div>
-    <div class="effort-labels">${EFFORTS.map((x) => `<span class="effort-label${x.id === "superfly" ? " sf" : ""}">${x.label}</span>`).join("")}</div>
-    <div class="effort-track">
-      <canvas id="effort-matrix"></canvas>
-      <input type="range" min="0" max="3" step="1" value="1" aria-label="Effort" />
-    </div>`;
+  pop.className = "code-drop-up hidden";
   effortWrap.appendChild(pop);
-  const effortTip = pop.querySelector<HTMLElement>("#effort-info-tip")!;
-  effortTip.textContent = [
-    "Effort sets how eagerly each turn escalates from the free local model to your escalation model.",
-    "",
-    "Local — everything on-device. Free and private; never escalates.",
-    "Assist — local first; turns the local model can't handle escalate.",
-    "Boost — escalates readily; the escalation model takes the heavy turns.",
-    "Superfly — every turn escalates. Max capability; credits burn.",
-    "",
-    "Credits burn only on escalated turns. If escalation is declined — credit cap, rate limit, offline — the turn runs locally instead of failing.",
-  ].join("\n");
-  effortTip.addEventListener("click", (ev) => ev.stopPropagation());
-  pop.querySelector<HTMLButtonElement>("#effort-info-btn")!.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    effortTip.classList.toggle("hidden");
-  });
-  pop.querySelector<HTMLInputElement>("input[type=range]")!.addEventListener("input", (e) => {
-    const idx = Math.max(0, Math.min(3, Number((e.target as HTMLInputElement).value) || 0));
-    setEffort(EFFORTS[idx].id);
-  });
   el("code-mode-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
     el("code-effort-pop")?.classList.add("hidden");
@@ -588,9 +538,9 @@ function initComposerControls(): void {
     e.stopPropagation();
     el("code-mode-menu")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
-    el("effort-info-tip")?.classList.add("hidden"); // fresh open = tip closed
+    void refreshLoops().then(() => renderLoopMenu());
+    renderLoopMenu();
     el("code-effort-pop")?.classList.toggle("hidden");
-    syncEffortPop();
   });
   // Context panel — per-lane distance to compaction, anchored to the meter.
   const ctxWrap = el("code-ctx-wrap");
@@ -1945,8 +1895,9 @@ export function initCode(): void {
   void (async () => {
     const m = String((await window.yo.getPreference?.("williamMode", "ask")) || "ask");
     if (MODES.some((x) => x.id === m)) williamMode = m as typeof williamMode;
-    const ef = String((await window.yo.getPreference?.("williamEffort", "medium")) || "medium");
-    if (EFFORTS.some((x) => x.id === ef)) williamEffort = ef as typeof williamEffort;
+    const lp = String((await window.yo.getPreference?.("williamLoop", "default")) || "default");
+    williamLoop = lp;
+    void refreshLoops();
     paintChips();
   })();
   const ta = input();

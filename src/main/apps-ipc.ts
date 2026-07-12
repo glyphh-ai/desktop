@@ -129,6 +129,17 @@ function registerPanelAppsIpc(): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
+  // ── Loops (Build → Loops on the platform; role-scoped) ───────
+  // Offline / signed-out falls back to the built-in Default so the composer's
+  // loop picker always has something to show.
+  ipcMain.handle("loops-list", async () => {
+    const fallback = { loops: [{ id: "default", name: "Default", description: "The standard William agent loop.", builtIn: true }], canBuild: false };
+    try {
+      const r = await serverGetAuthed<{ loops?: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild?: boolean }>("/api/loops");
+      return { ok: true, loops: r.loops?.length ? r.loops : fallback.loops, canBuild: !!r.canBuild };
+    } catch { return { ok: true, ...fallback }; }
+  });
+
   // ── Connections (first-class connected accounts) ─────────────
   ipcMain.handle("connections-list", async () => {
     try { const r = await serverGetAuthed<{ connections: unknown[] }>("/api/connections"); return { ok: true, connections: r.connections || [] }; }
