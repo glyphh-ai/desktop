@@ -1,5 +1,6 @@
 {
   "name": "glyphh-apps",
+  "private": true,
   "productName": "Glyphh Desktop",
   "version": "1.6.20",
   "description": "Glyphh Desktop — Your AI workspace.",
@@ -27,7 +28,7 @@
     "url": "git+https://github.com/glyphh-ai/yo-client.git"
   },
   "author": "Glyphh AI",
-  "license": "UNLICENSED",
+  "license": "LicenseRef-Proprietary",
   "devDependencies": {
     "@electron/rebuild": "^3.7.0",
     "@types/adm-zip": "^0.5.8",
