@@ -5,7 +5,7 @@
  * This used to also own a persistent WebSocket to yo-server's /ws/relay so the
  * cloud could drive this machine (external MCP callers, the app-proxy tunnel).
  * That reach-in was REMOVED — nothing dials into a personal machine anymore.
- * What survives is the registry itself: William and the loopback local-MCP
+ * What survives is the registry itself: Glyphh and the loopback local-MCP
  * server both invoke these handlers on-machine, and it is the seed of the
  * future client↔runtime "attach" protocol (same shapes, over loopback).
  */

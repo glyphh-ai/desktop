@@ -14,6 +14,7 @@ import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
+import { openLayoutByName } from "./app-resolver";
 import { setPreference } from "./stores/preferences-db";
 export class CommandParser {
   private static readonly COMMAND_KEYWORDS = new Set(["sup", "dip", "drip", "peace", "waz"]);
@@ -402,18 +403,36 @@ export class CommandParser {
       return this.handleDipGrid(args.slice(1), win);
     }
 
-    // Check for saved layout
-    if (this.layouts.isLayout(sub)) {
-      const ok = this.layouts.apply(sub, win);
-      if (!ok) return `Failed to apply layout: ${sub}`;
-      setPreference("lastView", { type: "layout", name: sub });
+    // dip <url> — open URL in a new browser tab. Checked BEFORE layouts so a
+    // url is never offered to the layout resolver.
+    const rawUrl = args[0];
+    if (/^https?:\/\//i.test(rawUrl) || /^localhost(:\d+)?(\/|$)/i.test(rawUrl) || /^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/|$)/.test(rawUrl)) {
+      let target = rawUrl;
+      if (!/^https?:\/\//i.test(target)) target = "http://" + target;
+      if (this.tabCreator) {
+        const tabId = this.tabCreator(target);
+        return `Opened ${target} in new tab (${tabId})`;
+      }
+      return "Tab manager not available";
+    }
 
-      // If extra args, run them as commands on every matching panel in the layout
-      const commands = args.slice(1);
-      if (commands.length > 0) {
-        const layout = this.layouts.getLayout(sub);
-        if (layout) {
-          const allResults: string[] = [`Layout: ${sub}`];
+    // Saved layout — opened through openLayoutByName, the SAME path the command
+    // palette and the agent use, so every cell becomes a workbench panel.
+    // (LayoutManager.apply() is the retired OS-grid path: it renders only after
+    // a manual resize, and wrongly.) isLayout() sees just this process's cached
+    // list, so anything that isn't a known panel is offered to the resolver too;
+    // it matches the server's layouts by name/id and throws (no side effects)
+    // when there's no hit, which falls through to panel handling below.
+    if (this.layouts.isLayout(sub) || !this.appConnector.get(sub)) {
+      const opened = await openLayoutByName(sub).catch(() => null);
+      if (opened) {
+        setPreference("lastView", { type: "layout", name: opened.layout });
+
+        // Extra args run as commands on every matching panel in the layout.
+        const commands = args.slice(1);
+        const layout = this.layouts.getLayout(opened.layout);
+        if (commands.length > 0 && layout) {
+          const allResults: string[] = [`Layout: ${opened.layout}`];
           for (const cell of layout.cells) {
             const app = this.appConnector.get(cell.panelId);
             if (!app) continue;
@@ -434,23 +453,14 @@ export class CommandParser {
             }
             allResults.push(panelResults.join(" → "));
           }
-          if (allResults.length === 1) return `Layout: ${sub} (no panel has command "${commands[0]}")`;
+          if (allResults.length === 1) return `Layout: ${opened.layout} (no panel has command "${commands[0]}")`;
           return allResults.join("\n");
         }
+        return `Layout: ${opened.layout}`;
       }
-      return `Layout: ${sub}`;
-    }
-
-    // dip <url> — open URL in a new browser tab
-    const rawUrl = args[0];
-    if (/^https?:\/\//i.test(rawUrl) || /^localhost(:\d+)?(\/|$)/i.test(rawUrl) || /^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/|$)/.test(rawUrl)) {
-      let target = rawUrl;
-      if (!/^https?:\/\//i.test(target)) target = "http://" + target;
-      if (this.tabCreator) {
-        const tabId = this.tabCreator(target);
-        return `Opened ${target} in new tab (${tabId})`;
-      }
-      return "Tab manager not available";
+      // A cached layout that the resolver couldn't open is a real failure;
+      // anything else just wasn't a layout — fall through to panel handling.
+      if (this.layouts.isLayout(sub)) return `Failed to apply layout: ${sub}`;
     }
 
     // dip <panel-id> [cmd1 cmd2 ...] — switch + optional app commands. Dipping to

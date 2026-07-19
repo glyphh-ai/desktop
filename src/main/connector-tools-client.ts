@@ -2,19 +2,23 @@
  * connector-tools-client — yo-client's view of the server-side connector
  * tool layer.
  *
- * yo-server owns Pipedream auth. Instead of yo-client running its own MCP
- * client per connected app (which then has to call back to yo-server for
- * tokens anyway), we go through /api/connectors/tools{,/call} with the
- * regular JWT. Single source of truth — the relay's connector_* tools and
- * yo-client both ride this same path.
+ * The server owns connector auth. Instead of yo-client running its own MCP
+ * client per connected app (which then has to call back to the server for
+ * tokens anyway), we go through client.connections.resolvedTools()/runTool().
+ * Single source of truth — the relay's connector_* tools and yo-client both
+ * ride this same path.
  *
  * Trade-off: one extra hop (yo-server → Pipedream) vs. direct from the
  * desktop app. ~50–100 ms; acceptable since Pipedream's own call cost
  * dominates and the catalog is cached for 5 min on the server.
  */
 
-import { serverGetAuthed, serverPostAuthed } from "./auth.js";
+import { getClient } from "./glyphh-client.js";
 
+/** One invocable connection tool, flattened for the agent surfaces: `slug` is
+ *  the CONNECTION, `name` the tool key runTool wants. The resolved catalog
+ *  carries no input schema — schema-less tools prompt the model to shape args
+ *  from the description. */
 export interface ConnectorTool {
   slug: string;
   name: string;
@@ -26,19 +30,18 @@ let cached: ConnectorTool[] = [];
 let slugs = new Set<string>();
 let lastRefresh = 0;
 
-/** Pull the freshest catalog from yo-server and cache it in-process. */
+/** Pull the freshest resolved tool set from the server and cache it in-process. */
 export async function refreshConnectorCatalog(): Promise<ConnectorTool[]> {
   try {
-    const res = await serverGetAuthed<{ ok: boolean; tools: ConnectorTool[]; error?: string }>(
-      "/api/connectors/tools",
+    const { connections } = await getClient().connections.resolvedTools();
+    cached = connections.flatMap((conn) =>
+      conn.tools.map((t) => ({
+        slug: conn.slug,
+        name: t.key,
+        description: t.description ?? t.name,
+        inputSchema: {},
+      })),
     );
-    if (!res.ok) {
-      console.warn(`[connector-tools] refresh failed: ${res.error}`);
-      cached = [];
-      slugs = new Set();
-      return [];
-    }
-    cached = res.tools || [];
     slugs = new Set(cached.map((t) => t.slug));
     lastRefresh = Date.now();
     return cached;
@@ -60,16 +63,13 @@ export function clearConnectorCatalog(): void {
   lastRefresh = 0;
 }
 
-/** Invoke a connector tool via yo-server. Returns the coerced text result. */
+/** Invoke a connection tool via the server. Returns the coerced text result. */
 export async function callConnectorTool(
   slug: string,
   name: string,
   args: Record<string, unknown>,
 ): Promise<string> {
-  const res = await serverPostAuthed<{ ok: boolean; result?: string; error?: string }>(
-    "/api/connectors/tools/call",
-    { slug, name, args },
-  );
-  if (!res.ok) throw new Error(res.error || "tool call failed");
-  return res.result || "";
+  const { result } = await getClient().connections.runTool({ slug, tool: name, props: args });
+  if (result.ret === undefined || result.ret === null) return "";
+  return typeof result.ret === "string" ? result.ret : JSON.stringify(result.ret);
 }

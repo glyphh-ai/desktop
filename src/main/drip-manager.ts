@@ -1,5 +1,5 @@
 import { BrowserWindow, screen } from "electron";
-import { serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
+import { getClient } from "./glyphh-client";
 
 // ── Color palettes ──────────────────────────────────────────
 
@@ -534,7 +534,7 @@ interface ServerDrip { id: string; name: string; recipe: string; }
 // cache + writes in the background); the Drips tab IPC awaits the server.
 
 // Module singleton — main.ts registers its instance so tool surfaces
-// (William, relay) can reach the running manager without importing main.
+// (Glyphh, relay) can reach the running manager without importing main.
 let current: DripManager | null = null;
 export function setDripManagerInstance(m: DripManager): void { current = m; }
 export function getDripManagerInstance(): DripManager | null { return current; }
@@ -555,10 +555,15 @@ export class DripManager {
   /** Refresh the cache from the server (non-fatal offline / pre-auth). */
   async refreshFromServer(): Promise<void> {
     try {
-      const drips = await serverGetAuthed<ServerDrip[]>("/api/drips");
+      const items = await getClient().drips.list();
       const customs: Record<string, string> = {};
       const ids: Record<string, string> = {};
-      for (const d of drips) { customs[d.name] = d.recipe; ids[d.name] = d.id; }
+      for (const item of items) {
+        const recipe = (item.data as { recipe?: string } | null)?.recipe;
+        if (typeof recipe !== "string") continue;
+        customs[item.name] = recipe;
+        ids[item.name] = item.id;
+      }
       this.customs = customs;
       this.ids = ids;
     } catch { /* keep existing cache */ }
@@ -576,11 +581,10 @@ export class DripManager {
 
   private async persistSave(name: string, recipe: string): Promise<void> {
     const id = this.ids[name];
-    const saved = id
-      ? await serverPatchAuthed<ServerDrip>(`/api/drips/${id}`, { name, recipe })
-      : await serverPostAuthed<ServerDrip>("/api/drips", { name, recipe });
+    const saved = await getClient().drips.save({ name, data: { recipe }, ...(id ? { id } : {}) });
     this.ids[name] = saved.id;
-    this.customs[name] = saved.recipe;
+    const savedRecipe = (saved.data as { recipe?: string } | null)?.recipe;
+    if (typeof savedRecipe === "string") this.customs[name] = savedRecipe;
   }
 
   /** Optimistic save for the `.drip save` command (execute()) — updates the
@@ -602,7 +606,7 @@ export class DripManager {
     const id = this.ids[name];
     delete this.customs[name];
     delete this.ids[name];
-    if (id) await serverDeleteAuthed(`/api/drips/${id}`);
+    if (id) await getClient().drips.delete(id);
   }
 
   /** Optimistic delete for the command path. */

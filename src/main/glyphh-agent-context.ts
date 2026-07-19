@@ -1,20 +1,20 @@
 /**
- * William context — sessions, memory, and compaction.
+ * Glyphh context — sessions, memory, and compaction.
  *
  * Owns everything that becomes the prompt:
- *   - the session store (userData/william/sessions.json — moved off
+ *   - the session store (userData/glyphh/sessions.json — moved off
  *     localStorage so real coding sessions don't hit its 5MB cap);
  *   - rolling summaries (summaries.json, keyed by chat id — never touched
  *     by the renderer, so a stale renderer save can't clobber them);
  *   - user memory (memory.md, fed by `.remember`) and per-project memory
- *     (WILLIAM.md in the working folder).
+ *     (GLYPHH.md in the working folder).
  *
  * assemblePrompt() builds token-true prompts ordered for llama.cpp's
  * prefix cache: system + memory + summary stay byte-stable between turns,
  * the recent tail appends — so each send only prefills the delta.
  * compactIfNeeded() runs AFTER a reply lands (never in front of a send):
  * when the tail nears its budget, the older half folds into the rolling
- * summary via one William call. The full transcript always stays in the
+ * summary via one Glyphh call. The full transcript always stays in the
  * store/UI — summaries only shape the prompt.
  */
 
@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } fr
 import { join } from "node:path";
 import { userScopedPath } from "./app-paths";
 import { getPreference } from "./stores/preferences-db";
-import { williamMode } from "./william-permissions";
+import { glyphhMode } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
 
 export interface StoredMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" }
@@ -39,7 +39,7 @@ export interface StoredChat {
 interface SummaryEntry { summary: string; upTo: number }
 interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
-/** Local runtime window — must match llama-server's `-c 32768` (william.ts). */
+/** Local runtime window — must match llama-server's `-c 32768` (glyphh.ts). */
 const CTX_TOKENS = 32768;
 /** Frontier (Claude) window. One constant for now; per-model values can come
  *  from the gateway's model list when tiers start to differ. */
@@ -50,7 +50,7 @@ const COMPACT_AT = 0.6;
 /** Turns that never get summarized away (recency floor). */
 const TAIL_KEEP = 6;
 
-const WILLIAM_SYSTEM =
+const GLYPHH_SYSTEM =
   "You are Glyphh, a local coding agent — warm, precise, and direct. " +
   "Answer concretely; when writing code, write complete runnable code.";
 const PLAN_ADDENDUM =
@@ -59,8 +59,8 @@ const PLAN_ADDENDUM =
 
 function dir(): string {
   // Per-user: chats/summaries/memory belong to the signed-in account. The
-  // legacy userData/william dir is adopted by the first login (user-scope.ts).
-  const d = userScopedPath("william");
+  // legacy userData/glyphh dir is adopted by the first login (user-scope.ts).
+  const d = userScopedPath("glyphh");
   if (!existsSync(d)) mkdirSync(d, { recursive: true });
   return d;
 }
@@ -69,7 +69,7 @@ const summariesPath = () => join(dir(), "summaries.json");
 const memoryPath = () => join(dir(), "memory.md");
 
 function baseUrl(): string {
-  return String(getPreference("williamBaseUrl", "http://127.0.0.1:8089")).replace(/\/+$/, "");
+  return String(getPreference("glyphhBaseUrl", "http://127.0.0.1:8089")).replace(/\/+$/, "");
 }
 
 // ── Session store ──────────────────────────────────────────────────────────
@@ -158,13 +158,53 @@ function scheduleChatFlush(): void {
   chatFlushTimer = setTimeout(() => { chatFlushTimer = null; void flushChatSync(); }, CHAT_FLUSH_DEBOUNCE_MS);
 }
 
+// Chats live in the server library (kind `message_session`); library items
+// carry SERVER ids, while chats keep their local ids inside `data.chatId` —
+// this index maps one to the other so pushes update instead of duplicating.
+const chatItemIds = new Map<string, string>();
+
+interface ChatItemData {
+  chatId: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  messages: StoredMsg[];
+}
+
+async function refreshChatItemIndex(): Promise<Array<{ id: string; name: string; data: ChatItemData }>> {
+  const { getClient } = await import("./glyphh-client");
+  const items = await getClient().messageSessions.list();
+  chatItemIds.clear();
+  const chats: Array<{ id: string; name: string; data: ChatItemData }> = [];
+  for (const item of items) {
+    const data = item.data as Partial<ChatItemData> | null;
+    if (!data || typeof data.chatId !== "string") continue;
+    chatItemIds.set(data.chatId, item.id);
+    chats.push({
+      id: item.id,
+      name: item.name,
+      data: {
+        chatId: data.chatId,
+        createdAtMs: data.createdAtMs || 0,
+        updatedAtMs: data.updatedAtMs || 0,
+        messages: Array.isArray(data.messages) ? data.messages : [],
+      },
+    });
+  }
+  return chats;
+}
+
 async function flushChatSync(): Promise<void> {
   const f = readSessionsFile();
   const pendingIds = [...new Set(f.pendingPush)];
   const deletedIds = Object.keys(f.deleted ?? {});
   if (!pendingIds.length && !deletedIds.length) return;
-  let auth: typeof import("./auth");
-  try { auth = await import("./auth"); } catch { return; }
+  let client: import("@glyphh/client").Client;
+  try { client = (await import("./glyphh-client")).getClient(); } catch { return; }
+  // Refresh the id index when a queued chat isn't mapped yet — pushing an
+  // unmapped chat without it would CREATE a duplicate library item.
+  if ([...pendingIds, ...deletedIds].some((id) => !chatItemIds.has(id))) {
+    try { await refreshChatItemIndex(); } catch { return; } // offline — retry next flush
+  }
   const byId = new Map(f.chats.map((c) => [c.id, c]));
   const sentStamps = new Map<string, number>();
   for (const id of pendingIds) {
@@ -172,20 +212,23 @@ async function flushChatSync(): Promise<void> {
     if (!c) { sentStamps.set(id, Number.MAX_SAFE_INTEGER); continue; } // gone — nothing to push
     const stamp = c.updatedAt ?? c.createdAt;
     try {
-      const r = await auth.serverPutAuthed<{ ok: boolean }>(`/api/me/chats/${encodeURIComponent(id)}`, {
-        title: c.title,
-        createdAtMs: c.createdAt,
-        updatedAtMs: stamp,
-        messages: c.messages,
+      const itemId = chatItemIds.get(id);
+      const saved = await client.messageSessions.save({
+        name: c.title,
+        data: { chatId: id, createdAtMs: c.createdAt, updatedAtMs: stamp, messages: c.messages } satisfies ChatItemData,
+        ...(itemId ? { id: itemId } : {}),
       });
-      if (r.ok) sentStamps.set(id, stamp);
+      chatItemIds.set(id, saved.id);
+      sentStamps.set(id, stamp);
     } catch { /* offline / oversized — stays pending */ }
   }
   const deletedOk: string[] = [];
   for (const id of deletedIds) {
     try {
-      const r = await auth.serverDeleteAuthed<{ ok: boolean }>(`/api/me/chats/${encodeURIComponent(id)}`);
-      if (r.ok) deletedOk.push(id);
+      const itemId = chatItemIds.get(id);
+      if (itemId) await client.messageSessions.delete(itemId);
+      chatItemIds.delete(id);
+      deletedOk.push(id);
     } catch { /* offline — tombstone stays */ }
   }
   // Re-read before persisting queue state: the renderer may have saved new
@@ -206,45 +249,37 @@ async function flushChatSync(): Promise<void> {
  *  renderer reload re-reads the store, so merged chats just appear). */
 export async function syncChatsWithServer(): Promise<void> {
   await flushChatSync();
-  let auth: typeof import("./auth");
-  let meta: Array<{ chatId: string; title: string; createdAtMs: number; updatedAtMs: number }>;
+  let items: Array<{ id: string; name: string; data: ChatItemData }>;
   try {
-    auth = await import("./auth");
-    const r = await auth.serverGetAuthed<{ ok: boolean; chats?: typeof meta }>("/api/me/chats");
-    if (!r.ok) return;
-    meta = r.chats ?? [];
+    items = await refreshChatItemIndex();
   } catch { return; } // offline / signed out — local store stands
   const f = readSessionsFile();
   const byId = new Map(f.chats.map((c) => [c.id, c]));
   const pending = new Set(f.pendingPush);
   let dirty = false;
   // Pull: server-newer chats replace local (LWW), unknown ones are adopted.
-  for (const m of meta) {
-    if (f.deleted?.[m.chatId] !== undefined) continue; // deleted here — flush retries the server delete
-    const local = byId.get(m.chatId);
+  // The library list carries full payloads — no per-chat follow-up fetch.
+  for (const item of items) {
+    const chatId = item.data.chatId;
+    if (f.deleted?.[chatId] !== undefined) continue; // deleted here — flush retries the server delete
+    const local = byId.get(chatId);
     const localStamp = local ? (local.updatedAt ?? local.createdAt) : 0;
-    if (m.updatedAtMs <= localStamp) continue;
-    try {
-      const g = await auth.serverGetAuthed<{ ok: boolean; chat?: { title: string; createdAtMs: number; updatedAtMs: number; messages: StoredMsg[] } }>(
-        `/api/me/chats/${encodeURIComponent(m.chatId)}`,
-      );
-      if (!g.ok || !g.chat) continue;
-      const merged: StoredChat = {
-        id: m.chatId,
-        title: g.chat.title,
-        createdAt: g.chat.createdAtMs || Date.now(),
-        updatedAt: g.chat.updatedAtMs,
-        messages: Array.isArray(g.chat.messages) ? g.chat.messages : [],
-      };
-      if (local) f.chats[f.chats.indexOf(local)] = merged;
-      else f.chats.push(merged);
-      byId.set(m.chatId, merged);
-      pending.delete(m.chatId); // server copy won — nothing local left to push
-      dirty = true;
-    } catch { /* partial pull is fine — next sync finishes */ }
+    if (item.data.updatedAtMs <= localStamp) continue;
+    const merged: StoredChat = {
+      id: chatId,
+      title: item.name,
+      createdAt: item.data.createdAtMs || Date.now(),
+      updatedAt: item.data.updatedAtMs,
+      messages: item.data.messages,
+    };
+    if (local) f.chats[f.chats.indexOf(local)] = merged;
+    else f.chats.push(merged);
+    byId.set(chatId, merged);
+    pending.delete(chatId); // server copy won — nothing local left to push
+    dirty = true;
   }
   // Push: local chats the server lacks or has older.
-  const serverStamp = new Map(meta.map((m) => [m.chatId, m.updatedAtMs]));
+  const serverStamp = new Map(items.map((item) => [item.data.chatId, item.data.updatedAtMs]));
   for (const c of f.chats) {
     if ((c.updatedAt ?? c.createdAt) > (serverStamp.get(c.id) ?? -1) && !pending.has(c.id)) {
       pending.add(c.id);
@@ -280,7 +315,7 @@ function readCapped(path: string, capChars: number): string {
   }
 }
 
-/** User facts (memory.md) + project WILLIAM.md, as one stable prefix block. */
+/** User facts (memory.md) + project GLYPHH.md, as one stable prefix block. */
 function memoryBlock(): string {
   const parts: string[] = [];
   const user = readCapped(memoryPath(), 2000);
@@ -288,8 +323,8 @@ function memoryBlock(): string {
   try {
     const wd = getExplicitWorkingDirectory();
     if (wd) {
-      const proj = readCapped(join(wd, "WILLIAM.md"), 4500);
-      if (proj) parts.push(`Project notes (WILLIAM.md in the working folder):\n${proj}`);
+      const proj = readCapped(join(wd, "GLYPHH.md"), 4500);
+      if (proj) parts.push(`Project notes (GLYPHH.md in the working folder):\n${proj}`);
     }
   } catch { /* no workdir */ }
   return parts.join("\n\n");
@@ -333,8 +368,8 @@ export async function assemblePrompt(chatId: string, replyBudget: number): Promi
   const entry = loadSummaries()[chatId];
 
   const prefix: ChatMessage[] = [];
-  let system = WILLIAM_SYSTEM;
-  if (williamMode() === "plan") system += PLAN_ADDENDUM;
+  let system = GLYPHH_SYSTEM;
+  if (glyphhMode() === "plan") system += PLAN_ADDENDUM;
   prefix.push({ role: "system", content: system });
   const mem = memoryBlock();
   if (mem) prefix.push({ role: "system", content: mem });
@@ -366,8 +401,8 @@ let compacting = false;
 /**
  * Fold the older tail into the rolling summary NOW — the manual path
  * (meter click / .compact) and the auto path both land here. `focus` is a
- * one-shot steer for this fold; the standing williamCompactionPrompt
- * preference (Settings → William) rides along on every fold.
+ * one-shot steer for this fold; the standing glyphhCompactionPrompt
+ * preference (Settings → Glyphh) rides along on every fold.
  */
 export async function compactNow(
   chatId: string,
@@ -391,7 +426,7 @@ export async function compactNow(
     const fold = tail.slice(0, -TAIL_KEEP);
     const foldText = fold.map((m) => `${m.role}: ${m.text}`).join("\n\n");
     const prior = entry?.summary ? `Existing summary of even earlier conversation:\n${entry.summary}\n\n` : "";
-    const standing = String(getPreference("williamCompactionPrompt", "")).trim();
+    const standing = String(getPreference("glyphhCompactionPrompt", "")).trim();
     const guidance = [standing, String(focus || "").trim()].filter(Boolean).join("\n");
     const summary = (await complete([
       {
@@ -422,7 +457,7 @@ export async function compactNow(
 /**
  * Auto path: fold only when the tail nears its budget. Runs in the
  * background after a reply lands — a send never waits on it. `complete`
- * is injected (william.ts) to avoid a module cycle.
+ * is injected (glyphh.ts) to avoid a module cycle.
  */
 export async function compactIfNeeded(chatId: string, replyBudget: number, complete: CompleteFn): Promise<void> {
   if (compacting) return;
@@ -474,17 +509,13 @@ export async function contextUsage(chatId: string, replyBudget: number): Promise
   const tailText = chat ? chat.messages.slice(upTo).map((m) => `${m.role}: ${m.text}`).join("\n") : "";
   const tokens = tailText ? await countTokens(tailText) : 0;
 
-  // Lane labels — best-effort, dynamic imports to dodge the william/model-router
-  // cycle; a failed lookup never breaks the meter.
+  // Lane labels — best-effort, dynamic import to dodge a module cycle; a
+  // failed lookup never breaks the meter.
   let localId = "local";
-  let frontierId = "frontier";
+  const frontierId = "frontier";
   try {
-    const wm = await import("./william-models");
+    const wm = await import("./glyphh-agent-models");
     localId = wm.resolveDesiredModel()?.id ?? wm.selectedModelId();
-  } catch { /* label only */ }
-  try {
-    const mr = await import("./model-router");
-    frontierId = await mr.effectiveFrontierModel();
   } catch { /* label only */ }
 
   const ratio = Math.min(1, tokens / Math.max(1, localBudget));
@@ -502,17 +533,17 @@ export async function contextUsage(chatId: string, replyBudget: number): Promise
 
 // ── IPC ────────────────────────────────────────────────────────────────────
 
-export function registerWilliamContextIpc(): void {
-  ipcMain.handle("william-sessions-load", () => loadSessions());
-  ipcMain.handle("william-sessions-save", (_e, p: { chats: StoredChat[]; currentId: string }) => {
+export function registerGlyphhContextIpc(): void {
+  ipcMain.handle("glyphh-agent-sessions-load", () => loadSessions());
+  ipcMain.handle("glyphh-agent-sessions-save", (_e, p: { chats: StoredChat[]; currentId: string }) => {
     saveSessions(Array.isArray(p?.chats) ? p.chats : [], String(p?.currentId || ""));
     return true;
   });
-  ipcMain.handle("william-context-usage", async (_e, p: { chatId?: string; replyBudget?: number }) => {
-    const { effortMaxTokens } = await import("./william-permissions");
+  ipcMain.handle("glyphh-agent-context-usage", async (_e, p: { chatId?: string; replyBudget?: number }) => {
+    const { effortMaxTokens } = await import("./glyphh-agent-permissions");
     return contextUsage(String(p?.chatId || ""), Number(p?.replyBudget) || effortMaxTokens());
   });
-  ipcMain.handle("william-remember", (_e, fact: string) => {
+  ipcMain.handle("glyphh-agent-remember", (_e, fact: string) => {
     const f = String(fact || "").trim();
     if (!f) throw new Error("nothing to remember");
     appendUserMemory(f);

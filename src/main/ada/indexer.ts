@@ -16,8 +16,9 @@
  */
 
 import { adaTellRaw } from "./store";
-import { cachedServerGet } from "../server-cache";
-import { serverGetAuthed } from "../auth";
+import { fetchOrgApps } from "../org-apps";
+import { fetchServerLayouts } from "../layout-manager";
+import { getClient } from "../glyphh-client";
 import { connectorTools } from "../glyphh-app-services";
 import { listInstalledAppTools } from "../glyphh-app-host";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "../drip-manager";
@@ -49,7 +50,7 @@ export async function syncWorkspaceFacts(): Promise<{ facts: number }> {
 
   // Library apps
   try {
-    const apps = await cachedServerGet<Array<{ slug?: string | null; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null }>>("/api/panel-apps");
+    const apps = await fetchOrgApps();
     for (const a of apps) {
       const slug = norm(a.slug) || norm(a.name).toLowerCase();
       facts += tellCatalog(
@@ -65,7 +66,7 @@ export async function syncWorkspaceFacts(): Promise<{ facts: number }> {
 
   // Saved layouts
   try {
-    const layouts = await cachedServerGet<Array<{ name: string; cells?: Array<{ panelId: string }> }>>("/api/layouts");
+    const layouts = await fetchServerLayouts();
     for (const l of layouts) {
       const name = norm(l.name);
       facts += tellCatalog(
@@ -82,17 +83,17 @@ export async function syncWorkspaceFacts(): Promise<{ facts: number }> {
 
   // Connected accounts + their connector tools
   try {
-    const r = await serverGetAuthed<{ connections?: Array<{ appSlug?: string; appName?: string; healthy?: boolean }> }>("/api/connections");
-    const slugs = new Set((r.connections || []).map((c) => norm(c.appSlug)).filter(Boolean));
-    for (const c of r.connections || []) {
-      const slug = norm(c.appSlug);
+    const connections = await getClient().connections.list();
+    const slugs = new Set(connections.map((c) => norm(c.slug)).filter(Boolean));
+    for (const c of connections) {
+      const slug = norm(c.slug);
       if (!slug) continue;
       facts += tellCatalog(
         `connection:${slug}`,
-        `${c.appName || slug} (${slug}) — connected account${c.healthy === false ? " (unhealthy)" : ""}; its API tools are first-class agent tools`,
+        `${c.name || slug} (${slug}) — connected account${c.enabled ? "" : " (disabled)"}; its API tools are first-class agent tools`,
         {
           entity: { name: slug, kind: "connection" },
-          epistemic: { source: "pipedream", certainty: c.healthy === false ? "unhealthy" : "healthy" },
+          epistemic: { source: c.kind, certainty: c.enabled ? "healthy" : "disabled" },
         },
       );
     }

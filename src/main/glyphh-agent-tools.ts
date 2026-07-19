@@ -1,5 +1,5 @@
 /**
- * William's tool surface — what the agent loop can DO.
+ * Glyphh's tool surface — what the agent loop can DO.
  *
  * Workspace (working-folder scoped): list_dir, read_file, write_file,
  * search_files, run_command. Paths resolve inside the working folder;
@@ -15,7 +15,7 @@
  * yo-server owns all auth (Pipedream) and metering. list_drips / run_drip
  * for celebrations. Deterministic beats pixel-driving throughout.
  *
- * Every execution passes gateWilliamAction() first (mode model: ask /
+ * Every execution passes gateGlyphhAction() first (mode model: ask /
  * plan / acceptEdits / auto / bypass) — a denial returns "DENIED: …" as
  * the tool result so the model can re-plan instead of crashing the loop.
  */
@@ -24,17 +24,17 @@ import { exec } from "child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
-import { gateWilliamAction, askUserQuestions, type WilliamActionKind } from "./william-permissions";
+import { gateGlyphhAction, askUserQuestions, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
-import { serverGetAuthed } from "./auth";
-import { cachedServerGet } from "./server-cache";
+import { getClient } from "./glyphh-client";
+import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
 import { indexToolVectors, rankConnectorTools } from "./tool-vectors";
-import { updateAppFromWorkdir } from "./william-app-builder";
+import { updateAppFromWorkdir } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
@@ -48,7 +48,7 @@ interface ToolDef {
   doc: string;
   run: (args: Record<string, unknown>, signal?: AbortSignal, wc?: WebContents) => Promise<string>;
   /** Gate classification for a concrete call. */
-  action: (args: Record<string, unknown>) => { kind: WilliamActionKind; title: string; detail?: string };
+  action: (args: Record<string, unknown>) => { kind: GlyphhActionKind; title: string; detail?: string };
 }
 
 const cap = (s: string, n = OUTPUT_CAP) => (s.length > n ? `${s.slice(0, n)}\n…(truncated, ${s.length} chars total)` : s);
@@ -187,11 +187,11 @@ async function executeConnectorWire(
   args: Record<string, unknown>,
 ): Promise<ToolOutcome> {
   const action = {
-    kind: (READ_TOOL_RE.test(wired.tool) ? "read" : "network") as WilliamActionKind,
+    kind: (READ_TOOL_RE.test(wired.tool) ? "read" : "network") as GlyphhActionKind,
     title: `Call ${wired.slug} → ${wired.tool}`,
     detail: JSON.stringify(args, null, 1).slice(0, 500),
   };
-  const gate = await gateWilliamAction(wc, action);
+  const gate = await gateGlyphhAction(wc, action);
   if (!gate.allowed) {
     return { result: `DENIED: ${gate.reason || "not allowed"}`, denied: true, title: action.title };
   }
@@ -315,7 +315,7 @@ const TOOLS: ToolDef[] = [
       const inner = String(a.name ?? "");
       const wired = wireMap.get(inner);
       return {
-        kind: (wired && READ_TOOL_RE.test(wired.tool) ? "read" : "network") as WilliamActionKind,
+        kind: (wired && READ_TOOL_RE.test(wired.tool) ? "read" : "network") as GlyphhActionKind,
         title: wired ? `Call ${wired.slug} → ${wired.tool}` : `Call ${inner}`,
         detail: JSON.stringify(a.arguments ?? {}, null, 1).slice(0, 500),
       };
@@ -451,7 +451,7 @@ const TOOLS: ToolDef[] = [
     doc: "list_layouts() — the user's saved layouts (open one with open_layout)",
     action: () => ({ kind: "read", title: "List layouts" }),
     run: async () => {
-      const layouts = await cachedServerGet<Array<{ name: string; cols?: number; rows?: number }>>("/api/layouts");
+      const layouts = await fetchServerLayouts();
       return cap(layouts.map((l) => `${l.name}${l.cols && l.rows ? ` (${l.cols}×${l.rows})` : ""}`).join("\n") || "(none saved)");
     },
   },
@@ -495,9 +495,9 @@ const TOOLS: ToolDef[] = [
     doc: "list_connections() — the user's connected accounts (Slack, GitHub, …)",
     action: () => ({ kind: "read", title: "List connections" }),
     run: async () => {
-      const r = await serverGetAuthed<{ connections?: Array<{ appSlug?: string; appName?: string; label?: string | null; healthy?: boolean }> }>("/api/connections");
-      const rows = (r.connections || []).map((c) =>
-        `${c.appSlug || "?"} (${c.appName || "?"})${c.label ? ` — ${c.label}` : ""}${c.healthy === false ? " — UNHEALTHY" : ""}`);
+      const connections = await getClient().connections.list();
+      const rows = connections.map((c) =>
+        `${c.slug || "?"} (${c.name || "?"})${c.enabled ? "" : " — DISABLED"}`);
       return cap(rows.join("\n") || "(no connected accounts)");
     },
   },
@@ -529,7 +529,7 @@ const TOOLS: ToolDef[] = [
       const fact = String(a.fact ?? "").trim();
       if (!fact) return "ERROR: fact is required";
       const facts = await enrichFact(fact);
-      const r = adaTellRaw(fact, facts, { key: a.key ? String(a.key) : undefined, speaker: "william" });
+      const r = adaTellRaw(fact, facts, { key: a.key ? String(a.key) : undefined, speaker: "glyphh" });
       return `remembered (${r.slots} slots${r.version ? `, v${r.version}` : ""})`;
     },
   },
@@ -597,7 +597,7 @@ const TOOLS: ToolDef[] = [
 
 /** Name + doc line per tool — the agent loop declares these over MCP (args
  *  ride as free-form objects described by the doc; the executor validates). */
-export function williamToolDefs(): Array<{ name: string; doc: string }> {
+export function glyphhToolDefs(): Array<{ name: string; doc: string }> {
   return TOOLS.map((t) => ({ name: t.name, doc: t.doc }));
 }
 
@@ -605,7 +605,7 @@ export interface ToolOutcome { result: string; denied: boolean; title: string }
 
 /** Gate → execute. Denials and failures come back as results the model can
  *  react to — the loop never throws on a tool. */
-export async function executeWilliamTool(
+export async function executeGlyphhTool(
   wc: WebContents,
   call: { name: string; arguments?: Record<string, unknown> },
   signal?: AbortSignal,
@@ -630,7 +630,7 @@ export async function executeWilliamTool(
   } catch (err) {
     return { result: `ERROR: ${err instanceof Error ? err.message : String(err)}`, denied: false, title: call.name };
   }
-  const gate = await gateWilliamAction(wc, action);
+  const gate = await gateGlyphhAction(wc, action);
   if (!gate.allowed) {
     return { result: `DENIED: ${gate.reason || "not allowed"}`, denied: true, title: action.title };
   }

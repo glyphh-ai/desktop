@@ -1,14 +1,14 @@
 /**
- * William training capture — the flywheel back into the model.
+ * Glyphh training capture — the flywheel back into the model.
  *
  * Every agent run (full message transcript: system + memory + history +
  * constrained turns + tool observations + final) and every Ada-enricher
  * pair (prose fact → schema slots) appends to local, daily-rotated JSONL
- * under userData/william/training/. This is exactly the Track B "operate"
- * data the next glyphh-william training run consumes — guess→rejection→
+ * under userData/glyphh/training/. This is exactly the Track B "operate"
+ * data the next glyphh agent training run consumes — guess→rejection→
  * recovery sequences especially. INTERNAL ONLY: users don't train their
- * own William (they receive released weights via the model manifest), so
- * capture is gated by the WILLIAM_TRAINING_CAPTURE env var — off in every
+ * own Glyphh (they receive released weights via the model manifest), so
+ * capture is gated by the GLYPHH_TRAINING_CAPTURE env var — off in every
  * end-user build, on in our dev script.
  */
 
@@ -17,12 +17,12 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, statSync } from "no
 import { join } from "node:path";
 
 export function trainingDir(): string {
-  const d = join(app.getPath("userData"), "william", "training");
+  const d = join(app.getPath("userData"), "glyphh", "training");
   if (!existsSync(d)) mkdirSync(d, { recursive: true });
   return d;
 }
 
-const enabled = () => process.env.WILLIAM_TRAINING_CAPTURE === "1";
+const enabled = () => process.env.GLYPHH_TRAINING_CAPTURE === "1";
 const fileFor = (kind: string) => join(trainingDir(), `${kind}-${new Date().toISOString().slice(0, 10)}.jsonl`);
 
 function append(kind: string, record: Record<string, unknown>): void {

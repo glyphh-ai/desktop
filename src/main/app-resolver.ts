@@ -6,12 +6,13 @@
  * Code page's right-side workbench, beside the agent. This module resolves
  * refs (fuzzy names, slugs, layout names) and drives the renderer over the
  * wb:app-cmd channel; the renderer reports its open panels back on
- * wb-apps-changed, which backs listOpenAppWindows for William's tools and
+ * wb-apps-changed, which backs listOpenAppWindows for Glyphh's tools and
  * the relay's panels_* surface.
  */
 
 import { ipcMain, webContents } from "electron";
-import { cachedServerGet } from "./server-cache.js";
+import { fetchOrgApps } from "./org-apps.js";
+import { fetchServerLayouts } from "./layout-manager.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { normKey, isSubsequence } from "./installed-apps.js";
 import { isGlyphhAppRow } from "./glyphh-app-host.js";
@@ -28,14 +29,6 @@ export interface ServerApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-}
-
-interface LayoutSpec {
-  id: string;
-  name: string;
-  cols: number;
-  rows: number;
-  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }>;
 }
 
 interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
@@ -161,7 +154,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     return { slug: builtin.slug, name: builtin.name };
   }
 
-  const apps = await cachedServerGet<ServerApp[]>("/api/panel-apps");
+  const apps = await fetchOrgApps();
   const app = findLibraryApp(apps, ref);
   if (!app) throw new Error(`unknown app: ${ref} — not in the app library`);
 
@@ -184,8 +177,8 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
   if (!key) throw new Error("layout name is required");
 
   const [layouts, apps] = await Promise.all([
-    cachedServerGet<LayoutSpec[]>("/api/layouts"),
-    cachedServerGet<ServerApp[]>("/api/panel-apps"),
+    fetchServerLayouts(),
+    fetchOrgApps(),
   ]);
   const layout = layouts.find((l) => l.name.toLowerCase() === key)
     || layouts.find((l) => l.id === name);

@@ -1,39 +1,33 @@
 /**
- * Auth — BrowserWindow-based authentication via platform.glyphh.ai.
+ * Auth — the desktop face of @glyphh/client.
  *
- * Flow:
- *   1. Open BrowserWindow to platform.glyphh.ai/auth?flow=electron (register or login)
- *   2. User completes auth on the platform
- *   3. Web generates a one-time device code and redirects to /auth/callback?code=XXX
- *   4. We intercept the navigation, extract the code, exchange it for JWT tokens
- *   5. Tokens stored on disk (0600 perms), not the OS keychain — see the
- *      "Session file storage" comment below for why
- *   6. Heartbeat polls server every 4 hours for tier/entitlements
+ * Sign-in is the SDK device flow: we start a device grant, open the user's
+ * browser on the platform to approve it, and poll until the session lands.
+ * The SDK owns the whole token lifecycle (storage, single-flight refresh,
+ * rotation, sign-out) — this module only mirrors the bits the app needs
+ * synchronously (signed-in state, a current bearer for legacy call sites)
+ * and composes the account/heartbeat views the UI was built around.
  */
 
 import fs from "fs";
 import path from "path";
-import { BrowserWindow, net, shell } from "electron";
+import os from "os";
+import { shell } from "electron";
+import type { DevicePrompt } from "@glyphh/client";
 import { GLYPHH_DIR } from "./app-paths.js";
 import { setActiveUser } from "./user-scope.js";
+import { getClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";
 
-const CONFIG_DIR = GLYPHH_DIR;
-const SESSION_FILE = path.join(CONFIG_DIR, ".session");
-const REFRESH_MARGIN = 3 * 60 * 1000; // refresh 3 min before expiry
-const HEARTBEAT_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
+export const AUTH_SERVER = SERVER_URL;
+export const PLATFORM_URL = PLATFORM;
 
-export const AUTH_SERVER =
-  process.env.YO_AUTH_SERVER || "https://api.glyphh.ai";
-export const PLATFORM_URL =
-  process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai";
+const ACCOUNT_POLL_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours (the old heartbeat cadence)
+// New-server session tokens are opaque (no JWT sub to decode), so the last
+// authenticated identity is mirrored to a sidecar file for OFFLINE boot: it
+// only scopes local per-user state, never authorization.
+const IDENTITY_FILE = path.join(GLYPHH_DIR, ".identity");
 
-// ── Types ────────────────────────────────────────────────────
-
-export interface SessionData {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number; // ms timestamp
-}
+// ── Types (shapes the app's UI/IPC were built around) ────────
 
 export interface AccountInfo {
   email: string;
@@ -57,26 +51,23 @@ export interface HeartbeatResult {
 
 // ── State ────────────────────────────────────────────────────
 
-let currentSession: SessionData | null = null;
+let signedIn = false;
+let cachedToken: { value: string; expiresAt: number } | null = null;
 let cachedAccount: AccountInfo | null = null;
 let cachedHeartbeat: HeartbeatResult | null = null;
 let heartbeatObserver: ((result: HeartbeatResult) => void) | null = null;
-let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let authWindow: BrowserWindow | null = null;
+let accountTimer: ReturnType<typeof setInterval> | null = null;
 
 // ── Re-auth gate ─────────────────────────────────────────────
-// Fired when the session can't be kept alive (refresh rejected, or an authed
-// call hit 401 with no usable token) so the UI can surface the login screen
-// instead of silently degrading. Debounced so a burst of failing calls only
-// pops one prompt.
+// Fired when the SDK gives up on the session (refresh rejected) so the UI can
+// surface the login screen instead of silently degrading. Debounced so a burst
+// of failing calls only pops one prompt.
 let reauthHandler: (() => void) | null = null;
 let lastReauthAt = 0;
 
 /** Register the callback that surfaces the login gate (set by main.ts). */
 export function setReauthHandler(fn: () => void): void { reauthHandler = fn; }
 
-/** Signal that the user must re-authenticate. Debounced (30s). */
 function triggerReauth(): void {
   const now = Date.now();
   if (now - lastReauthAt < 30_000) return;
@@ -85,215 +76,118 @@ function triggerReauth(): void {
   try { reauthHandler?.(); } catch { /* noop */ }
 }
 
-// ── Session file storage ──────────────────────────────────────
-// Plain file, 0600 perms — NOT safeStorage/OS-keychain. Session tokens are
-// short-lived and already scoped/revocable server-side, so the tradeoff of
-// hitting the macOS Keychain on every single boot (a user-visible OS prompt
-// on some setups) isn't worth it for this value. Provider API keys (the
-// actually sensitive, long-lived secret) live server-side entirely — see
-// app-secrets.ts — so this file never holds anything higher-value than a
-// session token.
-function secureWrite(filePath: string, data: string): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, data, { encoding: "utf-8", mode: 0o600 });
-}
-
-function secureRead(filePath: string): string | null {
-  if (!fs.existsSync(filePath)) return null;
-  try {
-    return fs.readFileSync(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-}
-
-// ── Session persistence ──────────────────────────────────────
-
-function readSessionFile(): SessionData | null {
-  const data = secureRead(SESSION_FILE);
-  if (!data) return null;
-  try {
-    return JSON.parse(data);
-  } catch {
-    return null;
-  }
-}
-
-/** The user id (JWT `sub`) inside our own access token — used only to scope
- *  local state per account, never for authorization (the server does that). */
-function tokenSub(accessToken: string): string | null {
-  try {
-    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString("utf8"));
-    return typeof payload.sub === "string" && payload.sub ? payload.sub : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveSessionFile(session: SessionData): void {
-  secureWrite(SESSION_FILE, JSON.stringify(session));
-  currentSession = session;
-  scheduleRefresh(session);
-  // Every session write is an identity checkpoint: login as a DIFFERENT
-  // account re-scopes all per-user local state (no-op when unchanged).
-  setActiveUser(tokenSub(session.accessToken));
-}
-
-function clearSessionFile(): void {
-  currentSession = null;
+setSignedOutHandler(() => {
+  signedIn = false;
+  cachedToken = null;
   cachedAccount = null;
   cachedHeartbeat = null;
-  if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
-  try { fs.unlinkSync(SESSION_FILE); } catch { /* ignore */ }
-  // Signed out — per-user stores close and scope drops back to neutral so
-  // the next account can never read this one's local state.
   setActiveUser(null);
-}
+  triggerReauth();
+});
 
-// ── Token refresh ────────────────────────────────────────────
+// ── Identity sidecar (offline boot scoping) ──────────────────
 
-function scheduleRefresh(session: SessionData): void {
-  if (refreshTimer) clearTimeout(refreshTimer);
-  const delay = Math.max(0, session.expiresAt - Date.now() - REFRESH_MARGIN);
-  refreshTimer = setTimeout(() => { void refreshTokens(); }, delay);
-}
-
-// Single-flight: the refresh token is single-use (the server rotates it), so
-// overlapping refreshes would double-spend it and the second would 401 → a
-// spurious logout. Coalesce concurrent callers onto one in-flight refresh.
-let refreshInFlight: Promise<boolean> | null = null;
-function refreshTokens(): Promise<boolean> {
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = doRefreshTokens().finally(() => { refreshInFlight = null; });
-  return refreshInFlight;
-}
-
-async function doRefreshTokens(): Promise<boolean> {
-  const session = currentSession || readSessionFile();
-  if (!session?.refreshToken) return false;
-
+function readIdentitySidecar(): string | null {
   try {
-    const result = await serverPost<{
-      ok: boolean;
-      accessToken?: string;
-      refreshToken?: string;
-      expiresIn?: number;
-      error?: string;
-    }>("/api/session/refresh", { refreshToken: session.refreshToken });
-
-    if (result.ok && result.accessToken && result.refreshToken && result.expiresIn) {
-      saveSessionFile({
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresAt: Date.now() + result.expiresIn * 1000,
-      });
-      return true;
-    }
-    // 2xx but not ok — treat as an invalid refresh token → must re-login.
-    clearSessionFile();
-    triggerReauth();
-    return false;
-  } catch (err) {
-    // Only a genuine 401 means the refresh token is invalid/revoked → re-login.
-    // Everything else (5xx during a deploy, network blip, timeout) is TRANSIENT:
-    // keep the existing session if still valid and retry — do NOT bounce the
-    // user to the login screen over a momentary server hiccup.
-    const is401 = /HTTP 401\b/.test(String((err as Error)?.message || ""));
-    if (!is401 && currentSession && currentSession.expiresAt > Date.now()) {
-      setTimeout(() => { void refreshTokens(); }, 30_000);
-      return true;
-    }
-    clearSessionFile();
-    triggerReauth();
-    return false;
+    const parsed = JSON.parse(fs.readFileSync(IDENTITY_FILE, "utf-8")) as { userId?: string };
+    return typeof parsed.userId === "string" && parsed.userId ? parsed.userId : null;
+  } catch {
+    return null;
   }
+}
+
+function writeIdentitySidecar(userId: string): void {
+  try {
+    fs.mkdirSync(path.dirname(IDENTITY_FILE), { recursive: true });
+    fs.writeFileSync(IDENTITY_FILE, JSON.stringify({ userId }), { encoding: "utf-8", mode: 0o600 });
+  } catch { /* scoping falls back to the next successful me() */ }
+}
+
+function clearIdentitySidecar(): void {
+  try { fs.unlinkSync(IDENTITY_FILE); } catch { /* already gone */ }
 }
 
 // ── Public API ───────────────────────────────────────────────
 
-/** Check if user is authenticated (has valid session). */
+/** Check if user is authenticated (has a live or refreshable session). */
 export function isAuthenticated(): boolean {
-  if (currentSession && currentSession.expiresAt > Date.now()) return true;
-  const saved = readSessionFile();
-  if (saved && saved.expiresAt > Date.now()) {
-    currentSession = saved;
-    return true;
-  }
+  if (signedIn) return true;
+  // Pre-initAuth callers (early boot): a persisted session counts — the SDK
+  // refreshes it on first use; a failed refresh flips this false via onSignedOut.
+  if (readSessionFileSync()) { signedIn = true; return true; }
   return false;
 }
 
-/** Get current access token, or null if not authenticated. */
+/** Get current access token, or null if not authenticated.
+ *  Sync mirror for legacy call sites — prefer awaiting ensureFreshToken() first. */
 export function getAuthToken(): string | null {
-  if (currentSession && currentSession.expiresAt > Date.now()) {
-    return currentSession.accessToken;
+  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
+  const session = readSessionFileSync();
+  if (session && session.expiresAt > Date.now()) {
+    cachedToken = { value: session.accessToken, expiresAt: session.expiresAt };
+    return session.accessToken;
   }
   return null;
 }
 
-// Ensure a token has comfortable life left before a (potentially long) agent
-// turn. The scheduled refresh timer is unreliable when the app is backgrounded
-// or the machine sleeps (OS throttles/pauses setTimeout), so the agent must not
-// rely on it alone — it proactively tops up the token before each turn.
-const PROACTIVE_MARGIN = 10 * 60 * 1000; // refresh if <10 min of life remains
-
 /**
- * Await a token refresh when the access token is within PROACTIVE_MARGIN of
- * expiry (or already expired). Cheap to call on every agent entry point — the
- * single-flight guard coalesces concurrent callers, and it no-ops when the
- * token still has plenty of life. Signed-out → no-op.
+ * Top up the sync token mirror. The SDK's token() refreshes as needed and
+ * single-flights concurrent callers — cheap to call on every agent entry
+ * point. Signed-out → no-op (mirror goes null).
  */
 export async function ensureFreshToken(): Promise<void> {
-  const wasInMemory = !!currentSession;
-  const session = currentSession || readSessionFile();
-  if (!session?.refreshToken) return;
-  currentSession = session;
-  if (session.expiresAt - Date.now() < PROACTIVE_MARGIN) {
-    await refreshTokens();
-  } else if (!wasInMemory) {
-    // Rehydrated from disk into a process with no armed refresh timer — re-arm
-    // it so we're not relying solely on the next turn's proactive top-up.
-    scheduleRefresh(session);
+  try {
+    const value = await getClient().token();
+    const session = await getClient().getSession();
+    cachedToken = session ? { value, expiresAt: session.expiresAt } : { value, expiresAt: Date.now() + 60_000 };
+    signedIn = true;
+  } catch {
+    cachedToken = null;
   }
 }
 
 /**
- * Force a refresh now, regardless of remaining life. Reactive path — call after
- * a proxy/API 401 to self-heal a token the server rejected (e.g. clock skew, or
- * a turn that outlived its token). Resolves true if a fresh token is in hand.
+ * Force a refresh now, regardless of remaining life. Reactive path — call
+ * after an API 401 to self-heal a token the server rejected. Resolves true
+ * if a fresh token is in hand.
  */
 export async function forceTokenRefresh(): Promise<boolean> {
-  return refreshTokens();
+  const ok = await getClient().refresh();
+  if (ok) await ensureFreshToken();
+  return ok;
 }
 
-/** Initialize auth — restore session, schedule refresh, start heartbeat. */
+/** Initialize auth — restore session, scope local state, start the account poll. */
 export async function initAuth(): Promise<void> {
-  const saved = readSessionFile();
-  if (saved) {
-    currentSession = saved;
-    // Scope local state to the restored account before anything reads it.
-    setActiveUser(tokenSub(saved.accessToken));
-    if (saved.expiresAt - Date.now() < REFRESH_MARGIN) {
-      await refreshTokens();
-    } else {
-      scheduleRefresh(saved);
-    }
-    // Fetch account info + heartbeat on boot
-    void fetchAccountInfo();
-    void fetchHeartbeat();
+  const session = await getClient().getSession();
+  signedIn = !!session;
+  if (session) {
+    // Scope local state to the restored account BEFORE anything reads it —
+    // offline-safe via the sidecar; corrected by the refresh below if stale.
+    setActiveUser(readIdentitySidecar());
+    void ensureFreshToken();
+    void refreshAccountState();
   }
-  startHeartbeat();
+  if (accountTimer) clearInterval(accountTimer);
+  accountTimer = setInterval(() => {
+    if (isAuthenticated()) void refreshAccountState();
+  }, ACCOUNT_POLL_INTERVAL);
 }
 
 /** Clean up timers — call on app shutdown. */
 export function cleanupAuthTimers(): void {
-  if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
-  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  if (accountTimer) { clearInterval(accountTimer); accountTimer = null; }
 }
 
-/** Log out — clear session and cached data. */
+/** Log out — revoke the session server-side and clear all cached state. */
 export function logout(): void {
-  clearSessionFile();
-  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  void getClient().auth.signOut().catch(() => { /* local state clears regardless */ });
+  signedIn = false;
+  cachedToken = null;
+  cachedAccount = null;
+  cachedHeartbeat = null;
+  clearIdentitySidecar();
+  setActiveUser(null);
 }
 
 /** Get cached account info. */
@@ -309,21 +203,17 @@ export function getHeartbeatInfo(): HeartbeatResult | null {
 /**
  * MCP (connecting servers, the cloud relay, and the local MCP server) is
  * available to any signed-in, active account — there is no pay gate. Access
- * is denied only when not signed in, or when the heartbeat explicitly reports
- * the account as disabled. It does NOT require the first heartbeat to have
- * landed, so the relay/local server can come up immediately after sign-in.
+ * is denied only when not signed in, or when the account state explicitly
+ * reports disabled.
  */
 export function hasMcpAccess(): boolean {
   if (!isAuthenticated()) return false;
   const hb = cachedHeartbeat;
-  if (hb && hb.status !== "active") return false; // account explicitly disabled
+  if (hb && hb.status !== "active") return false;
   return true;
 }
 
-/**
- * Get auth status for the boot sequence.
- * Returns account info without requiring a license key.
- */
+/** Get auth status for the boot sequence. */
 export function getAuthStatus(): {
   authenticated: boolean;
   status: "active" | "disabled" | "unauthenticated";
@@ -333,441 +223,159 @@ export function getAuthStatus(): {
     return { authenticated: false, status: "unauthenticated" };
   }
   if (cachedHeartbeat) {
-    return {
-      authenticated: true,
-      status: cachedHeartbeat.status,
-      tier: cachedHeartbeat.tier,
-    };
+    return { authenticated: true, status: cachedHeartbeat.status, tier: cachedHeartbeat.tier };
   }
   return { authenticated: true, status: "active" };
 }
 
-// ── BrowserWindow auth flow ──────────────────────────────────
+// ── Device-flow sign-in ──────────────────────────────────────
+
+export type { DevicePrompt };
+
+// One device grant in flight at a time: starting a new one aborts the old
+// poll (its code dies server-side unused), so "get a new code" is safe to
+// mash and a stuck poll can always be replaced.
+let deviceLoginAbort: AbortController | null = null;
+
+/** Abort the in-flight device login, if any (the renderer's cancel/reset). */
+export function cancelDeviceLogin(): void {
+  deviceLoginAbort?.abort();
+  deviceLoginAbort = null;
+}
 
 /**
- * Open auth window for registration or login.
- * Returns a promise that resolves when auth is complete (tokens stored).
+ * Sign in via the SDK device flow: opens the user's default browser on the
+ * platform's approval page and polls until they approve. `onPrompt` receives
+ * the user code + URL so the renderer can display them (and offer the link
+ * again if the browser hand-off didn't land). Resolves `{ ok: true }` once
+ * the session is stored; failures carry the real error message.
  */
-export function startAuthFlow(mode: "register" | "login" = "register"): Promise<boolean> {
-  return new Promise((resolve) => {
-    // Close any existing auth window
-    if (authWindow && !authWindow.isDestroyed()) {
-      authWindow.close();
-    }
-
-    const authPath = mode === "login" ? "/auth/login" : "/auth";
-    const authUrl = `${PLATFORM_URL}${authPath}?flow=electron`;
-
-    authWindow = new BrowserWindow({
-      width: 520,
-      height: 700,
-      title: "Sign in to Yo",
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
+export async function startDeviceLogin(
+  onPrompt?: (prompt: DevicePrompt) => void,
+): Promise<{ ok: boolean; error?: string }> {
+  cancelDeviceLogin();
+  const abort = new AbortController();
+  deviceLoginAbort = abort;
+  try {
+    await getClient().auth.deviceLogin({
+      machineId: os.hostname(),
+      signal: abort.signal,
+      onPrompt: (prompt) => {
+        void shell.openExternal(prompt.verificationUriComplete || prompt.verificationUri)
+          .catch((err) => console.warn("[auth] could not open browser for device approval:", err?.message || err));
+        try { onPrompt?.(prompt); } catch { /* renderer display is best-effort */ }
       },
     });
-
-    authWindow.setMenuBarVisibility(false);
-
-    // Watch for navigation to the callback URL
-    authWindow.webContents.on("will-navigate", async (_event, url) => {
-      if (url.includes("/auth/callback")) {
-        const parsed = new URL(url);
-        const code = parsed.searchParams.get("code");
-        if (code) {
-          // Exchange device code for JWT
-          const success = await exchangeDeviceCode(code);
-          if (success) {
-            // Fetch account info immediately
-            await fetchAccountInfo();
-            await fetchHeartbeat();
-          }
-          if (authWindow && !authWindow.isDestroyed()) {
-            authWindow.close();
-          }
-          resolve(success);
-        }
-      }
-    });
-
-    // Also watch for redirects (the callback may be a server-side redirect)
-    authWindow.webContents.on("will-redirect", async (_event, url) => {
-      if (url.includes("/auth/callback")) {
-        const parsed = new URL(url);
-        const code = parsed.searchParams.get("code");
-        if (code) {
-          const success = await exchangeDeviceCode(code);
-          if (success) {
-            await fetchAccountInfo();
-            await fetchHeartbeat();
-          }
-          if (authWindow && !authWindow.isDestroyed()) {
-            authWindow.close();
-          }
-          resolve(success);
-        }
-      }
-    });
-
-    authWindow.on("closed", () => {
-      authWindow = null;
-      // If the window was closed without completing auth, resolve false
-      resolve(false);
-    });
-
-    authWindow.loadURL(authUrl);
-  });
-}
-
-// ── Native (in-client) email auth ────────────────────────────
-// Email-only auth handled entirely inside the client against the server API —
-// no BrowserWindow popup, no device-code handoff (which strands new users on
-// the platform page). Tokens land in the same encrypted session store.
-
-interface NativeAuthResponse {
-  ok?: boolean;
-  accessToken?: string;
-  refreshToken?: string;
-  expiresIn?: number;
-  error?: string;
-}
-
-/** Pull the server's `{ error }` message out of a serverPost rejection. */
-function parseAuthError(err: unknown, fallback: string): string {
-  const msg = String((err as Error)?.message || "");
-  const m = msg.match(/\{.*"error"\s*:\s*"([^"]+)"/);
-  if (m) return m[1];
-  if (/HTTP 409/.test(msg)) return "Account already exists";
-  if (/timeout/i.test(msg)) return "Request timed out — check your connection";
-  return fallback;
-}
-
-async function storeAuthTokens(result: NativeAuthResponse): Promise<boolean> {
-  if (result.accessToken && result.refreshToken && result.expiresIn) {
-    saveSessionFile({
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      expiresAt: Date.now() + result.expiresIn * 1000,
-    });
-    await fetchAccountInfo();
-    await fetchHeartbeat();
-    return true;
-  }
-  return false;
-}
-
-/** Step 1 of registration: send a 6-digit code to the email. */
-export async function authRegister(email: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    await serverPost("/api/auth/register", { email });
+    signedIn = true;
+    await ensureFreshToken();
+    await refreshAccountState();
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: parseAuthError(err, "Could not start registration") };
-  }
-}
-
-/** Step 2 of registration: verify the 6-digit code. */
-export async function authVerifyCode(email: string, code: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    await serverPost("/api/auth/verify-code", { email, code });
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: parseAuthError(err, "Invalid or expired code") };
-  }
-}
-
-/** Step 3 of registration: create the account + org, then sign in (store tokens). */
-export async function authCompleteProfile(data: {
-  email: string; firstName: string; lastName: string;
-  password: string; confirmPassword: string; orgName?: string;
-}): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const result = await serverPost<NativeAuthResponse>("/api/auth/complete-profile", data);
-    if (await storeAuthTokens(result)) return { ok: true };
-    return { ok: false, error: result.error || "Account creation failed" };
-  } catch (err) {
-    return { ok: false, error: parseAuthError(err, "Account creation failed") };
-  }
-}
-
-/** Sign in with email + password (stores tokens on success). */
-export async function authLogin(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const result = await serverPost<NativeAuthResponse>("/api/auth/login", { email, password });
-    if (await storeAuthTokens(result)) return { ok: true };
-    return { ok: false, error: result.error || "Invalid credentials" };
-  } catch (err) {
-    return { ok: false, error: parseAuthError(err, "Invalid credentials") };
+    const message = (err as Error)?.message || String(err);
+    // A replaced/cancelled attempt is not a failure the user needs shown.
+    if (abort.signal.aborted) return { ok: false, error: "cancelled" };
+    console.error("[auth] device login failed:", message);
+    return { ok: false, error: message };
+  } finally {
+    if (deviceLoginAbort === abort) deviceLoginAbort = null;
   }
 }
 
 /**
- * Request a password-reset email. The server always responds 200 (no account
- * enumeration) and emails a reset link that opens the platform's web reset page,
- * so the actual reset happens in the browser. We only surface network failures.
+ * Legacy boolean face of the device flow. The `mode` argument is historical
+ * (register/login were separate password flows); the device grant serves
+ * both — the platform handles new accounts.
  */
-export async function authForgotPassword(email: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    await serverPost("/api/auth/forgot-password", { email });
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: parseAuthError(err, "Could not send the reset email") };
-  }
+export async function startAuthFlow(
+  _mode: "register" | "login" = "login",
+  onPrompt?: (prompt: DevicePrompt) => void,
+): Promise<boolean> {
+  return (await startDeviceLogin(onPrompt)).ok;
 }
 
-/** Exchange a one-time device code for JWT tokens. */
-async function exchangeDeviceCode(code: string): Promise<boolean> {
-  try {
-    const result = await serverPost<{
-      ok: boolean;
-      accessToken?: string;
-      refreshToken?: string;
-      expiresIn?: number;
-      error?: string;
-    }>("/api/auth/device-exchange", { code });
-
-    if (result.ok && result.accessToken && result.refreshToken && result.expiresIn) {
-      saveSessionFile({
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresAt: Date.now() + result.expiresIn * 1000,
-      });
-      return true;
-    }
-    console.error("Device code exchange failed:", result.error);
-    return false;
-  } catch (err) {
-    console.error("Device code exchange error:", err);
-    return false;
-  }
-}
-
-// ── Heartbeat ────────────────────────────────────────────────
-
-function startHeartbeat(): void {
-  if (heartbeatTimer) clearInterval(heartbeatTimer);
-  heartbeatTimer = setInterval(() => {
-    if (isAuthenticated()) {
-      void fetchHeartbeat();
-    }
-  }, HEARTBEAT_INTERVAL);
-}
+// ── Account state (the old heartbeat) ────────────────────────
 
 // Offline → online transition hooks: server-authoritative stores (prefs,
 // chats, app schedules) reconcile the moment connectivity returns instead
 // of waiting for the next restart.
-let heartbeatDown = false;
+let accountDown = false;
 const reconnectHooks: Array<() => void> = [];
 export function onServerReconnect(fn: () => void): void {
   reconnectHooks.push(fn);
 }
 
-async function fetchHeartbeat(): Promise<HeartbeatResult | null> {
-  try {
-    const result = await serverGetAuthed<HeartbeatResult>("/api/heartbeat");
-    cachedHeartbeat = result;
-    if (heartbeatDown) {
-      heartbeatDown = false;
-      for (const fn of reconnectHooks) {
-        try { fn(); } catch { /* a hook must not break the poll */ }
-      }
-    }
-    // Notify the observer so the app can gate access when an account is
-    // disabled — the heartbeat is the authoritative account-status check.
-    try { heartbeatObserver?.(result); } catch { /* observer must not break the poll */ }
-    return result;
-  } catch {
-    heartbeatDown = true;
+/**
+ * Refresh the composed account view (identity + profile + subscription + org)
+ * that replaces the old server heartbeat. Also the observer feed that locks
+ * the workspace when an account goes inactive.
+ */
+async function refreshAccountState(): Promise<HeartbeatResult | null> {
+  const client = getClient();
+  const [id, prof, sub, org] = await Promise.allSettled([
+    client.me(),
+    client.profile.get(),
+    client.billing.status(),
+    client.org.get(),
+  ]);
+  if (id.status === "rejected") {
+    accountDown = true;
     return null;
   }
+
+  const identity = id.value;
+  const profile = prof.status === "fulfilled" ? prof.value : null;
+  const subscription = sub.status === "fulfilled" ? sub.value : null;
+  const orgInfo = org.status === "fulfilled" ? org.value : null;
+
+  writeIdentitySidecar(identity.userId);
+  setActiveUser(identity.userId);
+
+  cachedAccount = {
+    email: identity.email,
+    firstName: profile?.firstName ?? identity.name ?? "",
+    lastName: profile?.lastName ?? "",
+    role: identity.role,
+    orgName: orgInfo?.name ?? "",
+    orgSlug: orgInfo?.slug ?? "",
+    tier: subscription?.tier ?? identity.tier,
+    billingStatus: subscription?.billingStatus ?? "",
+  };
+  cachedHeartbeat = {
+    // The new server has no account-disabled heartbeat signal (a revoked
+    // session simply 401s) — "disabled" is reserved for when it grows one.
+    status: "active",
+    tier: cachedAccount.tier,
+    billingStatus: cachedAccount.billingStatus,
+    entitlements: {},
+    org: orgInfo ? { id: orgInfo.id, name: orgInfo.name, maxSeats: orgInfo.maxSeats } : null,
+    user: {
+      id: identity.userId,
+      email: identity.email,
+      firstName: profile?.firstName ?? null,
+      lastName: profile?.lastName ?? null,
+      role: identity.role,
+    },
+  };
+
+  if (accountDown) {
+    accountDown = false;
+    for (const fn of reconnectHooks) {
+      try { fn(); } catch { /* a hook must not break the poll */ }
+    }
+  }
+  try { heartbeatObserver?.(cachedHeartbeat); } catch { /* observer must not break the poll */ }
+  return cachedHeartbeat;
+}
+
+/** Force an account-state check now (e.g. after returning from billing portal). */
+export async function refreshHeartbeat(): Promise<HeartbeatResult | null> {
+  return refreshAccountState();
 }
 
 /**
- * Register an observer notified on every heartbeat result. Used to lock the
- * client out of the workspace the moment an account is disabled (status
- * "disabled").
+ * Register an observer notified on every account-state result. Used to lock
+ * the client out of the workspace the moment an account is disabled.
  */
 export function setHeartbeatObserver(cb: ((result: HeartbeatResult) => void) | null): void {
   heartbeatObserver = cb;
 }
-
-async function fetchAccountInfo(): Promise<AccountInfo | null> {
-  try {
-    const result = await serverGetAuthed<{
-      email: string;
-      firstName: string;
-      lastName: string;
-      role: string;
-      orgName: string;
-      orgSlug: string;
-      tier: string;
-      billingStatus: string;
-    }>("/api/user/me");
-    cachedAccount = result;
-    return result;
-  } catch {
-    return null;
-  }
-}
-
-/** Force a heartbeat check now (e.g. after returning from billing portal). */
-export async function refreshHeartbeat(): Promise<HeartbeatResult | null> {
-  return fetchHeartbeat();
-}
-
-// ── Server communication (Electron net for proxy support) ────
-
-function serverPost<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const url = `${AUTH_SERVER}${endpoint}`;
-    const data = JSON.stringify(body);
-    const request = net.request({ url, method: "POST" });
-    request.setHeader("Content-Type", "application/json");
-    const timer = setTimeout(() => { request.abort(); reject(new Error("Request timeout")); }, 10_000);
-
-    let responseBody = "";
-    request.on("response", (response) => {
-      const status = response.statusCode ?? 500;
-      clearTimeout(timer);
-      response.on("data", (chunk) => { responseBody += chunk.toString(); });
-      response.on("end", () => {
-        // Note: unauthed POST (login/refresh/device-exchange). A 401 here does
-        // NOT pop the login gate — the refresh flow decides re-login itself, so
-        // a transient 401 can't bounce the user.
-        if (status < 200 || status >= 300) {
-          reject(new Error(`HTTP ${status}: ${responseBody.slice(0, 200)}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(responseBody) as T);
-        } catch {
-          reject(new Error("Invalid server response"));
-        }
-      });
-    });
-    request.on("error", reject);
-    request.write(data);
-    request.end();
-  });
-}
-
-export function serverGetAuthed<T>(endpoint: string): Promise<T> {
-  const token = getAuthToken();
-  if (!token) { void refreshTokens(); return Promise.reject(new Error("Not authenticated")); }
-
-  return new Promise((resolve, reject) => {
-    const url = `${AUTH_SERVER}${endpoint}`;
-    const request = net.request({ url, method: "GET" });
-    request.setHeader("Authorization", `Bearer ${token}`);
-    const timer = setTimeout(() => { request.abort(); reject(new Error("Request timeout")); }, 10_000);
-
-    let responseBody = "";
-    request.on("response", (response) => {
-      const status = response.statusCode ?? 500;
-      clearTimeout(timer);
-      response.on("data", (chunk) => { responseBody += chunk.toString(); });
-      response.on("end", () => {
-        if (status === 401) void refreshTokens();   // try a refresh first; only a failed refresh re-logs-in
-        if (status < 200 || status >= 300) {
-          reject(new Error(`HTTP ${status}: ${responseBody.slice(0, 200)}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(responseBody) as T);
-        } catch {
-          reject(new Error("Invalid server response"));
-        }
-      });
-    });
-    request.on("error", reject);
-    request.end();
-  });
-}
-
-export function serverDeleteAuthed<T>(endpoint: string): Promise<T> {
-  const token = getAuthToken();
-  if (!token) { void refreshTokens(); return Promise.reject(new Error("Not authenticated")); }
-
-  return new Promise((resolve, reject) => {
-    const url = `${AUTH_SERVER}${endpoint}`;
-    const request = net.request({ url, method: "DELETE" });
-    request.setHeader("Authorization", `Bearer ${token}`);
-    const timer = setTimeout(() => { request.abort(); reject(new Error("Request timeout")); }, 10_000);
-
-    let responseBody = "";
-    request.on("response", (response) => {
-      const status = response.statusCode ?? 500;
-      clearTimeout(timer);
-      response.on("data", (chunk) => { responseBody += chunk.toString(); });
-      response.on("end", () => {
-        if (status === 401) void refreshTokens();   // try a refresh first; only a failed refresh re-logs-in
-        if (status < 200 || status >= 300) {
-          reject(new Error(`HTTP ${status}: ${responseBody.slice(0, 200)}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(responseBody) as T);
-        } catch {
-          reject(new Error("Invalid server response"));
-        }
-      });
-    });
-    request.on("error", reject);
-    request.end();
-  });
-}
-
-export function serverPostAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
-  return serverWriteAuthed<T>("POST", endpoint, body);
-}
-
-/** PATCH variant of serverPostAuthed — same auth/refresh/timeout handling. */
-export function serverPatchAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
-  return serverWriteAuthed<T>("PATCH", endpoint, body);
-}
-
-/** PUT variant of serverPostAuthed — same auth/refresh/timeout handling. */
-export function serverPutAuthed<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
-  return serverWriteAuthed<T>("PUT", endpoint, body);
-}
-
-function serverWriteAuthed<T>(method: "POST" | "PATCH" | "PUT", endpoint: string, body: Record<string, unknown>): Promise<T> {
-  const token = getAuthToken();
-  if (!token) { void refreshTokens(); return Promise.reject(new Error("Not authenticated")); }
-
-  return new Promise((resolve, reject) => {
-    const url = `${AUTH_SERVER}${endpoint}`;
-    const data = JSON.stringify(body);
-    const request = net.request({ url, method });
-    request.setHeader("Content-Type", "application/json");
-    request.setHeader("Authorization", `Bearer ${token}`);
-    const timer = setTimeout(() => { request.abort(); reject(new Error("Request timeout")); }, 10_000);
-
-    let responseBody = "";
-    request.on("response", (response) => {
-      const status = response.statusCode ?? 500;
-      clearTimeout(timer);
-      response.on("data", (chunk) => { responseBody += chunk.toString(); });
-      response.on("end", () => {
-        if (status === 401) void refreshTokens();   // try a refresh first; only a failed refresh re-logs-in
-        if (status < 200 || status >= 300) {
-          reject(new Error(`HTTP ${status}: ${responseBody.slice(0, 200)}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(responseBody) as T);
-        } catch {
-          reject(new Error("Invalid server response"));
-        }
-      });
-    });
-    request.on("error", reject);
-    request.write(data);
-    request.end();
-  });
-}
-

@@ -1,6 +1,6 @@
 /**
  * Ada IPC — the renderer's window into fact memory (app search surfaces,
- * memory panes). Read-only from here; writes go through William's gated
+ * memory panes). Read-only from here; writes go through Glyphh's gated
  * tools or the indexer.
  */
 

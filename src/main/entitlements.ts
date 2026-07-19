@@ -6,7 +6,7 @@
  * during the transition. They always return { allowed: true }.
  */
 
-import { hasMcpAccess, getHeartbeatInfo } from "./auth";
+import { hasMcpAccess } from "./auth";
 
 export type GateResult = { allowed: true } | { allowed: false; reason: string };
 
@@ -15,22 +15,20 @@ const ALLOWED: GateResult = { allowed: true };
 export function canAddApp(_currentCount?: number): GateResult { return ALLOWED; }
 export function canCreateSkill(_currentCount?: number): GateResult { return ALLOWED; }
 export function canSaveLayout(_currentCount?: number): GateResult { return ALLOWED; }
-// MCP (connecting servers + exposing Glyphh as one) is a paid-tier feature.
+// MCP is available to any signed-in, active account — there is no pay gate.
 export function canUseMcp(): GateResult {
-  return hasMcpAccess() ? ALLOWED : { allowed: false, reason: "MCP requires a Pro plan." };
+  return hasMcpAccess() ? ALLOWED : { allowed: false, reason: "Sign in to use MCP." };
 }
 export function canUseCustomDrips(): GateResult { return ALLOWED; }
-// Custom MCP connections (user-supplied stdio/HTTP servers) can be switched
-// off org-wide via the allow_custom_mcp org policy, delivered through
-// heartbeat entitlements. Absent flag (solo user, stale heartbeat) = allowed.
+/**
+ * OFFLINE fallback only. Whether custom MCP is permitted is a WORKSPACE grant
+ * the server owns — home-ipc's `mcp-custom-allowed` asks it directly and only
+ * falls back here when the server is unreachable. There is no client-side copy
+ * of the policy to consult (the old heartbeat entitlements are gone), so this
+ * defers to sign-in state and lets the server refuse if it disagrees.
+ */
 export function canUseCustomMcp(): GateResult {
-  const mcp = canUseMcp();
-  if (!mcp.allowed) return mcp;
-  const ents = getHeartbeatInfo()?.entitlements;
-  if (ents && ents.allowCustomMcp === false) {
-    return { allowed: false, reason: "Custom MCP connections are disabled by your organization." };
-  }
-  return ALLOWED;
+  return canUseMcp();
 }
 
 export function getCurrentLimits() {

@@ -1,19 +1,19 @@
 /**
- * William permission model + effort lever.
+ * Glyphh permission model + effort lever.
  *
- * Modes (williamMode preference, cycled from the composer chip):
+ * Modes (glyphhMode preference, cycled from the composer chip):
  *   ask         — every mutating action needs approval; reads are free
- *   plan        — read-only: William plans, nothing changes
+ *   plan        — read-only: Glyphh plans, nothing changes
  *   acceptEdits — file edits auto-approved; commands/network still ask
  *   auto        — workspace actions auto-approved; dangerous ones still ask
  *   bypass      — everything auto-approved (trusted sessions only)
  *
- * The agent loop's tool executor calls gateWilliamAction() before every
+ * The agent loop's tool executor calls gateGlyphhAction() before every
  * action. "Ask" resolutions round-trip to the Code panel: an approval card
- * renders inline (william:approval → william-approval-respond), defaulting
+ * renders inline (glyphh:approval → glyphh-approval-respond), defaulting
  * to DENY after a timeout or if the panel is gone.
  *
- * Effort (williamEffort preference) is the SLICER DIAL: far-left pins every
+ * Effort (glyphhEffort preference) is the SLICER DIAL: far-left pins every
  * turn to the local model (zero cost), Superfly sends every turn to Claude,
  * and the middle stops escalate on evidence (see model-router.ts). The same
  * setting still budgets local token/turn spend below — one lever, one story:
@@ -23,28 +23,28 @@
 import { ipcMain, type WebContents } from "electron";
 import { getPreference } from "./stores/preferences-db";
 
-export type WilliamMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
-export type WilliamEffort = "low" | "medium" | "high" | "superfly";
-export type WilliamActionKind = "read" | "edit" | "command" | "network" | "dangerous";
+export type GlyphhMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
+export type GlyphhEffort = "low" | "medium" | "high" | "superfly";
+export type GlyphhActionKind = "read" | "edit" | "command" | "network" | "dangerous";
 
-export interface WilliamAction {
-  kind: WilliamActionKind;
+export interface GlyphhAction {
+  kind: GlyphhActionKind;
   /** Short human line, e.g. `Edit src/app.ts` or `Run npm test`. */
   title: string;
   /** The exact content being approved — command line, diff summary, URL. */
   detail?: string;
 }
 
-const MODES: WilliamMode[] = ["ask", "plan", "acceptEdits", "auto", "bypass"];
+const MODES: GlyphhMode[] = ["ask", "plan", "acceptEdits", "auto", "bypass"];
 const APPROVAL_TIMEOUT_MS = 120_000;
 
-export function williamMode(): WilliamMode {
-  const m = String(getPreference("williamMode", "ask")) as WilliamMode;
+export function glyphhMode(): GlyphhMode {
+  const m = String(getPreference("glyphhMode", "ask")) as GlyphhMode;
   return MODES.includes(m) ? m : "ask";
 }
 
-export function williamEffort(): WilliamEffort {
-  const e = String(getPreference("williamEffort", "medium"));
+export function glyphhEffort(): GlyphhEffort {
+  const e = String(getPreference("glyphhEffort", "medium"));
   return e === "low" || e === "high" || e === "superfly" ? e : "medium";
 }
 
@@ -54,7 +54,7 @@ export function williamEffort(): WilliamEffort {
 export type EscalationPolicy = "local" | "assist" | "eager" | "frontier";
 
 export function escalationPolicy(): EscalationPolicy {
-  switch (williamEffort()) {
+  switch (glyphhEffort()) {
     case "low": return "local";
     case "high": return "eager";
     case "superfly": return "frontier";
@@ -64,7 +64,7 @@ export function escalationPolicy(): EscalationPolicy {
 
 /** Agent-loop turn budget per effort tier (tool calls per run). */
 export function effortMaxTurns(): number {
-  switch (williamEffort()) {
+  switch (glyphhEffort()) {
     case "low": return 4;
     case "high": return 14;
     case "superfly": return 24;
@@ -74,7 +74,7 @@ export function effortMaxTurns(): number {
 
 /** Response token budget per effort tier (context is 16384 minus history). */
 export function effortMaxTokens(): number {
-  switch (williamEffort()) {
+  switch (glyphhEffort()) {
     case "low": return 1024;
     case "high": return 8192;
     case "superfly": return 12288; // absolute max — history squeezes to fit
@@ -91,11 +91,11 @@ const pending = new Map<string, (allow: boolean) => void>();
  * executor branches on { allowed } and reports `reason` back to the model
  * so it can re-plan (e.g. "plan mode is read-only").
  */
-export async function gateWilliamAction(
+export async function gateGlyphhAction(
   wc: WebContents,
-  action: WilliamAction,
+  action: GlyphhAction,
 ): Promise<{ allowed: boolean; reason?: string }> {
-  const mode = williamMode();
+  const mode = glyphhMode();
   if (action.kind === "read") return { allowed: true };
   if (mode === "bypass") return { allowed: true };
   if (mode === "plan") {
@@ -106,7 +106,7 @@ export async function gateWilliamAction(
   return requestApproval(wc, action);
 }
 
-function requestApproval(wc: WebContents, action: WilliamAction): Promise<{ allowed: boolean; reason?: string }> {
+function requestApproval(wc: WebContents, action: GlyphhAction): Promise<{ allowed: boolean; reason?: string }> {
   return new Promise((resolve) => {
     const id = `apr-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     const timer = setTimeout(() => {
@@ -119,7 +119,7 @@ function requestApproval(wc: WebContents, action: WilliamAction): Promise<{ allo
     });
     try {
       if (wc.isDestroyed()) throw new Error("panel gone");
-      wc.send("william:approval", { id, kind: action.kind, title: action.title, detail: action.detail ?? "" });
+      wc.send("glyphh-agent:approval", { id, kind: action.kind, title: action.title, detail: action.detail ?? "" });
     } catch {
       clearTimeout(timer);
       pending.delete(id);
@@ -153,7 +153,7 @@ export function askUserQuestions(wc: WebContents, questions: AskQuestion[]): Pro
     });
     try {
       if (wc.isDestroyed()) throw new Error("panel gone");
-      wc.send("william:ask", { id, questions });
+      wc.send("glyphh-agent:ask", { id, questions });
     } catch {
       clearTimeout(timer);
       pendingAsks.delete(id);
@@ -162,15 +162,15 @@ export function askUserQuestions(wc: WebContents, questions: AskQuestion[]): Pro
   });
 }
 
-export function registerWilliamPermissionIpc(): void {
-  ipcMain.handle("william-approval-respond", (_e, p: { id?: string; allow?: boolean }) => {
+export function registerGlyphhPermissionIpc(): void {
+  ipcMain.handle("glyphh-agent-approval-respond", (_e, p: { id?: string; allow?: boolean }) => {
     const entry = pending.get(String(p?.id ?? ""));
     if (!entry) return false;
     pending.delete(String(p?.id));
     entry(!!p?.allow);
     return true;
   });
-  ipcMain.handle("william-ask-respond", (_e, p: { id?: string; answers?: unknown[] }) => {
+  ipcMain.handle("glyphh-agent-ask-respond", (_e, p: { id?: string; answers?: unknown[] }) => {
     const entry = pendingAsks.get(String(p?.id ?? ""));
     if (!entry) return false;
     pendingAsks.delete(String(p?.id));

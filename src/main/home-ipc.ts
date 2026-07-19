@@ -17,7 +17,9 @@ import {
   localMcpRevokeToken,
 } from "./local-mcp-server";
 import { setPreference } from "./stores/preferences-db";
-import { serverGetAuthed, getAccountInfo, getAuthStatus } from "./auth";
+import { getAccountInfo, getAuthStatus } from "./auth";
+import { getClient } from "./glyphh-client";
+import { ForbiddenError } from "@glyphh/client";
 
 interface HomeIpcDeps {
   mcpManager: McpManager | null;
@@ -43,26 +45,18 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     const now = new Date();
     const windowStart = new Date(now); windowStart.setDate(now.getDate() - (WINDOW - 1));
 
-    interface CreditsResp { balance?: number; allowance?: number }
-    interface MeCreditsResp { roleName?: string | null; uncapped?: boolean; capCredits?: number | null; spentCredits?: number; remainingCredits?: number | null; windowEnd?: string | null }
-    interface UsageResp { totals?: { credits?: number; requests?: number } }
-    interface DailyDay { day: string; credits?: number; requests?: number }
-    interface DailyResp { days?: DailyDay[] }
-    interface PanelApp { system?: boolean; url?: string | null; isBrowser?: boolean }
-
+    const client = getClient();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const [credits, me, usage, daily, apps] = await Promise.all([
       // Org pool — admins only; members get a 403 (→ null) and the personal
-      // allocation card below renders from /api/me/credits instead.
-      serverGetAuthed<CreditsResp>("/api/billing/credits").catch(() => null),
-      serverGetAuthed<MeCreditsResp>("/api/me/credits").catch(() => null),
-      // scope=me → the desktop dashboard always shows THIS user's spend, never
-      // the org's. period=mtd + no tz param: the SERVER owns the month
-      // boundary and buckets by the user's stored profile timezone, so this
-      // number matches what an org admin sees for the same user on the
-      // platform (both surfaces read the same resolved-timezone math).
-      serverGetAuthed<UsageResp>(`/api/usage?period=mtd&to=${encodeURIComponent(now.toISOString())}&scope=me`).catch(() => null),
-      serverGetAuthed<DailyResp>(`/api/usage/daily?from=${ymd(windowStart)}&to=${encodeURIComponent(now.toISOString())}&scope=me`).catch(() => null),
-      serverGetAuthed<PanelApp[]>("/api/panel-apps").catch(() => null),
+      // allocation card below renders from the caller's allocation instead.
+      client.billing.credits().catch(() => null),
+      client.usage.allocation().catch(() => null),
+      // The caller's month-to-date spend; the SERVER owns the month boundary
+      // math so this matches what an org admin sees for the same user.
+      client.usage.summary({ from: ymd(monthStart), to: ymd(now) }).catch(() => null),
+      client.usage.daily({ from: ymd(windowStart), to: ymd(now) }).catch(() => null),
+      client.apps.deployed().catch(() => null),
     ]);
 
     // Per-day credits/calls (the server combines LLM + compute usage). Fill
@@ -86,16 +80,28 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       // null credits = the org pool is admin-only for this account — the
       // renderer swaps in the member card fed by `me`.
       orgCredits: credits != null,
-      me,
+      // The renderer's member card was built around the old /api/me/credits
+      // shape; `roleName` maps to the allocation's workspace name.
+      me: me
+        ? {
+            roleName: me.workspaceName || null,
+            uncapped: me.uncapped,
+            capCredits: me.capCredits,
+            spentCredits: me.spentCredits,
+            remainingCredits: me.remainingCredits,
+            windowEnd: me.windowEnd || null,
+          }
+        : null,
       credits: Math.floor((credits?.balance || 0) / MICRO),
       allowance: Math.floor((credits?.allowance || 0) / MICRO),
       // Math.round to match the platform's usage math — floor here made the
       // client read up to a credit lower than the admin view for identical rows.
-      spendCredits: Math.round((usage?.totals?.credits || 0) / MICRO),
-      requests: usage?.totals?.requests || 0,
-      // Count visible apps only, exactly like the Apps tab: the seeded Glyphh
-      // system app (system:true — hidden + undeletable) is not a deployed app.
-      appsCount: Array.isArray(apps) ? apps.filter((a) => !a.system && (a.url || a.isBrowser === false)).length : 0,
+      spendCredits: Math.round((usage?.credits || 0) / MICRO),
+      // The summary counts ledger events — one per metered request.
+      requests: usage?.events || 0,
+      // Count live deployments only, exactly like the Apps tab: the seeded
+      // system app (system:true) is not a deployed app.
+      appsCount: Array.isArray(apps) ? apps.filter((a) => !a.system && a.url).length : 0,
       windowCredits: days.reduce((s, d) => s + d.credits, 0),
       windowCalls: days.reduce((s, d) => s + d.calls, 0),
       days,
@@ -121,15 +127,16 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   ipcMain.handle("local-mcp-tokens-revoke", (_e, id: string) => { localMcpRevokeToken(id); return { ok: true }; });
 
   // Custom MCP connections live server-side (apps-ipc: mcp-connections-*);
-  // this gate only drives the Connections page's show/hide. Ask the SERVER
-  // fresh — the heartbeat copy refreshes every 4h, which made the org's
-  // allow-toggle look like it never took effect. Offline falls back to the
-  // cached heartbeat entitlement.
+  // this gate only drives the Connections page's show/hide. The old policy
+  // endpoint is gone — governance is the workspace gate on the personal
+  // custom-MCP surface, so probe it: a 403 means the workspace disallows
+  // custom MCP; any other failure (offline) falls back to the local gate.
   ipcMain.handle("mcp-custom-allowed", async () => {
     try {
-      const r = await serverGetAuthed<{ allowed: boolean }>("/api/mcp-connections/policy");
-      return { allowed: !!r.allowed };
-    } catch {
+      await getClient().connections.personalMcpList();
+      return { allowed: true };
+    } catch (err) {
+      if (err instanceof ForbiddenError) return { allowed: false, reason: "Custom MCP connections are disabled by your organization." };
       return canUseCustomMcp();
     }
   });

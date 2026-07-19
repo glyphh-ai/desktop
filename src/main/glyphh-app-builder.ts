@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { validateBundle, type Bundle } from "./william-app-oracle";
+import { validateBundle, type Bundle } from "./glyphh-app-oracle";
 import { collectBuiltProject, manifestPathIn, lintNoRemoteAssets, type InstallFile } from "./glyphh-app-spec";
 import { installGlyphhAppBundle } from "./glyphh-app-host";
 
@@ -42,7 +42,7 @@ async function packageBuiltAndInstall(files: InstallFile[], manifestJson: string
 }
 
 async function installZip(zip: AdmZip): Promise<{ ok: boolean; name?: string; error?: string }> {
-  const tmp = path.join(os.tmpdir(), `william-build-${Date.now().toString(36)}.glyphh`);
+  const tmp = path.join(os.tmpdir(), `glyphh-build-${Date.now().toString(36)}.glyphh`);
   fs.writeFileSync(tmp, zip.toBuffer());
   try {
     return await installGlyphhAppBundle(tmp);

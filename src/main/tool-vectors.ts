@@ -1,5 +1,5 @@
 /**
- * tool-vectors — semantic tool selection for the William loop.
+ * tool-vectors — semantic tool selection for the Glyphh loop.
  *
  * The governed connector catalog is far too big to wire into every turn:
  * tool defs are part of the prompt prefix the router can never squeeze, and
@@ -14,8 +14,8 @@
 
 import { createHash } from "crypto";
 import { getLocalDb } from "./local-db";
-import { embedText, embedTexts, dot, packVec, unpackVec } from "./william-embeddings";
-import type { ConnectorWireDef } from "./william-tools";
+import { embedText, embedTexts, dot, packVec, unpackVec } from "./glyphh-agent-embeddings";
+import type { ConnectorWireDef } from "./glyphh-agent-tools";
 
 const TOOL_K = 24;         // most connector tools a single run wires
 const SEM_MIN = 0.3;       // nomic cosine floor for "related to the ask"

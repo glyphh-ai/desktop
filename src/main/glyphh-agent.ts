@@ -1,7 +1,7 @@
 /**
- * William — the agent loop, now the Claude Agent SDK's loop over the slicer.
+ * Glyphh — the agent loop, now the Claude Agent SDK's loop over the slicer.
  *
- * One loop, sliced serving: `william-run` drives a Claude Agent SDK session
+ * One loop, sliced serving: `glyphh-run` drives a Claude Agent SDK session
  * whose every model call lands on the local model router (model-router.ts).
  * The router serves routine turns from the on-device model (llama-server,
  * OpenAI-compatible, default 127.0.0.1:8089) and escalates hard turns to the
@@ -9,10 +9,10 @@
  * burn on frontier turns.
  *
  * The Glyphh tool surface rides into the loop as an in-process MCP server
- * (william-tools.ts defs; every execution still passes gateWilliamAction).
- * Renderer contract is unchanged: deltas on `william:delta`, tool activity
- * on `william:tool`, termination via `william:done` / `william:error`.
- * One run at a time; `william-stop` aborts the active one.
+ * (glyphh-tools.ts defs; every execution still passes gateGlyphhAction).
+ * Renderer contract is unchanged: deltas on `glyphh:delta`, tool activity
+ * on `glyphh:tool`, termination via `glyphh-agent:done` / `glyphh:error`.
+ * One run at a time; `glyphh-stop` aborts the active one.
  */
 
 import { ipcMain, app, type WebContents } from "electron";
@@ -24,21 +24,21 @@ import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claud
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { getPreference } from "./stores/preferences-db";
-import { effortMaxTokens, effortMaxTurns, williamEffort, williamMode, registerWilliamPermissionIpc } from "./william-permissions";
-import { captureRun } from "./william-training";
-import { executeWilliamTool, williamToolDefs, connectorWireTools, setRunAttachments, type ConnectorWireDef } from "./william-tools";
+import { effortMaxTokens, effortMaxTurns, glyphhEffort, glyphhMode, registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
+import { captureRun } from "./glyphh-agent-training";
+import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, type ConnectorWireDef } from "./glyphh-agent-tools";
 import { selectConnectorTools } from "./tool-vectors";
 import {
   pickAttachments, classifyPaths, saveClipboardImage, validAttachments,
   attachmentPromptBlock, attachmentVisionBlocks, type AttachRef,
-} from "./william-attachments";
-import { indexChatTurns, shortTermRecallBlock, pruneTurnVectors } from "./william-recall";
+} from "./glyphh-agent-attachments";
+import { indexChatTurns, shortTermRecallBlock, pruneTurnVectors } from "./glyphh-agent-recall";
 import { refreshWorkspaceIndex, relevantFilesHint } from "./workspace-index";
-import { stopEmbedServer } from "./william-embeddings";
+import { stopEmbedServer } from "./glyphh-agent-embeddings";
 import { GLYPHH_APP_SPEC } from "./glyphh-app-spec";
-import { cachedServerGet } from "./server-cache";
-import { assemblePrompt, compactIfNeeded, compactNow, registerWilliamContextIpc } from "./william-context";
-import { downloadWilliamModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId, cachedManifest } from "./william-models";
+import { fetchOrgApps } from "./org-apps";
+import { assemblePrompt, compactIfNeeded, compactNow, registerGlyphhContextIpc } from "./glyphh-agent-context";
+import { downloadGlyphhModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId, cachedManifest } from "./glyphh-agent-models";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { startModelRouter, stopModelRouter, registerModelRouterIpc, effectiveFrontierModel } from "./model-router";
 
@@ -47,30 +47,30 @@ export interface ChatMessage { role: "system" | "user" | "assistant"; content: s
 let active: { id: string; ctrl: AbortController } | null = null;
 
 function baseUrl(): string {
-  return String(getPreference("williamBaseUrl", "http://127.0.0.1:8089")).replace(/\/+$/, "");
+  return String(getPreference("glyphhBaseUrl", "http://127.0.0.1:8089")).replace(/\/+$/, "");
 }
 
 /** The local runtime's OpenAI-compatible endpoint — the slicer serves local
  *  turns through this. */
-export function williamBaseUrl(): string {
+export function glyphhBaseUrl(): string {
   return baseUrl();
 }
 
-export function isWilliamRunActive(): boolean {
+export function isGlyphhRunActive(): boolean {
   return !!active;
 }
 
 // ── Runtime management — the model server is invisible to the user ────────
 //
-// ensureWilliamServing() makes 127.0.0.1:<port> answer before any run:
+// ensureGlyphhServing() makes 127.0.0.1:<port> answer before any run:
 // adopt a server that's already up (a dev terminal instance keeps working),
 // else spawn llama-server as a managed child and wait through the model
-// load. The child dies with the app (will-quit → shutdownWilliam). If the
+// load. The child dies with the app (will-quit → shutdownGlyphh). If the
 // configured base URL points at another machine, we never spawn — reach it
 // or fail with a clear error.
 
 /** The managed llama-server's context window (`-c` below). The router
- *  budgets every local turn against this — william-context's CTX_TOKENS
+ *  budgets every local turn against this — glyphh-context's CTX_TOKENS
  *  mirrors it (kept private there to avoid the module cycle). */
 export const LOCAL_CTX_TOKENS = 32768;
 
@@ -85,7 +85,7 @@ export function gateManagedModel(): void {
   const files = new Set(cachedManifest().map((m) => m.file));
   const base = managedModelPath.split("/").pop() || managedModelPath;
   if (!files.has(base)) {
-    console.warn(`[william] ${base} is no longer org-approved — shutting the local model down`);
+    console.warn(`[glyphh] ${base} is no longer org-approved — shutting the local model down`);
     try { managed.kill(); } catch { /* already gone */ }
     managed = null;
     managedModelPath = null;
@@ -105,7 +105,7 @@ function localPort(): number | null {
 
 /** llama-server binary: preference → brew paths → PATH (dev terminals). */
 function findServerBin(): string {
-  const pref = String(getPreference("williamServerBin", "")).trim();
+  const pref = String(getPreference("glyphhServerBin", "")).trim();
   const candidates = [
     ...(pref ? [pref] : []),
     "/opt/homebrew/bin/llama-server",
@@ -138,7 +138,7 @@ async function healthy(timeoutMs = 1200): Promise<boolean> {
   }
 }
 
-export async function ensureWilliamServing(): Promise<void> {
+export async function ensureGlyphhServing(): Promise<void> {
   if (ensuring) return ensuring;
   ensuring = ensureInner().finally(() => { ensuring = null; });
   return ensuring;
@@ -163,10 +163,10 @@ async function ensureInner(): Promise<void> {
   let model = findModel();
   if (!model) {
     // Transparent setup: pull the right tier from the manifest (progress
-    // rides william:setup → the composer spinner). Signed-out or offline
+    // rides glyphh:setup → the composer spinner). Signed-out or offline
     // surfaces the manifest error with the manual path as fallback.
     try {
-      model = await downloadWilliamModel();
+      model = await downloadGlyphhModel();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(msg);
@@ -217,7 +217,7 @@ async function ensureInner(): Promise<void> {
 
 /** Kill the managed server + the slicer (no-op for an adopted external
  *  runtime). Wired to app will-quit — nothing outlives the client. */
-export function shutdownWilliam(): void {
+export function shutdownGlyphh(): void {
   active?.ctrl.abort();
   stopModelRouter();
   stopEmbedServer();
@@ -226,27 +226,27 @@ export function shutdownWilliam(): void {
 
 // ── External access gate ──────────────────────────────────────────────────
 //
-// William tools surfaced OUTSIDE the client (cloud relay, local MCP server)
+// Glyphh tools surfaced OUTSIDE the client (cloud relay, local MCP server)
 // must call this before running. It enforces the same master switches the
 // MCP settings expose — defense in depth: the tool checks even though a
 // disabled transport shouldn't be connected at all.
-export function assertWilliamExternalAllowed(via: "relay" | "local-mcp"): void {
+export function assertGlyphhExternalAllowed(via: "relay" | "local-mcp"): void {
   const enabled = via === "relay"
     ? getPreference<boolean>("relayEnabled", true) !== false
     : getPreference<boolean>("localMcpEnabled", false) === true;
   if (!enabled) {
     throw new Error(
-      `William tools are disabled here: the ${via === "relay" ? "cloud relay" : "local MCP server"} ` +
+      `Glyphh tools are disabled here: the ${via === "relay" ? "cloud relay" : "local MCP server"} ` +
       "is turned off in Settings → MCP Server",
     );
   }
 }
 
-export function registerWilliamIpc(): void {
-  registerWilliamPermissionIpc();
-  registerWilliamContextIpc();
+export function registerGlyphhIpc(): void {
+  registerGlyphhPermissionIpc();
+  registerGlyphhContextIpc();
   registerModelRouterIpc();
-  ipcMain.handle("william-run", async (e, payload: { chatId: string; attachments?: AttachRef[] }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[] }) => {
     if (active) throw new Error("a run is already in progress");
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
@@ -259,7 +259,7 @@ export function registerWilliamIpc(): void {
     setRunAttachments(attachments.map((a) => a.path));
     // Assembly is token-true (needs the server for /tokenize) — bring the
     // runtime up first so counting and completion share one warm process.
-    await ensureWilliamServing();
+    await ensureGlyphhServing();
     const replyBudget = effortMaxTokens();
     const messages = await assemblePrompt(chatId, replyBudget);
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
@@ -271,7 +271,7 @@ export function registerWilliamIpc(): void {
       // (The renderer saves the assistant turn right away; a short delay
       // lets that write land before compaction reads the store.)
       setTimeout(() => {
-        void compactIfNeeded(chatId, replyBudget, (msgs, opts) => williamComplete(msgs, opts));
+        void compactIfNeeded(chatId, replyBudget, (msgs, opts) => glyphhComplete(msgs, opts));
         // Memory housekeeping rides the same idle window: embed the new
         // turns (short-term recall) and freshen the workspace index.
         void indexChatTurns(chatId);
@@ -283,24 +283,24 @@ export function registerWilliamIpc(): void {
     return { runId: id };
   });
 
-  ipcMain.handle("william-compact", async (_e, p: { chatId?: string; focus?: string }) => {
+  ipcMain.handle("glyphh-agent-compact", async (_e, p: { chatId?: string; focus?: string }) => {
     if (active) return { ok: false, reason: "wait for the current run to finish" };
     const chatId = String(p?.chatId || "");
     if (!chatId) return { ok: false, reason: "chatId is required" };
-    await ensureWilliamServing();
-    return compactNow(chatId, effortMaxTokens(), (msgs, opts) => williamComplete(msgs, opts), String(p?.focus || ""));
+    await ensureGlyphhServing();
+    return compactNow(chatId, effortMaxTokens(), (msgs, opts) => glyphhComplete(msgs, opts), String(p?.focus || ""));
   });
 
-  ipcMain.handle("william-stop", () => {
+  ipcMain.handle("glyphh-agent-stop", () => {
     active?.ctrl.abort();
     return true;
   });
 
   // ── Composer attachments ──────────────────────────────────────────────
-  ipcMain.handle("william-pick-attachments", (_e, p?: { mode?: "files" | "folder" }) => pickAttachments(p?.mode));
-  ipcMain.handle("william-classify-paths", (_e, p: { paths?: unknown[] }) =>
+  ipcMain.handle("glyphh-agent-pick-attachments", (_e, p?: { mode?: "files" | "folder" }) => pickAttachments(p?.mode));
+  ipcMain.handle("glyphh-agent-classify-paths", (_e, p: { paths?: unknown[] }) =>
     classifyPaths(((p?.paths ?? []) as unknown[]).map(String)));
-  ipcMain.handle("william-save-clipboard-image", (_e, p: { bytes?: ArrayBuffer }) => {
+  ipcMain.handle("glyphh-agent-save-clipboard-image", (_e, p: { bytes?: ArrayBuffer }) => {
     if (!p?.bytes) throw new Error("no image bytes");
     return saveClipboardImage(p.bytes);
   });
@@ -311,7 +311,7 @@ export function registerWilliamIpc(): void {
     void refreshManifestIfStale(true).then(() => gateManagedModel()).catch(() => { /* offline */ });
   }, 15 * 60_000).unref?.();
 
-  ipcMain.handle("william-models-list", async () => {
+  ipcMain.handle("glyphh-agent-models-list", async () => {
     const models = await refreshManifestIfStale();
     gateManagedModel();
     const desired = resolveDesiredModel();
@@ -326,7 +326,7 @@ export function registerWilliamIpc(): void {
       })),
     };
   });
-  ipcMain.handle("william-status", async () => {
+  ipcMain.handle("glyphh-agent-status", async () => {
     const up = await healthy(1500);
     return { up, mode: up ? (managed ? "managed" : "external") : "down" };
   });
@@ -338,7 +338,7 @@ export function registerWilliamIpc(): void {
 // it remains the ONE path for utility completions that must stay local and
 // cheap: history folding, summarize-on-demand, relay/MCP one-shots.
 
-export interface WilliamCompleteOpts {
+export interface GlyphhCompleteOpts {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
@@ -347,8 +347,8 @@ export interface WilliamCompleteOpts {
   schema?: object;
 }
 
-export async function williamComplete(messages: ChatMessage[], opts: WilliamCompleteOpts = {}): Promise<string> {
-  await ensureWilliamServing();
+export async function glyphhComplete(messages: ChatMessage[], opts: GlyphhCompleteOpts = {}): Promise<string> {
+  await ensureGlyphhServing();
   const res = await fetch(`${baseUrl()}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -401,14 +401,14 @@ export async function williamComplete(messages: ChatMessage[], opts: WilliamComp
 async function workspaceExtras(): Promise<string> {
   let appList = "";
   try {
-    const apps = await cachedServerGet<Array<{ slug?: string | null; name: string }>>("/api/panel-apps");
+    const apps = await fetchOrgApps();
     appList = apps.slice(0, 48).map((a) => a.slug || a.name).join(", ");
   } catch { /* offline — open_app still resolves by name */ }
   let connList = "";
   try {
-    const { serverGetAuthed } = await import("./auth");
-    const r = await serverGetAuthed<{ connections?: Array<{ appSlug?: string }> }>("/api/connections");
-    connList = [...new Set((r.connections || []).map((c) => String(c.appSlug || "")).filter(Boolean))].join(", ");
+    const { getClient } = await import("./glyphh-client");
+    const connections = await getClient().connections.list();
+    connList = [...new Set(connections.map((c) => String(c.slug || "")).filter(Boolean))].join(", ");
   } catch { /* signed out */ }
   return [
     appList ? `The user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "",
@@ -432,7 +432,7 @@ async function sdkRun(
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
   };
 
-  const defs = williamToolDefs();
+  const defs = glyphhToolDefs();
   // Connected accounts ride as FIRST-CLASS tools with their real input
   // schemas (governed catalog; refreshes when stale) — no guessed slugs.
   // Offline/signed-out just means an empty set. The FULL catalog would blow
@@ -464,9 +464,9 @@ async function sdkRun(
   mcp.server.setRequestHandler(CallToolRequestSchema, async (rq) => {
     const name = String(rq.params.name || "");
     const args = (rq.params.arguments ?? {}) as Record<string, unknown>;
-    emit("william:tool", { phase: "start", name });
-    const outcome = await executeWilliamTool(wc, { name, arguments: args }, ctrl.signal);
-    emit("william:tool", {
+    emit("glyphh-agent:tool", { phase: "start", name });
+    const outcome = await executeGlyphhTool(wc, { name, arguments: args }, ctrl.signal);
+    emit("glyphh-agent:tool", {
       phase: "done",
       name,
       title: outcome.title,
@@ -484,7 +484,7 @@ async function sdkRun(
   // re-reads the big prefix at 10% price instead of re-writing it. Prior
   // turns ride the USER message instead (messages churn anyway).
   const history = base.slice(1, -1)
-    .map((m) => `${m.role === "user" ? "User" : "William"}: ${m.content}`)
+    .map((m) => `${m.role === "user" ? "User" : "Glyphh"}: ${m.content}`)
     .join("\n");
   const system = [
     base[0]?.content ?? "",
@@ -543,7 +543,7 @@ async function sdkRun(
         tools: [], // no built-ins — the Glyphh surface is the whole toolset
         mcpServers: { glyphh: { type: "sdk", name: "glyphh", instance: mcp as never } },
         allowedTools: [...defs, ...connDefs].map((d) => `mcp__glyphh__${d.name}`),
-        // Gating lives inside executeWilliamTool (mode model + approval
+        // Gating lives inside executeGlyphhTool (mode model + approval
         // cards) — the SDK's own prompt layer always defers to it.
         canUseTool: async (_tool, input) => ({ behavior: "allow" as const, updatedInput: input }),
         permissionMode: "default",
@@ -580,13 +580,13 @@ async function sdkRun(
         const ev = (msg as unknown as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
         if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
           sawPartials = true;
-          if (pendingSep && finalText) { finalText += "\n\n"; emit("william:delta", { delta: "\n\n" }); }
+          if (pendingSep && finalText) { finalText += "\n\n"; emit("glyphh-agent:delta", { delta: "\n\n" }); }
           pendingSep = false;
           finalText += ev.delta.text;
-          emit("william:delta", { delta: ev.delta.text });
+          emit("glyphh-agent:delta", { delta: ev.delta.text });
           tokens = Math.ceil(finalText.length / 4);
           const now = Date.now();
-          if (now - lastProgressAt > 400) { lastProgressAt = now; emit("william:progress", { tokens }); }
+          if (now - lastProgressAt > 400) { lastProgressAt = now; emit("glyphh-agent:progress", { tokens }); }
         }
       } else if (msg.type === "assistant") {
         turnsUsed++;
@@ -601,15 +601,15 @@ async function sdkRun(
             pendingSep = true;
           } else {
             finalText = finalText ? `${finalText}\n\n${text}` : text;
-            emit("william:delta", { delta: finalText === text ? text : `\n\n${text}` });
+            emit("glyphh-agent:delta", { delta: finalText === text ? text : `\n\n${text}` });
           }
           tokens = Math.ceil(finalText.length / 4);
-          emit("william:progress", { tokens });
+          emit("glyphh-agent:progress", { tokens });
         }
       } else if (msg.type === "result") {
         const r = msg as { subtype: string; result?: string; num_turns?: number };
         if (r.subtype === "success") {
-          if (!finalText && r.result) { finalText = r.result; emit("william:delta", { delta: finalText }); }
+          if (!finalText && r.result) { finalText = r.result; emit("glyphh-agent:delta", { delta: finalText }); }
         } else {
           runError = `run ended: ${r.subtype.replaceAll("_", " ")}`;
         }
@@ -617,24 +617,24 @@ async function sdkRun(
       }
     }
     if (ctrl.signal.aborted) throw new Error("aborted");
-    emit("william:progress", { tokens });
-    if (runError) emit("william:error", { error: runError });
-    else emit("william:done", { stopped: false });
+    emit("glyphh-agent:progress", { tokens });
+    if (runError) emit("glyphh-agent:error", { error: runError });
+    else emit("glyphh-agent:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) {
-      emit("william:done", { stopped: true });
-      captureRun({ kind: "agent", effort: williamEffort(), mode: williamMode(), turnsUsed, stopped: true, messages: base });
+      emit("glyphh-agent:done", { stopped: true });
+      captureRun({ kind: "agent", effort: glyphhEffort(), mode: glyphhMode(), turnsUsed, stopped: true, messages: base });
       return;
     }
     runError = err instanceof Error ? err.message : String(err);
-    emit("william:error", { error: runError });
+    emit("glyphh-agent:error", { error: runError });
   }
   // The flywheel: transcript + outcome are next-era training data (the
   // tripwire corpus — frontier turns teach the local model by example).
   captureRun({
     kind: "agent",
-    effort: williamEffort(),
-    mode: williamMode(),
+    effort: glyphhEffort(),
+    mode: glyphhMode(),
     turnsUsed,
     final: finalText,
     ...(runError ? { error: runError } : {}),

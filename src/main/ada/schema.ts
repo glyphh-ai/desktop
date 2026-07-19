@@ -103,7 +103,7 @@ export function scoreThought(stored: ScoreInput, qTokens: Set<string>): number {
 }
 
 // ── The enricher system prompt (verbatim from universal.py — the rules
-//    ARE the extraction quality; William plays the extractor locally) ──
+//    ARE the extraction quality; Glyphh plays the extractor locally) ──
 
 export const ENRICHER_SYSTEM =
   "You are a structured-data extractor. Given a fact, fill in the " +

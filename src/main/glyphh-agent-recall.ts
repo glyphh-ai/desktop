@@ -1,5 +1,5 @@
 /**
- * william-recall — SHORT-TERM memory for the agent loop.
+ * glyphh-recall — SHORT-TERM memory for the agent loop.
  *
  * Layered memory, by horizon:
  *   long-term  — Ada (schema-on-write facts, cross-session)   [exists]
@@ -16,8 +16,8 @@
  */
 
 import { getLocalDb } from "./local-db";
-import { embedText, embedTexts, dot, packVec, unpackVec } from "./william-embeddings";
-import { loadSessions } from "./william-context";
+import { embedText, embedTexts, dot, packVec, unpackVec } from "./glyphh-agent-embeddings";
+import { loadSessions } from "./glyphh-agent-context";
 
 const MIN_TURN_CHARS = 40;
 const EMBED_TURN_CHARS = 1500;

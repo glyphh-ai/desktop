@@ -1,5 +1,5 @@
 /**
- * william-embeddings — local embedding vectors from a DEDICATED embedder.
+ * glyphh-embeddings — local embedding vectors from a DEDICATED embedder.
  *
  * Chat-model embeddings were tested and are unusable for retrieval (mean
  * or last pooling, raw or centered: ≤1/4 on intent queries — anisotropy
@@ -7,7 +7,7 @@
  * its task prefixes scores 4/5 on the same fixtures with wide margins, so
  * a second tiny llama-server owns embeddings on its own port:
  *
- *   chat  — llama-server :8089 (will/william GGUF, unchanged)
+ *   chat  — llama-server :8089 (will/glyphh GGUF, unchanged)
  *   embed — llama-server :8090 (nomic, ~250MB RSS, loads in ~2s, lazy)
  *
  * The model auto-downloads to userData/models on first need. Everything
@@ -39,7 +39,7 @@ let downloadFailed = false; // one attempt per launch — no retry storms offlin
 const base = () => `http://127.0.0.1:${EMBED_PORT}`;
 
 function serverBin(): string {
-  const pref = String(getPreference("williamServerBin", "")).trim();
+  const pref = String(getPreference("glyphhServerBin", "")).trim();
   for (const c of [...(pref ? [pref] : []), "/opt/homebrew/bin/llama-server", "/usr/local/bin/llama-server"]) {
     if (existsSync(c)) return c;
   }
@@ -47,7 +47,7 @@ function serverBin(): string {
 }
 
 async function modelPath(): Promise<string | null> {
-  const pref = String(getPreference("williamEmbedModelPath", "")).trim();
+  const pref = String(getPreference("glyphhEmbedModelPath", "")).trim();
   if (pref && existsSync(pref)) return pref;
   const dir = join(app.getPath("userData"), "models");
   const dest = join(dir, EMBED_MODEL_FILE);

@@ -1,12 +1,12 @@
 /**
  * Glyphh model delivery (client) — download stock weights from the registry.
  *
- * yo-server's /api/william/models returns the model registry: public HF URLs
+ * yo-server's the workspace-allowed model set returns the model registry: public HF URLs
  * (pinned to a commit revision) + sha256. This streams the GGUF to
  * userData/models (hashing as it writes), verifies, and renames into place.
  * A compiled-in copy of the registry covers signed-out and offline installs —
- * Will and William are always present. Progress broadcasts as william:setup
- * to every panel so the composer spinner can read "Downloading William — 42%".
+ * Will and Glyphh are always present. Progress broadcasts as glyphh:setup
+ * to every panel so the composer spinner can read "Downloading Glyphh — 42%".
  * One download at a time; a failed/mismatched file never lands.
  */
 
@@ -15,10 +15,10 @@ import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
-import { serverGetAuthed } from "./auth";
+import { getClient } from "./glyphh-client";
 import { getPreference } from "./stores/preferences-db";
 
-export interface WilliamModelEntry {
+export interface GlyphhModelEntry {
   id: string;
   name: string;
   file: string;
@@ -37,7 +37,7 @@ export interface WilliamModelEntry {
 // signed-out and offline-first-run included. The server manifest wins when
 // reachable (that's the registry control plane); these mirror its entries.
 // Stock open weights (Apache-2.0), pinned to HF commit revisions.
-const DEFAULT_MODELS: WilliamModelEntry[] = [
+const DEFAULT_MODELS: GlyphhModelEntry[] = [
   {
     id: "will-7b-mini",
     name: "Qwen2.5 7B Instruct",
@@ -53,7 +53,7 @@ const DEFAULT_MODELS: WilliamModelEntry[] = [
     usage: "Fast on-device model — opens apps, arranges layouts, runs your connected tools. Free on your hardware.",
   },
   {
-    id: "william-14b-base",
+    id: "glyphh-14b-base",
     name: "Qwen2.5 Coder 14B",
     file: "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
     url: "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/d0a692ef765eefbf2fabb130b3cb2e8917e3d225/qwen2.5-coder-14b-instruct-q4_k_m.gguf?download=true",
@@ -71,9 +71,9 @@ const DEFAULT_MODELS: WilliamModelEntry[] = [
 // The old fine-tune era left this on disk; replaced by stock weights, it is
 // deleted after a successful stock download (never before — offline users
 // keep a working model until the replacement has landed).
-const LEGACY_FILES = ["william-14b-q4km.gguf"];
+const LEGACY_FILES: string[] = [];
 
-type ManifestModel = Omit<WilliamModelEntry, "url"> & { url?: string | null };
+type ManifestModel = Omit<GlyphhModelEntry, "url"> & { url?: string | null };
 
 /** THE RULE: there are exactly two model lists — the full list (the server's
  *  answer for an uncurated org / signed-out user) or the org-scoped list.
@@ -84,20 +84,48 @@ function dropLegacy(models: ManifestModel[]): ManifestModel[] {
   return models.filter((m) => !LEGACY_FILES.includes(m.file));
 }
 
+// ── Workspace governance → the runnable on-device list ────────────────────
+//
+// WHICH models may run is the server's answer (`models.available()`: catalog ∩
+// provider-enabled ∩ org-supported ∩ workspace allow-list). WHERE the weights
+// come from is the registry above, since that answer carries no download
+// coordinates. The manifest is the intersection — the client never widens it.
+//
+// The server names models `provider::model`; the registry keys them by its own
+// id and ships the weight's filename. Match on any of those, normalized.
+
+function normModelKey(s: string): string {
+  const bare = s.includes("::") ? s.slice(s.indexOf("::") + 2) : s;
+  return bare.toLowerCase().replace(/\.gguf$/, "").replace(/[^a-z0-9]/g, "");
+}
+
+function registryKeys(entry: GlyphhModelEntry): string[] {
+  return [entry.id, entry.name, entry.file].map(normModelKey);
+}
+
+/** The on-device models this caller may actually run. Throws when the control
+ *  plane is unreachable so callers can fall back to the cached manifest. */
+async function allowedOnDeviceModels(): Promise<GlyphhModelEntry[]> {
+  const available = await getClient().models.available();
+  const allowed = available.filter((m) => m.kind === "open_weight" || m.source === "local");
+  const wanted = new Set(allowed.flatMap((m) => [normModelKey(m.id), normModelKey(m.name)]));
+  return DEFAULT_MODELS.filter((entry) => registryKeys(entry).some((k) => wanted.has(k)));
+}
+
 let downloading: Promise<string> | null = null;
 
 // ── Manifest cache (disk) — offline resolution + the selector's list ──────
-const manifestPath = () => join(app.getPath("userData"), "william", "manifest.json");
+const manifestPath = () => join(app.getPath("userData"), "glyphh", "manifest.json");
 
 const MANIFEST_STALE_MS = 6 * 60 * 60_000;
 
-function saveManifest(models: WilliamModelEntry[]): void {
+function saveManifest(models: GlyphhModelEntry[]): void {
   try {
     writeFileSync(manifestPath(), JSON.stringify({ at: Date.now(), models: models.map(({ url: _url, ...m }) => m) }));
   } catch { /* best-effort */ }
 }
 
-function readManifestFile(): { at: number; models: Array<Omit<WilliamModelEntry, "url">> } {
+function readManifestFile(): { at: number; models: Array<Omit<GlyphhModelEntry, "url">> } {
   try {
     const raw = JSON.parse(readFileSync(manifestPath(), "utf8"));
     if (Array.isArray(raw)) return { at: 0, models: raw }; // pre-freshness format
@@ -107,7 +135,7 @@ function readManifestFile(): { at: number; models: Array<Omit<WilliamModelEntry,
   }
 }
 
-export function cachedManifest(): Array<Omit<WilliamModelEntry, "url">> {
+export function cachedManifest(): Array<Omit<GlyphhModelEntry, "url">> {
   const { at, models } = readManifestFile();
   // No manifest ever fetched (at=0, nothing cached) → bootstrap registry.
   // A fetched manifest — even an EMPTY one (org scoped everything away) —
@@ -118,29 +146,26 @@ export function cachedManifest(): Array<Omit<WilliamModelEntry, "url">> {
 
 /** Fresh manifest for the selector: refetch when the cache is empty or
  *  stale (signed-out/offline falls back to whatever the cache holds). */
-export async function refreshManifestIfStale(force = false): Promise<Array<Omit<WilliamModelEntry, "url">>> {
+export async function refreshManifestIfStale(force = false): Promise<Array<Omit<GlyphhModelEntry, "url">>> {
   const { at, models } = readManifestFile();
   if (!force && models.length && Date.now() - at < MANIFEST_STALE_MS) return cachedManifest();
   try {
-    const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
-    if (r.ok && Array.isArray(r.models)) {
-      // Authoritative — saved verbatim, empty included (an org that scoped
-      // every open-weight model away means the client runs none).
-      const list = dropLegacy(r.models);
-      saveManifest(list as WilliamModelEntry[]);
-      return list.map(({ url: _url, ...m }) => m);
-    }
+    // Authoritative — saved verbatim, EMPTY INCLUDED: a workspace that allows
+    // no open-weight model means this client runs none.
+    const list = dropLegacy(await allowedOnDeviceModels());
+    saveManifest(list as GlyphhModelEntry[]);
+    return list.map(({ url: _url, ...m }) => m);
   } catch { /* signed out / offline */ }
   return cachedManifest();
 }
 
 export function selectedModelId(): string {
-  return String(getPreference("williamModel", "auto"));
+  return String(getPreference("glyphhModel", "auto"));
 }
 
 /** The model the client should run: explicit selection when it exists in
  *  the manifest, else the RAM auto-pick. Null when the cache is empty. */
-export function resolveDesiredModel(): Omit<WilliamModelEntry, "url"> | null {
+export function resolveDesiredModel(): Omit<GlyphhModelEntry, "url"> | null {
   const models = cachedManifest();
   if (!models.length) return null;
   const sel = selectedModelId();
@@ -148,7 +173,7 @@ export function resolveDesiredModel(): Omit<WilliamModelEntry, "url"> | null {
     const hit = models.find((m) => m.id === sel && (m.status ?? "available") === "available");
     if (hit) return hit;
   }
-  return pickModel(models as WilliamModelEntry[]);
+  return pickModel(models as GlyphhModelEntry[]);
 }
 
 /** Local file for a manifest entry, when present (userData models dir). */
@@ -160,7 +185,7 @@ export function localModelPath(entry: { file: string; size: number }): string | 
 
 function broadcast(data: Record<string, unknown>): void {
   for (const wc of webContents.getAllWebContents()) {
-    try { if (!wc.isDestroyed()) wc.send("william:setup", data); } catch { /* gone */ }
+    try { if (!wc.isDestroyed()) wc.send("glyphh-agent:setup", data); } catch { /* gone */ }
   }
 }
 
@@ -180,11 +205,11 @@ function pickModel<T extends { minRamGB: number; default: boolean; status?: stri
 }
 
 /**
- * Ensure a William model exists locally — download if missing. Returns the
+ * Ensure a Glyphh model exists locally — download if missing. Returns the
  * model path. Single-flight; throws with an actionable message when the
  * manifest is unreachable or the machine is below every tier.
  */
-export async function downloadWilliamModel(): Promise<string> {
+export async function downloadGlyphhModel(): Promise<string> {
   if (downloading) return downloading;
   downloading = downloadInner().finally(() => { downloading = null; });
   return downloading;
@@ -195,10 +220,9 @@ async function downloadInner(): Promise<string> {
   // Server registry when reachable — AUTHORITATIVE, even when empty (an org
   // that scoped every open-weight model away downloads nothing). Compiled-in
   // stock entries only when the server can't be reached at all.
-  let models: WilliamModelEntry[];
+  let models: GlyphhModelEntry[];
   try {
-    const r = await serverGetAuthed<{ ok: boolean; models?: WilliamModelEntry[] }>("/api/william/models");
-    models = (r.ok && Array.isArray(r.models) ? dropLegacy(r.models) : DEFAULT_MODELS) as WilliamModelEntry[];
+    models = dropLegacy(await allowedOnDeviceModels()) as GlyphhModelEntry[];
   } catch {
     models = DEFAULT_MODELS;
   }

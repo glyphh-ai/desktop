@@ -80,7 +80,7 @@ interface TermSlot {
 interface DiffSlot { id: number; view: "diff"; collapsed?: Set<string> }
 interface PreviewSlot {
   id: number; view: "preview"; url?: string; viewKey?: string;
-  /** Inline document (William build previews) — runtime-only, never persisted. */
+  /** Inline document (Glyphh build previews) — runtime-only, never persisted. */
   html?: string; htmlLabel?: string;
 }
 
@@ -1677,13 +1677,13 @@ async function init(): Promise<void> {
       <div class="ws-plan-host"></div>
       <div class="ws-plan-md-host"></div>
     `;
-    // Live run timeline — the Code surface broadcasts william:timeline
+    // Live run timeline — the Code surface broadcasts glyphh-agent:timeline
     // (steps + running); the strip shows during/after runs, hides when a
     // new session starts clean.
     const tlWrap = body.querySelector(".ws-plan-timeline") as HTMLElement;
     const tlRows = body.querySelector(".ws-plan-timeline-rows") as HTMLElement;
     const onTimeline = (e: Event) => {
-      if (!body.isConnected) { document.removeEventListener("william:timeline", onTimeline); return; }
+      if (!body.isConnected) { document.removeEventListener("glyphh-agent:timeline", onTimeline); return; }
       const d = (e as CustomEvent).detail as { steps: string[]; running: boolean };
       const steps = Array.isArray(d?.steps) ? d.steps : [];
       tlWrap.classList.toggle("hidden", steps.length === 0);
@@ -1697,7 +1697,7 @@ async function init(): Promise<void> {
       }
       tlRows.scrollTop = tlRows.scrollHeight;
     };
-    document.addEventListener("william:timeline", onTimeline);
+    document.addEventListener("glyphh-agent:timeline", onTimeline);
     const pathEl = body.querySelector(".ws-plan-path") as HTMLElement;
     const saveStateEl = body.querySelector(".ws-plan-savestate") as HTMLElement;
     const host = body.querySelector(".ws-plan-host") as HTMLElement;
@@ -2168,7 +2168,7 @@ async function init(): Promise<void> {
 
   // New session: close every rail and reset the folder selection (visual
   // reset only — each folder's saved layout is untouched).
-  // William build previews: show generated HTML in a Preview slot (opens
+  // Glyphh build previews: show generated HTML in a Preview slot (opens
   // one if none), live across repair attempts. Runtime-only content.
   (window as unknown as { __wbPreviewHtml?: (html: string, label?: string) => void }).__wbPreviewHtml = (html, label) => {
     let slot = rails.flatMap((r) => r.slots).find((s) => s.view === "preview") as PreviewSlot | undefined;
@@ -2198,7 +2198,7 @@ async function init(): Promise<void> {
     placeSlot(makeSlot("terminal"));
   };
 
-  // App bridges — the OS-window replacement surface. main (william tools,
+  // App bridges — the OS-window replacement surface. main (glyphh agent tools,
   // relay panels_*, the Apps/Layouts pages' IPC) drives these through
   // help/code.ts, which also flips the UI to the Code section first.
   // ── Open a saved layout as a workbench grid (agent stays pinned left) ──

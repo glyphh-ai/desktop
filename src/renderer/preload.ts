@@ -364,12 +364,15 @@ contextBridge.exposeInMainWorld("yo", {
   // Auth
   startAuth: (mode: "register" | "login") => ipcRenderer.invoke("start-auth", mode) as Promise<boolean>,
   isAuthenticated: () => ipcRenderer.invoke("is-authenticated") as Promise<boolean>,
-  // Native (in-client) email auth — no popup.
-  authRegister: (email: string) => ipcRenderer.invoke("auth-register", email) as Promise<{ ok: boolean; error?: string }>,
-  authVerifyCode: (email: string, code: string) => ipcRenderer.invoke("auth-verify-code", email, code) as Promise<{ ok: boolean; error?: string }>,
-  authCompleteProfile: (data: { email: string; firstName: string; lastName: string; password: string; confirmPassword: string; orgName?: string }) => ipcRenderer.invoke("auth-complete-profile", data) as Promise<{ ok: boolean; error?: string }>,
-  authLogin: (email: string, password: string) => ipcRenderer.invoke("auth-login", email, password) as Promise<{ ok: boolean; error?: string }>,
-  authForgotPassword: (email: string) => ipcRenderer.invoke("auth-forgot-password", email) as Promise<{ ok: boolean; error?: string }>,
+  // Device-flow sign-in: the default browser opens on the platform's approval
+  // page; the prompt event carries the user code + URL to display while
+  // polling. Calling start again replaces the in-flight grant (fresh code).
+  startDeviceLogin: () => ipcRenderer.invoke("start-device-login") as Promise<{ ok: boolean; error?: string }>,
+  cancelDeviceLogin: () => ipcRenderer.invoke("cancel-device-login") as Promise<{ ok: boolean }>,
+  openDeviceApproval: (url: string) => ipcRenderer.invoke("open-device-approval", url) as Promise<{ ok: boolean }>,
+  onDeviceLoginPrompt: (cb: (prompt: { userCode: string; verificationUri: string; verificationUriComplete?: string; expiresIn: number }) => void) => {
+    ipcRenderer.on("device-login-prompt", (_e, prompt) => cb(prompt));
+  },
   getAccountInfo: () => ipcRenderer.invoke("get-account-info") as Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string } | null>,
   // Server-profile timezone (users.timezone) — same field the platform edits.
   userTimezoneGet: () => ipcRenderer.invoke("user-timezone-get") as Promise<string | null>,
@@ -382,58 +385,58 @@ contextBridge.exposeInMainWorld("yo", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
-  williamRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }> }) =>
-    ipcRenderer.invoke("william-run", p) as Promise<{ runId: string }>,
-  williamPickAttachments: (mode?: "files" | "folder") =>
-    ipcRenderer.invoke("william-pick-attachments", { mode }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
-  williamClassifyPaths: (paths: string[]) =>
-    ipcRenderer.invoke("william-classify-paths", { paths }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
-  williamSaveClipboardImage: (bytes: ArrayBuffer) =>
-    ipcRenderer.invoke("william-save-clipboard-image", { bytes }) as Promise<{ kind: "image"; path: string; name: string }>,
-  williamSessionsLoad: () =>
-    ipcRenderer.invoke("william-sessions-load") as Promise<{ chats: unknown[]; currentId: string }>,
-  williamSessionsSave: (chats: unknown[], currentId: string) =>
-    ipcRenderer.invoke("william-sessions-save", { chats, currentId }) as Promise<boolean>,
-  williamRemember: (fact: string) => ipcRenderer.invoke("william-remember", fact) as Promise<boolean>,
-  williamCompact: (chatId: string, focus: string) =>
-    ipcRenderer.invoke("william-compact", { chatId, focus }) as Promise<{ ok: boolean; reason?: string }>,
+  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }> }) =>
+    ipcRenderer.invoke("glyphh-agent-run", p) as Promise<{ runId: string }>,
+  glyphhPickAttachments: (mode?: "files" | "folder") =>
+    ipcRenderer.invoke("glyphh-agent-pick-attachments", { mode }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
+  glyphhClassifyPaths: (paths: string[]) =>
+    ipcRenderer.invoke("glyphh-agent-classify-paths", { paths }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
+  glyphhSaveClipboardImage: (bytes: ArrayBuffer) =>
+    ipcRenderer.invoke("glyphh-agent-save-clipboard-image", { bytes }) as Promise<{ kind: "image"; path: string; name: string }>,
+  glyphhSessionsLoad: () =>
+    ipcRenderer.invoke("glyphh-agent-sessions-load") as Promise<{ chats: unknown[]; currentId: string }>,
+  glyphhSessionsSave: (chats: unknown[], currentId: string) =>
+    ipcRenderer.invoke("glyphh-agent-sessions-save", { chats, currentId }) as Promise<boolean>,
+  glyphhRemember: (fact: string) => ipcRenderer.invoke("glyphh-agent-remember", fact) as Promise<boolean>,
+  glyphhCompact: (chatId: string, focus: string) =>
+    ipcRenderer.invoke("glyphh-agent-compact", { chatId, focus }) as Promise<{ ok: boolean; reason?: string }>,
   adaRecall: (query: string, k?: number) =>
     ipcRenderer.invoke("ada-recall", { query, k }) as Promise<Array<{ content: string; score: number }>>,
   adaAsk: (op: unknown) => ipcRenderer.invoke("ada-ask", { op }) as Promise<{ ok: boolean; answer?: string; error?: string }>,
   adaStats: () => ipcRenderer.invoke("ada-stats") as Promise<{ thoughts: number; slots: number; keys: number }>,
-  williamModelsList: () =>
-    ipcRenderer.invoke("william-models-list") as Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; status: string; usage: string; downloaded: boolean }> }>,
-  williamContextUsage: (chatId: string) =>
-    ipcRenderer.invoke("william-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
-  williamStop: () => ipcRenderer.invoke("william-stop") as Promise<boolean>,
-  williamStatus: () => ipcRenderer.invoke("william-status") as Promise<{ up: boolean }>,
-  onWilliamDelta: (callback: (d: { runId: string; delta: string }) => void) => {
-    ipcRenderer.on("william:delta", (_event, d) => callback(d));
+  glyphhModelsList: () =>
+    ipcRenderer.invoke("glyphh-agent-models-list") as Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; status: string; usage: string; downloaded: boolean }> }>,
+  glyphhContextUsage: (chatId: string) =>
+    ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
+  glyphhStop: () => ipcRenderer.invoke("glyphh-agent-stop") as Promise<boolean>,
+  glyphhStatus: () => ipcRenderer.invoke("glyphh-agent-status") as Promise<{ up: boolean }>,
+  onGlyphhAgentDelta: (callback: (d: { runId: string; delta: string }) => void) => {
+    ipcRenderer.on("glyphh-agent:delta", (_event, d) => callback(d));
   },
-  onWilliamDone: (callback: (d: { runId: string; stopped: boolean }) => void) => {
-    ipcRenderer.on("william:done", (_event, d) => callback(d));
+  onGlyphhAgentDone: (callback: (d: { runId: string; stopped: boolean }) => void) => {
+    ipcRenderer.on("glyphh-agent:done", (_event, d) => callback(d));
   },
-  onWilliamError: (callback: (d: { runId: string; error: string }) => void) => {
-    ipcRenderer.on("william:error", (_event, d) => callback(d));
+  onGlyphhAgentError: (callback: (d: { runId: string; error: string }) => void) => {
+    ipcRenderer.on("glyphh-agent:error", (_event, d) => callback(d));
   },
-  onWilliamSetup: (callback: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => {
-    ipcRenderer.on("william:setup", (_event, d) => callback(d));
+  onGlyphhAgentSetup: (callback: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => {
+    ipcRenderer.on("glyphh-agent:setup", (_event, d) => callback(d));
   },
-  onWilliamProgress: (callback: (d: { runId: string; tokens: number }) => void) => {
-    ipcRenderer.on("william:progress", (_event, d) => callback(d));
+  onGlyphhAgentProgress: (callback: (d: { runId: string; tokens: number }) => void) => {
+    ipcRenderer.on("glyphh-agent:progress", (_event, d) => callback(d));
   },
-  onWilliamTool: (callback: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => {
-    ipcRenderer.on("william:tool", (_event, d) => callback(d));
+  onGlyphhAgentTool: (callback: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => {
+    ipcRenderer.on("glyphh-agent:tool", (_event, d) => callback(d));
   },
-  williamApprovalRespond: (id: string, allow: boolean) =>
-    ipcRenderer.invoke("william-approval-respond", { id, allow }) as Promise<boolean>,
-  onWilliamApproval: (callback: (d: { id: string; kind: string; title: string; detail: string }) => void) => {
-    ipcRenderer.on("william:approval", (_event, d) => callback(d));
+  glyphhApprovalRespond: (id: string, allow: boolean) =>
+    ipcRenderer.invoke("glyphh-agent-approval-respond", { id, allow }) as Promise<boolean>,
+  onGlyphhAgentApproval: (callback: (d: { id: string; kind: string; title: string; detail: string }) => void) => {
+    ipcRenderer.on("glyphh-agent:approval", (_event, d) => callback(d));
   },
-  williamAskRespond: (id: string, answers: string[]) =>
-    ipcRenderer.invoke("william-ask-respond", { id, answers }) as Promise<boolean>,
-  onWilliamAsk: (callback: (d: { id: string; questions: Array<{ question: string; options?: string[] }> }) => void) => {
-    ipcRenderer.on("william:ask", (_event, d) => callback(d));
+  glyphhAskRespond: (id: string, answers: string[]) =>
+    ipcRenderer.invoke("glyphh-agent-ask-respond", { id, answers }) as Promise<boolean>,
+  onGlyphhAgentAsk: (callback: (d: { id: string; questions: Array<{ question: string; options?: string[] }> }) => void) => {
+    ipcRenderer.on("glyphh-agent:ask", (_event, d) => callback(d));
   },
   onThemeChanged: (callback: (theme: string) => void) => {
     ipcRenderer.on("theme-changed", (_event, theme) => callback(theme));

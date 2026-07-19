@@ -1,7 +1,7 @@
 /**
  * user-scope — makes the client respect the authenticated user.
  *
- * All per-user local state (user-state.sqlite, William chats) resolves under
+ * All per-user local state (user-state.sqlite, Glyphh chats) resolves under
  * ~/.glyphh/users/<userId>/ (see app-paths.ts). This module owns the SWITCH:
  * when auth learns who the user is — boot restore, login, or a login as a
  * DIFFERENT account — it closes the per-user stores, flips the scope, clears
@@ -18,9 +18,8 @@ import path from "path";
 import { app } from "electron";
 import { GLYPHH_DIR, getActiveUserId, setActiveUserIdState, userScopedDir } from "./app-paths";
 import { initLocalDb, closeLocalDb } from "./local-db";
-import { invalidateServerCache } from "./server-cache";
+import { appCache } from "./glyphh-client";
 import { clearConnectorCatalog } from "./connector-tools-client";
-import { clearGatewayModelsCache } from "./model-router";
 
 // main.ts registers how to reload the UI (it owns the BrowserWindow).
 let reloadWindow: (() => void) | null = null;
@@ -38,7 +37,7 @@ export function onUserChange(fn: () => void): void {
 }
 
 /** One-time: the first signed-in user adopts the legacy machine-global state
- *  (pre-scoping ~/.glyphh/user-state.sqlite + userData/william). Marker file
+ *  (pre-scoping ~/.glyphh/user-state.sqlite + userData/glyphh). Marker file
  *  guarantees later accounts start clean instead of inheriting it too. */
 function adoptLegacyState(userDir: string): void {
   try {
@@ -65,9 +64,9 @@ function adoptLegacyState(userDir: string): void {
     }
 
     try {
-      const legacyWilliam = path.join(app.getPath("userData"), "william");
-      const dest = path.join(userDir, "william");
-      if (fs.existsSync(legacyWilliam) && !fs.existsSync(dest)) fs.renameSync(legacyWilliam, dest);
+      const legacyGlyphh = path.join(app.getPath("userData"), "glyphh");
+      const dest = path.join(userDir, "glyphh");
+      if (fs.existsSync(legacyGlyphh) && !fs.existsSync(dest)) fs.renameSync(legacyGlyphh, dest);
     } catch { /* cross-volume rename can fail — old chats just aren't adopted */ }
 
     fs.writeFileSync(marker, new Date().toISOString());
@@ -92,9 +91,8 @@ export function setActiveUser(userId: string | null): void {
   // Reopen stores under the new scope and drop every cross-user cache.
   fs.mkdirSync(userScopedDir(), { recursive: true });
   initLocalDb();
-  invalidateServerCache();
+  appCache.invalidate();
   clearConnectorCatalog();
-  clearGatewayModelsCache();
 
   // Reset every main-process singleton holding per-user state in memory.
   for (const reset of userChangeResets) {

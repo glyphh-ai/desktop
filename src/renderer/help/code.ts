@@ -1,9 +1,9 @@
 /**
- * Code — the William agent surface: sessions rail | agent | workbench rails.
+ * Code — the Glyphh agent surface: sessions rail | agent | workbench rails.
  *
  * Sessions persist in localStorage (moves to a real store as the loop
- * matures); replies stream from the local William model (llama-server,
- * william.ts bridge) — prompt → thinking spinner → streamed response. The right side is the REAL old
+ * matures); replies stream from the local Glyphh model (llama-server,
+ * glyphh-agent.ts bridge) — prompt → thinking spinner → streamed response. The right side is the REAL old
  * workbench (code-workbench-bundle.js — Files / Terminal / Diff / Preview /
  * Plan rails with insert/drag/maximize + per-folder layout persistence); the
  * center header carries its workdir controls and view toggles.
@@ -34,7 +34,7 @@ const MODES = [
   { id: "bypass", label: "Bypass permissions", hint: "Everything auto-approved — trusted sessions only" },
 ] as const;
 // The ⓘ explainer — what each mode ACTUALLY gates (mirrors the enforcement
-// in william-permissions.ts: reads are always free; the mode decides the rest).
+// in glyphh-agent-permissions.ts: reads are always free; the mode decides the rest).
 const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
   ask: "The safest mode. Glyphh can read files freely, but every change — file edits, shell commands, and calls to your connected accounts — pops an approval card above the composer before it runs. Nothing happens without your explicit yes.",
   plan: "Strictly read-only. Glyphh can explore the folder, search, and reason, but every edit, command, or account call is refused outright — it tells you what it WOULD do instead. Use it to get a plan or a review you can act on in another mode.",
@@ -44,14 +44,14 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
 };
 // Loop: which agent loop runs the session — served by Build → Loops on the
 // platform (role-scoped). This chip replaced the old effort dial (the SDKs
-// never took an effort param); the williamEffort preference still exists for
+// never took an effort param); the glyphhEffort preference still exists for
 // the slicer's escalation budget but is no longer surfaced here.
 let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }> = [
   { id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true },
 ];
 let loopsCanBuild = false;
-let williamLoop = "default";
-let williamMode: (typeof MODES)[number]["id"] = "ask";
+let glyphhLoop = "default";
+let glyphhMode: (typeof MODES)[number]["id"] = "ask";
 // Approval cards awaiting a decision (rendered inline in the thread).
 // Ask dock queue — approvals and agent questions render one at a time in a
 // card docked just above the composer (never inline in the thread).
@@ -63,14 +63,14 @@ let askQueue: AskDockItem[] = [];
 function paintChips(): void {
   const mc = el("code-mode-chip");
   if (mc) {
-    const m = MODES.find((x) => x.id === williamMode) ?? MODES[0];
+    const m = MODES.find((x) => x.id === glyphhMode) ?? MODES[0];
     mc.textContent = m.label;
     mc.title = `${m.hint} — Shift+Tab cycles`;
     mc.className = `code-chip mode-${m.id}`;
   }
   const ec = el("code-effort-chip");
   if (ec) {
-    const lp = loops.find((x) => x.id === williamLoop) ?? loops[0];
+    const lp = loops.find((x) => x.id === glyphhLoop) ?? loops[0];
     ec.textContent = `Loop: ${lp?.name ?? "Default"}`;
     ec.title = lp?.description ?? "Which agent loop runs this session";
     ec.className = "code-chip";
@@ -78,24 +78,24 @@ function paintChips(): void {
 }
 
 function setMode(id: (typeof MODES)[number]["id"]): void {
-  williamMode = id;
-  void window.yo.setPreference?.("williamMode", id);
+  glyphhMode = id;
+  void window.yo.setPreference?.("glyphhMode", id);
   paintChips();
   renderModeMenu();
 }
 
 function cycleMode(): void {
-  const i = MODES.findIndex((m) => m.id === williamMode);
+  const i = MODES.findIndex((m) => m.id === glyphhMode);
   setMode(MODES[(i + 1) % MODES.length].id);
 }
 
 function setLoop(id: string): void {
-  williamLoop = id;
-  void window.yo.setPreference?.("williamLoop", id);
+  glyphhLoop = id;
+  void window.yo.setPreference?.("glyphhLoop", id);
   paintChips();
 }
 
-// ── Model selector (drop-up) — Will (will-7b-mini) / William (william-14b-base) ──
+// ── Model selector (drop-up) — Will (will-7b-mini) / Glyphh (glyphh-14b-base) ──
 let modelList: Array<{ id: string; name: string; minRamGB: number; size?: number; status?: string; usage?: string; downloaded: boolean }> = [];
 let modelSelected = "auto";
 let modelResolved: string | null = null;
@@ -135,7 +135,7 @@ function paintModelChip(): void {
 
 async function refreshModelList(): Promise<void> {
   try {
-    const r = await window.yo.williamModelsList?.();
+    const r = await window.yo.glyphhModelsList?.();
     if (r) {
       modelList = r.models;
       modelSelected = r.selected;
@@ -207,7 +207,7 @@ function renderModelMenu(): void {
       } else {
         modelSelected = id;
         modelPick = id;
-        void window.yo.setPreference?.("williamModel", id);
+        void window.yo.setPreference?.("glyphhModel", id);
         void window.yo.setPreference?.("modelPick", id);
         paintModelChip();
         // A different model spawns on the next send (downloading first if
@@ -219,7 +219,7 @@ function renderModelMenu(): void {
     menu.appendChild(item);
   };
   // ONE list — the server catalog governs both halves: on-device entries come
-  // from /api/william/models and escalation entries from /api/models/catalog,
+  // from the workspace-allowed model set and escalation entries from /api/models/catalog,
   // each already scoped to the org (and, for members, their role).
   mk("auto", "Auto", "Picks the best model for this machine.");
   for (const m of modelList) {
@@ -303,7 +303,7 @@ function renderModeMenu(): void {
     hint.textContent = m.hint;
     lines.append(label, hint);
     item.appendChild(lines);
-    if (m.id === williamMode) {
+    if (m.id === glyphhMode) {
       item.classList.add("selected");
       item.insertAdjacentHTML("beforeend",
         `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`);
@@ -350,7 +350,7 @@ async function refreshLoops(): Promise<void> {
   try {
     const r = await window.yo.loopsList?.();
     if (r?.loops?.length) { loops = r.loops; loopsCanBuild = !!r.canBuild; }
-    if (!loops.some((l) => l.id === williamLoop)) williamLoop = loops[0]?.id || "default";
+    if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = loops[0]?.id || "default";
     document.querySelector<HTMLElement>('.help-nav-item[data-section="loops"]')?.classList.toggle("hidden", !loopsCanBuild);
     paintChips();
   } catch { /* offline — the built-in default stands */ }
@@ -369,14 +369,14 @@ function renderLoopMenu(): void {
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
   for (const l of loops) {
     const item = document.createElement("button");
-    item.className = "code-drop-item drop-item-2line" + (l.id === williamLoop ? " selected" : "");
+    item.className = "code-drop-item drop-item-2line" + (l.id === glyphhLoop ? " selected" : "");
     item.type = "button";
     const main = document.createElement("div");
     main.className = "drop-main";
     const span = document.createElement("span");
     span.textContent = l.name;
     main.appendChild(span);
-    if (l.id === williamLoop) main.insertAdjacentHTML("beforeend", check);
+    if (l.id === glyphhLoop) main.insertAdjacentHTML("beforeend", check);
     item.appendChild(main);
     if (l.description) {
       const sub = document.createElement("span");
@@ -401,8 +401,8 @@ async function runManualCompact(focus: string): Promise<void> {
   const meter = el("code-ctx-meter");
   meter?.classList.add("compacting");
   try {
-    const r = await window.yo.williamCompact?.(c.id, focus);
-    const u = await window.yo.williamContextUsage?.(c.id).catch(() => null);
+    const r = await window.yo.glyphhCompact?.(c.id, focus);
+    const u = await window.yo.glyphhContextUsage?.(c.id).catch(() => null);
     const pct = u ? ` — context now ${Math.round(u.ratio * 100)}%` : "";
     c.messages.push({
       role: "assistant",
@@ -427,7 +427,7 @@ async function renderCtxPop(): Promise<void> {
   const pop = el("code-ctx-pop");
   if (!pop || !currentId) return;
   pop.innerHTML = `<div class="ctx-pop-empty">Measuring…</div>`;
-  const u = await window.yo.williamContextUsage?.(currentId).catch(() => null);
+  const u = await window.yo.glyphhContextUsage?.(currentId).catch(() => null);
   if (!u) { pop.innerHTML = `<div class="ctx-pop-empty">Context unavailable.</div>`; return; }
   const lanes = u.lanes?.length
     ? u.lanes
@@ -498,7 +498,7 @@ function refreshCtxMeter(): void {
     meterTimer = null;
     const meter = el("code-ctx-meter");
     if (!meter || !currentId) return;
-    void window.yo.williamContextUsage?.(currentId).then((u) => {
+    void window.yo.glyphhContextUsage?.(currentId).then((u) => {
       const fill = meter.querySelector<HTMLElement>(".ctx-fill");
       const tick = meter.querySelector<HTMLElement>(".ctx-tick");
       if (!fill || !tick) return;
@@ -591,7 +591,7 @@ function initComposerControls(): void {
   });
 }
 
-// Ghost empty-state quotes — the spirit of Ada & William Lovelace, with
+// Ghost empty-state quotes — the spirit of Ada & Glyphh Lovelace, with
 // peace and love woven in. Rotates while the thread is empty.
 const GHOST_QUOTES = [
   "The Engine weaves algebraic patterns as the loom weaves flowers — may it weave peace, too.",
@@ -629,7 +629,7 @@ let thinking = false;
 // Which chat the agent loop is working (drives the rail dot + spinner row).
 let workingChatId: string | null = null;
 let spinner: GlyphhSpinner | null = null;
-// Active William stream — text accumulates here (chat-keyed, not DOM-keyed,
+// Active Glyphh stream — text accumulates here (chat-keyed, not DOM-keyed,
 // so switching sessions mid-stream loses nothing).
 let activeRunId: string | null = null;
 let streamChatId: string | null = null;
@@ -644,7 +644,7 @@ let runSteps: string[] = [];
 
 function broadcastTimeline(running: boolean): void {
   try {
-    document.dispatchEvent(new CustomEvent("william:timeline", { detail: { steps: [...runSteps], running } }));
+    document.dispatchEvent(new CustomEvent("glyphh-agent:timeline", { detail: { steps: [...runSteps], running } }));
   } catch { /* no listeners */ }
 }
 
@@ -653,7 +653,7 @@ function fmtElapsed(ms: number): string {
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 }
 
-// While William sets himself up (first-run model download), the setup
+// While Glyphh sets himself up (first-run model download), the setup
 // line owns the spinner meta; the token meter takes over once ready.
 let setupMeta = "";
 
@@ -686,13 +686,13 @@ const input = () => el<HTMLTextAreaElement>("code-input");
 
 // ── Session store ────────────────────────────────────────────────────────
 let storeLoaded = false;
-/** Sessions live in main's disk store (userData/william/sessions.json) —
+/** Sessions live in main's disk store (userData/glyphh/sessions.json) —
  *  localStorage's 5MB cap can't hold real coding sessions. First load
  *  migrates any legacy localStorage sessions up, then clears them. */
 async function loadStore(): Promise<void> {
   if (storeLoaded) return;
   try {
-    const s = await window.yo.williamSessionsLoad?.();
+    const s = await window.yo.glyphhSessionsLoad?.();
     chats = ((s?.chats as CodeChat[]) || []);
     currentId = String(s?.currentId || "");
   } catch { chats = []; currentId = ""; }
@@ -711,7 +711,7 @@ async function loadStore(): Promise<void> {
   storeLoaded = true;
 }
 function saveStore(): Promise<void> {
-  return Promise.resolve(window.yo.williamSessionsSave?.(chats, currentId)).then(() => undefined);
+  return Promise.resolve(window.yo.glyphhSessionsSave?.(chats, currentId)).then(() => undefined);
 }
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
 
@@ -1140,10 +1140,10 @@ async function handleComposerPaste(e: ClipboardEvent): Promise<void> {
     const p = window.yo.getPathForFile(f);
     if (p) { paths.push(p); continue; }
     if (!f.type.startsWith("image/")) continue;
-    try { refs.push(await window.yo.williamSaveClipboardImage(await f.arrayBuffer())); }
+    try { refs.push(await window.yo.glyphhSaveClipboardImage(await f.arrayBuffer())); }
     catch { /* oversized/empty clipboard image — skip */ }
   }
-  if (paths.length) refs.push(...await window.yo.williamClassifyPaths(paths));
+  if (paths.length) refs.push(...await window.yo.glyphhClassifyPaths(paths));
   if (refs.length) queueAttachments(refs);
 }
 
@@ -1168,10 +1168,10 @@ function wireComposerAttachments(): void {
     };
     menu.append(
       mkItem("Attach files…", "Images and documents ride the next message", () => {
-        void window.yo.williamPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
+        void window.yo.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
       mkItem("Add folder…", "Give Glyphh read access to another directory", () => {
-        void window.yo.williamPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
+        void window.yo.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
     );
     plusWrap.appendChild(menu);
@@ -1196,7 +1196,7 @@ function wireComposerAttachments(): void {
     comp.classList.remove("dropping");
     const paths = Array.from(e.dataTransfer?.files ?? []).map((f) => window.yo.getPathForFile(f)).filter(Boolean);
     if (!paths.length) return;
-    void window.yo.williamClassifyPaths(paths).then((refs) => { if (refs.length) queueAttachments(refs); });
+    void window.yo.glyphhClassifyPaths(paths).then((refs) => { if (refs.length) queueAttachments(refs); });
   });
 }
 
@@ -1218,9 +1218,9 @@ function setThinking(on: boolean): void {
 }
 
 function stopThinking(): void {
-  // Abort the stream — main answers with william:done { stopped: true },
+  // Abort the stream — main answers with glyphh-agent:done { stopped: true },
   // which finalizes whatever streamed so far.
-  void window.yo.williamStop?.();
+  void window.yo.glyphhStop?.();
 }
 
 function send(): void {
@@ -1247,7 +1247,7 @@ function send(): void {
     void runManualCompact((comp[1] || "").trim());
     return;
   }
-  // `.remember <fact>` → William's persistent memory (memory.md), loaded
+  // `.remember <fact>` → Glyphh's persistent memory (memory.md), loaded
   // into every session's prompt prefix.
   const rem = /^\.remember\s+(.+)/is.exec(text);
   if (rem) {
@@ -1256,7 +1256,7 @@ function send(): void {
     cc.messages.push({ role: "user", text, at: Date.now() });
     ta.value = "";
     autoGrow(ta);
-    void window.yo.williamRemember?.(rem[1].trim())
+    void window.yo.glyphhRemember?.(rem[1].trim())
       .then(() => cc.messages.push({ role: "assistant", text: "✓ Remembered — it rides along in every session now.", at: Date.now() }))
       .catch((err) => cc.messages.push({ role: "assistant", text: `⚠ ${err instanceof Error ? err.message : String(err)}`, at: Date.now() }))
       .then(() => { void saveStore(); renderHistory(); renderThread(); });
@@ -1361,7 +1361,7 @@ function send(): void {
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
   const launch = (retried: boolean): Promise<void> =>
-    window.yo.williamRun({ chatId: c.id, attachments })
+    window.yo.glyphhRun({ chatId: c.id, attachments })
       .then((r) => { activeRunId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -1475,7 +1475,7 @@ function paintAskDock(): void {
       b.className = `action-btn ${cls}`;
       b.textContent = label;
       b.addEventListener("click", () => {
-        void window.yo.williamApprovalRespond?.(item.id, allow);
+        void window.yo.glyphhApprovalRespond?.(item.id, allow);
         askDockShift();
       });
       return b;
@@ -1496,7 +1496,7 @@ function paintAskDock(): void {
     item.answers[item.step] = value;
     item.step += 1;
     if (item.step >= item.questions.length) {
-      void window.yo.williamAskRespond?.(item.id, item.questions.map((_x, i) => item.answers[i] ?? ""));
+      void window.yo.glyphhAskRespond?.(item.id, item.questions.map((_x, i) => item.answers[i] ?? ""));
       askDockShift();
     } else {
       paintAskDock();
@@ -1541,8 +1541,8 @@ function paintAskDock(): void {
 
 /** Wire the stream events once — deltas paint the live bubble (or just
  *  accumulate when another session is in view). */
-function initWilliamEvents(): void {
-  window.yo.onWilliamSetup?.((d) => {
+function initGlyphhAgentEvents(): void {
+  window.yo.onGlyphhAgentSetup?.((d) => {
     if (d.phase === "downloading") {
       setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
     } else if (d.phase === "manifest") {
@@ -1561,22 +1561,22 @@ function initWilliamEvents(): void {
     }
     paintRunMeta();
   });
-  window.yo.onWilliamProgress?.((d) => {
+  window.yo.onGlyphhAgentProgress?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
     runTokens = d.tokens;
     paintRunMeta();
   });
-  window.yo.onWilliamApproval?.((a) => {
+  window.yo.onGlyphhAgentApproval?.((a) => {
     askQueue.push({ type: "approval", ...a });
     paintAskDock();
   });
-  window.yo.onWilliamAsk?.((d) => {
+  window.yo.onGlyphhAgentAsk?.((d) => {
     askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0 });
     paintAskDock();
   });
   // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
   // so a re-render or restart keeps the run's story).
-  window.yo.onWilliamTool?.((d) => {
+  window.yo.onGlyphhAgentTool?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
     const chat = chats.find((ch) => ch.id === streamChatId);
     if (!chat) return;
@@ -1615,7 +1615,7 @@ function initWilliamEvents(): void {
       renderThread(); // first token — adds the live block under the spinner
     }
   };
-  window.yo.onWilliamDelta?.((d) => {
+  window.yo.onGlyphhAgentDelta?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
     streamText += d.delta;
     if (currentId === streamChatId && !streamPaintQueued) {
@@ -1623,11 +1623,11 @@ function initWilliamEvents(): void {
       requestAnimationFrame(paintStream);
     }
   });
-  window.yo.onWilliamDone?.((d) => {
+  window.yo.onGlyphhAgentDone?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
     finishRun(streamText, d.stopped);
   });
-  window.yo.onWilliamError?.((d) => {
+  window.yo.onGlyphhAgentError?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
     // A picked-frontier decline (out of credits / role / rate) arrives with a
     // %%GLYPHHERR:<kind>:<url>%% marker — render a styled card, not the raw
@@ -1756,7 +1756,7 @@ export function initCode(): void {
   // cold-safe path, so it works even before the Code workbench first mounts.
   el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());
   // Apps open as workbench panels beside the agent (the OS-window
-  // replacement). Every main-side opener — William's open_app, the relay's
+  // replacement). Every main-side opener — Glyphh's open_app, the relay's
   // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure
   // the workbench booted, then drive the wb bridge.
   window.yo.onWbAppCommand?.((cmd) => {
@@ -1806,14 +1806,14 @@ export function initCode(): void {
   });
   el("code-send")?.addEventListener("click", send);
   wireComposerAttachments();
-  initWilliamEvents();
+  initGlyphhAgentEvents();
   initWorkdirGate();
   initComposerControls();
   void (async () => {
-    const m = String((await window.yo.getPreference?.("williamMode", "ask")) || "ask");
-    if (MODES.some((x) => x.id === m)) williamMode = m as typeof williamMode;
-    const lp = String((await window.yo.getPreference?.("williamLoop", "default")) || "default");
-    williamLoop = lp;
+    const m = String((await window.yo.getPreference?.("glyphhMode", "ask")) || "ask");
+    if (MODES.some((x) => x.id === m)) glyphhMode = m as typeof glyphhMode;
+    const lp = String((await window.yo.getPreference?.("glyphhLoop", "default")) || "default");
+    glyphhLoop = lp;
     void refreshLoops();
     paintChips();
   })();

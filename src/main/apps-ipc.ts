@@ -3,8 +3,10 @@ import fs from "fs";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./glyphh-app-package";
-import { hasMcpAccess, serverGetAuthed, serverPostAuthed, serverPatchAuthed, serverPutAuthed, serverDeleteAuthed, AUTH_SERVER } from "./auth";
-import { cachedServerGet, invalidateServerCache } from "./server-cache";
+import { hasMcpAccess, AUTH_SERVER } from "./auth";
+import { getClient } from "./glyphh-client";
+import type { OrgMcpConnection } from "@glyphh/client";
+import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 
 import { detectBrowsers } from "./browser-detect";
@@ -84,7 +86,7 @@ function registerPanelAppsIpc(): void {
   });
 
   ipcMain.handle("panel-apps-list", async () => {
-    try { return await cachedServerGet<unknown[]>("/api/panel-apps"); }
+    try { return await fetchOrgApps(); }
     catch { return []; }
   });
 
@@ -112,26 +114,59 @@ function registerPanelAppsIpc(): void {
     catch { return null; }
   });
   ipcMain.handle("marketplace-install", async (_e, id: string) => installMarketplaceApp(String(id)));
-  // input/patch are forwarded verbatim to the server, which validates and
-  // picks the fields it accepts (see saved-app-routes.ts readCreateInput).
-  // Typed as Record so the new Browser↔Native fields (isBrowser, browserTarget,
-  // execPath, appArchetype, launchConfig) pass straight through untouched.
+  // App CRUD is the entries API (`/api/apps/entries`). The renderer still
+  // speaks the older field names, so translate here: a native app carries an
+  // execPath, everything else a url, and `launchConfig` is the entry `config`.
+  const entryKind = (o: Record<string, unknown>): "web" | "native" | "http" | "llm" => {
+    const archetype = String(o.appArchetype ?? "");
+    if (archetype === "llm" || archetype === "http") return archetype;
+    return o.isBrowser === false || o.execPath ? "native" : "web";
+  };
+  const entryFields = (o: Record<string, unknown>) => ({
+    ...(o.name !== undefined ? { name: String(o.name) } : {}),
+    ...(o.url !== undefined && o.url !== null ? { url: String(o.url) } : {}),
+    ...(o.execPath !== undefined && o.execPath !== null ? { nativeRef: String(o.execPath) } : {}),
+    ...(o.description !== undefined ? { description: String(o.description) } : {}),
+    ...(o.launchConfig !== undefined ? { config: (o.launchConfig ?? {}) as Record<string, unknown> } : {}),
+  });
+  /** The renderer addresses apps by row id; the entries API by slug. */
+  const appSlug = async (id: string): Promise<string> => {
+    const apps = await fetchOrgApps();
+    return apps.find((a) => a.id === id)?.slug ?? id;
+  };
+
   ipcMain.handle("panel-apps-create", async (_e, input: Record<string, unknown>) => {
-    try { const app = await serverPostAuthed("/api/panel-apps", input); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
+    try {
+      const slug = String(input.slug || input.name || "").toLowerCase().trim()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      if (!slug) return { ok: false, error: "A name is required." };
+      const app = await getClient().apps.createEntry({
+        kind: entryKind(input),
+        slug,
+        name: String(input.name || slug),
+        ...entryFields(input),
+      });
+      invalidateOrgApps();
+      return { ok: true, app };
+    }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-update", async (_e, id: string, patch: Record<string, unknown>) => {
-    try { const app = await serverPatchAuthed(`/api/panel-apps/${id}`, patch); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
+    try {
+      const app = await getClient().apps.updateEntry(await appSlug(id), entryFields(patch));
+      invalidateOrgApps();
+      return { ok: true, app };
+    }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-delete", async (_e, id: string) => {
-    try { await serverDeleteAuthed(`/api/panel-apps/${id}`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
+    try { await getClient().apps.removeEntry(await appSlug(id)); invalidateOrgApps(); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  // Replace the set of Connections an app uses (first-class Connections model).
-  ipcMain.handle("panel-apps-set-connections", async (_e, id: string, connectionIds: string[]) => {
-    try { const app = await serverPutAuthed(`/api/panel-apps/${id}/connections`, { connectionIds }); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  // An app's connections are declared by its MANIFEST now (requiredConnections),
+  // not set per-app from the client — the server resolves connected/required.
+  ipcMain.handle("panel-apps-set-connections", async () => {
+    return { ok: false, error: "An app's connections come from its manifest — edit the app's manifest to change them." };
   });
 
   // ── Loops (Build → Loops on the platform; role-scoped) ───────
@@ -140,110 +175,199 @@ function registerPanelAppsIpc(): void {
   ipcMain.handle("loops-list", async () => {
     const fallback = { loops: [{ id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true }], canBuild: false };
     try {
-      const r = await serverGetAuthed<{ loops?: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild?: boolean }>("/api/loops");
-      return { ok: true, loops: r.loops?.length ? r.loops : fallback.loops, canBuild: !!r.canBuild };
+      const { loops } = await getClient().loops.list();
+      return { ok: true, loops: loops.length ? loops : fallback.loops, canBuild: false };
     } catch { return { ok: true, ...fallback }; }
   });
 
   // ── Connections (first-class connected accounts) ─────────────
+  // Desktop is a MEMBER surface: the list is the caller's own (personal)
+  // connections plus the org-shared ones (read-only); every mutation acts on
+  // a PERSONAL connection.
+  //
+  // The renderer's Connection contract predates the SDK and is keyed by `id`
+  // with Pipedream-flavoured fields, while the SDK addresses connections by
+  // `slug`. Adapt here — the IPC shape is the stable boundary — and keep an
+  // id→slug index so the per-connection handlers can resolve either.
+  interface ConnRef { slug: string; org: boolean }
+  const connIndex = new Map<string, ConnRef>();
+
   ipcMain.handle("connections-list", async () => {
-    try { const r = await serverGetAuthed<{ connections: unknown[] }>("/api/connections"); return { ok: true, connections: r.connections || [] }; }
+    try {
+      const client = getClient();
+      // Personal rows carry the rich fields (id, label, health); the resolved
+      // list contributes the org-shared ones the member may use but not edit.
+      const [personal, resolved] = await Promise.all([
+        client.connections.personalList(),
+        client.connections.list().catch(() => []),
+      ]);
+      connIndex.clear();
+      const connections = personal.map((c) => {
+        connIndex.set(c.id, { slug: c.appSlug, org: false });
+        return {
+          id: c.id,
+          accountId: c.id,
+          appSlug: c.appSlug,
+          appName: c.appName || c.name || c.appSlug,
+          label: c.label,
+          healthy: c.healthy,
+          hiddenTools: [] as string[],
+          createdAt: "",
+          org: false,
+        };
+      });
+      const personalSlugs = new Set(personal.map((c) => c.appSlug));
+      for (const c of resolved) {
+        // Custom MCP renders from its own card list; only connector accounts here.
+        if (c.kind !== "pipedream" || c.scope !== "org" || personalSlugs.has(c.slug)) continue;
+        connIndex.set(c.slug, { slug: c.slug, org: true });
+        connections.push({
+          id: c.slug,
+          accountId: c.slug,
+          appSlug: c.slug,
+          appName: c.name || c.slug,
+          label: null,
+          healthy: c.enabled,
+          hiddenTools: [],
+          createdAt: "",
+          org: true,
+        });
+      }
+      return { ok: true, connections };
+    }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
   });
+
+  /** Resolve a renderer connection id (or a bare slug) to its SDK slug. */
+  const connSlug = (id: string): string => connIndex.get(id)?.slug ?? id;
+
   ipcMain.handle("connection-rename", async (_e, id: string, label: string) => {
-    try { const r = await serverPatchAuthed(`/api/connections/${id}`, { label }); return { ok: true, connection: (r as { connection: unknown }).connection }; }
+    try { return { ok: true, connection: await getClient().connections.renamePersonalConnection(id, label) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("connection-tools-list", async (_e, id: string) => {
-    try { const r = await serverGetAuthed<{ tools: unknown[] }>(`/api/connections/${id}/tools`); return { ok: true, tools: r.tools || [] }; }
+    try {
+      const slug = connSlug(id);
+      const { connections } = await getClient().connections.resolvedTools();
+      const conn = connections.find((c) => c.slug === slug);
+      if (!conn) return { ok: true, tools: [] };
+      // The server stores what's ALLOWED; the renderer speaks hides.
+      const allowed = new Set(conn.tools.map((t) => t.key));
+      return {
+        ok: true,
+        tools: conn.availableTools.map((t) => ({
+          name: t.key,
+          description: t.description ?? t.name,
+          hidden: !allowed.has(t.key),
+        })),
+      };
+    }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }; }
   });
   ipcMain.handle("connection-tools-set", async (_e, id: string, hiddenTools: string[]) => {
-    try { const r = await serverPatchAuthed(`/api/connections/${id}/tools`, { hiddenTools }); return { ok: true, connection: (r as { connection: unknown }).connection }; }
+    try {
+      const slug = connSlug(id);
+      const { connections } = await getClient().connections.resolvedTools();
+      const conn = connections.find((c) => c.slug === slug);
+      const hidden = new Set(hiddenTools);
+      const allowed = (conn?.availableTools ?? []).map((t) => t.key).filter((k) => !hidden.has(k));
+      await getClient().connections.setPersonalConnectionTools(slug, allowed);
+      return { ok: true, connection: conn ?? null };
+    }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("connection-disconnect", async (_e, id: string) => {
-    try { const r = await serverDeleteAuthed<{ ok?: boolean }>(`/api/connections/${id}`); return { ok: r?.ok !== false }; }
+    try { const r = await getClient().connections.personalDisconnect(id); return { ok: r?.ok !== false }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
   // ── Custom MCP connections (server-side, like every other connection —
-  // the server opens the MCP client; header values are write-only) ──────────
-  ipcMain.handle("mcp-connections-list", async () => {
-    try {
-      const r = await serverGetAuthed<{ connections: Array<{ iconSha?: string | null }> }>("/api/mcp-connections");
-      return { ok: true, connections: (r.connections || []).map((c) => ({
-        ...c,
-        iconUrl: c.iconSha ? `${AUTH_SERVER}/api/mcp-icons/${c.iconSha}` : null,
-      })) };
-    }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
-  });
-  ipcMain.handle("mcp-connections-create", async (_e, fields: { name: string; url: string; headers?: Record<string, string> }) => {
-    try { return { ok: true, ...(await serverPostAuthed("/api/mcp-connections", fields) as Record<string, unknown>) }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("mcp-connections-update", async (_e, slug: string, fields: Record<string, unknown>) => {
-    try { const r = await serverPatchAuthed(`/api/mcp-connections/${slug}`, fields); return { ok: true, connection: (r as { connection: unknown }).connection }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("mcp-connections-delete", async (_e, slug: string) => {
-    try { const r = await serverDeleteAuthed<{ ok?: boolean }>(`/api/mcp-connections/${slug}`); return { ok: r?.ok !== false }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("mcp-connections-tools", async (_e, slug: string) => {
-    try { return await serverGetAuthed<{ ok: boolean; error?: string; tools: unknown[] }>(`/api/mcp-connections/${slug}/tools`); }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }; }
-  });
-  // Org-published connections a member can install; icon shas become URLs
-  // here (the renderer's <img> can't send auth headers, so icons are served
-  // publicly by content hash).
+  // the server opens the MCP client; header values are write-only). Desktop
+  // manages the caller's PERSONAL endpoints; org-shared ones arrive via the
+  // catalog below and need no install. Icon shas become URLs here (the
+  // renderer's <img> can't send auth headers, so icons are served publicly
+  // by content hash).
   const withIconUrl = <T extends { iconSha?: string | null }>(c: T) => ({
     ...c,
     iconUrl: c.iconSha ? `${AUTH_SERVER}/api/mcp-icons/${c.iconSha}` : null,
   });
+  /** The renderer's custom-MCP card shape — the SDK connection plus the
+   *  fields the cards read (`kind` drives the "Org connection" badge). */
+  const toMcpCard = (c: OrgMcpConnection, kind: "personal" | "org") => ({
+    ...withIconUrl(c),
+    kind,
+    hiddenTools: [] as string[],
+    createdAt: "",
+  });
+  ipcMain.handle("mcp-connections-list", async () => {
+    try {
+      // A member sees their own endpoints plus the org-shared catalog — the
+      // page renders both as cards, org ones read-only.
+      const client = getClient();
+      const [personal, org] = await Promise.all([
+        client.connections.personalMcpList(),
+        client.connections.orgMcpList().catch(() => [] as OrgMcpConnection[]),
+      ]);
+      const ownSlugs = new Set(personal.map((c) => c.slug));
+      return {
+        ok: true,
+        connections: [
+          ...personal.map((c) => toMcpCard(c, "personal")),
+          ...org.filter((c) => !ownSlugs.has(c.slug)).map((c) => toMcpCard(c, "org")),
+        ],
+      };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
+  });
+  ipcMain.handle("mcp-connections-create", async (_e, fields: { name: string; url: string; headers?: Record<string, string> }) => {
+    try {
+      const slug = fields.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
+      const r = await getClient().connections.personalMcpCreate({ slug, ...fields });
+      return { ok: r.ok, connection: withIconUrl(r.connection), toolCount: r.toolCount, ...(r.error ? { error: r.error } : {}) };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("mcp-connections-update", async (_e, slug: string, fields: Record<string, unknown>) => {
+    try { const r = await getClient().connections.personalMcpUpdate(slug, fields); return { ok: true, connection: withIconUrl(r.connection) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("mcp-connections-delete", async (_e, slug: string) => {
+    try { const r = await getClient().connections.personalMcpRemove(slug); return { ok: r?.ok !== false }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("mcp-connections-tools", async (_e, slug: string) => {
+    try { return { ok: true, tools: await getClient().connections.mcpTools(slug) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }; }
+  });
+  // Org-shared custom MCP connections — visible to every member, no install
+  // step in the two-axis model (shared connectors are simply available).
   ipcMain.handle("mcp-connections-catalog", async () => {
     try {
-      const r = await serverGetAuthed<{ connections: Array<{ iconSha?: string | null }> }>("/api/mcp-connections/catalog");
-      return { ok: true, connections: (r.connections || []).map(withIconUrl) };
+      const connections = await getClient().connections.orgMcpList();
+      return { ok: true, connections: connections.map(withIconUrl) };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
   });
-  ipcMain.handle("mcp-connections-install", async (_e, slug: string) => {
-    try { await serverPostAuthed("/api/mcp-connections/install", { slug }); return { ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  ipcMain.handle("mcp-connections-install", async () => {
+    // Org connections are shared automatically now — nothing to install.
+    return { ok: true };
   });
 
-  // ── App proxies (public <slug>.glyphh.app tunnels) ─────────────
-  // CRUD passes straight through to the server; every mutation drops the
-  // stream handler's slug→target cache so edits take effect immediately.
-  ipcMain.handle("app-proxy-get", async (_e, appId: string) => {
-    try { const r = await serverGetAuthed<{ proxy: unknown }>(`/api/apps/${appId}/proxy`); return { ok: true, proxy: r.proxy ?? null }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), proxy: null }; }
-  });
-  ipcMain.handle("app-proxy-create", async (_e, body: Record<string, unknown>) => {
-    try { const proxy = await serverPostAuthed("/api/apps/proxies", body); return { ok: true, proxy }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("app-proxy-update", async (_e, id: string, body: Record<string, unknown>) => {
-    try { const proxy = await serverPatchAuthed(`/api/apps/proxies/${id}`, body); return { ok: true, proxy }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("panel-apps-set-mcp", async (_e, id: string, mcp: Record<string, unknown>) => {
-    try { const app = await serverPatchAuthed(`/api/panel-apps/${id}/mcp`, mcp); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("panel-apps-remove-mcp", async (_e, id: string) => {
-    try { await serverDeleteAuthed(`/api/panel-apps/${id}/mcp`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("panel-apps-set-command", async (_e, id: string, key: string, mapping: Record<string, unknown>) => {
-    try { const app = await serverPatchAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`, mapping); invalidateServerCache("/api/panel-apps"); return { ok: true, app }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("panel-apps-remove-command", async (_e, id: string, key: string) => {
-    try { await serverDeleteAuthed(`/api/panel-apps/${id}/commands/${encodeURIComponent(key)}`); invalidateServerCache("/api/panel-apps"); return { ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
+  // ── App proxies (retired) ──────────────────────────────────────
+  // A public address is a hosting deployment (plus the app's variants) now,
+  // so there is no proxy row to read and nothing to create or edit.
+  ipcMain.handle("app-proxy-get", async () => ({ ok: true, proxy: null }));
+  const PROXIES_MOVED = "Public app addresses come from deploying the app (and its variants) — the proxy tunnel is retired.";
+  ipcMain.handle("app-proxy-create", async () => ({ ok: false, error: PROXIES_MOVED }));
+  ipcMain.handle("app-proxy-update", async () => ({ ok: false, error: PROXIES_MOVED }));
+  // Per-app MCP config and command mappings have no home on the apps API: an
+  // MCP endpoint is a custom MCP CONNECTION now, and command mappings await
+  // the app-state work. Fail with the reason rather than a bare 404.
+  const MCP_MOVED = "An app's MCP server is a Connection now — add it under Connections → + Custom MCP.";
+  const COMMANDS_UNAVAILABLE = "Per-app commands aren't available on this server version yet.";
+  ipcMain.handle("panel-apps-set-mcp", async () => ({ ok: false, error: MCP_MOVED }));
+  ipcMain.handle("panel-apps-remove-mcp", async () => ({ ok: false, error: MCP_MOVED }));
+  ipcMain.handle("panel-apps-set-command", async () => ({ ok: false, error: COMMANDS_UNAVAILABLE }));
+  ipcMain.handle("panel-apps-remove-command", async () => ({ ok: false, error: COMMANDS_UNAVAILABLE }));
 
   // Per-app config vars (encrypted secrets — app-secrets.ts). List returns key
   // names + set-dates ONLY; there is deliberately no handler that returns a

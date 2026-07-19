@@ -19,7 +19,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { getLocalDb } from "./local-db";
-import { embedText, embedTexts, dot, packVec, unpackVec } from "./william-embeddings";
+import { embedText, embedTexts, dot, packVec, unpackVec } from "./glyphh-agent-embeddings";
 
 const CHUNK_LINES = 50;
 const CHUNK_OVERLAP = 8;
@@ -109,7 +109,7 @@ export async function refreshWorkspaceIndex(root: string): Promise<void> {
       const chunks = chunkFile(f.rel, content);
       if (!chunks.length) { delFile.run(root, f.rel); continue; }
       // The path rides inside the embedded text — file names carry strong
-      // intent signal ("william-stream" beats bare code on "streaming").
+      // intent signal ("glyphh-agent-stream" beats bare code on "streaming").
       const vecs = await embedTexts(chunks.map((c) => `${c.path}\n${c.text}`), "document");
       if (!vecs) return; // embedder unavailable — abandon the pass quietly
       delFile.run(root, f.rel);

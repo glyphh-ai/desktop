@@ -10,20 +10,44 @@ import path from "path";
 import { BrowserWindow } from "electron";
 import { userScopedPath } from "./app-paths.js";
 import { PanelManager } from "./panel-manager";
-import { serverPostAuthed, serverPatchAuthed, serverDeleteAuthed } from "./auth";
-import { cachedServerGet, invalidateServerCache } from "./server-cache";
+import { getClient } from "./glyphh-client";
+import { appCache } from "./glyphh-client";
 
-// yo-server saved_layouts shape (saved-layout-service). Note the server model
-// stores cols/rows/cells/folderMode but NOT colWidths/rowHeights — fractional
-// sizing is reconstructed as equal fractions on load (uniform grid), matching
-// the platform Layouts page.
-interface ServerLayout {
+// The layout payload inside a `layout`-kind library item (client.layouts).
+// The spec stores cols/rows/cells/folderMode but NOT colWidths/rowHeights —
+// fractional sizing is reconstructed as equal fractions on load (uniform
+// grid), matching the platform Layouts page.
+export interface ServerLayout {
   id: string;
   name: string;
   cols: number;
   rows: number;
   cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>;
   folderMode: "single" | "multi";
+}
+
+const LAYOUTS_CACHE_KEY = "/api/layouts";
+
+/** The server's saved layouts (library kind `layout`), flattened to the spec
+ *  shape and cached — shared by the palette, app resolver, and agent tools. */
+export function fetchServerLayouts(): Promise<ServerLayout[]> {
+  return appCache.cached(LAYOUTS_CACHE_KEY, async () => {
+    const items = await getClient().layouts.list();
+    const layouts: ServerLayout[] = [];
+    for (const item of items) {
+      const data = (item.data ?? {}) as Partial<Omit<ServerLayout, "id" | "name">>;
+      if (!Array.isArray(data.cells)) continue;
+      layouts.push({
+        id: item.id,
+        name: item.name,
+        cols: typeof data.cols === "number" ? data.cols : 1,
+        rows: typeof data.rows === "number" ? data.rows : 1,
+        cells: data.cells,
+        folderMode: data.folderMode === "multi" ? "multi" : "single",
+      });
+    }
+    return layouts;
+  });
 }
 
 // ── Grid model ──────────────────────────────────────────────
@@ -319,8 +343,8 @@ export class LayoutManager {
     this.persist();
     const id = this.serverIds.get(name);
     this.serverIds.delete(name);
-    invalidateServerCache("/api/layouts");
-    if (id) void serverDeleteAuthed(`/api/layouts/${id}`).catch(() => {});
+    appCache.invalidate(LAYOUTS_CACHE_KEY);
+    if (id) void getClient().layouts.delete(id).catch(() => {});
     return true;
   }
 
@@ -329,15 +353,15 @@ export class LayoutManager {
     return Array.from(this.layouts.values());
   }
 
-  // ── Server sync (yo-server /api/layouts — the org-shared library the
-  // platform Layouts page also writes to) ────────────────────────────
+  // ── Server sync (library kind `layout` — the same library the
+  // platform Layouts page writes to) ─────────────────────────────────
 
   /** Refresh the local cache from the server, then return the list. Used by
    *  the layouts-list IPC so the Layouts tab shows server truth. Non-fatal
    *  offline / pre-auth — the local cache stands in. */
   async refreshAndList(): Promise<GridLayout[]> {
     try {
-      const serverLayouts = await cachedServerGet<ServerLayout[]>("/api/layouts");
+      const serverLayouts = await fetchServerLayouts();
       // Server is TRUTH: replace, never merge. Merging kept locally-cached
       // entries (deleted elsewhere, or a previous signed-in account's) alive
       // forever — the local file is only an offline stand-in.
@@ -379,11 +403,9 @@ export class LayoutManager {
       folderMode: grid.folderMode ?? "single",
     };
     const id = this.serverIds.get(grid.name);
-    const saved = id
-      ? await serverPatchAuthed<ServerLayout>(`/api/layouts/${id}`, body)
-      : await serverPostAuthed<ServerLayout>("/api/layouts", body);
+    const saved = await getClient().layouts.save({ name: grid.name, data: body, ...(id ? { id } : {}) });
     this.serverIds.set(grid.name, saved.id);
-    invalidateServerCache("/api/layouts");
+    appCache.invalidate(LAYOUTS_CACHE_KEY);
   }
 
   /** Get a layout by name */

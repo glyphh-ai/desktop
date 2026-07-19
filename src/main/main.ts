@@ -39,7 +39,7 @@ import { PanelManager } from "./panel-manager";
 import { TerminalManager, AgentSpawnConfig } from "./terminal";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
-import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, serverPostAuthed, serverGetAuthed, getAuthToken } from "./auth";
+import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, getAuthToken } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
 import { canAddApp, canSaveLayout, canUseCustomMcp } from "./entitlements";
@@ -75,21 +75,19 @@ import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
-import { registerWilliamIpc, shutdownWilliam } from "./william";
 import { registerWbAppRegistry } from "./app-resolver";
 import { DripManager, BUILTIN_EFFECTS, setDripManagerInstance } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
-import { registerSettingsIpc, migrateLocalByokKey } from "./settings-ipc";
+import { registerSettingsIpc } from "./settings-ipc";
+import { getClient } from "./glyphh-client";
+import { ApiError } from "@glyphh/client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
 import { setUserScopeReloader, onUserChange } from "./user-scope";
-import { syncPreferencesFromServer } from "./stores/preferences-db";
-import { syncChatsWithServer } from "./william-context";
-import { syncSchedulesFromServer } from "./glyphh-app-services";
 import { onServerReconnect } from "./auth";
 import { migrateFromFiles } from "./stores/migrate-from-files";
 import { getAgentMode } from "./action-gate";
@@ -333,18 +331,6 @@ async function boot() {
     appConnector?.rescopeForUserChange();
     connectorManager?.clearUserState();
     mcpManager?.setConnectorCatalog([]);
-    // Roaming prefs + chat sessions + app schedules reconcile for the new
-    // identity: push offline edits first, then pull server truth.
-    void syncPreferencesFromServer();
-    void syncChatsWithServer();
-    void syncSchedulesFromServer();
-  });
-  // Same reconcile the moment connectivity RETURNS (heartbeat recovers) —
-  // "server-authoritative, reconcile on restart or connection loss".
-  onServerReconnect(() => {
-    void syncPreferencesFromServer();
-    void syncChatsWithServer();
-    void syncSchedulesFromServer();
   });
 
   // Pipedream Connectors — managed OAuth connections (Advanced tier)
@@ -598,7 +584,7 @@ async function boot() {
 
   // OS windows, the command palette, and the keytap overlay are retired —
   // apps open as workbench panels beside the agent (wb:app-cmd), reported
-  // back by the renderer for panels_list / William's list tools.
+  // back by the renderer for panels_list / Glyphh's list tools.
   registerWbAppRegistry();
 
   // Give interceptor access to visible panel IDs (for multi-panel grab)
@@ -1188,13 +1174,14 @@ async function boot() {
         console.log(`[mcp-migrate] dropping local-only MCP config "${app.id}" — custom MCP runs server-side now`);
       } else {
         try {
-          await serverPostAuthed("/api/mcp-connections", { name: app.name, url, headers: mcp.headers ?? {} });
+          const slug = app.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
+          await getClient().connections.personalMcpCreate({ slug, name: app.name, url, headers: mcp.headers ?? {} });
           console.log(`[mcp-migrate] lifted "${app.id}" to a server-side custom MCP connection`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (/already exists|already in use/i.test(msg)) {
             // Lifted on an earlier pass — fall through and drop the carrier.
-          } else if (/HTTP 4\d\d/.test(msg)) {
+          } else if (err instanceof ApiError) {
             // The server rejected the CONFIG (bad url, reserved slug…) — it
             // will never succeed; drop it instead of retrying every heartbeat.
             console.warn(`[mcp-migrate] dropping unmigratable config "${app.id}": ${msg}`);
@@ -1257,10 +1244,6 @@ async function boot() {
   // Hard 3s timeout so splash never hangs if server is unreachable.
   await Promise.race([initAuth(), new Promise((r) => setTimeout(r, 3000))]);
 
-  // One-time: any pre-cutover locally-stored Anthropic key moves server-side
-  // (encrypted) and is purged from this machine. Fire-and-forget.
-  void migrateLocalByokKey();
-
   // Working directory — the single project folder the app is focused on.
   if (!ipcMain.listenerCount("working-dir:get")) {
     registerWorkingDirectoryIpc({
@@ -1293,7 +1276,6 @@ async function boot() {
   // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
   if (!ipcMain.listenerCount("wb-term:spawn")) {
     registerWorkbenchTerminalIpc();
-    registerWilliamIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -1702,7 +1684,7 @@ async function boot() {
   // ── Extracted IPC modules ──────────────────────────────
   registerSettingsIpc({
     getPreference, setPreference, broadcastTheme,
-    serverGetAuthed, startAuthFlow, isAuthenticated,
+    startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     session, sendSessionState,
     execCommand,
@@ -1790,10 +1772,10 @@ async function boot() {
   // IPC: support ticket (uses authenticated server call)
   ipcMain.handle("submit-support-ticket", async (_e, ticket: { subject: string; description: string }) => {
     try {
-      return await serverPostAuthed("/api/support/ticket", {
-        ...ticket,
-        appVersion: app.getVersion(),
-        os: `${process.platform} ${process.arch}`,
+      // The ticket input is subject + description only — fold the build info in.
+      return await getClient().support.ticket({
+        subject: ticket.subject,
+        description: `${ticket.description}\n\n— Glyphh Desktop ${app.getVersion()} (${process.platform} ${process.arch})`,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1964,7 +1946,6 @@ app.on("activate", () => {
 });
 
 app.on("will-quit", () => {
-  shutdownWilliam();
   cleanupAll();
 });
 

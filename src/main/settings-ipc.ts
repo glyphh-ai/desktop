@@ -1,28 +1,11 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { isRailCollapsed, toggleRailCollapsed, setRailCollapsed } from "./screen-layout";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { generateGlyphhSkill } from "./glyphh-skill-export";
-import { authRegister, authVerifyCode, authCompleteProfile, authLogin, authForgotPassword, serverGetAuthed, serverPatchAuthed, serverPutAuthed, serverDeleteAuthed, isAuthenticated } from "./auth";
-import { getPreference as prefGet, setPreference as prefSet } from "./stores/preferences-db";
-
-// ── BYOK migration (one-time) ────────────────────────────────
-// Pre-cutover builds kept the user's Anthropic key in the LOCAL preferences
-// store. The key now lives server-side (encrypted, user_provider_keys) and
-// the client never holds it — so on boot, push any lingering local key up
-// and purge it. Safe to call every boot; no-op once clean.
-export async function migrateLocalByokKey(): Promise<void> {
-  const local = String(prefGet("anthropicApiKey", "")).trim();
-  if (!local || !isAuthenticated()) return;
-  try {
-    await serverPutAuthed("/api/me/provider-keys/anthropic", { key: local });
-    prefSet("anthropicApiKey", "");
-    console.log("[byok] local Anthropic key migrated server-side and purged from this machine");
-  } catch (err) {
-    console.warn("[byok] key migration deferred (offline?):", err instanceof Error ? err.message : err);
-  }
-}
+import { type DevicePrompt, startDeviceLogin, cancelDeviceLogin } from "./auth";
+import { getClient } from "./glyphh-client";
 import type { SessionCache } from "./session-cache";
 import type { PanelManager } from "./panel-manager";
 
@@ -30,8 +13,7 @@ interface SettingsIpcDeps {
   getPreference: <T>(key: string, def?: T) => T;
   setPreference: (key: string, val: unknown) => void;
   broadcastTheme: (resolved: string) => void;
-  serverGetAuthed: <T = unknown>(path: string) => Promise<T>;
-  startAuthFlow: (mode: "register" | "login") => Promise<unknown>;
+  startAuthFlow: (mode?: "register" | "login", onPrompt?: (prompt: DevicePrompt) => void) => Promise<boolean>;
   isAuthenticated: () => boolean;
   getAccountInfo: () => unknown;
   getAuthStatus: () => unknown;
@@ -47,7 +29,7 @@ interface SettingsIpcDeps {
 export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   const {
     getPreference, setPreference, broadcastTheme,
-    serverGetAuthed, startAuthFlow, isAuthenticated,
+    startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     session, sendSessionState,
     getMainWindow, panelManager,
@@ -80,12 +62,22 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("start-auth", async (_e, mode: "register" | "login") => startAuthFlow(mode));
   ipcMain.handle("is-authenticated", () => isAuthenticated());
 
-  // Native (in-client) email auth — no popup, no device-code handoff.
-  ipcMain.handle("auth-register", (_e, email: string) => authRegister(email));
-  ipcMain.handle("auth-verify-code", (_e, email: string, code: string) => authVerifyCode(email, code));
-  ipcMain.handle("auth-complete-profile", (_e, data: { email: string; firstName: string; lastName: string; password: string; confirmPassword: string; orgName?: string }) => authCompleteProfile(data));
-  ipcMain.handle("auth-login", (_e, email: string, password: string) => authLogin(email, password));
-  ipcMain.handle("auth-forgot-password", (_e, email: string) => authForgotPassword(email));
+  // Device-flow sign-in: the browser opens on the platform's approval page;
+  // the prompt event carries the user code + URL so the renderer can display
+  // them while the poll is in flight. Starting again replaces the in-flight
+  // grant (a fresh code); cancel aborts it outright.
+  ipcMain.handle("start-device-login", async (e) => {
+    return startDeviceLogin((prompt) => {
+      try { e.sender.send("device-login-prompt", prompt); } catch { /* window gone */ }
+    });
+  });
+  ipcMain.handle("cancel-device-login", () => { cancelDeviceLogin(); return { ok: true }; });
+  // Re-open the approval page for an already-displayed code (the browser
+  // hand-off is best-effort; this is the "didn't open?" fallback link).
+  ipcMain.handle("open-device-approval", (_e, url: string) => {
+    if (typeof url === "string" && /^https:\/\//.test(url)) void shell.openExternal(url);
+    return { ok: true };
+  });
 
   ipcMain.handle("get-account-info", () => getAccountInfo());
 
@@ -93,7 +85,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   // value the platform's Settings > Profile page edits. Not a local pref.
   ipcMain.handle("user-timezone-get", async () => {
     try {
-      const me = await serverGetAuthed<{ timezone?: string }>("/api/user/me");
+      const me = await getClient().profile.get();
       return me.timezone || "UTC";
     } catch {
       return null;
@@ -106,7 +98,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
 
   ipcMain.handle("user-timezone-set", async (_e, timezone: string) => {
     try {
-      await serverPatchAuthed("/api/user/me", { timezone });
+      await getClient().profile.update({ timezone });
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "save failed" };
@@ -118,7 +110,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   // Settings > Security panel; applied to every installed app in P2.3.
   ipcMain.handle("org-guardrails-get", async () => {
     try {
-      const r = await serverGetAuthed<{ guardrails_policy?: Record<string, number> | null }>("/api/org/guardrails");
+      const r = await getClient().org.guardrails();
       return { ok: true, policy: r.guardrails_policy ?? null };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "load failed" };
@@ -126,7 +118,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   });
   ipcMain.handle("org-guardrails-set", async (_e, policy: Record<string, number> | null) => {
     try {
-      await serverPatchAuthed("/api/org/guardrails", { guardrails_policy: policy });
+      await getClient().org.setGuardrails(policy);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "save failed" };

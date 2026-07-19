@@ -14,7 +14,8 @@
 
 import { BrowserWindow, shell } from "electron";
 import { EventEmitter } from "events";
-import { serverPostAuthed, serverGetAuthed, serverPatchAuthed, getAccountInfo, getHeartbeatInfo } from "./auth";
+import { getAccountInfo, getHeartbeatInfo } from "./auth";
+import { getClient } from "./glyphh-client";
 import type { McpManager } from "./mcp-manager";
 import type { AppConnector } from "./app-connector";
 import { refreshConnectorCatalog, type ConnectorTool } from "./connector-tools-client";
@@ -37,31 +38,6 @@ export interface ConnectedAccount {
   healthy: boolean;
 }
 
-interface ConnectTokenResponse {
-  ok: boolean;
-  token?: string;
-  connectUrl?: string;
-  error?: string;
-}
-
-interface AccountsResponse {
-  ok: boolean;
-  accounts?: ConnectedAccount[];
-  error?: string;
-}
-
-interface AppsResponse {
-  ok: boolean;
-  apps?: ConnectorApp[];
-  hasMore?: boolean;
-  error?: string;
-}
-
-interface DisconnectResponse {
-  ok: boolean;
-  error?: string;
-}
-
 // ── ConnectorManager ──────────────────────────────────────
 
 export class ConnectorManager extends EventEmitter {
@@ -80,17 +56,10 @@ export class ConnectorManager extends EventEmitter {
 
   // ── Available apps (browse catalog) ───────────────────
 
-  async getApps(search?: string, offset?: number): Promise<{ apps: ConnectorApp[]; hasMore: boolean }> {
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (offset) params.set("offset", String(offset));
-    const qs = params.toString() ? `?${params.toString()}` : "";
+  async getApps(search?: string, _offset?: number): Promise<{ apps: ConnectorApp[]; hasMore: boolean }> {
     try {
-      const res = await serverGetAuthed<AppsResponse>(`/api/connectors/apps${qs}`);
-      if (res.ok && res.apps) {
-        this.cachedApps = res.apps;
-        return { apps: res.apps, hasMore: !!res.hasMore };
-      }
+      const { apps } = await getClient().connections.apps(search ? { search } : {});
+      this.cachedApps = apps.map((a) => ({ id: a.id, name: a.name, description: "", icon: a.icon ?? undefined }));
       return { apps: this.cachedApps, hasMore: false };
     } catch {
       return { apps: this.cachedApps, hasMore: false };
@@ -105,17 +74,19 @@ export class ConnectorManager extends EventEmitter {
 
   async getAccounts(): Promise<ConnectedAccount[]> {
     try {
-      const res = await serverGetAuthed<AccountsResponse>("/api/connectors/accounts");
-      if (res.ok && res.accounts) {
-        this.cachedAccounts = res.accounts;
-        this.syncAccountsToApps(res.accounts);
-        // Awaited so connectApp()'s finish() resolves only after the server
-        // rows carry the accountId — the renderer refetches panel-apps
-        // immediately after connectorsConnect returns.
-        await this.syncAccountsToServerApps(res.accounts);
-        return res.accounts;
-      }
-      return this.cachedAccounts;
+      const personal = await getClient().connections.personalList();
+      const accounts: ConnectedAccount[] = personal.map((c) => ({
+        id: c.id,
+        appSlug: c.appSlug,
+        appName: c.appName,
+        createdAt: "",
+        healthy: c.healthy,
+      }));
+      this.cachedAccounts = accounts;
+      this.syncAccountsToApps(accounts);
+      // No server-side app-row sync: an app's connections come from its
+      // manifest now, and the server resolves connected/required itself.
+      return accounts;
     } catch {
       return this.cachedAccounts;
     }
@@ -135,34 +106,6 @@ export class ConnectorManager extends EventEmitter {
     }
   }
 
-  /** Persist connected accounts onto the server's saved_apps rows — apps are
-   *  server-authoritative now, so writing accountId to the local appConnector
-   *  alone (above) never reaches what the Apps page actually renders. Matches
-   *  each account to rows by connection.pipedreamSlug and PATCHes only when
-   *  the stored accountId/health drifted (no-op on a clean boot). */
-  private async syncAccountsToServerApps(accounts: ConnectedAccount[]): Promise<void> {
-    if (accounts.length === 0) return;
-    try {
-      const apps = await serverGetAuthed<Array<{
-        id: string;
-        connection: { pipedreamSlug: string; accountId?: string; healthy?: boolean } | null;
-      }>>("/api/panel-apps");
-      for (const account of accounts) {
-        const matches = apps.filter((a) => a.connection?.pipedreamSlug === account.appSlug);
-        for (const app of matches) {
-          if (app.connection?.accountId === account.id && app.connection?.healthy === account.healthy) continue;
-          await serverPatchAuthed(`/api/panel-apps/${app.id}/connection`, {
-            pipedreamSlug: account.appSlug,
-            accountId: account.id,
-            healthy: account.healthy,
-          });
-        }
-      }
-    } catch (err) {
-      console.warn("[connectors] server app-connection sync failed:", err instanceof Error ? err.message : err);
-    }
-  }
-
   getCachedAccounts(): ConnectedAccount[] {
     return this.cachedAccounts;
   }
@@ -177,20 +120,17 @@ export class ConnectorManager extends EventEmitter {
   async disconnectAccount(accountId: string): Promise<boolean> {
     try {
       const removed = this.cachedAccounts.find((a) => a.id === accountId);
-      const res = await serverPostAuthed<DisconnectResponse>("/api/connectors/disconnect", { accountId });
-      if (res.ok) {
-        this.cachedAccounts = this.cachedAccounts.filter((a) => a.id !== accountId);
-        if (removed && this.appConnector) {
-          const app = this.appConnector.findByPipedreamSlug(removed.appSlug);
-          if (app?.connection?.accountId === accountId) {
-            this.appConnector.setConnection(app.id, { pipedreamSlug: removed.appSlug });
-          }
+      await getClient().connections.personalDisconnect(accountId);
+      this.cachedAccounts = this.cachedAccounts.filter((a) => a.id !== accountId);
+      if (removed && this.appConnector) {
+        const app = this.appConnector.findByPipedreamSlug(removed.appSlug);
+        if (app?.connection?.accountId === accountId) {
+          this.appConnector.setConnection(app.id, { pipedreamSlug: removed.appSlug });
         }
-        await this.refreshMcp();
-        this.emit("changed");
-        return true;
       }
-      return false;
+      await this.refreshMcp();
+      this.emit("changed");
+      return true;
     } catch {
       return false;
     }
@@ -209,14 +149,14 @@ export class ConnectorManager extends EventEmitter {
    */
   async connectApp(appSlug: string): Promise<{ ok: boolean; error?: string }> {
     // Connections available to all tiers — no pay gate.
-    // Get connect token from yo-server
+    // Start a personal connect session (the server keeps project keys).
     let connectUrl: string;
     try {
-      const res = await serverPostAuthed<ConnectTokenResponse>("/api/connectors/connect", { appSlug });
-      if (!res.ok || !res.connectUrl) {
-        return { ok: false, error: res.error || "Failed to get connect token" };
+      const session = await getClient().connections.personalConnect(appSlug);
+      if (!session.connectUrl) {
+        return { ok: false, error: "Failed to get connect token" };
       }
-      connectUrl = res.connectUrl;
+      connectUrl = session.connectUrl;
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "Server error" };
     }

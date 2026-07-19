@@ -66,7 +66,7 @@ export function extractConnectorCalls(worker: string): Array<{ connector: string
 
 
 // ── Runtime-semantics checks (statically catchable classes found in real
-//    William builds — keep-in-sync with glyphh-william validate.ts) ────────
+//    Glyphh builds — keep-in-sync with glyphh-glyphh validate.ts) ────────
 
 /** glyphh.call targets must be host capabilities — a worker calling its own
  *  handlers through glyphh.call errors at runtime (call functions directly). */

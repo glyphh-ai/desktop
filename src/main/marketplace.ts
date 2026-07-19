@@ -7,12 +7,13 @@
  * with developer identity, rating, media, pricing, and per-org release/
  * install state — that's the next server pass). Until it lands, this serves a
  * PLACEHOLDER catalog so the storefront UI is fully renderable and reviewable.
- * When the server routes exist, `listMarketplace` switches to `serverGetAuthed`
- * and the placeholder is deleted.
+ * When the server routes exist, `listMarketplace` switches to the SDK's apps
+ * client and the placeholder is deleted.
  */
 
-import { serverGetAuthed, serverPostAuthed } from "./auth.js";
-import { invalidateServerCache } from "./server-cache.js";
+import type { AppListing, InstalledApp } from "@glyphh/client";
+import { getClient } from "./glyphh-client.js";
+import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 
 export interface MarketplaceApp {
   id: string;
@@ -183,21 +184,61 @@ function toApp(s: Seed, scope: "public" | "private", installedSlugs: Set<string>
 
 async function installedSlugSet(): Promise<Set<string>> {
   try {
-    const apps = await serverGetAuthed<Array<{ slug: string }>>("/api/panel-apps");
+    const apps = await fetchOrgApps();
     return new Set(apps.map((a) => a.slug));
   } catch { return new Set(); }
+}
+
+/** The thin server AppListing lifted into the storefront card shape — fields
+ *  the listing doesn't carry yet (ratings, categories, media) stay empty. */
+function listingToApp(l: AppListing, installed: Set<string>): MarketplaceApp {
+  return {
+    id: l.slug,
+    slug: l.slug,
+    name: l.name,
+    tagline: l.description ?? "",
+    description: l.description ?? undefined,
+    developer: { name: "", verified: false },
+    rating: 0,
+    ratingCount: 0,
+    priceCredits: 0,
+    category: "",
+    scope: l.visibility === "public" ? "public" : "private",
+    featured: false,
+    popular: l.installs > 0,
+    connections: [],
+    version: l.version,
+    installed: installed.has(l.slug),
+  };
 }
 
 /** List the marketplace for a scope, filtered + paginated. */
 export async function listMarketplace(query: MarketplaceQuery): Promise<MarketplaceResponse> {
   if (USE_SERVER) {
-    const qs = new URLSearchParams();
-    qs.set("scope", query.scope);
-    if (query.category) qs.set("category", query.category);
-    if (query.q) qs.set("q", query.q);
-    if (query.sort) qs.set("sort", query.sort);
-    if (query.page) qs.set("page", String(query.page));
-    return serverGetAuthed<MarketplaceResponse>(`/api/marketplace/apps?${qs.toString()}`);
+    const client = getClient();
+    const [listings, installedApps] = await Promise.all([
+      client.apps.browse(),
+      client.apps.installed().catch(() => [] as InstalledApp[]),
+    ]);
+    const installedSlugs = new Set(installedApps.map((a) => a.slug));
+    const q = (query.q || "").trim().toLowerCase();
+    const scoped = listings
+      .filter((l) => (query.scope === "public" ? l.visibility === "public" : l.visibility !== "public"))
+      .filter((l) => !q || l.name.toLowerCase().includes(q) || (l.description ?? "").toLowerCase().includes(q))
+      .map((l) => listingToApp(l, installedSlugs));
+    if (query.sort === "newest") scoped.sort((a, b) => a.name.localeCompare(b.name));
+    else scoped.sort((a, b) => Number(b.popular) - Number(a.popular));
+    const page = Math.max(1, query.page || 1);
+    const start = (page - 1) * PAGE_SIZE;
+    return {
+      items: scoped.slice(start, start + PAGE_SIZE),
+      total: scoped.length,
+      page,
+      pageSize: PAGE_SIZE,
+      categories: [],
+      featured: scoped.filter((a) => a.featured).slice(0, 4),
+      popular: scoped.filter((a) => a.popular).slice(0, 8),
+    };
   }
 
   // Placeholder path.
@@ -241,8 +282,8 @@ export async function installMarketplaceApp(id: string): Promise<{ ok: boolean; 
     return { ok: false, error: "The marketplace is a preview — publishing and install go live with the server update." };
   }
   try {
-    const app = await serverPostAuthed<{ slug?: string }>(`/api/marketplace/apps/${encodeURIComponent(id)}/install`, {});
-    invalidateServerCache("/api/panel-apps");
+    const app = await getClient().apps.install(id);
+    invalidateOrgApps();
     return { ok: true, slug: app?.slug };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -370,8 +411,29 @@ function pick<T>(arr: T[], seed: number): T { return arr[seed % arr.length]; }
 /** Build the full detail payload for one app id (`mkt_<scope>_<slug>`). */
 export async function getMarketplaceApp(id: string): Promise<MarketplaceAppDetail | null> {
   if (USE_SERVER) {
-    try { return await serverGetAuthed<MarketplaceAppDetail>(`/api/marketplace/apps/${encodeURIComponent(id)}`); }
-    catch { return null; }
+    try {
+      const client = getClient();
+      const [listing, installedApps] = await Promise.all([
+        client.apps.get(id),
+        client.apps.installed().catch(() => [] as InstalledApp[]),
+      ]);
+      const base = listingToApp(listing, new Set(installedApps.map((a) => a.slug)));
+      return {
+        ...base,
+        description: listing.description ?? "",
+        highlights: [],
+        worksWith: [],
+        screenshots: [],
+        plans: [],
+        ratingBreakdown: [],
+        reviews: [],
+        launchedAt: listing.createdAt,
+        updatedAt: listing.updatedAt,
+        dataAccess: [],
+        languages: [],
+        similar: [],
+      };
+    } catch { return null; }
   }
 
   const m = /^mkt_(public|private)_(.+)$/.exec(id);

@@ -54,8 +54,11 @@
   <!-- Onboarding gate — matches the yo-platform auth-shell look & feel. -->
   <div id="onboarding-overlay" class="hidden">
     <div class="auth-shell">
-      <button id="onboarding-close">&times;</button>
       <header class="auth-shell-header">
+        <!-- Inside the drag header on purpose: a no-drag element nested in the
+             drag region reliably carves out its rect (a sibling one does not
+             on macOS), so the button stays clickable in the frameless window. -->
+        <button id="onboarding-close">&times;</button>
         <div class="auth-shell-brand">
           <span class="onboarding-wordmark">
             <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />

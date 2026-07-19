@@ -29,14 +29,14 @@ export function glyphhPath(...segments: string[]): string {
 // ── Per-user scoping ─────────────────────────────────────────
 //
 // The client respects the authenticated user: everything user-owned
-// (user-state.sqlite, William chats, …) resolves under
+// (user-state.sqlite, Glyphh chats, …) resolves under
 // ~/.glyphh/users/<userId>/ once a session is known, so two accounts on one
 // machine can never see each other's local state. Before auth resolves,
 // scoped paths fall back to the legacy machine-global locations — the first
 // real login ADOPTS those files (they were that user's) via user-scope.ts.
 //
 // State lives here (the import root — nothing imports into app-paths) so
-// local-db / william-context / user-scope can all read it without cycles.
+// local-db / glyphh-context / user-scope can all read it without cycles.
 
 let activeUserId: string | null = null;
 

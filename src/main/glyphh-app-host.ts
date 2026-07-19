@@ -41,8 +41,8 @@ import os from "os";
 import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
 import { glyphhPath } from "./app-paths.js";
-import { serverGetAuthed, serverPostAuthed, serverPatchAuthed } from "./auth.js";
-import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
+import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
+import { getClient } from "./glyphh-client.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
@@ -244,9 +244,10 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   };
   let updated = false;
   try {
-    const existing = await serverGetAuthed<Array<{ id: string; slug: string; launchConfig?: Record<string, unknown> | null }>>("/api/panel-apps")
+    const existing = await fetchOrgApps()
       .then((apps) => apps.find((a) => a.slug === manifest.slug))
       .catch(() => undefined);
+    const client = getClient();
     if (existing) {
       // Config vars (launchConfig.secrets) are USER data, not bundle data —
       // they must survive app updates, which otherwise replace launchConfig.
@@ -254,12 +255,22 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       if (secrets && typeof secrets === "object") {
         (fields.launchConfig as Record<string, unknown>).secrets = secrets;
       }
-      await serverPatchAuthed(`/api/panel-apps/${existing.id}`, fields);
+      await client.apps.updateEntry(existing.slug, {
+        name: fields.name,
+        nativeRef: fields.execPath,
+        config: fields.launchConfig,
+      });
       updated = true;
     } else {
-      await serverPostAuthed("/api/panel-apps", fields);
+      await client.apps.createEntry({
+        kind: "native",
+        slug: fields.slug,
+        name: fields.name,
+        nativeRef: fields.execPath,
+        config: fields.launchConfig,
+      });
     }
-    invalidateServerCache("/api/panel-apps");
+    invalidateOrgApps();
     // Tell every open window the app library changed so the Apps page
     // re-fetches — without this, an app installed over the MCP relay
     // doesn't appear until the user manually reloads.
@@ -529,7 +540,9 @@ function workerSpecFromRow(row: AppRow): AppWorkerSpec | null {
 
 async function findAppRow(slug: string): Promise<AppRow | undefined> {
   const key = String(slug || "").trim().toLowerCase();
-  const apps = await cachedServerGet<AppRow[]>("/api/panel-apps").catch(() => []);
+  // The shared row types launchConfig loosely; AppRow narrows it to the
+  // Glyphh-app keys this module reads.
+  const apps = await fetchOrgApps().catch(() => []) as AppRow[];
   return apps.find((a) => isGlyphhAppRow(a) && a.slug.toLowerCase() === key);
 }
 
@@ -545,7 +558,9 @@ function withAppApiKey(app: AppRow, args: Record<string, unknown>): Record<strin
 
 /** Every installed Glyphh app + the MCP tools it exposes (for app_list_tools). */
 export async function listInstalledAppTools(): Promise<Array<{ app: string; name: string; tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }>> {
-  const apps = await cachedServerGet<AppRow[]>("/api/panel-apps").catch(() => []);
+  // The shared row types launchConfig loosely; AppRow narrows it to the
+  // Glyphh-app keys this module reads.
+  const apps = await fetchOrgApps().catch(() => []) as AppRow[];
   return apps
     .filter((a) => isGlyphhAppRow(a))
     .map((a) => ({

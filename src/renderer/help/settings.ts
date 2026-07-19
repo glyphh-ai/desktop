@@ -22,10 +22,10 @@ const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!
 let mcpSectionRefresh: () => void = () => {};
 
 function initSettings() {
-  document.getElementById("william-compact-save")?.addEventListener("click", () => {
-    const wcp = document.getElementById("william-compact-prompt") as HTMLTextAreaElement | null;
-    const status = document.getElementById("william-compact-status");
-    void Promise.resolve(window.yo.setPreference?.("williamCompactionPrompt", (wcp?.value || "").trim())).then(() => {
+  document.getElementById("glyphh-agent-compact-save")?.addEventListener("click", () => {
+    const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
+    const status = document.getElementById("glyphh-agent-compact-status");
+    void Promise.resolve(window.yo.setPreference?.("glyphhCompactionPrompt", (wcp?.value || "").trim())).then(() => {
       if (status) { status.textContent = "Saved."; setTimeout(() => { status.textContent = ""; }, 1800); }
     });
   });
@@ -380,9 +380,9 @@ function initSettings() {
 
 
 async function loadSettings() {
-  // William: standing compaction guidance + training capture
-  const wcp = document.getElementById("william-compact-prompt") as HTMLTextAreaElement | null;
-  if (wcp) wcp.value = String((await window.yo.getPreference?.("williamCompactionPrompt", "")) || "");
+  // Glyphh: standing compaction guidance + training capture
+  const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
+  if (wcp) wcp.value = String((await window.yo.getPreference?.("glyphhCompactionPrompt", "")) || "");
 
   settingsStatus.textContent = "";
   const accountInfo = await window.yo.getAccountInfo();

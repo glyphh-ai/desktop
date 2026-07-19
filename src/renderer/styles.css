@@ -465,6 +465,52 @@ body {
 .onboarding-error { color: var(--danger); }
 .onboarding-success { color: var(--text); }
 
+/* ── Device-flow confirmation code (square tiles) ─────────── */
+
+#onboarding-overlay .device-code-wrap {
+  margin-top: 1.75rem;
+  text-align: center;
+}
+#onboarding-overlay .device-code-wrap .auth-shell-lede {
+  margin-bottom: 0.75rem;
+}
+#onboarding-overlay .device-code-grid {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+#onboarding-overlay .device-code-tile {
+  width: 44px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--white);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 1.5rem;
+  font-weight: 600;
+  user-select: text;
+}
+#onboarding-overlay .device-code-sep {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+}
+#onboarding-overlay .device-code-wrap .auth-shell-meta {
+  margin-top: 1.75rem;
+}
+
+/* The "get a new code" button clears the fallback link — this block sits
+   directly under it, so the generic .auth-shell-actions top margin is too
+   tight to read as a separate step. */
+#onboarding-overlay .device-code-wrap + .auth-shell-actions {
+  margin-top: 2.25rem;
+}
+
 /* ── auth-shell (ported from yo-platform globals.css) ──────── */
 
 #onboarding-overlay .auth-shell {

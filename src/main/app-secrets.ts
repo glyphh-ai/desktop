@@ -27,8 +27,8 @@
 
 import { safeStorage } from "electron";
 import { encryptField, decryptField } from "./local-db.js";
-import { serverPatchAuthed } from "./auth.js";
-import { cachedServerGet, invalidateServerCache } from "./server-cache.js";
+import { getClient } from "./glyphh-client.js";
+import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const MAX_VALUE_CHARS = 32_768;
@@ -71,15 +71,19 @@ function readSecrets(launchConfig: AppRowLite["launchConfig"]): SecretsMap {
 }
 
 async function findRow(appId: string): Promise<AppRowLite | undefined> {
-  const apps = await cachedServerGet<AppRowLite[]>("/api/panel-apps").catch(() => [] as AppRowLite[]);
+  const apps = await fetchOrgApps().catch(() => [] as AppRowLite[]);
   return apps.find((a) => a.id === appId);
 }
 
 async function patchSecrets(row: AppRowLite, secrets: SecretsMap): Promise<void> {
-  await serverPatchAuthed(`/api/panel-apps/${row.id}`, {
-    launchConfig: { ...(row.launchConfig || {}), secrets },
+  // Written into the app entry's launcher config, NOT the server's own config-var
+  // store (/api/apps/:slug/secrets): those values are readable server-side, while
+  // everything here is safeStorage ciphertext the server must never be able to
+  // decrypt. Keep it that way — see this file's header.
+  await getClient().apps.updateEntry(row.slug, {
+    config: { ...(row.launchConfig || {}), secrets },
   });
-  invalidateServerCache("/api/panel-apps");
+  invalidateOrgApps();
 }
 
 /** Key names + set-dates only — never values (there is no "get value" IPC). */

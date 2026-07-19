@@ -24,7 +24,7 @@ import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 import { agentRun } from "./glyphh-app-agent.js";
 import { secretValueFromRow } from "./app-secrets.js";
-import { cachedServerGet } from "./server-cache.js";
+import { fetchOrgApps } from "./org-apps.js";
 
 interface LlmAppRow {
   slug: string;
@@ -51,7 +51,7 @@ const DEFAULT_MODELS: Record<RunProvider, string> = {
 
 async function findLlmApp(slug: string): Promise<LlmAppRow | undefined> {
   const key = String(slug || "").trim().toLowerCase();
-  const apps = await cachedServerGet<LlmAppRow[]>("/api/panel-apps").catch(() => []);
+  const apps = await fetchOrgApps().catch(() => [] as LlmAppRow[]);
   return apps.find((a) => a.appArchetype === "llm" && a.slug.toLowerCase() === key);
 }
 
