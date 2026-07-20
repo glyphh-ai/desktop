@@ -40,6 +40,7 @@ import { fetchOrgApps } from "./org-apps";
 import { assemblePrompt, compactIfNeeded, compactNow, registerGlyphhContextIpc } from "./glyphh-agent-context";
 import { downloadGlyphhModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId, cachedManifest } from "./glyphh-agent-models";
 import { getExplicitWorkingDirectory } from "./working-directory";
+import { getClient } from "./glyphh-client";
 import { startModelRouter, stopModelRouter, registerModelRouterIpc, effectiveFrontierModel } from "./model-router";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
@@ -60,168 +61,19 @@ export function isGlyphhRunActive(): boolean {
   return !!active;
 }
 
-// ── Runtime management — the model server is invisible to the user ────────
+// ── Model access ──────────────────────────────────────────────────────────
 //
-// ensureGlyphhServing() makes 127.0.0.1:<port> answer before any run:
-// adopt a server that's already up (a dev terminal instance keeps working),
-// else spawn llama-server as a managed child and wait through the model
-// load. The child dies with the app (will-quit → shutdownGlyphh). If the
-// configured base URL points at another machine, we never spawn — reach it
-// or fail with a clear error.
+// There is no local inference. Every turn runs on a HOSTED model resolved by
+// the control plane (catalog ∩ org-supported ∩ workspace-allowed), so every
+// turn is metered, attributable, and inside the allow-list. On-device
+// EMBEDDINGS are unaffected — they are a separate, tiny model that never
+// touches the governed catalog (see glyphh-agent-embeddings.ts).
 
-/** The managed llama-server's context window (`-c` below). The router
- *  budgets every local turn against this — glyphh-context's CTX_TOKENS
- *  mirrors it (kept private there to avoid the module cycle). */
-export const LOCAL_CTX_TOKENS = 32768;
-
-let managed: ChildProcess | null = null;
-let ensuring: Promise<void> | null = null; // single-flight
-
-/** HARD GATE: a managed model that is no longer in the manifest (the org
- *  scoped it away) is shut down immediately — the list governs live
- *  processes, not just the picker. Runs after every manifest refresh. */
-export function gateManagedModel(): void {
-  if (!managed || !managedModelPath) return;
-  const files = new Set(cachedManifest().map((m) => m.file));
-  const base = managedModelPath.split("/").pop() || managedModelPath;
-  if (!files.has(base)) {
-    console.warn(`[glyphh] ${base} is no longer org-approved — shutting the local model down`);
-    try { managed.kill(); } catch { /* already gone */ }
-    managed = null;
-    managedModelPath = null;
-  }
-}
-
-/** Port to manage, or null when the base URL isn't this machine. */
-function localPort(): number | null {
-  try {
-    const u = new URL(baseUrl());
-    if (u.hostname === "127.0.0.1" || u.hostname === "localhost") {
-      return Number(u.port) || 8089;
-    }
-  } catch { /* malformed pref */ }
-  return null;
-}
-
-/** llama-server binary: preference → brew paths → PATH (dev terminals). */
-function findServerBin(): string {
-  const pref = String(getPreference("glyphhServerBin", "")).trim();
-  const candidates = [
-    ...(pref ? [pref] : []),
-    "/opt/homebrew/bin/llama-server",
-    "/usr/local/bin/llama-server",
-  ];
-  for (const c of candidates) if (existsSync(c)) return c;
-  return "llama-server";
-}
-
-/** Model weights for the SELECTED tier — resolved from the manifest ONLY.
- *  THE RULE: the manifest (server-scoped, or the bootstrap registry when the
- *  server has never been reached) is the one list; a file on disk that isn't
- *  in it never starts. No path prefs, no dev fallbacks. */
-function findModel(): string | null {
-  const desired = resolveDesiredModel();
-  if (!desired) return null;
-  // Selected tier not downloaded yet → the ensure path downloads it.
-  return localModelPath(desired);
-}
-
-/** The managed child's model path — a selection change restarts lazily. */
-let managedModelPath: string | null = null;
-
-async function healthy(timeoutMs = 1200): Promise<boolean> {
-  try {
-    const r = await fetch(`${baseUrl()}/health`, { signal: AbortSignal.timeout(timeoutMs) });
-    return r.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function ensureGlyphhServing(): Promise<void> {
-  if (ensuring) return ensuring;
-  ensuring = ensureInner().finally(() => { ensuring = null; });
-  return ensuring;
-}
-
-async function ensureInner(): Promise<void> {
-  // A selection change invalidates the managed child — kill it so the new
-  // tier spawns below (adopted external servers are the user's business).
-  const want = findModel();
-  if (managed && want && managedModelPath && want !== managedModelPath) {
-    try { managed.kill(); } catch { /* gone */ }
-    managed = null;
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  if (await healthy()) return; // adopted (external terminal) or our child
-  const port = localPort();
-  if (port == null) {
-    throw new Error(`The local model server at ${baseUrl()} is unreachable (remote URL — Glyphh only manages a local one)`);
-  }
-  if (managed) { try { managed.kill(); } catch { /* already gone */ } managed = null; }
-
-  let model = findModel();
-  if (!model) {
-    // Transparent setup: pull the right tier from the manifest (progress
-    // rides glyphh:setup → the composer spinner). Signed-out or offline
-    // surfaces the manifest error with the manual path as fallback.
-    try {
-      model = await downloadGlyphhModel();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(msg);
-    }
-  }
-  const bin = findServerBin();
-  managedModelPath = model;
-  const args = [
-    "-m", model,
-    "--host", "127.0.0.1", "--port", String(port),
-    // 32k window: the SDK loop's system prompt + tool declarations are
-    // bigger than the old prose loop's — 16k left no room to work.
-    "--jinja", "-c", String(LOCAL_CTX_TOKENS), "-ngl", "99",
-  ];
-  const child = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
-  let stderrTail = "";
-  child.stderr?.on("data", (d) => { stderrTail = (stderrTail + String(d)).slice(-2000); });
-  managed = child;
-  child.on("exit", () => { if (managed === child) managed = null; });
-
-  // Wait through the model load (several GB) — /health turns 200 when ready.
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const deadline = Date.now() + 180_000;
-    const finish = (err?: Error) => {
-      if (settled) return;
-      settled = true;
-      clearInterval(poll);
-      child.off("error", onError);
-      child.off("exit", onExit);
-      if (err) reject(err); else resolve();
-    };
-    const onError = (e: Error) => finish(new Error(`couldn't start llama-server (${bin}): ${e.message}`));
-    const onExit = (code: number | null) => {
-      const tail = stderrTail.split("\n").filter(Boolean).slice(-3).join(" · ");
-      finish(new Error(`llama-server exited (${code ?? "?"}) before serving${tail ? ` — ${tail}` : ""}`));
-    };
-    child.on("error", onError);
-    child.on("exit", onExit);
-    const poll = setInterval(() => {
-      void healthy(1500).then((up) => {
-        if (up) finish();
-        else if (Date.now() > deadline) finish(new Error("llama-server didn't become healthy within 3 minutes"));
-      });
-    }, 800);
-  });
-}
-
-/** Kill the managed server + the slicer (no-op for an adopted external
- *  runtime). Wired to app will-quit — nothing outlives the client. */
+/** Abort any in-flight run and stop the on-device embedder. Wired to app
+ *  will-quit — nothing outlives the client. */
 export function shutdownGlyphh(): void {
   active?.ctrl.abort();
-  stopModelRouter();
   stopEmbedServer();
-  if (managed) { try { managed.kill(); } catch { /* already gone */ } managed = null; }
 }
 
 // ── External access gate ──────────────────────────────────────────────────
@@ -245,7 +97,6 @@ export function assertGlyphhExternalAllowed(via: "relay" | "local-mcp"): void {
 export function registerGlyphhIpc(): void {
   registerGlyphhPermissionIpc();
   registerGlyphhContextIpc();
-  registerModelRouterIpc();
   ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[] }) => {
     if (active) throw new Error("a run is already in progress");
     const chatId = String(payload?.chatId || "");
@@ -259,7 +110,6 @@ export function registerGlyphhIpc(): void {
     setRunAttachments(attachments.map((a) => a.path));
     // Assembly is token-true (needs the server for /tokenize) — bring the
     // runtime up first so counting and completion share one warm process.
-    await ensureGlyphhServing();
     const replyBudget = effortMaxTokens();
     const messages = await assemblePrompt(chatId, replyBudget);
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
@@ -287,7 +137,6 @@ export function registerGlyphhIpc(): void {
     if (active) return { ok: false, reason: "wait for the current run to finish" };
     const chatId = String(p?.chatId || "");
     if (!chatId) return { ok: false, reason: "chatId is required" };
-    await ensureGlyphhServing();
     return compactNow(chatId, effortMaxTokens(), (msgs, opts) => glyphhComplete(msgs, opts), String(p?.focus || ""));
   });
 
@@ -305,30 +154,27 @@ export function registerGlyphhIpc(): void {
     return saveClipboardImage(p.bytes);
   });
 
-  // The gate needs current truth: re-pull the org-scoped manifest every
-  // 15 minutes and shut down anything that fell off the list.
-  setInterval(() => {
-    void refreshManifestIfStale(true).then(() => gateManagedModel()).catch(() => { /* offline */ });
-  }, 15 * 60_000).unref?.();
-
+  // The models a turn may run on: the workspace-resolved set, straight from
+  // the control plane. There is no local tier and nothing to download — the
+  // renderer's picker is a choice among hosted models the caller is allowed.
   ipcMain.handle("glyphh-agent-models-list", async () => {
-    const models = await refreshManifestIfStale();
-    gateManagedModel();
-    const desired = resolveDesiredModel();
-    return {
-      selected: selectedModelId(),
-      resolved: desired?.id ?? null,
-      models: models.map((m) => ({
-        id: m.id, name: m.name, minRamGB: m.minRamGB, size: m.size,
-        status: m.status ?? "available",
-        usage: m.usage ?? "",
-        downloaded: (m.status ?? "available") === "available" && !!localModelPath(m),
-      })),
-    };
-  });
-  ipcMain.handle("glyphh-agent-status", async () => {
-    const up = await healthy(1500);
-    return { up, mode: up ? (managed ? "managed" : "external") : "down" };
+    try {
+      const models = await getClient().models.available();
+      return {
+        selected: String(getPreference("glyphhModel", "")).trim() || null,
+        resolved: await effectiveModel(),
+        models: models.map((m) => ({
+          id: m.id,
+          name: m.name,
+          provider: m.providerSlug,
+          source: m.source,
+          inputCreditsPerMTok: m.inputCreditsPerMTok,
+          outputCreditsPerMTok: m.outputCreditsPerMTok,
+        })),
+      };
+    } catch {
+      return { selected: null, resolved: null, models: [] };
+    }
   });
 }
 
@@ -348,46 +194,38 @@ export interface GlyphhCompleteOpts {
 }
 
 export async function glyphhComplete(messages: ChatMessage[], opts: GlyphhCompleteOpts = {}): Promise<string> {
-  await ensureGlyphhServing();
-  const res = await fetch(`${baseUrl()}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages,
-      stream: true,
-      temperature: opts.temperature ?? 0.3,
-      max_tokens: opts.maxTokens ?? 4096,
-      ...(opts.schema ? { response_format: { type: "json_schema", json_schema: { name: "turn", schema: opts.schema } } } : {}),
-    }),
-    signal: opts.signal,
+  // One metered turn through the SDK — the single egress for model traffic.
+  // Non-streaming: every caller here (history folding, summaries, one-shot
+  // relay/MCP turns) wants the finished text, and `onDelta` only ever drove a
+  // progress spinner. It fires once with the whole reply so callers still work.
+  const client = getClient();
+  const model = await effectiveModel();
+  if (!model) throw new Error("no model available — your workspace allows none, or you're signed out");
+  const text = await client.gateway.text({
+    model,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    temperature: opts.temperature ?? 0.3,
+    maxTokens: opts.maxTokens ?? 4096,
   });
-  if (!res.ok || !res.body) throw new Error(`The local model server answered HTTP ${res.status}`);
-
-  // OpenAI-style SSE: "data: {json}" lines, closed by "data: [DONE]".
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  let text = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (data === "[DONE]") continue;
-      try {
-        const j = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
-        const delta = j.choices?.[0]?.delta?.content;
-        if (delta) { text += delta; opts.onDelta?.(delta); }
-      } catch { /* keep-alive / partial line */ }
-    }
-  }
+  if (text) opts.onDelta?.(text);
   return text;
 }
+
+/** The model a turn runs on: the user's pick when the workspace allows it,
+ *  else the first allowed model. Null when nothing is allowed. */
+export async function effectiveModel(): Promise<string | null> {
+  const pref = String(getPreference("glyphhModel", "")).trim();
+  const bare = (id: string) => (id.includes("::") ? id.slice(id.indexOf("::") + 2) : id).toLowerCase();
+  try {
+    const available = await getClient().models.available();
+    if (!available.length) return null;
+    const hit = pref ? available.find((m) => bare(m.id) === bare(pref)) : undefined;
+    return (hit ?? available[0]).id;
+  } catch {
+    return pref || null; // offline — trust the pick
+  }
+}
+
 
 // ── The loop — Claude Agent SDK over the slicer ────────────────────────────
 //
