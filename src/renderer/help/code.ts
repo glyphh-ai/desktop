@@ -14,6 +14,7 @@ import { gotoSection } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
+import { attachSlashMenu } from "./slash-menu.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline"; attachments?: AttachRef[]; decline?: { kind: string; url: string } }
@@ -43,10 +44,9 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
   auto: "Routine work runs unattended: edits, shell commands, and connected-account calls are auto-approved. Only actions flagged dangerous — destructive commands (rm -rf, sudo, force-push) or writes escaping the working folder — still stop and ask.",
   bypass: "No gates at all: every action runs without asking, including dangerous commands and writes outside the working folder. Only for sessions you fully trust — prefer Auto mode for everyday unattended runs.",
 };
-// Loop: which agent loop runs the session — served by Build → Loops on the
-// platform (role-scoped). This chip replaced the old effort dial (the SDKs
-// never took an effort param); the glyphhEffort preference still exists for
-// the slicer's escalation budget but is no longer surfaced here.
+// Loop: which agent loop runs the session. This chip replaced the old effort
+// dial; the dial's turn/token tiers are gone with it — an attended session is
+// governed by its human, budgets by the resolved model's own limits.
 let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }> = [
   { id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true },
 ];
@@ -213,7 +213,6 @@ async function refreshLoops(): Promise<void> {
     const r = await window.yo.loopsList?.();
     if (r?.loops?.length) { loops = r.loops; loopsCanBuild = !!r.canBuild; }
     if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = loops[0]?.id || "default";
-    document.querySelector<HTMLElement>('.help-nav-item[data-section="loops"]')?.classList.toggle("hidden", !loopsCanBuild);
     paintChips();
   } catch { /* offline — the built-in default stands */ }
 }
@@ -1327,11 +1326,25 @@ function paintAskDock(): void {
   if (!item) return;
 
   if (item.type === "approval") {
-    dock.appendChild(dockHead(item.kind, "warn", item));
+    // Human labels — a raw kind ("dangerous") says the class, not the ask.
+    const KIND_LABEL: Record<string, string> = {
+      dangerous: "Dangerous — needs your OK",
+      command: "Run a command",
+      edit: "Make a change",
+      network: "Network access",
+      read: "Read",
+    };
+    dock.appendChild(dockHead(KIND_LABEL[item.kind] ?? item.kind, "warn", item));
     const title = document.createElement("div");
     title.className = "cad-title";
     title.textContent = item.title;
     dock.appendChild(title);
+    if (item.kind === "dangerous" && !item.detail) {
+      const why = document.createElement("div");
+      why.className = "cad-why";
+      why.textContent = "Outside auto mode's safe bounds — these always ask.";
+      dock.appendChild(why);
+    }
     if (item.detail) {
       const det = document.createElement("pre");
       det.className = "cad-detail";
@@ -1456,6 +1469,16 @@ function initGlyphhAgentEvents(): void {
     }
     broadcastTimeline(true);
     if (d.phase === "start") {
+      // COMMIT the text streamed so far before appending the tool row, and
+      // start a fresh live block after it. Without this the live bubble stays
+      // pinned at the bottom while tool rows insert above it — the run reads
+      // as spooling upward and "stuck" even though it is advancing. The real
+      // order is text → tool → more text, flowing DOWN the page.
+      if (streamText.trim()) {
+        chat.messages.push({ role: "assistant", text: streamText, at: Date.now() });
+        streamText = "";
+        streamBubble = null;
+      }
       chat.messages.push({ role: "assistant", kind: "tool", text: `⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`, at: Date.now() });
     } else if (d.phase === "done") {
       const bad = d.denied || d.failed;
@@ -1616,6 +1639,9 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   el("code-new-chat")?.addEventListener("click", newChat);
+  // "/" in the composer pops the installed-skill menu at the caret.
+  const composerTa = input();
+  if (composerTa) attachSlashMenu(composerTa);
   // Cmd+. / Ctrl+. opens the command center from any section. Registered in
   // the home-panel document (owns gotoSection + the switcher overlay), NOT
   // renderer.ts (the index shell — different webContents, no overlay reach).
@@ -1686,6 +1712,12 @@ export function initCode(): void {
     glyphhLoop = lp;
     void refreshLoops();
     paintChips();
+    // The model chip renders from the STORED loop's slots — the early refresh
+    // at menu creation ran before this preference loaded, so without this the
+    // chip shows the fallback until the menu is first opened.
+    await refreshModelList();
+    // Cold start can race auth: no slots yet → one quiet retry.
+    if (!picker.currentRoles().length) setTimeout(() => void refreshModelList(), 2500);
   })();
   const ta = input();
   ta?.addEventListener("keydown", (e) => {
@@ -1720,4 +1752,19 @@ export function initCode(): void {
     renderHistory();
   })();
   void applyPanelPrefs();
+}
+
+/**
+ * Seed the agent's composer and jump to it — the "Create with AI" path from
+ * the library editors. Rides the CURRENT session (the seed is a prompt, not a
+ * context wipe); a first-ever visit simply lands on the fresh composer.
+ */
+export function seedComposer(text: string): void {
+  gotoSection("code");
+  const ta = input();
+  if (!ta) return;
+  ta.value = text;
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
 }

@@ -18,6 +18,7 @@ import { initGrid } from "./grid-ui.js";
 import { initSearchClears } from "./search-clear.js";
 import { yoConfirm } from "./yo-modal.js";
 import type { RoleView as LoopRoleView } from "./help/model-picker.js";
+import type { LibEnvelope } from "./help/library-types.js";
 
 type TabInfo = { id: string; name: string; favicon?: string; layoutFavicons?: string[]; pinned?: boolean; url?: string };
 
@@ -322,6 +323,24 @@ declare global {
       glyphhSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
       glyphhRemember: (fact: string) => Promise<boolean>;
       adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
+      libraryLoopGet: (ref: string) => Promise<LibEnvelope>;
+      libraryLoopCreate: (input: unknown) => Promise<LibEnvelope>;
+      libraryLoopUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
+      libraryLoopDelete: (ref: string) => Promise<LibEnvelope>;
+      librarySkillsList: () => Promise<LibEnvelope>;
+      librarySkillGet: (ref: string) => Promise<LibEnvelope>;
+      librarySkillCreate: (input: unknown) => Promise<LibEnvelope>;
+      librarySkillUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
+      librarySkillDelete: (ref: string) => Promise<LibEnvelope>;
+      libraryAgentsList: () => Promise<LibEnvelope>;
+      libraryAgentGet: (ref: string) => Promise<LibEnvelope>;
+      libraryAgentCreate: (input: unknown) => Promise<LibEnvelope>;
+      libraryAgentUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
+      libraryAgentDelete: (ref: string) => Promise<LibEnvelope>;
+      libraryAgentTasks: (ref: string) => Promise<LibEnvelope>;
+      libraryAgentTaskAdd: (ref: string, input: unknown) => Promise<LibEnvelope>;
+      libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => Promise<LibEnvelope>;
+      libraryAgentTaskDelete: (ref: string, taskId: string) => Promise<LibEnvelope>;
       loopRoles: (loop: string) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;

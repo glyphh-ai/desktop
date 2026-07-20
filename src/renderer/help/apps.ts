@@ -7,6 +7,7 @@ import {
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
+import { gotoSection } from "./navigation.js";
 
 declare const Chart: any;
 
@@ -1546,7 +1547,7 @@ function initApps() {
   // "Open Connections" from the required-connections warning.
   document.getElementById("app-req-conns-goto")?.addEventListener("click", (e) => {
     e.preventDefault();
-    document.querySelector<HTMLButtonElement>('.help-nav-item[data-section="connections"]')?.click();
+    gotoSection("connections");
   });
 
   const addNameInput = document.getElementById("app-add-name") as HTMLInputElement;
@@ -1915,15 +1916,16 @@ function initApps() {
     }
   });
 
-  // Draggable split divider
+  // Draggable split divider. Pointer CAPTURE, not document mouse listeners:
+  // the preview pane is a webview, and a webview swallows mouse events — the
+  // old document-level mouseup never fired over it, so the handle stuck to
+  // the cursor until the next click on host chrome.
   const divider = document.getElementById("app-builder-divider")!;
   const controls = document.querySelector(".app-builder-controls") as HTMLElement;
-  let dragging = false;
   let startX = 0;
   let startW = 0;
-
-  divider.addEventListener("mousedown", (e) => {
-    dragging = true;
+  divider.addEventListener("pointerdown", (e) => {
+    divider.setPointerCapture(e.pointerId);
     startX = e.clientX;
     startW = controls.offsetWidth;
     divider.classList.add("dragging");
@@ -1931,20 +1933,20 @@ function initApps() {
     document.body.style.userSelect = "none";
     e.preventDefault();
   });
-
-  document.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
+  divider.addEventListener("pointermove", (e) => {
+    if (!divider.hasPointerCapture(e.pointerId)) return;
     const w = Math.max(200, Math.min(800, startW + (e.clientX - startX)));
     controls.style.width = w + "px";
   });
-
-  document.addEventListener("mouseup", () => {
-    if (!dragging) return;
-    dragging = false;
+  const releaseDivider = (e: PointerEvent): void => {
+    if (!divider.hasPointerCapture(e.pointerId)) return;
+    divider.releasePointerCapture(e.pointerId);
     divider.classList.remove("dragging");
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
-  });
+  };
+  divider.addEventListener("pointerup", releaseDivider);
+  divider.addEventListener("pointercancel", releaseDivider);
 }
 
 export { loadApps, initApps, closeAppDetail, pickElement, saveMapping };

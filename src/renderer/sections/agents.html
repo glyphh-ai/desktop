@@ -1,0 +1,27 @@
+        <!-- Agents — READ-first. The AGENT authors agents (via /create-agent or
+             "Create with AI"); this page shows the workforce: what each one is,
+             the loop and models it runs, and its schedule with real last-run
+             status. The only hand controls are OPERATIONAL: live/pause, task
+             enable/disable, delete. -->
+        <div class="help-section" data-section="agents">
+          <h2>Agents</h2>
+          <p class="section-desc">Standing workers that run a loop on a schedule. Built and edited by the Glyphh agent — click one to see what it does and when.</p>
+          <div id="agents-toolbar" class="crud-toolbar">
+            <input id="agent-search" type="text" class="crud-search" placeholder="Search agents..." spellcheck="false" autocomplete="off" />
+            <button id="agent-new-btn" class="action-btn primary">+ New with AI</button>
+          </div>
+          <div id="agents-list" class="crud-cards"></div>
+          <div id="agent-editor" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="agent-back-link">&larr; Agents</a>
+              <a id="agent-ai-btn" class="lib-ai-link" title="Have the Glyphh agent change this agent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
+              <div class="crud-spacer"></div>
+              <label class="lib-live-toggle" title="Keep this agent's tasks armed">
+                <input type="checkbox" id="agent-live" /> <span>Live</span>
+              </label>
+              <button id="agent-delete-btn" class="action-btn danger">Delete</button>
+            </div>
+            <div id="agent-form-error" class="crud-form-error hidden"></div>
+            <div id="agent-detail" class="lib-read"></div>
+          </div>
+        </div>

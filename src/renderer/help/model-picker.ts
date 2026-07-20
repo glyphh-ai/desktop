@@ -62,13 +62,14 @@ function modelName(id: string | null): string {
 }
 
 /**
- * What the chip reads. One slot shows the model; several show how many are bound,
- * because four model names do not fit on a chip.
+ * What the chip reads. One slot shows the model; several show each slot with its
+ * binding — "Planner: Fable 5 / Builder: Sonnet 5" — so a multi-model loop's
+ * whole cast is visible without opening the menu.
  */
 export function chipText(): string {
   if (!roles.length) return "Model";
   if (roles.length === 1) return modelName(roles[0].modelId) || "Model";
-  return `${roles.length} models`;
+  return roles.map((r) => `${r.label}: ${modelName(r.modelId) || "—"}`).join(" / ");
 }
 
 export function chipTitle(): string {

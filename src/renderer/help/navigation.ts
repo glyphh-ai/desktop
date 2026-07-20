@@ -8,15 +8,16 @@ import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps, openNewAppForm } from "./apps.js";
 import { loadSettings, initSettings } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
+import { loadLoops, initLoopsEvents } from "./loops.js";
+import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
+import { loadAgents, initAgentsEvents } from "./agents.js";
 import { initSkills } from "./skills.js";
 import { loadCode, initCode } from "./code.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 
 const overlay = getHelpOverlay();
-const navItems = document.querySelectorAll<HTMLButtonElement>(".help-nav-item");
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
-const navSubItems = document.querySelectorAll<HTMLButtonElement>(".help-nav-sub-item");
 
 // ── Open / close ─────────────────────────────────────────
 
@@ -37,7 +38,6 @@ export function openSettings(sub?: string) {
     const settingsPanels = document.querySelectorAll<HTMLDivElement>(".help-section[data-section='settings'] .settings-panel");
     settingsNavItems.forEach((n) => n.classList.toggle("active", n.dataset.sub === sub));
     settingsPanels.forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
-    navSubItems.forEach((s) => s.classList.toggle("active", s.dataset.section === "settings" && s.dataset.sub === sub));
   }
   openHelp();
 }
@@ -96,11 +96,8 @@ function switchToSection(sectionId: string) {
   // (code) the current session highlights in Recents; on any other section
   // the nav item highlights and the Recents highlight is suppressed (CSS).
   document.body.dataset.railSection = sectionId;
-  navItems.forEach((n) => n.classList.remove("active"));
   sections.forEach((s) => s.classList.remove("active"));
-  const navItem = document.querySelector(`.help-nav-item[data-section="${sectionId}"]`) as HTMLElement;
   const section = document.querySelector(`.help-section[data-section="${sectionId}"]`) as HTMLElement;
-  if (navItem) navItem.classList.add("active");
   if (section) section.classList.add("active");
   // App rail: highlight the active nav item (Home / Connections / …). The
   // agent (code) is the base — no nav item is active while it's showing.
@@ -108,20 +105,18 @@ function switchToSection(sectionId: string) {
     b.classList.toggle("active", b.dataset.section === sectionId));
 }
 
-function collapseAllDropdowns() {
-  navItems.forEach((n) => n.classList.remove("expanded"));
-}
-
 function activeSection(): string {
-  return (document.querySelector(".help-nav-item.active") as HTMLElement)?.dataset.section || "guide";
+  // The rail's single source of section truth — set by switchToSection.
+  return document.body.dataset.railSection || "guide";
 }
 
 export function loadActiveSection(explicit?: string) {
-  // Prefer the explicitly-navigated section. Falling back to the active nav
-  // item can resolve to "guide" for sections with no `help-nav-item`.
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
   else if (sec === "drips") loadDrips();
+  else if (sec === "loops") void loadLoops();
+  else if (sec === "skills") void loadSkillsLibrary();
+  else if (sec === "agents") void loadAgents();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "apps") loadApps();
   else if (sec === "code") loadCode();
@@ -133,8 +128,8 @@ export function loadActiveSection(explicit?: string) {
 
 /**
  * Navigate to a section (and optional sub-panel). Driven by the app's
- * left-rail nav — the in-page `#help-nav` sidebar is hidden, but its buttons
- * stay in the DOM so `switchToSection` / `loadActiveSection` keep working.
+ * left-rail nav; `body.dataset.railSection` is the single source of section
+ * truth. (The old #help-nav sidebar — hidden but load-bearing — is deleted.)
  */
 export function gotoSection(section: string, sub?: string): void {
   // Content sections need the window body — if Glyphh is collapsed to the
@@ -148,14 +143,7 @@ export function gotoSection(section: string, sub?: string): void {
   // launch (unless a fixed startup page is set in Settings).
   void window.yo.setPreference?.("homeLastSection", section);
   void window.yo.setPreference?.("homeLastSub", sub || "");
-  collapseAllDropdowns();
-  navSubItems.forEach((s) => s.classList.remove("active"));
   switchToSection(section);
-  if (sub) {
-    document
-      .querySelector(`.help-nav-sub-item[data-section="${section}"][data-sub="${sub}"]`)
-      ?.classList.add("active");
-  }
   if (section === "docs") {
     loadDocs();
     if (sub) showDocPanel(sub);
@@ -182,7 +170,6 @@ const docsPanels = document.querySelectorAll<HTMLDivElement>(".docs-panel");
 function showDocPanel(docId: string) {
   docsSubNav.forEach((n) => n.classList.toggle("active", n.dataset.doc === docId));
   docsPanels.forEach((p) => p.classList.toggle("active", p.dataset.doc === docId));
-  navSubItems.forEach((s) => s.classList.toggle("active", s.dataset.section === "docs" && s.dataset.sub === docId));
   const container = document.querySelector(".docs-panels");
   if (container) container.scrollTop = 0;
 }
@@ -192,50 +179,6 @@ function showDocPanel(docId: string) {
 export function initHelp() {
   document.getElementById("help-close")?.addEventListener("click", closeHelp);
 
-  document.getElementById("user-menu-platform")!.addEventListener("click", () => {
-    closeHelp();
-    window.yo.execCommand(`dip ${window.yo.platformUrl}`);
-  });
-  document.getElementById("user-menu-logout")!.addEventListener("click", async () => {
-    overlay.classList.add("hidden");
-    await window.yo.logout();
-  });
-
-  navItems.forEach((item) => {
-    item.addEventListener("click", () => {
-      if (item.classList.contains("has-sub")) {
-        item.classList.toggle("expanded");
-      } else {
-        collapseAllDropdowns();
-        navSubItems.forEach((s) => s.classList.remove("active"));
-        switchToSection(item.dataset.section!);
-        loadActiveSection();
-      }
-    });
-  });
-
-  navSubItems.forEach((sub) => {
-    sub.addEventListener("click", () => {
-      const sectionId = sub.dataset.section!;
-      const subId = sub.dataset.sub!;
-      collapseAllDropdowns();
-      switchToSection(sectionId);
-      navSubItems.forEach((s) => s.classList.remove("active"));
-      sub.classList.add("active");
-
-      if (sectionId === "docs") {
-        loadDocs();
-        showDocPanel(subId);
-      } else if (sectionId === "settings") {
-        loadActiveSection();
-        const settingsNavItems = document.querySelectorAll<HTMLButtonElement>(".help-section[data-section='settings'] .settings-nav-item");
-        const settingsPanels = document.querySelectorAll<HTMLDivElement>(".help-section[data-section='settings'] .settings-panel");
-        settingsNavItems.forEach((n) => n.classList.toggle("active", n.dataset.sub === subId));
-        settingsPanels.forEach((p) => p.classList.toggle("active", p.dataset.sub === subId));
-      }
-    });
-  });
-
   const settingsSubNav = document.querySelectorAll<HTMLButtonElement>(".help-section[data-section='settings'] .settings-nav-item");
   const settingsSubPanels = document.querySelectorAll<HTMLDivElement>(".help-section[data-section='settings'] .settings-panel");
   settingsSubNav.forEach((btn) => {
@@ -243,8 +186,6 @@ export function initHelp() {
       // Docs has its own topics nav, so it opens as its own section.
       const jump = btn.dataset.jump;
       if (jump) {
-        collapseAllDropdowns();
-        navSubItems.forEach((s) => s.classList.remove("active"));
         switchToSection(jump);
         loadActiveSection();
         return;
@@ -255,7 +196,6 @@ export function initHelp() {
       btn.classList.add("active");
       const target = document.querySelector(`.help-section[data-section='settings'] .settings-panel[data-sub="${sub}"]`);
       if (target) target.classList.add("active");
-      navSubItems.forEach((s) => s.classList.toggle("active", s.dataset.section === "settings" && s.dataset.sub === sub));
       // Support & About live inside Settings now — populate their dynamic bits.
       if (sub === "support") loadSupport();
       else if (sub === "about") loadAbout();
@@ -277,10 +217,27 @@ export function initHelp() {
   // base, Home is a nav item like the rest, and clicking the ACTIVE section
   // returns to the agent — so every section toggles back to code.
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item").forEach((btn) => {
+    if (!btn.dataset.section) return; // the More toggle is not a section
     btn.addEventListener("click", () => {
       gotoSection(btn.classList.contains("active") ? "code" : btn.dataset.section!);
     });
   });
+
+  // ── "More" disclosure — Loops/Skills/Agents fold under it. ALWAYS starts
+  // closed (deliberately not remembered — the rail resets compact every
+  // launch); navigating INTO a folded section opens the group for the moment,
+  // or the active highlight would be invisible.
+  const moreToggle = document.getElementById("rail-more-toggle");
+  const moreGroup = document.getElementById("rail-more-group");
+  const setMore = (open: boolean) => {
+    moreToggle?.classList.toggle("open", open);
+    moreGroup?.classList.toggle("open", open);
+  };
+  moreToggle?.addEventListener("click", () => setMore(!moreGroup?.classList.contains("open")));
+  const moreSections = new Set(["loops", "skills", "agents"]);
+  new MutationObserver(() => {
+    if (moreSections.has(document.body.dataset.railSection || "")) setMore(true);
+  }).observe(document.body, { attributes: true, attributeFilter: ["data-rail-section"] });
 
   // User area — dropdown opens upward: Settings / Account / Logout.
   const GEAR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
@@ -330,6 +287,9 @@ export function initHelp() {
   initConnections();
   initLayoutsEvents();
   initDripsEvents();
+  initLoopsEvents();
+  initSkillsLibraryEvents();
+  initAgentsEvents();
   initSkills();
   initCode();
 }

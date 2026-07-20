@@ -117,6 +117,9 @@ export interface MarketplaceAppDetail extends MarketplaceApp {
   similar: MarketplaceApp[];
 }
 
+/** The `{ ok, data | error }` envelope every library IPC handler returns. */
+interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
+
 /** One model slot a loop declares, resolved for this caller — what a picker renders. */
 interface LoopRoleView {
   name: string;
@@ -422,6 +425,25 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("ada-recall", { query, k }) as Promise<Array<{ content: string; score: number }>>,
   adaAsk: (op: unknown) => ipcRenderer.invoke("ada-ask", { op }) as Promise<{ ok: boolean; answer?: string; error?: string }>,
   adaStats: () => ipcRenderer.invoke("ada-stats") as Promise<{ thoughts: number; slots: number; keys: number }>,
+  // ── Library: loops / skills / agents (SDK pass-throughs; {ok,data|error}) ──
+  libraryLoopGet: (ref: string) => ipcRenderer.invoke("library-loop-get", ref) as Promise<LibEnvelope>,
+  libraryLoopCreate: (input: unknown) => ipcRenderer.invoke("library-loop-create", input) as Promise<LibEnvelope>,
+  libraryLoopUpdate: (ref: string, patch: unknown) => ipcRenderer.invoke("library-loop-update", ref, patch) as Promise<LibEnvelope>,
+  libraryLoopDelete: (ref: string) => ipcRenderer.invoke("library-loop-delete", ref) as Promise<LibEnvelope>,
+  librarySkillsList: () => ipcRenderer.invoke("library-skills-list") as Promise<LibEnvelope>,
+  librarySkillGet: (ref: string) => ipcRenderer.invoke("library-skill-get", ref) as Promise<LibEnvelope>,
+  librarySkillCreate: (input: unknown) => ipcRenderer.invoke("library-skill-create", input) as Promise<LibEnvelope>,
+  librarySkillUpdate: (ref: string, patch: unknown) => ipcRenderer.invoke("library-skill-update", ref, patch) as Promise<LibEnvelope>,
+  librarySkillDelete: (ref: string) => ipcRenderer.invoke("library-skill-delete", ref) as Promise<LibEnvelope>,
+  libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
+  libraryAgentGet: (ref: string) => ipcRenderer.invoke("library-agent-get", ref) as Promise<LibEnvelope>,
+  libraryAgentCreate: (input: unknown) => ipcRenderer.invoke("library-agent-create", input) as Promise<LibEnvelope>,
+  libraryAgentUpdate: (ref: string, patch: unknown) => ipcRenderer.invoke("library-agent-update", ref, patch) as Promise<LibEnvelope>,
+  libraryAgentDelete: (ref: string) => ipcRenderer.invoke("library-agent-delete", ref) as Promise<LibEnvelope>,
+  libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
+  libraryAgentTaskAdd: (ref: string, input: unknown) => ipcRenderer.invoke("library-agent-task-add", ref, input) as Promise<LibEnvelope>,
+  libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,
+  libraryAgentTaskDelete: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-delete", ref, taskId) as Promise<LibEnvelope>,
   // The loop decides the picker's shape: one slot → one dropdown, two → two.
   loopRoles: (loop: string) =>
     ipcRenderer.invoke("loop-roles", { loop }) as Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>,

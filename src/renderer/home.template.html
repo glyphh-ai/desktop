@@ -17,7 +17,6 @@
     #help-layout { position: absolute; inset: 0; display: flex; }
     /* The nav lives in the app's left rail now — keep it in the DOM (its
        buttons still drive section switching) but hide the sidebar. */
-    #help-nav { display: none !important; }
   </style>
   <script src="monaco/loader.js"></script>
   <script>
@@ -55,55 +54,6 @@
     </div>
     <div id="help-overlay">
     <div id="help-layout">
-      <nav id="help-nav">
-        <div class="help-brand">
-          <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
-          <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
-        </div>
-        <button class="help-nav-item" data-section="dashboard">Home</button>
-        <div class="help-nav-group">
-          <button class="help-nav-item has-sub" data-section="docs">Docs</button>
-          <div class="help-nav-sub">
-            <button class="help-nav-sub-item" data-section="docs" data-sub="navigation">Navigation</button>
-            <button class="help-nav-sub-item" data-section="docs" data-sub="commands">Commands</button>
-            <button class="help-nav-sub-item" data-section="docs" data-sub="apps">Apps</button>
-            <button class="help-nav-sub-item" data-section="docs" data-sub="skills">Skills</button>
-            <button class="help-nav-sub-item" data-section="docs" data-sub="layouts">Layouts</button>
-            <button class="help-nav-sub-item" data-section="docs" data-sub="devspaces">Dev Spaces</button>
-
-            <button class="help-nav-sub-item" data-section="docs" data-sub="agent">Agent</button>
-            <button class="help-nav-sub-item" data-section="docs" data-sub="mcp">MCP</button>
-          </div>
-        </div>
-        <button class="help-nav-item" data-section="apps">Apps</button>
-        <button class="help-nav-item" data-section="agents">Agents</button>
-        <button class="help-nav-item" data-section="layouts">Layouts</button>
-        <button class="help-nav-item" data-section="drips">Drips</button>
-        <button class="help-nav-item" data-section="code">Code</button>
-        <button class="help-nav-item hidden" data-section="loops">Loops</button>
-        <!-- Skills export lives on Settings › MCP now -->
-        <!-- MCP merged into Apps -->
-        <div class="help-nav-group">
-          <button class="help-nav-item has-sub" data-section="settings">Settings</button>
-          <div class="help-nav-sub">
-            <button class="help-nav-sub-item" data-section="settings" data-sub="general">General</button>
-            <button class="help-nav-sub-item" data-section="settings" data-sub="appearance">Appearance</button>
-            <button class="help-nav-sub-item" data-section="settings" data-sub="account">Account</button>
-            <button class="help-nav-sub-item" data-section="settings" data-sub="mcp">MCP Server</button>
-          </div>
-        </div>
-        <div class="help-nav-spacer"></div>
-        <div class="help-nav-user">
-          <button class="help-nav-user-item" id="user-menu-platform">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-            <span>Platform</span>
-          </button>
-          <button class="help-nav-user-item help-nav-user-danger" id="user-menu-logout">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            <span>Sign Out</span>
-          </button>
-        </div>
-      </nav>
 
       <!-- App rail — the persistent left rail of the Code-primary surface:
            Home|Code switcher, sessions, section nav, and the user area.
@@ -111,7 +61,7 @@
       <aside id="app-rail">
         <!-- Drag strip under the fixed chrome cluster. -->
         <div class="app-rail-top"></div>
-        <button id="code-new-chat" class="code-new-session" type="button">
+        <button id="code-new-chat" class="code-new-session code-new-session-link" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>New session</span>
         </button>
@@ -136,6 +86,24 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
             <span>Drips</span>
           </button>
+          <button id="rail-more-toggle" class="app-rail-nav-item app-rail-more-toggle" type="button">
+            <span class="rail-more-caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            <span>More</span>
+          </button>
+          <div id="rail-more-group" class="app-rail-more-group">
+            <button class="app-rail-nav-item" data-section="loops">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg>
+              <span>Loops</span>
+            </button>
+            <button class="app-rail-nav-item" data-section="skills">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg>
+              <span>Skills</span>
+            </button>
+            <button class="app-rail-nav-item" data-section="agents">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>
+              <span>Agents</span>
+            </button>
+          </div>
         </nav>
         <button id="recents-toggle" class="code-rail-label code-rail-disclosure" type="button">
           <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -182,6 +150,8 @@
         <!--#include sections/code.html -->
 
         <!--#include sections/loops.html -->
+        <!--#include sections/skills.html -->
+        <!--#include sections/agents.html -->
 
         <!-- Apps -->
         <!--#include sections/apps.html -->

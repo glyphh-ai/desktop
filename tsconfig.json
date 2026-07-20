@@ -25,6 +25,7 @@
   "exclude": [
     "node_modules",
     "dist",
+    "src/renderer/skill-flow.tsx",
     "src/renderer/renderer.ts",
     "src/renderer/app-window.ts",
     "src/renderer/layout-window.ts",

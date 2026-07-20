@@ -2460,7 +2460,7 @@ body.account-locked #dl-btn-wrap {
      consistent modal width everywhere. */
   width: min(420px, 86vw);
   box-sizing: border-box;
-  text-align: center;
+  text-align: left;
 }
 /* One dialog skeleton everywhere: head (title), body (detail / input),
    foot (Cancel + primary action, right-aligned). */
@@ -2681,144 +2681,6 @@ body.account-locked #dl-btn-wrap {
 }
 
 /* Sidebar nav */
-#help-nav {
-  width: 180px;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  padding: 20px 0;
-  flex-shrink: 0;
-}
-
-.help-brand {
-  padding: 0 20px;
-  margin-bottom: 24px;
-}
-
-.help-brand .glyphh-logo { height: 28px; }
-
-.help-nav-item {
-  background: none;
-  border: none;
-  text-align: left;
-  padding: 8px 20px;
-  color: var(--text-3);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border-left: 2px solid transparent;
-}
-
-.help-nav-item:hover { color: var(--text); background: var(--surface-2); }
-
-.help-nav-item.active {
-  color: var(--white);
-  border-left-color: var(--accent);
-  background: var(--surface-2);
-}
-
-.help-nav-spacer { flex: 1; }
-
-.help-nav-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.help-nav-item.has-sub {
-  position: relative;
-}
-
-.help-nav-item.has-sub::after {
-  content: '';
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: 4px solid transparent;
-  border-top-color: var(--text-3);
-  transition: transform 0.15s;
-}
-
-.help-nav-item.has-sub.expanded::after {
-  transform: translateY(-50%) rotate(180deg);
-  border-top-color: var(--accent);
-}
-
-.help-nav-sub {
-  display: none;
-  flex-direction: column;
-}
-
-.help-nav-item.has-sub.expanded + .help-nav-sub {
-  display: flex;
-}
-
-.help-nav-sub-item {
-  background: none;
-  border: none;
-  text-align: left;
-  padding: 6px 20px 6px 32px;
-  color: var(--text-3);
-  font-size: 12px;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.help-nav-sub-item:hover {
-  color: var(--text);
-}
-
-.help-nav-sub-item.active {
-  color: var(--text);
-}
-
-.help-nav-user {
-  padding: 12px 12px 8px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.help-nav-user-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 7px 8px;
-  border: none;
-  background: none;
-  color: var(--text-3);
-  font-size: 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s;
-  text-align: left;
-}
-
-.help-nav-user-item:hover {
-  color: var(--text);
-  background: var(--active-bg);
-}
-
-.help-nav-user-item svg {
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-
-.help-nav-user-item:hover svg {
-  opacity: 1;
-}
-
-.help-nav-user-danger:hover {
-  color: var(--danger-soft);
-  background: var(--danger-bg);
-}
-
-.help-nav-user-danger:hover svg {
-  stroke: var(--danger-soft);
-}
 
 .help-close-x {
   position: absolute;
@@ -4484,14 +4346,16 @@ ol.docs-list li::before {
   min-height: 0;
 }
 
-.app-builder-divider {
+.app-builder-divider,
+.lib-split-divider {
   width: 1px;
   background: var(--border-2);
   cursor: col-resize;
   position: relative;
   flex-shrink: 0;
 }
-.app-builder-divider::after {
+.app-builder-divider::after,
+.lib-split-divider::after {
   content: "";
   position: absolute;
   top: 0;
@@ -4500,8 +4364,11 @@ ol.docs-list li::before {
   width: 7px;
 }
 .app-builder-divider:hover,
-.app-builder-divider.dragging {
-  background: var(--border-3);
+.app-builder-divider.dragging,
+.lib-split-divider:hover,
+.lib-split-divider.dragging {
+  /* Purple when grabbed — the affordance IS the highlight. */
+  background: var(--accent);
 }
 
 .app-builder-preview {
@@ -11361,6 +11228,12 @@ select:focus {
   text-align: left;
 }
 .code-new-session:hover { border-color: var(--accent); color: var(--text-bright); }
+/* Link treatment: same row, no button chrome. */
+.code-new-session.code-new-session-link {
+  border: none; background: none; padding: 8px 6px; border-radius: 6px;
+  color: var(--accent); font-weight: 500;
+}
+.code-new-session.code-new-session-link:hover { color: var(--text-bright); background: var(--hover); }
 .code-rail-label {
   padding: 12px 14px 6px;
   font-size: 11px;
@@ -12475,6 +12348,10 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   white-space: normal;
 }
 #code-model-menu { min-width: 300px; max-width: 340px; }
+/* A multi-slot loop names every binding on the chip ("Planner: Fable 5 / …");
+   cap it so a many-slot loop cannot blow up the composer row — the title
+   attribute carries the full cast. */
+#code-model-chip { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Model picker — a loop can offer many models across several slots, so the list
    scrolls while the search stays pinned. */
@@ -12543,3 +12420,208 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 }
 .ws-monaco-save:hover { background: rgba(140, 59, 242, 0.14); }
 .ws-monaco-save.hidden { display: none; }
+
+/* ── Library pages (Loops / Skills / Agents) ─────────────────────────────── */
+.lib-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.03em;
+  background: var(--surface-3); color: var(--text-3); border: 1px solid var(--border-2);
+}
+.lib-badge-live { color: var(--accent); border-color: var(--accent); }
+.code-textarea { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; }
+.field-hint-inline { font-weight: 400; font-size: 11px; color: var(--text-3); text-transform: none; letter-spacing: 0; }
+.lib-guard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.lib-role-row { margin-bottom: 8px; }
+.lib-skill-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.lib-live-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.lib-task-row {
+  display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; font-size: 12.5px;
+}
+.lib-task-name { font-weight: 600; color: var(--text); }
+.lib-task-binding { color: var(--text-3); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+.lib-task-status { flex: 1; text-align: right; color: var(--text-3); font-size: 11px; }
+.lib-task-delete { padding: 2px 8px; font-size: 11px; }
+.lib-task-form { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+.lib-task-form .settings-input { flex: 1 1 120px; min-width: 100px; }
+
+/* ── Library editors — the app-standard form on the left, the live React-Flow
+   view on the right. Form fields are the same settings-label/settings-input
+   system the Apps page uses; only the split shell is new. ── */
+#skill-editor.crud-inline-form, #loop-editor.crud-inline-form { max-width: none; }
+/* The same horizontal rule the Apps detail draws under its header (its tab
+   bar's border-bottom) — ties the two-column editors to one look. */
+#skill-editor .crud-inline-header, #loop-editor .crud-inline-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+/* Full-bleed right, like the connections detail: the flow pane and its canvas
+   reach the window's right edge; the LIST pages keep the normal gutter. */
+#page-body:has(#skill-editor:not(.hidden)),
+#page-body:has(#loop-editor:not(.hidden)) {
+  padding-right: 0;
+}
+.lib-split { display: flex; gap: 0; flex: 1; min-height: 0; align-items: stretch; }
+.lib-split-form {
+  width: 50%; flex-shrink: 0; min-width: 0;
+  display: flex; flex-direction: column;
+  overflow-y: auto; padding-right: 16px;
+}
+/* Same vertical rhythm as the apps builder: 20px above each label, 6px to its
+   field. The first label sits snug to the top. */
+.lib-split-form .settings-label { margin-top: 20px; margin-bottom: 6px; }
+.lib-split-form .settings-label:first-child { margin-top: 8px; }
+.lib-split-form .lib-json-row { margin: 16px 0 6px; }
+.lib-split-form .settings-actions { margin-top: 24px; }
+.lib-split-flow {
+  flex: 1; min-width: 0; min-height: 560px;
+  background: var(--surface); overflow: hidden; margin-left: 16px;
+}
+
+
+
+
+/* ── Rail "More" disclosure — Loops/Skills/Agents fold under it ── */
+/* Quieter than the real destinations — it is a disclosure, not a page. Dark
+   mode dims it further; hover and open restore full presence. */
+.app-rail-more-toggle { opacity: 0.85; }
+[data-theme="dark"] .app-rail-more-toggle { opacity: 0.55; }
+.app-rail-more-toggle:hover, .app-rail-more-toggle.open { opacity: 1; }
+.app-rail-more-toggle { opacity: 0.85; }
+[data-theme="dark"] .app-rail-more-toggle { opacity: 0.55; }
+.app-rail-more-toggle:hover, .app-rail-more-toggle.open { opacity: 1; }
+.app-rail-more-toggle .rail-more-caret { transition: transform 0.14s; display: inline-flex; }
+.app-rail-more-toggle.open .rail-more-caret { transform: rotate(180deg); }
+.app-rail-more-group { display: none; }
+.app-rail-more-group.open { display: block; }
+
+/* "Create with AI" — a quiet link beside the breadcrumb, NEW pages only:
+   an existing object is edited by hand, a blank one is worth delegating. */
+.lib-ai-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-left: 14px; font-size: 12.5px; color: var(--text);
+  cursor: pointer; text-decoration: none;
+}
+.lib-ai-link:hover { color: var(--text-bright); }
+/* The wand carries the accent; the words stay bright and readable. */
+.lib-ai-link svg { flex-shrink: 0; color: var(--accent); }
+
+/* ── Composer "/" skill menu — anchored at the caret ── */
+.slash-menu {
+  position: fixed; z-index: 200; width: 340px; max-height: 320px;
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); padding: 6px; overflow: hidden;
+}
+.slash-search {
+  flex-shrink: 0; height: 30px; margin-bottom: 6px; padding: 0 10px;
+  background: var(--surface-3); border: 1px solid var(--border-2); border-radius: 8px;
+  color: var(--text); font-size: 12.5px; outline: none;
+}
+.slash-search:focus { border-color: var(--accent); }
+.slash-list { overflow-y: auto; min-height: 0; }
+.slash-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  border: none; background: none; text-align: left; cursor: pointer;
+  padding: 7px 10px; border-radius: 7px; color: var(--text-2);
+}
+.slash-item.active { background: var(--hover); color: var(--text); }
+.slash-item-slug { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; font-weight: 600; flex-shrink: 0; }
+.slash-item-desc { font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.slash-empty { padding: 10px; font-size: 12px; color: var(--text-3); text-align: center; }
+
+/* Approval card explainer — why this one interrupted auto mode. */
+.cad-why { font-size: 11.5px; color: var(--text-3); margin-top: 2px; line-height: 1.45; }
+
+/* The approval chip must be READABLE — it is the thing being decided. */
+.cad-kind.warn { color: #fff; }
+
+/* Agent cards: the model cast — one initial per bound model, stable color. */
+.agent-model-cast { display: inline-flex; gap: 4px; align-items: center; margin-top: 6px; }
+.agent-model-dot {
+  width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--dot); color: #fff; font-size: 10.5px; font-weight: 700;
+}
+.agent-model-more { font-size: 10.5px; color: var(--text-3); }
+
+/* ── Library READ views — what the agent built, shown as prose ── */
+.lib-read { padding-top: 16px; }
+.lib-read-title { font-size: 20px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
+.lib-read-desc { font-size: 14px; color: var(--text-2); margin: 0 0 24px; line-height: 1.55; }
+.lib-read-meta { display: flex; flex-direction: column; gap: 9px; margin-bottom: 24px; }
+.lib-read-row { display: flex; gap: 14px; align-items: baseline; font-size: 13px; }
+.lib-read-label { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); }
+/* Inside a meta ROW the label is the fixed-width left column. Standalone (a
+   section heading like PROGRAM) it must NOT keep the 140px flex-basis — in
+   the surrounding flex COLUMN that basis becomes 140px of HEIGHT, which was
+   exactly the mystery gap under every section label. */
+.lib-read-row > .lib-read-label { flex: 0 0 140px; }
+.lib-read > .lib-read-label, .lib-read div > .lib-read-label:only-child { margin-bottom: 8px; }
+.lib-read-value { color: var(--text); min-width: 0; line-height: 1.5; }
+.lib-read-when { margin: 0 0 8px; }
+.lib-read-when p { margin: 6px 0 0; font-size: 13px; color: var(--text-2); line-height: 1.55; }
+.lib-read .lib-divider { margin: 24px 0; }
+.lib-read-code {
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 8px;
+  padding: 12px 14px; overflow-x: auto; font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px; line-height: 1.55; color: var(--text-2); margin-top: 6px;
+}
+#agent-detail.lib-read { max-width: 720px; }
+
+/* Rendered markdown in the read views (a skill's prompt as prose). */
+.lib-md-render { color: var(--text); font-size: 13px; line-height: 1.6; }
+.lib-md-render > :first-child { margin-top: 0; }
+.lib-md-render h1 { font-size: 18px; font-weight: 700; margin: 18px 0 8px; }
+.lib-md-render h2 { font-size: 15.5px; font-weight: 700; margin: 16px 0 7px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.lib-md-render h3 { font-size: 14px; font-weight: 600; margin: 14px 0 5px; }
+.lib-md-render p { margin: 0 0 12px; }
+.lib-md-render ul, .lib-md-render ol { margin: 0 0 12px; padding-left: 24px; }
+.lib-md-render li { margin: 4px 0; }
+.lib-md-render code { font-family: ui-monospace, Menlo, monospace; font-size: 0.88em; background: var(--surface-3); padding: 1px 5px; border-radius: 4px; }
+.lib-md-render pre { background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 14px; }
+.lib-md-render pre code { background: none; padding: 0; }
+.lib-md-render blockquote { margin: 0 0 12px; padding: 4px 14px; border-left: 3px solid var(--accent); color: var(--text-2); }
+
+/* ── Library tables (Loops / Skills / Drips lists) ── */
+.lib-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lib-table th {
+  text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+.lib-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); vertical-align: middle; }
+.lib-table tbody tr { cursor: pointer; }
+.lib-table tbody tr:hover td { background: var(--hover); }
+.lib-table .lib-table-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+.lib-table .lib-table-desc { max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-table .lib-table-dim { color: var(--text-3); font-size: 12px; white-space: nowrap; }
+
+/* Table row ⋯ menu (Edit / Delete). */
+.lib-table .lib-row-kebab-cell { width: 40px; text-align: right; }
+.lib-row-kebab {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; border-radius: 6px; color: var(--text-3); cursor: pointer;
+}
+.lib-row-kebab:hover { background: var(--hover); color: var(--text); }
+.lib-row-menu {
+  position: fixed; z-index: 300; min-width: 140px; padding: 5px;
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.lib-row-menu button {
+  display: flex; width: 100%; align-items: center; gap: 8px;
+  border: none; background: none; text-align: left; cursor: pointer;
+  padding: 7px 10px; border-radius: 6px; font-size: 12.5px; color: var(--text-2);
+}
+.lib-row-menu button:hover { background: var(--hover); color: var(--text); }
+.lib-row-menu button.danger { color: var(--danger); }
+.lib-row-menu-icon { display: inline-flex; align-items: center; flex-shrink: 0; color: currentColor; }
+
+/* Agent detail's one hand-form (loop + model overrides): the app's standard
+   form rhythm, bounded width so selects don't sprawl. */
+.agent-config-form { max-width: 460px; display: flex; flex-direction: column; margin-top: 4px; }
+.agent-config-form .settings-label { margin-top: 20px; margin-bottom: 6px; }
+.agent-config-form .settings-label:first-child { margin-top: 8px; }
+.agent-config-form .field-hint { margin: 6px 0 0; line-height: 1.45; }
+.agent-config-form .settings-actions { margin-top: 22px; }
