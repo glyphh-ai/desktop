@@ -9,7 +9,7 @@ function loadDocs() {
 }
 
 // ── Support ───────────────────────────────────────────────
-// Configurable via the YO_DISCORD_INVITE env var (exposed through preload),
+// Configurable via the GLYPHH_DISCORD_INVITE env var (exposed through preload),
 // falling back to the canonical server invite.
 const DISCORD_INVITE = window.yo.discordInvite || "https://discord.gg/cHGZR764D";
 

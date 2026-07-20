@@ -25,8 +25,8 @@ import { GLYPHH_DIR } from "./app-paths.js";
  */
 export const appCache = createTtlCache();
 
-export const SERVER_URL = process.env.YO_AUTH_SERVER || "https://api.glyphh.ai";
-export const PLATFORM_URL = process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai";
+export const SERVER_URL = process.env.GLYPHH_SERVER_URL || "https://api.glyphh.ai";
+export const PLATFORM_URL = process.env.GLYPHH_PLATFORM_URL || "https://platform.glyphh.ai";
 
 export const SESSION_FILE = path.join(GLYPHH_DIR, ".session");
 
