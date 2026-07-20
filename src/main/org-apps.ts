@@ -42,7 +42,9 @@ export interface OrgAppRow {
 
 const CACHE_KEY = "org-apps";
 
-/** A native app launches an executable; every other kind opens a URL. */
+/** Native and glyphh apps launch from a local path; every other kind opens a
+ *  URL. A glyphh row keeps the desktop's long-standing "glyphh-app" archetype
+ *  tag (isGlyphhAppRow and friends match on it). */
 function toRow(app: OrgApp): OrgAppRow {
   return {
     id: app.id,
@@ -52,9 +54,9 @@ function toRow(app: OrgApp): OrgAppRow {
     slug: app.slug,
     system: false,
     url: app.prodUrl,
-    isBrowser: app.kind !== "native",
+    isBrowser: app.kind !== "native" && app.kind !== "glyphh",
     execPath: app.nativeRef,
-    appArchetype: app.kind,
+    appArchetype: app.kind === "glyphh" ? "glyphh-app" : app.kind,
     launchConfig: app.config ?? null,
     connectionIds: app.requiredConnections.map((c) => c.slug),
     mcp: null,

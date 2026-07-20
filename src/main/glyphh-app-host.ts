@@ -46,7 +46,7 @@ import { getClient } from "./glyphh-client.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
-import { lintNoRemoteAssets } from "./glyphh-app-spec.js";
+import { lintRemoteAssets } from "@glyphh/client";
 import {
   initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend,
   connectorStatus, connectorTools, connectorCall,
@@ -212,7 +212,7 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     if (e.header.size > 2_000_000) continue;
     try { textEntries[e.entryName] = e.getData().toString("utf8"); } catch { /* skip */ }
   }
-  const remote = lintNoRemoteAssets(textEntries);
+  const remote = lintRemoteAssets(textEntries);
   if (remote.length) return { ok: false, error: `Bundle references remote assets (bundle them at build time): ${remote[0]}` };
 
   const dir = path.join(customAppsDir(), manifest.slug);
@@ -263,7 +263,9 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       updated = true;
     } else {
       await client.apps.createEntry({
-        kind: "native",
+        // Its own kind: the config below is the BUNDLE CONTRACT (capabilities,
+        // connectors, tools, worker), which the native allowlist rejects.
+        kind: "glyphh",
         slug: fields.slug,
         name: fields.name,
         nativeRef: fields.execPath,

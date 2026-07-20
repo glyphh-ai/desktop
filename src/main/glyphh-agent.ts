@@ -25,8 +25,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { getPreference } from "./stores/preferences-db";
 import { glyphhPath } from "./app-paths";
-import { runModel } from "./loop-selections";
-import { effortMaxTokens, effortMaxTurns, glyphhEffort, glyphhMode, registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
+import { runModel, runMaxOutputTokens } from "./loop-selections";
+import { glyphhMode, registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, type ConnectorWireDef } from "./glyphh-agent-tools";
 import { selectConnectorTools } from "./tool-vectors";
@@ -37,7 +37,7 @@ import {
 import { indexChatTurns, shortTermRecallBlock, pruneTurnVectors } from "./glyphh-agent-recall";
 import { refreshWorkspaceIndex, relevantFilesHint } from "./workspace-index";
 import { stopEmbedServer } from "./glyphh-agent-embeddings";
-import { GLYPHH_APP_SPEC } from "./glyphh-app-spec";
+import { GLYPHH_APP_SPEC } from "@glyphh/client";
 import { fetchOrgApps } from "./org-apps";
 import { assemblePrompt, compactIfNeeded, compactNow, registerGlyphhContextIpc } from "./glyphh-agent-context";
 import { getExplicitWorkingDirectory } from "./working-directory";
@@ -141,7 +141,7 @@ export function registerGlyphhIpc(): void {
     setRunAttachments(attachments.map((a) => a.path));
     // Assembly is token-true (needs the server for /tokenize) — bring the
     // runtime up first so counting and completion share one warm process.
-    const replyBudget = effortMaxTokens();
+    const replyBudget = await runMaxOutputTokens();
     const messages = await assemblePrompt(chatId, replyBudget);
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     const ctrl = new AbortController();
@@ -168,7 +168,7 @@ export function registerGlyphhIpc(): void {
     if (active) return { ok: false, reason: "wait for the current run to finish" };
     const chatId = String(p?.chatId || "");
     if (!chatId) return { ok: false, reason: "chatId is required" };
-    return compactNow(chatId, effortMaxTokens(), (msgs, opts) => glyphhComplete(msgs, opts), String(p?.focus || ""));
+    return compactNow(chatId, await runMaxOutputTokens(), (msgs, opts) => glyphhComplete(msgs, opts), String(p?.focus || ""));
   });
 
   ipcMain.handle("glyphh-agent-stop", () => {
@@ -257,6 +257,7 @@ async function workspaceExtras(): Promise<string> {
     appList ? `The user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "",
     connList ? `Connected accounts: ${connList} — each one's API tools are FIRST-CLASS tools in your toolset (real schemas; call them directly, never invent names).` : "",
     "RULE: the working folder ROOT holds the current app's project — build it there, then call update_app() to ship it (it packages the built dist/, never your source). After any change, rebuild + update_app or tool calls run the stale installed version.",
+    "RULE: update_app() is the ONLY way to ship — never a CLI, never npx, and NEVER any login/device-auth flow. Your session is already authenticated; initiating authentication is forbidden.",
     GLYPHH_APP_SPEC,
     "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
     "MEMORY: you have layers — Ada (long-term facts), the rolling summary (mid-term), and <relevant_earlier_context> blocks (short-term recall of this session's own turns). On unfamiliar code, semantic_search(query) FIRST — it finds the right spans by meaning; read_file the spans it names instead of whole files.",
@@ -284,6 +285,19 @@ async function sdkRun(
   // find_tools/call_tool built-ins reach everything else mid-run.
   const connCatalog = await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
   const ask = String(base[base.length - 1]?.content ?? "");
+
+  // A leading /slug is a SKILL reference (the composer's "/" menu, or a
+  // "Create with AI" seed): resolve it to the skill's instruction body so the
+  // model runs the skill instead of guessing what the token means. Unknown
+  // slugs pass through untouched — the text may just be a path.
+  let skillSeed = "";
+  const slashRef = /^\/([a-z0-9_-]+)\b/.exec(ask.trim());
+  if (slashRef) {
+    try {
+      const skill = await getClient().skills.get(slashRef[1]!);
+      skillSeed = `## Skill: ${skill.name}\n${skill.prompt}`;
+    } catch { /* not a skill — send as typed */ }
+  }
   const connDefs = await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
 
   // The Glyphh surface as an in-process MCP server. Builtins ride as open
@@ -351,6 +365,7 @@ async function sdkRun(
   const lastUser = [
     history ? `<conversation_so_far>\n${history}\n</conversation_so_far>` : "",
     recallBlock,
+    skillSeed,
     ask,
     attBlock,
     filesHint,
@@ -389,7 +404,6 @@ async function sdkRun(
         // cards) — the SDK's own prompt layer always defers to it.
         canUseTool: async (_tool, input) => ({ behavior: "allow" as const, updatedInput: input }),
         permissionMode: "default",
-        maxTurns: effortMaxTurns(),
         persistSession: false,
         executable: "node",
         // Token-level partials — the thread streams live instead of getting
@@ -472,7 +486,7 @@ async function sdkRun(
   } catch (err) {
     if (ctrl.signal.aborted) {
       emit("glyphh-agent:done", { stopped: true });
-      captureRun({ kind: "agent", effort: glyphhEffort(), mode: glyphhMode(), turnsUsed, stopped: true, messages: base });
+      captureRun({ kind: "agent", mode: glyphhMode(), turnsUsed, stopped: true, messages: base });
       return;
     }
     runError = err instanceof Error ? err.message : String(err);
@@ -482,7 +496,6 @@ async function sdkRun(
   // tripwire corpus — frontier turns teach the local model by example).
   captureRun({
     kind: "agent",
-    effort: glyphhEffort(),
     mode: glyphhMode(),
     turnsUsed,
     final: finalText,

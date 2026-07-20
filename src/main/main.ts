@@ -84,6 +84,8 @@ import { getClient } from "./glyphh-client";
 import { ApiError } from "@glyphh/client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
+import { registerLibraryIpc } from "./library-ipc";
+import { startAgentScheduler, stopAgentScheduler } from "./agent-scheduler";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
@@ -1280,6 +1282,10 @@ async function boot() {
     // The agent's whole IPC surface — sessions, context, runs, permissions.
     // Without this the composer has no handlers to call and simply spins.
     registerGlyphhIpc();
+    // The library pages: loops, skills, agents.
+    registerLibraryIpc();
+    // Live agents' scheduled tasks fire while the app runs.
+    startAgentScheduler();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -1962,6 +1968,7 @@ function cleanupAll() {
   // Stops an in-flight agent run and its interceptor; dropped in the
   // William → Glyphh port alongside the registration above.
   shutdownGlyphh();
+  stopAgentScheduler();
   try {
     const tabs = getPreference<string[]>("openTabs", []);
     if (tabs.includes("cypher")) {

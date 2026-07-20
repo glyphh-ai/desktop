@@ -16,12 +16,12 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { validateBundle, type Bundle } from "./glyphh-app-oracle";
-import { collectBuiltProject, manifestPathIn, lintNoRemoteAssets, type InstallFile } from "./glyphh-app-spec";
+import { validateAppBundle, lintRemoteAssets, type AppBundle } from "@glyphh/client";
+import { collectBuiltProject, manifestPathIn, type InstallFile } from "./glyphh-app-spec";
 import { installGlyphhAppBundle } from "./glyphh-app-host";
 
 /** Zip a text Bundle and run it through the host's real install gate. */
-async function packageAndInstall(bundle: Bundle): Promise<{ ok: boolean; name?: string; error?: string }> {
+async function packageAndInstall(bundle: AppBundle): Promise<{ ok: boolean; name?: string; error?: string }> {
   const zip = new AdmZip();
   for (const [file, content] of Object.entries(bundle)) {
     zip.addFile(file, Buffer.from(content, "utf8"));
@@ -88,7 +88,7 @@ export async function updateAppFromWorkdir(
       try { if (fs.statSync(f.absPath).size < 2_000_000) textAssets[f.archivePath] = fs.readFileSync(f.absPath, "utf8"); }
       catch { /* skip unreadable */ }
     }
-    const remote = lintNoRemoteAssets({ ...textAssets, "manifest.json": built.manifestJson });
+    const remote = lintRemoteAssets({ ...textAssets, "manifest.json": built.manifestJson });
     if (remote.length) throw new Error(`build ships remote assets (bundle them instead): ${remote.join("; ")}`);
 
     const r = await packageBuiltAndInstall(built.files, built.manifestJson);
@@ -98,16 +98,16 @@ export async function updateAppFromWorkdir(
   }
 
   // ── Legacy single-file app: package the folder's text files as before ─────
-  const bundle: Bundle = {};
+  const bundle: AppBundle = {};
   for (const f of fs.readdirSync(dir)) {
     const abs = path.join(dir, f);
     try {
       if (fs.statSync(abs).isFile() && fs.statSync(abs).size < 512_000) bundle[f] = fs.readFileSync(abs, "utf8");
     } catch { /* unreadable — skip */ }
   }
-  const remote = lintNoRemoteAssets(bundle);
+  const remote = lintRemoteAssets(bundle);
   if (remote.length) throw new Error(`app references remote assets (inline or bundle them instead): ${remote.join("; ")}`);
-  const v = validateBundle(bundle, lookup);
+  const v = validateAppBundle(bundle, lookup);
   if (!v.ok) throw new Error(`source fails validation: ${v.errors.join("; ")}`);
   const r = await packageAndInstall(bundle);
   if (!r.ok) throw new Error(r.error || "install failed");

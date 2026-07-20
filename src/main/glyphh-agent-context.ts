@@ -552,8 +552,8 @@ export function registerGlyphhContextIpc(): void {
     return true;
   });
   ipcMain.handle("glyphh-agent-context-usage", async (_e, p: { chatId?: string; replyBudget?: number }) => {
-    const { effortMaxTokens } = await import("./glyphh-agent-permissions");
-    return contextUsage(String(p?.chatId || ""), Number(p?.replyBudget) || effortMaxTokens());
+    const { runMaxOutputTokens } = await import("./loop-selections");
+    return contextUsage(String(p?.chatId || ""), Number(p?.replyBudget) || (await runMaxOutputTokens()));
   });
   ipcMain.handle("glyphh-agent-remember", (_e, fact: string) => {
     const f = String(fact || "").trim();

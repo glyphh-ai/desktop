@@ -13,18 +13,16 @@
  * renders inline (glyphh:approval → glyphh-approval-respond), defaulting
  * to DENY after a timeout or if the panel is gone.
  *
- * Effort (glyphhEffort preference) is the SLICER DIAL: far-left pins every
- * turn to the local model (zero cost), Superfly sends every turn to Claude,
- * and the middle stops escalate on evidence (see model-router.ts). The same
- * setting still budgets local token/turn spend below — one lever, one story:
- * more effort = more frontier = more credits.
+ * The effort dial is GONE. It rationed turns and tokens for the local-model
+ * era; an attended session is governed by its human (the Stop button), an
+ * unattended agent by its guardrails, and the reply budget by the resolved
+ * model's own maxOutputTokens (loop-selections).
  */
 
 import { ipcMain, type WebContents } from "electron";
 import { getPreference } from "./stores/preferences-db";
 
 export type GlyphhMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
-export type GlyphhEffort = "low" | "medium" | "high" | "superfly";
 export type GlyphhActionKind = "read" | "edit" | "command" | "network" | "dangerous";
 
 export interface GlyphhAction {
@@ -43,44 +41,7 @@ export function glyphhMode(): GlyphhMode {
   return MODES.includes(m) ? m : "ask";
 }
 
-export function glyphhEffort(): GlyphhEffort {
-  const e = String(getPreference("glyphhEffort", "medium"));
-  return e === "low" || e === "high" || e === "superfly" ? e : "medium";
-}
 
-/** The routing policy the slicer applies per turn (see model-router.ts):
- *  local = never escalate · assist = escalate on strong evidence ·
- *  eager = escalate readily · frontier = every turn goes to Claude. */
-export type EscalationPolicy = "local" | "assist" | "eager" | "frontier";
-
-export function escalationPolicy(): EscalationPolicy {
-  switch (glyphhEffort()) {
-    case "low": return "local";
-    case "high": return "eager";
-    case "superfly": return "frontier";
-    default: return "assist";
-  }
-}
-
-/** Agent-loop turn budget per effort tier (tool calls per run). */
-export function effortMaxTurns(): number {
-  switch (glyphhEffort()) {
-    case "low": return 4;
-    case "high": return 14;
-    case "superfly": return 24;
-    default: return 8;
-  }
-}
-
-/** Response token budget per effort tier (context is 16384 minus history). */
-export function effortMaxTokens(): number {
-  switch (glyphhEffort()) {
-    case "low": return 1024;
-    case "high": return 8192;
-    case "superfly": return 12288; // absolute max — history squeezes to fit
-    default: return 4096;
-  }
-}
 
 // ── The gate ───────────────────────────────────────────────────────────────
 

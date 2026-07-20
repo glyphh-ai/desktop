@@ -89,7 +89,23 @@ function resolveReadPath(p: unknown): { abs: string; escapes: boolean } {
  *  stay network-gated. */
 const READ_TOOL_RE = /(^|[-_.])(find|get|list|search|read|fetch|retrieve|lookup|history|show|download|count|query)([-_.]|$)/i;
 
-const DANGEROUS_CMD = /\brm\s+(-\w*[rf]\w*\s+)+|\bsudo\b|\bshutdown\b|\breboot\b|\bmkfs\b|\bdiskutil\s+erase|git\s+push\s+.*--force|>\s*\/dev\/|\bdd\s+if=/i;
+// Each rule carries the WORDS the approval card shows — a bare "dangerous"
+// chip told the user nothing about what they were approving. The /dev/ rule
+// excludes /dev/null|stdout|stderr|tty: `2>/dev/null` is not a disk write,
+// and that false positive was interrupting auto mode on harmless commands.
+// Auth flows are here on purpose: an agent must never mint itself credentials
+// — the session is already authenticated through the SDK.
+const DANGEROUS_RULES: Array<{ re: RegExp; why: string }> = [
+  { re: /\brm\s+(-\w*[rf]\w*\s+)+/i, why: "recursive/forced delete" },
+  { re: /\bsudo\b/i, why: "elevated privileges (sudo)" },
+  { re: /\bshutdown\b|\breboot\b/i, why: "system shutdown/reboot" },
+  { re: /\bmkfs\b|\bdiskutil\s+erase|\bdd\s+if=/i, why: "disk format/overwrite" },
+  { re: /git\s+push\s+.*--force/i, why: "force push (rewrites remote history)" },
+  { re: />\s*\/dev\/(?!null\b|stdout\b|stderr\b|tty\b)/i, why: "write to a device file" },
+  { re: /\b(login|logout|signin)\b|device[-_ ]?(code|login|auth)/i, why: "authentication flow — agents must never sign in" },
+];
+const dangerReasons = (cmd: string): string[] =>
+  DANGEROUS_RULES.filter((r) => r.re.test(cmd)).map((r) => r.why);
 
 function runShell(command: string, cwd: string, signal?: AbortSignal): Promise<string> {
   return new Promise((res) => {
@@ -210,7 +226,9 @@ const TOOLS: ToolDef[] = [
     doc: "list_dir(path?) — list a folder in the workspace (name, type, size)",
     action: (a) => {
       const { abs, escapes } = resolveReadPath(a.path);
-      return { kind: escapes ? "dangerous" : "read", title: `List ${abs}` };
+      return escapes
+        ? { kind: "dangerous" as const, title: `List ${abs}`, detail: `Outside your working folder — workspace tools are contained to ${workdir()}.` }
+        : { kind: "read" as const, title: `List ${abs}` };
     },
     run: async (a) => {
       const { abs } = resolveReadPath(a.path);
@@ -228,7 +246,9 @@ const TOOLS: ToolDef[] = [
     doc: "read_file(path) — read a file in the workspace (attached files too)",
     action: (a) => {
       const { abs, escapes } = resolveReadPath(a.path);
-      return { kind: escapes ? "dangerous" : "read", title: `Read ${abs}` };
+      return escapes
+        ? { kind: "dangerous" as const, title: `Read ${abs}`, detail: `Outside your working folder — workspace tools are contained to ${workdir()}.` }
+        : { kind: "read" as const, title: `Read ${abs}` };
     },
     run: async (a) => {
       const { abs } = resolveReadPath(a.path);
@@ -267,7 +287,9 @@ const TOOLS: ToolDef[] = [
     doc: "search_files(pattern, path?) — grep the workspace (regex, case-insensitive)",
     action: (a) => {
       const { abs, escapes } = resolveReadPath(a.path);
-      return { kind: escapes ? "dangerous" : "read", title: `Search "${String(a.pattern ?? "")}" in ${abs}` };
+      return escapes
+        ? { kind: "dangerous" as const, title: `Search "${String(a.pattern ?? "")}" in ${abs}`, detail: `Outside your working folder — workspace tools are contained to ${workdir()}.` }
+        : { kind: "read" as const, title: `Search "${String(a.pattern ?? "")}" in ${abs}` };
     },
     run: async (a) => {
       const { abs } = resolveReadPath(a.path);
@@ -333,7 +355,11 @@ const TOOLS: ToolDef[] = [
     // (title carries the command so the thread's run card shows WHAT ran)
     action: (a) => {
       const cmd = String(a.command ?? "");
-      return { kind: DANGEROUS_CMD.test(cmd) ? "dangerous" : "command", title: `Run: ${cmd.slice(0, 80)}`, detail: cmd };
+      const why = dangerReasons(cmd);
+      // The detail leads with WHY it was flagged, then the command itself.
+      return why.length
+        ? { kind: "dangerous" as const, title: `Run: ${cmd.slice(0, 80)}`, detail: `Flagged: ${why.join("; ")}\n\n${cmd}` }
+        : { kind: "command" as const, title: `Run: ${cmd.slice(0, 80)}`, detail: cmd };
     },
     run: async (a, signal) => runShell(String(a.command ?? ""), workdir(), signal),
   },
@@ -499,6 +525,144 @@ const TOOLS: ToolDef[] = [
       const rows = connections.map((c) =>
         `${c.slug || "?"} (${c.name || "?"})${c.enabled ? "" : " — DISABLED"}`);
       return cap(rows.join("\n") || "(no connected accounts)");
+    },
+  },
+  // ── The LIBRARY: loops, skills, agents — the objects /create-* authors. ────
+  // Without these the create-skill/loop/agent prompts said "save through the
+  // API" while the agent had no API tools at all — so it went spelunking
+  // through the user's filesystem looking for a "source tree" that does not
+  // exist. These objects live in the DB behind the SDK; these are the doors.
+  {
+    name: "loops_list",
+    doc: "loops_list() — every loop (built-ins + the org's own): slug, name, description",
+    action: () => ({ kind: "read", title: "List loops" }),
+    run: async () => {
+      const { loops } = await getClient().loops.list();
+      return cap(JSON.stringify(loops.map((l) => ({ slug: l.slug, name: l.name, description: l.description, builtIn: l.builtIn })), null, 2));
+    },
+  },
+  {
+    name: "loops_get",
+    doc: 'loops_get(slug) — one loop\'s full manifest + program source. loops_get("default") is the documented example to base new loops on',
+    action: (a) => ({ kind: "read", title: `Read loop ${String(a.slug ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await getClient().loops.get(String(a.slug ?? "default")), null, 2)),
+  },
+  {
+    name: "loops_save",
+    doc: 'loops_save(slug, name, description?, manifest?, code?) — create or update a loop. manifest: {roles:[{name,label,description}], skills:[], connections:[], memory:{read,write}}; code: the .js program (export async function start(ctx))',
+    action: (a) => ({ kind: "edit", title: `Save loop ${String(a.slug ?? "")}` }),
+    run: async (a) => {
+      const client = getClient();
+      const slug = String(a.slug ?? "");
+      if (!slug) return "ERROR: slug is required";
+      const input = {
+        slug,
+        name: String(a.name ?? slug),
+        ...(a.description !== undefined ? { description: String(a.description) } : {}),
+        ...(a.manifest !== undefined ? { manifest: a.manifest as Record<string, unknown> } : {}),
+        ...(a.code !== undefined ? { code: String(a.code) } : {}),
+      };
+      const existing = await client.loops.get(slug).catch(() => null);
+      const saved = existing && !existing.builtIn
+        ? await client.loops.update(slug, input)
+        : await client.loops.create(input);
+      return cap(`saved ✓ loop "${saved.slug}" (${saved.name})`);
+    },
+  },
+  {
+    name: "skills_list",
+    doc: "skills_list() — every skill (built-ins + the org's own): slug, name, description",
+    action: () => ({ kind: "read", title: "List skills" }),
+    run: async () => {
+      const skills = await getClient().skills.list();
+      return cap(JSON.stringify(skills.map((s) => ({ slug: s.slug, name: s.name, description: s.description, builtIn: s.builtIn ?? false })), null, 2));
+    },
+  },
+  {
+    name: "skills_get",
+    doc: "skills_get(slug) — one skill's manifest, prompt, and program",
+    action: (a) => ({ kind: "read", title: `Read skill ${String(a.slug ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await getClient().skills.get(String(a.slug ?? "")), null, 2)),
+  },
+  {
+    name: "skills_save",
+    doc: 'skills_save(slug, name, description?, manifest?, prompt?, code?) — create or update a skill. manifest: {whenToUse, allowedTools:[], requires:[], schedule?, model?}; prompt: the markdown instruction body; code optional',
+    action: (a) => ({ kind: "edit", title: `Save skill ${String(a.slug ?? "")}` }),
+    run: async (a) => {
+      const client = getClient();
+      const slug = String(a.slug ?? "");
+      if (!slug) return "ERROR: slug is required";
+      const input = {
+        slug,
+        name: String(a.name ?? slug),
+        ...(a.description !== undefined ? { description: String(a.description) } : {}),
+        ...(a.manifest !== undefined ? { manifest: a.manifest as Record<string, unknown> } : {}),
+        ...(a.prompt !== undefined ? { prompt: String(a.prompt) } : {}),
+        ...(a.code !== undefined ? { code: String(a.code) } : {}),
+      };
+      const existing = await client.skills.get(slug).catch(() => null);
+      const saved = existing && !(existing as { builtIn?: boolean }).builtIn
+        ? await client.skills.update(slug, input)
+        : await client.skills.create(input);
+      return cap(`saved ✓ skill "${saved.slug}" (${saved.name})`);
+    },
+  },
+  {
+    name: "agents_list",
+    doc: "agents_list() — the org's agents: slug, name, loop, live",
+    action: () => ({ kind: "read", title: "List agents" }),
+    run: async () => {
+      const agents = await getClient().agents.list();
+      return cap(JSON.stringify(agents.map((x) => ({ id: x.id, slug: x.slug, name: x.name, loopId: x.loopId, live: x.live })), null, 2));
+    },
+  },
+  {
+    name: "agents_save",
+    doc: 'agents_save(slug, name, description?, loopSlug?, selections?, guardrails?, live?) — create or update a standing agent. selections: {roles:{roleName:modelId}, skills:[]} within the loop\'s offer; guardrails: upper bounds (maxOutputTokens, windowCalls, maxConcurrent)',
+    action: (a) => ({ kind: "edit", title: `Save agent ${String(a.slug ?? "")}` }),
+    run: async (a) => {
+      const client = getClient();
+      const slug = String(a.slug ?? "");
+      if (!slug) return "ERROR: slug is required";
+      let loopId: string | null = null;
+      const loopSlug = a.loopSlug !== undefined ? String(a.loopSlug) : "";
+      if (loopSlug && loopSlug !== "default") {
+        const loop = await client.loops.get(loopSlug).catch(() => null);
+        if (!loop) return `ERROR: no loop "${loopSlug}" — loops_list() shows what exists`;
+        loopId = loop.builtIn ? null : loop.id;
+      }
+      const input = {
+        slug,
+        name: String(a.name ?? slug),
+        ...(a.description !== undefined ? { description: String(a.description) } : {}),
+        loopId,
+        ...(a.selections !== undefined ? { selections: a.selections as Record<string, unknown> } : {}),
+        ...(a.guardrails !== undefined ? { guardrails: a.guardrails as Record<string, unknown> } : {}),
+        ...(a.live !== undefined ? { live: Boolean(a.live) } : {}),
+      };
+      const existing = (await client.agents.list()).find((x) => x.slug === slug);
+      const saved = existing
+        ? await client.agents.update(existing.id, input)
+        : await client.agents.create(input);
+      return cap(`saved ✓ agent "${saved.slug}" (${saved.name})${saved.live ? " — live" : ""}`);
+    },
+  },
+  {
+    name: "agent_task_add",
+    doc: 'agent_task_add(agentSlug, name, kind, target, cron, args?) — bind a schedule to an agent. kind: "skill"|"loop"|"app_command"; target: the slug; cron: five fields ("0 8 * * *")',
+    action: (a) => ({ kind: "edit", title: `Schedule task on ${String(a.agentSlug ?? "")}` }),
+    run: async (a) => {
+      const client = getClient();
+      const agent = (await client.agents.list()).find((x) => x.slug === String(a.agentSlug ?? ""));
+      if (!agent) return `ERROR: no agent "${String(a.agentSlug ?? "")}" — agents_list() shows what exists`;
+      const task = await client.agents.addTask(agent.id, {
+        name: String(a.name ?? "task"),
+        kind: (a.kind === "loop" || a.kind === "app_command" ? a.kind : "skill"),
+        target: String(a.target ?? ""),
+        cron: String(a.cron ?? ""),
+        args: (a.args ?? {}) as Record<string, unknown>,
+      });
+      return cap(`scheduled ✓ "${task.name}" — ${task.kind}:${task.target} @ ${task.cron}`);
     },
   },
   {

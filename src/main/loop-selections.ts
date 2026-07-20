@@ -126,3 +126,22 @@ export async function runContextWindow(role = "default"): Promise<number | null>
     return null;
   }
 }
+
+/**
+ * The reply budget for a turn: the resolved model's own maxOutputTokens.
+ *
+ * This replaced the effort dial's fixed tiers (1024/8192/12288) — local-era
+ * rationing on models that declare their real limit in the catalog. Unknown
+ * falls back to a workable 8192 rather than a crippled floor.
+ */
+export async function runMaxOutputTokens(role = "default"): Promise<number> {
+  const loop = currentLoop();
+  try {
+    const roles = await resolveRoles(loop);
+    const slot = roles.find((r) => r.name === role) ?? roles[0];
+    const max = slot?.modelId ? slot.choices.find((c) => c.id === slot.modelId)?.maxOutputTokens : null;
+    return max ?? 8192;
+  } catch {
+    return 8192;
+  }
+}
