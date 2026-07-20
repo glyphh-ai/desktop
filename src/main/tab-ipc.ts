@@ -3,13 +3,13 @@ import type { BrowserWindow } from "electron";
 import type { PanelManager } from "./panel-manager";
 import type { LayoutManager } from "./layout-manager";
 import type { AppConnector } from "./app-connector";
-import type { YoInterceptor } from "./yo-interceptor";
+import type { PanelCommandInterceptor } from "./panel-commands";
 
 interface TabIpcDeps {
   panelManager: PanelManager;
   layoutManager: LayoutManager;
   appConnector: AppConnector;
-  yoInterceptor: YoInterceptor;
+  panelCommands: PanelCommandInterceptor;
   getMainWindow: () => BrowserWindow | null;
   openTabs: string[];
   tabBrowserCounter: { value: number };

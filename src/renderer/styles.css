@@ -12474,7 +12474,40 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   color: var(--text-3);
   white-space: normal;
 }
-#code-model-menu { min-width: 258px; max-width: 300px; }
+#code-model-menu { min-width: 300px; max-width: 340px; }
+
+/* Model picker — a loop can offer many models across several slots, so the list
+   scrolls while the search stays pinned. */
+#code-model-menu .drop-search { padding: 2px 2px 6px; }
+.drop-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 30px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+.drop-search-input:focus { border-color: var(--accent); }
+.drop-search-input::placeholder { color: var(--text-muted); }
+.drop-scroll { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+.drop-empty { padding: 10px; font-size: 12px; color: var(--text-3); text-align: center; }
+
+/* A slot's header stacks: its name, then what the slot is FOR. The description
+   is prose, so it opts out of the header's uppercase label treatment. */
+.code-drop-head.drop-head-2line { flex-direction: column; align-items: flex-start; gap: 2px; }
+.code-drop-head .drop-sub {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+}
 
 /* Composer gate — sleeping until a working folder is chosen */
 .code-input-wrap.gated { cursor: pointer; }

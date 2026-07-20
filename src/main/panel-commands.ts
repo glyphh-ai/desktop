@@ -1,5 +1,5 @@
 /**
- * YoInterceptor — intercepts yo/sup/dip/drip/council typed inside app panels.
+ * PanelCommandInterceptor — intercepts yo/sup/dip/drip/council typed inside app panels.
  *
  *   yo <query>     → open agent panel
  *   yo . <skill>   → process last .sup capture with skill → inject result (requires capture)
@@ -12,6 +12,10 @@
  *
  * All UI (notifications, tool picker) is injected directly into the
  * app's DOM via executeJavaScript.
+ *
+ * Named for what it does rather than for the brand: "interceptor" alone is
+ * already taken by the model endpoint in glyphh-agent.ts, and two things called
+ * the interceptor in one main process is how the wrong one gets edited.
  */
 
 import { WebContents } from "electron";
@@ -23,7 +27,7 @@ import crypto from "crypto";
 
 const PREFIX = "__YO__";
 
-export class YoInterceptor {
+export class PanelCommandInterceptor {
   private active = new Map<number, () => void>();
   /** Per-session nonce — injected into pages and validated on receipt. */
   private readonly sessionNonce = crypto.randomBytes(16).toString("hex");
@@ -106,7 +110,7 @@ export class YoInterceptor {
         if (data._nonce !== this.sessionNonce) return;
         delete data._nonce; // strip before dispatch
         this.dispatch(wc, appId, data).catch((err) => {
-          console.error("YoInterceptor dispatch error:", err);
+          console.error("PanelCommandInterceptor dispatch error:", err);
           this.notify(wc, `Error: ${err instanceof Error ? err.message : err}`, "error").catch(() => {});
         });
       } catch { /* ignore malformed JSON */ }
@@ -376,7 +380,7 @@ window.addEventListener('beforeunload',function(e){
         return;
       }
 
-      const [skill, chain] = YoInterceptor.splitChain(dotMatch[1]?.trim() || "");
+      const [skill, chain] = PanelCommandInterceptor.splitChain(dotMatch[1]?.trim() || "");
       if (!skill) {
         // Bare .sup . → just capture
         await this.commandHandler("sup", appId);
@@ -402,7 +406,7 @@ window.addEventListener('beforeunload',function(e){
 
     // Check if chaining: .sup .dip gmail — instruction starts with a command keyword
     const isChain = instruction.split(/\s+/)[0]?.toLowerCase();
-    if (isChain && YoInterceptor.COMMAND_KEYWORDS.has(`.${isChain}`)) {
+    if (isChain && PanelCommandInterceptor.COMMAND_KEYWORDS.has(`.${isChain}`)) {
       const myOp = ++this.opId;
       this.notify(wc, "", "loading");
       const content = await this.grabPanels(wc, appId, false);
@@ -463,7 +467,7 @@ window.addEventListener('beforeunload',function(e){
     // .yo . or .yo . <prompt> → inject/process last .sup capture
     const dotMatch = raw.match(/^\.\s*(.*)$/s);
     if (dotMatch !== null && raw.startsWith(".")) {
-      const [prompt, chain] = YoInterceptor.splitChain(dotMatch[1]?.trim() || "");
+      const [prompt, chain] = PanelCommandInterceptor.splitChain(dotMatch[1]?.trim() || "");
       if (!prompt) {
         // Bare .yo . → inject last capture directly, no LLM
         const content = this.session.get();

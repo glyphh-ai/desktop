@@ -17,6 +17,7 @@ import { initTabBar } from "./tab-bar-ui.js";
 import { initGrid } from "./grid-ui.js";
 import { initSearchClears } from "./search-clear.js";
 import { yoConfirm } from "./yo-modal.js";
+import type { RoleView as LoopRoleView } from "./help/model-picker.js";
 
 type TabInfo = { id: string; name: string; favicon?: string; layoutFavicons?: string[]; pinned?: boolean; url?: string };
 
@@ -321,7 +322,8 @@ declare global {
       glyphhSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
       glyphhRemember: (fact: string) => Promise<boolean>;
       adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
-      glyphhModelsList: () => Promise<{ selected: string | null; resolved: string | null; models: Array<{ id: string; name: string; provider: string; source: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number }> }>;
+      loopRoles: (loop: string) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
+      loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
       adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
       glyphhContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;

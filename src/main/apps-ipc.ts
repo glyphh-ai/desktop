@@ -14,6 +14,7 @@ import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
 import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
+import { resolveRoles, setSelection } from "./loop-selections";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -178,6 +179,36 @@ function registerPanelAppsIpc(): void {
       const { loops } = await getClient().loops.list();
       return { ok: true, loops: loops.length ? loops : fallback.loops, canBuild: false };
     } catch { return { ok: true, ...fallback }; }
+  });
+
+  // ── Loop model slots — what the picker renders ───────────────
+  //
+  // The loop decides the picker's SHAPE: a loop declaring one slot gets one
+  // dropdown, a planner-and-coder loop gets two. Resolution and storage live in
+  // loop-selections so the turn resolves a slot exactly as the dropdown showed it.
+
+  ipcMain.handle("loop-roles", async (_e, p: { loop?: string }) => {
+    const loop = String(p?.loop || "default");
+    try {
+      return { ok: true, loop, roles: await resolveRoles(loop) };
+    } catch (err) {
+      // Signed out or offline: no slots rather than a broken picker.
+      console.warn(`[loop-roles] "${loop}" failed:`, err instanceof Error ? err.message : String(err));
+      return { ok: false, loop, roles: [] };
+    }
+  });
+
+  ipcMain.handle("loop-role-set", async (_e, p: { loop?: string; role?: string; modelId?: string | null }) => {
+    const loop = String(p?.loop || "default");
+    const role = String(p?.role || "");
+    if (!role) return { ok: false, loop, roles: [] };
+    try {
+      setSelection(loop, role, p?.modelId ?? null);
+      return { ok: true, loop, roles: await resolveRoles(loop) };
+    } catch (err) {
+      console.warn(`[loop-roles] set "${loop}.${role}" failed:`, err instanceof Error ? err.message : String(err));
+      return { ok: false, loop, roles: [] };
+    }
   });
 
   // ── Connections (first-class connected accounts) ─────────────

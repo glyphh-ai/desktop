@@ -17,13 +17,15 @@
 
 import { ipcMain, app, type WebContents } from "electron";
 import { spawn, type ChildProcess } from "child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { getPreference } from "./stores/preferences-db";
+import { glyphhPath } from "./app-paths";
+import { runModel } from "./loop-selections";
 import { effortMaxTokens, effortMaxTurns, glyphhEffort, glyphhMode, registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, type ConnectorWireDef } from "./glyphh-agent-tools";
@@ -38,7 +40,6 @@ import { stopEmbedServer } from "./glyphh-agent-embeddings";
 import { GLYPHH_APP_SPEC } from "./glyphh-app-spec";
 import { fetchOrgApps } from "./org-apps";
 import { assemblePrompt, compactIfNeeded, compactNow, registerGlyphhContextIpc } from "./glyphh-agent-context";
-import { downloadGlyphhModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId, cachedManifest } from "./glyphh-agent-models";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { getClient } from "./glyphh-client";
 import { startInterceptor, type Interceptor } from "@glyphh/client/runtime";
@@ -72,6 +73,13 @@ export function isGlyphhRunActive(): boolean {
 // One per process, started on first run and reused; the subprocess never holds
 // a provider key, only the interceptor's per-process handle.
 let interceptor: Interceptor | null = null;
+
+/** The agent subprocess's OWN config home — never the user's ~/.claude. */
+function agentConfigDir(): string {
+  const dir = glyphhPath("agent-config");
+  try { mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
+  return dir;
+}
 
 async function ensureInterceptor(): Promise<Interceptor> {
   if (interceptor) return interceptor;
@@ -177,28 +185,6 @@ export function registerGlyphhIpc(): void {
     return saveClipboardImage(p.bytes);
   });
 
-  // The models a turn may run on: the workspace-resolved set, straight from
-  // the control plane. There is no local tier and nothing to download — the
-  // renderer's picker is a choice among hosted models the caller is allowed.
-  ipcMain.handle("glyphh-agent-models-list", async () => {
-    try {
-      const models = await getClient().models.available();
-      return {
-        selected: String(getPreference("glyphhModel", "")).trim() || null,
-        resolved: await effectiveModel(),
-        models: models.map((m) => ({
-          id: m.id,
-          name: m.name,
-          provider: m.providerSlug,
-          source: m.source,
-          inputCreditsPerMTok: m.inputCreditsPerMTok,
-          outputCreditsPerMTok: m.outputCreditsPerMTok,
-        })),
-      };
-    } catch {
-      return { selected: null, resolved: null, models: [] };
-    }
-  });
 }
 
 // ── Completion core — direct local completion (compaction, relay tools) ───
@@ -234,19 +220,15 @@ export async function glyphhComplete(messages: ChatMessage[], opts: GlyphhComple
   return text;
 }
 
-/** The model a turn runs on: the user's pick when the workspace allows it,
- *  else the first allowed model. Null when nothing is allowed. */
+/**
+ * The model a turn runs on: the current loop's "default" slot, resolved by the
+ * server against what this caller may actually use.
+ *
+ * This goes through the same resolution the picker renders from, so the model
+ * named in the dropdown is the model that runs. Null when nothing is allowed.
+ */
 export async function effectiveModel(): Promise<string | null> {
-  const pref = String(getPreference("glyphhModel", "")).trim();
-  const bare = (id: string) => (id.includes("::") ? id.slice(id.indexOf("::") + 2) : id).toLowerCase();
-  try {
-    const available = await getClient().models.available();
-    if (!available.length) return null;
-    const hit = pref ? available.find((m) => bare(m.id) === bare(pref)) : undefined;
-    return (hit ?? available[0]).id;
-  } catch {
-    return pref || null; // offline — trust the pick
-  }
+  return await runModel("default");
 }
 
 
@@ -421,6 +403,13 @@ async function sdkRun(
           // credential is decrypted server-side and never reaches this machine.
           ANTHROPIC_API_KEY: endpoint.apiKey,
           ANTHROPIC_AUTH_TOKEN: undefined,
+          // An app-owned config home. Without it the subprocess reads the
+          // USER'S OWN Claude Code login (~/.claude OAuth) and presents that
+          // instead of our key — the interceptor 401s it, the CLI treats 401
+          // as retryable, and the composer spins forever. Isolating the config
+          // dir is also a governance line: a turn must never be able to ride a
+          // personal Anthropic subscription instead of the org's metered path.
+          CLAUDE_CONFIG_DIR: agentConfigDir(),
           CLAUDE_CODE_USE_BEDROCK: undefined,
           CLAUDE_CODE_USE_VERTEX: undefined,
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",

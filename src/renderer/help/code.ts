@@ -13,6 +13,7 @@ import { confirmAction } from "./shared.js";
 import { gotoSection } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
+import * as picker from "./model-picker.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline"; attachments?: AttachRef[]; decline?: { kind: string; url: string } }
@@ -93,123 +94,39 @@ function setLoop(id: string): void {
   glyphhLoop = id;
   void window.yo.setPreference?.("glyphhLoop", id);
   paintChips();
+  // A different loop declares different slots — the model chip and the meter
+  // both go stale the moment the loop changes.
+  void refreshModelList();
 }
 
 // ── Model selector (drop-up) ──
-// One list: the models this caller may actually use, resolved server-side
-// (catalog ∩ org-supported ∩ workspace-allowed). There is no local tier and no
-// separate escalation lane — every turn runs on a hosted, metered model.
-let modelList: Array<{ id: string; name: string; provider: string; source: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number }> = [];
-let modelSelected: string | null = null;
-let modelResolved: string | null = null;
-/** "auto" (let the server's effective pick stand) or a catalog model id. */
-let modelPick = "auto";
-
-/** The display name for a model id, falling back to the id. */
-function modelName(id: string | null): string {
-  if (!id) return "";
-  return modelList.find((m) => m.id === id)?.name || id;
-}
+// The picker's shape comes from the LOOP: it declares model slots, and each one
+// renders a dropdown. Resolution and rendering live in model-picker.ts; this file
+// only owns the chip and when to refresh.
 
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
-  if (modelPick !== "auto") {
-    mc.textContent = modelName(modelPick);
-    mc.title = `Model: ${modelName(modelPick)} — click to change`;
-  } else {
-    mc.textContent = modelResolved ? `Auto · ${modelName(modelResolved)}` : "Auto";
-    mc.title = "Model — your workspace's default; click to choose";
-  }
+  mc.textContent = picker.chipText();
+  mc.title = picker.chipTitle();
   mc.className = "code-chip";
 }
 
+/** Re-resolve the current loop's slots. Called on load and on every loop change,
+ *  because a different loop means different slots. */
 async function refreshModelList(): Promise<void> {
-  try {
-    const r = await window.yo.glyphhModelsList?.();
-    if (r) {
-      modelList = r.models;
-      modelSelected = r.selected;
-      modelResolved = r.resolved;
-      paintModelChip();
-    }
-    const pick = String((await window.yo.getPreference?.("modelPick", "")) || "");
-    modelPick = pick || modelSelected || "auto";
-    // A stale pick (the workspace stopped allowing it) falls back to Auto.
-    if (modelPick !== "auto" && modelList.length && !modelList.some((m) => m.id === modelPick)) modelPick = "auto";
-    paintModelChip();
-  } catch { /* main not ready */ }
+  await picker.refreshRoles(glyphhLoop);
+  paintModelChip();
+  refreshCtxMeter();
 }
 
 function renderModelMenu(): void {
   const menu = el("code-model-menu");
   if (!menu) return;
-  menu.textContent = "";
-  const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const closeTips = () => menu.querySelectorAll(".model-info-tip").forEach((t) => t.classList.add("hidden"));
-  const mk = (id: string, label: string, sub: string, opts?: { extra?: string; info?: string; selected?: boolean; onClick?: () => void }) => {
-    const isSelected = opts?.selected ?? (id === modelPick);
-    const item = document.createElement("button");
-    item.className = "code-drop-item drop-item-2line" + (isSelected ? " selected" : "");
-    item.type = "button";
-    const main = document.createElement("div");
-    main.className = "drop-main";
-    const span = document.createElement("span");
-    span.textContent = label + (opts?.extra ? ` ${opts.extra}` : "");
-    main.appendChild(span);
-    if (isSelected) main.insertAdjacentHTML("beforeend", check);
-    if (opts?.info) {
-      // ⓘ — the one-line sub stays scannable; the full story lives in a
-      // themed tooltip that never triggers a model switch.
-      const btn = document.createElement("button");
-      btn.className = "model-info-btn";
-      btn.type = "button";
-      btn.title = "About this model";
-      btn.textContent = "i";
-      const tip = document.createElement("div");
-      tip.className = "model-info-tip hidden";
-      tip.textContent = opts.info;
-      tip.addEventListener("click", (ev) => ev.stopPropagation());
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const wasHidden = tip.classList.contains("hidden");
-        closeTips();
-        if (wasHidden) tip.classList.remove("hidden");
-      });
-      main.appendChild(btn);
-      item.appendChild(tip);
-    }
-    item.appendChild(main);
-    if (sub) {
-      const subEl = document.createElement("span");
-      subEl.className = "drop-sub";
-      subEl.textContent = sub;
-      item.appendChild(subEl);
-    }
-    item.addEventListener("click", () => {
-      if (opts?.onClick) {
-        opts.onClick();
-      } else {
-        modelSelected = id === "auto" ? null : id;
-        modelPick = id;
-        void window.yo.setPreference?.("glyphhModel", id === "auto" ? "" : id);
-        void window.yo.setPreference?.("modelPick", id);
-        paintModelChip();
-      }
-      closeTips();
-      el("code-model-menu")?.classList.add("hidden");
-    });
-    menu.appendChild(item);
-  };
-  // One flat list: every model the workspace allows, priced. "Auto" defers to
-  // the server's effective pick rather than guessing here.
-  mk("auto", "Auto", "Use your workspace's default model.");
-  const cr = (v: number) => (v == null ? "—" : String(Math.round(v)));
-  for (const m of modelList) {
-    const price = `${cr(m.inputCreditsPerMTok)}/${cr(m.outputCreditsPerMTok)} credits per 1M tokens`;
-    const info = [`${m.name} — ${m.provider}.`, price].filter(Boolean).join("\n");
-    mk(m.id, m.name || m.id, price, { info });
-  }
+  picker.renderMenu(menu, glyphhLoop, () => {
+    paintModelChip();
+    refreshCtxMeter();
+  });
 }
 
 // ── Mode drop-up ──
@@ -474,9 +391,17 @@ function initComposerControls(): void {
       el("code-effort-pop")?.classList.add("hidden");
       el("code-mode-menu")?.classList.add("hidden");
       el("code-ctx-pop")?.classList.add("hidden");
-      void refreshModelList().then(() => renderModelMenu());
       renderModelMenu();
+      const opening = mmenu.classList.contains("hidden");
       mmenu.classList.toggle("hidden");
+      if (opening) {
+        picker.focusSearch(mmenu);
+        // Re-resolve behind the open menu; the rows repaint if the server
+        // disagrees with what was cached.
+        void refreshModelList().then(() => {
+          if (!mmenu.classList.contains("hidden")) { renderModelMenu(); picker.focusSearch(mmenu); }
+        });
+      }
     });
     void refreshModelList();
   }

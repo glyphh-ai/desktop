@@ -49,7 +49,7 @@ import { initAdaStore } from "./ada/store";
 import { registerAdaSync } from "./ada/indexer";
 import { registerAdaIpc } from "./ada/ipc";
 import { getLocalDb } from "./local-db";
-import { YoInterceptor } from "./yo-interceptor";
+import { PanelCommandInterceptor } from "./panel-commands";
 import { SessionCache } from "./session-cache";
 import { smartGrab } from "./smart-grab";
 import { resolveShellPath } from "./shell-path";
@@ -83,6 +83,7 @@ import { registerSettingsIpc } from "./settings-ipc";
 import { getClient } from "./glyphh-client";
 import { ApiError } from "@glyphh/client";
 import { registerAppsIpc } from "./apps-ipc";
+import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { registerTabIpc } from "./tab-ipc";
@@ -355,21 +356,21 @@ async function boot() {
   session.setOnCapture(() => {});
 
   // yo/dip/drip interceptor — injected into ALL app panels
-  const yoInterceptor = new YoInterceptor(appConnector, session);
+  const panelCommands = new PanelCommandInterceptor(appConnector, session);
   {
     // `agentMode` holds the permission (default/plan/acceptEdits/bypassPermissions).
     // Previously also set on yoAgent (the now-removed chat agent); the panel's
     // permission dropdown is gone too, so this just feeds the interceptor's
     // (currently-unread) mode field for now.
     const savedPerm = getAgentMode();
-    yoInterceptor.setAgentMode(savedPerm);
+    panelCommands.setAgentMode(savedPerm);
   }
   // Fetch active models from server and populate the interceptor + presets cache
   const initialTheme = getPreference<string>("theme", "dark");
   // Map themed ids (purple/aurora/custom) to a base mode nativeTheme accepts.
   nativeTheme.themeSource = initialTheme === "system" ? "system" : initialTheme === "light" ? "light" : "dark";
   const resolvedTheme = initialTheme === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : initialTheme;
-  yoInterceptor.setTheme(resolvedTheme);
+  panelCommands.setTheme(resolvedTheme);
 
   nativeTheme.on("updated", () => {
     if (getPreference<string>("theme", "dark") !== "system") return;
@@ -379,7 +380,7 @@ async function boot() {
 
   // Helper: send theme to main window + all panel webContents (home, etc.)
   function broadcastTheme(resolved: string) {
-    yoInterceptor.setTheme(resolved);
+    panelCommands.setTheme(resolved);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("theme-changed", resolved);
     }
@@ -425,7 +426,7 @@ async function boot() {
       }
     } else {
       // Activate interceptor so yo/dip/sup work on app panels
-      yoInterceptor.activate(wc, id);
+      panelCommands.activate(wc, id);
       // Track URL changes in browser tabs for persistence
       if (baseAppId === "browser") trackBrowserUrl(id, wc);
     }
@@ -588,7 +589,7 @@ async function boot() {
   registerWbAppRegistry();
 
   // Give interceptor access to visible panel IDs (for multi-panel grab)
-  yoInterceptor.setVisiblePanelsGetter(() => {
+  panelCommands.setVisiblePanelsGetter(() => {
     const gridInfo = layoutManager.getGridInfo();
     if (gridInfo) return gridInfo.panelIds;
     return panelManager.activePanelId ? [panelManager.activePanelId] : [];
@@ -670,9 +671,9 @@ async function boot() {
     sendTabState();
     return result;
   };
-  yoInterceptor.setCommandHandler(execCommand);
-  yoInterceptor.setSessionNotifier(sendSessionState);
-  yoInterceptor.setYoClearer(() => { commandParser.clearYoHistory(); });
+  panelCommands.setCommandHandler(execCommand);
+  panelCommands.setSessionNotifier(sendSessionState);
+  panelCommands.setYoClearer(() => { commandParser.clearYoHistory(); });
 
   // Reminder registry
   const activeReminders = new Map<string, { message: string; fireAt: number; timer: ReturnType<typeof setTimeout> }>();
@@ -694,10 +695,10 @@ async function boot() {
   // Panel opener / .waz spawner / mode changer removed with the interactive
   // chat agent (YoAgent) and its popup variant (.waz) — see yo-agent.ts /
   // waz-manager.ts deletion notes. `.yo`, `set-mode`, and `.waz` command
-  // dispatches in yo-interceptor.ts now no-op gracefully (their callback
+  // dispatches in panel-commands.ts now no-op gracefully (their callback
   // hooks are simply never wired).
-  yoInterceptor.setFaviconsGetter(() => panelFavicons);
-  yoInterceptor.setLayoutsGetter(() => layoutManager.listLayouts());
+  panelCommands.setFaviconsGetter(() => panelFavicons);
+  panelCommands.setLayoutsGetter(() => layoutManager.listLayouts());
 
   // Terminal yo/sup/dip — route through command parser, show result in terminal
   terminalManager.setCommandHandler(async (cmd, wc) => {
@@ -718,7 +719,7 @@ async function boot() {
   setDripManagerInstance(dripManager);
   if (mainWindow) dripManager.setMainWindow(mainWindow);
   commandParser.setDripManager(dripManager);
-  yoInterceptor.setDripCustomsGetter(() => dripManager!.listCustoms());
+  panelCommands.setDripCustomsGetter(() => dripManager!.listCustoms());
 
   function deduplicateRestorePanels(ids: string[]): string[] {
     const seen = new Set<string>();
@@ -1110,7 +1111,7 @@ async function boot() {
 
   // Activate interceptor on browser panel guest webviews and ensure they're focusable
   panelManager.setOnWebviewAttach((childWc, panelId) => {
-    yoInterceptor.activate(childWc, panelId);
+    panelCommands.activate(childWc, panelId);
     if (resolveAppId(panelId) === "browser") {
       childWc.on("did-finish-load", () => {
         if (!childWc.isDestroyed()) childWc.focus();
@@ -1276,6 +1277,9 @@ async function boot() {
   // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
   if (!ipcMain.listenerCount("wb-term:spawn")) {
     registerWorkbenchTerminalIpc();
+    // The agent's whole IPC surface — sessions, context, runs, permissions.
+    // Without this the composer has no handlers to call and simply spins.
+    registerGlyphhIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -1740,7 +1744,7 @@ async function boot() {
   // IPC: tabs + URL bar (extracted to tab-ipc.ts)
   registerTabIpc({
     panelManager, layoutManager, appConnector,
-    yoInterceptor,
+    panelCommands,
     getMainWindow: () => mainWindow,
     openTabs,
     tabBrowserCounter: { get value() { return tabBrowserCounter; }, set value(v) { tabBrowserCounter = v; } },
@@ -1955,6 +1959,9 @@ function cleanupAll() {
   cleanedUp = true;
   globalShortcut.unregisterAll();
   cleanupAuthTimers();
+  // Stops an in-flight agent run and its interceptor; dropped in the
+  // William → Glyphh port alongside the registration above.
+  shutdownGlyphh();
   try {
     const tabs = getPreference<string[]>("openTabs", []);
     if (tabs.includes("cypher")) {

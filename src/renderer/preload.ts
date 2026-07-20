@@ -117,6 +117,25 @@ export interface MarketplaceAppDetail extends MarketplaceApp {
   similar: MarketplaceApp[];
 }
 
+/** One model slot a loop declares, resolved for this caller — what a picker renders. */
+interface LoopRoleView {
+  name: string;
+  label: string;
+  description: string;
+  modelId: string | null;
+  source: "selection" | "loop" | "platform" | "fallback" | "none";
+  choices: Array<{
+    id: string;
+    name: string;
+    providerSlug: string;
+    contextWindow: number | null;
+    maxOutputTokens: number | null;
+    inputCreditsPerMTok: number;
+    outputCreditsPerMTok: number;
+    isPlatformDefault: boolean;
+  }>;
+}
+
 contextBridge.exposeInMainWorld("yo", {
   copyToClipboard: (text: string) => ipcRenderer.invoke("copy-to-clipboard", text),
   // Toggle the full-screen command overlay (also bound to a global hotkey).
@@ -403,8 +422,12 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("ada-recall", { query, k }) as Promise<Array<{ content: string; score: number }>>,
   adaAsk: (op: unknown) => ipcRenderer.invoke("ada-ask", { op }) as Promise<{ ok: boolean; answer?: string; error?: string }>,
   adaStats: () => ipcRenderer.invoke("ada-stats") as Promise<{ thoughts: number; slots: number; keys: number }>,
-  glyphhModelsList: () =>
-    ipcRenderer.invoke("glyphh-agent-models-list") as Promise<{ selected: string | null; resolved: string | null; models: Array<{ id: string; name: string; provider: string; source: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number }> }>,
+  // The loop decides the picker's shape: one slot → one dropdown, two → two.
+  loopRoles: (loop: string) =>
+    ipcRenderer.invoke("loop-roles", { loop }) as Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>,
+  /** Bind a slot to a model, or pass null to hand it back to the loop's default. */
+  loopRoleSet: (loop: string, role: string, modelId: string | null) =>
+    ipcRenderer.invoke("loop-role-set", { loop, role, modelId }) as Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>,
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   glyphhStop: () => ipcRenderer.invoke("glyphh-agent-stop") as Promise<boolean>,
@@ -507,12 +530,12 @@ contextBridge.exposeInMainWorld("yo", {
   getAuthStatus: () => ipcRenderer.invoke("get-auth-status") as Promise<{ authenticated: boolean; status: string; tier?: string }>,
   refreshAuth: () => ipcRenderer.invoke("refresh-auth") as Promise<{ tier: string; status: string }>,
   openExternal: (url: string) => ipcRenderer.send("open-external", url),
-  platformUrl: process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai",
-  serverUrl: process.env.YO_AUTH_SERVER || "https://api.glyphh.ai",
-  discordInvite: process.env.YO_DISCORD_INVITE || "https://discord.gg/cHGZR764D",
+  platformUrl: process.env.GLYPHH_PLATFORM_URL || "https://platform.glyphh.ai",
+  serverUrl: process.env.GLYPHH_SERVER_URL || "https://api.glyphh.ai",
+  discordInvite: process.env.GLYPHH_DISCORD_INVITE || "https://discord.gg/cHGZR764D",
   hasMcpAccess: () => ipcRenderer.invoke("has-mcp-access") as Promise<boolean>,
-  openAccountDashboard: () => ipcRenderer.send("open-external", (process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai")),
-  openBilling: () => ipcRenderer.send("open-external", (process.env.YO_PLATFORM_URL || "https://platform.glyphh.ai") + "/billing"),
+  openAccountDashboard: () => ipcRenderer.send("open-external", (process.env.GLYPHH_PLATFORM_URL || "https://platform.glyphh.ai")),
+  openBilling: () => ipcRenderer.send("open-external", (process.env.GLYPHH_PLATFORM_URL || "https://platform.glyphh.ai") + "/billing"),
   // Support
   submitSupportTicket: (ticket: { subject: string; description: string }) =>
     ipcRenderer.invoke("submit-support-ticket", ticket) as Promise<{ ok: boolean; error?: string }>,

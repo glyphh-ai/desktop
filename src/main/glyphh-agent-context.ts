@@ -19,6 +19,7 @@
  */
 
 import { ipcMain } from "electron";
+import { currentLoop, resolveRoles, runContextWindow } from "./loop-selections";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { userScopedPath } from "./app-paths";
@@ -40,11 +41,16 @@ interface SummaryEntry { summary: string; upTo: number }
 interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
 /** Local runtime window — must match llama-server's `-c 32768` (glyphh.ts). */
-const CTX_TOKENS = 32768;
-/** Frontier (Claude) window. One constant for now; per-model values can come
- *  from the gateway's model list when tiers start to differ. */
-const FRONTIER_CTX_TOKENS = 200_000;
+/** Fallback window, used only when the catalog never recorded one for a model.
+ *  Deliberately small: guessing high on an unknown model overruns it, and an
+ *  over-eager fold merely costs a summary. */
+const DEFAULT_CTX_TOKENS = 32768;
 const ASSEMBLE_MARGIN = 256;
+/** The context window of the model this turn will run on. */
+async function activeWindow(): Promise<number> {
+  return (await runContextWindow()) ?? DEFAULT_CTX_TOKENS;
+}
+
 /** Compact when the tail crosses this share of its budget. */
 const COMPACT_AT = 0.6;
 /** Turns that never get summarized away (recency floor). */
@@ -380,7 +386,7 @@ export async function assemblePrompt(chatId: string, replyBudget: number): Promi
   const upTo = entry?.upTo ?? 0;
   let tail = chat.messages.slice(upTo).map((m) => ({ role: m.role, content: m.text } as ChatMessage));
 
-  const budget = CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
+  const budget = (await activeWindow()) - replyBudget - ASSEMBLE_MARGIN;
   const floor = replyBudget > 8192 ? 2 : 4;
   // Estimate-trim first, then verify against the real tokenizer.
   const fits = (msgs: ChatMessage[], count: (t: string) => number | Promise<number>) => count(flatten([...prefix, ...msgs]));
@@ -468,7 +474,7 @@ export async function compactIfNeeded(chatId: string, replyBudget: number, compl
     const upTo = loadSummaries()[chatId]?.upTo ?? 0;
     const tail = chat.messages.slice(upTo);
     if (tail.length <= TAIL_KEEP + 2) return;
-    const budget = CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
+    const budget = (await activeWindow()) - replyBudget - ASSEMBLE_MARGIN;
     const tailText = tail.map((m) => `${m.role}: ${m.text}`).join("\n");
     if ((await countTokens(tailText)) < budget * COMPACT_AT) return;
     await compactNow(chatId, replyBudget, complete);
@@ -501,34 +507,40 @@ export interface ContextLane {
 export async function contextUsage(chatId: string, replyBudget: number): Promise<{
   tokens: number; budget: number; ratio: number; foldAt: number; lanes: ContextLane[];
 }> {
-  const localBudget = CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
-  const frontierBudget = FRONTIER_CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN;
   const { chats } = loadSessions();
   const chat = chats.find((c) => c.id === chatId);
   const upTo = chat ? (loadSummaries()[chatId]?.upTo ?? 0) : 0;
   const tailText = chat ? chat.messages.slice(upTo).map((m) => `${m.role}: ${m.text}`).join("\n") : "";
   const tokens = tailText ? await countTokens(tailText) : 0;
 
-  // Lane labels — best-effort, dynamic import to dodge a module cycle; a
-  // failed lookup never breaks the meter.
-  let localId = "local";
-  const frontierId = "frontier";
+  // One lane per model SLOT the loop declares: the same history sits at a
+  // different fraction of a 200k window than an 8k one, and a planner-and-coder
+  // loop has two answers to show, not one.
+  let lanes: ContextLane[] = [];
   try {
-    const wm = await import("./glyphh-agent-models");
-    localId = wm.resolveDesiredModel()?.id ?? wm.selectedModelId();
-  } catch { /* label only */ }
+    const roles = await resolveRoles(currentLoop());
+    lanes = roles.map((role) => {
+      const window = role.choices.find((c) => c.id === role.modelId)?.contextWindow ?? DEFAULT_CTX_TOKENS;
+      const budget = Math.max(1, window - replyBudget - ASSEMBLE_MARGIN);
+      return {
+        id: role.choices.find((c) => c.id === role.modelId)?.name ?? role.label,
+        kind: "frontier" as const,
+        tokens,
+        budget,
+        ratio: Math.min(1, tokens / budget),
+        foldAt: COMPACT_AT,
+      };
+    });
+  } catch { /* meter degrades to the default lane below */ }
 
-  const ratio = Math.min(1, tokens / Math.max(1, localBudget));
-  return {
-    tokens, budget: localBudget, ratio, foldAt: COMPACT_AT,
-    lanes: [
-      { id: localId, kind: "local", tokens, budget: localBudget, ratio, foldAt: COMPACT_AT },
-      {
-        id: frontierId, kind: "frontier", tokens, budget: frontierBudget,
-        ratio: Math.min(1, tokens / Math.max(1, frontierBudget)), foldAt: null,
-      },
-    ],
-  };
+  if (!lanes.length) {
+    const budget = Math.max(1, DEFAULT_CTX_TOKENS - replyBudget - ASSEMBLE_MARGIN);
+    lanes = [{ id: "model", kind: "frontier", tokens, budget, ratio: Math.min(1, tokens / budget), foldAt: COMPACT_AT }];
+  }
+
+  // Top-level fields mirror the FIRST lane — that is the slot a plain turn runs in.
+  const lead = lanes[0]!;
+  return { tokens, budget: lead.budget, ratio: lead.ratio, foldAt: COMPACT_AT, lanes };
 }
 
 // ── IPC ────────────────────────────────────────────────────────────────────
