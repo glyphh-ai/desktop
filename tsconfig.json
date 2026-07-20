@@ -12,6 +12,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "paths": {
+      "@glyphh/client/runtime": ["./node_modules/@glyphh/client/dist/runtime.d.ts"]
+    },
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true

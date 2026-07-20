@@ -123,48 +123,6 @@ function initSettings() {
     });
   })();
 
-  // ── AI Gateway (Settings > AI Gateway) — the escalation-model pick only.
-  // BYOK keys and per-model proxy/byok lanes are ADMIN-managed on the
-  // platform now (Roles → Models), not here. ──
-  void (async () => {
-    const modelSel = document.getElementById("gw-model") as HTMLSelectElement | null;
-    const modelHint = document.getElementById("gw-model-hint");
-    const statusEl = document.getElementById("gw-status");
-    if (!modelSel) return;
-
-    const fmtCr = (micro: number | null | undefined) => (micro == null ? "—" : String(Math.round(micro / 1e6)));
-
-    const gw = await window.yo.gatewayModelsList();
-    modelSel.textContent = "";
-    if (!gw.models.length) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "Sign in to load your organization's models";
-      modelSel.appendChild(opt);
-    }
-    for (const m of gw.models) {
-      const opt = document.createElement("option");
-      opt.value = m.model;
-      const isDef = gw.default === m.model;
-      opt.textContent = `${m.display_name}${isDef ? " (org default)" : ""} — ${fmtCr(m.input_credits_per_mtok)}/${fmtCr(m.output_credits_per_mtok)} cr per 1M`;
-      if (gw.effective === m.model) opt.selected = true;
-      modelSel.appendChild(opt);
-    }
-    if (modelHint) {
-      modelHint.textContent = gw.models.length
-        ? "Which model hard turns escalate to. Billing (org credits vs your org's key) is set per model by your admin."
-        : "Sign in to enable escalation — until then every turn stays local.";
-    }
-
-    document.getElementById("gw-save")?.addEventListener("click", () => {
-      if (modelSel.value) window.yo.setPreference?.("frontierModel", modelSel.value);
-      if (statusEl) {
-        statusEl.textContent = "Saved ✓";
-        setTimeout(() => { if (statusEl.textContent === "Saved ✓") statusEl.textContent = ""; }, 4000);
-      }
-    });
-  })();
-
   // ── Local MCP server (127.0.0.1) — the no-cloud alternative. Available to
   // any user (it's purely local; no org/tier involved). ──
   const localMcpSection = document.getElementById("local-mcp-section");

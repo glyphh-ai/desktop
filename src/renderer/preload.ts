@@ -380,7 +380,6 @@ contextBridge.exposeInMainWorld("yo", {
   orgGuardrailsGet: () => ipcRenderer.invoke("org-guardrails-get") as Promise<{ ok: boolean; policy?: Record<string, number> | null; error?: string }>,
   orgGuardrailsSet: (policy: Record<string, number> | null) => ipcRenderer.invoke("org-guardrails-set", policy) as Promise<{ ok: boolean; error?: string }>,
   // AI Gateway — escalation models (org-governed), slicer usage, org governance.
-  gatewayModelsList: () => ipcRenderer.invoke("gateway-models-list") as Promise<{ models: Array<{ model: string; display_name: string; input_credits_per_mtok: number | null; output_credits_per_mtok: number | null }>; default: string | null; selected: string | null; effective: string; lanes: { byok: boolean; gateway: boolean } }>,
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
@@ -405,11 +404,10 @@ contextBridge.exposeInMainWorld("yo", {
   adaAsk: (op: unknown) => ipcRenderer.invoke("ada-ask", { op }) as Promise<{ ok: boolean; answer?: string; error?: string }>,
   adaStats: () => ipcRenderer.invoke("ada-stats") as Promise<{ thoughts: number; slots: number; keys: number }>,
   glyphhModelsList: () =>
-    ipcRenderer.invoke("glyphh-agent-models-list") as Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; status: string; usage: string; downloaded: boolean }> }>,
+    ipcRenderer.invoke("glyphh-agent-models-list") as Promise<{ selected: string | null; resolved: string | null; models: Array<{ id: string; name: string; provider: string; source: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number }> }>,
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   glyphhStop: () => ipcRenderer.invoke("glyphh-agent-stop") as Promise<boolean>,
-  glyphhStatus: () => ipcRenderer.invoke("glyphh-agent-status") as Promise<{ up: boolean }>,
   onGlyphhAgentDelta: (callback: (d: { runId: string; delta: string }) => void) => {
     ipcRenderer.on("glyphh-agent:delta", (_event, d) => callback(d));
   },

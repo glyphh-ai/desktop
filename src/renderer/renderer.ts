@@ -321,14 +321,12 @@ declare global {
       glyphhSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
       glyphhRemember: (fact: string) => Promise<boolean>;
       adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
-      glyphhModelsList: () => Promise<{ selected: string; resolved: string | null; models: Array<{ id: string; name: string; minRamGB: number; size: number; status: string; usage: string; downloaded: boolean }> }>;
-      gatewayModelsList: () => Promise<{ models: Array<{ model: string; display_name: string; input_credits_per_mtok: number | null; output_credits_per_mtok: number | null }>; default: string | null; selected: string | null; effective: string; lanes: { byok: boolean; gateway: boolean } }>;
+      glyphhModelsList: () => Promise<{ selected: string | null; resolved: string | null; models: Array<{ id: string; name: string; provider: string; source: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number }> }>;
       adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
       adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
       glyphhContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;
       glyphhCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
       glyphhStop: () => Promise<boolean>;
-      glyphhStatus: () => Promise<{ up: boolean }>;
       onGlyphhAgentDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onGlyphhAgentDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
       onGlyphhAgentError: (cb: (d: { runId: string; error: string }) => void) => void;

@@ -95,21 +95,17 @@ function setLoop(id: string): void {
   paintChips();
 }
 
-// ── Model selector (drop-up) — Will (will-7b-mini) / Glyphh (glyphh-14b-base) ──
-let modelList: Array<{ id: string; name: string; minRamGB: number; size?: number; status?: string; usage?: string; downloaded: boolean }> = [];
-let modelSelected = "auto";
+// ── Model selector (drop-up) ──
+// One list: the models this caller may actually use, resolved server-side
+// (catalog ∩ org-supported ∩ workspace-allowed). There is no local tier and no
+// separate escalation lane — every turn runs on a hosted, metered model.
+let modelList: Array<{ id: string; name: string; provider: string; source: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number }> = [];
+let modelSelected: string | null = null;
 let modelResolved: string | null = null;
-// ONE selection across the whole menu: "auto" | a local id | "gw:<model>".
-// Picking a local model runs it on-device; picking a gateway model makes it
-// the escalation target. Exactly one row ever shows the checkmark.
+/** "auto" (let the server's effective pick stand) or a catalog model id. */
 let modelPick = "auto";
-// Escalation (Claude) models — org-allowed list; the pick is per-user.
-let gwModels: Array<{ model: string; display_name: string; input_credits_per_mtok: number | null; output_credits_per_mtok: number | null }> = [];
-let gwDefault: string | null = null;
-let gwEffective = "";
 
-/** The real display name for a local model id (e.g. "Qwen2.5 Coder 14B"),
- *  falling back to the id for anything not in the current list. */
+/** The display name for a model id, falling back to the id. */
 function modelName(id: string | null): string {
   if (!id) return "";
   return modelList.find((m) => m.id === id)?.name || id;
@@ -118,17 +114,12 @@ function modelName(id: string | null): string {
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
-  if (modelPick.startsWith("gw:")) {
-    const id = modelPick.slice(3);
-    const gm = gwModels.find((m) => m.model === id);
-    mc.textContent = gm?.display_name || id;
-    mc.title = `Model: ${gm?.display_name || id} — click to change`;
-  } else if (modelPick !== "auto") {
+  if (modelPick !== "auto") {
     mc.textContent = modelName(modelPick);
     mc.title = `Model: ${modelName(modelPick)} — click to change`;
   } else {
     mc.textContent = modelResolved ? `Auto · ${modelName(modelResolved)}` : "Auto";
-    mc.title = "Model — picked by hardware; click to choose";
+    mc.title = "Model — your workspace's default; click to choose";
   }
   mc.className = "code-chip";
 }
@@ -142,16 +133,10 @@ async function refreshModelList(): Promise<void> {
       modelResolved = r.resolved;
       paintModelChip();
     }
-    const g = await window.yo.gatewayModelsList?.();
-    if (g) {
-      gwModels = g.models;
-      gwDefault = g.default;
-      gwEffective = g.effective;
-    }
     const pick = String((await window.yo.getPreference?.("modelPick", "")) || "");
-    modelPick = pick || (modelSelected !== "auto" ? modelSelected : "auto");
-    // A stale gateway pick (role/org changed) falls back to Auto.
-    if (modelPick.startsWith("gw:") && gwModels.length && !gwModels.some((m) => `gw:${m.model}` === modelPick)) modelPick = "auto";
+    modelPick = pick || modelSelected || "auto";
+    // A stale pick (the workspace stopped allowing it) falls back to Auto.
+    if (modelPick !== "auto" && modelList.length && !modelList.some((m) => m.id === modelPick)) modelPick = "auto";
     paintModelChip();
   } catch { /* main not ready */ }
 }
@@ -205,65 +190,25 @@ function renderModelMenu(): void {
       if (opts?.onClick) {
         opts.onClick();
       } else {
-        modelSelected = id;
+        modelSelected = id === "auto" ? null : id;
         modelPick = id;
-        void window.yo.setPreference?.("glyphhModel", id);
+        void window.yo.setPreference?.("glyphhModel", id === "auto" ? "" : id);
         void window.yo.setPreference?.("modelPick", id);
         paintModelChip();
-        // A different model spawns on the next send (downloading first if
-        // needed — the spinner narrates).
       }
       closeTips();
       el("code-model-menu")?.classList.add("hidden");
     });
     menu.appendChild(item);
   };
-  // ONE list — the server catalog governs both halves: on-device entries come
-  // from the workspace-allowed model set and escalation entries from /api/models/catalog,
-  // each already scoped to the org (and, for members, their role).
-  mk("auto", "Auto", "Picks the best model for this machine.");
+  // One flat list: every model the workspace allows, priced. "Auto" defers to
+  // the server's effective pick rather than guessing here.
+  mk("auto", "Auto", "Use your workspace's default model.");
+  const cr = (v: number) => (v == null ? "—" : String(Math.round(v)));
   for (const m of modelList) {
-    // Only released models list — future tiers appear when they exist.
-    if ((m.status || "available") !== "available") continue;
-    const oneLine = (m.usage || "").split(" — ")[0] || m.name;
-    const sizeGB = m.size ? ` · ${(m.size / 1e9).toFixed(1)} GB download` : "";
-    const info = [
-      m.usage || "",
-      `${m.minRamGB} GB+ RAM${sizeGB}`,
-      m.downloaded ? "On this machine." : "Downloads on first use.",
-    ].filter(Boolean).join("\n");
-    // Render the real model NAME (e.g. "Qwen2.5 Coder 14B"); the id stays the
-    // stable pref key. Fall back to the id for any manifest without a name.
-    mk(m.id, m.name || m.id, oneLine, { extra: m.downloaded ? "" : "↓", info });
-  }
-
-  // Escalation pick — which model hard turns go to. Org-governed list,
-  // per-user choice; flows in the same flat list after the on-device models.
-  if (gwModels.length) {
-    const cr = (v: number | null) => (v == null ? "—" : String(Math.round(v / 1e6)));
-    const gwDesc = (id: string) =>
-      id.includes("opus") ? "Deep reasoning — the heavy hitter"
-        : id.includes("haiku") ? "Quick and light for easy turns"
-          : "Balanced coder — fast and capable";
-    for (const m of gwModels) {
-      const isDefault = gwDefault === m.model;
-      const info = [
-        `${m.display_name} — ${gwDesc(m.model)}.`,
-        `${cr(m.input_credits_per_mtok)}/${cr(m.output_credits_per_mtok)} credits per 1M tokens.`,
-        isDefault ? "Org default." : "",
-      ].filter(Boolean).join("\n");
-      mk(m.model, m.display_name + (isDefault ? " (org default)" : ""), gwDesc(m.model), {
-        info,
-        selected: modelPick === `gw:${m.model}`,
-        onClick: () => {
-          gwEffective = m.model;
-          modelPick = `gw:${m.model}`;
-          void window.yo.setPreference?.("frontierModel", m.model);
-          void window.yo.setPreference?.("modelPick", modelPick);
-          paintModelChip();
-        },
-      });
-    }
+    const price = `${cr(m.inputCreditsPerMTok)}/${cr(m.outputCreditsPerMTok)} credits per 1M tokens`;
+    const info = [`${m.name} — ${m.provider}.`, price].filter(Boolean).join("\n");
+    mk(m.id, m.name || m.id, price, { info });
   }
 }
 

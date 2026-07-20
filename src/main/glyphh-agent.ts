@@ -41,7 +41,7 @@ import { assemblePrompt, compactIfNeeded, compactNow, registerGlyphhContextIpc }
 import { downloadGlyphhModel, resolveDesiredModel, localModelPath, refreshManifestIfStale, selectedModelId, cachedManifest } from "./glyphh-agent-models";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { getClient } from "./glyphh-client";
-import { startModelRouter, stopModelRouter, registerModelRouterIpc, effectiveFrontierModel } from "./model-router";
+import { startInterceptor, type Interceptor } from "@glyphh/client/runtime";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -61,6 +61,27 @@ export function isGlyphhRunActive(): boolean {
   return !!active;
 }
 
+// ── The agent's model endpoint ─────────────────────────────────────────────
+//
+// The Claude Agent SDK runs its loop in a subprocess that speaks Anthropic
+// Messages over HTTP, so it needs a URL, not a function. The SDK's interceptor
+// is that URL: it forwards each turn to the control plane with the caller's
+// bearer and streams the reply back. It decides nothing — models, keys, cost,
+// and refusals are all resolved server-side.
+//
+// One per process, started on first run and reused; the subprocess never holds
+// a provider key, only the interceptor's per-process handle.
+let interceptor: Interceptor | null = null;
+
+async function ensureInterceptor(): Promise<Interceptor> {
+  if (interceptor) return interceptor;
+  interceptor = await startInterceptor({
+    client: getClient(),
+    onError: (err: Error) => console.warn("[glyphh-agent] model turn failed:", err.message),
+  });
+  return interceptor;
+}
+
 // ── Model access ──────────────────────────────────────────────────────────
 //
 // There is no local inference. Every turn runs on a HOSTED model resolved by
@@ -74,6 +95,8 @@ export function isGlyphhRunActive(): boolean {
 export function shutdownGlyphh(): void {
   active?.ctrl.abort();
   stopEmbedServer();
+  void interceptor?.close().catch(() => { /* already down */ });
+  interceptor = null;
 }
 
 // ── External access gate ──────────────────────────────────────────────────
@@ -362,7 +385,7 @@ async function sdkRun(
       })()
     : lastUser;
 
-  const routerPort = await startModelRouter();
+  const endpoint = await ensureInterceptor();
 
   let finalText = "";
   let runError = "";
@@ -373,9 +396,8 @@ async function sdkRun(
       prompt,
       options: {
         cwd: getExplicitWorkingDirectory() ?? undefined,
-        // The model the frontier slice runs on — the user's pick constrained
-        // to the org's allow-list (gateway lane). Local turns ignore it.
-        model: await effectiveFrontierModel(),
+        // The user's pick, constrained to what their workspace allows.
+        model: (await effectiveModel()) ?? undefined,
         systemPrompt: system,
         settingSources: [],
         tools: [], // no built-ins — the Glyphh surface is the whole toolset
@@ -394,10 +416,10 @@ async function sdkRun(
         abortController: ctrl,
         env: {
           ...process.env,
-          ANTHROPIC_BASE_URL: `http://127.0.0.1:${routerPort}`,
-          // The router injects the real key upstream on escalated turns —
-          // the loop subprocess never holds it.
-          ANTHROPIC_API_KEY: "glyphh-router",
+          ANTHROPIC_BASE_URL: endpoint.url,
+          // The interceptor's per-process handle, not a provider key: the real
+          // credential is decrypted server-side and never reaches this machine.
+          ANTHROPIC_API_KEY: endpoint.apiKey,
           ANTHROPIC_AUTH_TOKEN: undefined,
           CLAUDE_CODE_USE_BEDROCK: undefined,
           CLAUDE_CODE_USE_VERTEX: undefined,
