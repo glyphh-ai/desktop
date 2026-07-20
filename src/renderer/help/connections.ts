@@ -132,7 +132,9 @@ async function openConnDetail(id: string): Promise<void> {
   customStatusEl.classList.add("hidden");
   customConfigEl.classList.add("hidden");
   // Org-shared connections are managed by an admin (Configure → Connections):
-  // read-only here — no rename, no disconnect, no per-user tool hiding.
+  // no rename or disconnect here. Tools are different — the member cap is the
+  // LAST narrowing layer (advertised ∩ org ∩ workspace ∩ member), so hiding a
+  // tool from your own agents is always yours to do, org connection or not.
   const isOrg = !!c.org;
   disconnectBtn.classList.toggle("hidden", isOrg);
   disconnectBtn.textContent = "Disconnect";
@@ -163,7 +165,7 @@ async function openConnDetail(id: string): Promise<void> {
     // Checkbox = expose/hide. Description is collapsed by default inside a
     // <details> — click the tool name to expand it.
     row.innerHTML = `
-      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} ${c.org ? "disabled" : ""} title="${c.org ? "Managed by your org admin" : "Expose this tool to your AI"}" />
+      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} title="Expose this tool to your AI${c.org ? " — only narrows what your org allows" : ""}" />
       ${t.description
         ? `<details class="conn-tool-details">
              <summary class="conn-tool-name">${esc(t.name)}</summary>
