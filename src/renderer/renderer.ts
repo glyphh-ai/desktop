@@ -156,6 +156,7 @@ declare global {
       panelAppsList: () => Promise<SavedPanelApp[]>;
       dashboardData: () => Promise<{ name: string; plan: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number }>;
       usageSeries: (days: number, groupBy: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      dashboardRuns: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       updateBadgeDismiss: (version: string) => void;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;

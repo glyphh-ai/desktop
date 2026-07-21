@@ -39,6 +39,34 @@ for (const [name, file] of registrars) {
   if (!called) orphans.push({ name, file });
 }
 
+// ── Duplicate channels ────────────────────────────────────────────────────
+// ipcMain.handle() THROWS on a second registration for the same channel —
+// at boot, mid-registrar, killing every handler registered after it in that
+// file. That shipped once: a doubled "usage-series" block aborted
+// registerHomeIpc and took local-mcp-status (and friends) down with it,
+// while the build stayed green. Registration channels must be unique.
+const channelFiles = new Map();
+const dupes = [];
+for (const file of files) {
+  const src = readFileSync(join(MAIN_DIR, file), "utf8");
+  for (const m of src.matchAll(/ipcMain\.handle\(\s*["'`]([^"'`]+)["'`]/g)) {
+    const ch = m[1];
+    if (channelFiles.has(ch)) dupes.push({ ch, files: [channelFiles.get(ch), file] });
+    else channelFiles.set(ch, file);
+  }
+}
+if (dupes.length) {
+  console.error("\n✗ IPC channel registered more than once:\n");
+  for (const { ch, files: fs } of dupes) {
+    console.error(`    "${ch}"  — ${fs[0]}${fs[0] === fs[1] ? " (twice)" : ` and ${fs[1]}`}`);
+  }
+  console.error(
+    "\n  ipcMain.handle() throws on the second registration AT BOOT, aborting\n" +
+    "  the rest of that registrar — every handler after it silently vanishes.\n",
+  );
+  process.exit(1);
+}
+
 if (orphans.length) {
   console.error("\n✗ IPC registrar defined but never called:\n");
   for (const { name, file } of orphans) {
@@ -52,4 +80,4 @@ if (orphans.length) {
   process.exit(1);
 }
 
-console.log(`✓ ${registrars.size} IPC registrars, all called`);
+console.log(`✓ ${registrars.size} IPC registrars, all called · ${channelFiles.size} channels, all unique`);

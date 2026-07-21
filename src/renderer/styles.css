@@ -12715,3 +12715,62 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .lib-run-body.md code { font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; background: var(--surface-3); padding: 1px 4px; border-radius: 4px; }
 .lib-run-body.md pre { background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 0 0 8px; }
 .se-status { font-size: 11px; color: var(--text-3); }
+
+/* ── Dashboard: the two sections under the usage chart ── */
+.dash-two-col {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) { .dash-two-col { grid-template-columns: 1fr; } }
+
+/* Recommended for you — prompt starters, icon on the right. */
+.dash-recs { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.dash-rec {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  text-align: left; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+  color: var(--text); font-size: 13px; line-height: 1.45; font-family: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dash-rec:hover { border-color: var(--border-2); background: var(--hover); }
+.dash-rec-text { flex: 1; min-width: 0; }
+.dash-rec-ico { color: var(--text); flex-shrink: 0; display: inline-flex; }
+
+/* Recent runs — every task firing across every agent; a click opens the run
+   as a chat session. */
+.dash-tasks-search { margin: 10px 0 10px; width: 100%; }
+.dash-tasks-list { display: flex; flex-direction: column; gap: 6px; }
+.dash-run-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  text-align: left; cursor: pointer; font-family: inherit;
+  background: none; border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 12px; font-size: 12.5px; color: var(--text-2);
+  transition: border-color 0.15s, background 0.15s;
+}
+.dash-run-row:hover { border-color: var(--border-2); background: var(--hover); }
+.dash-run-task { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-task-agent {
+  color: var(--text-3); font-size: 11px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 8px; white-space: nowrap; flex-shrink: 0;
+}
+.dash-run-when { margin-left: auto; color: var(--text-3); font-size: 11px; white-space: nowrap; }
+#dash-tasks-pager .pagination-bar { margin-top: 10px; }
+
+/* ── Coding Agent tile: the live agent DOM, reparented into a workbench slot ── */
+.ws-rail-slot[data-view="coding"] .ws-rail-slot-body { display: flex; overflow: hidden; padding: 0; }
+.ws-rail-slot[data-view="coding"] .code-agent {
+  flex: 1; min-width: 0; max-width: none; width: auto; height: 100%;
+  border-right: none;
+}
+/* While hosted, the home column contributes nothing — the workbench owns the row. */
+.code-root.agent-hosted > .code-agent { display: none; }
+/* The header's session dropdown — the composer menus' look, fixed-positioned. */
+.wb-session-menu {
+  z-index: 1000; max-height: 320px; overflow-y: auto; min-width: 240px; max-width: 360px;
+}
+.wb-session-menu .code-drop-item {
+  display: block; width: 100%; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}

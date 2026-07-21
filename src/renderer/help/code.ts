@@ -588,6 +588,25 @@ function ensureCodeSection(): void {
   if (!document.querySelector('.help-section[data-section="code"].active')) gotoSection("code");
 }
 
+/** The session surface the Coding Agent workspace panel drives — same
+ *  sessions, same store, exposed across the bundle boundary via window.
+ *  Every history repaint also fires "agent-sessions-changed" so the panel's
+ *  header title/dropdown stay current. */
+(window as unknown as { __agentSessions?: unknown }).__agentSessions = {
+  list: (): Array<{ id: string; title: string; createdAt: number }> =>
+    chats.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt })),
+  currentId: (): string | null => currentId,
+  currentTitle: (): string => current()?.title ?? "New session",
+  switch: (id: string): void => {
+    if (!chats.some((c) => c.id === id)) return;
+    currentId = id;
+    void saveStore();
+    renderHistory();
+    renderThread();
+  },
+  startNew: (): void => newChat(),
+};
+
 function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [] };
   chats.unshift(c);
@@ -636,6 +655,7 @@ function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
 
 // ── Rendering ────────────────────────────────────────────────────────────
 function renderHistory(): void {
+  window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
   const list = el<HTMLDivElement>("code-history");
   if (!list) return;
   list.textContent = "";
@@ -1790,6 +1810,50 @@ export function initCode(): void {
  * the library editors. Rides the CURRENT session (the seed is a prompt, not a
  * context wipe); a first-ever visit simply lands on the fresh composer.
  */
+/** A task RUN opened as a chat session — the binding as the user turn, the
+ *  run's output (or error) as the assistant turn. Everything the run built or
+ *  wrote renders exactly like a live turn (markdown, code blocks, links).
+ *  Reopening the same run switches to its existing session. */
+export function openRunSession(run: {
+  runId: string; agentName: string; taskName: string; target: string;
+  startedAt: string; durationMs: number | null; status: string; error: string | null; output: string | null;
+}): void {
+  gotoSection("code");
+  const id = `run-${run.runId}`;
+  const existing = chats.find((c) => c.id === id);
+  if (existing) {
+    currentId = existing.id;
+    renderHistory();
+    renderThread();
+    return;
+  }
+  const when = new Date(run.startedAt).toLocaleString();
+  const dur = run.durationMs != null ? ` · ${(run.durationMs / 1000).toFixed(1)}s` : "";
+  const c: CodeChat = {
+    id,
+    title: `▶ ${run.taskName} · ${when}`,
+    createdAt: Date.parse(run.startedAt) || Date.now(),
+    messages: [
+      { role: "user", text: `▶ ${run.taskName} — ${run.agentName} ran \`${run.target}\` (${when}${dur})`, at: Date.parse(run.startedAt) || Date.now() },
+      run.status === "error"
+        ? { role: "assistant", text: `⚠ ${run.error || "The run failed."}`, at: Date.now() }
+        : { role: "assistant", text: run.output || "*(no output recorded)*", at: Date.now() },
+    ],
+  };
+  chats.unshift(c);
+  currentId = c.id;
+  void saveStore();
+  renderHistory();
+  renderThread();
+}
+
+/** A NEW session with `text` ready in the composer — the dashboard's
+ *  "Recommended for you" entries land here. */
+export function seedNewSession(text: string): void {
+  newChat();
+  seedComposer(text);
+}
+
 export function seedComposer(text: string): void {
   gotoSection("code");
   const ta = input();

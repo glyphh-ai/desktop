@@ -6,8 +6,8 @@
  * billing/usage endpoints the platform dashboard uses.
  */
 
-import { $a, cssVar } from "./shared.js";
-import { openUrlInWorkbench } from "./code.js";
+import { $a, cssVar, escapeHtml, paginate, renderPaginationBar } from "./shared.js";
+import { openUrlInWorkbench, seedNewSession, openRunSession } from "./code.js";
 import { gotoSection } from "./navigation.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
@@ -230,9 +230,102 @@ export async function loadDashboard(): Promise<void> {
     $a("dash-apps-value").textContent = fmtInt(data.appsCount);
 
     void loadUsageChart();
+    renderRecommendations();
+    void loadRuns();
   } catch (err) {
     console.error("[dashboard] load failed", err);
   }
+}
+
+// ── Recommended for you: three starters; a click = a fresh session with the
+// prompt injected, ready to send. ──
+const RECOMMENDATIONS: Array<{ prompt: string; icon: string }> = [
+  {
+    prompt: "Read my inbox and give me a brief of what actually needs me today",
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`,
+  },
+  {
+    prompt: "Build a slide deck from my Q3 folder in Drive, on our corporate template",
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+  },
+  {
+    prompt: "Set up an agent that digests my email and Slack every morning at 8",
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  },
+];
+
+function renderRecommendations(): void {
+  const host = document.getElementById("dash-recs");
+  if (!host || host.childElementCount) return;
+  for (const rec of RECOMMENDATIONS) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "dash-rec";
+    row.innerHTML = `<span class="dash-rec-ico">${rec.icon}</span><span class="dash-rec-text">${escapeHtml(rec.prompt)}</span>`;
+    row.addEventListener("click", () => seedNewSession(rec.prompt));
+    host.appendChild(row);
+  }
+}
+
+// ── Recent runs, across ALL agents: every task firing, newest first. A click
+// opens the run as a chat session — the full output, rendered like a turn. ──
+interface DashRun {
+  runId: string; agentId: string; agentName: string; taskName: string; target: string;
+  startedAt: string; durationMs: number | null; status: string; error: string | null; output: string | null;
+}
+
+let allRuns: DashRun[] = [];
+let runsPage = 0;
+const RUNS_PAGE_SIZE = 5;
+
+function renderRuns(): void {
+  const listEl = document.getElementById("dash-tasks-list");
+  const pagerEl = document.getElementById("dash-tasks-pager");
+  const search = (document.getElementById("dash-tasks-search") as HTMLInputElement | null)?.value.trim().toLowerCase() ?? "";
+  if (!listEl || !pagerEl) return;
+
+  const filtered = search
+    ? allRuns.filter((run) => `${run.taskName} ${run.target} ${run.agentName}`.toLowerCase().includes(search))
+    : allRuns;
+
+  listEl.innerHTML = "";
+  pagerEl.innerHTML = "";
+  if (!allRuns.length) {
+    listEl.innerHTML = `<div class="crud-empty">No runs yet — schedule a task and its firings land here.</div>`;
+    return;
+  }
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="crud-empty">No runs matching "${escapeHtml(search)}"</div>`;
+    return;
+  }
+
+  const { items, state } = paginate(filtered, runsPage, RUNS_PAGE_SIZE);
+  runsPage = state.page;
+  for (const run of items) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "dash-run-row";
+    const when = new Date(run.startedAt).toLocaleString();
+    const err = run.status === "error";
+    row.innerHTML = `
+      <span class="dash-run-task"></span>
+      <span class="dash-task-agent"></span>
+      <span class="dash-run-when">${escapeHtml(when)}</span>
+      <span class="lib-run-badge ${err ? "err" : "ok"}">${err ? "Failed" : "Success"}</span>`;
+    row.querySelector(".dash-run-task")!.textContent = run.taskName;
+    row.querySelector(".dash-task-agent")!.textContent = run.agentName;
+    row.addEventListener("click", () => openRunSession(run));
+    listEl.appendChild(row);
+  }
+  if (state.totalPages > 1) pagerEl.appendChild(renderPaginationBar(state, (p) => { runsPage = p; renderRuns(); }));
+}
+
+async function loadRuns(): Promise<void> {
+  const env = await window.yo.dashboardRuns?.();
+  if (!env?.ok) return;
+  allRuns = env.data as DashRun[];
+  runsPage = 0;
+  renderRuns();
 }
 
 let wired = false;
@@ -258,4 +351,5 @@ export function initDashboardEvents(): void {
   for (const id of ["dash-usage-days", "dash-usage-group", "dash-usage-filter"]) {
     document.getElementById(id)?.addEventListener("change", () => { void loadUsageChart(); });
   }
+  document.getElementById("dash-tasks-search")?.addEventListener("input", () => { runsPage = 0; renderRuns(); });
 }

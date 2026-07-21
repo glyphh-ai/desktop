@@ -37,6 +37,38 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   // billing/usage endpoints; each call degrades to null so one failure
   // doesn't blank the whole card set. Credit amounts arrive in micro-credits
   // (1 credit = 1e6) → /1e6.
+  // Every RUN across every agent's tasks — the dashboard's recent-runs list.
+  // Newest first, capped: the dashboard shows a page of 5, so 60 is plenty.
+  ipcMain.handle("dashboard-runs", async () => {
+    try {
+      const client = getClient();
+      const agents = await client.agents.list();
+      const perAgent = await Promise.all(agents.map(async (agent) => {
+        const tasks = await client.agents.tasks(agent.id).catch(() => []);
+        const perTask = await Promise.all(tasks.map(async (task) => {
+          const runs = await client.agents.taskRuns(agent.id, task.id).catch(() => []);
+          return runs.map((run) => ({
+            runId: run.id,
+            agentId: agent.id,
+            agentName: agent.name,
+            taskName: task.name,
+            target: task.target,
+            startedAt: run.startedAt,
+            durationMs: run.durationMs,
+            status: run.status,
+            error: run.error,
+            output: run.output,
+          }));
+        }));
+        return perTask.flat();
+      }));
+      const all = perAgent.flat().sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+      return { ok: true, data: all.slice(0, 60) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // The stacked usage chart's feed: day × (model | source) cells over the last
   // N days. Credits leave here as WHOLE credits — the renderer never sees micro.
   ipcMain.handle("usage-series", async (_e, days: number, groupBy: string) => {

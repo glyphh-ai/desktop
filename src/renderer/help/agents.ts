@@ -132,7 +132,7 @@ function renderList(): void {
 // ── Detail (read) ───────────────────────────────────────────────────────────
 
 /** "0 8 * * *" → "every day at 8:00" — the schedule in words, raw as fallback. */
-function humanCron(cron: string): string {
+export function humanCron(cron: string): string {
   const f = cron.trim().split(/\s+/);
   if (f.length !== 5) return cron;
   const [min, hour, dom, month, dow] = f;
@@ -385,6 +385,12 @@ function taskRow(task: AgentTask): HTMLElement {
   };
   paintRow();
   return wrap;
+}
+
+/** Open one agent's detail from OUTSIDE the section (the dashboard's
+ *  scheduled-tasks rows) — caller flips to the Agents section first. */
+export function openAgentDetail(id: string): void {
+  void openDetail(id);
 }
 
 async function openDetail(id: string): Promise<void> {

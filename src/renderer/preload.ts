@@ -313,6 +313,7 @@ contextBridge.exposeInMainWorld("yo", {
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
+  dashboardRuns: () => ipcRenderer.invoke("dashboard-runs") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   usageSeries: (days: number, groupBy: string) => ipcRenderer.invoke("usage-series", days, groupBy) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   panelAppsCreate: (input: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,

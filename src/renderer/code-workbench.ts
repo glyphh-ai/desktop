@@ -52,7 +52,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "app";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "app";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -78,6 +78,9 @@ interface TermSlot {
   activeIdx: number;
 }
 interface DiffSlot { id: number; view: "diff"; collapsed?: Set<string> }
+/** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
+ *  composer); nothing of its own beyond the header's session controls. */
+interface CodingSlot { id: number; view: "coding" }
 interface PreviewSlot {
   id: number; view: "preview"; url?: string; viewKey?: string;
   /** Inline document (Glyphh build previews) — runtime-only, never persisted. */
@@ -109,7 +112,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number }
 
@@ -135,6 +138,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   diff:     { title: "Diff",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
   preview:  { title: "Preview",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>` },
   monaco:   { title: "Editor",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
+  coding:   { title: "Coding Agent", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
 };
@@ -386,7 +390,7 @@ async function init(): Promise<void> {
       for (const v of (savedRail.views || []).slice(0, 2)) {
         if (typeof v === "object" && v !== null && v.view === "app" && v.slug) {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "coding") {
           slots.push(makeSlot(v));
         }
       }
@@ -425,7 +429,7 @@ async function init(): Promise<void> {
     // .code-root spans agent + rails (the app rail sits outside it).
     const root = document.querySelector<HTMLElement>(".code-root");
     const rootW = root ? root.getBoundingClientRect().width : window.innerWidth;
-    const MIN_AGENT = maximizedSlotId !== null ? 0 : 440;
+    const MIN_AGENT = (maximizedSlotId !== null || codingHosted()) ? 0 : 440;
     return Math.max(260, rootW - MIN_AGENT);
   }
   function applyResponsiveWidths(): void {
@@ -517,6 +521,7 @@ async function init(): Promise<void> {
       };
     }
     if (view === "diff") return { id, view };
+    if (view === "coding") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -608,9 +613,25 @@ async function init(): Promise<void> {
     saveLayout();
   }
 
+  /** Return the live agent DOM to its home column (before the workbench
+   *  aside). Called before any rails rebuild and when the coding tile closes. */
+  function parkAgent(): void {
+    const agent = document.querySelector<HTMLElement>(".code-agent");
+    const aside = document.getElementById("code-workbench");
+    if (agent && aside && agent.parentElement !== aside.parentElement) {
+      aside.parentElement!.insertBefore(agent, aside);
+    }
+    document.querySelector(".code-root")?.classList.remove("agent-hosted");
+  }
+
+  function codingHosted(): boolean {
+    return rails.some((r) => r.slots.some((s) => s.view === "coding"));
+  }
+
   function renderRails(): void {
     const container = document.getElementById("code-wb-rails");
     if (!container) return;
+    parkAgent();
     container.innerHTML = "";
     rails.forEach((rail, idx) => {
       container.appendChild(makeRailDropStrip(idx));
@@ -775,8 +796,74 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
+    else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
+  }
+
+  // ── Coding Agent view — the SAME agent, reparented into a tile ──
+  // The slot hosts the live .code-agent element (thread, composer, everything
+  // — one runtime, shared sessions). The header gains the session controls:
+  // title on the left, history dropdown + new-session on the right.
+  function renderCodingIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
+    const agent = document.querySelector<HTMLElement>(".code-agent");
+    if (!agent) { body.innerHTML = `<div class="ws-empty">The agent is unavailable.</div>`; return; }
+    body.classList.add("ws-coding-body");
+    body.appendChild(agent);
+    document.querySelector(".code-root")?.classList.add("agent-hosted");
+
+    type SessionsApi = {
+      list(): Array<{ id: string; title: string; createdAt: number }>;
+      currentId(): string | null;
+      currentTitle(): string;
+      switch(id: string): void;
+      startNew(): void;
+    };
+    const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+    const titleEl = wrap.querySelector<HTMLElement>(".ws-rail-slot-header .title");
+    if (titleEl && sess) titleEl.textContent = sess.currentTitle();
+
+    if (!sess) return;
+    const maxBtn = wrap.querySelector(".slot-maximize")!;
+
+    // + New session — keeps the arranged layout (see __codeWorkbenchNewSession).
+    const plus = document.createElement("button");
+    plus.className = "ws-icon-btn slot-session-new";
+    plus.title = "New session";
+    plus.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+    plus.addEventListener("click", (ev) => { ev.stopPropagation(); sess.startNew(); });
+
+    // History — the session list as a dropdown anchored under the button.
+    const hist = document.createElement("button");
+    hist.className = "ws-icon-btn slot-session-history";
+    hist.title = "Session history";
+    hist.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+    hist.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      document.querySelector(".wb-session-menu")?.remove();
+      const menu = document.createElement("div");
+      menu.className = "code-drop wb-session-menu";
+      const cur = sess.currentId();
+      for (const s of sess.list().slice(0, 20)) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "code-drop-item" + (s.id === cur ? " selected" : "");
+        item.textContent = s.title;
+        item.addEventListener("click", () => { menu.remove(); sess.switch(s.id); });
+        menu.appendChild(item);
+      }
+      const r = hist.getBoundingClientRect();
+      menu.style.position = "fixed";
+      menu.style.top = `${r.bottom + 6}px`;
+      menu.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+      document.body.appendChild(menu);
+      const dismiss = (e: MouseEvent): void => {
+        if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
+      };
+      document.addEventListener("mousedown", dismiss, true);
+    });
+
+    maxBtn.before(hist, plus);
   }
 
   // ── App view — in-workbench apps (the OS-window replacement) ──
@@ -2280,7 +2367,7 @@ async function init(): Promise<void> {
     for (let col = 0; col < cols; col++) {
       const colCells = layout.cells.filter((c) => c.col === col).sort((a, b) => a.row - b.row);
       if (!colCells.length) continue;
-      const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan"]);
+      const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding"]);
       const slots: Slot[] = colCells.map((c) =>
         c.tool && TOOL_VIEWS.has(c.tool)
           ? makeSlot(c.tool as Exclude<ViewKind, "monaco">)
@@ -2381,7 +2468,18 @@ async function init(): Promise<void> {
   // #code-apps-btn is bound in help/code.ts initCode() via openCommandCenter so
   // it works cold (before this async init runs) and Cmd+. shares the same path.
 
+  window.addEventListener("agent-sessions-changed", () => {
+    type SessionsApi = { currentTitle(): string };
+    const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+    const titleEl = document.querySelector<HTMLElement>('.ws-rail-slot[data-view="coding"] .ws-rail-slot-header .title');
+    if (titleEl && sess) titleEl.textContent = sess.currentTitle();
+  });
+
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession = () => {
+    // A fresh session normally starts with a clean workbench — but when the
+    // agent is HOSTED, the user built this arrangement deliberately (that is
+    // the panel's whole point); keep it.
+    if (codingHosted()) return;
     rails.length = 0;
     maximizedSlotId = null;
     renderRails();
