@@ -740,16 +740,29 @@ function renderHistory(): void {
       field.value = c.title;
       field.addEventListener("click", (ev) => ev.stopPropagation());
       let done = false;
+      // The whole lifecycle is IN PLACE — never renderHistory() from here.
+      // A rebuild on blur destroys the row the user is mid-click on, eating
+      // the click (couldn't switch to another session after a rename opened).
+      const restore = (): void => {
+        label.textContent = c.title;
+        label.title = "Click to rename";
+        field.replaceWith(label);
+      };
       const commit = (): void => {
         if (done) return;
         done = true;
         const t = field.value.trim();
-        if (t && t !== c.title) { c.title = t; void saveStore(); }
-        renderHistory();
+        if (t && t !== c.title) {
+          c.title = t;
+          void saveStore();
+          // The coding tile's header/dropdown follow this event.
+          window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+        }
+        restore();
       };
       field.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") { ev.preventDefault(); commit(); }
-        else if (ev.key === "Escape") { ev.preventDefault(); done = true; renderHistory(); }
+        else if (ev.key === "Escape") { ev.preventDefault(); done = true; restore(); }
       });
       field.addEventListener("blur", commit);
       label.replaceWith(field);
