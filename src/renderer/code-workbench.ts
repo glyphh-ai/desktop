@@ -1459,6 +1459,22 @@ async function init(): Promise<void> {
   // Tabs along the top, real Monaco editor below. Routes from the Files
   // tree's openFileInMonaco. Persists editor instance across re-renders by
   // keying off the slot id and re-attaching the DOM host.
+  // The editor's empty-state sayings — the house spirit (love, peace, a
+  // little humor), aimed at code. Rotates every 10s while the pane is empty.
+  const EDITOR_SAYINGS = [
+    "Every great file starts as an empty one. So do we.",
+    "Write with love. Refactor with forgiveness.",
+    "The cursor blinks like a small, patient heartbeat.",
+    "Code is poetry that compiles. Mostly.",
+    "Ship gently. Merge kindly. Rebase with grace.",
+    "Whitespace is just the code breathing.",
+    "Somewhere in Files, a document is hoping you'll pick it.",
+    "Love is a clean diff.",
+    "Name things like you'll meet them again. You will.",
+    "A calm editor is a kind of home.",
+  ];
+  let editorSayingIdx = Math.floor(Math.random() * EDITOR_SAYINGS.length);
+
   async function renderMonacoIntoSlot(body: HTMLElement, slot: MonacoSlot): Promise<void> {
     body.innerHTML = `
       <div class="ws-monaco-tabs"></div>
@@ -1534,7 +1550,28 @@ async function init(): Promise<void> {
       const tab = slot.tabs[slot.activeIdx];
       if (!tab) {
         pathText.textContent = "";
-        host.innerHTML = `<div class="ws-empty">Open a file from the Files panel — it lands here.</div>`;
+        // The landing: the chat's ghost mark on the brand-gradient wash,
+        // with a saying that rotates every 10 seconds.
+        host.innerHTML = `
+          <div class="ws-monaco-landing">
+            <div class="wsml-glow"></div>
+            <div class="wsml-inner">
+              <img class="wsml-mark" src="brand/glyphh-mark.png" alt="" />
+              <div class="wsml-saying"></div>
+              <div class="wsml-hint">Open a file from the Files panel — it lands here.</div>
+            </div>
+          </div>`;
+        const sayingEl = host.querySelector<HTMLElement>(".wsml-saying")!;
+        sayingEl.textContent = EDITOR_SAYINGS[editorSayingIdx]!;
+        const timer = setInterval(() => {
+          if (!sayingEl.isConnected) { clearInterval(timer); return; }
+          sayingEl.style.opacity = "0";
+          setTimeout(() => {
+            editorSayingIdx = (editorSayingIdx + 1) % EDITOR_SAYINGS.length;
+            sayingEl.textContent = EDITOR_SAYINGS[editorSayingIdx]!;
+            sayingEl.style.opacity = "";
+          }, 600);
+        }, 10_000);
         mdHost.innerHTML = "";
         previewBtn.style.display = "none"; codeBtn.style.display = "none";
         return;
