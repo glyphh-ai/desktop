@@ -39,7 +39,7 @@ import { PanelManager } from "./panel-manager";
 import { TerminalManager, AgentSpawnConfig } from "./terminal";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
-import { isAuthenticated, initAuth, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, getAuthToken } from "./auth";
+import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, getAuthToken } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
 import { canAddApp, canSaveLayout, canUseCustomMcp } from "./entitlements";
@@ -278,6 +278,10 @@ async function boot() {
     }
   } catch { /* non-critical */ }
 
+  // Scope to the last signed-in user BEFORE the DB opens — otherwise every
+  // boot-time read (window bounds, prefs) hits the default-scope DB while
+  // post-auth writes land in the user's, and nothing survives a restart.
+  restoreUserScopeFromSidecar();
   // Initialize local SQLite database (agents, layouts, preferences)
   initLocalDb();
   initAdaStore(getLocalDb()); // Ada — schema-on-write fact memory

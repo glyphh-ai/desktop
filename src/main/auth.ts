@@ -157,6 +157,15 @@ export async function forceTokenRefresh(): Promise<boolean> {
   return ok;
 }
 
+/** Scope local state to the last signed-in account from the identity sidecar —
+ *  SYNCHRONOUS and offline-safe, for boot to call BEFORE the local DB opens.
+ *  Without this, boot-time reads (window bounds, prefs, layouts) hit the
+ *  default-scope DB while post-auth writes land in the user's — nothing
+ *  "persists" across restarts. initAuth's own scoping then no-ops. */
+export function restoreUserScopeFromSidecar(): void {
+  setActiveUser(readIdentitySidecar());
+}
+
 /** Initialize auth — restore session, scope local state, start the account poll. */
 export async function initAuth(): Promise<void> {
   const session = await getClient().getSession();
