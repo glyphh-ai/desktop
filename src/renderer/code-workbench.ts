@@ -641,12 +641,24 @@ async function init(): Promise<void> {
     const container = document.getElementById("code-wb-rails");
     if (!container) return;
     parkAgent();
+    // Custom slot heights (drag-set or layout-set) live as inline flex on the
+    // slot elements — a rebuild would silently reset them (e.g. opening a
+    // file re-renders and the panel under the editor snapped back). Snapshot
+    // by slot id and reapply after the rebuild.
+    const savedFlex = new Map<string, string>();
+    container.querySelectorAll<HTMLElement>(".ws-rail-slot").forEach((slotEl) => {
+      if (slotEl.dataset.slotId && slotEl.style.flex) savedFlex.set(slotEl.dataset.slotId, slotEl.style.flex);
+    });
     container.innerHTML = "";
     rails.forEach((rail, idx) => {
       container.appendChild(makeRailDropStrip(idx));
       container.appendChild(renderRail(rail, idx));
     });
     container.appendChild(makeRailDropStrip(rails.length));
+    container.querySelectorAll<HTMLElement>(".ws-rail-slot").forEach((slotEl) => {
+      const kept = slotEl.dataset.slotId && savedFlex.get(slotEl.dataset.slotId);
+      if (kept) slotEl.style.flex = kept;
+    });
     paintSectionToggles();
     // Re-apportion displayed widths after every (re)render — handles slot
     // adds/closes/DnD that change the rail count and the drop-strip total.
@@ -1461,22 +1473,6 @@ async function init(): Promise<void> {
   // Tabs along the top, real Monaco editor below. Routes from the Files
   // tree's openFileInMonaco. Persists editor instance across re-renders by
   // keying off the slot id and re-attaching the DOM host.
-  // The editor's empty-state sayings — the house spirit (love, peace, a
-  // little humor), aimed at code. Rotates every 10s while the pane is empty.
-  const EDITOR_SAYINGS = [
-    "Every great file starts as an empty one. So do we.",
-    "Write with love. Refactor with forgiveness.",
-    "The cursor blinks like a small, patient heartbeat.",
-    "Code is poetry that compiles. Mostly.",
-    "Ship gently. Merge kindly. Rebase with grace.",
-    "Whitespace is just the code breathing.",
-    "Somewhere in Files, a document is hoping you'll pick it.",
-    "Love is a clean diff.",
-    "Name things like you'll meet them again. You will.",
-    "A calm editor is a kind of home.",
-  ];
-  let editorSayingIdx = Math.floor(Math.random() * EDITOR_SAYINGS.length);
-
   async function renderMonacoIntoSlot(body: HTMLElement, slot: MonacoSlot): Promise<void> {
     body.innerHTML = `
       <div class="ws-monaco-tabs"></div>
@@ -1552,32 +1548,22 @@ async function init(): Promise<void> {
       const tab = slot.tabs[slot.activeIdx];
       if (!tab) {
         pathText.textContent = "";
-        // The landing: the chat's ghost mark on the brand-gradient wash,
-        // with a saying that rotates every 10 seconds.
+        // The landing: the website hero's gradient with the ghost mark
+        // overlaid — full pane. The md host is flex:1 and would otherwise
+        // take half the height, so it drops out entirely while empty.
         host.innerHTML = `
           <div class="ws-monaco-landing">
-            <div class="wsml-glow"></div>
             <div class="wsml-inner">
               <img class="wsml-mark" src="brand/glyphh-mark.png" alt="" />
-              <div class="wsml-saying"></div>
               <div class="wsml-hint">Open a file from the Files panel — it lands here.</div>
             </div>
           </div>`;
-        const sayingEl = host.querySelector<HTMLElement>(".wsml-saying")!;
-        sayingEl.textContent = EDITOR_SAYINGS[editorSayingIdx]!;
-        const timer = setInterval(() => {
-          if (!sayingEl.isConnected) { clearInterval(timer); return; }
-          sayingEl.style.opacity = "0";
-          setTimeout(() => {
-            editorSayingIdx = (editorSayingIdx + 1) % EDITOR_SAYINGS.length;
-            sayingEl.textContent = EDITOR_SAYINGS[editorSayingIdx]!;
-            sayingEl.style.opacity = "";
-          }, 600);
-        }, 10_000);
         mdHost.innerHTML = "";
+        mdHost.style.display = "none";
         previewBtn.style.display = "none"; codeBtn.style.display = "none";
         return;
       }
+      mdHost.style.display = "";
       pathText.textContent = tab.path;
       const md = isMarkdown(tab.name);
       // Mode buttons only visible for markdown files. Non-md tabs always
@@ -2114,11 +2100,36 @@ async function init(): Promise<void> {
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(hostEl);
-      requestAnimationFrame(() => {
+      // Spawn ONLY once the host has real dimensions. A layout-open renders
+      // terminals before the rails have laid out (or while the section is
+      // hidden): fit() at zero size computes garbage cols/rows, the pty
+      // spawns wedged and narrow, and the tab looks dead until recreated.
+      const spawnWhenSized = (): void => {
+        if (!hostEl.isConnected) return;
+        const r = hostEl.getBoundingClientRect();
+        if (r.width < 40 || r.height < 40) {
+          if (typeof ResizeObserver !== "undefined") {
+            const ro = new ResizeObserver(() => {
+              if (!hostEl.isConnected) { ro.disconnect(); return; }
+              const rr = hostEl.getBoundingClientRect();
+              if (rr.width >= 40 && rr.height >= 40) { ro.disconnect(); doSpawn(); }
+            });
+            ro.observe(hostEl);
+          } else {
+            setTimeout(spawnWhenSized, 150);
+          }
+          return;
+        }
+        doSpawn();
+      };
+      const doSpawn = (): void => {
         try { fit.fit(); } catch { /* noop */ }
         const { cols, rows } = term;
         window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows);
-      });
+        // One more fit next frame — the first can land mid-reflow.
+        requestAnimationFrame(() => { try { fit.fit(); } catch { /* noop */ } });
+      };
+      requestAnimationFrame(spawnWhenSized);
       term.onData((data) => window.wb.termWrite(wbt.ptyId, data));
       term.onResize(({ cols, rows }) => window.wb.termResize(wbt.ptyId, cols, rows));
       const off1 = window.wb.termOnData(wbt.ptyId, (data) => term.write(data));
