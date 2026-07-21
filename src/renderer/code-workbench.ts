@@ -405,7 +405,9 @@ async function init(): Promise<void> {
       applyResponsiveWidths();
       const railEls = document.querySelectorAll<HTMLElement>(".ws-right-rail");
       (data.rails || []).forEach((r, i) => {
-        if (r.topSlotHeight && railEls[i]) {
+        // Never pin the CODING tile to a stale pixel height — the hosted
+        // agent always flexes to fill; pins apply to the other views only.
+        if (r.topSlotHeight && railEls[i] && rails[i]?.slots[0]?.view !== "coding") {
           const topSlot = railEls[i]!.querySelector(".ws-rail-slot") as HTMLElement | null;
           if (topSlot) topSlot.style.flex = `0 0 ${r.topSlotHeight}px`;
         }
@@ -2394,7 +2396,8 @@ async function init(): Promise<void> {
       applyResponsiveWidths();
       const railEls = document.querySelectorAll<HTMLElement>("#code-wb-rails .ws-right-rail");
       savedRails.forEach((sr, i) => {
-        if (sr.topSlotHeight && rails[i]?.slots.length === 2 && railEls[i]) {
+        if (sr.topSlotHeight && rails[i]?.slots.length === 2 && railEls[i]
+            && rails[i]!.slots[0]!.view !== "coding") {
           const topSlot = railEls[i]!.querySelector(".ws-rail-slot") as HTMLElement | null;
           if (topSlot) topSlot.style.flex = `0 0 ${sr.topSlotHeight}px`;
         }
@@ -2432,7 +2435,11 @@ async function init(): Promise<void> {
         if (!el) return;
         const colCells = layout.cells.filter((c) => c.col === railCols[ri]).sort((a, b) => a.row - b.row);
         el.querySelectorAll<HTMLElement>(".ws-rail-slot").forEach((slotEl, si) => {
-          slotEl.style.flex = `${layout.rowHeights[colCells[si]?.row ?? si] ?? 1 / rail.slots.length} 1 0`;
+          const frac = layout.rowHeights[colCells[si]?.row ?? si] ?? 1 / rail.slots.length;
+          // The coding tile always gets a real share — a zero/missing row
+          // fraction must not collapse the hosted agent.
+          const grow = slotEl.dataset.view === "coding" ? Math.max(frac, 0.5) : frac;
+          slotEl.style.flex = `${grow} 1 0`;
         });
       });
       scheduleAppSync();

@@ -12759,9 +12759,15 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 #dash-tasks-pager .pagination-bar { margin-top: 10px; }
 
 /* ── Coding Agent tile: the live agent DOM, reparented into a workbench slot ── */
-.ws-rail-slot[data-view="coding"] .ws-rail-slot-body { display: flex; overflow: hidden; padding: 0; }
+.ws-rail-slot[data-view="coding"] .ws-rail-slot-body {
+  display: flex; flex-direction: column; overflow: hidden; padding: 0;
+}
+/* Sized like every other slot view: flex in the column, never height:100%
+   (percentage heights against flex-derived parents collapse on some paths —
+   the layout-open one included). */
 .ws-rail-slot[data-view="coding"] .code-agent {
-  flex: 1; min-width: 0; max-width: none; width: auto; height: 100%;
+  flex: 1 1 auto; min-height: 0; height: auto;
+  min-width: 0; max-width: none; width: auto;
   border-right: none;
 }
 /* While hosted, the home column contributes nothing — the workbench owns the row. */
