@@ -9762,14 +9762,18 @@ select.settings-input {
   box-sizing: border-box;
 }
 .ws-preview-input:focus { border-color: var(--ws-accent); }
-.ws-preview-reload {
+.ws-preview-reload,
+.ws-preview-openfile {
   background: transparent; border: none; padding: 0;
   width: 24px; height: 24px; border-radius: 4px;
   color: var(--ws-text-faint); cursor: pointer;
+  flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
 }
-.ws-preview-reload:hover { background: var(--hover); color: var(--ws-text); }
-.ws-preview-reload svg { width: 13px; height: 13px; }
+.ws-preview-reload:hover,
+.ws-preview-openfile:hover { background: var(--hover); color: var(--ws-text); }
+.ws-preview-reload svg,
+.ws-preview-openfile svg { width: 13px; height: 13px; }
 .ws-preview-body { flex: 1; overflow: hidden; background: var(--ws-bg-card); display: flex; align-items: center; justify-content: center; }
 .ws-preview-frame {
   flex: 1 1 auto;
