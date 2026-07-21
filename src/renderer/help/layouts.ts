@@ -77,13 +77,13 @@ function panelLabel(panelId: string): string {
  *  workbench ViewKind, so code-workbench maps it straight to makeSlot(view).
  *  Stored verbatim as the schema's panelId string — round-trips, no migration. */
 const TOOL_PANELS: Array<{ id: string; label: string }> = [
-  { id: "tool:files",    label: "Files" },
-  { id: "tool:terminal", label: "Terminal" },
-  { id: "tool:diff",     label: "Diff" },
-  { id: "tool:preview",  label: "Preview" },
-  { id: "tool:plan",     label: "Plan" },
-  { id: "tool:monaco",   label: "Editor" },
+  { id: "tool:preview",  label: "Browser" },
   { id: "tool:coding",   label: "Coding Agent" },
+  { id: "tool:diff",     label: "Diff" },
+  { id: "tool:monaco",   label: "Editor" },
+  { id: "tool:files",    label: "Files" },
+  { id: "tool:plan",     label: "Plan" },
+  { id: "tool:terminal", label: "Terminal" },
 ];
 const isToolPanel = (id: string): boolean => id.startsWith("tool:");
 const toolPanelLabel = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.label || id.slice(5);
@@ -322,7 +322,9 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
   for (const a of apps) {
     if (!appById[a.id]) appById[a.id] = { id: a.id, name: a.name, url: (a as { url?: string }).url, execPath: (a as { execPath?: string }).execPath };
   }
-  const options: PickerOption[] = apps.map((a) => ({ id: a.id, label: a.name }));
+  const options: PickerOption[] = apps
+    .map((a) => ({ id: a.id, label: a.name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   const picker = document.createElement("div");
   picker.className = "cell-panel-picker";
