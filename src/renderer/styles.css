@@ -12787,7 +12787,7 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   border-right: none;
 }
 /* In the tile, the home column's 44px gutters waste the width — a few px. */
-.ws-rail-slot[data-view="coding"] .code-thread { padding: 14px 6px; }
+.ws-rail-slot[data-view="coding"] .code-thread { padding: 14px 14px; }
 .ws-rail-slot[data-view="coding"] .code-composer { padding: 4px 6px 12px; max-width: none; }
 /* While hosted, the home column contributes nothing — the workbench owns the row. */
 .code-root.agent-hosted > .code-agent { display: none; }
