@@ -2035,20 +2035,39 @@ async function init(): Promise<void> {
         });
       }
       const maxW = Math.max(240, containerW - otherRailsW - stripW);
+      // When ANOTHER rail follows this one, the handle is the divider BETWEEN
+      // them and must resize BOTH: left grows exactly as much as right shrinks.
+      // Moving only this rail's width left the neighbor's explicit width
+      // untouched — the pair fell out of sync and "only one side resized".
+      const nextRailEl = (() => {
+        let el = railEl.nextElementSibling;
+        while (el && !el.classList.contains("ws-right-rail")) el = el.nextElementSibling;
+        return el as HTMLElement | null;
+      })();
+      const nextRail = nextRailEl ? rails.find((r) => r.id === Number(nextRailEl.dataset.railId)) : undefined;
+      const startNextW = nextRailEl?.getBoundingClientRect().width ?? 0;
       const onMove = (ev: MouseEvent) => {
         const dx = ev.clientX - startX;
-        // Handle is on the RIGHT edge: drag right (dx > 0) grows the rail.
-        const w = Math.max(240, Math.min(maxW, startW + dx));
-        railEl.style.width = w + "px";
+        if (nextRailEl) {
+          // Paired: clamp so NEITHER side collapses below the minimum.
+          const d = Math.max(240 - startW, Math.min(startNextW - 240, dx));
+          railEl.style.width = `${startW + d}px`;
+          nextRailEl.style.width = `${startNextW - d}px`;
+        } else {
+          // Last rail: the old free-edge behavior against the container budget.
+          const w = Math.max(240, Math.min(maxW, startW + dx));
+          railEl.style.width = w + "px";
+        }
       };
       const onUp = () => {
         handle.classList.remove("dragging");
         document.body.classList.remove("wb-mouse-drag");
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
-        // Persist the user's intent (preferred width). applyResponsiveWidths
-        // will derive the displayed width from this when needed.
+        // Persist the user's intent (preferred width) — BOTH sides of a
+        // paired drag. applyResponsiveWidths derives display widths from this.
         if (rail) rail.prefWidth = parseInt(railEl.style.width, 10) || rail.prefWidth;
+        if (nextRail && nextRailEl) nextRail.prefWidth = parseInt(nextRailEl.style.width, 10) || nextRail.prefWidth;
         saveLayout();
       };
       document.addEventListener("mousemove", onMove);

@@ -149,7 +149,13 @@ async function openDetail(ref: string): Promise<void> {
     ${m.whenToUse ? `<div class="lib-read-when"><span class="lib-read-label">When Glyphh reaches for it</span><p>${escapeHtml(m.whenToUse)}</p></div>` : ""}
     <hr class="lib-divider" />
     <div class="lib-md-render">${formatMarkdown(unwrapSoftBreaks(current.prompt || "*No instructions.*"))}</div>
-    ${current.code ? `<hr class="lib-divider" /><span class="lib-read-label">Program</span><pre class="lib-read-code">${escapeHtml(current.code)}</pre>` : ""}`;
+    ${current.code ? `<hr class="lib-divider" /><span class="lib-read-label">Program</span><pre class="lib-read-code">${escapeHtml(current.code)}</pre>` : ""}
+    <div class="settings-actions lib-detail-actions">
+      <button id="skill-delete-btn" class="action-btn danger">Delete</button>
+      <div style="flex:1;"></div>
+    </div>`;
+
+  detailEl.querySelector("#skill-delete-btn")!.addEventListener("click", () => void deleteCurrent());
 
   toolbar.classList.add("hidden");
   listEl.classList.add("hidden");
@@ -169,12 +175,13 @@ export function initSkillsLibraryEvents(): void {
     seedComposer(`/create-skill Update the existing skill "${current.slug}" (${current.name}): `);
   });
 
-  $a("skill-delete-btn").addEventListener("click", async () => {
-    if (!current) return;
-    const sure = await confirmAction({ title: "Delete this skill?", body: "Loops and agent tasks that name it will fail until rebound.", confirmLabel: "Delete" });
-    if (!sure) return;
-    const env = await window.yo.librarySkillDelete(current.slug);
-    if (!env.ok) { fail(env.error || "delete failed"); return; }
-    await loadSkillsLibrary();
-  });
+}
+
+async function deleteCurrent(): Promise<void> {
+  if (!current) return;
+  const sure = await confirmAction({ title: `Delete "${current.name}"?`, body: "Loops and agent tasks that name it will fail until rebound.", confirmLabel: "Delete", danger: true });
+  if (!sure) return;
+  const env = await window.yo.librarySkillDelete(current.slug);
+  if (!env.ok) { fail(env.error || "delete failed"); return; }
+  await loadSkillsLibrary();
 }

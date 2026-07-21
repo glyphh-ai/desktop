@@ -71,58 +71,6 @@ function initSettings() {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
-  // ── Org-wide guardrails (Settings > Security). org_admin only; non-admins
-  // see the read-only note. Server-authoritative via /api/org/guardrails. ──
-  void (async () => {
-    const acct = await window.yo.getAccountInfo();
-    const role = acct?.role || "";
-    if (role !== "org_admin" && role !== "super_admin") return; // note stays, form hidden
-    document.getElementById("security-admin-note")?.classList.add("hidden");
-    document.getElementById("security-guardrails")?.classList.remove("hidden");
-
-    // input id → guardrails_policy key
-    const FIELD_MAP: Array<[string, string]> = [
-      ["org-gr-max-input", "maxInputTokens"],
-      ["org-gr-max-output", "maxOutputTokens"],
-      ["org-gr-window", "windowSeconds"],
-      ["org-gr-window-tokens", "windowTokens"],
-      ["org-gr-window-calls", "windowCalls"],
-      ["org-gr-concurrent", "maxConcurrent"],
-    ];
-    const inputEl = (id: string) => document.getElementById(id) as HTMLInputElement | null;
-
-    // Reasonable defaults, prefilled when the org has no saved value — matches
-    // the per-app Guardrails defaults and stays under the server floor.
-    const DEFAULT_GUARDRAILS: Record<string, number> = {
-      maxInputTokens: 16000, maxOutputTokens: 4000, windowSeconds: 60,
-      windowTokens: 200000, windowCalls: 100, maxConcurrent: 4,
-    };
-    const loaded = await window.yo.orgGuardrailsGet();
-    const policy = (loaded.ok && loaded.policy) ? loaded.policy : {};
-    for (const [id, key] of FIELD_MAP) {
-      const el = inputEl(id);
-      if (el) el.value = String(typeof policy[key] === "number" ? policy[key] : DEFAULT_GUARDRAILS[key]);
-    }
-
-    const statusEl = document.getElementById("org-gr-status");
-    document.getElementById("org-gr-save")?.addEventListener("click", async () => {
-      const policy: Record<string, number> = {};
-      for (const [id, key] of FIELD_MAP) {
-        const raw = (inputEl(id)?.value ?? "").trim();
-        if (raw === "") continue;                     // blank = no limit for that field
-        const n = Math.max(0, Math.floor(Number(raw)));
-        if (Number.isFinite(n)) policy[key] = n;
-      }
-      const value = Object.keys(policy).length ? policy : null;
-      if (statusEl) statusEl.textContent = "Saving…";
-      const r = await window.yo.orgGuardrailsSet(value);
-      if (statusEl) {
-        statusEl.textContent = r.ok ? "Saved ✓" : (r.error || "Save failed");
-        setTimeout(() => { if (statusEl.textContent === "Saved ✓") statusEl.textContent = ""; }, 3000);
-      }
-    });
-  })();
-
   // ── Local MCP server (127.0.0.1) — the no-cloud alternative. Available to
   // any user (it's purely local; no org/tier involved). ──
   const localMcpSection = document.getElementById("local-mcp-section");

@@ -126,3 +126,13 @@ export interface AgentTask {
   lastStatus: string | null;
   lastError: string | null;
 }
+
+/** One firing of a task — an entry in the agent's run feed. */
+export interface AgentTaskRun {
+  id: string;
+  startedAt: string;
+  durationMs: number | null;
+  status: string;
+  error: string | null;
+  output: string | null;
+}

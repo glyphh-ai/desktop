@@ -399,8 +399,6 @@ contextBridge.exposeInMainWorld("yo", {
   // Server-profile timezone (users.timezone) — same field the platform edits.
   userTimezoneGet: () => ipcRenderer.invoke("user-timezone-get") as Promise<string | null>,
   userTimezoneSet: (tz: string) => ipcRenderer.invoke("user-timezone-set", tz) as Promise<{ ok: boolean; error?: string }>,
-  orgGuardrailsGet: () => ipcRenderer.invoke("org-guardrails-get") as Promise<{ ok: boolean; policy?: Record<string, number> | null; error?: string }>,
-  orgGuardrailsSet: (policy: Record<string, number> | null) => ipcRenderer.invoke("org-guardrails-set", policy) as Promise<{ ok: boolean; error?: string }>,
   // AI Gateway — escalation models (org-governed), slicer usage, org governance.
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
@@ -443,6 +441,7 @@ contextBridge.exposeInMainWorld("yo", {
   libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
   libraryAgentTaskAdd: (ref: string, input: unknown) => ipcRenderer.invoke("library-agent-task-add", ref, input) as Promise<LibEnvelope>,
   libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,
+  libraryAgentTaskRuns: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-runs", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentTaskDelete: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-delete", ref, taskId) as Promise<LibEnvelope>,
   // The loop decides the picker's shape: one slot → one dropdown, two → two.
   loopRoles: (loop: string) =>

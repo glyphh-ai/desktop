@@ -224,8 +224,6 @@ declare global {
       getAccountInfo: () => Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string } | null>;
       userTimezoneGet: () => Promise<string | null>;
       userTimezoneSet: (tz: string) => Promise<{ ok: boolean; error?: string }>;
-      orgGuardrailsGet: () => Promise<{ ok: boolean; policy?: Record<string, number> | null; error?: string }>;
-      orgGuardrailsSet: (policy: Record<string, number> | null) => Promise<{ ok: boolean; error?: string }>;
       logout: () => Promise<void>;
       onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => void;
       onThemeChanged: (callback: (theme: string) => void) => void;
@@ -340,6 +338,7 @@ declare global {
       libraryAgentTasks: (ref: string) => Promise<LibEnvelope>;
       libraryAgentTaskAdd: (ref: string, input: unknown) => Promise<LibEnvelope>;
       libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => Promise<LibEnvelope>;
+      libraryAgentTaskRuns: (ref: string, taskId: string) => Promise<LibEnvelope>;
       libraryAgentTaskDelete: (ref: string, taskId: string) => Promise<LibEnvelope>;
       loopRoles: (loop: string) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;

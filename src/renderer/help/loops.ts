@@ -131,10 +131,14 @@ async function openDetail(ref: string): Promise<void> {
       ${readRow("Scope", current.builtIn ? "Built-in" : current.scope === "org" ? "Shared with the org" : "Personal")}
     </div>
     ${slotDescs ? `<span class="lib-read-label">What each slot is for</span><div class="lib-read-meta" style="margin-top:6px;">${slotDescs}</div>` : ""}
-    ${current.code ? `<hr class="lib-divider" /><span class="lib-read-label">Program</span><pre class="lib-read-code">${escapeHtml(current.code)}</pre>` : ""}`;
+    ${current.code ? `<hr class="lib-divider" /><span class="lib-read-label">Program</span><pre class="lib-read-code">${escapeHtml(current.code)}</pre>` : ""}
+    ${current.builtIn ? "" : `<div class="settings-actions lib-detail-actions">
+      <button id="loop-delete-btn" class="action-btn danger">Delete</button>
+      <div style="flex:1;"></div>
+    </div>`}`;
 
+  detailEl.querySelector("#loop-delete-btn")?.addEventListener("click", () => void deleteCurrent());
   builtinBadge.classList.toggle("hidden", !current.builtIn);
-  $a("loop-delete-btn").classList.toggle("hidden", !!current.builtIn);
 
   toolbar.classList.add("hidden");
   listEl.classList.add("hidden");
@@ -165,12 +169,13 @@ export function initLoopsEvents(): void {
     seedComposer(`/create-loop Update the existing loop "${current.slug}" (${current.name}): `);
   });
 
-  $a("loop-delete-btn").addEventListener("click", async () => {
-    if (!current || current.builtIn) return;
-    const sure = await confirmAction({ title: "Delete this loop?", body: "Agents bound to it will fall back to the Default loop.", confirmLabel: "Delete" });
-    if (!sure) return;
-    const env = await window.yo.libraryLoopDelete(current.slug);
-    if (!env.ok) { fail(env.error || "delete failed"); return; }
-    await loadLoops();
-  });
+}
+
+async function deleteCurrent(): Promise<void> {
+  if (!current || current.builtIn) return;
+  const sure = await confirmAction({ title: `Delete "${current.name}"?`, body: "Agents bound to it will fall back to the Default loop.", confirmLabel: "Delete", danger: true });
+  if (!sure) return;
+  const env = await window.yo.libraryLoopDelete(current.slug);
+  if (!env.ok) { fail(env.error || "delete failed"); return; }
+  await loadLoops();
 }

@@ -86,6 +86,8 @@ export function registerLibraryIpc(): void {
     envelope(() => getClient().agents.addTask(String(ref), input)));
   ipcMain.handle("library-agent-task-update", (_e, ref: string, taskId: string, patch: UpdateAgentTaskInput) =>
     envelope(() => getClient().agents.updateTask(String(ref), String(taskId), patch)));
+  ipcMain.handle("library-agent-task-runs", (_e, ref: string, taskId: string) =>
+    envelope(() => getClient().agents.taskRuns(String(ref), String(taskId))));
   ipcMain.handle("library-agent-task-delete", (_e, ref: string, taskId: string) =>
     envelope(async () => {
       await getClient().agents.removeTask(String(ref), String(taskId));

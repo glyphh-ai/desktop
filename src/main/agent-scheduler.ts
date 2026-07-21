@@ -90,7 +90,7 @@ async function agentModel(agent: Agent): Promise<string | null> {
   }
 }
 
-async function runSkillTask(agent: Agent, task: AgentTask): Promise<void> {
+async function runSkillTask(agent: Agent, task: AgentTask): Promise<string> {
   const client = getClient();
   const skill = await client.skills.get(task.target);
   const guardrails: GuardrailsPolicy | null = agent.guardrailsEffective;
@@ -108,14 +108,14 @@ async function runSkillTask(agent: Agent, task: AgentTask): Promise<void> {
       guardrails,
     });
     if (result.error) throw new Error(result.error);
-    return;
+    return typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
   }
 
   // Prompt-only skill: the prompt IS the program — one tool-less turn.
   const model = skill.manifest.model ?? (await agentModel(agent));
   if (!model) throw new Error("no model available for this agent");
   const maxTokens = Math.min(guardrails?.maxOutputTokens ?? 8192, 8192);
-  await client.gateway.turn({
+  const turn = await client.gateway.turn({
     model,
     system: skill.prompt,
     maxTokens,
@@ -126,9 +126,10 @@ async function runSkillTask(agent: Agent, task: AgentTask): Promise<void> {
         : "Run this now.",
     }],
   });
+  return turn.text;
 }
 
-async function runLoopTask(agent: Agent, task: AgentTask): Promise<void> {
+async function runLoopTask(agent: Agent, task: AgentTask): Promise<string> {
   const client = getClient();
   const loop = await client.loops.get(task.target);
   const result = await runProgram(client, {
@@ -143,31 +144,40 @@ async function runLoopTask(agent: Agent, task: AgentTask): Promise<void> {
     guardrails: agent.guardrailsEffective,
   });
   if (result.error) throw new Error(result.error);
+  return typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
 }
 
-async function runAppCommandTask(task: AgentTask): Promise<void> {
+async function runAppCommandTask(task: AgentTask): Promise<string> {
   // The binding's target is the app slug; args carry the tool + its input.
   const tool = String(task.args.tool ?? task.args.command ?? "");
   if (!tool) throw new Error('an app_command task needs args.tool (e.g. {"tool":"scan","args":{...}})');
   const inner = (task.args.args ?? {}) as Record<string, unknown>;
-  await callAppTool(task.target, tool, inner);
+  const out = await callAppTool(task.target, tool, inner);
+  return typeof out === "string" ? out : JSON.stringify(out ?? "");
 }
 
 async function fire(agent: LiveAgent, task: AgentTask): Promise<void> {
   const key = task.id;
   if (inFlight.has(key)) return;
   inFlight.add(key);
+  const startedAt = Date.now();
   try {
-    if (task.kind === "skill") await runSkillTask(agent, task);
-    else if (task.kind === "loop") await runLoopTask(agent, task);
-    else await runAppCommandTask(task);
-    await getClient().agents.reportTaskRun(agent.id, task.id, { status: "ok" });
-    console.log(`[agent-scheduler] "${agent.slug}/${task.name}" ok`);
+    let output: string;
+    if (task.kind === "skill") output = await runSkillTask(agent, task);
+    else if (task.kind === "loop") output = await runLoopTask(agent, task);
+    else output = await runAppCommandTask(task);
+    // The run's PRODUCT feeds the history — capped so a chatty run cannot
+    // bloat the feed; the server caps again at 16k regardless.
+    await getClient().agents.reportTaskRun(agent.id, task.id, {
+      status: "ok", output: output.slice(0, 12_000), durationMs: Date.now() - startedAt,
+    });
+    console.log(`[agent-scheduler] "${agent.slug}/${task.name}" ok in ${Date.now() - startedAt}ms`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[agent-scheduler] "${agent.slug}/${task.name}" failed:`, message);
-    await getClient().agents.reportTaskRun(agent.id, task.id, { status: "error", error: message.slice(0, 2000) })
-      .catch(() => { /* the outcome write is best-effort */ });
+    await getClient().agents.reportTaskRun(agent.id, task.id, {
+      status: "error", error: message.slice(0, 2000), durationMs: Date.now() - startedAt,
+    }).catch(() => { /* the outcome write is best-effort */ });
   } finally {
     inFlight.delete(key);
   }

@@ -11228,10 +11228,16 @@ select:focus {
   text-align: left;
 }
 .code-new-session:hover { border-color: var(--accent); color: var(--text-bright); }
-/* Link treatment: same row, no button chrome. */
+/* Link treatment: same row, no button chrome. Accent in light mode; plain
+   WHITE in dark — a purple link at the rail's top read as noise there. */
 .code-new-session.code-new-session-link {
   border: none; background: none; padding: 8px 6px; border-radius: 6px;
   color: var(--accent); font-weight: 500;
+}
+[data-theme="dark"] .code-new-session.code-new-session-link,
+[data-theme="purple"] .code-new-session.code-new-session-link,
+[data-theme="aurora"] .code-new-session.code-new-session-link {
+  color: #fff;
 }
 .code-new-session.code-new-session-link:hover { color: var(--text-bright); background: var(--hover); }
 .code-rail-label {
@@ -12433,7 +12439,20 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .lib-guard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
 .lib-role-row { margin-bottom: 8px; }
 .lib-skill-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--text-2); cursor: pointer; }
-.lib-live-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+/* A real toggle switch (the Live control) — not a bare checkbox. */
+.lib-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.lib-switch-label { font-size: 12px; color: var(--text-2); }
+.lib-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.lib-switch-track {
+  width: 34px; height: 19px; border-radius: 999px; background: var(--surface-3);
+  border: 1px solid var(--border-2); position: relative; transition: background 0.15s, border-color 0.15s;
+}
+.lib-switch-thumb {
+  position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+  background: var(--text-3); transition: transform 0.15s, background 0.15s;
+}
+.lib-switch input:checked + .lib-switch-track { background: var(--accent); border-color: var(--accent); }
+.lib-switch input:checked + .lib-switch-track .lib-switch-thumb { transform: translateX(15px); background: #fff; }
 .lib-task-row {
   display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; font-size: 12.5px;
@@ -12455,13 +12474,8 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   border-bottom: 1px solid var(--border);
   padding-bottom: 10px;
 }
-/* Full-bleed right, like the connections detail: the flow pane and its canvas
-   reach the window's right edge; the LIST pages keep the normal gutter. */
-#page-body:has(#skill-editor:not(.hidden)),
-#page-body:has(#loop-editor:not(.hidden)) {
-  padding-right: 0;
-}
-.lib-split { display: flex; gap: 0; flex: 1; min-height: 0; align-items: stretch; }
+
+.lib-split { display: flex; gap: 0; flex: 1; min-height: 0; align-items: flex-start; }
 .lib-split-form {
   width: 50%; flex-shrink: 0; min-width: 0;
   display: flex; flex-direction: column;
@@ -12474,9 +12488,16 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .lib-split-form .lib-json-row { margin: 16px 0 6px; }
 .lib-split-form .settings-actions { margin-top: 24px; }
 .lib-split-flow {
-  flex: 1; min-width: 0; min-height: 560px;
+  /* Full WIDTH of its half, not full height: the graph doesn't grow taller
+     just because the prompt on the left is long — it keeps a fixed window
+     and stays pinned while the left column scrolls. */
+  flex: 1; min-width: 0; height: 560px;
+  position: sticky; top: 0;
   background: var(--surface); overflow: hidden; margin-left: 16px;
+  border: 1px solid var(--border-2); border-radius: 10px;
 }
+/* The divider line still spans the row's full height. */
+.lib-split > .lib-split-divider { align-self: stretch; }
 
 
 
@@ -12625,3 +12646,35 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .agent-config-form .settings-label:first-child { margin-top: 8px; }
 .agent-config-form .field-hint { margin: 6px 0 0; line-height: 1.45; }
 .agent-config-form .settings-actions { margin-top: 22px; }
+
+/* Detail-page actions: bottom-LEFT of the form column, with the content. */
+.lib-detail-actions { margin-top: 28px; justify-content: flex-start !important; }
+
+/* Schedule editor + run feed on agent task rows. */
+.lib-task-wrap { margin-bottom: 6px; }
+.lib-task-sched {
+  border: none; background: var(--surface-3); color: var(--text-2); cursor: pointer;
+  font-size: 11.5px; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+}
+.lib-task-sched:hover { color: var(--text); background: var(--hover); }
+.lib-task-history {
+  border: none; background: none; color: var(--text-3); cursor: pointer;
+  font-size: 11px; text-decoration: none; padding: 2px 6px; border-radius: 6px;
+}
+.lib-task-history:hover { color: var(--text); background: var(--hover); }
+.lib-sched-editor { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
+.lib-sched-editor .settings-input { width: auto; min-width: 0; }
+.lib-sched-editor .se-preview { font-size: 11.5px; color: var(--text-3); margin-left: 4px; flex: 1; }
+.lib-run-feed { margin: 4px 0 10px 34px; display: flex; flex-direction: column; gap: 8px; }
+.lib-run-entry { border-left: 2px solid var(--border-2); padding: 2px 0 2px 12px; }
+.lib-run-entry.error { border-left-color: var(--danger); }
+.lib-run-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.lib-run-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.lib-run-entry.error .lib-run-dot { background: var(--danger); }
+.lib-run-when { font-size: 11px; color: var(--text-3); }
+.lib-run-body { font-size: 12.5px; color: var(--text-2); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.lib-run-entry.error .lib-run-body { color: var(--danger); }
+.lib-run-body.collapsed { max-height: 4.5em; overflow: hidden; cursor: pointer; position: relative; }
+.lib-run-body.collapsed::after {
+  content: "… click to expand"; display: block; font-size: 10.5px; color: var(--text-3);
+}

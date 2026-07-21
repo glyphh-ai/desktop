@@ -257,7 +257,9 @@ async function createWindow() {
 }
 
 async function boot() {
-  app.setName("Yo");
+  // The RUNTIME name — the menu bar, Quit item, and About panel read this,
+  // overriding package.json productName. It said "Yo" long after the rebrand.
+  app.setName("Glyphh");
 
   // Resolve real shell PATH once — Electron on macOS launched from Finder
   // inherits a sanitized PATH that breaks Homebrew/asdf/nvm tools. Cached for
