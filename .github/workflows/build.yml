@@ -68,6 +68,17 @@ jobs:
       - name: Build
         run: npm run build
 
+      # electron-builder's asar packer refuses files outside the app dir,
+      # and node_modules/@glyphh/client is a SYMLINK to ../sdk (outside).
+      # Replace the link with a real copy before packaging.
+      - name: Materialize @glyphh/client (asar cannot follow ../sdk)
+        shell: bash
+        run: |
+          rm -rf node_modules/@glyphh/client
+          mkdir -p node_modules/@glyphh/client
+          cp ../sdk/package.json node_modules/@glyphh/client/package.json
+          cp -R ../sdk/dist node_modules/@glyphh/client/dist
+
       - name: Package macOS (signed + notarized)
         run: npx electron-builder --mac --publish never
         env:
@@ -129,6 +140,17 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # electron-builder's asar packer refuses files outside the app dir,
+      # and node_modules/@glyphh/client is a SYMLINK to ../sdk (outside).
+      # Replace the link with a real copy before packaging.
+      - name: Materialize @glyphh/client (asar cannot follow ../sdk)
+        shell: bash
+        run: |
+          rm -rf node_modules/@glyphh/client
+          mkdir -p node_modules/@glyphh/client
+          cp ../sdk/package.json node_modules/@glyphh/client/package.json
+          cp -R ../sdk/dist node_modules/@glyphh/client/dist
 
       - name: Package Windows (unsigned)
         run: npx electron-builder --win --publish never
