@@ -455,8 +455,14 @@ async function init(): Promise<void> {
     }
     // Under-full: the LAST rail absorbs the surplus so the rightmost panel
     // stays pinned to the app's right edge (prefWidths stay untouched — the
-    // stretch is display-only and re-derives on every reflow).
-    if (total < available && widths.length) widths[widths.length - 1] += available - total;
+    // stretch is display-only and re-derives on every reflow). ONLY when the
+    // rails must fill the root on their own (maximize, or the agent hosted
+    // in a coding tile — the center pane is hidden and a gap would open).
+    // With the agent visible beside the workbench the aside sizes to the
+    // rails, so stretching here forced the workbench to max width and
+    // snapped every edge drag right back.
+    const railsFill = maximizedSlotId !== null || codingHosted();
+    if (railsFill && total < available && widths.length) widths[widths.length - 1] += available - total;
     const railEls = container.querySelectorAll<HTMLElement>(".ws-right-rail");
     rails.forEach((_r, idx) => {
       if (railEls[idx]) railEls[idx].style.width = widths[idx] + "px";
