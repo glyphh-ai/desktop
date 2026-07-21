@@ -1203,9 +1203,13 @@ export function runDip(ref: string): void {
     const asApp = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }) as { ok: boolean; error?: string });
     if (asApp?.ok) return;
     if (!current()) newChat();
+    // Name the layouts the resolver actually sees — "not found" with no
+    // context turns into a support question; this answers it in place.
+    const known = await window.yo.layoutsList?.().then((ls) => ls.map((l) => l.name)).catch(() => [] as string[]);
+    const hint = known?.length ? ` Layouts: ${known.join(", ")}.` : "";
     current()!.messages.push({
       role: "assistant",
-      text: `⚠ .dip: ${asApp?.error || `no app or layout named "${ref}"`}`,
+      text: `⚠ .dip: ${asApp?.error || `no app or layout named "${ref}"`}.${hint}`,
       at: Date.now(),
     });
     void saveStore(); renderHistory(); renderThread();

@@ -2626,8 +2626,11 @@ async function init(): Promise<void> {
     const yo = (window as unknown as { yo?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).yo;
     const [rows, layouts] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]);
     const key = name.trim().toLowerCase();
+    // Match like the switcher's search does — exact, then prefix, then
+    // SUBSTRING — so anything findable in the switcher is .dip-able too.
     const layout = layouts.find((l) => l.name.toLowerCase() === key)
-      ?? layouts.find((l) => l.name.toLowerCase().startsWith(key));
+      ?? layouts.find((l) => l.name.toLowerCase().startsWith(key))
+      ?? layouts.find((l) => l.name.toLowerCase().includes(key));
     if (!layout) return false;
     openLayoutRow(layout, rows);
     return true;
