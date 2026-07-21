@@ -82,6 +82,7 @@ const TOOL_PANELS: Array<{ id: string; label: string }> = [
   { id: "tool:diff",     label: "Diff" },
   { id: "tool:preview",  label: "Preview" },
   { id: "tool:plan",     label: "Plan" },
+  { id: "tool:monaco",   label: "Editor" },
   { id: "tool:coding",   label: "Coding Agent" },
 ];
 const isToolPanel = (id: string): boolean => id.startsWith("tool:");

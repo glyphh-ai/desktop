@@ -366,7 +366,9 @@ async function init(): Promise<void> {
           // this when the container can't fit everything at preference.
           width: r.prefWidth,
           topSlotHeight: r.slots.length === 2 ? topHeightByIdx.get(i) : undefined,
-          views: r.slots.filter((s) => s.view !== "monaco").map((s): SavedView =>
+          // Monaco persists as the PANE only — tabs are runtime state; the
+          // editor comes back empty, ready for the Files tree.
+          views: r.slots.map((s): SavedView =>
             s.view === "app"
               ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh, sticky: s.sticky }
               : s.view),
@@ -390,7 +392,7 @@ async function init(): Promise<void> {
       for (const v of (savedRail.views || []).slice(0, 2)) {
         if (typeof v === "object" && v !== null && v.view === "app" && v.slug) {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "coding") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "coding" || v === "monaco") {
           slots.push(makeSlot(v));
         }
       }
@@ -449,6 +451,10 @@ async function init(): Promise<void> {
         total -= slack;
       }
     }
+    // Under-full: the LAST rail absorbs the surplus so the rightmost panel
+    // stays pinned to the app's right edge (prefWidths stay untouched — the
+    // stretch is display-only and re-derives on every reflow).
+    if (total < available && widths.length) widths[widths.length - 1] += available - total;
     const railEls = container.querySelectorAll<HTMLElement>(".ws-right-rail");
     rails.forEach((_r, idx) => {
       if (railEls[idx]) railEls[idx].style.width = widths[idx] + "px";
@@ -463,7 +469,7 @@ async function init(): Promise<void> {
     renderRails();
     saveLayout();
   }
-  function placeView(view: Exclude<ViewKind, "monaco">): void {
+  function placeView(view: Exclude<ViewKind, "app">): void {
     placeSlot(makeSlot(view));
   }
   function findMonacoSlot(): MonacoSlot | null {
@@ -510,9 +516,10 @@ async function init(): Promise<void> {
   function viewIsOpen(view: ViewKind): boolean {
     return rails.some((r) => r.slots.some((s) => s.view === view));
   }
-  function makeSlot(view: Exclude<ViewKind, "monaco">): Slot {
+  function makeSlot(view: Exclude<ViewKind, "app">): Slot {
     const id = nextSlotId++;
     if (view === "files") return { id, view, root: null };
+    if (view === "monaco") return { id, view, tabs: [], activeIdx: 0 };
     if (view === "terminal") {
       return {
         id, view,
@@ -1527,7 +1534,8 @@ async function init(): Promise<void> {
       const tab = slot.tabs[slot.activeIdx];
       if (!tab) {
         pathText.textContent = "";
-        host.innerHTML = ""; mdHost.innerHTML = "";
+        host.innerHTML = `<div class="ws-empty">Open a file from the Files panel — it lands here.</div>`;
+        mdHost.innerHTML = "";
         previewBtn.style.display = "none"; codeBtn.style.display = "none";
         return;
       }
@@ -2195,7 +2203,7 @@ async function init(): Promise<void> {
     btn.addEventListener("click", () => {
       // The header toggles cover every view except Monaco (spawned by the
       // Files tree, never toggled directly).
-      const v = btn.dataset.view as Exclude<ViewKind, "monaco">;
+      const v = btn.dataset.view as Exclude<ViewKind, "app">;
       if (viewIsOpen(v)) closeAllOfView(v);
       else placeView(v);
     });
@@ -2367,10 +2375,10 @@ async function init(): Promise<void> {
     for (let col = 0; col < cols; col++) {
       const colCells = layout.cells.filter((c) => c.col === col).sort((a, b) => a.row - b.row);
       if (!colCells.length) continue;
-      const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding"]);
+      const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "monaco"]);
       const slots: Slot[] = colCells.map((c) =>
         c.tool && TOOL_VIEWS.has(c.tool)
-          ? makeSlot(c.tool as Exclude<ViewKind, "monaco">)
+          ? makeSlot(c.tool as Exclude<ViewKind, "app">)
           : { id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault() },
       );
       const frac = layout.colWidths[col] ?? 1 / cols;
