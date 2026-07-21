@@ -38,6 +38,7 @@ interface WbApi {
   onCwdChanged: (cb: (dir: string | null) => void) => () => void;
   onFileChanged: (cb: (absPath: string) => void) => () => void;
   listDir: (dir: string) => Promise<{ entries: FileEntry[]; error?: string }>;
+  pickFile: () => Promise<string | null>;
   readFile: (filePath: string) => Promise<{ content: string; error?: string }>;
   writeFile: (filePath: string, content: string) => Promise<{ ok: boolean; error?: string }>;
   gitDiff: (root: string) => Promise<{ text: string; error?: string }>;
@@ -136,7 +137,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   files:    { title: "Files",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
   terminal: { title: "Terminal", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>` },
   diff:     { title: "Diff",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
-  preview:  { title: "Preview",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>` },
+  preview:  { title: "Browser",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
   monaco:   { title: "Editor",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
   coding:   { title: "Coding Agent", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
@@ -2046,6 +2047,8 @@ async function init(): Promise<void> {
   function normalizePreviewUrl(raw: string): string {
     const u = raw.trim();
     if (!u) return "";
+    // An absolute path (typed or picked) loads straight from disk.
+    if (u.startsWith("/")) return "file://" + encodeURI(u);
     return /^[a-z]+:\/\//i.test(u) ? u : "http://" + u;
   }
 
@@ -2058,6 +2061,9 @@ async function init(): Promise<void> {
     body.innerHTML = `
       <div class="ws-preview-url">
         <input class="ws-preview-input" type="text" value="" spellcheck="false" placeholder="https:// or http://localhost:..." />
+        <button class="ws-icon-btn ws-preview-openfile" title="Open a file from disk">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+        </button>
         <button class="ws-icon-btn ws-preview-reload" title="Reload">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
@@ -2065,8 +2071,8 @@ async function init(): Promise<void> {
       <div class="ws-preview-body">
         <iframe class="ws-preview-frame" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" hidden></iframe>
         <div class="ws-preview-stub">
-          <div class="ws-preview-stub-title">No preview loaded</div>
-          <div class="ws-preview-stub-sub">Enter a URL above — e.g. http://localhost:3000</div>
+          <div class="ws-preview-stub-title">Nothing open</div>
+          <div class="ws-preview-stub-sub">Enter a URL above — e.g. http://localhost:3000 — or open a file from disk.</div>
         </div>
       </div>
     `;
@@ -2111,6 +2117,14 @@ async function init(): Promise<void> {
     urlInput.addEventListener("keydown", (e) => {
       if (slot.html) { slot.html = undefined; slot.htmlLabel = undefined; } if (e.key === "Enter") navigate(); });
     urlInput.addEventListener("blur", () => navigate());
+    const openFileBtn = body.querySelector(".ws-preview-openfile") as HTMLButtonElement;
+    openFileBtn.addEventListener("click", async () => {
+      const picked = await window.wb.pickFile();
+      if (!picked) return;
+      slot.html = undefined; slot.htmlLabel = undefined;
+      urlInput.value = picked;
+      navigate();
+    });
     // Cross-origin frames block contentWindow.location.reload(); re-assigning
     // src reloads regardless of origin.
     reloadBtn.addEventListener("click", () => {

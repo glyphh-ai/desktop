@@ -720,6 +720,7 @@ contextBridge.exposeInMainWorld("wb", {
     return () => { ipcRenderer.removeListener("workdir:file-changed", handler); };
   },
   listDir: (dir: string) => ipcRenderer.invoke("files:list-dir", dir),
+  pickFile: () => ipcRenderer.invoke("files:pick-file") as Promise<string | null>,
   readFile: (filePath: string) => ipcRenderer.invoke("files:read-file", filePath),
   writeFile: (filePath: string, content: string) => ipcRenderer.invoke("files:write-file", filePath, content),
   gitDiff: (root: string) => ipcRenderer.invoke("files:git-diff", root),

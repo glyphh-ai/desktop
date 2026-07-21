@@ -12873,11 +12873,15 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 .code-view-more-menu .code-view-menu-item {
-  display: flex; align-items: center; gap: 9px; width: 100%;
+  /* The base .code-view-btn is a centered 28px square — undo that here or
+     every row centers icon+label as a group and the icons zig-zag. */
+  display: flex; align-items: center; justify-content: flex-start; gap: 9px;
+  width: 100%; height: auto;
   background: none; border: none; cursor: pointer; text-align: left;
   padding: 7px 10px; border-radius: 7px;
   font-size: 12.5px; color: var(--text-2); font-family: inherit;
 }
+.code-view-more-menu .code-view-menu-item svg { flex: 0 0 auto; }
 .code-view-more-menu .code-view-menu-item:hover { background: var(--hover); color: var(--text); }
 .code-view-more-menu .code-view-menu-item.active { color: var(--accent-light); }
 .code-view-more-menu .code-view-menu-item svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

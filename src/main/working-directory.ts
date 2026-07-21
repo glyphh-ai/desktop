@@ -336,6 +336,16 @@ export function registerWorkingDirectoryIpc(deps: {
     }
   });
 
+  // Native open-file dialog for the workbench Browser panel — returns the
+  // picked absolute path, or null on cancel.
+  ipcMain.handle("files:pick-file", async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const result = win
+      ? await dialog.showOpenDialog(win, { title: "Open file", properties: ["openFile"] })
+      : await dialog.showOpenDialog({ title: "Open file", properties: ["openFile"] });
+    return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
+  });
+
   // Write a text file, creating parent directories as needed. Used by the
   // Code workbench's Plan slot to persist <cwd>/.yo/plan.md.
   ipcMain.handle("files:write-file", async (_e, filePath: string, content: string) => {
