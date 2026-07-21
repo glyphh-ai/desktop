@@ -42,11 +42,25 @@
         <div>
           <div class="dash-card-label">Usage</div>
           <div class="dash-card-value dash-card-value-sm" id="dash-usage-total">—</div>
-          <div class="dash-card-sub" id="dash-usage-range">last 14 days</div>
+          <div class="dash-card-sub" id="dash-usage-range">last 30 days</div>
         </div>
-        <button class="dash-refresh" id="dash-refresh" title="Refresh">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-        </button>
+        <div class="dash-usage-filters">
+          <select id="dash-usage-days" class="dash-usage-select" title="Date range">
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+          </select>
+          <select id="dash-usage-group" class="dash-usage-select" title="Stack by">
+            <option value="model" selected>By model</option>
+            <option value="source">By source</option>
+          </select>
+          <select id="dash-usage-filter" class="dash-usage-select" title="Narrow to one">
+            <option value="">All models</option>
+          </select>
+          <button class="dash-refresh" id="dash-refresh" title="Refresh">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          </button>
+        </div>
       </div>
       <div class="dash-chart-wrap">
         <canvas id="dash-usage-chart"></canvas>

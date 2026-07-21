@@ -62,11 +62,13 @@ export function registerWbAppRegistry(): void {
 
 type WbCmd =
   | { action: "open"; app: WbAppRef }
-  | { action: "open-many"; apps: WbAppRef[] }
+  | { action: "open-many"; apps: WbAppRef[]; layoutName?: string }
   | { action: "terminal" }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
-  | { action: "switcher" };
+  | { action: "switcher" }
+  | { action: "clear-panels" }
+  | { action: "grid-panels" };
 
 function sendWbCmd(cmd: WbCmd): void {
   const win = getMainWindowRef();
@@ -204,13 +206,23 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
     } catch { /* native row — skipped */ }
   }
   if (!refs.length) throw new Error(`layout "${layout.name}" has no web apps to open`);
-  sendWbCmd({ action: "open-many", apps: refs });
+  sendWbCmd({ action: "open-many", apps: refs, layoutName: layout.name });
   return { layout: layout.name, apps: opened };
 }
 
 export interface OpenWindowInfo { slug: string; name: string }
 
 /** The workbench app panels currently open (renderer-reported). */
+/** `.dip clear` — close all workspace panels (panels ONLY, nothing else). */
+export function clearWbPanels(): void {
+  sendWbCmd({ action: "clear-panels" });
+}
+
+/** `.dip grid` — re-flow the open workspace panels into an even grid. */
+export function gridWbPanels(): void {
+  sendWbCmd({ action: "grid-panels" });
+}
+
 export async function listOpenAppWindows(): Promise<OpenWindowInfo[]> {
   return wbOpenApps.slice();
 }

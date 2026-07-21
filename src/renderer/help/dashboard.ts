@@ -7,6 +7,8 @@
  */
 
 import { $a, cssVar } from "./shared.js";
+import { openUrlInWorkbench } from "./code.js";
+import { gotoSection } from "./navigation.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: any;
@@ -28,9 +30,6 @@ interface DashboardData {
   spendCredits: number;   // whole credits used this calendar month
   requests: number;       // billable calls this month
   appsCount: number;      // apps hosted for this org
-  windowCredits: number;  // credits used over the chart window
-  windowCalls: number;    // calls over the chart window
-  days: Array<{ day: string; credits: number; calls: number }>;
 }
 
 let chart: { destroy: () => void } | null = null;
@@ -58,47 +57,97 @@ function shortDay(iso: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function renderChart(days: Array<{ day: string; credits: number; calls: number }>): void {
+type SeriesPoint = { day: string; key: string; credits: number; requests: number };
+type SeriesData = { from: string; to: string; points: SeriesPoint[] };
+
+/** Stable per-key hue — the same name always gets the same color (matches the
+ *  agent model badges' scheme). */
+function hueFor(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
+  return h;
+}
+
+/** "anthropic::claude-fable-5" → "claude-fable-5" for legend labels. */
+function keyLabel(key: string): string {
+  const i = key.lastIndexOf("::");
+  return i >= 0 ? key.slice(i + 2) : key;
+}
+
+/** Every day in [from, to] as YYYY-MM-DD — the API omits empty days. */
+function dayRange(from: string, to: string): string[] {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  const out: string[] = [];
+  const d = new Date(fy!, (fm ?? 1) - 1, fd ?? 1);
+  const end = new Date(ty!, (tm ?? 1) - 1, td ?? 1);
+  while (d <= end && out.length < 400) {
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+/** The stacked usage chart: one bar per day, one colored segment per model (or
+ *  source), heaviest spenders stacked first. `only` narrows to a single key. */
+function renderChart(series: SeriesData, only: string): void {
   const canvas = $a<HTMLCanvasElement>("dash-usage-chart");
   const empty = document.getElementById("dash-usage-empty");
   if (!canvas || typeof Chart === "undefined") return;
 
   if (chart) { chart.destroy(); chart = null; }
 
-  const hasData = days.some((d) => d.credits > 0 || d.calls > 0);
+  const points = only ? series.points.filter((p) => p.key === only) : series.points;
+  const hasData = points.some((p) => p.credits > 0 || p.requests > 0);
   empty?.classList.toggle("hidden", hasData);
   canvas.style.visibility = hasData ? "visible" : "hidden";
   if (!hasData) return;
 
-  const accent = cssVar("--accent") || "#8c3bf2";
+  const days = dayRange(series.from, series.to);
+  const dayIdx = new Map(days.map((d, i) => [d, i]));
+  // Keys ordered by total spend so the biggest segments sit at the stack's base.
+  const totals = new Map<string, number>();
+  for (const p of points) totals.set(p.key, (totals.get(p.key) ?? 0) + p.credits);
+  const keys = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+
+  const cells = new Map<string, SeriesPoint>();
+  for (const p of points) cells.set(`${p.day}|${p.key}`, p);
+  const datasets = keys.map((key) => ({
+    label: keyLabel(key),
+    data: days.map((d) => cells.get(`${d}|${key}`)?.credits ?? 0),
+    backgroundColor: `hsl(${hueFor(key)} 62% 52%)`,
+    hoverBackgroundColor: `hsl(${hueFor(key)} 62% 60%)`,
+    borderRadius: 3,
+    maxBarThickness: 34,
+    __key: key,
+  }));
+
   const ctx = canvas.getContext("2d")!;
   chart = new Chart(ctx, {
     type: "bar",
-    data: {
-      labels: days.map((d) => shortDay(d.day)),
-      datasets: [{
-        data: days.map((d) => d.credits),
-        backgroundColor: accent,
-        hoverBackgroundColor: accent,
-        borderRadius: 4,
-        maxBarThickness: 34,
-      }],
-    },
+    data: { labels: days.map(shortDay), datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: keys.length > 1,
+          position: "bottom",
+          labels: { color: cssVar("--text-3") || "#868686", boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle" },
+        },
         tooltip: {
           callbacks: {
-            label: (c: { parsed: { y: number }; dataIndex: number }) =>
-              `${fmtCredits(c.parsed.y)} credits · ${fmtInt(days[c.dataIndex]?.calls || 0)} calls`,
+            label: (c: { parsed: { y: number }; dataIndex: number; dataset: { label: string; __key: string } }) => {
+              const cell = cells.get(`${days[c.dataIndex]}|${c.dataset.__key}`);
+              return `${c.dataset.label}: ${fmtCredits(c.parsed.y)} credits${cell ? ` · ${fmtInt(cell.requests)} calls` : ""}`;
+            },
           },
         },
       },
       scales: {
-        x: { grid: { display: false }, ticks: { color: cssVar("--text-3") || "#868686", maxRotation: 0, autoSkip: true } },
+        x: { stacked: true, grid: { display: false }, ticks: { color: cssVar("--text-3") || "#868686", maxRotation: 0, autoSkip: true } },
         y: {
+          stacked: true,
           beginAtZero: true,
           grid: { color: cssVar("--border") || "rgba(255,255,255,0.08)" },
           ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtCredits(v) },
@@ -106,6 +155,41 @@ function renderChart(days: Array<{ day: string; credits: number; calls: number }
       },
     },
   });
+}
+
+/** Fetch the series per the three dropdowns and repaint the chart + totals. */
+async function loadUsageChart(): Promise<void> {
+  const daysSel = document.getElementById("dash-usage-days") as HTMLSelectElement | null;
+  const groupSel = document.getElementById("dash-usage-group") as HTMLSelectElement | null;
+  const filterSel = document.getElementById("dash-usage-filter") as HTMLSelectElement | null;
+  const win = parseInt(daysSel?.value || "30", 10);
+  const groupBy = groupSel?.value === "source" ? "source" : "model";
+  const env = await window.yo.usageSeries?.(win, groupBy);
+  if (!env?.ok || !env.data) return;
+  const series = env.data as SeriesData;
+
+  // The narrowing dropdown lists what the window actually contains; a stale
+  // selection (model gone from the window) falls back to "all".
+  if (filterSel) {
+    const prev = filterSel.value;
+    const keys = [...new Set(series.points.map((p) => p.key))].sort();
+    filterSel.innerHTML = `<option value="">${groupBy === "model" ? "All models" : "All sources"}</option>`;
+    for (const k of keys) {
+      const o = document.createElement("option");
+      o.value = k;
+      o.textContent = keyLabel(k);
+      filterSel.appendChild(o);
+    }
+    if (keys.includes(prev)) filterSel.value = prev;
+  }
+  const only = filterSel?.value || "";
+
+  const shown = only ? series.points.filter((p) => p.key === only) : series.points;
+  const credits = shown.reduce((s, p) => s + p.credits, 0);
+  const calls = shown.reduce((s, p) => s + p.requests, 0);
+  $a("dash-usage-total").textContent = `${fmtCredits(credits)} credits · ${fmtInt(calls)} calls`;
+  $a("dash-usage-range").textContent = `last ${win} days`;
+  renderChart(series, only);
 }
 
 export async function loadDashboard(): Promise<void> {
@@ -145,10 +229,7 @@ export async function loadDashboard(): Promise<void> {
 
     $a("dash-apps-value").textContent = fmtInt(data.appsCount);
 
-    $a("dash-usage-total").textContent =
-      `${fmtCredits(data.windowCredits)} credits · ${fmtInt(data.windowCalls)} calls`;
-    $a("dash-usage-range").textContent = `last ${data.days.length} days`;
-    renderChart(data.days);
+    void loadUsageChart();
   } catch (err) {
     console.error("[dashboard] load failed", err);
   }
@@ -159,17 +240,22 @@ export function initDashboardEvents(): void {
   if (wired) return;
   wired = true;
 
+  // Billing opens INSIDE the app as a workbench panel — the same mechanics
+  // Settings → Manage Account uses — never the external browser.
   document.getElementById("dash-add-funds")?.addEventListener("click", () => {
-    window.yo.openExternal?.(`${window.yo.platformUrl}/billing`);
+    openUrlInWorkbench("Billing", `${window.yo.platformUrl}/billing`);
   });
-  // "Connect MCP" → open the Settings tab (its MCP panel has the connection
-  // URL + token). Open it as its own shell tab rather than switching sections
-  // in place: this Home panel is scope-locked to `dashboard` with its nav rail
-  // hidden, so an in-panel gotoSection would trap the user with no way back.
+  // "Configure MCP" → plain in-app navigation to Settings › MCP Server. The
+  // old path opened a scope-locked settings PANEL over the whole shell (rail
+  // and header buried — the only way out was quitting the app); that panel
+  // era is retired, and the dashboard lives in the normal rail'd shell now.
   document.getElementById("dash-get-key")?.addEventListener("click", () => {
-    window.yo.tabNewApp("dashboard-settings");
+    gotoSection("settings", "mcp");
   });
   document.getElementById("dash-refresh")?.addEventListener("click", () => {
     void loadDashboard();
   });
+  for (const id of ["dash-usage-days", "dash-usage-group", "dash-usage-filter"]) {
+    document.getElementById(id)?.addEventListener("change", () => { void loadUsageChart(); });
+  }
 }

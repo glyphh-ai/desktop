@@ -12,7 +12,7 @@ import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
 import { initSkills } from "./skills.js";
-import { loadCode, initCode } from "./code.js";
+import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 
@@ -135,9 +135,7 @@ export function gotoSection(section: string, sub?: string): void {
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
   if (["apps", "connections", "layouts", "drips", "settings"].includes(section)) {
-    void window.yo.railCollapseSet?.(false).then((on) => {
-      document.getElementById("workspace-collapse-toggle")?.classList.toggle("active", on);
-    });
+    void window.yo.railCollapseSet?.(false);
   }
   // Remember the last section the user viewed so the app reopens here next
   // launch (unless a fixed startup page is set in Settings).
@@ -292,4 +290,5 @@ export function initHelp() {
   initAgentsEvents();
   initSkills();
   initCode();
+  wireGlobalDotCommands();
 }

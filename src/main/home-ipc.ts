@@ -37,41 +37,54 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   // billing/usage endpoints; each call degrades to null so one failure
   // doesn't blank the whole card set. Credit amounts arrive in micro-credits
   // (1 credit = 1e6) → /1e6.
+  // The stacked usage chart's feed: day × (model | source) cells over the last
+  // N days. Credits leave here as WHOLE credits — the renderer never sees micro.
+  ipcMain.handle("usage-series", async (_e, days: number, groupBy: string) => {
+    try {
+      const MICRO = 1_000_000;
+      const ymd = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const now = new Date();
+      const win = Math.max(1, Math.min(Number(days) || 30, 365));
+      const start = new Date(now); start.setDate(now.getDate() - (win - 1));
+      const gb = groupBy === "source" ? "source" as const : "model" as const;
+      const { points } = await getClient().usage.series({
+        from: ymd(start), to: ymd(now), groupBy: gb,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      return {
+        ok: true,
+        data: {
+          from: ymd(start), to: ymd(now),
+          points: points.map((pt) => ({ ...pt, credits: pt.credits / MICRO })),
+        },
+      };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle("dashboard-data", async () => {
     const MICRO = 1_000_000;
-    const WINDOW = 14;
     const ymd = (d: Date) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const now = new Date();
-    const windowStart = new Date(now); windowStart.setDate(now.getDate() - (WINDOW - 1));
 
     const client = getClient();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [credits, me, usage, daily, apps] = await Promise.all([
+    const [credits, me, usage, apps] = await Promise.all([
       // Org pool — admins only; members get a 403 (→ null) and the personal
       // allocation card below renders from the caller's allocation instead.
       client.billing.credits().catch(() => null),
       client.usage.allocation().catch(() => null),
       // The caller's month-to-date spend; the SERVER owns the month boundary
       // math so this matches what an org admin sees for the same user.
-      client.usage.summary({ from: ymd(monthStart), to: ymd(now) }).catch(() => null),
-      client.usage.daily({ from: ymd(windowStart), to: ymd(now) }).catch(() => null),
+      // NO upper bound: `to` is EXCLUSIVE and a bare date parses as UTC
+      // midnight — passing today would chop off everything spent today
+      // (which zeroed this card). Omitted = "through now".
+      client.usage.summary({ from: ymd(monthStart) }).catch(() => null),
       client.apps.deployed().catch(() => null),
     ]);
-
-    // Per-day credits/calls (the server combines LLM + compute usage). Fill
-    // the series so gaps render as zero bars (the API omits empty days).
-    const byDay = new Map<string, { credits: number; calls: number }>();
-    for (const d of daily?.days ?? []) {
-      byDay.set(d.day, { credits: (d.credits || 0) / MICRO, calls: d.requests || 0 });
-    }
-    const days: Array<{ day: string; credits: number; calls: number }> = [];
-    for (let i = WINDOW - 1; i >= 0; i--) {
-      const d = new Date(now); d.setDate(now.getDate() - i);
-      const key = ymd(d);
-      const v = byDay.get(key);
-      days.push({ day: key, credits: v?.credits || 0, calls: v?.calls || 0 });
-    }
 
     const acct = getAccountInfo();
     return {
@@ -94,17 +107,14 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
         : null,
       credits: Math.floor((credits?.balance || 0) / MICRO),
       allowance: Math.floor((credits?.allowance || 0) / MICRO),
-      // Math.round to match the platform's usage math — floor here made the
-      // client read up to a credit lower than the admin view for identical rows.
-      spendCredits: Math.round((usage?.credits || 0) / MICRO),
+      // UsageSummary.credits is already WHOLE credits (the summary endpoint
+      // converts from micro server-side) — dividing again zeroed this card.
+      spendCredits: Math.round(usage?.credits || 0),
       // The summary counts ledger events — one per metered request.
       requests: usage?.events || 0,
       // Count live deployments only, exactly like the Apps tab: the seeded
       // system app (system:true) is not a deployed app.
       appsCount: Array.isArray(apps) ? apps.filter((a) => !a.system && a.url).length : 0,
-      windowCredits: days.reduce((s, d) => s + d.credits, 0),
-      windowCalls: days.reduce((s, d) => s + d.calls, 0),
-      days,
     };
   });
 

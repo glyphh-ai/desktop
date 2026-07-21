@@ -150,6 +150,11 @@ let lastWireDefs: ConnectorWireDef[] = [];
  *  defs. Called at every agent-run start; rebuilds wireMap from scratch so
  *  a changed catalog (new connection, tightened role) takes effect on the
  *  very next run. Ada learns the fresh truth as a side effect. */
+/** Resolve a wire tool name back to its connection + real tool name. */
+export function resolveWireTool(name: string): { slug: string; tool: string } | null {
+  return wireMap.get(name) ?? null;
+}
+
 export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
   if (getCatalogAge() > CATALOG_STALE_MS) {
     try { await refreshConnectorCatalog(); } catch { /* offline — wire what we have */ }

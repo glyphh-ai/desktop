@@ -30,6 +30,7 @@ import { getClient } from "./glyphh-client";
 import { runProgram } from "@glyphh/client/runtime";
 import type { Agent, AgentTask, GuardrailsPolicy } from "@glyphh/client";
 import { callAppTool } from "./glyphh-app-host";
+import { connectorWireTools, resolveWireTool } from "./glyphh-agent-tools";
 
 const TICK_MS = 30_000;
 const LIVE_REFRESH_MS = 5 * 60_000;
@@ -43,8 +44,9 @@ let liveCache: LiveAgent[] = [];
 let liveFetchedAt = 0;
 /** Task id → the minute (epoch-minutes) it last fired: the idempotency guard. */
 const firedAt = new Map<string, number>();
-/** Tasks currently running — a slow run must not overlap itself. */
-const inFlight = new Set<string>();
+/** Task id → run start (ms). A slow run must not overlap itself, and the
+ *  UI's run feed shows an in-flight row while one is going. */
+const inFlight = new Map<string, number>();
 
 // ── Cron (five fields: minute hour dom month dow) ───────────────────────────
 
@@ -111,22 +113,58 @@ async function runSkillTask(agent: Agent, task: AgentTask): Promise<string> {
     return typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
   }
 
-  // Prompt-only skill: the prompt IS the program — one tool-less turn.
+  // Prompt-only skill: the prompt IS the program. A skill that declares
+  // connections gets a REAL bounded tool loop — one tool-less turn cannot
+  // read a mailbox, and the first digest run proved it: the model could only
+  // NARRATE the gmail call it wanted to make.
   const model = skill.manifest.model ?? (await agentModel(agent));
   if (!model) throw new Error("no model available for this agent");
   const maxTokens = Math.min(guardrails?.maxOutputTokens ?? 8192, 8192);
-  const turn = await client.gateway.turn({
-    model,
-    system: skill.prompt,
-    maxTokens,
-    messages: [{
-      role: "user",
-      content: Object.keys(task.args).length
-        ? `Run this now. Arguments:\n${JSON.stringify(task.args, null, 2)}`
-        : "Run this now.",
-    }],
-  });
-  return turn.text;
+
+  const requires = skill.manifest.requires ?? [];
+  const allowed = skill.manifest.allowedTools ?? [];
+  const wire = requires.length ? await connectorWireTools().catch(() => []) : [];
+  const tools = wire
+    .map((d) => ({ def: d, target: resolveWireTool(d.name) }))
+    .filter((x): x is { def: typeof wire[number]; target: { slug: string; tool: string } } =>
+      !!x.target && requires.includes(x.target.slug)
+      // allowedTools may hold either form: qualified ("gmail.Find Emails")
+      // or the wire name the agent authored ("gmail-find-email").
+      && (!allowed.length || allowed.includes(`${x.target.slug}.${x.target.tool}`) || allowed.includes(x.def.name)))
+    .map((x) => ({ name: x.def.name, description: x.def.description, input_schema: x.def.inputSchema }));
+
+  let messages: Array<{ role: string; content: unknown }> = [{
+    role: "user",
+    content: Object.keys(task.args).length
+      ? `Run this now. Arguments:\n${JSON.stringify(task.args, null, 2)}`
+      : "Run this now.",
+  }];
+
+  for (let round = 0; round < 12; round++) {
+    const turn = await client.gateway.turn({
+      model, system: skill.prompt, maxTokens, messages,
+      ...(tools.length ? { tools } : {}),
+    });
+    if (!turn.toolUses.length) return turn.text;
+
+    messages = messages.concat([{ role: "assistant", content: turn.content }]);
+    const results: Array<Record<string, unknown>> = [];
+    for (const call of turn.toolUses) {
+      const target = resolveWireTool(call.name);
+      let content: string;
+      try {
+        if (!target) throw new Error(`unknown tool "${call.name}"`);
+        const { result } = await client.connections.runTool({ slug: target.slug, tool: target.tool, props: call.input });
+        content = typeof result.ret === "string" ? result.ret : JSON.stringify(result.ret ?? "");
+      } catch (err) {
+        // A failed tool is information the model can act on, not a crash.
+        content = `error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+      results.push({ type: "tool_result", tool_use_id: call.id, content: content.slice(0, 24_000) });
+    }
+    messages = messages.concat([{ role: "user", content: results }]);
+  }
+  throw new Error("stopped after 12 tool rounds without finishing");
 }
 
 async function runLoopTask(agent: Agent, task: AgentTask): Promise<string> {
@@ -156,11 +194,11 @@ async function runAppCommandTask(task: AgentTask): Promise<string> {
   return typeof out === "string" ? out : JSON.stringify(out ?? "");
 }
 
-async function fire(agent: LiveAgent, task: AgentTask): Promise<void> {
+async function fire(agent: LiveAgent, task: AgentTask): Promise<{ status: "ok" | "error"; error?: string }> {
   const key = task.id;
-  if (inFlight.has(key)) return;
-  inFlight.add(key);
+  if (inFlight.has(key)) return { status: "error", error: "this task is already running" };
   const startedAt = Date.now();
+  inFlight.set(key, startedAt);
   try {
     let output: string;
     if (task.kind === "skill") output = await runSkillTask(agent, task);
@@ -172,14 +210,39 @@ async function fire(agent: LiveAgent, task: AgentTask): Promise<void> {
       status: "ok", output: output.slice(0, 12_000), durationMs: Date.now() - startedAt,
     });
     console.log(`[agent-scheduler] "${agent.slug}/${task.name}" ok in ${Date.now() - startedAt}ms`);
+    return { status: "ok" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[agent-scheduler] "${agent.slug}/${task.name}" failed:`, message);
     await getClient().agents.reportTaskRun(agent.id, task.id, {
       status: "error", error: message.slice(0, 2000), durationMs: Date.now() - startedAt,
     }).catch(() => { /* the outcome write is best-effort */ });
+    return { status: "error", error: message };
   } finally {
     inFlight.delete(key);
+  }
+}
+
+/**
+ * Fire one task RIGHT NOW — the Run button's door. Same execution and same
+ * write-back as a scheduled firing, so the run lands in the task's feed;
+ * the agent does not need to be live, because a human asked.
+ */
+/** When the task started running, or null if it is not in flight. */
+export function taskRunningSince(taskId: string): number | null {
+  return inFlight.get(taskId) ?? null;
+}
+
+export async function runTaskNow(agentId: string, taskId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const client = getClient();
+    const agent = await client.agents.get(agentId);
+    const task = (await client.agents.tasks(agentId)).find((x) => x.id === taskId);
+    if (!task) return { ok: false, error: "task not found" };
+    const result = await fire({ ...agent, tasks: [] }, task);
+    return result.status === "ok" ? { ok: true } : { ok: false, error: result.error ?? "run failed" };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

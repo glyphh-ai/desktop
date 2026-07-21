@@ -154,7 +154,8 @@ declare global {
       marketplaceDetail: (id: string) => Promise<MarketplaceAppDetail | null>;
       marketplaceInstall: (id: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
-      dashboardData: () => Promise<{ name: string; plan: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number; windowCredits: number; windowCalls: number; days: Array<{ day: string; credits: number; calls: number }> }>;
+      dashboardData: () => Promise<{ name: string; plan: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number }>;
+      usageSeries: (days: number, groupBy: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       updateBadgeDismiss: (version: string) => void;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
@@ -338,7 +339,9 @@ declare global {
       libraryAgentTasks: (ref: string) => Promise<LibEnvelope>;
       libraryAgentTaskAdd: (ref: string, input: unknown) => Promise<LibEnvelope>;
       libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => Promise<LibEnvelope>;
+      libraryAgentTaskRunNow: (ref: string, taskId: string) => Promise<LibEnvelope>;
       libraryAgentTaskRuns: (ref: string, taskId: string) => Promise<LibEnvelope>;
+      libraryAgentTaskRunning: (ref: string, taskId: string) => Promise<LibEnvelope>;
       libraryAgentTaskDelete: (ref: string, taskId: string) => Promise<LibEnvelope>;
       loopRoles: (loop: string) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;

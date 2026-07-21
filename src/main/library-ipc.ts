@@ -14,6 +14,7 @@
 import { ipcMain } from "electron";
 import { getClient } from "./glyphh-client";
 import { invalidateRoles } from "./loop-selections";
+import { runTaskNow, taskRunningSince } from "./agent-scheduler";
 import type {
   CreateLoopInput, UpdateLoopInput,
   CreateSkillInput, UpdateSkillInput,
@@ -86,8 +87,12 @@ export function registerLibraryIpc(): void {
     envelope(() => getClient().agents.addTask(String(ref), input)));
   ipcMain.handle("library-agent-task-update", (_e, ref: string, taskId: string, patch: UpdateAgentTaskInput) =>
     envelope(() => getClient().agents.updateTask(String(ref), String(taskId), patch)));
+  ipcMain.handle("library-agent-task-run-now", (_e, ref: string, taskId: string) =>
+    envelope(() => runTaskNow(String(ref), String(taskId))));
   ipcMain.handle("library-agent-task-runs", (_e, ref: string, taskId: string) =>
     envelope(() => getClient().agents.taskRuns(String(ref), String(taskId))));
+  ipcMain.handle("library-agent-task-running", (_e, _ref: string, taskId: string) =>
+    envelope(async () => ({ since: taskRunningSince(String(taskId)) })));
   ipcMain.handle("library-agent-task-delete", (_e, ref: string, taskId: string) =>
     envelope(async () => {
       await getClient().agents.removeTask(String(ref), String(taskId));

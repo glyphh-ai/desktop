@@ -13,7 +13,8 @@
 
 import { $a, escapeHtml, paginate, renderPaginationBar, confirmAction } from "./shared.js";
 import { seedComposer } from "./code.js";
-import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { kebabCell, ROW_MENU_ICONS, wireSplitDivider } from "./lib-editor.js";
+import { formatMarkdown } from "../format-markdown.js";
 import {
   unwrap,
   type Agent, type AgentSummary, type AgentTask, type AgentTaskRun, type LoopSummary,
@@ -30,6 +31,7 @@ const editor = $a("agent-editor");
 const searchInput = $a<HTMLInputElement>("agent-search");
 const formError = $a("agent-form-error");
 const detailEl = $a("agent-detail");
+const sideEl = $a("agent-side");
 const liveToggle = $a<HTMLInputElement>("agent-live");
 
 function fail(msg: string): void {
@@ -193,8 +195,8 @@ function scheduleEditor(task: AgentTask, row: HTMLElement, repaint: () => void):
       <input type="number" class="settings-input se-every hidden" min="1" max="59" value="15" />
       <input type="text" class="settings-input se-custom hidden" value="${task.cron}" spellcheck="false" />
       <span class="se-preview"></span>
-      <button type="button" class="action-btn se-cancel">Cancel</button>
-      <button type="button" class="action-btn primary se-save">Save</button>
+      <span class="se-status"></span>
+      <button type="button" class="action-btn se-done">Done</button>
     </div>`;
 
   const q = <T extends HTMLElement>(sel: string): T => row.querySelector(sel) as T;
@@ -222,42 +224,96 @@ function scheduleEditor(task: AgentTask, row: HTMLElement, repaint: () => void):
     q(".se-preview").textContent = humanCron(readCron());
   };
   sync();
-  row.querySelectorAll("select, input").forEach((el) => { el.addEventListener("input", sync); el.addEventListener("change", sync); });
-
-  q(".se-cancel").addEventListener("click", repaint);
-  q(".se-save").addEventListener("click", async () => {
-    const cron = readCron();
-    const r = await window.yo.libraryAgentTaskUpdate(current!.id, task.id, { cron });
-    if (!r.ok) { fail(r.error || "couldn't change the schedule"); return; }
-    repaint();
-  });
+  // AUTOSAVE: every change composes the cron and saves it (debounced) — no
+  // Save button between a schedule and its taking effect. Done just closes.
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const autosave = (): void => {
+    sync();
+    if (saveTimer) clearTimeout(saveTimer);
+    q(".se-status").textContent = "…";
+    saveTimer = setTimeout(() => {
+      void (async () => {
+        const cron = readCron();
+        if (!cron || cron.trim().split(/\s+/).length !== 5) { q(".se-status").textContent = ""; return; }
+        const r = await window.yo.libraryAgentTaskUpdate(current!.id, task.id, { cron });
+        q(".se-status").textContent = r.ok ? "saved ✓" : (r.error || "save failed");
+        if (r.ok) task.cron = cron;
+      })();
+    }, 500);
+  };
+  row.querySelectorAll("select, input").forEach((el) => { el.addEventListener("input", autosave); el.addEventListener("change", autosave); });
+  q(".se-done").addEventListener("click", repaint);
 }
 
-/** The run FEED: every firing as a message — when, how long, what it produced. */
-async function runFeed(task: AgentTask, host: HTMLElement): Promise<void> {
-  host.innerHTML = `<div class="crud-empty">Loading runs…</div>`;
-  const env = await window.yo.libraryAgentTaskRuns(current!.id, task.id);
+const RUN_CARET = `<svg class="lib-run-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+
+/** One run as a collapsible row: date/time on the left, Success/Failed on the
+ *  far right; the header click reveals what the run produced. */
+function runRow(run: AgentTaskRun): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "lib-run-row" + (run.status === "error" ? " error" : "");
+  const when = new Date(run.startedAt).toLocaleString();
+  const dur = run.durationMs != null ? ` · ${(run.durationMs / 1000).toFixed(1)}s` : "";
+  row.innerHTML = `
+    <button type="button" class="lib-run-rowhead">
+      ${RUN_CARET}
+      <span class="lib-run-when">${escapeHtml(when)}${dur}</span>
+      <span class="lib-run-badge ${run.status === "error" ? "err" : "ok"}">${run.status === "error" ? "Failed" : "Success"}</span>
+    </button>
+    <div class="lib-run-detail hidden"><div class="lib-run-body"></div></div>`;
+  const body = row.querySelector<HTMLElement>(".lib-run-body")!;
+  if (run.status === "error") {
+    body.textContent = run.error || "failed";
+  } else {
+    // A run's output IS a chat turn — render it like one.
+    body.classList.add("md");
+    body.innerHTML = formatMarkdown(run.output || "*(no output)*");
+  }
+  row.querySelector(".lib-run-rowhead")!.addEventListener("click", () => {
+    row.classList.toggle("open");
+    row.querySelector(".lib-run-detail")!.classList.toggle("hidden");
+  });
+  return row;
+}
+
+/** An in-flight run: same row shape, no detail — just the live spinner. */
+function runningRow(since: number): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "lib-run-row running";
+  row.innerHTML = `
+    <div class="lib-run-rowhead">
+      <span class="lib-run-spin"></span>
+      <span class="lib-run-when">${escapeHtml(new Date(since).toLocaleString())}</span>
+      <span class="lib-run-badge running">Running…</span>
+    </div>`;
+  return row;
+}
+
+type FeedHost = HTMLElement & { __feedTimer?: ReturnType<typeof setTimeout> };
+
+/** The run LIST: newest first, each a collapsible row. While a run is in
+ *  flight it tops the list live; the feed re-polls until it lands. */
+async function runFeed(task: AgentTask, host: FeedHost, opts: { quiet?: boolean } = {}): Promise<void> {
+  if (host.__feedTimer) { clearTimeout(host.__feedTimer); host.__feedTimer = undefined; }
+  if (!opts.quiet) host.innerHTML = `<div class="crud-empty">Loading runs…</div>`;
+  const [env, runningEnv] = await Promise.all([
+    window.yo.libraryAgentTaskRuns(current!.id, task.id),
+    window.yo.libraryAgentTaskRunning(current!.id, task.id),
+  ]);
+  if (!host.isConnected) return;
   if (!env.ok) { host.innerHTML = `<div class="crud-empty">Couldn't load runs.</div>`; return; }
   const runs = env.data as AgentTaskRun[];
-  if (!runs.length) { host.innerHTML = `<div class="crud-empty">No runs yet — the next firing lands here.</div>`; return; }
+  const since = runningEnv.ok ? (runningEnv.data as { since: number | null }).since : null;
   host.innerHTML = "";
-  for (const run of runs) {
-    const entry = document.createElement("div");
-    entry.className = "lib-run-entry" + (run.status === "error" ? " error" : "");
-    const when = new Date(run.startedAt).toLocaleString();
-    const dur = run.durationMs != null ? ` · ${(run.durationMs / 1000).toFixed(1)}s` : "";
-    entry.innerHTML = `
-      <div class="lib-run-head"><span class="lib-run-dot"></span><span class="lib-run-when">${escapeHtml(when)}${dur}</span></div>
-      <div class="lib-run-body"></div>`;
-    const body = entry.querySelector<HTMLElement>(".lib-run-body")!;
-    body.textContent = run.status === "error" ? (run.error || "failed") : (run.output || "(no output)");
-    // Long outputs collapse; click to expand — a feed, not a wall.
-    if (body.textContent.length > 280) {
-      body.classList.add("collapsed");
-      body.addEventListener("click", () => body.classList.toggle("collapsed"));
-    }
-    host.appendChild(entry);
+  if (since != null) host.appendChild(runningRow(since));
+  if (!runs.length && since == null) {
+    host.innerHTML = `<div class="crud-empty">No runs yet — the next firing lands here.</div>`;
+  } else {
+    for (const run of runs) host.appendChild(runRow(run));
   }
+  // Live while running (2s), a slow keep-fresh tick otherwise (15s) — so
+  // scheduled firings appear without leaving and coming back.
+  host.__feedTimer = setTimeout(() => { void runFeed(task, host, { quiet: true }); }, since != null ? 2000 : 15_000);
 }
 
 function taskRow(task: AgentTask): HTMLElement {
@@ -266,8 +322,9 @@ function taskRow(task: AgentTask): HTMLElement {
   const row = document.createElement("div");
   row.className = "lib-task-row";
   const feed = document.createElement("div");
-  feed.className = "lib-run-feed hidden";
+  feed.className = "lib-run-feed";
   wrap.append(row, feed);
+  void runFeed(task, feed);
 
   const paintRow = (): void => {
     const status = task.lastError
@@ -281,7 +338,7 @@ function taskRow(task: AgentTask): HTMLElement {
       <span class="lib-task-binding"></span>
       <button type="button" class="lib-task-sched" title="Change the schedule"></button>
       <span class="lib-task-status"${task.lastError ? ' style="color:var(--danger)"' : ""}></span>
-      <button type="button" class="lib-task-history" title="Run history">history</button>`;
+      <button type="button" class="lib-task-run" title="Run this task now">▶ run</button>`;
     row.querySelector(".lib-task-name")!.textContent = task.name;
     row.querySelector(".lib-task-binding")!.textContent = `runs ${task.target}`;
     row.querySelector(".lib-task-sched")!.textContent = humanCron(task.cron);
@@ -304,10 +361,26 @@ function taskRow(task: AgentTask): HTMLElement {
         })();
       });
     });
-    row.querySelector(".lib-task-history")!.addEventListener("click", () => {
-      const opening = feed.classList.contains("hidden");
-      feed.classList.toggle("hidden");
-      if (opening) void runFeed(task, feed);
+    // Run NOW: fire through the scheduler's own door — the output arrives as
+    // the feed's newest entry.
+    const runBtn = row.querySelector<HTMLButtonElement>(".lib-task-run")!;
+    runBtn.addEventListener("click", async () => {
+      runBtn.disabled = true;
+      runBtn.textContent = "running…";
+      const pending = window.yo.libraryAgentTaskRunNow(current!.id, task.id);
+      // Repaint right away so the feed's "Running…" row shows while it goes.
+      void runFeed(task, feed, { quiet: true });
+      const r = await pending;
+      runBtn.disabled = false;
+      runBtn.textContent = "▶ run";
+      // Two layers: the IPC envelope, then the run's own outcome.
+      const outcome = r.ok ? (r.data as { ok: boolean; error?: string }) : { ok: false, error: r.error };
+      if (!outcome.ok) fail(outcome.error || "run failed");
+      // Refresh both the feed and the row's last-run glance.
+      await runFeed(task, feed);
+      const env = await window.yo.libraryAgentTasks(current!.id);
+      const fresh = env.ok ? (env.data as AgentTask[]).find((x) => x.id === task.id) : null;
+      if (fresh) { Object.assign(task, fresh); paintRow(); }
     });
   };
   paintRow();
@@ -338,9 +411,6 @@ async function openDetail(id: string): Promise<void> {
       <p class="field-hint">What this agent runs — its manifest decides which model slots exist below.</p>
       <div id="agent-model-rows"></div>
     </div>
-    <hr class="lib-divider" />
-    <span class="lib-read-label">Schedule</span>
-    <div id="agent-task-rows"></div>
     <div class="settings-actions" id="agent-loop-actions" style="margin-top:24px;">
       <button id="agent-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
@@ -372,7 +442,9 @@ async function openDetail(id: string): Promise<void> {
   detailEl.querySelector("#agent-loop-cancel")!.addEventListener("click", () => renderList());
   detailEl.querySelector("#agent-loop-save")!.addEventListener("click", () => void saveLoopAndModels());
 
-  const rowsEl = detailEl.querySelector<HTMLElement>("#agent-task-rows")!;
+  // The RIGHT pane: the schedule and its run feeds — what this agent DOES.
+  sideEl.innerHTML = `<span class="lib-read-label">Schedule</span><div id="agent-task-rows"></div>`;
+  const rowsEl = sideEl.querySelector<HTMLElement>("#agent-task-rows")!;
   const tasksEnv = await window.yo.libraryAgentTasks(current.id);
   const tasks = tasksEnv.ok ? (tasksEnv.data as AgentTask[]) : [];
   if (!tasks.length) {
@@ -478,6 +550,7 @@ async function saveLoopAndModels(): Promise<void> {
 }
 
 export function initAgentsEvents(): void {
+  wireSplitDivider($a("agent-split-divider"), detailEl);
   searchInput.addEventListener("input", renderList);
   $a("agent-back-link").addEventListener("click", () => renderList());
 

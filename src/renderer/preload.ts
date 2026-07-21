@@ -313,6 +313,7 @@ contextBridge.exposeInMainWorld("yo", {
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
+  usageSeries: (days: number, groupBy: string) => ipcRenderer.invoke("usage-series", days, groupBy) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   panelAppsCreate: (input: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsUpdate: (id: string, patch: PanelAppInput) =>
@@ -441,7 +442,9 @@ contextBridge.exposeInMainWorld("yo", {
   libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
   libraryAgentTaskAdd: (ref: string, input: unknown) => ipcRenderer.invoke("library-agent-task-add", ref, input) as Promise<LibEnvelope>,
   libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,
+  libraryAgentTaskRunNow: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-run-now", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentTaskRuns: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-runs", ref, taskId) as Promise<LibEnvelope>,
+  libraryAgentTaskRunning: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-running", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentTaskDelete: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-delete", ref, taskId) as Promise<LibEnvelope>,
   // The loop decides the picker's shape: one slot → one dropdown, two → two.
   loopRoles: (loop: string) =>

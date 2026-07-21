@@ -334,7 +334,16 @@ async function init(): Promise<void> {
   // runtime state and would feel surprising to restore.
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; views: SavedView[] }[] };
+  type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; execPath?: string | null; appArchetype?: string | null };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
+
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
+  // The NAMED layout currently arranged in the workbench. While set, every
+  // geometry change (rail widths, slot heights, panel arrangement) also saves
+  // under the layout's own key — so reopening the layout recalls how the user
+  // left it, not the server's default placement.
+  let activeLayoutName: string | null = null;
+  function namedLayoutKey(name: string): string { return `workbench:namedlayout:${name.trim().toLowerCase()}`; }
   function saveLayout(): void {
     try {
       const railEls = document.querySelectorAll<HTMLElement>(".ws-right-rail");
@@ -360,20 +369,18 @@ async function init(): Promise<void> {
         })).filter((r) => r.views.length > 0),
       };
       localStorage.setItem(layoutKey(), JSON.stringify(data));
+      // A named layout's arrangement is ITS OWN memory.
+      if (activeLayoutName && data.rails.length) {
+        localStorage.setItem(namedLayoutKey(activeLayoutName), JSON.stringify(data));
+      }
+      if (rails.length === 0) activeLayoutName = null;
     } catch { /* localStorage may be unavailable in some contexts */ }
   }
-  /** First-visit layout for a folder with nothing saved: none — the rails
-   *  stay closed until a view is opened from the header toggles. */
-  function pushDefaultLayout(): void {
-    // Intentionally empty (the old workbench seeded Files/Plan/Terminal).
-  }
-  function loadLayout(): void {
+
+  /** Rebuild the rails from a saved snapshot — shared by the per-folder
+   *  restore (loadLayout) and named-layout recall. */
+  function applySavedLayout(data: SavedLayout): void {
     rails.length = 0;
-    let raw: string | null = null;
-    try { raw = localStorage.getItem(layoutKey()); } catch { /* noop */ }
-    if (!raw) { pushDefaultLayout(); renderRails(); return; }
-    let data: SavedLayout;
-    try { data = JSON.parse(raw); } catch { pushDefaultLayout(); renderRails(); return; }
     for (const savedRail of data.rails || []) {
       const slots: Slot[] = [];
       for (const v of (savedRail.views || []).slice(0, 2)) {
@@ -387,33 +394,33 @@ async function init(): Promise<void> {
         rails.push({ id: nextRailId++, slots, prefWidth: savedRail.width });
       }
     }
-    if (rails.length === 0) pushDefaultLayout();
     renderRails();
     requestAnimationFrame(() => {
       applyResponsiveWidths();
       const railEls = document.querySelectorAll<HTMLElement>(".ws-right-rail");
       (data.rails || []).forEach((r, i) => {
         if (r.topSlotHeight && railEls[i]) {
-          const top = railEls[i].querySelector(".ws-rail-slot") as HTMLElement | null;
-          if (top) top.style.flex = `0 0 ${r.topSlotHeight}px`;
+          const topSlot = railEls[i]!.querySelector(".ws-rail-slot") as HTMLElement | null;
+          if (topSlot) topSlot.style.flex = `0 0 ${r.topSlotHeight}px`;
         }
       });
     });
   }
-
-  /** Apportion displayed rail widths so the workbench reflows with the
-   *  available container width. Each rail wants its `prefWidth`; if the
-   *  container is too narrow, we shrink the rightmost rail first (down to
-   *  the 240px floor), then walk left. When space is restored, every rail
-   *  snaps back to its preferred width.
-   *
-   *  Called on app launch (after loadLayout / first render) and from a
-   *  ResizeObserver watching the rails container — so when the right-rail
-   *  .Yo panel toggles open/closed (or the BrowserView is otherwise
-   *  resized), the workbench reflows automatically. */
-  /** Width budget for the rails: the Code section's width minus the sessions
-   *  rail and a floor for the agent column. The rails aside is width:auto, so
-   *  we can't measure it directly — derive from the section instead. */
+  /** First-visit layout for a folder with nothing saved: none — the rails
+   *  stay closed until a view is opened from the header toggles. */
+  function pushDefaultLayout(): void {
+    // Intentionally empty (the old workbench seeded Files/Plan/Terminal).
+  }
+  function loadLayout(): void {
+    rails.length = 0;
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(layoutKey()); } catch { /* noop */ }
+    if (!raw) { pushDefaultLayout(); renderRails(); return; }
+    let data: SavedLayout;
+    try { data = JSON.parse(raw); } catch { pushDefaultLayout(); renderRails(); return; }
+    applySavedLayout(data);
+    if (rails.length === 0) { pushDefaultLayout(); renderRails(); }
+  }
   function railsBudget(): number {
     // .code-root spans agent + rails (the app rail sits outside it).
     const root = document.querySelector<HTMLElement>(".code-root");
@@ -983,6 +990,9 @@ async function init(): Promise<void> {
   function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean } = {}): void {
     const existing = appSlots().find((s) => s.slug === app.slug);
     if (existing) { focusAppSlot(existing.id); return; }
+    // Opening an individual app means the workbench is no longer "the named
+    // layout" — stop writing geometry into that layout's memory.
+    activeLayoutName = null;
     const target = opts.newPanel ? undefined : (appSlots().find((s) => s.sticky) ?? appSlots()[0]);
     if (target) {
       const view = appViews.get(target.id);
@@ -1036,8 +1046,6 @@ async function init(): Promise<void> {
   function toggleAppSwitcher(): void {
     if (switcherEl) { closeSwitcher(); return; }
 
-    type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; execPath?: string | null; appArchetype?: string | null };
-    type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
     type CcYo = {
       panelAppsList?: () => Promise<PanelAppRow[]>;
       layoutsList?: () => Promise<LayoutRow[]>;
@@ -1140,14 +1148,7 @@ async function init(): Promise<void> {
       const key = panelId.trim().toLowerCase();
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
     };
-    const openLayout = (layout: LayoutRow): void => {
-      const cells = layout.splits.map((c): WbLayoutCell | null => {
-        if (c.panelId?.startsWith("tool:")) return { slug: c.panelId, name: c.panelId.slice(5), url: "", col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky, tool: c.panelId.slice(5) };
-        const app = resolveCell(c.panelId);
-        return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky } : null;
-      }).filter((c): c is WbLayoutCell => c !== null);
-      if (cells.length) openLayoutInWorkbench({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
-    };
+    const openLayout = (layout: LayoutRow): void => openLayoutRow(layout, appRows);
 
     function renderApps(): void {
       const all = appRows.filter((a) => matches(a.name) || matches(a.slug || ""));
@@ -2227,6 +2228,49 @@ async function init(): Promise<void> {
   // rail's stacked slots (heights from rowHeights). Spanning cells land in
   // their start column — the rail model has no true cell-merge, so a first
   // faithful cut treats every cell as a single-column slot.
+  /** THE layout-open used everywhere a user opens a layout by intent — the
+   *  switcher's click and `.dip <layout>` run THIS, so the two can never
+   *  behave differently again. ALWAYS opens the layout's own grid (panel
+   *  composition comes from the layout definition, never from a snapshot);
+   *  the saved snapshot contributes GEOMETRY ONLY — the widths and heights
+   *  the user dragged to last time. */
+  function openLayoutRow(layout: LayoutRow, appRows: PanelAppRow[]): void {
+    const resolveCell = (panelId: string): PanelAppRow | undefined => {
+      const key = panelId.trim().toLowerCase();
+      return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
+    };
+    const cells = layout.splits.map((c): WbLayoutCell | null => {
+      if (c.panelId?.startsWith("tool:")) return { slug: c.panelId, name: c.panelId.slice(5), url: "", col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky, tool: c.panelId.slice(5) };
+      const app = resolveCell(c.panelId);
+      return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky } : null;
+    }).filter((c): c is WbLayoutCell => c !== null);
+    if (!cells.length) return;
+    let saved: SavedLayout | null = null;
+    try {
+      const raw = localStorage.getItem(namedLayoutKey(layout.name));
+      if (raw) saved = JSON.parse(raw) as SavedLayout;
+    } catch { /* no remembered geometry */ }
+    activeLayoutName = layout.name;
+    openLayoutInWorkbench({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
+    // Geometry recall: only when the remembered shape still matches this
+    // layout's rail count — anything else is stale and gets overwritten by
+    // the save that openLayoutInWorkbench just made.
+    const savedRails = saved?.rails || [];
+    if (savedRails.length !== rails.length) return;
+    rails.forEach((r, i) => { const w = savedRails[i]?.width; if (w) r.prefWidth = Math.max(240, w); });
+    requestAnimationFrame(() => {
+      applyResponsiveWidths();
+      const railEls = document.querySelectorAll<HTMLElement>("#code-wb-rails .ws-right-rail");
+      savedRails.forEach((sr, i) => {
+        if (sr.topSlotHeight && rails[i]?.slots.length === 2 && railEls[i]) {
+          const topSlot = railEls[i]!.querySelector(".ws-rail-slot") as HTMLElement | null;
+          if (topSlot) topSlot.style.flex = `0 0 ${sr.topSlotHeight}px`;
+        }
+      });
+      saveLayout();
+    });
+  }
+
   function openLayoutInWorkbench(layout: WbGridLayout): void {
     rails.length = 0;
     maximizedSlotId = null;
@@ -2267,17 +2311,64 @@ async function init(): Promise<void> {
   const wbApp = window as unknown as {
     __wbOpenApp?: (app: WbAppRef, newPanel?: boolean) => void;
     __wbOpenApps?: (apps: WbAppRef[]) => void;
+    __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
     __wbOpenLayout?: (layout: WbGridLayout) => void;
+    __wbClearPanels?: () => void;
+    __wbGridPanels?: () => boolean;
     __wbListApps?: () => Array<{ slug: string; name: string }>;
     __wbCloseApp?: (slug: string) => boolean;
     __wbFocusApp?: (slug: string) => boolean;
     __wbToggleAppSwitcher?: () => void;
   };
   wbApp.__wbOpenApp = (app, newPanel) => openAppInWorkbench(app, { newPanel });
-  wbApp.__wbOpenApps = (apps) => {
+  wbApp.__wbOpenApps = (apps, layoutName?: string) => {
     for (const a of apps) openAppInWorkbench(a, { newPanel: true });
+    // Fallback flat open of a NAMED layout still remembers geometry under
+    // the layout's name (stamped AFTER the loop — openAppInWorkbench clears
+    // it, correctly, for individual opens).
+    if (layoutName) { activeLayoutName = layoutName; saveLayout(); }
   };
   wbApp.__wbOpenLayout = (layout) => openLayoutInWorkbench(layout);
+  // `.dip clear` — close all workspace panels. JUST the panels: sessions,
+  // history, everything else stays untouched.
+  wbApp.__wbClearPanels = () => {
+    rails.length = 0;
+    maximizedSlotId = null;
+    activeLayoutName = null;
+    renderRails();
+    saveLayout();
+  };
+  // `.dip grid` — re-flow every open panel into an even grid: rails of two
+  // stacked slots, equal widths, equal heights.
+  wbApp.__wbGridPanels = (): boolean => {
+    const slots = rails.flatMap((r) => r.slots);
+    if (!slots.length) return false;
+    maximizedSlotId = null;
+    const cols = Math.ceil(slots.length / 2);
+    const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
+    rails.length = 0;
+    for (let col = 0; col < cols; col++) {
+      const pair = slots.slice(col * 2, col * 2 + 2);
+      if (pair.length) rails.push({ id: nextRailId++, slots: pair, prefWidth: Math.max(240, Math.round(usable / cols)) });
+    }
+    renderRails();
+    requestAnimationFrame(() => {
+      document.querySelectorAll<HTMLElement>("#code-wb-rails .ws-rail-slot").forEach((slotEl) => { slotEl.style.flex = "1 1 0"; });
+      scheduleAppSync();
+    });
+    saveLayout();
+    return true;
+  };
+  wbApp.__wbOpenLayoutByName = async (name: string): Promise<boolean> => {
+    const yo = (window as unknown as { yo?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).yo;
+    const [rows, layouts] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]);
+    const key = name.trim().toLowerCase();
+    const layout = layouts.find((l) => l.name.toLowerCase() === key)
+      ?? layouts.find((l) => l.name.toLowerCase().startsWith(key));
+    if (!layout) return false;
+    openLayoutRow(layout, rows);
+    return true;
+  };
   wbApp.__wbListApps = () => appSlots().map((s) => ({ slug: s.slug, name: s.name }));
   wbApp.__wbCloseApp = (slug) => closeWbApp(slug);
   wbApp.__wbFocusApp = (slug) => {

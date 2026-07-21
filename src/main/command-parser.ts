@@ -14,7 +14,8 @@ import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
-import { openLayoutByName } from "./app-resolver";
+import { openLayoutByName, openAppByRef, clearWbPanels, gridWbPanels } from "./app-resolver";
+import { showThinking, hideThinking } from "./thinking-overlay";
 import { setPreference } from "./stores/preferences-db";
 export class CommandParser {
   private static readonly COMMAND_KEYWORDS = new Set(["sup", "dip", "drip", "peace", "waz"]);
@@ -301,13 +302,11 @@ export class CommandParser {
       return switched ? `Switched to ${targetId}` : `Unknown panel: ${targetId}. Try: dip list`;
     }
 
-    // dip clear — close every open window/tab AND any layout (full reset).
+    // dip clear — close all WORKSPACE PANELS. Panels only: sessions, tabs,
+    // and everything else stay untouched.
     if (sub === "clear") {
-      this.layouts.clearSplit();
-      if (this.tabCloser && this.tabLister) {
-        for (const id of this.tabLister()) this.tabCloser(id);
-      }
-      return "Cleared all windows and layouts.";
+      try { clearWbPanels(); } catch (err) { return err instanceof Error ? err.message : String(err); }
+      return "Closed all workspace panels.";
     }
 
     if (sub === "close") {
@@ -398,7 +397,12 @@ export class CommandParser {
       return this.handleDipSplit(args.slice(1), win);
     }
 
-    // dip grid — full grid with spans, custom widths/heights
+    // dip grid — bare: re-flow the open workspace panels into an even grid.
+    // With args: the legacy full grid with spans and custom widths/heights.
+    if (sub === "grid" && args.length === 1) {
+      try { gridWbPanels(); } catch (err) { return err instanceof Error ? err.message : String(err); }
+      return "Arranged panels in a grid.";
+    }
     if (sub === "grid" && args.length >= 2) {
       return this.handleDipGrid(args.slice(1), win);
     }
@@ -416,58 +420,36 @@ export class CommandParser {
       return "Tab manager not available";
     }
 
-    // Saved layout — opened through openLayoutByName, the SAME path the command
-    // palette and the agent use, so every cell becomes a workbench panel.
-    // (LayoutManager.apply() is the retired OS-grid path: it renders only after
-    // a manual resize, and wrongly.) isLayout() sees just this process's cached
-    // list, so anything that isn't a known panel is offered to the resolver too;
-    // it matches the server's layouts by name/id and throws (no side effects)
-    // when there's no hit, which falls through to panel handling below.
-    if (this.layouts.isLayout(sub) || !this.appConnector.get(sub)) {
-      const opened = await openLayoutByName(sub).catch(() => null);
-      if (opened) {
-        setPreference("lastView", { type: "layout", name: opened.layout });
-
-        // Extra args run as commands on every matching panel in the layout.
-        const commands = args.slice(1);
-        const layout = this.layouts.getLayout(opened.layout);
-        if (commands.length > 0 && layout) {
-          const allResults: string[] = [`Layout: ${opened.layout}`];
-          for (const cell of layout.cells) {
-            const app = this.appConnector.get(cell.panelId);
-            if (!app) continue;
-            const firstCmd = commands[0].toLowerCase();
-            if (!(firstCmd in app.commands)) continue;
-
-            const wc = this.wcGetter?.(cell.panelId);
-            if (!wc || wc.isDestroyed()) continue;
-
-            const panelResults: string[] = [cell.panelId];
-            for (const cmd of commands) {
-              const key = cmd.toLowerCase();
-              const mapping = app.commands[key];
-              if (!mapping) break;
-              if (panelResults.length > 1) await new Promise((r) => setTimeout(r, 300));
-              await executeCommand(wc, mapping);
-              panelResults.push(mapping.description || key);
-            }
-            allResults.push(panelResults.join(" → "));
-          }
-          if (allResults.length === 1) return `Layout: ${opened.layout} (no panel has command "${commands[0]}")`;
-          return allResults.join("\n");
-        }
+    // Saved layout — EXACTLY the palette button's mechanism (layouts-open →
+    // openLayoutByName): same resolver, same thinking overlay, nothing else.
+    // The legacy wrapper (LayoutManager cache gate, per-cell command chaining
+    // against retired panels) made `.dip <layout>` behave differently from
+    // clicking the same layout — it is gone.
+    if (!this.appConnector.get(sub)) {
+      showThinking();
+      try {
+        const opened = await openLayoutByName(sub);
         return `Layout: ${opened.layout}`;
+      } catch {
+        // Not a saved layout — fall through to panel/app handling.
+      } finally {
+        hideThinking();
       }
-      // A cached layout that the resolver couldn't open is a real failure;
-      // anything else just wasn't a layout — fall through to panel handling.
-      if (this.layouts.isLayout(sub)) return `Failed to apply layout: ${sub}`;
     }
 
     // dip <panel-id> [cmd1 cmd2 ...] — switch + optional app commands. Dipping to
     // anything that isn't a layout closes any open layout.
     this.layouts.clearSplit();
     const switched = this.panels.switchTo(sub, win);
-    if (!switched) return `Unknown panel: ${sub}. Try: dip list`;
+    if (!switched) {
+      // The panel registry only knows the internal system panels now — the
+      // APP LIBRARY opens as workbench panels via the same resolver the
+      // palette and the agent use. Without this, `.dip <app-slug>` answered
+      // "Unknown panel" for every server-library app.
+      const opened = await openAppByRef(sub).catch(() => null);
+      if (opened) return `Opened ${opened.name}`;
+      return `Unknown panel: ${sub}. Try: dip list`;
+    }
     setPreference("lastView", { type: "panel", id: sub });
 
     // No commands to run — just a switch

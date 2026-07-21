@@ -1092,6 +1092,66 @@ function stopThinking(): void {
   void window.yo.glyphhStop?.();
 }
 
+/** `.dip <app-or-layout>` — the ONE mechanism, callable from any input in the
+ *  app: layouts run the exact function a layout click in the launcher runs
+ *  (`__wbOpenLayoutByName` → the switcher's `openLayoutRow` → grid open);
+ *  apps fall back to the app card's resolver (appLaunch). Nothing else. */
+export function runDip(ref: string): void {
+  gotoSection("code");
+  const w = window as unknown as {
+    __initCodeWorkbench?: () => void;
+    __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
+    __wbClearPanels?: () => void;
+    __wbGridPanels?: () => boolean;
+  };
+  w.__initCodeWorkbench?.();
+  void (async () => {
+    // The workbench boots async — wait for the hook like the launcher does.
+    for (let i = 0; i < 40 && !w.__wbOpenLayoutByName; i++) {
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    // Workbench verbs come before name lookup — `clear` closes every panel,
+    // `grid` re-flows the open ones into an even grid.
+    const verb = ref.toLowerCase();
+    if (verb === "clear") { w.__wbClearPanels?.(); return; }
+    if (verb === "grid") { w.__wbGridPanels?.(); return; }
+    if (await w.__wbOpenLayoutByName?.(ref)) return;
+    const yo2 = window.yo as unknown as { appLaunch?: (s: { slug: string; name: string }) => Promise<{ ok: boolean; error?: string }> };
+    const asApp = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }) as { ok: boolean; error?: string });
+    if (asApp?.ok) return;
+    if (!current()) newChat();
+    current()!.messages.push({
+      role: "assistant",
+      text: `⚠ .dip: ${asApp?.error || `no app or layout named "${ref}"`}`,
+      at: Date.now(),
+    });
+    void saveStore(); renderHistory(); renderThread();
+  })();
+}
+
+/** `.dip` / `.drip` work from ANY input or textarea in the app — same
+ *  handlers the composer uses, wired once at startup (capture phase, so it
+ *  runs before any field's own Enter handling). The composer is excluded:
+ *  its send() path already routes both. */
+export function wireGlobalDotCommands(): void {
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" || ev.isComposing) return;
+    const t = ev.target;
+    if (!(t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)) return;
+    if (t.id === "code-input") return;
+    const v = t.value.trim();
+    const dip = /^\.dip\s+(.+)$/i.exec(v);
+    const drip = dip ? null : /^\.drip(?:\s+(.+))?$/i.exec(v);
+    if (!dip && !drip) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    t.value = "";
+    t.dispatchEvent(new Event("input", { bubbles: true }));
+    if (dip) runDip(dip[1].trim());
+    else void (window.yo as unknown as { dripsPreview?: (r: string) => Promise<string> }).dripsPreview?.((drip![1] || "fireworks").trim());
+  }, true);
+}
+
 function send(): void {
   // While thinking the same control is the stop button.
   if (thinking) { stopThinking(); return; }
@@ -1140,57 +1200,15 @@ function send(): void {
       .dripsPreview?.((drip[1] || "fireworks").trim());
     return;
   }
-  // `.dip <app-or-layout>` → open it in the workbench (app first, then layout).
-  // Routes through the workbench hooks — NOT execCommand, which drives the
-  // retired OS-window surface and never touches the visible workbench.
+  // `.dip <app-or-layout>` → THE SWITCHER'S OWN function, not a lookalike.
   const dip = /^\.dip\s+(.+)$/is.exec(text);
   if (dip) {
-    const ref = dip[1].trim();
     ta.value = "";
     autoGrow(ta);
-    gotoSection("code");
-    const w = window as unknown as {
-      __initCodeWorkbench?: () => void;
-      __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
-      __wbOpenLayout?: (l: { cols: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ slug: string; name: string; url: string; col: number; row: number; sticky?: boolean }> }) => void;
-    };
-    w.__initCodeWorkbench?.();
-    const yo = window.yo as unknown as {
-      panelAppsList?: () => Promise<Array<{ id: string; slug?: string; name: string; url?: string | null; appArchetype?: string | null }>>;
-      layoutsList?: () => Promise<Array<{ name: string; cols: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; sticky?: boolean }> }>>;
-    };
-    void (async () => {
-      const key = ref.toLowerCase();
-      const yo2 = window.yo as unknown as { appLaunch?: (s: { slug: string; name: string }) => Promise<{ ok: boolean; error?: string }> };
-      const [apps, layouts] = await Promise.all([yo.panelAppsList?.() ?? [], yo.layoutsList?.() ?? []]);
-      // A saved layout by exact name opens as a grid (keeps arrangement + sticky).
-      const layout = layouts.find((l) => l.name.toLowerCase() === key);
-      if (layout) {
-        const resolve = (pid: string): typeof apps[number] | undefined => {
-          const k = pid.trim().toLowerCase();
-          return apps.find((a) => a.id.toLowerCase() === k || (a.slug || "").toLowerCase() === k);
-        };
-        const cells = layout.splits.map((s): { slug: string; name: string; url: string; col: number; row: number; sticky?: boolean } | null => {
-          const a = resolve(s.panelId);
-          return a?.url ? { slug: a.slug || a.id, name: a.name, url: a.url, col: s.col ?? 0, row: s.row ?? 0, sticky: s.sticky } : null;
-        }).filter((c): c is { slug: string; name: string; url: string; col: number; row: number; sticky?: boolean } => c !== null);
-        if (cells.length) w.__wbOpenLayout?.({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
-        return;
-      }
-      // Otherwise an app by slug/name — resolved by the SAME main-side resolver a
-      // card click uses (findLibraryApp: slug/name/fuzzy; toWbRef: launchConfig
-      // urls + glyphh apps), which opens it into the workbench via wb:app-cmd.
-      const res = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }) as { ok: boolean; error?: string });
-      if (res?.ok) return;
-      if (!current()) newChat();
-      // Surface the real reason — a native app row resolves by slug but has no
-      // web surface to render as a panel ("…has no web address…"), which the old
-      // blanket "not found" message misreported.
-      current()!.messages.push({ role: "assistant", text: res?.error ? `⚠ .dip: ${res.error}` : `⚠ .dip: no app or layout named "${ref}".`, at: Date.now() });
-      void saveStore(); renderHistory(); renderThread();
-    })();
+    runDip(dip[1].trim());
     return;
   }
+
   if (text.startsWith(".") && text.length > 1) {
     if (!current()) newChat();
     const cc = current()!;
@@ -1660,16 +1678,29 @@ export function initCode(): void {
     (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
     const w = window as unknown as {
       __wbOpenApp?: (app: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
-      __wbOpenApps?: (apps: Array<{ slug: string; name: string; url: string; glyphh?: boolean }>) => void;
+      __wbOpenApps?: (apps: Array<{ slug: string; name: string; url: string; glyphh?: boolean }>, layoutName?: string) => void;
+      __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
       __wbCloseApp?: (slug: string) => boolean;
       __wbFocusApp?: (slug: string) => boolean;
       __wbToggleAppSwitcher?: () => void;
     };
     if (cmd.action === "open" && cmd.app) w.__wbOpenApp?.(cmd.app);
     else if (cmd.action === "terminal") (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
-    else if (cmd.action === "open-many" && cmd.apps) w.__wbOpenApps?.(cmd.apps);
+    else if (cmd.action === "open-many" && cmd.apps) {
+      // A NAMED layout goes through the one true layout-open (the switcher's
+      // grid path); only anonymous multi-open falls back to flat panels.
+      const layoutName = (cmd as { layoutName?: string }).layoutName;
+      if (layoutName) {
+        void (async () => {
+          for (let i = 0; i < 40 && !w.__wbOpenLayoutByName; i++) await new Promise((r) => requestAnimationFrame(r));
+          if (!(await w.__wbOpenLayoutByName?.(layoutName))) w.__wbOpenApps?.(cmd.apps!, layoutName);
+        })();
+      } else w.__wbOpenApps?.(cmd.apps);
+    }
     else if (cmd.action === "close" && cmd.slug) w.__wbCloseApp?.(cmd.slug);
     else if (cmd.action === "focus" && cmd.slug) w.__wbFocusApp?.(cmd.slug);
+    else if (cmd.action === "clear-panels") (window as unknown as { __wbClearPanels?: () => void }).__wbClearPanels?.();
+    else if (cmd.action === "grid-panels") (window as unknown as { __wbGridPanels?: () => boolean }).__wbGridPanels?.();
     else if (cmd.action === "switcher") openCommandCenter();
   });
   // One delegated handler for everything interactive inside the thread —

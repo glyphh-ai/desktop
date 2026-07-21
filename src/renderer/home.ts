@@ -39,18 +39,6 @@ window.yo.refreshAuth?.().catch(() => {});
 document.getElementById("panel-btn-close")?.addEventListener("click", () => window.yo.windowClose());
 document.getElementById("panel-btn-minimize")?.addEventListener("click", () => window.yo.windowMinimize());
 document.getElementById("panel-btn-maximize")?.addEventListener("click", () => window.yo.windowMaximize());
-// Collapse-to-rail toggle — the whole window shrinks to the rail (workspace
-// apps slide to reclaim the space) and back.
-const wsToggle = document.getElementById("workspace-collapse-toggle");
-const paintWsToggle = (on: boolean) => {
-  wsToggle?.classList.toggle("active", on);
-  if (wsToggle) wsToggle.title = on ? "Expand Glyphh" : "Collapse to rail";
-};
-void window.yo.railCollapseGet?.().then(paintWsToggle).catch(() => {});
-wsToggle?.addEventListener("click", () => {
-  void window.yo.railCollapseToggle?.().then(paintWsToggle);
-});
-
 // Pick the startup section. Priority: ?section=<slug> in the URL (system-app
 // panel mounted as its own section) → the user's configured default
 // ("homeStartupSection", blank = "last viewed") → the last section → dashboard.
