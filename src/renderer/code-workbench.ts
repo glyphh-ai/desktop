@@ -1518,6 +1518,81 @@ async function init(): Promise<void> {
     }
     saveBtn.addEventListener("click", () => { void saveActive(); });
 
+    // Only the ACTIVE tab lives in the Monaco model — fold the live buffer
+    // back into its tab (matched by path, not index, so it's safe after
+    // activeIdx has already moved) so switches/save-all/close-all see the
+    // real content instead of the last-saved snapshot.
+    function flushEditorModel(): void {
+      const h = host as unknown as { __editor?: { getValue: () => string }; __modelPath?: string };
+      if (!h.__editor || !h.__modelPath) return;
+      const t = slot.tabs.find((x) => x.path === h.__modelPath);
+      if (t && t.dirty) t.content = h.__editor.getValue();
+    }
+
+    async function saveAll(): Promise<void> {
+      flushEditorModel();
+      for (const t of slot.tabs) {
+        if (!t.dirty) continue;
+        const res = await window.wb.writeFile(t.path, t.content);
+        if (!(res as { error?: string })?.error) t.dirty = false;
+      }
+      paintSave();
+    }
+
+    // The app-standard confirm modal, bridged from the help bundle. If the
+    // bridge is somehow absent, behave like the old close path (no prompt).
+    function appConfirm(opts: { title: string; body?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean }): Promise<boolean> {
+      const fn = (window as unknown as { __appConfirm?: (o: unknown) => Promise<boolean> }).__appConfirm;
+      return typeof fn === "function" ? fn(opts) : Promise.resolve(true);
+    }
+
+    async function closeAll(): Promise<void> {
+      flushEditorModel();
+      const dirty = slot.tabs.filter((t) => t.dirty).length;
+      if (dirty > 0) {
+        const ok = await appConfirm({
+          title: "Close all tabs?",
+          body: dirty === 1 ? "1 file has unsaved changes." : `${dirty} files have unsaved changes.`,
+          confirmLabel: "Close without saving",
+          danger: true,
+        });
+        if (!ok) return;
+      }
+      slot.tabs = [];
+      slot.activeIdx = 0;
+      closeSlot(slot.id);
+    }
+
+    // Right-click on the tab strip → Save all / Close all.
+    tabsEl.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      document.querySelector(".ws-tab-ctx-menu")?.remove();
+      const menu = document.createElement("div");
+      menu.className = "ws-tab-ctx-menu";
+      const dismiss = (): void => {
+        menu.remove();
+        document.removeEventListener("mousedown", onAway, true);
+        document.removeEventListener("keydown", onKey, true);
+      };
+      const onAway = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) dismiss(); };
+      const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") dismiss(); };
+      const mkItem = (label: string, onPick: () => void): void => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ws-tab-ctx-item";
+        btn.textContent = label;
+        btn.addEventListener("click", () => { dismiss(); onPick(); });
+        menu.appendChild(btn);
+      };
+      mkItem("Save all", () => { void saveAll(); });
+      mkItem("Close all", () => { void closeAll(); });
+      document.body.appendChild(menu);
+      menu.style.left = Math.max(6, Math.min(ev.clientX, window.innerWidth - menu.offsetWidth - 6)) + "px";
+      menu.style.top  = Math.max(6, Math.min(ev.clientY, window.innerHeight - menu.offsetHeight - 6)) + "px";
+      document.addEventListener("mousedown", onAway, true);
+      document.addEventListener("keydown", onKey, true);
+    });
+
     function paintTabs(): void {
       tabsEl.innerHTML = "";
       slot.tabs.forEach((t, i) => {
@@ -1529,11 +1604,23 @@ async function init(): Promise<void> {
         tab.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".close")) {
             ev.stopPropagation();
-            slot.tabs.splice(i, 1);
-            if (slot.tabs.length === 0) { closeSlot(slot.id); return; }
-            if (slot.activeIdx >= slot.tabs.length) slot.activeIdx = slot.tabs.length - 1;
-            paintTabs();
-            void mountActive();
+            void (async () => {
+              flushEditorModel();
+              if (t.dirty) {
+                const ok = await appConfirm({
+                  title: `Close ${t.name}?`,
+                  body: "This tab has unsaved changes.",
+                  confirmLabel: "Close without saving",
+                  danger: true,
+                });
+                if (!ok) return;
+              }
+              slot.tabs.splice(i, 1);
+              if (slot.tabs.length === 0) { closeSlot(slot.id); return; }
+              if (slot.activeIdx >= slot.tabs.length) slot.activeIdx = slot.tabs.length - 1;
+              paintTabs();
+              void mountActive();
+            })();
           } else if (i !== slot.activeIdx) {
             slot.activeIdx = i;
             paintTabs();
@@ -1545,6 +1632,10 @@ async function init(): Promise<void> {
     }
 
     async function mountActive(): Promise<void> {
+      // Fold the outgoing model's edits back into its tab before the new
+      // one takes the editor — without this, switching tabs silently
+      // reverts unsaved work to the last-saved snapshot.
+      flushEditorModel();
       const tab = slot.tabs[slot.activeIdx];
       if (!tab) {
         pathText.textContent = "";
@@ -1587,6 +1678,9 @@ async function init(): Promise<void> {
       const existing = (host as unknown as { __editor?: any }).__editor;
       const wireModel = (editor: { setModel: (m: unknown) => void }) => {
         const model = w.monaco.editor.createModel(tab.content, languageForFile(tab.name));
+        // Record which tab owns the live model so flushEditorModel can fold
+        // its buffer back into the right tab.
+        (host as unknown as { __modelPath?: string }).__modelPath = tab.path;
         model.onDidChangeContent(() => {
           const t = slot.tabs[slot.activeIdx];
           if (t && !t.dirty) { t.dirty = true; paintSave(); }

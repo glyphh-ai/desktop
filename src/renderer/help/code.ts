@@ -651,6 +651,10 @@ function ensureCodeSection(): void {
  *  sessions, same store, exposed across the bundle boundary via window.
  *  Every history repaint also fires "agent-sessions-changed" so the panel's
  *  header title/dropdown stay current. */
+/** The app-standard confirm modal, exposed for the workbench bundle (it
+ *  can't import help modules; #confirm-modal lives in this document). */
+(window as unknown as { __appConfirm?: unknown }).__appConfirm = confirmAction;
+
 (window as unknown as { __agentSessions?: unknown }).__agentSessions = {
   list: (): Array<{ id: string; title: string; createdAt: number }> =>
     chats.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt })),
