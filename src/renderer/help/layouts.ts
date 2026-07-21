@@ -4,7 +4,6 @@
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
-import { LAYOUTS_EMPTY, emptyStateHtml } from "./empty-sayings.js";
 import { gotoSection } from "./navigation.js";
 
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
@@ -434,7 +433,7 @@ function renderLayoutsList() {
   layoutsList.innerHTML = "";
 
   if (allLayouts.length === 0) {
-    layoutsList.innerHTML = emptyStateHtml(LAYOUTS_EMPTY, 'No layouts yet — click "+ New" to create one.');
+    layoutsList.innerHTML = '<div class="crud-empty">No layouts yet — click "+ New" to create one.</div>';
     return;
   }
   if (filtered.length === 0) {

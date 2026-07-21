@@ -3320,18 +3320,6 @@ ol.docs-list li::before {
   color: var(--text-2);
   font-size: 13px;
 }
-.crud-empty-saying {
-  font-size: 13.5px;
-  font-style: italic;
-  color: var(--text-2);
-  line-height: 1.55;
-  max-width: 440px;
-}
-.crud-empty-hint {
-  font-size: 12px;
-  color: var(--text-3);
-  margin-top: 8px;
-}
 
 .crud-card {
   display: flex;

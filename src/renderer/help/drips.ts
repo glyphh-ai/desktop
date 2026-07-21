@@ -3,7 +3,6 @@
  */
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid, closeHelp } from "./shared.js";
-import { DRIPS_EMPTY, emptyStateHtml } from "./empty-sayings.js";
 
 // ── Drips ─────────────────────────────────────────────────
 
@@ -145,7 +144,7 @@ function renderDripsList() {
   dripsListEl.innerHTML = "";
 
   if (allDrips.length === 0) {
-    dripsListEl.innerHTML = emptyStateHtml(DRIPS_EMPTY, 'No custom drips yet — click "+ New" to create one.');
+    dripsListEl.innerHTML = '<div class="crud-empty">No custom drips yet — click "+ New" to create one.</div>';
     return;
   }
   if (filtered.length === 0) {
