@@ -51,6 +51,8 @@ type Connection = {
   id: string; accountId: string; appSlug: string; appName: string;
   label: string | null; healthy: boolean; hiddenTools: string[]; createdAt: string;
   org?: boolean;
+  // Governance, mirrored from preload.ts Connection.
+  agentAllowed?: boolean; agentTools?: number; agentAvailable?: number;
 };
 
 // Mirrors preload.ts AppProxyRow — a public <slug>.glyphh.app tunnel.

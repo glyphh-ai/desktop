@@ -4513,6 +4513,11 @@ ol.docs-list li::before {
   background: rgba(140, 59, 242, 0.15);
   color: var(--text);
 }
+/* Governance: connected but the caller's agents can't use it. */
+.app-card-badge.badge-blocked {
+  background: rgba(212, 74, 74, 0.16);
+  color: var(--text);
+}
 
 /* ── + New dropdown menu ──────────────────────────────── */
 

@@ -96,11 +96,29 @@ function renderConnectionsList(): void {
   for (const c of items) {
     const card = document.createElement("div");
     card.className = "app-card";
+    // Governance beats cosmetics: a connected-but-BLOCKED connection looks
+    // healthy while every agent call fails — say so, right on the card.
+    const blocked = c.agentAllowed === false;
+    const toolless = c.agentAllowed === true && c.agentAvailable! > 0 && c.agentTools === 0;
+    const badge = c.healthy === false
+      ? `<span class="app-card-badge badge-connection">Reconnect</span>`
+      : blocked
+        ? `<span class="app-card-badge badge-blocked">Blocked by policy</span>`
+        : toolless
+          ? `<span class="app-card-badge badge-blocked">All tools blocked</span>`
+          : (c.org ? `<span class="app-card-badge badge-connection">Org</span>` : "");
+    const subtitle = blocked
+      ? "Not allowed for your workspace"
+      : toolless
+        ? "Every tool is blocked for you"
+        : c.agentAllowed === true && c.agentTools! < c.agentAvailable!
+          ? `${c.agentTools} of ${c.agentAvailable} tools allowed`
+          : (c.org ? "Org connection" : esc(c.appName));
     card.innerHTML = `
-      ${c.healthy === false ? `<span class="app-card-badge badge-connection">Reconnect</span>` : (c.org ? `<span class="app-card-badge badge-connection">Org</span>` : "")}
+      ${badge}
       <div class="app-card-icon">${appIconInner(connIconApp(c), c.appName, "app-card-initial")}</div>
       <div class="app-card-name">${esc(c.label || c.appName)}</div>
-      <div class="app-card-id">${c.org ? "Org connection" : esc(c.appName)}</div>`;
+      <div class="app-card-id">${subtitle}</div>`;
     card.addEventListener("click", () => void openConnDetail(c.id));
     grid.appendChild(card);
   }

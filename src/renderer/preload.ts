@@ -41,6 +41,13 @@ export interface Connection {
   createdAt: string;
   /** Org-SHARED connection (Configure → Connections) — read-only here. */
   org?: boolean;
+  /** Governance, from the resolved catalog: false = this connection is
+   *  connected but BLOCKED for the caller (workspace/org policy) — agents
+   *  cannot call it. Undefined = governance unknown (offline). */
+  agentAllowed?: boolean;
+  /** Tools the caller's agents may actually call / tools advertised. */
+  agentTools?: number;
+  agentAvailable?: number;
 }
 
 /** One public <slug>.glyphh.app tunnel (server AppProxyRow, sanitized). */

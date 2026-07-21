@@ -228,10 +228,21 @@ function registerPanelAppsIpc(): void {
       const client = getClient();
       // Personal rows carry the rich fields (id, label, health); the resolved
       // list contributes the org-shared ones the member may use but not edit.
-      const [personal, resolved] = await Promise.all([
+      const [personal, resolved, live] = await Promise.all([
         client.connections.personalList(),
         client.connections.list().catch(() => []),
+        // Governance truth: what the caller's agents can ACTUALLY call.
+        // Null on failure → badges stay off rather than false-accusing.
+        client.connections.resolvedTools().then((r) => r.connections).catch(() => null),
       ]);
+      // A connection that's connected but absent from the resolved catalog is
+      // BLOCKED by policy; present with zero tools = all its tools are blocked.
+      const governance = (slug: string): { agentAllowed?: boolean; agentTools?: number; agentAvailable?: number } => {
+        if (!live) return {};
+        const conn = live.find((x) => x.slug === slug);
+        if (!conn) return { agentAllowed: false, agentTools: 0, agentAvailable: 0 };
+        return { agentAllowed: true, agentTools: conn.tools.length, agentAvailable: conn.availableTools.length };
+      };
       connIndex.clear();
       const connections = personal.map((c) => {
         connIndex.set(c.id, { slug: c.appSlug, org: false });
@@ -245,6 +256,7 @@ function registerPanelAppsIpc(): void {
           hiddenTools: [] as string[],
           createdAt: "",
           org: false,
+          ...governance(c.appSlug),
         };
       });
       const personalSlugs = new Set(personal.map((c) => c.appSlug));
@@ -262,6 +274,7 @@ function registerPanelAppsIpc(): void {
           hiddenTools: [],
           createdAt: "",
           org: true,
+          ...governance(c.slug),
         });
       }
       return { ok: true, connections };
