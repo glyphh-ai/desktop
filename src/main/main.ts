@@ -34,6 +34,7 @@ app.commandLine.appendSwitch("use-mock-keychain");
 
 import path from "path";
 import fs from "fs";
+import { pathToFileURL } from "url";
 import { glyphhPath } from "./app-paths.js";
 import { PanelManager } from "./panel-manager";
 import { TerminalManager, AgentSpawnConfig } from "./terminal";
@@ -303,6 +304,20 @@ async function boot() {
       return new Response(`yo-asset not found: ${assetName}`, { status: 404 });
     }
     return net.fetch(`file://${filePath}`);
+  });
+
+  // ── glyphh-preview:// — streams a local file into the Browser panel's
+  // iframe (which cannot navigate to file:// itself). Default session only:
+  // app webviews live on persist:yo, and installed-app documents carry a
+  // default-src 'none' CSP, so neither can reach this scheme.
+  protocol.handle("glyphh-preview", (request) => {
+    const u = new URL(request.url);
+    let p = decodeURIComponent(u.pathname);
+    if (process.platform === "win32") p = p.replace(/^\//, "").replace(/\//g, "\\");
+    if (!p || !fs.existsSync(p) || !fs.statSync(p).isFile()) {
+      return new Response(`preview not found: ${p}`, { status: 404 });
+    }
+    return net.fetch(pathToFileURL(p).toString());
   });
 
   // Backward compat: redirect file:// requests for chart.umd.min.js from skill folders
@@ -1885,6 +1900,11 @@ async function boot() {
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "yo-asset", privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // Local-file previews for the workbench Browser panel. Chromium refuses
+  // file:// subframe navigation (and the panel iframe is sandboxed), so the
+  // renderer loads glyphh-preview://local/<path> and main streams the file.
+  // stream:true so video/PDF get ranged responses.
+  { scheme: "glyphh-preview", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
 app.whenReady().then(boot);

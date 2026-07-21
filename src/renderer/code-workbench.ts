@@ -512,12 +512,14 @@ async function init(): Promise<void> {
     const i = name.lastIndexOf(".");
     return i < 0 ? "" : name.slice(i + 1).toLowerCase();
   }
-  /** file:// URL from an absolute path — Windows drive letters and
-   *  backslashes normalize (C:\a\b → file:///C:/a/b). */
+  /** Preview URL from an absolute path. NOT file:// — Chromium refuses
+   *  file:// subframe navigation, so main streams local files over the
+   *  glyphh-preview:// scheme instead. Windows drive letters and
+   *  backslashes normalize (C:\a\b → /C:/a/b). */
   function fileUrl(p: string): string {
     let s = p.replace(/\\/g, "/");
     if (!s.startsWith("/")) s = "/" + s;
-    return "file://" + encodeURI(s);
+    return "glyphh-preview://local" + s.split("/").map(encodeURIComponent).join("/");
   }
   /** Route a URL into the Browser panel — reuses the open one or places one. */
   function openPreviewUrl(url: string): void {
@@ -2108,8 +2110,10 @@ async function init(): Promise<void> {
     const u = raw.trim();
     if (!u) return "";
     // An absolute path (typed or picked) loads straight from disk —
-    // unix (/...) and windows (C:\... or C:/...) forms both.
+    // unix (/...) and windows (C:\... or C:/...) forms both. Legacy
+    // file:// URLs (persisted slots, pasted) re-route through the scheme.
     if (u.startsWith("/") || /^[A-Za-z]:[\\/]/.test(u)) return fileUrl(u);
+    if (/^file:\/\//i.test(u)) return fileUrl(decodeURIComponent(u.replace(/^file:\/\//i, "")));
     return /^[a-z]+:\/\//i.test(u) ? u : "http://" + u;
   }
 
@@ -2160,6 +2164,11 @@ async function init(): Promise<void> {
       }
       stub.hidden = true;
       frame.hidden = false;
+      // Local previews run UNsandboxed: the sandbox blocks the PDF viewer,
+      // and glyphh-preview only streams files main resolves. Remote URLs
+      // keep the sandbox. Set the attribute BEFORE src — it applies on load.
+      if (u.startsWith("glyphh-preview://")) frame.removeAttribute("sandbox");
+      else frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-modals");
       frame.src = u;
     }
 
