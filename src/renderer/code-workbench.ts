@@ -2434,12 +2434,16 @@ async function init(): Promise<void> {
         const el = railEls[ri];
         if (!el) return;
         const colCells = layout.cells.filter((c) => c.col === railCols[ri]).sort((a, b) => a.row - b.row);
-        el.querySelectorAll<HTMLElement>(".ws-rail-slot").forEach((slotEl, si) => {
-          const frac = layout.rowHeights[colCells[si]?.row ?? si] ?? 1 / rail.slots.length;
-          // The coding tile always gets a real share — a zero/missing row
-          // fraction must not collapse the hosted agent.
-          const grow = slotEl.dataset.view === "coding" ? Math.max(frac, 0.5) : frac;
-          slotEl.style.flex = `${grow} 1 0`;
+        // NORMALIZE the rail's grow factors to sum to 1. Flexbox only fills
+        // the container when grows sum to >= 1 — a rail holding one slot of a
+        // [0.6, 0.4] layout would otherwise take 60% and leave 40% EMPTY,
+        // which is exactly how every panel came up short on layout render.
+        const slotEls = Array.from(el.querySelectorAll<HTMLElement>(".ws-rail-slot"));
+        const fracs = slotEls.map((_s, si) => layout.rowHeights[colCells[si]?.row ?? si] ?? 1 / rail.slots.length);
+        const totalFrac = fracs.reduce((a, b) => a + b, 0);
+        slotEls.forEach((slotEl, si) => {
+          const grow = totalFrac > 0 ? fracs[si]! / totalFrac : 1 / slotEls.length;
+          slotEl.style.flex = `${grow || 1} 1 0`;
         });
       });
       scheduleAppSync();

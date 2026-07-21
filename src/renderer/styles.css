@@ -12796,7 +12796,9 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 
 /* ── Monaco landing: the ghost mark on the brand wash, saying on rotation ── */
 .ws-monaco-landing {
-  position: relative; flex: 1; height: 100%; overflow: hidden;
+  /* The host is position:relative — pin to it, full pane, no flex/percentage
+     height negotiation to lose. */
+  position: absolute; inset: 0; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   background:
     radial-gradient(85% 70% at 100% 0%, rgba(236, 72, 153, 0.10) 0%, rgba(236, 72, 153, 0) 60%),
