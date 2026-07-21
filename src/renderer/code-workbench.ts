@@ -2114,7 +2114,9 @@ async function init(): Promise<void> {
     // file:// URLs (persisted slots, pasted) re-route through the scheme.
     if (u.startsWith("/") || /^[A-Za-z]:[\\/]/.test(u)) return fileUrl(u);
     if (/^file:\/\//i.test(u)) return fileUrl(decodeURIComponent(u.replace(/^file:\/\//i, "")));
-    return /^[a-z]+:\/\//i.test(u) ? u : "http://" + u;
+    // Full scheme grammar — [a-z]+ alone missed hyphenated schemes, so
+    // glyphh-preview:// got "http://" prepended and died on DNS.
+    return /^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? u : "http://" + u;
   }
 
   async function renderPreviewIntoSlot(body: HTMLElement, slot: PreviewSlot): Promise<void> {
