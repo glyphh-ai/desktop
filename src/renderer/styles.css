@@ -9061,7 +9061,7 @@ select.settings-input {
   --ws-radius-sm: 6px;
   --ws-shadow-sm: 0 1px 2px var(--shadow);
   --ws-shadow-md: 0 6px 24px var(--shadow);
-  --ws-diff-add: var(--accent);
+  --ws-diff-add: #4fae63;
   --ws-diff-del: #d44a4a;
 }
 
@@ -9404,7 +9404,7 @@ select.settings-input {
    slack, otherwise spawns a new rail to the right.
    ════════════════════════════════════════════════════════════════════ */
 :root {
-  --ws-diff-add-bg: rgba(140, 59, 242, 0.10);
+  --ws-diff-add-bg: rgba(79, 174, 99, 0.12);
   --ws-diff-del-bg: rgba(212, 74, 74, 0.10);
   --ws-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
@@ -9677,7 +9677,7 @@ select.settings-input {
   color: var(--ws-text-muted);
 }
 .ws-diff-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-diff-summary .add { color: var(--ws-text, var(--text)); margin-left: 6px; }
+.ws-diff-summary .add { color: var(--ws-diff-add); margin-left: 6px; }
 .ws-diff-summary .del { color: var(--ws-diff-del); margin-left: 4px; }
 .ws-diff-refresh {
   background: transparent; border: none; padding: 0;
@@ -9724,7 +9724,7 @@ select.settings-input {
   font-variant-numeric: tabular-nums;
   font-size: 11.5px; flex-shrink: 0;
 }
-.ws-diff-stat .add { color: var(--ws-text, var(--text)); }
+.ws-diff-stat .add { color: var(--ws-diff-add); }
 .ws-diff-stat .del { color: var(--ws-diff-del); }
 .ws-diff-file-body {
   font-family: var(--font-mono);
@@ -9736,7 +9736,7 @@ select.settings-input {
 .ws-diff-file.collapsed .ws-diff-file-body { display: none; }
 .ws-diff-line { padding: 0 12px; white-space: pre; color: var(--ws-text); }
 .ws-diff-line.hunk    { color: var(--ws-text-faint); background: rgba(0,0,0,0.025); }
-.ws-diff-line.add     { background: var(--ws-diff-add-bg); color: var(--ws-text, var(--text)); }
+.ws-diff-line.add     { background: var(--ws-diff-add-bg); color: var(--ws-diff-add); }
 .ws-diff-line.del     { background: var(--ws-diff-del-bg); color: var(--ws-diff-del); }
 
 /* ── Preview view (stub) ── */

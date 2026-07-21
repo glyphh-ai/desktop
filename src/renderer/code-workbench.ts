@@ -78,7 +78,8 @@ interface TermSlot {
   terminals: WbTerminal[];
   activeIdx: number;
 }
-interface DiffSlot { id: number; view: "diff"; collapsed?: Set<string> }
+/** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
+interface DiffSlot { id: number; view: "diff"; expanded?: Set<string> }
 /** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
  *  composer); nothing of its own beyond the header's session controls. */
 interface CodingSlot { id: number; view: "coding" }
@@ -1762,18 +1763,16 @@ async function init(): Promise<void> {
     const refreshBtn = body.querySelector(".ws-diff-refresh") as HTMLButtonElement;
     const expandBtn = body.querySelector(".ws-diff-expand") as HTMLButtonElement;
     const collapseBtn = body.querySelector(".ws-diff-collapse") as HTMLButtonElement;
-    if (!slot.collapsed) slot.collapsed = new Set();
+    if (!slot.expanded) slot.expanded = new Set();
     expandBtn.addEventListener("click", () => {
-      slot.collapsed = new Set();
-      body.querySelectorAll<HTMLElement>(".ws-diff-file").forEach((el) => el.classList.remove("collapsed"));
-    });
-    collapseBtn.addEventListener("click", () => {
-      const all = new Set<string>();
       body.querySelectorAll<HTMLElement>(".ws-diff-file").forEach((el) => {
         const name = el.querySelector(".ws-diff-file-name")?.textContent || "";
-        if (name) { all.add(name); el.classList.add("collapsed"); }
+        if (name) { slot.expanded!.add(name); el.classList.remove("collapsed"); }
       });
-      slot.collapsed = all;
+    });
+    collapseBtn.addEventListener("click", () => {
+      slot.expanded = new Set();
+      body.querySelectorAll<HTMLElement>(".ws-diff-file").forEach((el) => el.classList.add("collapsed"));
     });
 
     async function refresh(): Promise<void> {
@@ -1801,7 +1800,7 @@ async function init(): Promise<void> {
       for (const f of files) {
         const fileEl = document.createElement("div");
         fileEl.className = "ws-diff-file";
-        if (slot.collapsed!.has(f.path)) fileEl.classList.add("collapsed");
+        if (!slot.expanded!.has(f.path)) fileEl.classList.add("collapsed");
         fileEl.innerHTML = `
           <div class="ws-diff-file-header">
             <span class="ws-diff-caret">▸</span>
@@ -1815,8 +1814,8 @@ async function init(): Promise<void> {
         (fileEl.querySelector(".ws-diff-stat .del") as HTMLElement).textContent = `−${f.deletions}`;
         fileEl.querySelector(".ws-diff-file-header")!.addEventListener("click", () => {
           const collapsed = fileEl.classList.toggle("collapsed");
-          if (collapsed) slot.collapsed!.add(f.path);
-          else slot.collapsed!.delete(f.path);
+          if (collapsed) slot.expanded!.delete(f.path);
+          else slot.expanded!.add(f.path);
         });
         const lineWrap = fileEl.querySelector(".ws-diff-file-body") as HTMLElement;
         for (const ln of f.lines) {
