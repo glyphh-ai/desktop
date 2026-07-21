@@ -11313,6 +11313,14 @@ select:focus {
    active section — so the rail never shows two highlights at once. */
 body[data-rail-section="code"] .code-history-item.active { background: var(--rail-active-bg); color: var(--white); }
 .code-history-title { flex: 1; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Inline rename field — swaps in for the title when the active row's title
+   is clicked; matches the row's type so nothing jumps. */
+.code-history-rename {
+  flex: 1; min-width: 0; margin-left: 6px;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: 5px;
+  font: inherit; padding: 1px 6px; outline: none;
+}
 .code-chat-menu-btn {
   display: inline-flex;
   align-items: center;

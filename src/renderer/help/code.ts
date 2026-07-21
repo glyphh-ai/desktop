@@ -728,6 +728,34 @@ function renderHistory(): void {
     const label = document.createElement("span");
     label.className = "code-history-title";
     label.textContent = c.title;
+    label.title = c.id === currentId ? "Click to rename" : c.title;
+    // Clicking the title of the ALREADY-SELECTED session renames it inline;
+    // on any other row the click falls through to the row's select handler.
+    label.addEventListener("click", (e) => {
+      if (c.id !== currentId) return;
+      e.stopPropagation();
+      const field = document.createElement("input");
+      field.type = "text";
+      field.className = "code-history-rename";
+      field.value = c.title;
+      field.addEventListener("click", (ev) => ev.stopPropagation());
+      let done = false;
+      const commit = (): void => {
+        if (done) return;
+        done = true;
+        const t = field.value.trim();
+        if (t && t !== c.title) { c.title = t; void saveStore(); }
+        renderHistory();
+      };
+      field.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+        else if (ev.key === "Escape") { ev.preventDefault(); done = true; renderHistory(); }
+      });
+      field.addEventListener("blur", commit);
+      label.replaceWith(field);
+      field.focus();
+      field.select();
+    });
     const dot = document.createElement("span");
     const working = thinking && workingChatId === c.id;
     dot.className = "code-chat-dot" + (working ? " working" : "");
