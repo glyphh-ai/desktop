@@ -29,6 +29,30 @@ jobs:
       - name: Install setuptools (provides distutils for node-gyp)
         run: python3 -m pip install --upgrade setuptools
 
+      # ── Vendor the SDK ──────────────────────────────────────────────
+      # package.json depends on `@glyphh/client: file:../sdk` — a sibling
+      # checkout that exists locally but not in CI. Same self-heal as the
+      # platform's deploy workflow: check out sdk@main, build it, and place
+      # package.json + dist at ../sdk so the lockfile's link resolves.
+      - uses: actions/checkout@v4
+        with:
+          repository: glyphh-ai/sdk
+          token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          path: .sdk-src
+
+      - name: Build the SDK (file:../sdk dependency)
+        shell: bash
+        run: |
+          cd .sdk-src
+          npm ci
+          npm run build
+          cd ..
+          rm -rf ../sdk
+          mkdir -p ../sdk
+          cp .sdk-src/package.json ../sdk/package.json
+          cp -R .sdk-src/dist ../sdk/dist
+          rm -rf .sdk-src
+
       - name: Install dependencies
         run: npm ci
 
@@ -75,6 +99,30 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      # ── Vendor the SDK ──────────────────────────────────────────────
+      # package.json depends on `@glyphh/client: file:../sdk` — a sibling
+      # checkout that exists locally but not in CI. Same self-heal as the
+      # platform's deploy workflow: check out sdk@main, build it, and place
+      # package.json + dist at ../sdk so the lockfile's link resolves.
+      - uses: actions/checkout@v4
+        with:
+          repository: glyphh-ai/sdk
+          token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          path: .sdk-src
+
+      - name: Build the SDK (file:../sdk dependency)
+        shell: bash
+        run: |
+          cd .sdk-src
+          npm ci
+          npm run build
+          cd ..
+          rm -rf ../sdk
+          mkdir -p ../sdk
+          cp .sdk-src/package.json ../sdk/package.json
+          cp -R .sdk-src/dist ../sdk/dist
+          rm -rf .sdk-src
 
       - name: Install dependencies
         run: npm ci
