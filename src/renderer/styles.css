@@ -12786,10 +12786,18 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   min-width: 0; max-width: none; width: auto;
   border-right: none;
 }
+/* In the tile, the home column's 44px gutters waste the width — a few px. */
+.ws-rail-slot[data-view="coding"] .code-thread { padding: 14px 6px; }
+.ws-rail-slot[data-view="coding"] .code-composer { padding: 4px 6px 12px; max-width: none; }
 /* While hosted, the home column contributes nothing — the workbench owns the row. */
 .code-root.agent-hosted > .code-agent { display: none; }
-/* The header's session dropdown — the composer menus' look, fixed-positioned. */
+/* The header's session dropdown — the composer menus' surface, fixed-positioned. */
 .wb-session-menu {
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  padding: 5px;
   z-index: 1000; max-height: 320px; overflow-y: auto; min-width: 240px; max-width: 360px;
 }
 .wb-session-menu .code-drop-item {
@@ -12872,8 +12880,12 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 /* View-toggles overflow: a few visible, the rest behind ⋮ */
 .code-view-more-wrap { position: relative; display: inline-flex; }
 .code-view-more-menu {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 200;
   min-width: 150px; padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 .code-view-more-menu .code-view-menu-item {
   display: flex; align-items: center; gap: 9px; width: 100%;
