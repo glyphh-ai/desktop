@@ -291,4 +291,6 @@ export function initHelp() {
   initSkills();
   initCode();
   wireGlobalDotCommands();
+  // The shell steers sections too (the first-run walkthrough lands on Home).
+  window.yo.onGotoSection?.((section) => gotoSection(section));
 }

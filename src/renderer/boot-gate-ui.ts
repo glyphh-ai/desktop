@@ -130,6 +130,9 @@ function showTutorial(cb: BootGateCallbacks): void {
     overlay.classList.add("hidden");
     // Restore panels now that tutorial is dismissed
     cb.showPanels();
+    // First run ends at HOME — the dashboard's starters and schedule are the
+    // natural next step, not whatever section the panel restored to.
+    void (window.yo as unknown as { homeGotoSection?: (s: string) => Promise<unknown> }).homeGotoSection?.("dashboard");
   }
 
   // Start first step

@@ -5,7 +5,7 @@
  * (Formerly bundled into drop-ipc; the Drop is gone, these handlers are not.)
  */
 
-import { ipcMain } from "electron";
+import { ipcMain, webContents } from "electron";
 import type { McpManager } from "./mcp-manager";
 import type { ConnectorManager } from "./connectors";
 import {
@@ -37,6 +37,16 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   // billing/usage endpoints; each call degrades to null so one failure
   // doesn't blank the whole card set. Credit amounts arrive in micro-credits
   // (1 credit = 1e6) → /1e6.
+  // The SHELL (boot gate / tutorial) steering the home panel's section —
+  // e.g. "land on Home after the first-run walkthrough".
+  ipcMain.handle("home-goto-section", (_e, section: string) => {
+    const homes = webContents.getAllWebContents().filter((wc) => {
+      try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
+    });
+    for (const wc of homes) wc.send("home:goto-section", String(section));
+    return { ok: true };
+  });
+
   // Every RUN across every agent's tasks — the dashboard's recent-runs list.
   // Newest first, capped: the dashboard shows a page of 5, so 60 is plenty.
   ipcMain.handle("dashboard-runs", async () => {

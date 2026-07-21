@@ -314,6 +314,10 @@ contextBridge.exposeInMainWorld("yo", {
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
   dashboardRuns: () => ipcRenderer.invoke("dashboard-runs") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  homeGotoSection: (section: string) => ipcRenderer.invoke("home-goto-section", section) as Promise<{ ok: boolean }>,
+  onGotoSection: (cb: (section: string) => void) => {
+    ipcRenderer.on("home:goto-section", (_e, section: string) => cb(section));
+  },
   usageSeries: (days: number, groupBy: string) => ipcRenderer.invoke("usage-series", days, groupBy) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   panelAppsCreate: (input: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
