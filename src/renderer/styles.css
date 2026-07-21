@@ -9502,9 +9502,30 @@ select.settings-input {
   padding: 8px 10px;
   border-bottom: 1px solid var(--ws-line);
   flex-shrink: 0;
+  display: flex; align-items: center; gap: 6px;
 }
+/* + file / + folder — same 24px/13px rules as the Browser bar's buttons
+   (.ws-icon-btn has no base style; every use is bespoke). */
+.ws-file-add {
+  background: transparent; border: none; padding: 0;
+  width: 24px; height: 24px; border-radius: 4px;
+  color: var(--ws-text-faint); cursor: pointer;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.ws-file-add:hover { background: var(--hover); color: var(--ws-text); }
+.ws-file-add:disabled { opacity: 0.4; cursor: default; }
+.ws-file-add svg { width: 13px; height: 13px; }
+/* Inline name entry for create/rename — matches the row typography. */
+.ws-files-newinput {
+  flex: 1; min-width: 0;
+  background: var(--surface-2); color: var(--ws-text, var(--text));
+  border: 1px solid var(--border-2); border-radius: 5px;
+  font: inherit; font-size: 12px; padding: 1px 6px; outline: none;
+}
+.ws-files-row.ws-files-newrow { padding-top: 2px; padding-bottom: 2px; padding-right: 8px; }
 .ws-file-search input {
-  width: 100%;
+  flex: 1; min-width: 0;
   padding: 5px 9px;
   border: 1px solid var(--ws-line);
   border-radius: 6px;

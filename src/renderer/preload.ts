@@ -728,6 +728,9 @@ contextBridge.exposeInMainWorld("wb", {
   },
   listDir: (dir: string) => ipcRenderer.invoke("files:list-dir", dir),
   pickFile: () => ipcRenderer.invoke("files:pick-file") as Promise<string | null>,
+  mkdir: (dirPath: string) => ipcRenderer.invoke("files:mkdir", dirPath) as Promise<{ ok: boolean; error?: string }>,
+  deletePath: (target: string) => ipcRenderer.invoke("files:delete", target) as Promise<{ ok: boolean; error?: string }>,
+  renamePath: (oldPath: string, newPath: string) => ipcRenderer.invoke("files:rename", oldPath, newPath) as Promise<{ ok: boolean; error?: string }>,
   platform: process.platform,
   previewNative: (filePath: string) =>
     ipcRenderer.invoke("files:preview-native", filePath) as Promise<{ ok: boolean; method?: string; error?: string }>,

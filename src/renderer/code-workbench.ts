@@ -39,6 +39,9 @@ interface WbApi {
   onFileChanged: (cb: (absPath: string) => void) => () => void;
   listDir: (dir: string) => Promise<{ entries: FileEntry[]; error?: string }>;
   pickFile: () => Promise<string | null>;
+  mkdir: (dirPath: string) => Promise<{ ok: boolean; error?: string }>;
+  deletePath: (target: string) => Promise<{ ok: boolean; error?: string }>;
+  renamePath: (oldPath: string, newPath: string) => Promise<{ ok: boolean; error?: string }>;
   platform: string;
   previewNative: (filePath: string) => Promise<{ ok: boolean; method?: string; error?: string }>;
   convertPreview: (filePath: string) => Promise<{ pdfPath?: string; error?: string }>;
@@ -493,6 +496,14 @@ async function init(): Promise<void> {
     }
     return null;
   }
+  // The app-standard confirm modal, bridged from the help bundle (the
+  // workbench bundle can't import help modules; #confirm-modal lives in
+  // this document). Bridge absent → proceed, matching the old paths.
+  function appConfirm(opts: { title: string; body?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean }): Promise<boolean> {
+    const fn = (window as unknown as { __appConfirm?: (o: unknown) => Promise<boolean> }).__appConfirm;
+    return typeof fn === "function" ? fn(opts) : Promise.resolve(true);
+  }
+
   // ── Smart file router — the ONE open-a-file entry point (Files tree,
   //    agent file cards, anything else). Routes by what can actually render
   //    it: Chromium-native types → the Browser panel; Office decks/docs →
@@ -1473,6 +1484,12 @@ async function init(): Promise<void> {
     body.innerHTML = `
       <div class="ws-file-search">
         <input class="file-search-input" type="text" placeholder="Search files…" spellcheck="false" autocomplete="off" />
+        <button class="ws-icon-btn ws-file-add ws-file-add-file" title="New file">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        </button>
+        <button class="ws-icon-btn ws-file-add ws-file-add-dir" title="New folder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
+        </button>
       </div>
       <div class="ws-files-tree"></div>
     `;
@@ -1480,8 +1497,17 @@ async function init(): Promise<void> {
     const searchInput = body.querySelector(".file-search-input") as HTMLInputElement;
     if (!cwd) {
       treeEl.innerHTML = `<div style="padding:14px;color:var(--text-faint);font-size:12px;">Pick a working folder to see files.</div>`;
+      body.querySelectorAll<HTMLButtonElement>(".ws-file-add").forEach((b) => { b.disabled = true; });
       return;
     }
+    // + file / + folder create at the working-folder ROOT; per-directory
+    // creation lives on the tree rows' right-click menu.
+    (body.querySelector(".ws-file-add-file") as HTMLButtonElement).addEventListener("click", () => {
+      if (slot.root) startCreate(treeEl, slot.root, slot.root, "file", null);
+    });
+    (body.querySelector(".ws-file-add-dir") as HTMLButtonElement).addEventListener("click", () => {
+      if (slot.root) startCreate(treeEl, slot.root, slot.root, "dir", null);
+    });
     if (!slot.root) {
       const res = await window.wb.listDir(cwd);
       slot.root = {
@@ -1510,6 +1536,77 @@ async function init(): Promise<void> {
     walk(root);
   }
 
+  /** Re-list a dir node from disk, KEEPING each surviving child's expanded
+   *  subtree (matched by path) so a create/delete doesn't collapse the tree. */
+  async function refreshDirNode(node: TreeNode): Promise<void> {
+    const res = await window.wb.listDir(node.path);
+    const old = new Map((node.children ?? []).map((c) => [c.path, c]));
+    node.children = res.entries.map((e) => old.get(e.path) ?? { ...e, depth: node.depth + 1 });
+    node.loaded = true;
+  }
+
+  /** The dir node whose children contain `target` (root when top-level). */
+  function findParentDir(root: TreeNode, target: TreeNode): TreeNode {
+    let found: TreeNode = root;
+    const walk = (n: TreeNode): void => {
+      for (const c of n.children ?? []) {
+        if (c === target) { found = n; return; }
+        if (c.kind === "dir") walk(c);
+      }
+    };
+    walk(root);
+    return found;
+  }
+
+  /** Inline name-entry row for New file / New folder. Anchored after
+   *  `afterRow` (or at the top of the tree when null, for the header +).
+   *  Enter creates inside `dir`; Escape or empty cancels. */
+  function startCreate(treeEl: HTMLElement, root: TreeNode, dir: TreeNode, kind: "file" | "dir", afterRow: HTMLElement | null): void {
+    treeEl.querySelector(".ws-files-newrow")?.remove();
+    const row = document.createElement("div");
+    row.className = "ws-files-row ws-files-newrow";
+    const depth = dir.depth < 0 ? 0 : dir.depth + 1;
+    row.style.paddingLeft = (8 + depth * 12) + "px";
+    const input = document.createElement("input");
+    input.className = "ws-files-newinput";
+    input.placeholder = kind === "file" ? "new-file.ts" : "folder name";
+    input.spellcheck = false;
+    row.appendChild(input);
+    let done = false;
+    const finish = (commit: boolean): void => {
+      if (done) return;
+      done = true;
+      const name = input.value.trim();
+      row.remove();
+      if (!commit || !name || /[\\/]/.test(name)) return;
+      void (async () => {
+        const target = `${dir.path}/${name}`;
+        if (kind === "file") {
+          // writeFile OVERWRITES — never let "create" truncate an existing file.
+          const existing = await window.wb.readFile(target);
+          if (!existing.error || /too large/i.test(existing.error)) {
+            void appConfirm({ title: `${name} already exists`, body: "Pick a different name.", confirmLabel: "OK" });
+            return;
+          }
+        }
+        const res = kind === "file" ? await window.wb.writeFile(target, "") : await window.wb.mkdir(target);
+        if (!res.ok) { void appConfirm({ title: `Couldn't create ${name}`, body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
+        dir.open = true;
+        await refreshDirNode(dir);
+        renderTreeRows(treeEl, root);
+        if (kind === "file") void openFileSmart({ name, path: target });
+      })();
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); finish(true); }
+      else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener("blur", () => finish(true));
+    if (afterRow) afterRow.after(row);
+    else treeEl.prepend(row);
+    input.focus();
+  }
+
   function renderTreeRow(node: TreeNode, treeEl: HTMLElement, root: TreeNode): HTMLElement {
     const row = document.createElement("div");
     row.className = "ws-files-row";
@@ -1523,7 +1620,8 @@ async function init(): Promise<void> {
       </svg>
       <span class="ws-files-name"></span>
     `;
-    (row.querySelector(".ws-files-name") as HTMLElement).textContent = node.name;
+    const nameEl = row.querySelector(".ws-files-name") as HTMLElement;
+    nameEl.textContent = node.name;
     row.addEventListener("click", async () => {
       if (node.kind === "dir") {
         if (!node.loaded) {
@@ -1536,6 +1634,88 @@ async function init(): Promise<void> {
         return;
       }
       void openFileSmart({ name: node.name, path: node.path });
+    });
+
+    // Inline rename — swaps the name for an input in place (no tree rebuild
+    // until commit, so the click that lands elsewhere isn't eaten).
+    const startRename = (): void => {
+      const input = document.createElement("input");
+      input.className = "ws-files-newinput";
+      input.value = node.name;
+      input.spellcheck = false;
+      input.addEventListener("click", (ev) => ev.stopPropagation());
+      let done = false;
+      const finish = (commit: boolean): void => {
+        if (done) return;
+        done = true;
+        const name = input.value.trim();
+        input.replaceWith(nameEl);
+        if (!commit || !name || name === node.name || /[\\/]/.test(name)) return;
+        void (async () => {
+          const newPath = node.path.slice(0, node.path.length - node.name.length) + name;
+          const res = await window.wb.renamePath(node.path, newPath);
+          if (!res.ok) { void appConfirm({ title: `Couldn't rename ${node.name}`, body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
+          await refreshDirNode(findParentDir(root, node));
+          renderTreeRows(treeEl, root);
+        })();
+      };
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); finish(true); }
+        else if (ev.key === "Escape") { ev.preventDefault(); finish(false); }
+      });
+      input.addEventListener("blur", () => finish(true));
+      nameEl.replaceWith(input);
+      input.focus();
+      input.select();
+    };
+
+    // Right-click menu: dirs get creation; everything gets Rename + Delete.
+    row.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      document.querySelector(".ws-tab-ctx-menu")?.remove();
+      const menu = document.createElement("div");
+      menu.className = "ws-tab-ctx-menu";
+      const dismiss = (): void => {
+        menu.remove();
+        document.removeEventListener("mousedown", onAway, true);
+        document.removeEventListener("keydown", onKey, true);
+      };
+      const onAway = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) dismiss(); };
+      const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") dismiss(); };
+      const mkItem = (label: string, onPick: () => void): void => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ws-tab-ctx-item";
+        btn.textContent = label;
+        btn.addEventListener("click", () => { dismiss(); onPick(); });
+        menu.appendChild(btn);
+      };
+      if (node.kind === "dir") {
+        mkItem("New file", () => startCreate(treeEl, root, node, "file", row));
+        mkItem("New folder", () => startCreate(treeEl, root, node, "dir", row));
+      }
+      mkItem("Rename", startRename);
+      mkItem("Delete", () => {
+        void (async () => {
+          const ok = await appConfirm({
+            title: `Delete ${node.name}?`,
+            body: node.kind === "dir" ? "The folder and everything in it move to the Trash." : "The file moves to the Trash.",
+            confirmLabel: "Delete",
+            danger: true,
+          });
+          if (!ok) return;
+          const res = await window.wb.deletePath(node.path);
+          if (!res.ok) { void appConfirm({ title: `Couldn't delete ${node.name}`, body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
+          await refreshDirNode(findParentDir(root, node));
+          renderTreeRows(treeEl, root);
+        })();
+      });
+      document.body.appendChild(menu);
+      menu.style.left = Math.max(6, Math.min(ev.clientX, window.innerWidth - menu.offsetWidth - 6)) + "px";
+      menu.style.top  = Math.max(6, Math.min(ev.clientY, window.innerHeight - menu.offsetHeight - 6)) + "px";
+      document.addEventListener("mousedown", onAway, true);
+      document.addEventListener("keydown", onKey, true);
     });
     return row;
   }
@@ -1608,13 +1788,6 @@ async function init(): Promise<void> {
         if (!(res as { error?: string })?.error) t.dirty = false;
       }
       paintSave();
-    }
-
-    // The app-standard confirm modal, bridged from the help bundle. If the
-    // bridge is somehow absent, behave like the old close path (no prompt).
-    function appConfirm(opts: { title: string; body?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean }): Promise<boolean> {
-      const fn = (window as unknown as { __appConfirm?: (o: unknown) => Promise<boolean> }).__appConfirm;
-      return typeof fn === "function" ? fn(opts) : Promise.resolve(true);
     }
 
     async function closeAll(): Promise<void> {

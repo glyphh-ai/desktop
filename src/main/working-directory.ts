@@ -337,6 +337,26 @@ export function registerWorkingDirectoryIpc(deps: {
     }
   });
 
+  // ── File management (workbench Files panel) ─────────────────────────────
+  ipcMain.handle("files:mkdir", async (_e, dirPath: string) => {
+    if (typeof dirPath !== "string" || !dirPath) return { ok: false, error: "missing path" };
+    try { await fs.mkdir(dirPath, { recursive: true }); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  // Delete = move to the OS trash (recoverable), never a hard unlink.
+  ipcMain.handle("files:delete", async (_e, target: string) => {
+    if (typeof target !== "string" || !target) return { ok: false, error: "missing path" };
+    try { await shell.trashItem(target); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("files:rename", async (_e, oldPath: string, newPath: string) => {
+    if (typeof oldPath !== "string" || !oldPath || typeof newPath !== "string" || !newPath) {
+      return { ok: false, error: "missing path" };
+    }
+    try { await fs.rename(oldPath, newPath); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
   // ── Rich file preview — platform-aware ──────────────────────────────────
   // Native viewer: macOS gets Quick Look (renders pptx/docx/key/xlsx without
   // any dependency); everywhere else the file opens in its default app.
