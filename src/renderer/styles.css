@@ -9456,6 +9456,8 @@ select.settings-input {
 }
 .ws-rail-slot-header .title {
   flex: 1;
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-size: 13px;
   font-weight: 500;
   color: var(--ws-text);
@@ -10226,6 +10228,20 @@ select.settings-input {
 .ws-terminal-host .xterm .xterm-screen { width: 100% !important; height: 100% !important; }
 
 /* ── Workbench slot maximize / restore ── */
+/* The coding tile's session controls — sized like every header button. */
+.ws-rail-slot-header .slot-session-new,
+.ws-rail-slot-header .slot-session-history {
+  background: transparent; border: none; padding: 0;
+  width: 24px; height: 24px; border-radius: 4px; flex-shrink: 0;
+  color: var(--ws-text-faint); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.10s, color 0.10s;
+}
+.ws-rail-slot-header .slot-session-new:hover,
+.ws-rail-slot-header .slot-session-history:hover { background: var(--hover); color: var(--ws-text); }
+.ws-rail-slot-header .slot-session-new svg,
+.ws-rail-slot-header .slot-session-history svg { width: 13px; height: 13px; }
+
 .ws-rail-slot-header .slot-maximize {
   background: transparent; border: none; padding: 0;
   width: 24px; height: 24px; border-radius: 4px;
@@ -12852,3 +12868,19 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   font-size: 11px; color: var(--text-3);
   opacity: 0.85;
 }
+
+/* View-toggles overflow: a few visible, the rest behind ⋮ */
+.code-view-more-wrap { position: relative; display: inline-flex; }
+.code-view-more-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  min-width: 150px; padding: 4px;
+}
+.code-view-more-menu .code-view-menu-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  background: none; border: none; cursor: pointer; text-align: left;
+  padding: 7px 10px; border-radius: 7px;
+  font-size: 12.5px; color: var(--text-2); font-family: inherit;
+}
+.code-view-more-menu .code-view-menu-item:hover { background: var(--hover); color: var(--text); }
+.code-view-more-menu .code-view-menu-item.active { color: var(--accent-light); }
+.code-view-more-menu .code-view-menu-item svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

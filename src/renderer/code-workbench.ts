@@ -2238,6 +2238,20 @@ async function init(): Promise<void> {
   // data-view — without this [data-view] guard it fell through to
   // placeView(undefined) → makeSlot's default "preview" slot, so every launcher
   // click also spawned a blank preview panel.
+  // ⋮ overflow for the less-used panel toggles.
+  const moreBtn = document.getElementById("code-view-more");
+  const moreMenu = document.getElementById("code-view-more-menu");
+  moreBtn?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    moreMenu?.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (ev) => {
+    if (moreMenu && !moreMenu.classList.contains("hidden")
+        && !moreMenu.contains(ev.target as Node) && ev.target !== moreBtn) {
+      moreMenu.classList.add("hidden");
+    }
+  });
+
   document.querySelectorAll<HTMLButtonElement>(".code-view-btn[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => {
       // The header toggles cover every view except Monaco (spawned by the
@@ -2245,6 +2259,7 @@ async function init(): Promise<void> {
       const v = btn.dataset.view as Exclude<ViewKind, "app">;
       if (viewIsOpen(v)) closeAllOfView(v);
       else placeView(v);
+      moreMenu?.classList.add("hidden");
     });
   });
 
