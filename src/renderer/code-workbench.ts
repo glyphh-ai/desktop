@@ -39,6 +39,9 @@ interface WbApi {
   onFileChanged: (cb: (absPath: string) => void) => () => void;
   listDir: (dir: string) => Promise<{ entries: FileEntry[]; error?: string }>;
   pickFile: () => Promise<string | null>;
+  platform: string;
+  previewNative: (filePath: string) => Promise<{ ok: boolean; method?: string; error?: string }>;
+  convertPreview: (filePath: string) => Promise<{ pdfPath?: string; error?: string }>;
   readFile: (filePath: string) => Promise<{ content: string; error?: string }>;
   writeFile: (filePath: string, content: string) => Promise<{ ok: boolean; error?: string }>;
   gitDiff: (root: string) => Promise<{ text: string; error?: string }>;
@@ -490,6 +493,65 @@ async function init(): Promise<void> {
     }
     return null;
   }
+  // ── Smart file router — the ONE open-a-file entry point (Files tree,
+  //    agent file cards, anything else). Routes by what can actually render
+  //    it: Chromium-native types → the Browser panel; Office decks/docs →
+  //    embedded LibreOffice→PDF when a converter exists, else the platform's
+  //    native viewer (Quick Look on macOS, default app on Windows); text →
+  //    Monaco, as ever. ──
+  const BROWSER_EXTS = new Set([
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif",
+    "pdf", "mp4", "webm", "mov", "m4v", "mp3", "wav", "ogg", "m4a", "flac",
+    "html", "htm",
+  ]);
+  const OFFICE_EXTS = new Set([
+    "ppt", "pptx", "doc", "docx", "xls", "xlsx",
+    "key", "pages", "numbers", "odt", "odp", "ods", "rtf",
+  ]);
+  function extOf(name: string): string {
+    const i = name.lastIndexOf(".");
+    return i < 0 ? "" : name.slice(i + 1).toLowerCase();
+  }
+  /** file:// URL from an absolute path — Windows drive letters and
+   *  backslashes normalize (C:\a\b → file:///C:/a/b). */
+  function fileUrl(p: string): string {
+    let s = p.replace(/\\/g, "/");
+    if (!s.startsWith("/")) s = "/" + s;
+    return "file://" + encodeURI(s);
+  }
+  /** Route a URL into the Browser panel — reuses the open one or places one. */
+  function openPreviewUrl(url: string): void {
+    const slot = rails.flatMap((r) => r.slots).find((s): s is PreviewSlot => s.view === "preview");
+    if (slot) {
+      slot.html = undefined;
+      slot.htmlLabel = undefined;
+      slot.url = url;
+      renderRails();
+    } else {
+      const s = makeSlot("preview") as PreviewSlot;
+      s.url = url;
+      placeSlot(s);
+    }
+    saveLayout();
+  }
+  async function openFileSmart(file: { name: string; path: string }): Promise<void> {
+    const ext = extOf(file.name);
+    if (BROWSER_EXTS.has(ext)) {
+      openPreviewUrl(fileUrl(file.path));
+      return;
+    }
+    if (OFFICE_EXTS.has(ext)) {
+      const conv = await window.wb.convertPreview(file.path).catch(() => null);
+      if (conv?.pdfPath) { openPreviewUrl(fileUrl(conv.pdfPath)); return; }
+      void window.wb.previewNative(file.path);
+      return;
+    }
+    const res = await window.wb.readFile(file.path);
+    // Text the editor can't hold (the 1MB cap) still deserves a viewer.
+    if (res.error && /too large/i.test(res.error)) { void window.wb.previewNative(file.path); return; }
+    openFileInMonaco({ name: file.name, path: file.path }, res.error ? `// error: ${res.error}` : res.content);
+  }
+
   /** Tree-click entry point — routes the file into the existing Monaco slot
    *  (as a new tab or focuses an existing one), otherwise spawns a new
    *  Monaco slot via the standard placeSlot path. */
@@ -1471,8 +1533,7 @@ async function init(): Promise<void> {
         renderTreeRows(treeEl, root);
         return;
       }
-      const res = await window.wb.readFile(node.path);
-      openFileInMonaco({ name: node.name, path: node.path }, res.error ? `// error: ${res.error}` : res.content);
+      void openFileSmart({ name: node.name, path: node.path });
     });
     return row;
   }
@@ -2046,8 +2107,9 @@ async function init(): Promise<void> {
   function normalizePreviewUrl(raw: string): string {
     const u = raw.trim();
     if (!u) return "";
-    // An absolute path (typed or picked) loads straight from disk.
-    if (u.startsWith("/")) return "file://" + encodeURI(u);
+    // An absolute path (typed or picked) loads straight from disk —
+    // unix (/...) and windows (C:\... or C:/...) forms both.
+    if (u.startsWith("/") || /^[A-Za-z]:[\\/]/.test(u)) return fileUrl(u);
     return /^[a-z]+:\/\//i.test(u) ? u : "http://" + u;
   }
 
@@ -2480,10 +2542,8 @@ async function init(): Promise<void> {
   // Thread → workbench bridges: the Code thread's file cards open a Monaco
   // tab; its run cards reveal (or spawn) a terminal slot.
   (window as unknown as { __wbOpenFile?: (path: string) => void }).__wbOpenFile = (path) => {
-    const name = path.split("/").pop() || path;
-    void window.wb.readFile(path).then((res) => {
-      openFileInMonaco({ name, path }, res.error ? `// error: ${res.error}` : res.content);
-    });
+    const name = path.split(/[\\/]/).pop() || path;
+    void openFileSmart({ name, path });
   };
   (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal = () => {
     const existing = rails.flatMap((r) => r.slots).find((s) => s.view === "terminal");

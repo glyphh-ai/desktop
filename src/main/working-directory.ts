@@ -10,7 +10,8 @@
  * Welcome surface and the left-rail bottom pane render the same list.
  */
 
-import { ipcMain, dialog, BrowserWindow } from "electron";
+import { ipcMain, dialog, BrowserWindow, shell, app } from "electron";
+import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -333,6 +334,66 @@ export function registerWorkingDirectoryIpc(deps: {
       return { content };
     } catch (err) {
       return { content: "", error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // ── Rich file preview — platform-aware ──────────────────────────────────
+  // Native viewer: macOS gets Quick Look (renders pptx/docx/key/xlsx without
+  // any dependency); everywhere else the file opens in its default app.
+  ipcMain.handle("files:preview-native", async (_e, filePath: string) => {
+    if (typeof filePath !== "string" || !filePath) return { ok: false, error: "missing path" };
+    try {
+      if (process.platform === "darwin") {
+        const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+        if (win && !win.isDestroyed()) { win.previewFile(filePath); return { ok: true, method: "quicklook" }; }
+      }
+      const err = await shell.openPath(filePath);
+      return err ? { ok: false, error: err } : { ok: true, method: "shell" };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Embedded viewer: LibreOffice headless → PDF (mtime-cached in temp), which
+  // the Browser panel renders in-tile. Absent LibreOffice → "no-converter"
+  // and the caller falls back to the native viewer above. Probed once.
+  const SOFFICE_CANDIDATES =
+    process.platform === "darwin"
+      ? ["/Applications/LibreOffice.app/Contents/MacOS/soffice", "soffice"]
+      : process.platform === "win32"
+        ? ["C:\\Program Files\\LibreOffice\\program\\soffice.exe", "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe", "soffice.exe"]
+        : ["soffice", "libreoffice"];
+  let sofficePath: string | null | undefined;
+  async function findSoffice(): Promise<string | null> {
+    if (sofficePath !== undefined) return sofficePath;
+    for (const cand of SOFFICE_CANDIDATES) {
+      try {
+        if (path.isAbsolute(cand)) statSync(cand);
+        else await execFileP(cand, ["--version"], { timeout: 8000 });
+        sofficePath = cand;
+        return cand;
+      } catch { /* try the next candidate */ }
+    }
+    sofficePath = null;
+    return null;
+  }
+  ipcMain.handle("files:convert-preview", async (_e, filePath: string) => {
+    if (typeof filePath !== "string" || !filePath) return { error: "missing path" };
+    const soffice = await findSoffice();
+    if (!soffice) return { error: "no-converter" };
+    try {
+      const src = await fs.stat(filePath);
+      const key = createHash("sha1").update(filePath).digest("hex").slice(0, 16);
+      const outDir = path.join(app.getPath("temp"), "glyphh-previews", key);
+      const pdfPath = path.join(outDir, path.basename(filePath).replace(/\.[^.]+$/, "") + ".pdf");
+      const cached = await fs.stat(pdfPath).catch(() => null);
+      if (cached && cached.mtimeMs >= src.mtimeMs) return { pdfPath };
+      await fs.mkdir(outDir, { recursive: true });
+      await execFileP(soffice, ["--headless", "--convert-to", "pdf", "--outdir", outDir, filePath], { timeout: 60_000 });
+      await fs.stat(pdfPath); // conversion that produced nothing → error path
+      return { pdfPath };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 

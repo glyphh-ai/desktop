@@ -932,17 +932,19 @@ const escAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 function toolLineEl(text: string): HTMLElement {
   const { rest, badge } = diffBadgeHtml(text);
 
-  // "✓ Write /abs/path" → file card, click opens the file in Monaco.
-  const write = /^([✓✕⚙]) Write (\/\S.*?)\s*$/.exec(rest);
+  // "✓ Write /abs/path" (and Read) → file card; click routes through the
+  // workbench's smart opener (editor / Browser panel / native viewer by
+  // type). Unix and Windows absolute paths both match.
+  const write = /^([✓✕⚙]) (?:Write|Read) ((?:\/|[A-Za-z]:[\\/])\S.*?)\s*$/.exec(rest);
   if (write && write[1] === "✓") {
     const path = write[2];
-    const base = path.split("/").pop() || path;
-    const dir = path.slice(0, path.length - base.length).replace(/\/$/, "");
+    const base = path.split(/[\\/]/).pop() || path;
+    const dir = path.slice(0, path.length - base.length).replace(/[\\/]$/, "");
     const card = document.createElement("button");
     card.type = "button";
     card.className = "code-file-card";
     card.dataset.path = path;
-    card.title = "Open in the workbench editor";
+    card.title = "Open in the workbench";
     card.innerHTML = `${FILE_ICON}<span class="cfc-name">${escAttr(base)}</span><span class="cfc-dir">${escAttr(dir)}</span>${badge}`;
     return card;
   }

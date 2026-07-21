@@ -721,6 +721,11 @@ contextBridge.exposeInMainWorld("wb", {
   },
   listDir: (dir: string) => ipcRenderer.invoke("files:list-dir", dir),
   pickFile: () => ipcRenderer.invoke("files:pick-file") as Promise<string | null>,
+  platform: process.platform,
+  previewNative: (filePath: string) =>
+    ipcRenderer.invoke("files:preview-native", filePath) as Promise<{ ok: boolean; method?: string; error?: string }>,
+  convertPreview: (filePath: string) =>
+    ipcRenderer.invoke("files:convert-preview", filePath) as Promise<{ pdfPath?: string; error?: string }>,
   readFile: (filePath: string) => ipcRenderer.invoke("files:read-file", filePath),
   writeFile: (filePath: string, content: string) => ipcRenderer.invoke("files:write-file", filePath, content),
   gitDiff: (root: string) => ipcRenderer.invoke("files:git-diff", root),
