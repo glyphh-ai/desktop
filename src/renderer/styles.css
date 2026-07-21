@@ -12438,9 +12438,9 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 
 /* Monaco save button — appears when the file is dirty */
 .ws-monaco-save {
-  border: 1px solid var(--accent);
+  border: 1px solid var(--white);
   background: none;
-  color: var(--accent-text, var(--accent));
+  color: var(--white);
   font-size: 11px;
   font-weight: 600;
   padding: 2px 11px;
@@ -12448,7 +12448,7 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   cursor: pointer;
   margin-left: 6px;
 }
-.ws-monaco-save:hover { background: rgba(140, 59, 242, 0.14); }
+.ws-monaco-save:hover { background: var(--hover); }
 .ws-monaco-save.hidden { display: none; }
 
 /* ── Library pages (Loops / Skills / Agents) ─────────────────────────────── */
