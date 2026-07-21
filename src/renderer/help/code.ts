@@ -227,31 +227,90 @@ function renderLoopMenu(): void {
   headLabel.textContent = "Loop";
   head.appendChild(headLabel);
   pop.appendChild(head);
+
+  // Search — filters as you type; the list below repaints in place.
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "loop-drop-search";
+  search.placeholder = "Search loops…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  search.addEventListener("mousedown", (ev) => ev.stopPropagation());
+  pop.appendChild(search);
+
+  const list = document.createElement("div");
+  list.className = "loop-drop-list";
+  pop.appendChild(list);
+
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  for (const l of loops) {
-    const item = document.createElement("button");
-    item.className = "code-drop-item drop-item-2line" + (l.id === glyphhLoop ? " selected" : "");
-    item.type = "button";
-    const main = document.createElement("div");
-    main.className = "drop-main";
-    const span = document.createElement("span");
-    span.textContent = l.name;
-    main.appendChild(span);
-    if (l.id === glyphhLoop) main.insertAdjacentHTML("beforeend", check);
-    item.appendChild(main);
-    if (l.description) {
-      const sub = document.createElement("span");
-      sub.className = "drop-sub";
-      sub.textContent = l.description;
-      item.appendChild(sub);
+  const closeTips = (): void => pop.querySelectorAll(".model-info-tip").forEach((tip) => tip.classList.add("hidden"));
+
+  const paint = (): void => {
+    list.textContent = "";
+    const q = search.value.trim().toLowerCase();
+    const shown = q
+      ? loops.filter((l) => `${l.name} ${l.description ?? ""}`.toLowerCase().includes(q))
+      : loops;
+    if (!shown.length) {
+      const empty = document.createElement("div");
+      empty.className = "drop-empty";
+      empty.textContent = `No loops matching "${q}"`;
+      list.appendChild(empty);
+      return;
     }
-    item.addEventListener("click", () => {
-      setLoop(l.id);
-      renderLoopMenu();
-      pop.classList.add("hidden");
-    });
-    pop.appendChild(item);
-  }
+    for (const l of shown) {
+      const item = document.createElement("button");
+      item.className = "code-drop-item drop-item-2line loop-drop-item" + (l.id === glyphhLoop ? " selected" : "");
+      item.type = "button";
+      const main = document.createElement("div");
+      main.className = "drop-main";
+      const span = document.createElement("span");
+      span.textContent = l.name;
+      main.appendChild(span);
+      if (l.id === glyphhLoop) main.insertAdjacentHTML("beforeend", check);
+
+      // ⓘ — two lines stay two lines; the whole story lives in the tip.
+      if (l.description) {
+        const infoBtn = document.createElement("button");
+        infoBtn.className = "model-info-btn";
+        infoBtn.type = "button";
+        infoBtn.title = "About this loop";
+        infoBtn.textContent = "i";
+        const tip = document.createElement("div");
+        tip.className = "model-info-tip hidden";
+        tip.textContent = `${l.name} — ${l.description}`;
+        tip.addEventListener("click", (ev) => ev.stopPropagation());
+        infoBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const wasHidden = tip.classList.contains("hidden");
+          closeTips();
+          if (wasHidden) tip.classList.remove("hidden");
+        });
+        main.appendChild(infoBtn);
+        item.appendChild(tip);
+      }
+      item.appendChild(main);
+      if (l.description) {
+        // ONE clamped line — the entry is name + description, never taller.
+        const sub = document.createElement("span");
+        sub.className = "drop-sub loop-drop-sub";
+        sub.textContent = l.description;
+        item.appendChild(sub);
+      }
+      item.addEventListener("click", () => {
+        closeTips();
+        setLoop(l.id);
+        renderLoopMenu();
+        pop.classList.add("hidden");
+      });
+      list.appendChild(item);
+    }
+  };
+
+  search.addEventListener("input", paint);
+  paint();
+  // The pop just opened from a chip click — put the cursor in the search.
+  requestAnimationFrame(() => search.focus());
 }
 
 /** Manual compaction (meter click / .compact) — steers the fold with an

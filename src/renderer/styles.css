@@ -12774,3 +12774,16 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   display: block; width: 100%; text-align: left;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ── Loop drop-up: search on top, two-line entries, ⓘ for the full story ── */
+.loop-drop-search {
+  display: block; width: calc(100% - 16px); margin: 4px 8px 6px;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px;
+  font-size: 12px; padding: 5px 9px; outline: none;
+}
+.loop-drop-search:focus { border-color: var(--border-2); }
+.loop-drop-list { max-height: 300px; overflow-y: auto; }
+/* The entry is exactly two lines: the name row + ONE clamped description line. */
+.loop-drop-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.loop-drop-item { position: relative; }
