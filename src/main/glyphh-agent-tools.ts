@@ -27,6 +27,7 @@ import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { dispatchRelayMethod } from "./relay-client";
 import { getClient } from "./glyphh-client";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
@@ -476,6 +477,38 @@ const TOOLS: ToolDef[] = [
     doc: "list_windows() — the app panels currently open beside this conversation",
     action: () => ({ kind: "read", title: "List open windows" }),
     run: async () => cap(JSON.stringify(await listOpenAppWindows(), null, 1)),
+  },
+  // ── RPA — drive an open app panel (the same handlers the attach socket and
+  // loopback MCP expose, invoked here directly on-machine). ──
+  {
+    name: "rpa_read",
+    doc: "rpa_read(app, selector?, as?) — read text (default) or html ('as':'html') from an open app panel; a CSS 'selector' or the whole page. 'app' is the panel slug from list_windows.",
+    action: (a) => ({ kind: "read", title: `Read ${String(a.selector || "page")} in ${String(a.app ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await dispatchRelayMethod("rpa.read", a), null, 1)),
+  },
+  {
+    name: "rpa_click",
+    doc: "rpa_click(app, selector?|x?,y?) — click inside an open app panel: a CSS 'selector' or absolute 'x'/'y' coords. Open the panel first with open_app.",
+    action: (a) => ({ kind: "network", title: `Click ${String(a.selector || `${a.x},${a.y}`)} in ${String(a.app ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await dispatchRelayMethod("rpa.click", a), null, 1)),
+  },
+  {
+    name: "rpa_type",
+    doc: "rpa_type(app, selector, text, submit?) — type into an element in an open app panel; set submit:true to submit its form.",
+    action: (a) => ({ kind: "network", title: `Type into ${String(a.selector ?? "")} in ${String(a.app ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await dispatchRelayMethod("rpa.type", a), null, 1)),
+  },
+  {
+    name: "rpa_goto",
+    doc: "rpa_goto(app, url) — navigate an open app panel to an http(s) URL.",
+    action: (a) => ({ kind: "network", title: `Navigate ${String(a.app ?? "")} → ${String(a.url ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await dispatchRelayMethod("rpa.goto", a), null, 1)),
+  },
+  {
+    name: "scrape_page",
+    doc: "scrape_page(url, wait?) — load an http(s) URL headlessly (no visible panel) and return its title, text, and html. 'wait' ms (≤15000) for JS-rendered pages.",
+    action: (a) => ({ kind: "network", title: `Scrape ${String(a.url ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await dispatchRelayMethod("scrape.page", a), null, 1)),
   },
   {
     name: "list_layouts",
