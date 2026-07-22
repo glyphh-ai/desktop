@@ -19,6 +19,11 @@ export function registerRelayHandler(method: string, handler: Handler): void {
   handlers.set(method, handler);
 }
 
+/** Every registered method name — the attach client's `hello` capability list. */
+export function listRelayMethods(): string[] {
+  return [...handlers.keys()];
+}
+
 async function dispatch(method: string, params: unknown): Promise<{ ok: true; result: unknown } | { ok: false; error: string }> {
   const handler = handlers.get(method);
   if (!handler) return { ok: false, error: `unknown method: ${method}` };

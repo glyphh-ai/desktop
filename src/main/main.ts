@@ -74,6 +74,7 @@ import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
+import { installAttachHandlers } from "./attach-handlers";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWbAppRegistry } from "./app-resolver";
@@ -524,6 +525,9 @@ async function boot() {
   installRelayHandlers({
     getMcpManager: () => mcpManager,
   });
+  // loops.run / skills.run / agents.run / scrape.page — the attach socket's
+  // extra capabilities, on the same registry.
+  installAttachHandlers();
 
   // Browser panel helpers (must be before app connector loop)
   const BROWSER_HOMES: Record<string, string> = {

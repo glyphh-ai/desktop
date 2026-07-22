@@ -233,6 +233,45 @@ export function taskRunningSince(taskId: string): number | null {
   return inFlight.get(taskId) ?? null;
 }
 
+/** Run a saved LOOP by slug, standalone (no agent) — for remote/attach runs.
+ *  Capabilities default to the loop's own manifest; models resolve via the
+ *  user's config. Returns the loop's output as text. */
+export async function runLoopBySlug(slug: string, input: Record<string, unknown>): Promise<string> {
+  const client = getClient();
+  const loop = await client.loops.get(slug);
+  const result = await runProgram(client, {
+    program: { slug: loop.slug, code: loop.code },
+    capabilities: {
+      roles: {},
+      skills: loop.manifest.skills ?? [],
+      connections: loop.manifest.connections ?? [],
+      ...(loop.manifest.memory ? { memory: loop.manifest.memory } : {}),
+    },
+    input,
+  });
+  if (result.error) throw new Error(result.error);
+  return typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
+}
+
+/** Run a saved SKILL by slug, standalone — for remote/attach runs. */
+export async function runSkillBySlug(slug: string, input: Record<string, unknown>): Promise<string> {
+  const client = getClient();
+  const skill = await client.skills.get(slug);
+  if (!skill.code.trim()) throw new Error(`skill "${slug}" has no program to run`);
+  const result = await runProgram(client, {
+    program: { slug: skill.slug, code: skill.code },
+    capabilities: {
+      roles: {},
+      skills: [],
+      connections: skill.manifest.requires ?? [],
+      ...(skill.manifest.allowedTools?.length ? { allowedTools: skill.manifest.allowedTools } : {}),
+    },
+    input,
+  });
+  if (result.error) throw new Error(result.error);
+  return typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
+}
+
 export async function runTaskNow(agentId: string, taskId: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const client = getClient();

@@ -76,12 +76,19 @@ function triggerReauth(): void {
   try { reauthHandler?.(); } catch { /* noop */ }
 }
 
+// Attach lifecycle, wired via lazy import so auth.ts carries no static dep on
+// attach-client (which imports THIS module). Every sign-in/out path funnels
+// through here, so the outbound socket tracks auth exactly.
+function attachStart(): void { void import("./attach-client.js").then((m) => m.startAttach()).catch(() => {}); }
+function attachStop(): void { void import("./attach-client.js").then((m) => m.stopAttach()).catch(() => {}); }
+
 setSignedOutHandler(() => {
   signedIn = false;
   cachedToken = null;
   cachedAccount = null;
   cachedHeartbeat = null;
   setActiveUser(null);
+  attachStop();
   triggerReauth();
 });
 
@@ -176,6 +183,7 @@ export async function initAuth(): Promise<void> {
     setActiveUser(readIdentitySidecar());
     void ensureFreshToken();
     void refreshAccountState();
+    attachStart();
   }
   if (accountTimer) clearInterval(accountTimer);
   accountTimer = setInterval(() => {
@@ -197,6 +205,7 @@ export function logout(): void {
   cachedHeartbeat = null;
   clearIdentitySidecar();
   setActiveUser(null);
+  attachStop();
 }
 
 /** Get cached account info. */
@@ -278,6 +287,7 @@ export async function startDeviceLogin(
     signedIn = true;
     await ensureFreshToken();
     await refreshAccountState();
+    attachStart();
     return { ok: true };
   } catch (err) {
     const message = (err as Error)?.message || String(err);
