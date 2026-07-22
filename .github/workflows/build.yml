@@ -69,7 +69,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VER="$(node -p "require('@anthropic-ai/claude-agent-sdk/package.json').version")"
+          # Read the file directly — the SDK's package.json is NOT exposed via
+          # its "exports" map, so require()/require.resolve() throw ERR_PACKAGE_PATH_NOT_EXPORTED.
+          VER="$(node -p "JSON.parse(require('fs').readFileSync('node_modules/@anthropic-ai/claude-agent-sdk/package.json','utf8')).version")"
           echo "claude-agent-sdk version: $VER"
           for ARCH in arm64 x64; do
             DEST="node_modules/@anthropic-ai/claude-agent-sdk-darwin-$ARCH"
