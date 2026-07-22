@@ -27,7 +27,8 @@
  */
 
 import { getClient } from "./glyphh-client";
-import { runProgram } from "@glyphh/client/runtime";
+import { runProgram, type ProgramCapabilities, type RunResult } from "@glyphh/client/runtime";
+import { createBrowserHost } from "./glyphh-browser-host";
 import type { Agent, AgentTask, GuardrailsPolicy } from "@glyphh/client";
 import { callAppTool } from "./glyphh-app-host";
 import { connectorWireTools, resolveWireTool } from "./glyphh-agent-tools";
@@ -92,13 +93,33 @@ async function agentModel(agent: Agent): Promise<string | null> {
   }
 }
 
+/**
+ * Run a loop/skill program with a per-run headless browser host, so program
+ * code can use `ctx.browser()`. The `browser` capability is granted for the
+ * user's OWN programs by default (governance: same as connections); pages are
+ * torn down when the run ends, even on error. Everything else in `opts` passes
+ * through unchanged.
+ */
+async function runProgramWithBrowser(
+  client: ReturnType<typeof getClient>,
+  opts: Parameters<typeof runProgram>[1],
+): Promise<RunResult> {
+  const { host, closeAll } = createBrowserHost();
+  const capabilities: ProgramCapabilities = { ...opts.capabilities, browser: true };
+  try {
+    return await runProgram(client, { ...opts, capabilities }, { browser: host });
+  } finally {
+    closeAll();
+  }
+}
+
 async function runSkillTask(agent: Agent, task: AgentTask): Promise<string> {
   const client = getClient();
   const skill = await client.skills.get(task.target);
   const guardrails: GuardrailsPolicy | null = agent.guardrailsEffective;
 
   if (skill.code.trim()) {
-    const result = await runProgram(client, {
+    const result = await runProgramWithBrowser(client, {
       program: { slug: skill.slug, code: skill.code },
       capabilities: {
         roles: agent.selections.roles ?? {},
@@ -170,7 +191,7 @@ async function runSkillTask(agent: Agent, task: AgentTask): Promise<string> {
 async function runLoopTask(agent: Agent, task: AgentTask): Promise<string> {
   const client = getClient();
   const loop = await client.loops.get(task.target);
-  const result = await runProgram(client, {
+  const result = await runProgramWithBrowser(client, {
     program: { slug: loop.slug, code: loop.code },
     capabilities: {
       roles: agent.selections.roles ?? {},
@@ -239,7 +260,7 @@ export function taskRunningSince(taskId: string): number | null {
 export async function runLoopBySlug(slug: string, input: Record<string, unknown>): Promise<string> {
   const client = getClient();
   const loop = await client.loops.get(slug);
-  const result = await runProgram(client, {
+  const result = await runProgramWithBrowser(client, {
     program: { slug: loop.slug, code: loop.code },
     capabilities: {
       roles: {},
@@ -258,7 +279,7 @@ export async function runSkillBySlug(slug: string, input: Record<string, unknown
   const client = getClient();
   const skill = await client.skills.get(slug);
   if (!skill.code.trim()) throw new Error(`skill "${slug}" has no program to run`);
-  const result = await runProgram(client, {
+  const result = await runProgramWithBrowser(client, {
     program: { slug: skill.slug, code: skill.code },
     capabilities: {
       roles: {},
