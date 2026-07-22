@@ -68,6 +68,7 @@ function isNewerVersion(latest: string, current: string): boolean {
   return false;
 }
 import { setMainWindowRef } from "./main-window-ref";
+import { isBackgroundEnabled, isQuitting, markQuitting, shouldHideOnClose, syncBackgroundMode, setReopenHandler } from "./background-mode";
 import { initRailCollapse } from "./screen-layout";
 import { McpManager } from "./mcp-manager";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
@@ -244,13 +245,21 @@ async function createWindow() {
 
   mainWindow.setMaxListeners(30);
 
+  // Background mode: closing the window HIDES it (the process stays resident so
+  // scheduled loops/skills + the attach socket keep running) instead of
+  // quitting. A real Quit (tray/⌘Q sets isQuitting) closes for real.
+  mainWindow.on("close", (e) => {
+    if (shouldHideOnClose()) { e.preventDefault(); mainWindow?.hide(); }
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
-    // Closing the main window quits the app. Auxiliary windows (hidden app
-    // workers, overlays, per-app windows) can otherwise keep window-all-closed
-    // from firing, leaving a zombie process; quitting directly runs will-quit →
-    // cleanupAll, which tears the rest down. Idempotent during an update restart.
-    app.quit();
+    // Not background mode (or a real Quit): closing the main window quits the
+    // app. Auxiliary windows (hidden app workers, overlays, per-app windows)
+    // can otherwise keep window-all-closed from firing, leaving a zombie
+    // process; quitting directly runs will-quit → cleanupAll. Idempotent
+    // during an update restart.
+    if (!isBackgroundEnabled() || isQuitting()) app.quit();
   });
 
   // Refresh auth/tier when window regains focus (e.g. returning from billing portal)
@@ -745,6 +754,10 @@ async function boot() {
 
   // Create window
   await createWindow();
+  // Background mode: rebuild the window when the tray asks, and reflect the
+  // current setting (tray + launch-at-login) now.
+  setReopenHandler(() => { void createWindow(); });
+  syncBackgroundMode();
   if (mainWindow) commandParser.setMainWindow(mainWindow);
 
   // Drip effects
@@ -1981,6 +1994,8 @@ app.on("login", (event, _wc, _details, authInfo, callback) => {
 });
 
 app.on("window-all-closed", () => {
+  // Stay resident in background mode (tray keeps the process + scheduler alive).
+  if (isBackgroundEnabled() && !isQuitting()) return;
   cleanupAll();
   app.quit();
 });
@@ -1990,6 +2005,10 @@ app.on("activate", () => {
     createWindow();
   }
 });
+
+// An explicit Quit (⌘Q, menu, tray) must tear down even in background mode —
+// mark it so the window's close guard stops hiding.
+app.on("before-quit", () => { markQuitting(); });
 
 app.on("will-quit", () => {
   cleanupAll();

@@ -217,6 +217,8 @@ declare global {
       relaunch: () => void;
       setPreference: (key: string, value: unknown) => void;
       getPreference: (key: string, defaultVal?: unknown) => Promise<unknown>;
+      getBackgroundMode: () => Promise<boolean>;
+      setBackgroundMode: (enabled: boolean) => Promise<boolean>;
       onPreferenceChanged: (cb: (key: string, value: unknown) => void) => void;
       onboardingComplete: () => Promise<void>;
 

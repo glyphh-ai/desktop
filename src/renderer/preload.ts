@@ -204,6 +204,8 @@ contextBridge.exposeInMainWorld("yo", {
   relaunch: () => ipcRenderer.send("relaunch"),
   setPreference: (key: string, value: unknown) => ipcRenderer.send("set-preference", key, value),
   getPreference: (key: string, defaultVal?: unknown) => ipcRenderer.invoke("get-preference", key, defaultVal),
+  getBackgroundMode: () => ipcRenderer.invoke("get-background-mode") as Promise<boolean>,
+  setBackgroundMode: (enabled: boolean) => ipcRenderer.invoke("set-background-mode", enabled) as Promise<boolean>,
   // Fires in every panel when a preference is changed anywhere — lets forms
   // (e.g. Settings → Agent Defaults) reflect a change made elsewhere live.
   onPreferenceChanged: (cb: (key: string, value: unknown) => void) => {

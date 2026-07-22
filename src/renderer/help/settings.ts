@@ -64,6 +64,16 @@ function initSettings() {
     showRelaunch();
   });
 
+  // Keep-running-in-the-background — applies immediately (tray + login item),
+  // no relaunch needed.
+  const bgToggle = document.getElementById("toggle-background-mode") as HTMLInputElement | null;
+  if (bgToggle) {
+    void window.yo.getBackgroundMode?.().then((on) => { bgToggle.checked = !!on; }).catch(() => {});
+    bgToggle.addEventListener("change", () => {
+      void window.yo.setBackgroundMode?.(bgToggle.checked).then((on) => { bgToggle.checked = !!on; }).catch(() => {});
+    });
+  }
+
 
   // The cloud relay (external LLMs driving this machine) was removed. Its
   // in-page helper survives — escapeHtmlLocal is reused by the token list below.

@@ -4,6 +4,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { generateGlyphhSkill } from "./glyphh-skill-export";
+import { isBackgroundEnabled, setBackgroundEnabled } from "./background-mode";
 import { type DevicePrompt, startDeviceLogin, cancelDeviceLogin } from "./auth";
 import { getClient } from "./glyphh-client";
 import type { SessionCache } from "./session-cache";
@@ -44,6 +45,14 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     nativeTheme.themeSource = theme === "system" ? "system" : theme === "light" ? "light" : "dark";
     const resolved = theme === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : theme;
     broadcastTheme(resolved);
+  });
+
+  // Background mode: keep Glyphh resident (tray + scheduler + attach) when the
+  // window closes, so scheduled loops/skills fire with the app "closed".
+  ipcMain.handle("get-background-mode", () => isBackgroundEnabled());
+  ipcMain.handle("set-background-mode", (_e, enabled: boolean) => {
+    setBackgroundEnabled(!!enabled);
+    return isBackgroundEnabled();
   });
 
   ipcMain.handle("exec-command", async (_e, cmd: string) => {
