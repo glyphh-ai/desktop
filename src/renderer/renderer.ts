@@ -350,7 +350,7 @@ declare global {
       libraryAgentTaskRuns: (ref: string, taskId: string) => Promise<LibEnvelope>;
       libraryAgentTaskRunning: (ref: string, taskId: string) => Promise<LibEnvelope>;
       libraryAgentTaskDelete: (ref: string, taskId: string) => Promise<LibEnvelope>;
-      loopRoles: (loop: string) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
+      loopRoles: (loop: string, force?: boolean) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
       adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;

@@ -14,7 +14,7 @@ import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
 import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
-import { resolveRoles, setSelection } from "./loop-selections";
+import { resolveRoles, setSelection, invalidateRoles } from "./loop-selections";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -187,9 +187,12 @@ function registerPanelAppsIpc(): void {
   // dropdown, a planner-and-coder loop gets two. Resolution and storage live in
   // loop-selections so the turn resolves a slot exactly as the dropdown showed it.
 
-  ipcMain.handle("loop-roles", async (_e, p: { loop?: string }) => {
+  ipcMain.handle("loop-roles", async (_e, p: { loop?: string; force?: boolean }) => {
     const loop = String(p?.loop || "default");
     try {
+      // force → drop the 60s cache first, so an org-side model change (a model
+      // added/removed/toggled on the platform) is seen without an app restart.
+      if (p?.force) invalidateRoles(loop);
       return { ok: true, loop, roles: await resolveRoles(loop) };
     } catch (err) {
       // Signed out or offline: no slots rather than a broken picker.

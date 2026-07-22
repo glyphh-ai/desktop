@@ -41,9 +41,9 @@ export function currentRoles(): RoleView[] {
 }
 
 /** Pull this loop's slots from the server. Safe to call on every loop change. */
-export async function refreshRoles(loop: string): Promise<RoleView[]> {
+export async function refreshRoles(loop: string, force?: boolean): Promise<RoleView[]> {
   try {
-    const r = await window.yo.loopRoles?.(loop);
+    const r = await window.yo.loopRoles?.(loop, force);
     roles = r?.roles ?? [];
   } catch {
     roles = []; // Offline — the chip falls back to a neutral label.

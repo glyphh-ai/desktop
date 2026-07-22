@@ -114,8 +114,8 @@ function paintModelChip(): void {
 
 /** Re-resolve the current loop's slots. Called on load and on every loop change,
  *  because a different loop means different slots. */
-async function refreshModelList(): Promise<void> {
-  await picker.refreshRoles(glyphhLoop);
+async function refreshModelList(force?: boolean): Promise<void> {
+  await picker.refreshRoles(glyphhLoop, force);
   paintModelChip();
   refreshCtxMeter();
 }
@@ -454,9 +454,10 @@ function initComposerControls(): void {
       mmenu.classList.toggle("hidden");
       if (opening) {
         picker.focusSearch(mmenu);
-        // Re-resolve behind the open menu; the rows repaint if the server
-        // disagrees with what was cached.
-        void refreshModelList().then(() => {
+        // Re-resolve behind the open menu, FORCING past the cache — so a model
+        // an admin just added/removed on the platform shows on the next open,
+        // no app restart. The rows repaint if the server disagrees.
+        void refreshModelList(true).then(() => {
           if (!mmenu.classList.contains("hidden")) { renderModelMenu(); picker.focusSearch(mmenu); }
         });
       }
