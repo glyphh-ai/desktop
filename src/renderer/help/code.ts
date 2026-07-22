@@ -701,10 +701,52 @@ async function deleteChat(chat: CodeChat): Promise<void> {
 // ── Session row menu (⋯ → Delete) ────────────────────────────────────────
 function closeMenu(): void { menuEl?.remove(); menuEl = null; }
 
+/** Swap a history row's title for an inline input to rename the chat. Committed
+ *  on Enter/blur, cancelled on Escape. Edits IN PLACE (no renderHistory) so a
+ *  rebuild can't destroy the field mid-edit. Triggered from the row menu. */
+function beginRename(chat: CodeChat, label: HTMLElement): void {
+  const field = document.createElement("input");
+  field.type = "text";
+  field.className = "code-history-rename";
+  field.value = chat.title;
+  field.addEventListener("click", (ev) => ev.stopPropagation());
+  let done = false;
+  const restore = (): void => { label.textContent = chat.title; label.title = chat.title; field.replaceWith(label); };
+  const commit = (): void => {
+    if (done) return;
+    done = true;
+    const t = field.value.trim();
+    if (t && t !== chat.title) {
+      chat.title = t;
+      void saveStore();
+      // The coding tile's header/dropdown follow this event.
+      window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+    }
+    restore();
+  };
+  field.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); done = true; restore(); }
+  });
+  field.addEventListener("blur", commit);
+  label.replaceWith(field);
+  field.focus();
+  field.select();
+}
+
 function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
   closeMenu();
   const m = document.createElement("div");
   m.className = "code-menu";
+  const ren = document.createElement("button");
+  ren.className = "code-menu-item";
+  ren.textContent = "Rename";
+  ren.addEventListener("click", () => {
+    closeMenu();
+    const label = anchor.closest(".code-history-item")?.querySelector<HTMLElement>(".code-history-title");
+    if (label) beginRename(chat, label);
+  });
+  m.appendChild(ren);
   const del = document.createElement("button");
   del.className = "code-menu-item danger";
   del.textContent = "Delete";
@@ -729,47 +771,10 @@ function renderHistory(): void {
     const label = document.createElement("span");
     label.className = "code-history-title";
     label.textContent = c.title;
-    label.title = c.id === currentId ? "Click to rename" : c.title;
-    // Clicking the title of the ALREADY-SELECTED session renames it inline;
-    // on any other row the click falls through to the row's select handler.
-    label.addEventListener("click", (e) => {
-      if (c.id !== currentId) return;
-      e.stopPropagation();
-      const field = document.createElement("input");
-      field.type = "text";
-      field.className = "code-history-rename";
-      field.value = c.title;
-      field.addEventListener("click", (ev) => ev.stopPropagation());
-      let done = false;
-      // The whole lifecycle is IN PLACE — never renderHistory() from here.
-      // A rebuild on blur destroys the row the user is mid-click on, eating
-      // the click (couldn't switch to another session after a rename opened).
-      const restore = (): void => {
-        label.textContent = c.title;
-        label.title = "Click to rename";
-        field.replaceWith(label);
-      };
-      const commit = (): void => {
-        if (done) return;
-        done = true;
-        const t = field.value.trim();
-        if (t && t !== c.title) {
-          c.title = t;
-          void saveStore();
-          // The coding tile's header/dropdown follow this event.
-          window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
-        }
-        restore();
-      };
-      field.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") { ev.preventDefault(); commit(); }
-        else if (ev.key === "Escape") { ev.preventDefault(); done = true; restore(); }
-      });
-      field.addEventListener("blur", commit);
-      label.replaceWith(field);
-      field.focus();
-      field.select();
-    });
+    label.title = c.title;
+    // Rename is a menu action (⋯ → Rename), not a click on the title — a
+    // selection-gated title click fought the row's own select handler and
+    // never reliably fired. The label is now just a label.
     const dot = document.createElement("span");
     const working = thinking && workingChatId === c.id;
     dot.className = "code-chat-dot" + (working ? " working" : "");

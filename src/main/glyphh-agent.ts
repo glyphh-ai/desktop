@@ -18,7 +18,7 @@
 import { ipcMain, app, type WebContents } from "electron";
 import { spawn, type ChildProcess } from "child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname, sep } from "node:path";
 import { homedir } from "node:os";
 import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -79,6 +79,37 @@ function agentConfigDir(): string {
   const dir = glyphhPath("agent-config");
   try { mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
   return dir;
+}
+
+/**
+ * Absolute path to the SDK's NATIVE `claude` CLI binary, corrected for asar.
+ *
+ * The Agent SDK ships the CLI as a per-platform native binary in a sibling
+ * package (`@anthropic-ai/claude-agent-sdk-<platform>-<arch>/claude`) and, given
+ * a path with no `.js` extension, spawns it DIRECTLY (the `executable: "node"`
+ * option only applies to the JS-script path, never this one).
+ *
+ * In a PACKAGED build the SDK resolves that path INSIDE `app.asar` — but `app.asar`
+ * is a file, so spawning a binary *through* it dies instantly with `spawn ENOTDIR`
+ * (the error users saw on the very first agent turn). electron-builder already
+ * `asarUnpack`s the binary, so we resolve the SDK's path and repoint it at the
+ * unpacked tree. Returns undefined if resolution fails — the SDK then falls back
+ * to its own default (correct in dev, where there is no asar).
+ */
+function nativeClaudeBinary(): string | undefined {
+  const suffix = process.platform === "linux" ? `${process.platform}-${process.arch}-musl` : `${process.platform}-${process.arch}`;
+  const pkg = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;
+  const bin = process.platform === "win32" ? "claude.exe" : "claude";
+  const candidates: string[] = [];
+  for (const name of [pkg, `@anthropic-ai/claude-agent-sdk-${suffix}`]) {
+    try { candidates.push(join(dirname(require.resolve(`${name}/package.json`)), bin)); } catch { /* not installed for this triple */ }
+  }
+  for (const raw of candidates) {
+    // app.asar is a file; the real binary lives in app.asar.unpacked (asarUnpack).
+    const p = app.isPackaged ? raw.replace(`app.asar${sep}`, `app.asar.unpacked${sep}`) : raw;
+    if (existsSync(p)) return p;
+  }
+  return undefined;
 }
 
 async function ensureInterceptor(): Promise<Interceptor> {
@@ -405,7 +436,10 @@ async function sdkRun(
         canUseTool: async (_tool, input) => ({ behavior: "allow" as const, updatedInput: input }),
         permissionMode: "default",
         persistSession: false,
-        executable: "node",
+        // Point the SDK at the UNPACKED native CLI binary. Without this a packaged
+        // build resolves it inside app.asar and dies with `spawn ENOTDIR` on the
+        // first turn. Undefined in dev → the SDK's own (correct) default is used.
+        pathToClaudeCodeExecutable: nativeClaudeBinary(),
         // Token-level partials — the thread streams live instead of getting
         // each turn's text dumped whole at message end.
         includePartialMessages: true,
