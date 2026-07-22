@@ -97,13 +97,17 @@ function agentConfigDir(): string {
  * to its own default (correct in dev, where there is no asar).
  */
 function nativeClaudeBinary(): string | undefined {
-  const suffix = process.platform === "linux" ? `${process.platform}-${process.arch}-musl` : `${process.platform}-${process.arch}`;
-  const pkg = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;
   const bin = process.platform === "win32" ? "claude.exe" : "claude";
-  const candidates: string[] = [];
-  for (const name of [pkg, `@anthropic-ai/claude-agent-sdk-${suffix}`]) {
-    try { candidates.push(join(dirname(require.resolve(`${name}/package.json`)), bin)); } catch { /* not installed for this triple */ }
-  }
+  const name = `claude-agent-sdk-${process.platform}-${process.arch}`;
+  // Anchor off the SDK's OWN main file — its per-platform package is NOT
+  // resolvable from here directly (its package.json isn't in the exports map,
+  // and in a packaged build npm nests it under the SDK's own node_modules).
+  let sdkDir: string;
+  try { sdkDir = dirname(require.resolve("@anthropic-ai/claude-agent-sdk")); } catch { return undefined; }
+  const candidates = [
+    join(sdkDir, "node_modules", "@anthropic-ai", name, bin), // nested (packaged build)
+    join(dirname(sdkDir), name, bin),                         // hoisted sibling (dev)
+  ];
   for (const raw of candidates) {
     // app.asar is a file; the real binary lives in app.asar.unpacked (asarUnpack).
     const p = app.isPackaged ? raw.replace(`app.asar${sep}`, `app.asar.unpacked${sep}`) : raw;
