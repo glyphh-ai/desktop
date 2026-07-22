@@ -75,6 +75,7 @@ import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { installAttachHandlers } from "./attach-handlers";
+import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWbAppRegistry } from "./app-resolver";
@@ -528,6 +529,11 @@ async function boot() {
   // loops.run / skills.run / agents.run / scrape.page — the attach socket's
   // extra capabilities, on the same registry.
   installAttachHandlers();
+  // rpa.* drive an open app panel. The renderer registers each panel's
+  // slug → webContents id so main can resolve the live view.
+  installRpaHandlers();
+  ipcMain.on("wb:rpa-register", (_e, slug: string, wcId: number) => registerRpaTarget(String(slug), Number(wcId)));
+  ipcMain.on("wb:rpa-unregister", (_e, slug: string) => unregisterRpaTarget(String(slug)));
 
   // Browser panel helpers (must be before app connector loop)
   const BROWSER_HOMES: Record<string, string> = {

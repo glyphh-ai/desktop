@@ -190,6 +190,64 @@ function buildMcpServer(): McpServer {
     async ({ serverId, name, args }) => via("mcp.call_tool", { serverId, name, args: args || {} }),
   );
 
+  // ── RPA — drive an open app panel ────────────────────
+  mcp.tool(
+    "rpa_click",
+    "Click inside an open app panel. Pass the panel `app` slug (from panels_list) and EITHER a CSS `selector` (clicked in-page) OR absolute `x`/`y` coordinates (a real input event). Open the panel first with panels_open.",
+    { app: z.string(), selector: z.string().optional(), x: z.number().optional(), y: z.number().optional() },
+    async (a) => via("rpa.click", a),
+  );
+  mcp.tool(
+    "rpa_type",
+    "Type into an element in an open app panel: focuses `selector`, sets its value, fires input/change. Set `submit` to also submit the surrounding form.",
+    { app: z.string(), selector: z.string(), text: z.string(), submit: z.boolean().optional() },
+    async (a) => via("rpa.type", a),
+  );
+  mcp.tool(
+    "rpa_read",
+    "Read text or HTML from an open app panel — a `selector`'s content, or the whole page when omitted. `as` is 'text' (default) or 'html'.",
+    { app: z.string(), selector: z.string().optional(), as: z.enum(["text", "html"]).optional() },
+    async (a) => via("rpa.read", a),
+  );
+  mcp.tool(
+    "rpa_screenshot",
+    "Capture the current frame of an open app panel as a PNG data URL.",
+    { app: z.string() },
+    async (a) => via("rpa.screenshot", a),
+  );
+  mcp.tool(
+    "rpa_goto",
+    "Navigate an open app panel to an http(s) URL.",
+    { app: z.string(), url: z.string() },
+    async (a) => via("rpa.goto", a),
+  );
+
+  // ── Run the user's automations / scrape ──────────────
+  mcp.tool(
+    "loop_run",
+    "Run one of the user's saved loops on their machine and return its output.",
+    { slug: z.string().describe("Loop slug"), input: z.record(z.string(), z.unknown()).optional() },
+    async ({ slug, input }) => via("loops.run", { slug, input: input || {} }),
+  );
+  mcp.tool(
+    "skill_run",
+    "Run one of the user's saved skills on their machine and return its output.",
+    { slug: z.string().describe("Skill slug"), input: z.record(z.string(), z.unknown()).optional() },
+    async ({ slug, input }) => via("skills.run", { slug, input: input || {} }),
+  );
+  mcp.tool(
+    "agent_run",
+    "Fire a standing agent's scheduled task now, on the user's machine.",
+    { agentId: z.string(), taskId: z.string() },
+    async ({ agentId, taskId }) => via("agents.run", { agentId, taskId }),
+  );
+  mcp.tool(
+    "scrape_page",
+    "Load an http(s) URL headlessly on the user's machine and return its title, text, and html. `wait` (ms, ≤15000) delays extraction for JS-rendered pages.",
+    { url: z.string(), wait: z.number().optional() },
+    async ({ url, wait }) => via("scrape.page", { url, wait }),
+  );
+
   return mcp;
 }
 

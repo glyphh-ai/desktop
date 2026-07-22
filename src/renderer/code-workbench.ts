@@ -991,6 +991,9 @@ async function init(): Promise<void> {
   };
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
+  // The RPA registration bridge on window.yo (slug ↔ panel webContents id).
+  const rpaYo = (): { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } =>
+    (window as unknown as { yo?: { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } }).yo ?? {};
   let appLayer: HTMLDivElement | null = null;
   let appSyncRaf = 0;
 
@@ -1098,8 +1101,9 @@ async function init(): Promise<void> {
       // preview-open flow the Apps page already uses.
       webview.setAttribute("src", "about:blank");
       webview.addEventListener("dom-ready", () => {
-        const yo = (window as unknown as { yo?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }> } }).yo;
+        const yo = (window as unknown as { yo?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>; rpaRegister?: (slug: string, wcId: number) => void } }).yo;
         const wcId = webview.getWebContentsId?.();
+        if (wcId !== undefined) yo?.rpaRegister?.(slot.slug, wcId);
         void yo?.glyphhAppPreviewOpen?.(slot.slug, wcId).then((res) => {
           if (res?.ok && res.fileUrl && webview.getAttribute("src") === "about:blank") {
             webview.setAttribute("src", res.fileUrl);
@@ -1110,6 +1114,14 @@ async function init(): Promise<void> {
       webview.setAttribute("src", slot.url);
       urlbar.value = slot.url;
     }
+
+    // RPA target registration for EVERY app panel (URL apps included; the
+    // glyphh branch also registers early for its cap grant). Re-fires on each
+    // dom-ready so a navigated/reloaded guest keeps a valid webContents id.
+    webview.addEventListener("dom-ready", () => {
+      const wcId = webview.getWebContentsId?.();
+      if (wcId !== undefined) rpaYo().rpaRegister?.(slot.slug, wcId);
+    });
 
     holder.append(chrome, webview);
     if (slot.urlBarHidden) holder.classList.add("urlbar-hidden");
@@ -1131,6 +1143,7 @@ async function init(): Promise<void> {
       live.add(slot.id);
       let view = appViews.get(slot.id);
       if (view && view.slug !== slot.slug) {   // switched app in place
+        rpaYo().rpaUnregister?.(view.slug);
         view.holder.remove();
         appViews.delete(slot.id);
         view = undefined;
@@ -1152,7 +1165,7 @@ async function init(): Promise<void> {
       }
     }
     for (const [id, view] of appViews) {
-      if (!live.has(id)) { view.holder.remove(); appViews.delete(id); }
+      if (!live.has(id)) { rpaYo().rpaUnregister?.(view.slug); view.holder.remove(); appViews.delete(id); }
     }
     notifyOpenApps();
     if (slots.length) appSyncRaf = requestAnimationFrame(syncAppViews);

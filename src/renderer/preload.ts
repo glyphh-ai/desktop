@@ -310,6 +310,10 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("glyphh-app:preview-open", previewWcId, slug) as Promise<{ ok: boolean; fileUrl?: string; error?: string }>,
   glyphhAppPreviewClear: (previewWcId?: number) =>
     ipcRenderer.invoke("glyphh-app:preview-clear", previewWcId) as Promise<{ ok: boolean }>,
+  // RPA: register/clear a panel's webContents id so main's rpa.* handlers
+  // (attach + loopback MCP) can drive it.
+  rpaRegister: (slug: string, wcId: number) => ipcRenderer.send("wb:rpa-register", slug, wcId),
+  rpaUnregister: (slug: string) => ipcRenderer.send("wb:rpa-unregister", slug),
   // Invoke an installed app's declared tool locally — the Apps page MCP "Test" button.
   appCallTool: (slug: string, tool: string, args: unknown) =>
     ipcRenderer.invoke("glyphh-app:call-tool", slug, tool, args) as Promise<{ ok: boolean; result?: unknown; error?: string }>,
