@@ -184,6 +184,10 @@ declare global {
       appSecretsDelete: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
       appExport: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+      hostingStatus: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>;
+      hostingDeploy: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
+      hostingDestroy: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
       appsRemove: (id: string) => Promise<boolean>;
       appsSetConnection: (id: string, pipedreamSlug: string) => Promise<boolean>;
       appsRemoveConnection: (id: string) => Promise<boolean>;

@@ -671,6 +671,57 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     return exportServerApp({ id: app.id, slug: app.slug, name: app.name, url: app.url }, dest, sourceZip);
   });
 
+  // ── Deploy tab (dev-host): status + deploy + take-down ──────────────────────
+  // Deploy bundles the app's newest built release and serves it at a dev URL
+  // (<slug>.glyphh.app / /hosted/<slug>). Status comes from the org's deployments.
+  ipcMain.handle("hosting-status", async (_e, slug: string) => {
+    try {
+      const deployments = await getClient().hosting.list();
+      const d = deployments.find((x) => x.appSlug === slug) ?? null;
+      return { ok: true, deployment: d };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("hosting-deploy", async (_e, slug: string) => {
+    try {
+      const d = await getClient().hosting.deploy({ appSlug: slug });
+      return { ok: true, deployment: d };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("hosting-destroy", async (_e, id: string) => {
+    try {
+      await getClient().hosting.destroy(id);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // ── Production tab: graduate to a standalone Supabase repo (download zip) ────
+  ipcMain.handle("app-graduate", async (_e, slug: string) => {
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
+    const safe = slug.replace(/[^a-zA-Z0-9_-]+/g, "-") || "app";
+    const result = await dialog.showSaveDialog(win, {
+      title: "Export standalone repo",
+      defaultPath: `${safe}.zip`,
+      filters: [{ name: "Zip archive", extensions: ["zip"] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
+    const dest = result.filePath.endsWith(".zip") ? result.filePath : `${result.filePath}.zip`;
+    try {
+      const buf = await getClient().apps.export(slug);
+      fs.writeFileSync(dest, Buffer.from(buf));
+      return { ok: true, path: dest };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: /no built release/.test(msg) ? "Build + deploy the app first — there's no release to export." : msg };
+    }
+  });
+
   // Import a .glyphh bundle. A glyphh-app bundle (marketplace unit) installs as
   // a server saved-app; a legacy .glyphh registers into the local connector.
   ipcMain.handle("app-import", async () => {

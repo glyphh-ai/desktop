@@ -143,6 +143,9 @@
               <button class="app-detail-tab tab-public-only hidden" data-tab="public">Public URL</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
+              <!-- Hosted (built) apps: dev-host deploy + Supabase graduation. -->
+              <button class="app-detail-tab tab-hosted-only hidden" data-tab="deploy">Deploy</button>
+              <button class="app-detail-tab tab-hosted-only hidden" data-tab="production">Production</button>
             </div>
 
             <div class="app-builder-split">
@@ -396,6 +399,33 @@
                     <a id="proxy-open-link" class="action-btn hidden" target="_blank" rel="noreferrer">Open</a>
                     <button id="proxy-save-btn" class="action-btn primary" type="button">Save</button>
                   </div>
+                </div>
+
+                <!-- Deploy (dev-host): status + URL + deploy / take-down. -->
+                <div class="app-tab-left" data-tab="deploy">
+                  <label class="settings-label">Dev hosting</label>
+                  <p class="proxy-field-hint" style="margin:2px 0 14px;">Bundles this app's latest build and hosts it at a Glyphh dev URL. Deploying spends your org's compute credits while it's live.</p>
+                  <div id="deploy-status" class="deploy-status">Checking…</div>
+                  <div id="deploy-url-row" class="hidden" style="margin:10px 0;">
+                    <label class="settings-label">Live URL</label>
+                    <a id="deploy-url" class="deploy-url" target="_blank" rel="noreferrer"></a>
+                  </div>
+                  <div id="deploy-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
+                  <div class="settings-actions" style="margin-top:18px;display:flex;gap:8px;">
+                    <button id="deploy-btn" class="action-btn primary" type="button">Deploy</button>
+                    <button id="deploy-takedown-btn" class="action-btn danger hidden" type="button">Take down</button>
+                  </div>
+                </div>
+
+                <!-- Production: graduate to a standalone Supabase-backed repo. -->
+                <div class="app-tab-left" data-tab="production">
+                  <label class="settings-label">Own your code</label>
+                  <p class="proxy-field-hint" style="margin:2px 0 14px;">Export this app as a standalone repo backed by your own Supabase — the app's source plus a runtime shim (<code>db</code>/<code>vector</code>/<code>llm</code>), Postgres migrations, and a README. Deploy it anywhere; it no longer needs Glyphh.</p>
+                  <div id="graduate-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                  <div class="settings-actions" style="margin-top:6px;">
+                    <button id="graduate-btn" class="action-btn primary" type="button">Export standalone repo</button>
+                  </div>
+                  <p class="proxy-field-hint" style="margin-top:14px;font-size:11px;">Requires a built release. <a id="graduate-api-soon" href="#" style="pointer-events:none;opacity:.6;">Direct Supabase connection — coming soon.</a></p>
                 </div>
               </div>
 

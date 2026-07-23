@@ -894,6 +894,42 @@ function switchAppTab(tab: string) {
   });
   if (tab === "dashboard") void loadPanelTab();
   if (tab === "config") void loadConfigVarsTab();
+  if (tab === "deploy") void loadDeployTab();
+  if (tab === "production") loadProductionTab();
+}
+
+// ── Deploy tab (dev-host) — status + deploy + take-down ──────────
+let deployCurrentId: string | null = null;
+
+async function loadDeployTab(): Promise<void> {
+  const statusEl = document.getElementById("deploy-status")!;
+  const urlRow = document.getElementById("deploy-url-row")!;
+  const urlEl = document.getElementById("deploy-url") as HTMLAnchorElement;
+  const takedown = document.getElementById("deploy-takedown-btn")!;
+  const deployBtn = document.getElementById("deploy-btn") as HTMLButtonElement;
+  document.getElementById("deploy-error")!.classList.add("hidden");
+  statusEl.textContent = "Checking…";
+  urlRow.classList.add("hidden");
+  takedown.classList.add("hidden");
+  deployCurrentId = null;
+  const slug = currentApp?.slug || currentAppId;
+  const res = await window.yo.hostingStatus(slug);
+  if (!res.ok) { statusEl.textContent = "Couldn't load deploy status."; return; }
+  const d = res.deployment;
+  if (d && (d.status === "live" || d.status === "building" || d.status === "queued")) {
+    deployCurrentId = d.id;
+    statusEl.innerHTML = `<span class="deploy-dot ${d.status === "live" ? "on" : "pending"}"></span>${d.status === "live" ? "Deployed" : d.status}`;
+    if (d.url) { urlEl.textContent = d.url; urlEl.href = d.url; urlRow.classList.remove("hidden"); }
+    takedown.classList.remove("hidden");
+    deployBtn.textContent = "Redeploy";
+  } else {
+    statusEl.innerHTML = `<span class="deploy-dot"></span>Not deployed`;
+    deployBtn.textContent = "Deploy";
+  }
+}
+
+async function loadProductionTab(): Promise<void> {
+  document.getElementById("graduate-error")!.classList.add("hidden");
 }
 
 // ── Config Vars tab (per-app encrypted secrets) ──────────
@@ -1063,6 +1099,10 @@ async function openPanelAppDetail(app: PanelApp) {
   currentAppId = app.id;
   currentApp = app;
   panelLoaded = false;
+
+  // Deploy + Production tabs are for HOSTED (built) Glyphh apps only.
+  const isHosted = app.appArchetype === "glyphh-app";
+  document.querySelectorAll<HTMLElement>(".tab-hosted-only").forEach((el) => el.classList.toggle("hidden", !isHosted));
 
   // Populate dashboard fields
   appDetailId.value = app.slug;
@@ -1882,6 +1922,41 @@ function initApps() {
     } finally {
       setTimeout(() => { btn.disabled = false; btn.textContent = prev; }, 1800);
     }
+  });
+
+  // Deploy tab: deploy (dev-host) + take-down.
+  document.getElementById("deploy-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("deploy-btn") as HTMLButtonElement;
+    const err = document.getElementById("deploy-error")!;
+    err.classList.add("hidden");
+    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Deploying…";
+    const res = await window.yo.hostingDeploy(currentApp?.slug || currentAppId);
+    btn.disabled = false; btn.textContent = prev;
+    if (!res.ok) { err.textContent = res.error || "Deploy failed."; err.classList.remove("hidden"); return; }
+    await loadDeployTab();
+  });
+  document.getElementById("deploy-takedown-btn")?.addEventListener("click", async () => {
+    if (!deployCurrentId) return;
+    const btn = document.getElementById("deploy-takedown-btn") as HTMLButtonElement;
+    const err = document.getElementById("deploy-error")!;
+    err.classList.add("hidden");
+    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Taking down…";
+    const res = await window.yo.hostingDestroy(deployCurrentId);
+    btn.disabled = false; btn.textContent = prev;
+    if (!res.ok) { err.textContent = res.error || "Take-down failed."; err.classList.remove("hidden"); return; }
+    await loadDeployTab();
+  });
+
+  // Production tab: graduate to a standalone Supabase repo (download zip).
+  document.getElementById("graduate-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("graduate-btn") as HTMLButtonElement;
+    const err = document.getElementById("graduate-error")!;
+    err.classList.add("hidden");
+    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Exporting…";
+    const res = await window.yo.appGraduate(currentApp?.slug || currentAppId);
+    btn.disabled = false; btn.textContent = res.ok ? "Exported ✓" : prev;
+    if (!res.ok && res.error !== "Canceled") { err.textContent = res.error || "Export failed."; err.classList.remove("hidden"); }
+    setTimeout(() => { btn.textContent = prev; }, 1800);
   });
 
   // Import a .glyphh bundle (main shows the open dialog) → reload the apps list.

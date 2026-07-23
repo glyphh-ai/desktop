@@ -13263,3 +13263,11 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .code-view-more-menu .code-view-menu-item:hover { background: var(--hover); color: var(--text); }
 .code-view-more-menu .code-view-menu-item.active { color: var(--accent-light); }
 .code-view-more-menu .code-view-menu-item svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── App-detail Deploy (dev-host) tab ─────────────────────────────── */
+.deploy-status { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); }
+.deploy-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+.deploy-dot.on { background: #34d399; box-shadow: 0 0 8px rgba(52, 211, 153, 0.7); }
+.deploy-dot.pending { background: #fbbf24; box-shadow: 0 0 8px rgba(251, 191, 36, 0.6); }
+.deploy-url { font-family: var(--font-mono); font-size: 13px; color: var(--accent); text-decoration: none; word-break: break-all; }
+.deploy-url:hover { text-decoration: underline; }
