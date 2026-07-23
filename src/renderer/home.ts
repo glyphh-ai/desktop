@@ -6,6 +6,7 @@
  */
 
 import { initHelp, openNewAppDeepLink, gotoSection } from "./help/index.js";
+import { openCommandCenter } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
 
 // Theme: the inline script in home.html applied localStorage theme synchronously.
@@ -47,6 +48,71 @@ void (async () => {
   // ?section=<slug> query. When set, this panel is locked to that section.
   try {
     const params = new URLSearchParams(window.location.search);
+    // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
+    // workbench tools as their own OS windows. The full home page loads, but
+    // only the workbench shows, booted with exactly one slot.
+    const solo = params.get("solo");
+    // Command-center DESKTOP OVERLAY host (?solo=cc): a transparent
+    // fullscreen window whose only content is the command center.
+    if (solo === "cc") {
+      document.documentElement.setAttribute("data-home-scope", "solo-cc");
+      (window as unknown as { __ccOverlayHost?: boolean }).__ccOverlayHost = true;
+      const style = document.createElement("style");
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope="solo-cc"] .code-root { display: none !important; }
+        :root[data-home-scope="solo-cc"], [data-home-scope="solo-cc"] body { background: transparent !important; }
+        [data-home-scope="solo-cc"] .command-center { background: rgba(0,0,0,.45); }`;
+      document.head.appendChild(style);
+      openCommandCenter();
+      // The overlay lives exactly as long as the switcher: Esc or picking an
+      // item removes #command-center from the DOM — close the window with it.
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") window.close(); });
+      let seen = false;
+      const mo = new MutationObserver(() => {
+        if (document.getElementById("command-center")) seen = true;
+        else if (seen) { mo.disconnect(); window.close(); }
+      });
+      mo.observe(document.body, { childList: true });
+      return;
+    }
+    // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
+    // workbench tools as their own OS windows.
+    if (solo && solo.startsWith("tool:")) {
+      document.documentElement.setAttribute("data-home-scope", "solo-tool");
+      const style = document.createElement("style");
+      // NOTE: hide only the agent at its HOME position (.code-root > …) — the
+      // Coding Agent slot REPARENTS the live .code-agent into the workbench,
+      // and it must stay visible there. The workbench takes the full window.
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
+        [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
+        [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
+        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }`;
+      document.head.appendChild(style);
+      gotoSection("code");
+      const SOLO_LABELS: Record<string, string> = {
+        preview: "Browser", coding: "Coding Agent", diff: "Diff", monaco: "Editor",
+        files: "Files", plan: "Plan", terminal: "Terminal",
+      };
+      const kind = solo.slice(5);
+      document.title = `${SOLO_LABELS[kind] || kind} — Glyphh`;
+      const payload = {
+        cols: 1, colWidths: [], rowHeights: [],
+        cells: [{ slug: solo, name: SOLO_LABELS[kind] || kind, url: "", glyphh: false, col: 0, row: 0, tool: kind }],
+      };
+      // The workbench boots on the code section's first load — poll for it
+      // (same pattern as openLayoutInWorkbench).
+      const w = window as unknown as { __wbOpenLayout?: (l: typeof payload) => void };
+      let tries = 0;
+      const go = () => {
+        if (w.__wbOpenLayout) w.__wbOpenLayout(payload);
+        else if (tries++ < 40) requestAnimationFrame(go);
+      };
+      go();
+      return;
+    }
     const urlSection = params.get("section");
     if (urlSection) {
       document.documentElement.setAttribute("data-home-scope", urlSection);

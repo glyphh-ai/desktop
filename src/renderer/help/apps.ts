@@ -1079,7 +1079,7 @@ async function openPanelAppDetail(app: PanelApp) {
   (document.getElementById("app-detail-type") as HTMLSelectElement).value = detailType;
   {
     const lc = (app.launchConfig || {}) as Record<string, unknown>;
-    (document.getElementById("app-detail-browser") as HTMLSelectElement).value = typeof lc.browser === "string" && lc.browser ? String(lc.browser) : "default";
+    (document.getElementById("app-detail-browser") as HTMLSelectElement).value = typeof lc.browser === "string" && lc.browser ? String(lc.browser) : "glyphh-panel";
     (document.getElementById("app-detail-open-as") as HTMLSelectElement).value = lc.openAs === "tab" ? "tab" : "window";
     // LLM fields
     const llm = (lc.llm || {}) as Record<string, unknown>;
@@ -1630,7 +1630,7 @@ function initApps() {
     addUrlInput.value = "";
     // Reset Browser ↔ Native fields to defaults (browser / webview / terminal).
     addTypeSelect.value = "browser";
-    (document.getElementById("app-add-browser") as HTMLSelectElement).value = "default";
+    (document.getElementById("app-add-browser") as HTMLSelectElement).value = "glyphh-panel";
     (document.getElementById("app-add-open-as") as HTMLSelectElement).value = "window";
     addExecPath.value = "";
     addArchetypeSelect.value = "generic";

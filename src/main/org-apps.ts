@@ -42,6 +42,30 @@ export interface OrgAppRow {
 
 const CACHE_KEY = "org-apps";
 
+/** The built-in "Glyphh" app — Glyphh itself, always present and always first.
+ *  Not a server record: synthesized here so every consumer (rail, command
+ *  center, resolver, .dip, agent tools) sees the same row. Opening it focuses
+ *  the Glyphh window (app-resolver's isGlyphhSelfRow). system:true keeps it
+ *  off the Apps management page, which is user-CRUD only. */
+const GLYPHH_SELF_ROW: OrgAppRow = {
+  id: "glyphh",
+  orgId: "",
+  createdBy: "",
+  name: "Glyphh",
+  slug: "glyphh",
+  system: true,
+  url: null,
+  isBrowser: false,
+  execPath: null,
+  appArchetype: "glyphh-self",
+  launchConfig: null,
+  connectionIds: [],
+  mcp: null,
+  commands: {},
+  createdAt: "1970-01-01T00:00:00.000Z",
+  updatedAt: "1970-01-01T00:00:00.000Z",
+};
+
 /** Native and glyphh apps launch from a local path; every other kind opens a
  *  URL. A glyphh row keeps the desktop's long-standing "glyphh-app" archetype
  *  tag (isGlyphhAppRow and friends match on it). */
@@ -69,7 +93,20 @@ function toRow(app: OrgApp): OrgAppRow {
 /** The org's apps in the renderer's shape, short-TTL cached so the palette
  *  render and the click that follows share one request. */
 export function fetchOrgApps(): Promise<OrgAppRow[]> {
-  return appCache.cached(CACHE_KEY, async () => (await getClient().apps.mine()).map(toRow));
+  return appCache.cached(CACHE_KEY, async () => {
+    const rows = (await getClient().apps.mine()).map(toRow);
+    // If the org already has a row with the "glyphh" slug (server-seeded, or
+    // user-created), THAT row is the built-in: keep its real id — layouts and
+    // recents reference it — normalize its archetype, and pin it first.
+    // Dropping it in favor of a synthetic row orphans those references (cells
+    // render raw UUIDs and the picker loses the app).
+    const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
+    if (selfIdx >= 0) {
+      const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };
+      return [self, ...rows.filter((_, i) => i !== selfIdx)];
+    }
+    return [GLYPHH_SELF_ROW, ...rows];
+  });
 }
 
 /** Drop the cached list — call after any app mutation. */

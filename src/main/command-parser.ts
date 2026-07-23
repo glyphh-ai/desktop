@@ -15,6 +15,7 @@ import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
 import { openLayoutByName, openAppByRef, clearWbPanels, gridWbPanels } from "./app-resolver";
+import { tryDipOsCommand } from "./dip-os-commands";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { setPreference } from "./stores/preferences-db";
 export class CommandParser {
@@ -286,6 +287,23 @@ export class CommandParser {
     // `dip back` / `dip .` step backward through the open tabs (right→left slide).
     if (sub === "back" || (sub === "." && args.length === 1)) {
       return this.cycleTabs(true, win);
+    }
+
+    // OS-window verbs (min/minAll/exp/expAll + the `os` namespace for
+    // grid/split) — arrange EVERY visible app window on the machine, not
+    // Glyphh's panels. Non-matches return null and dispatch continues.
+    const osResult = await tryDipOsCommand(args);
+    if (osResult !== null) return osResult;
+
+    // `dip a | b | c` — open several apps, each per its own config.
+    if (args.join(" ").includes("|")) {
+      const names = args.join(" ").split("|").map((s) => s.trim()).filter(Boolean);
+      const opened: string[] = [];
+      for (const n of names) {
+        const r = await openAppByRef(n).catch(() => null);
+        if (r) opened.push(r.name);
+      }
+      return opened.length ? `Opened ${opened.join(", ")}` : "No apps matched";
     }
 
     // dip . <panel-id> — swap just the calling panel within the current layout

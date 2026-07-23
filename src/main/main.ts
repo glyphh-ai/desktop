@@ -70,6 +70,7 @@ function isNewerVersion(latest: string, current: string): boolean {
 import { setMainWindowRef } from "./main-window-ref";
 import { isBackgroundEnabled, isQuitting, markQuitting, shouldHideOnClose, syncBackgroundMode, setReopenHandler } from "./background-mode";
 import { initRailCollapse } from "./screen-layout";
+import { initOsWindowManager, disposeOsWindowManager } from "./os-window-manager";
 import { McpManager } from "./mcp-manager";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { stopAllAppWorkers } from "./glyphh-app-worker";
@@ -209,6 +210,16 @@ async function createWindow() {
   // (app-resolver focuses it when the "Glyphh" system app is opened).
   setMainWindowRef(mainWindow);
   initRailCollapse(mainWindow);
+
+  // OS window control (.dip grid/split/min/exp, desktop-layout tiling) drives
+  // other apps' windows through the native backends (macOS: bundled Swift AX
+  // helper; Windows: koffi→user32). Pre-spawn the helper and prompt for
+  // Accessibility once (no-op if already granted) so commands don't silently
+  // fail.
+  initOsWindowManager();
+  if (process.platform === "darwin") {
+    try { systemPreferences.isTrustedAccessibilityClient(true); } catch { /* noop */ }
+  }
 
   // Request macOS mic entitlement (triggers OS permission dialog on first use)
   if (process.platform === "darwin") {
@@ -2012,6 +2023,7 @@ function cleanupAll() {
   if (cleanedUp) return;
   cleanedUp = true;
   globalShortcut.unregisterAll();
+  disposeOsWindowManager();
   cleanupAuthTimers();
   // Stops an in-flight agent run and its interceptor; dropped in the
   // William → Glyphh port alongside the registration above.

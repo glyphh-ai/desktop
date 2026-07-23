@@ -13,7 +13,12 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "paths": {
-      "@glyphh/client/runtime": ["./node_modules/@glyphh/client/dist/runtime.d.ts"]
+      "@glyphh/client/runtime": [
+        "./node_modules/@glyphh/client/dist/runtime.d.ts"
+      ],
+      "@glyphh/client/machine": [
+        "./node_modules/@glyphh/client/dist/machine.d.ts"
+      ]
     },
     "declaration": true,
     "declarationMap": true,

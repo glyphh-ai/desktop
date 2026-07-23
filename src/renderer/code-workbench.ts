@@ -346,8 +346,8 @@ async function init(): Promise<void> {
   // runtime state and would feel surprising to restore.
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; views: SavedView[] }[] };
-  type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; execPath?: string | null; appArchetype?: string | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
+  type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; launchConfig?: Record<string, unknown> | null };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -1342,6 +1342,23 @@ async function init(): Promise<void> {
     let layoutsPage = 0;
 
     const toRef = (a: PanelAppRow): WbAppRef => ({ slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app" });
+    /** Open a library row RESPECTING its declared type: native rows and rows
+     *  whose browser choice isn't the Glyphh Panel route through app-launch
+     *  (main decides: native launch / external browser); only Glyphh Panel
+     *  rows open as workbench panels here. */
+    const openRow = (a: PanelAppRow, opts: { newPanel?: boolean } = {}): void => {
+      const browser = typeof a.launchConfig?.browser === "string" && a.launchConfig.browser ? (a.launchConfig.browser as string) : "glyphh-panel";
+      const external = a.isBrowser === false || !!a.execPath || (browser !== "glyphh-panel" && a.appArchetype !== "glyphh-app");
+      if (external) {
+        void (window as unknown as { yo?: { appLaunch?: (s: unknown) => Promise<unknown> } }).yo?.appLaunch?.({
+          slug: a.slug || a.id, name: a.name, url: a.url,
+          isBrowser: a.isBrowser, execPath: a.execPath,
+          appArchetype: a.appArchetype, launchConfig: a.launchConfig,
+        });
+        return;
+      }
+      openAppInWorkbench(toRef(a), opts);
+    };
     const iconApp = (a: PanelAppRow): { slug: string; url: string | null; execPath: string | null } => ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null });
     const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
     const matches = (name: string): boolean => !query || name.toLowerCase().includes(query);
@@ -1360,6 +1377,9 @@ async function init(): Promise<void> {
             </button>
             <div class="cc-drip-menu hidden"></div>
           </div>
+          <button class="cc-overlay-btn" title="Overlay the whole desktop">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </button>
           <button class="cc-close" title="Close (Esc)">&times;</button>
         </div>
         <div class="cc-apps"></div>
@@ -1385,6 +1405,22 @@ async function init(): Promise<void> {
 
     // Close: Esc, the × button, and clicking the darkened backdrop.
     el.querySelector(".cc-close")?.addEventListener("click", () => closeSwitcher());
+
+    // Desktop-overlay toggle: when ON, the command center opens as a
+    // transparent fullscreen window over the whole desktop (any monitor app).
+    const ovBtn = el.querySelector<HTMLElement>(".cc-overlay-btn")!;
+    const ccWin = window as unknown as {
+      __ccOverlayHost?: boolean;
+      yo?: { getPreference?: (k: string, d: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => Promise<unknown>; ccOverlayOpen?: () => Promise<unknown> };
+    };
+    void ccWin.yo?.getPreference?.("ccDesktopOverlay", false).then((v) => { if (v) ovBtn.classList.add("on"); }).catch(() => {});
+    ovBtn.addEventListener("click", () => {
+      const on = !ovBtn.classList.contains("on");
+      ovBtn.classList.toggle("on", on);
+      void ccWin.yo?.setPreference?.("ccDesktopOverlay", on);
+      if (on && !ccWin.__ccOverlayHost) { closeSwitcher(); void ccWin.yo?.ccOverlayOpen?.(); }
+      else if (!on && ccWin.__ccOverlayHost) window.close();
+    });
     input.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeSwitcher(); });
     el.addEventListener("mousedown", (ev) => {
       const t = ev.target as HTMLElement;
@@ -1443,7 +1479,7 @@ async function init(): Promise<void> {
             ${a.slug ? `<span class="cc-card-slug">${esc(a.slug)}</span>` : ""}
           </div>
           <span class="cc-card-name">${esc(a.name)}</span>`;
-        card.addEventListener("click", (ev) => { openAppInWorkbench(ref, { newPanel: (ev as MouseEvent).altKey }); closeSwitcher(); });
+        card.addEventListener("click", (ev) => { openRow(a, { newPanel: (ev as MouseEvent).altKey }); closeSwitcher(); });
         appsEl.appendChild(card);
       }
       appsPagerEl.innerHTML = "";
@@ -1506,7 +1542,7 @@ async function init(): Promise<void> {
           const ref = m?.[1];
           const app = ref ? resolveCell(ref) : undefined;
           const layout = ref ? layouts.find((l) => l.name.toLowerCase() === ref.toLowerCase()) : undefined;
-          if (app) row.addEventListener("click", () => { openAppInWorkbench(toRef(app), {}); closeSwitcher(); });
+          if (app) row.addEventListener("click", () => { openRow(app, {}); closeSwitcher(); });
           else if (layout) row.addEventListener("click", () => { openLayout(layout); closeSwitcher(); });
           else row.disabled = true;
           wrap.appendChild(row);
@@ -1526,7 +1562,7 @@ async function init(): Promise<void> {
     input.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter") return;
       const a = appRows.find((x) => matches(x.name) || matches(x.slug || ""));
-      if (a) { openAppInWorkbench(toRef(a), {}); closeSwitcher(); return; }
+      if (a) { openRow(a, {}); closeSwitcher(); return; }
       const l = layouts.find((x) => matches(x.name));
       if (l) { openLayout(l); closeSwitcher(); }
     });
@@ -1564,8 +1600,11 @@ async function init(): Promise<void> {
 
     // Load apps + layouts, paint, then stream native-app icons in.
     void Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).then(([rows, ls]) => {
-      appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app");
-      appRows.sort((x, y) => Number(y.appArchetype === "glyphh-app") - Number(x.appArchetype === "glyphh-app"));
+      appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app" || a.appArchetype === "glyphh-self");
+      // Built-in Glyphh first, then installed glyphh-apps, then web apps.
+      const weight = (a: PanelAppRow): number =>
+        a.appArchetype === "glyphh-self" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
+      appRows.sort((x, y) => weight(y) - weight(x));
       layouts = ls || [];
       renderAll();
       void primeNativeIcons(appRows.map((a) => ({ execPath: a.execPath || null })), renderAll);
@@ -2887,6 +2926,12 @@ async function init(): Promise<void> {
    *  the saved snapshot contributes GEOMETRY ONLY — the widths and heights
    *  the user dragged to last time. */
   function openLayoutRow(layout: LayoutRow, appRows: PanelAppRow[]): void {
+    // A DESKTOP-target layout never panels — main opens it on the desktop
+    // (native launches + external browsers), same as .dip and the agent.
+    if (layout.target === "desktop") {
+      void (window as unknown as { yo?: { layoutsOpen?: (n: string) => Promise<unknown> } }).yo?.layoutsOpen?.(layout.name);
+      return;
+    }
     const resolveCell = (panelId: string): PanelAppRow | undefined => {
       const key = panelId.trim().toLowerCase();
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);

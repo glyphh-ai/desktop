@@ -175,7 +175,7 @@ contextBridge.exposeInMainWorld("yo", {
   layoutsOpen: (name: string) => ipcRenderer.invoke("layouts-open", name) as Promise<{ ok: boolean; error?: string }>,
   layoutsSave: (name: string, panelIds: string[]) => ipcRenderer.invoke("layouts-save", name, panelIds) as Promise<boolean>,
   layoutsFolderRequired: (name: string) => ipcRenderer.invoke("layouts-folder-required", name) as Promise<boolean>,
-  layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi" }) =>
+  layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number } }) =>
     ipcRenderer.invoke("layouts-save-grid", grid) as Promise<boolean>,
   layoutsDelete: (name: string) => ipcRenderer.invoke("layouts-delete", name) as Promise<boolean>,
   pickDirectory: () => ipcRenderer.invoke("pick-directory") as Promise<string | null>,
@@ -305,6 +305,9 @@ contextBridge.exposeInMainWorld("yo", {
     execPath?: string | null; appArchetype?: string | null;
     launchConfig?: Record<string, unknown> | null;
   }) => ipcRenderer.invoke("app-launch", spec) as Promise<{ ok: boolean; error?: string }>,
+  // Command center as a fullscreen transparent overlay over the whole desktop
+  // (the cc's monitor toggle) — see cc-overlay-open in apps-ipc.ts.
+  ccOverlayOpen: () => ipcRenderer.invoke("cc-overlay-open") as Promise<{ ok: boolean }>,
   // Live preview of an installed glyphh-app on the Apps page: grants the preview
   // <webview> (id passed by webContents id) the app's caps and returns the
   // file:// entry URL to load. Clear drops the grant when switching away.

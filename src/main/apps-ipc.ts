@@ -1,5 +1,6 @@
-import { app, ipcMain, dialog } from "electron";
+import { app, ipcMain, dialog, BrowserWindow, screen } from "electron";
 import fs from "fs";
+import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportApp, importApp, localBundleDir } from "./glyphh-app-package";
@@ -45,6 +46,39 @@ function registerPanelAppsIpc(): void {
   // Renderer diagnostic bridge — surfaces the main-window renderer's [wb] logs
   // in the terminal (its own console lives in the window's DevTools).
   ipcMain.on("wb-log", (_e, msg: unknown) => console.log(String(msg)));
+
+  // Command center as a DESKTOP OVERLAY: a transparent fullscreen always-on-top
+  // window on the display under the cursor, hosting only the command center
+  // (home.html?solo=cc). Closes on blur/Esc/pick — the page closes itself when
+  // the switcher leaves the DOM.
+  let ccOverlayWin: BrowserWindow | null = null;
+  ipcMain.handle("cc-overlay-open", () => {
+    if (ccOverlayWin && !ccOverlayWin.isDestroyed()) { ccOverlayWin.focus(); return { ok: true }; }
+    const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    ccOverlayWin = new BrowserWindow({
+      ...d.bounds,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      alwaysOnTop: true,
+      hasShadow: false,
+      skipTaskbar: true,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, "..", "renderer", "preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        webviewTag: true,
+      },
+    });
+    ccOverlayWin.setAlwaysOnTop(true, "screen-saver");
+    ccOverlayWin.on("blur", () => { try { ccOverlayWin?.close(); } catch { /* already closing */ } });
+    ccOverlayWin.on("closed", () => { ccOverlayWin = null; });
+    void ccOverlayWin.loadFile(path.join(__dirname, "..", "renderer", "home.html"), { query: { solo: "cc" } });
+    ccOverlayWin.once("ready-to-show", () => ccOverlayWin?.show());
+    return { ok: true };
+  });
 
   // Installed real browsers — feeds the app editor's Browser dropdown.
   ipcMain.handle("browsers-detect", () => detectBrowsers());
@@ -489,6 +523,8 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       rows: l.rows,
       colWidths: l.colWidths,
       rowHeights: l.rowHeights,
+      target: (l as { target?: "glyphh" | "desktop" }).target ?? "glyphh",
+      glyphh: (l as { glyphh?: { mode: string; fraction?: number } }).glyphh ?? null,
       splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky })),
     }))
   );
@@ -516,13 +552,13 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi" }) => {
+  ipcMain.handle("layouts-save-grid", (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number } }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);
       if (!gate.allowed) return { error: gate.reason };
     }
-    layoutManager.saveLayout({ ...grid, version: 2, folderMode: grid.folderMode ?? "single" });
+    layoutManager.saveLayout({ ...grid, version: 2, folderMode: grid.folderMode ?? "single", target: grid.target ?? "glyphh" });
     return true;
   });
   /** True if any app in the layout declares requiresFolder. The UI uses

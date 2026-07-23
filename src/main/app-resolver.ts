@@ -10,13 +10,16 @@
  * the relay's panels_* surface.
  */
 
-import { ipcMain, webContents } from "electron";
+import { spawn } from "child_process";
+import { ipcMain, shell, webContents } from "electron";
 import { fetchOrgApps } from "./org-apps.js";
 import { fetchServerLayouts } from "./layout-manager.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { normKey, isSubsequence } from "./installed-apps.js";
+import { normKey, isSubsequence, findInstalledApp, launchInstalledApp } from "./installed-apps.js";
+import { getBrowser } from "./browser-detect.js";
 import { isGlyphhAppRow } from "./glyphh-app-host.js";
 import { getMainWindowRef } from "./main-window-ref.js";
+import { openDesktopLayout } from "./desktop-layout.js";
 
 export interface ServerApp {
   id: string;
@@ -100,11 +103,10 @@ function builtinRef(key: string): WbAppRef | "terminal" | null {
   return null;
 }
 
-/** A library row as a workbench panel ref. Native OS windows are DISABLED for
- *  now — every app opens as a webview panel beside the agent. Anything with a
- *  web surface (top-level url, or a url stashed in launchConfig for legacy
- *  "browser" rows) opens; the native execPath path is kept in the codebase
- *  (desktop-app scraping may revive it) but never taken here. */
+/** A library row as a workbench panel ref. Only Glyphh-Panel rows reach this —
+ *  openAppByRef routes native rows to an OS launch and external-browser rows
+ *  out of the app BEFORE panel resolution. Anything with a web surface
+ *  (top-level url, or a url stashed in launchConfig for legacy rows) opens. */
 function toWbRef(app: ServerApp): WbAppRef {
   if (isGlyphhAppRow(app)) return { slug: app.slug, name: app.name, url: "", glyphh: true };
   const lc = app.launchConfig as { url?: unknown; homepage?: unknown } | null | undefined;
@@ -169,8 +171,58 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     return { slug: app.slug, name: app.name };
   }
 
+  // ── Respect the app's declared OPEN TYPE (every caller funnels here:
+  //    command center, rail, .dip, and the agent's panels.open). ──
+  // Native rows LAUNCH the OS app — a webview panel cannot render one.
+  if (!isGlyphhAppRow(app) && (app.isBrowser === false || app.execPath)) {
+    launchNativeRow(app);
+    return { slug: app.slug, name: app.name };
+  }
+  // A browser choice other than the Glyphh Panel opens EXTERNALLY in that
+  // browser. Missing/"glyphh-panel" (the default) opens inside the workbench.
+  const browserChoice = browserChoiceOf(app);
+  if (!isGlyphhAppRow(app) && browserChoice !== "glyphh-panel") {
+    openUrlExternally(toWbRef(app).url, browserChoice);
+    return { slug: app.slug, name: app.name };
+  }
+
   sendWbCmd({ action: "open", app: toWbRef(app) });
   return { slug: app.slug, name: app.name };
+}
+
+/** The app's browser choice; unset = the Glyphh Panel (opens inside Glyphh). */
+function browserChoiceOf(app: ServerApp): string {
+  const lc = app.launchConfig as { browser?: unknown } | null | undefined;
+  return typeof lc?.browser === "string" && lc.browser ? lc.browser : "glyphh-panel";
+}
+
+/** Launch a NATIVE library row on this machine (path first, name fallback). */
+function launchNativeRow(app: ServerApp): void {
+  if (app.execPath) {
+    if (process.platform === "darwin") {
+      spawn("open", ["-a", app.execPath], { detached: true, stdio: "ignore" }).unref();
+    } else if (process.platform === "win32") {
+      spawn("cmd", ["/c", "start", "", app.execPath], { detached: true, stdio: "ignore" }).unref();
+    } else {
+      throw new Error(`"${app.name}" is a native app — launching is not supported on this platform.`);
+    }
+    return;
+  }
+  const installed = findInstalledApp(app.name);
+  if (!installed) throw new Error(`"${app.name}" is a native app but nothing matching it is installed here.`);
+  launchInstalledApp(installed);
+}
+
+/** Open a URL in the chosen EXTERNAL browser ("default" = the system's). */
+function openUrlExternally(url: string, choice: string): void {
+  if (choice !== "default") {
+    const b = getBrowser(choice);
+    if (b?.appPath && process.platform === "darwin") {
+      spawn("open", ["-a", b.appPath, url], { detached: true, stdio: "ignore" }).unref();
+      return;
+    }
+  }
+  void shell.openExternal(url);
 }
 
 /** Open a saved layout by name — every cell becomes a workbench panel. */
@@ -189,8 +241,49 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
     throw new Error(`unknown layout: ${name} — saved layouts: ${names}`);
   }
 
-  // Cell order approximates the grid: the workbench tiles panels in the
-  // order they open. Native rows are skipped (no web surface to render).
+  // ── Feasibility: the layout TARGET decides where cells open. Web apps
+  //    follow it either way (panel inside Glyphh, or an external window on
+  //    the desktop), and workbench tools open as solo tool windows when the
+  //    target is the desktop. Only genuine impossibilities error, with the
+  //    offending cells named: agent panels and installed Glyphh apps can't
+  //    leave the Glyphh window, and native apps can't render as panels. ──
+  const wanted = layout.target === "desktop" ? "external" : "internal";
+  const offenders: string[] = [];
+  for (const cell of layout.cells) {
+    const cellKey = cell.panelId.trim().toLowerCase();
+    if (cellKey.startsWith("tool:") || builtinRef(cellKey)) continue; // both worlds
+    if (cellKey.startsWith("agent:") || cellKey === "agents-tabbed") {
+      if (wanted === "external") offenders.push(cell.panelId);
+      continue;
+    }
+    const app = findLibraryApp(apps, cell.panelId);
+    if (!app || isGlyphhSelfRow(app)) continue;
+    if (wanted === "external") {
+      if (isGlyphhAppRow(app)) offenders.push(app.name); // capability-scoped host is panel-only
+    } else if (app.isBrowser === false || app.execPath) {
+      offenders.push(app.name);
+    }
+  }
+  if (offenders.length) {
+    throw new Error(
+      layout.target === "desktop"
+        ? `layout "${layout.name}" targets the desktop but contains panel-only content: ${offenders.join(", ")}. Agent panels and installed Glyphh apps can only open inside the Glyphh window.`
+        : `layout "${layout.name}" targets the Glyphh window but contains native apps: ${offenders.join(", ")}. Native apps can't render as panels — set the layout's target to Desktop.`,
+    );
+  }
+
+  // ── DESKTOP target: web cells open as positioned OS webview windows, native
+  //    cells launch, Glyphh collapses to the rail — the desktop IS the layout. ──
+  if (layout.target === "desktop") {
+    const opened = await openDesktopLayout(
+      { name: layout.name, cols: layout.cols, rows: layout.rows, cells: layout.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan })), ...(layout.glyphh ? { glyphh: layout.glyphh } : {}) },
+      (panelId) => findLibraryApp(apps, panelId),
+    );
+    return { layout: layout.name, apps: opened };
+  }
+
+  // ── GLYPHH target: panels tile inside the workbench (family-pure by the
+  //    validation above — every cell is a tool or a Glyphh-Panel app). ──
   const refs: WbAppRef[] = [];
   const opened: string[] = [];
   for (const cell of layout.cells) {
@@ -203,9 +296,9 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
     try {
       refs.push(toWbRef(app));
       opened.push(app.name);
-    } catch { /* native row — skipped */ }
+    } catch { /* one bad cell must not stop the rest */ }
   }
-  if (!refs.length) throw new Error(`layout "${layout.name}" has no web apps to open`);
+  if (!refs.length) throw new Error(`layout "${layout.name}" has no apps to open`);
   sendWbCmd({ action: "open-many", apps: refs, layoutName: layout.name });
   return { layout: layout.name, apps: opened };
 }

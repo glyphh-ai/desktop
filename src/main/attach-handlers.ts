@@ -9,11 +9,14 @@
  *   skills.run  {slug, input?}          → run a saved skill, return its output
  *   agents.run  {agentId, taskId}       → fire a standing agent's task now
  *   scrape.page {url, wait?}            → load a URL headlessly, return text/html/title
+ *   machine.appsList {}                 → the NATIVE apps installed on this machine
+ *   machine.appOpen  {app}              → launch/activate a native app by (fuzzy) name
  */
 
 import { BrowserWindow } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { runLoopBySlug, runSkillBySlug, runTaskNow } from "./agent-scheduler.js";
+import { listInstalledApps, findInstalledApp, launchInstalledApp } from "./installed-apps.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -25,6 +28,20 @@ function obj(params: unknown, key: string): Record<string, unknown> {
 }
 
 export function installAttachHandlers(): void {
+  // ── machine reach: the SDK's shared layer (@glyphh/client/machine) ─────────
+  registerRelayHandler("machine.appsList", async () => {
+    return { apps: listInstalledApps().map((a) => a.name) };
+  });
+
+  registerRelayHandler("machine.appOpen", async (params) => {
+    const ref = str(params, "app");
+    if (!ref) throw new Error("machine.appOpen requires { app }");
+    const app = findInstalledApp(ref);
+    if (!app) throw new Error(`no installed app matches '${ref}'`);
+    launchInstalledApp(app);
+    return { opened: app.name };
+  });
+
   registerRelayHandler("loops.run", async (params) => {
     const slug = str(params, "slug");
     if (!slug) throw new Error("loops.run requires { slug }");

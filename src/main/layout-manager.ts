@@ -8,6 +8,7 @@
 import fs from "fs";
 import path from "path";
 import { BrowserWindow } from "electron";
+import type { GlyphhPlacement } from "./screen-layout.js";
 import { userScopedPath } from "./app-paths.js";
 import { PanelManager } from "./panel-manager";
 import { getClient } from "./glyphh-client";
@@ -24,6 +25,8 @@ export interface ServerLayout {
   rows: number;
   cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>;
   folderMode: "single" | "multi";
+  target: "glyphh" | "desktop";
+  glyphh?: GlyphhPlacement;
 }
 
 const LAYOUTS_CACHE_KEY = "/api/layouts";
@@ -44,6 +47,8 @@ export function fetchServerLayouts(): Promise<ServerLayout[]> {
         rows: typeof data.rows === "number" ? data.rows : 1,
         cells: data.cells,
         folderMode: data.folderMode === "multi" ? "multi" : "single",
+        target: data.target === "desktop" ? "desktop" : "glyphh",
+        ...(data.glyphh && typeof data.glyphh === "object" ? { glyphh: data.glyphh as GlyphhPlacement } : {}),
       });
     }
     return layouts;
@@ -81,6 +86,12 @@ export interface GridLayout {
    *  cell's app declares requiresFolder. Saved layouts do NOT bake in
    *  a folder — folder is provided at load time. */
   folderMode?: LayoutFolderMode;
+  /** Where the layout opens: "glyphh" (default — panels tile inside the
+   *  Glyphh window) or "desktop" (cells open ON the desktop: native apps
+   *  launch, web apps open as positioned webview windows). */
+  target?: "glyphh" | "desktop";
+  /** Desktop layouts: where Glyphh itself sits (rail/left/right/none). */
+  glyphh?: GlyphhPlacement;
 }
 
 /** Per-cell bounds for renderer overlays (URL bars in grid) */
@@ -390,6 +401,8 @@ export class LayoutManager {
       rowHeights: Array(rows).fill(1 / rows),
       cells: sl.cells,
       folderMode: sl.folderMode,
+      target: sl.target,
+      ...(sl.glyphh ? { glyphh: sl.glyphh } : {}),
     };
   }
 
@@ -401,6 +414,8 @@ export class LayoutManager {
       rows: grid.rows,
       cells: grid.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky })),
       folderMode: grid.folderMode ?? "single",
+      target: grid.target ?? "glyphh",
+      ...(grid.glyphh ? { glyphh: grid.glyphh } : {}),
     };
     const id = this.serverIds.get(grid.name);
     const saved = await getClient().layouts.save({ name: grid.name, data: body, ...(id ? { id } : {}) });

@@ -1798,6 +1798,10 @@ function renderRecentApps(): void {
   const apps = railApps
     .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q))
     .sort((a, b) => {
+      // The built-in Glyphh app is ALWAYS first, ahead of recency.
+      const ga = a.appArchetype === "glyphh-self" ? 1 : 0;
+      const gb = b.appArchetype === "glyphh-self" ? 1 : 0;
+      if (ga !== gb) return gb - ga;
       const ta = railRecentTs[`app:${a.id}`] || 0;
       const tb = railRecentTs[`app:${b.id}`] || 0;
       return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
@@ -2020,15 +2024,27 @@ export function openUrlInWorkbench(name: string, url: string): void {
  *  workbench (idempotent async init), then retries the toggle over rAF because
  *  __wbToggleAppSwitcher isn't assigned until that init() resolves. */
 export function openCommandCenter(): void {
-  gotoSection("code");
-  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void };
-  w.__initCodeWorkbench?.();
-  let tries = 0;
-  const go = (): void => {
-    if (w.__wbToggleAppSwitcher) w.__wbToggleAppSwitcher();
-    else if (tries++ < 20) requestAnimationFrame(go);
-  };
-  go();
+  void (async () => {
+    // Desktop-overlay mode (toggle inside the command center): open the
+    // fullscreen transparent overlay window instead of the inline switcher —
+    // unless THIS page already is that overlay.
+    const w = window as unknown as {
+      __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __ccOverlayHost?: boolean;
+      yo?: { getPreference?: (k: string, d: unknown) => Promise<unknown>; ccOverlayOpen?: () => Promise<unknown> };
+    };
+    if (!w.__ccOverlayHost && w.yo?.ccOverlayOpen) {
+      const overlay = await w.yo.getPreference?.("ccDesktopOverlay", false).catch(() => false);
+      if (overlay) { void w.yo.ccOverlayOpen(); return; }
+    }
+    gotoSection("code");
+    w.__initCodeWorkbench?.();
+    let tries = 0;
+    const go = (): void => {
+      if (w.__wbToggleAppSwitcher) w.__wbToggleAppSwitcher();
+      else if (tries++ < 20) requestAnimationFrame(go);
+    };
+    go();
+  })();
 }
 
 export function initCode(): void {
