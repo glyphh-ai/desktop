@@ -35,7 +35,7 @@ import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
 import { indexToolVectors, rankConnectorTools } from "./tool-vectors";
-import { updateAppFromWorkdir } from "./glyphh-app-builder";
+import { updateAppFromWorkdir, deployAppFromWorkdir } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
@@ -385,6 +385,16 @@ const TOOLS: ToolDef[] = [
       };
       const r = await updateAppFromWorkdir(lookup);
       return `updated "${r.name}" (${r.slug}) from source${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files.`;
+    },
+  },
+  {
+    name: "deploy_app",
+    doc: "deploy_app() — PUBLISH the app in the working folder to the web at <slug>.glyphh.app. Build the Vite project first (`npm run build`), then call this: it packages the compiled dist/, cuts a release, builds it on the server, and deploys it live. Returns the public URL, or the build error to fix. (update_app installs it LOCALLY on this machine; deploy_app puts it on the internet.)",
+    action: () => ({ kind: "edit", title: "Publish app to <slug>.glyphh.app" }),
+    run: async () => {
+      const r = await deployAppFromWorkdir();
+      if (r.status !== "ready") return `build FAILED for "${r.slug}" v${r.version}: ${r.error ?? "unknown error"}`;
+      return `deployed "${r.slug}" v${r.version} → ${r.url ?? "(URL provisioning)"}`;
     },
   },
   {

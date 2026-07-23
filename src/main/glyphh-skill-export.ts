@@ -130,10 +130,19 @@ runs them. Re-install to update (the worker restarts; cron schedules survive).
 
 ## Publishing — give an app a public URL
 
-Installed-app tools are private to the user's own relay. To put an app on the
-internet, the app is given a **public URL** at \`<slug>.glyphh.app\`. This is done
-in Glyphh's UI (there is no MCP tool to create it) — build + install the app,
-then walk the user through it:
+To put a hosted app on the internet at \`<slug>.glyphh.app\`, use the control-plane
+tools directly (no UI needed):
+
+1. \`create_app_entry { kind: "glyphh", slug, name }\` — register the app once.
+2. \`build_app { slug, files: { "index.html": "…", … } }\` — send the app's source
+   as a path→content map. It cuts a release, builds it, and (unless \`deploy:false\`)
+   deploys it live, returning the \`url\` and the release \`status\` — a \`failed\`
+   status carries the compiler error to fix.
+3. \`deploy_app { slug }\` only RE-deploys an already-built release; it never builds.
+   If \`get_app\` shows a release with no finished build, call \`build_app\`.
+
+For an INSTALLED \`.glyphh\` bundle (private worker tools on the user's own relay),
+the older UI path still applies:
 
 1. Open the app in Glyphh → its **Public URL** tab.
 2. Pick a subdomain → the app goes live at \`<slug>.glyphh.app\`.
