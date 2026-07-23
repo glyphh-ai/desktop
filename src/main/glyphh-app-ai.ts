@@ -21,11 +21,32 @@
  */
 
 import Database from "better-sqlite3";
-import kuzu from "kuzu";
+import type { Connection as KuzuConnection, KuzuValue } from "kuzu";
 import fs from "fs";
 import path from "path";
 import { appDataDir } from "./glyphh-app-services.js";
 import { glyphhPath } from "./app-paths.js";
+
+// kuzu ships a native addon (kuzujs.node) for the per-app GRAPH memory. It's an
+// OPTIONAL feature, and on some machines the prebuilt can't load — most often a
+// Windows box missing the Microsoft Visual C++ runtime, which surfaces as
+// "The specified module could not be found." Load it LAZILY and guarded so a
+// load failure disables the graph.* tools rather than crashing the whole app at
+// startup with an uncaught exception (the eager top-level import did exactly
+// that). Type-only import above is erased at compile time, so it triggers no
+// native load.
+type KuzuModule = typeof import("kuzu");
+let kuzuMod: KuzuModule | null | undefined; // undefined = untried, null = unavailable
+function loadKuzu(): KuzuModule | null {
+  if (kuzuMod !== undefined) return kuzuMod;
+  try {
+    kuzuMod = require("kuzu") as KuzuModule;
+  } catch (err) {
+    kuzuMod = null;
+    console.error("[glyphh-app-ai] graph engine (kuzu) unavailable — graph.* tools disabled:", err instanceof Error ? err.message : err);
+  }
+  return kuzuMod;
+}
 
 // ── local embeddings (llm.embed) ────────────────────────────
 
@@ -271,11 +292,18 @@ export function vectorDelete(slug: string, args: Record<string, unknown>): { del
 //   graph.cypher { query: "CREATE REL TABLE Owns (FROM Account TO Account)" }
 //   graph.cypher { query: "MATCH (a:Account)-[:Owns*1..3]->(b) WHERE a.arr > $t RETURN b", params: { t: 100000 } }
 
-const graphDbs = new Map<string, InstanceType<typeof kuzu.Connection>>();
+const graphDbs = new Map<string, KuzuConnection>();
 
-function getGraphConn(slug: string): InstanceType<typeof kuzu.Connection> {
+function getGraphConn(slug: string): KuzuConnection {
   const existing = graphDbs.get(slug);
   if (existing) return existing;
+  const kuzu = loadKuzu();
+  if (!kuzu) {
+    throw new Error(
+      "The local graph engine (kuzu) couldn't load on this machine, so graph.* tools are unavailable. "
+      + "On Windows this usually means the Microsoft Visual C++ Redistributable (2015–2022, x64) needs to be installed.",
+    );
+  }
   fs.mkdirSync(appDataDir(slug), { recursive: true });
   const db = new kuzu.Database(path.join(appDataDir(slug), "graph.kuzu"));
   const conn = new kuzu.Connection(db);
@@ -291,7 +319,7 @@ export async function graphCypher(slug: string, args: Record<string, unknown>): 
   if (!query) throw new Error("query is required");
   const conn = getGraphConn(slug);
   const params = args.params && typeof args.params === "object"
-    ? (args.params as Record<string, import("kuzu").KuzuValue>)
+    ? (args.params as Record<string, KuzuValue>)
     : null;
 
   let result: any;
