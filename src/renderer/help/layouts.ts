@@ -75,21 +75,32 @@ function panelLabel(panelId: string): string {
  *  namespaced (never collides with an app id/UUID) and the suffix IS the
  *  workbench ViewKind, so code-workbench maps it straight to makeSlot(view).
  *  Stored verbatim as the schema's panelId string — round-trips, no migration. */
-const TOOL_PANELS: Array<{ id: string; label: string }> = [
-  { id: "tool:preview",  label: "Browser" },
-  { id: "tool:coding",   label: "Coding Agent" },
-  { id: "tool:diff",     label: "Diff" },
-  { id: "tool:monaco",   label: "Editor" },
-  { id: "tool:files",    label: "Files" },
-  { id: "tool:plan",     label: "Plan" },
-  { id: "tool:terminal", label: "Terminal" },
+// Icons mirror code-workbench's VIEW_META so a layout preview shows the same
+// glyph the panel header does. `stroke="currentColor"` lets CSS color them —
+// white in dark mode — and they size to the tile via .layout-tool-icon svg.
+const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
+  { id: "tool:preview",  label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
+  { id: "tool:coding",   label: "Coding Agent", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
+  { id: "tool:diff",     label: "Diff", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
+  { id: "tool:monaco",   label: "Editor", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
+  { id: "tool:files",    label: "Files", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
+  { id: "tool:plan",     label: "Plan", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
+  { id: "tool:terminal", label: "Terminal", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>` },
 ];
+const toolPanelIcon = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.icon || "";
 const isToolPanel = (id: string): boolean => id.startsWith("tool:");
 const toolPanelLabel = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.label || id.slice(5);
 /** One app-icon square for a layout card — identical icon resolution to the
  *  Apps page (Pipedream catalog icon → favicon → initial), via the shared
  *  appIconInner helper. */
 function panelIconHtml(panelId: string): string {
+  // Built-in workbench panels (Files/Terminal/Browser/…) render their VIEW_META
+  // glyph, not an initial — the initial read as "unfinished". Named apps keep
+  // their favicon/catalog icon.
+  if (isToolPanel(panelId)) {
+    const label = toolPanelLabel(panelId);
+    return `<span class="layout-app-icon layout-tool-icon" title="${label}">${toolPanelIcon(panelId)}</span>`;
+  }
   const app = resolveApp(panelId);
   const name = app?.name || panelId;
   return `<span class="layout-app-icon" title="${name}">${appIconInner(app || {}, name, "layout-app-initial")}</span>`;

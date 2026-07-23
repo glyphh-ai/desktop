@@ -631,6 +631,67 @@ async function init(): Promise<void> {
     }
   }
 
+  /** Right-click menu for a panel: close just this one, or clear them all.
+   *  Reuses the .ws-tab-ctx-menu chrome the Monaco tab strip already uses. */
+  function openSlotContextMenu(ev: MouseEvent, slotId: number): void {
+    document.querySelector(".ws-tab-ctx-menu")?.remove();
+    const menu = document.createElement("div");
+    menu.className = "ws-tab-ctx-menu";
+    const dismiss = (): void => {
+      menu.remove();
+      document.removeEventListener("mousedown", onAway, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+    const onAway = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) dismiss(); };
+    const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") dismiss(); };
+    const mkItem = (label: string, onPick: () => void, danger = false): void => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ws-tab-ctx-item" + (danger ? " danger" : "");
+      btn.textContent = label;
+      btn.addEventListener("click", () => { dismiss(); onPick(); });
+      menu.appendChild(btn);
+    };
+    mkItem("Close panel", () => {
+      if (maximizedSlotId === slotId) maximizedSlotId = null;
+      closeSlot(slotId);
+      scheduleAppSync();
+    });
+    mkItem("Clear all panels", () => { void clearAllPanels(); }, true);
+    document.body.appendChild(menu);
+    menu.style.left = Math.max(6, Math.min(ev.clientX, window.innerWidth - menu.offsetWidth - 6)) + "px";
+    menu.style.top = Math.max(6, Math.min(ev.clientY, window.innerHeight - menu.offsetHeight - 6)) + "px";
+    document.addEventListener("mousedown", onAway, true);
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  /** Close EVERY workbench panel (the right-click "Clear all" + `.dip clear`).
+   *  Guards unsaved editor work first — clearing is otherwise silent data loss. */
+  async function clearAllPanels(): Promise<void> {
+    // No flushEditorModel here — it's scoped to the Monaco renderer, and the
+    // dirty FLAG is already set on the first keystroke, so the count is accurate
+    // without folding the live buffer back (we're discarding content anyway).
+    const dirty = rails
+      .flatMap((r) => r.slots)
+      .filter((s): s is MonacoSlot => s.view === "monaco")
+      .reduce((n, s) => n + s.tabs.filter((t) => t.dirty).length, 0);
+    if (dirty > 0) {
+      const ok = await appConfirm({
+        title: "Clear all panels?",
+        body: dirty === 1 ? "1 file has unsaved changes." : `${dirty} files have unsaved changes.`,
+        confirmLabel: "Clear all",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    rails.length = 0;
+    maximizedSlotId = null;
+    activeLayoutName = null;
+    renderRails();
+    saveLayout();
+    scheduleAppSync();
+  }
+
   /** Locate a slot and remove it from its rail (without pruning empty rails).
    *  Used by drag-drop reorder; the caller re-inserts at the target position. */
   function detachSlot(slotId: number): { slot: Slot; railIdx: number; slotIdx: number } | null {
@@ -839,6 +900,13 @@ async function init(): Promise<void> {
     wrap.querySelector(".slot-close")!.addEventListener("click", () => {
       if (maximizedSlotId === slot.id) maximizedSlotId = null;
       closeSlot(slot.id);
+    });
+    // Right-click anywhere on the panel → a menu to close this one or clear all.
+    // (The Monaco tab strip has its own menu; let that one win when present.)
+    wrap.addEventListener("contextmenu", (ev) => {
+      if ((ev.target as HTMLElement).closest(".ws-monaco-tabs")) return;
+      ev.preventDefault();
+      openSlotContextMenu(ev as MouseEvent, slot.id);
     });
     // App panels: the header toggle collapses/shows the browser chrome bar
     // (which lives in the overlay holder, not this rebuilt header).
@@ -1188,16 +1256,21 @@ async function init(): Promise<void> {
   interface WbLayoutCell extends WbAppRef { col: number; row: number; sticky?: boolean; tool?: string }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 
-  /** Open an app in the workbench. Default = "the switch": reuse the sticky app
-   *  slot (the one a layout designated), else the first — slide the old app out
-   *  and the new one in, so one panel swaps apps. newPanel forces a new slot. */
-  function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean } = {}): void {
+  /** Open an app in the workbench. Default = STACK a new panel, so apps
+   *  accumulate. The switch (reuse one panel) is the EXCEPTION, and happens only
+   *  when a layout PINNED a section (a sticky slot — that section is the
+   *  designated swap target) or the caller asks to switch the active panel
+   *  (`replaceActive`, e.g. `.dip .`). newPanel forces a fresh slot even past a pin. */
+  function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean } = {}): void {
     const existing = appSlots().find((s) => s.slug === app.slug);
     if (existing) { focusAppSlot(existing.id); return; }
     // Opening an individual app means the workbench is no longer "the named
     // layout" — stop writing geometry into that layout's memory.
     activeLayoutName = null;
-    const target = opts.newPanel ? undefined : (appSlots().find((s) => s.sticky) ?? appSlots()[0]);
+    // A pinned (sticky) section always wins as the swap target. Absent a pin,
+    // switch the active panel ONLY when asked (.dip .); otherwise stack.
+    const pinned = appSlots().find((s) => s.sticky);
+    const target = opts.newPanel ? undefined : (pinned ?? (opts.replaceActive ? appSlots()[0] : undefined));
     if (target) {
       const view = appViews.get(target.id);
       const apply = (): void => {
@@ -1393,7 +1466,14 @@ async function init(): Promise<void> {
           const left = (c.col / cols) * 100, top = (c.row / rows) * 100;
           const w = (c.colSpan / cols) * 100, h = (c.rowSpan / rows) * 100;
           const app = resolveCell(c.panelId);
-          const ico = app ? `<span class="cc-mini-ico">${appIconInner(iconApp(app), app.name, "cc-mini-initial")}</span>` : "";
+          // Built-in tool panels (tool:files/terminal/…) have no app to resolve —
+          // render their VIEW_META glyph so the cell isn't blank/"unfinished".
+          const toolIcon = c.panelId?.startsWith("tool:") ? (VIEW_META[c.panelId.slice(5)]?.icon ?? "") : "";
+          const ico = app
+            ? `<span class="cc-mini-ico">${appIconInner(iconApp(app), app.name, "cc-mini-initial")}</span>`
+            : toolIcon
+              ? `<span class="cc-mini-ico cc-mini-tool">${toolIcon}</span>`
+              : "";
           return `<div class="cc-mini-cell" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%">${ico}</div>`;
         }).join("");
         const card = document.createElement("button");
@@ -1817,7 +1897,9 @@ async function init(): Promise<void> {
       }
       slot.tabs = [];
       slot.activeIdx = 0;
-      closeSlot(slot.id);
+      // Same rule as closing the last tab: empty the editor, keep the panel.
+      paintTabs();
+      void mountActive();
     }
 
     // Right-click on the tab strip → Save all / Close all.
@@ -1873,8 +1955,10 @@ async function init(): Promise<void> {
                 if (!ok) return;
               }
               slot.tabs.splice(i, 1);
-              if (slot.tabs.length === 0) { closeSlot(slot.id); return; }
-              if (slot.activeIdx >= slot.tabs.length) slot.activeIdx = slot.tabs.length - 1;
+              // The panel STAYS when the last tab closes — mountActive() paints
+              // the landing state. Tearing the pane out from under the user cost
+              // them their workbench slot for what reads as "I closed a file".
+              if (slot.activeIdx >= slot.tabs.length) slot.activeIdx = Math.max(0, slot.tabs.length - 1);
               paintTabs();
               void mountActive();
             })();
@@ -1908,7 +1992,11 @@ async function init(): Promise<void> {
           </div>`;
         mdHost.innerHTML = "";
         mdHost.style.display = "none";
+        host.style.display = "";
         previewBtn.style.display = "none"; codeBtn.style.display = "none";
+        // No tab ⇒ nothing to save; otherwise the last dirty tab's Save lingers
+        // over the landing screen.
+        paintSave();
         return;
       }
       mdHost.style.display = "";
@@ -2306,11 +2394,14 @@ async function init(): Promise<void> {
   }
 
   async function renderPreviewIntoSlot(body: HTMLElement, slot: PreviewSlot): Promise<void> {
-    // In-DOM <iframe> rather than a native BrowserView overlay: it lays out,
-    // clips, scrolls, and z-orders with the rest of the workbench, so there's
-    // no bounds-syncing and nothing to "fly around" during resizes/animations.
-    // (Trade-off: sites that send X-Frame-Options/CSP frame-ancestors will
-    // refuse to load — fine for the localhost dev-server case.)
+    // A native <webview>, NOT an <iframe>. An iframe is refused by any site that
+    // sends X-Frame-Options / CSP frame-ancestors (most of the real web), so the
+    // Browser panel could only ever show localhost + local files — it stayed
+    // blank on actual web pages. A <webview> is a top-level guest that ignores
+    // those headers, renders PDFs/images/the glyphh-preview:// scheme natively,
+    // and (via the persist:yo session) routes downloads through will-download →
+    // the downloads dropdown. It still lays out in-flow, so it clips/scrolls
+    // with the workbench exactly as the iframe did.
     body.innerHTML = `
       <div class="ws-preview-url">
         <input class="ws-preview-input" type="text" value="" spellcheck="false" placeholder="https:// or http://localhost:..." />
@@ -2320,9 +2411,12 @@ async function init(): Promise<void> {
         <button class="ws-icon-btn ws-preview-reload" title="Reload">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
+        <button class="ws-icon-btn ws-preview-download" title="Download this page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
       </div>
       <div class="ws-preview-body">
-        <iframe class="ws-preview-frame" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" hidden></iframe>
+        <webview class="ws-preview-frame" partition="persist:yo" allowpopups hidden></webview>
         <div class="ws-preview-stub">
           <div class="ws-preview-stub-title">Nothing open</div>
           <div class="ws-preview-stub-sub">Enter a URL above — e.g. http://localhost:3000 — or open a file from disk.</div>
@@ -2331,15 +2425,23 @@ async function init(): Promise<void> {
     `;
     const urlInput = body.querySelector(".ws-preview-input") as HTMLInputElement;
     const reloadBtn = body.querySelector(".ws-preview-reload") as HTMLButtonElement;
-    const frame = body.querySelector(".ws-preview-frame") as HTMLIFrameElement;
+    const downloadBtn = body.querySelector(".ws-preview-download") as HTMLButtonElement;
+    const frame = body.querySelector(".ws-preview-frame") as WebviewEl & HTMLElement;
     const stub = body.querySelector(".ws-preview-stub") as HTMLElement;
     urlInput.value = slot.url || "";
+
+    // loadURL once the guest is attached; else the src attribute, which the
+    // webview queues until it is.
+    const setSrc = (u: string): void => {
+      if (frame.loadURL && frame.getWebContentsId?.()) frame.loadURL(u);
+      else frame.setAttribute("src", u);
+    };
 
     function loadHtml(html: string, label: string): void {
       stub.hidden = true;
       frame.hidden = false;
-      frame.removeAttribute("src");
-      frame.srcdoc = html;
+      // A webview has no srcdoc — carry the inline build HTML as a data: URL.
+      setSrc("data:text/html;charset=utf-8," + encodeURIComponent(html));
       urlInput.value = label;
     }
 
@@ -2352,13 +2454,24 @@ async function init(): Promise<void> {
       }
       stub.hidden = true;
       frame.hidden = false;
-      // Local previews run UNsandboxed: the sandbox blocks the PDF viewer,
-      // and glyphh-preview only streams files main resolves. Remote URLs
-      // keep the sandbox. Set the attribute BEFORE src — it applies on load.
-      if (u.startsWith("glyphh-preview://")) frame.removeAttribute("sandbox");
-      else frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-modals");
-      frame.src = u;
+      setSrc(u);
     }
+
+    // A blocked/failed load looks identical to "blank" — surface it. -3 is the
+    // benign ABORTED that fires on a normal re-navigation.
+    frame.addEventListener("did-fail-load", (e) => {
+      const err = e as unknown as { errorCode?: number; errorDescription?: string };
+      if (err.errorCode && err.errorCode !== -3) {
+        (window as unknown as { yo?: { wbLog?: (s: string) => void } }).yo?.wbLog?.(
+          `[wb] Browser panel failed to load (${err.errorCode} ${err.errorDescription || ""}).`);
+      }
+    });
+    // Keep the address bar in step with real navigations (not the data: build
+    // previews, and never while the user is typing).
+    frame.addEventListener("did-navigate", (e) => {
+      const u = (e as unknown as { url?: string }).url;
+      if (u && u !== "about:blank" && !u.startsWith("data:") && document.activeElement !== urlInput) urlInput.value = u;
+    });
 
     // Initial paint: inline build preview wins; else the persisted URL.
     if (slot.html) loadHtml(slot.html, slot.htmlLabel || "Glyphh build");
@@ -2383,11 +2496,12 @@ async function init(): Promise<void> {
       urlInput.value = picked;
       navigate();
     });
-    // Cross-origin frames block contentWindow.location.reload(); re-assigning
-    // src reloads regardless of origin.
-    reloadBtn.addEventListener("click", () => {
-      const cur = frame.getAttribute("src");
-      if (cur) { frame.src = cur; }
+    reloadBtn.addEventListener("click", () => { frame.reload?.(); });
+    // Site-initiated downloads already flow through will-download; this button
+    // downloads the current page itself (e.g. a viewed PDF or file).
+    downloadBtn.addEventListener("click", () => {
+      const u = frame.getURL?.() || slot.url;
+      if (u && !u.startsWith("data:")) frame.downloadURL?.(u);
     });
   }
 
@@ -2870,13 +2984,7 @@ async function init(): Promise<void> {
   wbApp.__wbOpenLayout = (layout) => openLayoutInWorkbench(layout);
   // `.dip clear` — close all workspace panels. JUST the panels: sessions,
   // history, everything else stays untouched.
-  wbApp.__wbClearPanels = () => {
-    rails.length = 0;
-    maximizedSlotId = null;
-    activeLayoutName = null;
-    renderRails();
-    saveLayout();
-  };
+  wbApp.__wbClearPanels = () => { void clearAllPanels(); };
   // `.dip grid` — re-flow every open panel into an even grid: rails of two
   // stacked slots, equal widths, equal heights.
   wbApp.__wbGridPanels = (): boolean => {

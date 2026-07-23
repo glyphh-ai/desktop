@@ -83,7 +83,7 @@ import { registerWbAppRegistry } from "./app-resolver";
 import { DripManager, BUILTIN_EFFECTS, setDripManagerInstance } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
-import { registerSettingsIpc } from "./settings-ipc";
+import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { getClient } from "./glyphh-client";
 import { ApiError } from "@glyphh/client";
 import { registerAppsIpc } from "./apps-ipc";
@@ -401,8 +401,8 @@ async function boot() {
   }
   // Fetch active models from server and populate the interceptor + presets cache
   const initialTheme = getPreference<string>("theme", "dark");
-  // Map themed ids (purple/aurora/custom) to a base mode nativeTheme accepts.
-  nativeTheme.themeSource = initialTheme === "system" ? "system" : initialTheme === "light" ? "light" : "dark";
+  // Map themed ids (purple/aurora/prism/…) to a base mode nativeTheme accepts.
+  nativeTheme.themeSource = initialTheme === "system" ? "system" : LIGHT_THEMES.has(initialTheme) ? "light" : "dark";
   const resolvedTheme = initialTheme === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : initialTheme;
   panelCommands.setTheme(resolvedTheme);
 
@@ -1420,13 +1420,6 @@ async function boot() {
     if (mainWindow) panelManager.hideActive(mainWindow);
     autoUpdater.checkForUpdates().catch(() => {});
   };
-
-  // Bottom-right update badge (home panels): dismissing in one panel must hide
-  // it in every panel, so the dismissal is persisted per version and rebroadcast.
-  ipcMain.on("update-badge-dismiss", (_e, version: string) => {
-    setPreference(`updateDismissed:${version || "unknown"}`, true);
-    broadcastUpdate({ status: "dismissed", version });
-  });
 
   autoUpdater.on("update-available", (info: { version: string }) => {
     if (!isNewerVersion(info.version, app.getVersion())) return;

@@ -8,6 +8,10 @@ import { isBackgroundEnabled, setBackgroundEnabled } from "./background-mode";
 import { type DevicePrompt, startDeviceLogin, cancelDeviceLogin } from "./auth";
 import { getClient } from "./glyphh-client";
 import type { SessionCache } from "./session-cache";
+
+/** Theme ids whose BASE MODE is light — everything else maps to dark for the OS
+ *  window chrome. Must list every light [data-theme] block in styles.css. */
+export const LIGHT_THEMES = new Set(["light", "prism", "claude"]);
 import type { PanelManager } from "./panel-manager";
 
 interface SettingsIpcDeps {
@@ -40,9 +44,9 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("set-theme", (_e, theme: string) => {
     setPreference("theme", theme);
     // nativeTheme only accepts system|light|dark, but theme ids can be richer
-    // (purple, aurora, custom-*). Map to a base mode for the OS chrome; the
-    // renderer drives the real palette via [data-theme="<theme>"].
-    nativeTheme.themeSource = theme === "system" ? "system" : theme === "light" ? "light" : "dark";
+    // (purple, aurora, prism, claude, …). Map to a base mode for the OS chrome;
+    // the renderer drives the real palette via [data-theme="<theme>"].
+    nativeTheme.themeSource = theme === "system" ? "system" : LIGHT_THEMES.has(theme) ? "light" : "dark";
     const resolved = theme === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : theme;
     broadcastTheme(resolved);
   });

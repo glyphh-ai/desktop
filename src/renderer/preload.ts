@@ -660,7 +660,6 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.on("update-status", (_e, info) => cb(info));
   },
   updateInstall: () => ipcRenderer.send("update-install"),
-  updateBadgeDismiss: (version: string) => ipcRenderer.send("update-badge-dismiss", version),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates") as Promise<string | null>,
   // Current pending update (null when none) — lets the About page show the
   // "Relaunch to Update" prompt on load, not only when a live event arrives.

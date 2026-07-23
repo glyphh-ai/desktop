@@ -79,35 +79,24 @@ window.yo.onOpenNewApp?.((data) => openNewAppDeepLink(data));
 // or dismisses it. Dismissal is per version and main rebroadcasts it, so
 // dismissing in one panel hides it in all of them.
 void (async () => {
-  const badge = document.getElementById("update-badge");
-  const text = document.getElementById("update-badge-text");
-  if (!badge || !text) return;
-  let version = "";
+  const btn = document.getElementById("app-rail-relaunch");
+  const text = document.getElementById("app-rail-relaunch-text");
+  if (!btn || !text) return;
 
-  const show = async (v: string) => {
-    version = v || "";
-    const dismissed = await window.yo.getPreference?.(`updateDismissed:${version || "unknown"}`, false);
-    if (dismissed) return;
-    text.textContent = `Update ready${version ? ` — v${version}` : ""}`;
-    badge.classList.remove("hidden");
+  const show = (v: string) => {
+    text.textContent = v ? `Relaunch to update — v${v}` : "Relaunch to update";
+    btn.title = v ? `Relaunch to finish updating to v${v}` : "Relaunch to finish updating";
+    btn.classList.remove("hidden");
   };
 
-  document.getElementById("update-badge-restart")?.addEventListener("click", () => {
-    window.yo.updateInstall?.();
-  });
-  document.getElementById("update-badge-dismiss")?.addEventListener("click", () => {
-    badge.classList.add("hidden");
-    window.yo.updateBadgeDismiss?.(version);
-  });
+  btn.addEventListener("click", () => { window.yo.updateInstall?.(); });
 
   window.yo.onUpdateStatus?.((info) => {
-    if (info.status === "ready") void show(info.version || "");
-    else if (info.status === "dismissed" || info.status === "restarting" || info.status === "none") {
-      badge.classList.add("hidden");
-    }
+    if (info.status === "ready") show(info.version || "");
+    else if (info.status === "restarting" || info.status === "none") btn.classList.add("hidden");
   });
 
   // Panels mount after boot — ask main whether an update is already waiting.
   const pending = await window.yo.getUpdateStatus?.();
-  if (pending?.ready) void show(pending.version);
+  if (pending?.ready) show(pending.version);
 })();

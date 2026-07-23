@@ -192,6 +192,179 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   background-attachment: fixed;
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   Extra themes. Each is a COMPLETE variable set (mirrors dark/light) so every
+   surface stays consistent. Gradient-wrap themes (prism/gemini/synthwave) add a
+   fixed radial bloom to the top-level wrappers, like aurora.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Prism — light, modern gradient (airy violet→cyan→rose bloom) ──────── */
+[data-theme="prism"] {
+  color-scheme: light;
+  --bg: #f4f4fb; --bg-raised: #ffffff; --surface: #ffffff; --surface-2: #f6f5fd; --surface-3: #eef0fb;
+  --border: #e6e5f2; --border-2: #d6d5ea; --border-3: #c4c3e0;
+  --text: #1c1b2e; --text-bright: #0d0c1a; --text-2: #4a4866; --text-3: #6f6d8c; --text-muted: #6f6d8c; --text-faint: #9c9ab8;
+  --white: #0d0c1a; --hover: #eeecfb; --active-bg: rgba(109, 94, 252, 0.09); --rail-active-bg: rgba(28, 27, 46, 0.08);
+  --accent: #6d5efc; --accent-hover: #8a7dff; --accent-text: #6d5efc; --accent-dark: #4b3fd6; --accent-bg: #edeafe;
+  --danger: #e5484d; --danger-soft: #f16469; --danger-bg: #fdecec; --warning: #f59e0b; --success: #16a34a; --blue: #3b82f6; --purple: #6d5efc;
+  --overlay-bg: rgba(28, 27, 46, 0.28); --shadow: rgba(76, 63, 214, 0.14); --selection: rgba(109, 94, 252, 0.20);
+  --scrollbar: #d6d5ea; --scrollbar-hover: #6d5efc; --toast-bg: #ffffff; --code-inline: #6d28d9;
+  --input-bg: var(--surface-2); --card-bg: var(--surface); --grad-accent: linear-gradient(120deg, #6d5efc, #22d3ee 55%, #f472b6);
+}
+[data-theme="prism"] body, [data-theme="prism"] #home-root, [data-theme="prism"] #help-overlay,
+[data-theme="prism"] .yo-panel, [data-theme="prism"] #onboarding-overlay {
+  background:
+    radial-gradient(120% 120% at 0% 100%, rgba(109, 94, 252, 0.16) 0%, transparent 55%),
+    radial-gradient(110% 110% at 100% 0%, rgba(34, 211, 238, 0.14) 0%, transparent 52%),
+    radial-gradient(120% 120% at 100% 100%, rgba(244, 114, 182, 0.12) 0%, transparent 55%),
+    #f4f4fb;
+  background-attachment: fixed;
+}
+
+/* ── GitHub — GitHub Dark ("dark default") ────────────────────────────── */
+[data-theme="github"] {
+  color-scheme: dark;
+  --bg: #0d1117; --bg-raised: #161b22; --surface: #161b22; --surface-2: #1c2128; --surface-3: #21262d;
+  --border: #30363d; --border-2: #3d444d; --border-3: #4a525b;
+  --text: #e6edf3; --text-bright: #ffffff; --text-2: #adbac7; --text-3: #7d8590; --text-muted: #7d8590; --text-faint: #636c76;
+  --white: #ffffff; --hover: #21262d; --active-bg: rgba(47, 129, 247, 0.12); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --accent: #2f81f7; --accent-hover: #539bf5; --accent-text: #6cb6ff; --accent-dark: #1f6feb; --accent-bg: #12233d;
+  --danger: #f85149; --danger-soft: #ff6a63; --danger-bg: #2a1616; --warning: #d29922; --success: #3fb950; --blue: #2f81f7; --purple: #a371f7;
+  --overlay-bg: rgba(1, 4, 9, 0.7); --shadow: rgba(1, 4, 9, 0.5); --selection: rgba(47, 129, 247, 0.30);
+  --scrollbar: #30363d; --scrollbar-hover: #4a525b; --toast-bg: #161b22; --code-inline: #79c0ff;
+  --input-bg: #0d1117; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #2f81f7, #a371f7);
+}
+
+/* ── High Vis — maximum-contrast black + electric yellow ───────────────── */
+[data-theme="highvis"] {
+  color-scheme: dark;
+  --bg: #000000; --bg-raised: #0a0a0a; --surface: #0d0d0d; --surface-2: #141414; --surface-3: #1a1a1a;
+  --border: #5a5a5a; --border-2: #7a7a7a; --border-3: #9a9a9a;
+  --text: #ffffff; --text-bright: #ffffff; --text-2: #eaeaea; --text-3: #c8c8c8; --text-muted: #b0b0b0; --text-faint: #909090;
+  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(255, 214, 0, 0.16); --rail-active-bg: rgba(255, 214, 0, 0.20);
+  --accent: #ffd600; --accent-hover: #ffe23d; --accent-text: #ffe23d; --accent-dark: #c7a600; --accent-bg: #2a2600;
+  --danger: #ff2b2b; --danger-soft: #ff5555; --danger-bg: #2a0000; --warning: #ff9500; --success: #00e676; --blue: #00b0ff; --purple: #d500f9;
+  --overlay-bg: rgba(0, 0, 0, 0.8); --shadow: rgba(0, 0, 0, 0.7); --selection: rgba(255, 214, 0, 0.35);
+  --scrollbar: #5a5a5a; --scrollbar-hover: #ffd600; --toast-bg: #0d0d0d; --code-inline: #ffd600;
+  --input-bg: #0d0d0d; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #ffd600, #ff9500);
+}
+
+/* ── Claude — Anthropic warm cream + clay ─────────────────────────────── */
+[data-theme="claude"] {
+  color-scheme: light;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --bg: #f0eee6; --bg-raised: #faf9f5; --surface: #ffffff; --surface-2: #f5f4ee; --surface-3: #eeece3;
+  --border: #e3e1d6; --border-2: #d4d1c3; --border-3: #c2beac;
+  --text: #3d3d3a; --text-bright: #1f1e1c; --text-2: #605d55; --text-3: #837f74; --text-muted: #837f74; --text-faint: #a8a496;
+  --white: #1f1e1c; --hover: #eae8de; --active-bg: rgba(217, 119, 87, 0.10); --rail-active-bg: rgba(61, 61, 58, 0.08);
+  --accent: #d97757; --accent-hover: #c96442; --accent-text: #bd5d3a; --accent-dark: #a54e30; --accent-bg: #f7e9e2;
+  --danger: #bf4d43; --danger-soft: #d46a60; --danger-bg: #f7e6e4; --warning: #cc8500; --success: #6a8f4e; --blue: #4b7fb5; --purple: #9b7bc4;
+  --overlay-bg: rgba(61, 61, 58, 0.30); --shadow: rgba(61, 61, 58, 0.14); --selection: rgba(217, 119, 87, 0.22);
+  --scrollbar: #d4d1c3; --scrollbar-hover: #d97757; --toast-bg: #ffffff; --code-inline: #a54e30;
+  --input-bg: var(--surface-2); --card-bg: var(--surface); --grad-accent: linear-gradient(120deg, #d97757, #e0a06f);
+}
+
+/* ── ChatGPT — near-black + signal teal ───────────────────────────────── */
+[data-theme="chatgpt"] {
+  color-scheme: dark;
+  --bg: #212121; --bg-raised: #2a2a2a; --surface: #2f2f2f; --surface-2: #343434; --surface-3: #303030;
+  --border: #424242; --border-2: #4d4d4d; --border-3: #5c5c5c;
+  --text: #ececec; --text-bright: #ffffff; --text-2: #c5c5c5; --text-3: #9a9a9a; --text-muted: #8e8e8e; --text-faint: #6e6e6e;
+  --white: #ffffff; --hover: #383838; --active-bg: rgba(16, 163, 127, 0.14); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --accent: #10a37f; --accent-hover: #1ab896; --accent-text: #2bd4ae; --accent-dark: #0d8268; --accent-bg: #10261f;
+  --danger: #ef4146; --danger-soft: #f56b6f; --danger-bg: #2a1414; --warning: #e0a800; --success: #10a37f; --blue: #4a9eff; --purple: #ab68ff;
+  --overlay-bg: rgba(0, 0, 0, 0.6); --shadow: rgba(0, 0, 0, 0.45); --selection: rgba(16, 163, 127, 0.30);
+  --scrollbar: #4d4d4d; --scrollbar-hover: #6e6e6e; --toast-bg: #2f2f2f; --code-inline: #2bd4ae;
+  --input-bg: #2f2f2f; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #10a37f, #4a9eff);
+}
+
+/* ── Gemini — Google deep-space blue→violet gradient ──────────────────── */
+[data-theme="gemini"] {
+  color-scheme: dark;
+  --bg: #131314; --bg-raised: #1e1f20; --surface: #1e1f20; --surface-2: #282a2c; --surface-3: #232527;
+  --border: #37393b; --border-2: #444649; --border-3: #545659;
+  --text: #e3e3e3; --text-bright: #ffffff; --text-2: #c4c7c5; --text-3: #9aa0a6; --text-muted: #868b90; --text-faint: #6b6f73;
+  --white: #ffffff; --hover: #2d2f31; --active-bg: rgba(138, 180, 248, 0.14); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --accent: #8ab4f8; --accent-hover: #a6c6fa; --accent-text: #a6c6fa; --accent-dark: #4285f4; --accent-bg: #1a2438;
+  --danger: #f28b82; --danger-soft: #f6a49d; --danger-bg: #2a1614; --warning: #fdd663; --success: #81c995; --blue: #8ab4f8; --purple: #c58af9;
+  --overlay-bg: rgba(0, 0, 0, 0.65); --shadow: rgba(0, 0, 0, 0.5); --selection: rgba(138, 180, 248, 0.30);
+  --scrollbar: #444649; --scrollbar-hover: #8ab4f8; --toast-bg: #1e1f20; --code-inline: #c58af9;
+  --input-bg: #1e1f20; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #4285f4, #a142f4 55%, #f76aa0);
+}
+[data-theme="gemini"] body, [data-theme="gemini"] #home-root, [data-theme="gemini"] #help-overlay,
+[data-theme="gemini"] .yo-panel, [data-theme="gemini"] #onboarding-overlay {
+  background:
+    radial-gradient(120% 120% at 0% 100%, rgba(66, 133, 244, 0.20) 0%, transparent 55%),
+    radial-gradient(110% 110% at 100% 0%, rgba(161, 66, 244, 0.16) 0%, transparent 52%),
+    #131314;
+  background-attachment: fixed;
+}
+
+/* ── Dracula — the classic ────────────────────────────────────────────── */
+[data-theme="dracula"] {
+  color-scheme: dark;
+  --bg: #282a36; --bg-raised: #2f3140; --surface: #343746; --surface-2: #3c3f51; --surface-3: #383b4c;
+  --border: #44475a; --border-2: #565a72; --border-3: #6272a4;
+  --text: #f8f8f2; --text-bright: #ffffff; --text-2: #d5d5e0; --text-3: #a5abcc; --text-muted: #7c82a8; --text-faint: #6272a4;
+  --white: #ffffff; --hover: #3c3f51; --active-bg: rgba(189, 147, 249, 0.14); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --accent: #bd93f9; --accent-hover: #cba9fb; --accent-text: #cba9fb; --accent-dark: #9d6ef0; --accent-bg: #2f2846;
+  --danger: #ff5555; --danger-soft: #ff7b7b; --danger-bg: #2c1620; --warning: #ffb86c; --success: #50fa7b; --blue: #8be9fd; --purple: #bd93f9;
+  --overlay-bg: rgba(20, 21, 28, 0.6); --shadow: rgba(0, 0, 0, 0.5); --selection: rgba(189, 147, 249, 0.32);
+  --scrollbar: #44475a; --scrollbar-hover: #6272a4; --toast-bg: #343746; --code-inline: #ff79c6;
+  --input-bg: #21222c; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #bd93f9, #ff79c6 60%, #8be9fd);
+}
+
+/* ── Nord — arctic frost ──────────────────────────────────────────────── */
+[data-theme="nord"] {
+  color-scheme: dark;
+  --bg: #2e3440; --bg-raised: #333b4a; --surface: #3b4252; --surface-2: #434c5e; --surface-3: #3f485a;
+  --border: #4c566a; --border-2: #5b667c; --border-3: #6b7689;
+  --text: #eceff4; --text-bright: #ffffff; --text-2: #d8dee9; --text-3: #a9b2c3; --text-muted: #8b95a7; --text-faint: #6b7689;
+  --white: #ffffff; --hover: #434c5e; --active-bg: rgba(136, 192, 208, 0.14); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --accent: #88c0d0; --accent-hover: #8fbcbb; --accent-text: #9fd3e0; --accent-dark: #5e81ac; --accent-bg: #2b3a44;
+  --danger: #bf616a; --danger-soft: #cf757e; --danger-bg: #2f2024; --warning: #ebcb8b; --success: #a3be8c; --blue: #81a1c1; --purple: #b48ead;
+  --overlay-bg: rgba(20, 24, 31, 0.6); --shadow: rgba(0, 0, 0, 0.45); --selection: rgba(136, 192, 208, 0.30);
+  --scrollbar: #4c566a; --scrollbar-hover: #6b7689; --toast-bg: #3b4252; --code-inline: #8fbcbb;
+  --input-bg: #2e3440; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #88c0d0, #81a1c1 55%, #b48ead);
+}
+
+/* ── Synthwave — retro neon on indigo (gradient wrap) ─────────────────── */
+[data-theme="synthwave"] {
+  color-scheme: dark;
+  --bg: #1a1030; --bg-raised: #221641; --surface: #281a4a; --surface-2: #322058; --surface-3: #2c1d50;
+  --border: #45307a; --border-2: #563e92; --border-3: #6a4fae;
+  --text: #f5e9ff; --text-bright: #ffffff; --text-2: #d3c0ee; --text-3: #a892cf; --text-muted: #8570ad; --text-faint: #675588;
+  --white: #ffffff; --hover: #32205a; --active-bg: rgba(255, 46, 151, 0.16); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --accent: #ff2e97; --accent-hover: #ff5cae; --accent-text: #ff77bd; --accent-dark: #d61f7c; --accent-bg: #3a1436;
+  --danger: #ff4d5e; --danger-soft: #ff7280; --danger-bg: #331420; --warning: #ffb347; --success: #2bf5c8; --blue: #00e5ff; --purple: #b14dff;
+  --overlay-bg: rgba(10, 5, 24, 0.65); --shadow: rgba(255, 46, 151, 0.18); --selection: rgba(0, 229, 255, 0.30);
+  --scrollbar: #45307a; --scrollbar-hover: #ff2e97; --toast-bg: #221641; --code-inline: #00e5ff;
+  --input-bg: #221641; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #ff2e97, #b14dff 50%, #00e5ff);
+}
+[data-theme="synthwave"] body, [data-theme="synthwave"] #home-root, [data-theme="synthwave"] #help-overlay,
+[data-theme="synthwave"] .yo-panel, [data-theme="synthwave"] #onboarding-overlay {
+  background:
+    radial-gradient(120% 120% at 0% 100%, rgba(255, 46, 151, 0.22) 0%, transparent 55%),
+    radial-gradient(110% 110% at 100% 0%, rgba(0, 229, 255, 0.16) 0%, transparent 52%),
+    #1a1030;
+  background-attachment: fixed;
+}
+
+/* ── Matrix — phosphor green on black ─────────────────────────────────── */
+[data-theme="matrix"] {
+  color-scheme: dark;
+  --font-sans: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  --bg: #020a02; --bg-raised: #051005; --surface: #071507; --surface-2: #0b1f0b; --surface-3: #091a09;
+  --border: #14371a; --border-2: #1d4d26; --border-3: #276634;
+  --text: #b9ffc4; --text-bright: #e6ffe9; --text-2: #57e06f; --text-3: #3aa64f; --text-muted: #2c8a3f; --text-faint: #206630;
+  --white: #e6ffe9; --hover: #0c220f; --active-bg: rgba(0, 255, 102, 0.14); --rail-active-bg: rgba(0, 255, 102, 0.18);
+  --accent: #00ff66; --accent-hover: #4dff92; --accent-text: #4dff92; --accent-dark: #00cc52; --accent-bg: #06240f;
+  --danger: #ff3b3b; --danger-soft: #ff6161; --danger-bg: #250606; --warning: #d8ff00; --success: #00ff66; --blue: #00e0c0; --purple: #6bff8a;
+  --overlay-bg: rgba(0, 8, 0, 0.75); --shadow: rgba(0, 255, 102, 0.14); --selection: rgba(0, 255, 102, 0.30);
+  --scrollbar: #14371a; --scrollbar-hover: #00ff66; --toast-bg: #071507; --code-inline: #4dff92;
+  --input-bg: #071507; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #00ff66, #00e0c0);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -2843,54 +3016,8 @@ body.account-locked #dl-btn-wrap {
 .dash-refresh:hover { color: var(--text); border-color: var(--border-2); background: var(--hover); }
 
 /* ── Pending-update badge (bottom-right, all home pages) ─────────────── */
-.update-badge {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: 9000;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px 10px 14px;
-  background: var(--surface-3);
-  border: 1px solid var(--border-2);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-  font-size: 12.5px;
-  color: var(--text);
-  animation: gh-pop 0.35s ease;
-}
-.update-badge.hidden { display: none; }
-.update-badge-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
-  flex: 0 0 auto;
-}
-.update-badge-btn {
-  border: none;
-  border-radius: 8px;
-  padding: 6px 12px;
-  font: inherit;
-  font-weight: 600;
-  font-size: 12px;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-}
-.update-badge-btn:hover { background: var(--accent-hover, var(--accent)); }
-.update-badge-x {
-  border: none;
-  background: transparent;
-  color: var(--text-3);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 2px 4px;
-}
-.update-badge-x:hover { color: var(--text); }
+/* The update prompt moved from a floating bottom-right badge to a rail button
+   (.app-rail-relaunch) — the old .update-badge* rules are gone with it. */
 
 /* The library page wrapper (added for the My apps | Marketplace tabs) must
    pass the section's flex layout through — otherwise #app-detail's flex:1
@@ -3419,6 +3546,12 @@ ol.docs-list li::before {
   font-size: 11px;
   font-weight: 600;
 }
+/* Built-in workbench tool panels (Files/Terminal/Browser/…) in a layout: the
+   VIEW_META glyph on a chip. currentColor = var(--text), so the stroke is WHITE
+   in dark mode and dark in light. The SVG fills most of the tile so it's legible
+   at every size the tile takes (24 / 32 / 40px). */
+.layout-tool-icon { background: var(--hover); color: var(--text); }
+.layout-tool-icon svg { width: 64%; height: 64%; display: block; }
 
 /* ── Schedules ──────────────────────────────────────────── */
 
@@ -5520,6 +5653,56 @@ select.settings-input {
 .theme-preview-aurora .tp-sidebar { background: rgba(27,16,41,.7); border-right: 1px solid rgba(124,58,237,.4); }
 .theme-preview-aurora .tp-bar { background: rgba(27,16,41,.7); border-bottom: 1px solid rgba(124,58,237,.4); }
 .theme-preview-aurora .tp-content { background: transparent; }
+
+.theme-preview-prism { background: radial-gradient(120% 120% at 0% 100%, rgba(109,94,252,.30), transparent 55%), radial-gradient(110% 110% at 100% 0%, rgba(34,211,238,.28), transparent 52%), radial-gradient(120% 120% at 100% 100%, rgba(244,114,182,.24), transparent 55%), #f4f4fb; }
+.theme-preview-prism .tp-sidebar { background: rgba(255,255,255,.65); border-right: 1px solid rgba(214,213,234,.8); }
+.theme-preview-prism .tp-bar { background: rgba(255,255,255,.65); border-bottom: 1px solid rgba(214,213,234,.8); }
+.theme-preview-prism .tp-content { background: transparent; }
+
+.theme-preview-github { background: #0d1117; }
+.theme-preview-github .tp-sidebar { background: #161b22; border-right: 1px solid #30363d; }
+.theme-preview-github .tp-bar { background: #161b22; border-bottom: 1px solid #30363d; }
+.theme-preview-github .tp-content { background: #0d1117; }
+
+.theme-preview-highvis { background: #000; }
+.theme-preview-highvis .tp-sidebar { background: #0d0d0d; border-right: 1px solid #ffd600; }
+.theme-preview-highvis .tp-bar { background: #0d0d0d; border-bottom: 1px solid #ffd600; }
+.theme-preview-highvis .tp-content { background: #000; }
+
+.theme-preview-claude { background: #f0eee6; }
+.theme-preview-claude .tp-sidebar { background: #faf9f5; border-right: 1px solid #e3e1d6; }
+.theme-preview-claude .tp-bar { background: #faf9f5; border-bottom: 1px solid #e3e1d6; }
+.theme-preview-claude .tp-content { background: #f0eee6; }
+
+.theme-preview-chatgpt { background: #212121; }
+.theme-preview-chatgpt .tp-sidebar { background: #171717; border-right: 1px solid #424242; }
+.theme-preview-chatgpt .tp-bar { background: #2f2f2f; border-bottom: 1px solid #424242; }
+.theme-preview-chatgpt .tp-content { background: #212121; }
+
+.theme-preview-gemini { background: radial-gradient(120% 120% at 0% 100%, rgba(66,133,244,.4), transparent 55%), radial-gradient(110% 110% at 100% 0%, rgba(161,66,244,.32), transparent 52%), #131314; }
+.theme-preview-gemini .tp-sidebar { background: rgba(30,31,32,.75); border-right: 1px solid rgba(68,70,73,.8); }
+.theme-preview-gemini .tp-bar { background: rgba(30,31,32,.75); border-bottom: 1px solid rgba(68,70,73,.8); }
+.theme-preview-gemini .tp-content { background: transparent; }
+
+.theme-preview-dracula { background: #282a36; }
+.theme-preview-dracula .tp-sidebar { background: #21222c; border-right: 1px solid #44475a; }
+.theme-preview-dracula .tp-bar { background: #343746; border-bottom: 1px solid #44475a; }
+.theme-preview-dracula .tp-content { background: #282a36; }
+
+.theme-preview-nord { background: #2e3440; }
+.theme-preview-nord .tp-sidebar { background: #3b4252; border-right: 1px solid #4c566a; }
+.theme-preview-nord .tp-bar { background: #3b4252; border-bottom: 1px solid #4c566a; }
+.theme-preview-nord .tp-content { background: #2e3440; }
+
+.theme-preview-synthwave { background: radial-gradient(120% 120% at 0% 100%, rgba(255,46,151,.45), transparent 55%), radial-gradient(110% 110% at 100% 0%, rgba(0,229,255,.32), transparent 52%), #1a1030; }
+.theme-preview-synthwave .tp-sidebar { background: rgba(34,22,65,.8); border-right: 1px solid rgba(69,48,122,.9); }
+.theme-preview-synthwave .tp-bar { background: rgba(34,22,65,.8); border-bottom: 1px solid rgba(69,48,122,.9); }
+.theme-preview-synthwave .tp-content { background: transparent; }
+
+.theme-preview-matrix { background: #020a02; }
+.theme-preview-matrix .tp-sidebar { background: #071507; border-right: 1px solid #14371a; }
+.theme-preview-matrix .tp-bar { background: #071507; border-bottom: 1px solid #14371a; }
+.theme-preview-matrix .tp-content { background: #020a02; }
 
 .settings-relaunch {
   display: flex;
@@ -9975,6 +10158,10 @@ select.settings-input {
 }
 .cc-mini-ico { display: flex; align-items: center; justify-content: center; width: 60%; height: 60%; }
 .cc-mini-ico img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+/* Built-in tool panels in a command-view layout preview: the VIEW_META glyph,
+   currentColor = var(--text) (WHITE in dark mode), filling the mini cell. */
+.cc-mini-tool { color: var(--text); }
+.cc-mini-tool svg { width: 100%; height: 100%; }
 .cc-mini-initial {
   display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
   background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px;
@@ -11291,7 +11478,10 @@ select:focus {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.code-history { flex: 1; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
+/* Recents shares the rail with the Apps grid below it, so it is capped rather
+   than flex:1 — the grid takes the remaining space. */
+.code-history { flex: 0 1 170px; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
+#recent-apps-list { flex: 1; min-height: 96px; }
 .code-history-item {
   display: flex;
   align-items: center;
@@ -11801,6 +11991,28 @@ body.wb-max .ws-right-rails { width: 100%; }
   padding: 8px;
   border-top: 1px solid var(--border);
 }
+/* "Relaunch to update" — an accent CTA that sits just above the account button,
+   shown only when an update has downloaded (home.ts toggles .hidden). */
+.app-rail-relaunch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.app-rail-relaunch svg { width: 15px; height: 15px; flex-shrink: 0; }
+.app-rail-relaunch:hover { background: var(--accent-hover, var(--accent)); }
+.app-rail-relaunch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-rail-relaunch.hidden { display: none; }
 .app-rail-user-btn {
   display: flex;
   align-items: center;
@@ -11854,6 +12066,137 @@ body.wb-max .ws-right-rails { width: 100%; }
   -webkit-app-region: drag;
 }
 .app-rail-mark { width: 16px; height: 16px; opacity: 0.9; }
+
+/* Recents vertical resize + Recent apps search */
+.recents-vsplit {
+  flex: 0 0 4px;
+  margin: 1px 8px;
+  border-radius: 2px;
+  cursor: row-resize;
+  background: var(--text-faint);
+  opacity: 0.7;
+}
+.recents-vsplit:hover { background: var(--accent); opacity: 1; }
+body.code-vdragging { cursor: row-resize; user-select: none; }
+.app-rail-search { padding: 0 10px 6px; }
+.app-rail-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+.app-rail-search input:focus { border-color: var(--accent); }
+/* Apps grid (rail) — Apps-page icons in tiles */
+.app-rail-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 10px 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 6px;
+  align-content: start;
+}
+.app-rail-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 2px 6px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.app-rail-tile:hover { background: var(--hover); color: var(--text); }
+.app-rail-tile .tile-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+}
+.app-rail-tile .tile-icon img { width: 100%; height: 100%; object-fit: cover; }
+.app-rail-tile .tile-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.app-rail-tile .tile-name {
+  max-width: 100%;
+  font-size: 10.5px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Layout tiles — mini 2x2 stack of the layout's app icons. */
+.app-rail-tile .tile-icon.tile-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  padding: 2px;
+  box-sizing: border-box;
+}
+.tile-layout .mini {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-2);
+  min-width: 0;
+  min-height: 0;
+}
+.tile-layout .mini img { width: 100%; height: 100%; object-fit: cover; }
+.tile-layout .tile-mini-initial { font-size: 8px; font-weight: 600; color: var(--text-3); }
+/* Section labels + pagers inside the rail grid (palette parity) */
+.rail-grid-label {
+  grid-column: 1 / -1;
+  padding: 10px 2px 2px;
+}
+.rail-grid-pager { grid-column: 1 / -1; padding: 2px 0 4px; }
+.rail-grid-pager .pagination-nav { justify-content: center; }
+
+/* Apps label row — open icon on the far right */
+.app-rail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rail-label-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+}
+.rail-label-btn svg { width: 12px; height: 12px; }
+.rail-label-btn:hover { background: var(--hover); color: var(--text); }
+.app-rail-tile--os { opacity: 0.78; }
+.app-rail-tile--os:hover { opacity: 1; }
 
 
 /* While the full-bleed home panel is active, the base titlebar's OS drag
@@ -12849,6 +13192,8 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   font-size: 12px; color: var(--text);
 }
 .ws-tab-ctx-item:hover { background: var(--hover); }
+.ws-tab-ctx-item.danger { color: var(--danger, #e5484d); }
+.ws-tab-ctx-item.danger:hover { background: color-mix(in srgb, var(--danger, #e5484d) 14%, transparent); }
 
 /* ── Loop drop-up: search on top, two-line entries, ⓘ for the full story ── */
 .loop-drop-search {

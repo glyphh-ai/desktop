@@ -161,7 +161,6 @@ declare global {
       dashboardRuns: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       homeGotoSection: (section: string) => Promise<{ ok: boolean }>;
       onGotoSection: (cb: (section: string) => void) => void;
-      updateBadgeDismiss: (version: string) => void;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
