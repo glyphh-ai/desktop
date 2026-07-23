@@ -48,6 +48,11 @@ nsis:
   shortcutName: Glyphh
   runAfterFinish: true
 
+# Windows only: fetch the VC++ redistributable into assets/ so the NSIS custom
+# script (assets/installer.nsh) can install the runtime kuzu's native module
+# needs. No-op on macOS.
+beforePack: scripts/before-pack.cjs
+
 directories:
   output: release
   buildResources: assets
