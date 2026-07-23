@@ -14,6 +14,23 @@
 
 !include "LogicLib.nsh"
 
+; Glyphh can stay resident in the BACKGROUND (tray) after its window is closed —
+; when background mode is on, closing the window hides it and the process keeps
+; running. The installer's built-in "app is running" check then loops forever on
+; "Glyphh Desktop cannot be closed…" even though the user sees no window, and a
+; graceful close never works because background mode refuses it. Force-terminate
+; any lingering process (tree) at the very start, before that check runs. Errors
+; (nothing running) are ignored. customUnInit does the same for uninstall.
+!macro customInit
+  nsExec::Exec 'taskkill /F /T /IM "${PRODUCT_FILENAME}.exe"'
+  Pop $0
+!macroend
+
+!macro customUnInit
+  nsExec::Exec 'taskkill /F /T /IM "${PRODUCT_FILENAME}.exe"'
+  Pop $0
+!macroend
+
 !macro customInstall
   SetRegView 64
   ReadRegDWORD $0 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" "Installed"
