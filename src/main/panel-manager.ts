@@ -331,36 +331,42 @@ export class PanelManager {
 
     ses.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
 
-    // Handle file downloads — auto-save to ~/Downloads with progress UI
+    // Handle file downloads — auto-save to ~/Downloads with progress UI.
+    // Wired on BOTH sessions: persist:yo (app panels) and the default session
+    // (the workbench Browser panel's webview lives there, for glyphh-preview).
     const downloadsDir = path.join(os.homedir(), "Downloads");
-    ses.on("will-download", (_event, item) => {
-      const filename = item.getFilename() || "download";
-      const savePath = path.join(downloadsDir, filename);
-      item.setSavePath(savePath);
+    const wireDownloads = (target: Electron.Session): void => {
+      target.on("will-download", (_event, item) => {
+        const filename = item.getFilename() || "download";
+        const savePath = path.join(downloadsDir, filename);
+        item.setSavePath(savePath);
 
-      const wc = PanelManager.mainWebContents;
-      const totalBytes = item.getTotalBytes();
+        const wc = PanelManager.mainWebContents;
+        const totalBytes = item.getTotalBytes();
 
-      wc?.send("download:start", { filename, totalBytes, savePath });
+        wc?.send("download:start", { filename, totalBytes, savePath });
 
-      item.on("updated", (_e, state) => {
-        if (state === "progressing" && !item.isPaused()) {
-          wc?.send("download:progress", {
+        item.on("updated", (_e, state) => {
+          if (state === "progressing" && !item.isPaused()) {
+            wc?.send("download:progress", {
+              filename,
+              receivedBytes: item.getReceivedBytes(),
+              totalBytes,
+            });
+          }
+        });
+
+        item.once("done", (_e, state) => {
+          wc?.send("download:done", {
             filename,
-            receivedBytes: item.getReceivedBytes(),
-            totalBytes,
+            savePath,
+            state, // "completed", "cancelled", or "interrupted"
           });
-        }
-      });
-
-      item.once("done", (_e, state) => {
-        wc?.send("download:done", {
-          filename,
-          savePath,
-          state, // "completed", "cancelled", or "interrupted"
         });
       });
-    });
+    };
+    wireDownloads(ses);
+    wireDownloads(session.defaultSession);
   }
 
   /**

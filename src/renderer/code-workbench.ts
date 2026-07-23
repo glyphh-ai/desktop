@@ -2416,7 +2416,11 @@ async function init(): Promise<void> {
         </button>
       </div>
       <div class="ws-preview-body">
-        <webview class="ws-preview-frame" partition="persist:yo" allowpopups hidden></webview>
+        <!-- DEFAULT session (no partition) on purpose: glyphh-preview:// (local
+             file/PDF/office previews) is registered there only; persist:yo is
+             deliberately walled off from local files. Same session the old
+             iframe used. "plugins" enables the native PDF viewer in a webview. -->
+        <webview class="ws-preview-frame" allowpopups plugins hidden></webview>
         <div class="ws-preview-stub">
           <div class="ws-preview-stub-title">Nothing open</div>
           <div class="ws-preview-stub-sub">Enter a URL above — e.g. http://localhost:3000 — or open a file from disk.</div>
@@ -2431,10 +2435,14 @@ async function init(): Promise<void> {
     urlInput.value = slot.url || "";
 
     // loadURL once the guest is attached; else the src attribute, which the
-    // webview queues until it is.
+    // webview queues until it is. getWebContentsId THROWS before dom-ready
+    // (it doesn't return undefined), so the probe must be try/caught — an
+    // uncaught throw here left the panel permanently blank.
     const setSrc = (u: string): void => {
-      if (frame.loadURL && frame.getWebContentsId?.()) frame.loadURL(u);
-      else frame.setAttribute("src", u);
+      try {
+        if (frame.isConnected && frame.getWebContentsId?.() !== undefined) { frame.loadURL?.(u); return; }
+      } catch { /* guest not attached yet — fall through to the attribute */ }
+      frame.setAttribute("src", u);
     };
 
     function loadHtml(html: string, label: string): void {
