@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
-import { exportApp, importApp, localBundleDir } from "./glyphh-app-package";
+import { exportServerApp, importApp } from "./glyphh-app-package";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import { getClient } from "./glyphh-client";
 import type { OrgMcpConnection } from "@glyphh/client";
@@ -642,15 +642,18 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("apps-set-connected-slug", () => false);
 
   // ── yo app package (import / export) ──────────────────────
-  // Export an app to a .glyphh bundle. Web apps are manifest-only; bundled apps
-  // carry their code/ assets. (Static-build bundling for vibe output is a TODO;
-  // exportApp already supports a bundledCodeDir arg for when that lands.)
+  // Export an app to a .glyphh bundle. Resolves the app from the org's SERVER
+  // library (fetchOrgApps) — the old path read the legacy local appConnector,
+  // which no real app lives in, so Export silently failed. A hosted app carries
+  // its built code (downloaded via apps.source()); a launcher exports its
+  // manifest only.
   ipcMain.handle("app-export", async (_e, appId: string) => {
-    const app = appConnector.get(appId);
+    const apps = await fetchOrgApps().catch(() => []);
+    const app = apps.find((a) => a.id === appId || a.slug === appId);
     if (!app) return { ok: false, error: `App "${appId}" not found` };
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
-    const safeName = (app.name || app.id).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || app.id;
+    const safeName = (app.name || app.slug || app.id).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || app.slug || app.id;
     const result = await dialog.showSaveDialog(win, {
       title: "Export app",
       defaultPath: `${safeName}.glyphh`,
@@ -658,10 +661,14 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
     const dest = result.filePath.endsWith(".glyphh") ? result.filePath : `${result.filePath}.glyphh`;
-    // Multi-file / local apps (file:// url) export WITH their code folder; remote
-    // web apps (http/yo://) are manifest-only.
-    const codeDir = localBundleDir(app.url);
-    return exportApp(appConnector, appId, dest, codeDir);
+    // Pull the app's built source (hosted apps have a release); a launcher or an
+    // app with no finished build exports manifest-only.
+    let sourceZip: Buffer | undefined;
+    try {
+      const buf = await getClient().apps.source(app.slug);
+      sourceZip = Buffer.from(buf);
+    } catch { /* no build / not hosted — manifest-only export */ }
+    return exportServerApp({ id: app.id, slug: app.slug, name: app.name, url: app.url }, dest, sourceZip);
   });
 
   // Import a .glyphh bundle. A glyphh-app bundle (marketplace unit) installs as

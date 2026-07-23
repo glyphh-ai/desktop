@@ -58,89 +58,53 @@ export function fileUrlToPath(url?: string): string | undefined {
   return p || undefined;
 }
 
-/**
- * The local folder to bundle for a file:// app. If the url points at a file
- * (e.g. .../code/index.html), we bundle its containing folder so sibling assets
- * (JS/CSS/images of a multi-file app) come along; if it points at a folder, we
- * bundle that folder. Returns undefined for remote/non-file apps.
- */
-export function localBundleDir(url?: string): string | undefined {
-  const p = fileUrlToPath(url);
-  if (!p) return undefined;
-  try {
-    const st = fs.statSync(p);
-    if (st.isDirectory()) return p;
-    if (st.isFile()) return path.dirname(p);
-  } catch { /* missing path */ }
-  return undefined;
-}
-
 // ── Export ──────────────────────────────────────────────────
 
-export interface ExportResult {
-  ok: boolean;
-  path?: string;
-  error?: string;
-}
-
 /**
- * Export an app to a `.glyphh` zip at destPath.
- *
- * bundledCodeDir lets a caller (e.g. a vibe Ship-as-static flow) point at a
- * local assets dir to bundle. When omitted, an app is exported as kind:"web"
- * (manifest only) — its url carries everything needed to re-register it.
+ * Export a SERVER-backed app (from the org's app library) to a .glyphh bundle.
+ * The app record comes from fetchOrgApps, not the legacy appConnector — which is
+ * why the old export path silently failed on every real app. When `sourceZip`
+ * is provided (the app's built source, downloaded via apps.source()), its files
+ * are laid under `code/` and the app exports as a full `kind:"bundled"` copy;
+ * otherwise it's a `kind:"web"` manifest describing the launcher.
  */
-export function exportApp(
-  appConnector: AppConnector,
-  appId: string,
+export function exportServerApp(
+  app: { id: string; slug: string; name: string; url: string | null },
   destPath: string,
-  bundledCodeDir?: string,
+  sourceZip?: Buffer,
 ): ExportResult {
-  const app = appConnector.get(appId);
-  if (!app) return { ok: false, error: `App "${appId}" not found` };
-
-  const hasBundle = !!bundledCodeDir && fs.existsSync(bundledCodeDir);
-  const kind: YoAppManifest["kind"] = hasBundle ? "bundled" : "web";
-
-  // For a bundled app, record which file inside code/ is the entry point so
-  // import can re-point the url at the right file (not always index.html).
-  let entry: string | undefined;
-  if (hasBundle) {
-    const filePath = fileUrlToPath(app.url);
-    if (filePath) {
-      const rel = path.relative(bundledCodeDir!, filePath);
-      if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {
-        entry = rel.split(path.sep).join("/");
-      }
-    }
-  }
-
+  const hasCode = !!sourceZip && sourceZip.byteLength > 0;
   const manifest: YoAppManifest = {
-    id: app.id,
+    id: app.slug || app.id,
     name: app.name,
     version: MANIFEST_VERSION,
-    kind,
+    kind: hasCode ? "bundled" : "web",
     ...(app.url ? { url: app.url } : {}),
-    ...(app.commands && Object.keys(app.commands).length ? { commands: app.commands } : {}),
-    ...(app.mcp ? { mcp: app.mcp } : {}),
-    ...(app.forceWeb ? { forceWeb: true } : {}),
-    ...(entry ? { entry } : {}),
+    ...(hasCode ? { entry: "index.html" } : {}),
   };
-
   try {
     const zip = new AdmZip();
     zip.addFile("manifest.json", Buffer.from(JSON.stringify(manifest, null, 2), "utf-8"));
-    if (hasBundle) {
-      // Lay the build under code/ inside the zip.
-      zip.addLocalFolder(bundledCodeDir!, "code");
+    if (hasCode) {
+      // Unpack the built source (a zip) under code/ inside the .glyphh.
+      const src = new AdmZip(sourceZip!);
+      for (const e of src.getEntries()) {
+        if (e.isDirectory) continue;
+        zip.addFile(`code/${e.entryName}`, e.getData());
+      }
     }
-    // Ensure the destination dir exists.
     fs.mkdirSync(path.dirname(destPath), { recursive: true });
     zip.writeZip(destPath);
     return { ok: true, path: destPath };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+export interface ExportResult {
+  ok: boolean;
+  path?: string;
+  error?: string;
 }
 
 // ── Import ──────────────────────────────────────────────────
