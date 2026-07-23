@@ -25,13 +25,31 @@
 ; Defining customCheckAppRunning REPLACES that check: force TREE-kill the whole
 ; group (two passes to absorb Electron's child respawns), then proceed. No
 ; prompt, no infinite loop.
-!macro customCheckAppRunning
+!macro _glyphhKill
+  DetailPrint "Glyphh: clearing any running instances..."
   nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /f /t /im "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
   Sleep 800
   nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /f /t /im "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
   Sleep 400
+!macroend
+
+; Belt-and-braces: kill early in .onInit AND replace the running-app check.
+!macro customInit
+  !insertmacro _glyphhKill
+!macroend
+
+; Replacing customCheckAppRunning REPLACES electron-builder's built-in check
+; entirely (installer + uninstaller), so its "cannot be closed" prompt never
+; runs — Glyphh's background/tray process + Electron's several same-named
+; processes made the stock check (which kills without /t) loop forever.
+!macro customCheckAppRunning
+  !insertmacro _glyphhKill
+!macroend
+
+!macro customUnInit
+  !insertmacro _glyphhKill
 !macroend
 
 !macro customInstall

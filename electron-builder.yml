@@ -39,6 +39,9 @@ win:
   artifactName: "Glyphh-Setup.${ext}"
 
 nsis:
+  # Explicit — don't rely on auto-detecting assets/installer.nsh (the running-app
+  # check override + VC++ redist install live there).
+  include: installer.nsh
   oneClick: false
   perMachine: false
   allowElevation: true
