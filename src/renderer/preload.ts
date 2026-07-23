@@ -159,6 +159,10 @@ contextBridge.exposeInMainWorld("yo", {
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,
   railCollapseToggle: () => ipcRenderer.invoke("rail-collapse-toggle") as Promise<boolean>,
   railCollapseSet: (on: boolean) => ipcRenderer.invoke("rail-collapse-set", on) as Promise<boolean>,
+  // Reset button (top-left): close desktop-layout windows, un-collapse the
+  // rail, and un-dock the main window to a centered default. The renderer
+  // clears its own panels + returns home.
+  appReset: () => ipcRenderer.invoke("app-reset") as Promise<{ ok: boolean }>,
 
   // Panel visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),

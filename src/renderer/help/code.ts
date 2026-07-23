@@ -2023,6 +2023,29 @@ export function openUrlInWorkbench(name: string, url: string): void {
  *  the Code workbench has ever mounted. Flips to the agent surface, boots the
  *  workbench (idempotent async init), then retries the toggle over rAF because
  *  __wbToggleAppSwitcher isn't assigned until that init() resolves. */
+/** Reset the workspace to a clean slate (the Reset button, top-left):
+ *  clear every workbench panel (no layout), return to the home surface, and
+ *  ask main to un-dock the window + close any desktop-layout windows. If the
+ *  user cancels the unsaved-changes prompt, nothing changes. */
+export async function resetWorkspace(): Promise<void> {
+  const w = window as unknown as {
+    __initCodeWorkbench?: () => void; __wbClearPanels?: () => Promise<boolean | void>;
+    yo?: { appReset?: () => Promise<{ ok: boolean }> };
+  };
+  gotoSection("code");
+  w.__initCodeWorkbench?.();
+  // Clear panels — resolves to false only if the user cancelled the
+  // unsaved-changes confirm, in which case the reset is aborted entirely.
+  let tries = 0;
+  const clear = async (): Promise<boolean | void> => {
+    if (w.__wbClearPanels) return w.__wbClearPanels();
+    if (tries++ < 20) { await new Promise((r) => requestAnimationFrame(r)); return clear(); }
+  };
+  const result = await clear();
+  if (result === false) return;
+  await w.yo?.appReset?.().catch(() => {});
+}
+
 export function openCommandCenter(): void {
   void (async () => {
     // Desktop-overlay mode (toggle inside the command center): open the
@@ -2063,6 +2086,7 @@ export function initCode(): void {
   // Header launcher button — bound here (home-panel startup) through the
   // cold-safe path, so it works even before the Code workbench first mounts.
   el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());
+  el("code-reset-btn")?.addEventListener("click", () => { void resetWorkspace(); });
   // Apps open as workbench panels beside the agent (the OS-window
   // replacement). Every main-side opener — Glyphh's open_app, the relay's
   // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure

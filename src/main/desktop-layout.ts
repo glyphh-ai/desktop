@@ -175,6 +175,13 @@ function closeExisting(name: string): void {
   activeLayouts.delete(name);
 }
 
+/** Tear down every active desktop layout (the Reset button) — closes all the
+ *  windows Glyphh owns and stops their re-tile listeners. Foreign windows
+ *  (native apps / browsers the user launched) are left alone. */
+export function closeAllDesktopLayouts(): void {
+  for (const name of [...activeLayouts.keys()]) closeExisting(name);
+}
+
 /** The web url a row opens at (top-level url, else legacy launchConfig homes). */
 function urlOf(app: ServerApp): string {
   const lc = app.launchConfig as { url?: unknown; homepage?: unknown } | null | undefined;

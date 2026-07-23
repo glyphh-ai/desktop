@@ -78,6 +78,9 @@ interface WbTerminal {
   fit?: FitAddon;
   /** Detach functions for IPC subscriptions. */
   detach?: () => void;
+  /** Persistent host-size observer — keeps the xterm filling its container no
+   *  matter when/how the host grows (solo windows, layout settle, resizes). */
+  ro?: ResizeObserver;
 }
 interface TermSlot {
   id: number; view: "terminal";
@@ -667,7 +670,7 @@ async function init(): Promise<void> {
 
   /** Close EVERY workbench panel (the right-click "Clear all" + `.dip clear`).
    *  Guards unsaved editor work first — clearing is otherwise silent data loss. */
-  async function clearAllPanels(): Promise<void> {
+  async function clearAllPanels(): Promise<boolean> {
     // No flushEditorModel here — it's scoped to the Monaco renderer, and the
     // dirty FLAG is already set on the first keystroke, so the count is accurate
     // without folding the live buffer back (we're discarding content anyway).
@@ -682,7 +685,7 @@ async function init(): Promise<void> {
         confirmLabel: "Clear all",
         danger: true,
       });
-      if (!ok) return;
+      if (!ok) return false;
     }
     rails.length = 0;
     maximizedSlotId = null;
@@ -690,6 +693,7 @@ async function init(): Promise<void> {
     renderRails();
     saveLayout();
     scheduleAppSync();
+    return true;
   }
 
   /** Locate a slot and remove it from its rail (without pruning empty rails).
@@ -2675,13 +2679,31 @@ async function init(): Promise<void> {
       hostEl.appendChild(wbt.term.element!);
       requestAnimationFrame(() => { try { wbt.fit?.fit(); } catch { /* noop */ } });
     }
+    // Persistent host observer: whenever the host changes size the xterm
+    // re-fits, so the terminal always fills its full height — including the
+    // cases the .code-root observers miss (a solo tool window, the layout
+    // settling after open, chrome being hidden). Re-created here each mount so
+    // it tracks the CURRENT host element; the previous one is dropped first.
+    wbt.ro?.disconnect();
+    if (typeof ResizeObserver !== "undefined") {
+      let raf = 0;
+      wbt.ro = new ResizeObserver(() => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          const r = hostEl.getBoundingClientRect();
+          if (r.width >= 40 && r.height >= 40) { try { wbt.fit?.fit(); } catch { /* noop */ } }
+        });
+      });
+      wbt.ro.observe(hostEl);
+    }
     wbt.term.focus();
   }
   function killTerminal(t: WbTerminal): void {
     t.detach?.();
+    t.ro?.disconnect();
     window.wb.termKill(t.ptyId);
     try { t.term?.dispose(); } catch { /* noop */ }
-    t.term = undefined; t.fit = undefined; t.detach = undefined;
+    t.term = undefined; t.fit = undefined; t.detach = undefined; t.ro = undefined;
   }
 
   // ── Resizers ──
@@ -3019,7 +3041,7 @@ async function init(): Promise<void> {
     __wbOpenApps?: (apps: WbAppRef[]) => void;
     __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
     __wbOpenLayout?: (layout: WbGridLayout) => void;
-    __wbClearPanels?: () => void;
+    __wbClearPanels?: () => Promise<boolean>;
     __wbGridPanels?: () => boolean;
     __wbListApps?: () => Array<{ slug: string; name: string }>;
     __wbCloseApp?: (slug: string) => boolean;
@@ -3037,7 +3059,7 @@ async function init(): Promise<void> {
   wbApp.__wbOpenLayout = (layout) => openLayoutInWorkbench(layout);
   // `.dip clear` — close all workspace panels. JUST the panels: sessions,
   // history, everything else stays untouched.
-  wbApp.__wbClearPanels = () => { void clearAllPanels(); };
+  wbApp.__wbClearPanels = () => clearAllPanels();
   // `.dip grid` — re-flow every open panel into an even grid: rails of two
   // stacked slots, equal widths, equal heights.
   wbApp.__wbGridPanels = (): boolean => {
