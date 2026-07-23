@@ -14,21 +14,24 @@
 
 !include "LogicLib.nsh"
 
-; Glyphh can stay resident in the BACKGROUND (tray) after its window is closed —
-; when background mode is on, closing the window hides it and the process keeps
-; running. The installer's built-in "app is running" check then loops forever on
-; "Glyphh Desktop cannot be closed…" even though the user sees no window, and a
-; graceful close never works because background mode refuses it. Force-terminate
-; any lingering process (tree) at the very start, before that check runs. Errors
-; (nothing running) are ignored. customUnInit does the same for uninstall.
-!macro customInit
-  nsExec::Exec 'taskkill /F /T /IM "${PRODUCT_FILENAME}.exe"'
+; Replace electron-builder's built-in "is the app running?" check (used by BOTH
+; the installer and the uninstaller). The stock check loops forever here on
+; "Glyphh Desktop cannot be closed" because:
+;   * Glyphh can stay resident in the BACKGROUND (tray) and refuses the graceful
+;     close the stock check asks for, and
+;   * Electron runs several processes all named ${APP_EXECUTABLE_FILENAME}
+;     (main, GPU, renderer, utility), and the stock kill uses /im WITHOUT /t, so
+;     the process count never reaches zero and it falls through to the box.
+; Defining customCheckAppRunning REPLACES that check: force TREE-kill the whole
+; group (two passes to absorb Electron's child respawns), then proceed. No
+; prompt, no infinite loop.
+!macro customCheckAppRunning
+  nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /f /t /im "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
-!macroend
-
-!macro customUnInit
-  nsExec::Exec 'taskkill /F /T /IM "${PRODUCT_FILENAME}.exe"'
+  Sleep 800
+  nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /f /t /im "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
+  Sleep 400
 !macroend
 
 !macro customInstall
