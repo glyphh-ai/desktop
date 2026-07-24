@@ -1,6 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, screen } from "electron";
 import { isRailCollapsed, toggleRailCollapsed, setRailCollapsed } from "./screen-layout";
-import { closeAllDesktopLayouts } from "./desktop-layout";
 import { getMainWindowRef } from "./main-window-ref";
 import fs from "fs";
 import os from "os";
@@ -111,12 +110,11 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("rail-collapse-toggle", () => toggleRailCollapsed());
   ipcMain.handle("rail-collapse-set", (_e, on: boolean) => setRailCollapsed(!!on));
 
-  // Reset the app to a clean slate (the Reset button, top-left): close every
-  // desktop-layout window Glyphh owns, un-collapse the rail, and un-dock the
-  // main window back to a centered default size on its display. The renderer
-  // clears its panels + returns home separately (app-reset:renderer).
+  // Reset the app to a clean slate (the Reset button, top-left): un-collapse
+  // the rail and return the main window to a centered default size on its
+  // display. The renderer clears its panels + returns home separately
+  // (app-reset:renderer).
   ipcMain.handle("app-reset", () => {
-    try { closeAllDesktopLayouts(); } catch { /* nothing to close */ }
     setRailCollapsed(false);
     const win = getMainWindowRef();
     if (win && !win.isDestroyed()) {

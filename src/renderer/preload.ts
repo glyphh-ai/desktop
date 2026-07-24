@@ -155,7 +155,7 @@ contextBridge.exposeInMainWorld("yo", {
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,
   railCollapseToggle: () => ipcRenderer.invoke("rail-collapse-toggle") as Promise<boolean>,
   railCollapseSet: (on: boolean) => ipcRenderer.invoke("rail-collapse-set", on) as Promise<boolean>,
-  // Reset button (top-left): close desktop-layout windows, un-collapse the
+  // Reset button (top-left): un-collapse the
   // rail, and un-dock the main window to a centered default. The renderer
   // clears its own panels + returns home.
   appReset: () => ipcRenderer.invoke("app-reset") as Promise<{ ok: boolean }>,
@@ -323,8 +323,6 @@ contextBridge.exposeInMainWorld("yo", {
   appCallTool: (slug: string, tool: string, args: unknown) =>
     ipcRenderer.invoke("glyphh-app:call-tool", slug, tool, args) as Promise<{ ok: boolean; result?: unknown; error?: string }>,
   // Installed real browsers — the app editor's Browser dropdown.
-  browsersDetect: () =>
-    ipcRenderer.invoke("browsers-detect") as Promise<Array<{ id: string; name: string; chromium: boolean }>>,
   // OS icon for a native app's executable / .app bundle (data URL, "" if none).
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,

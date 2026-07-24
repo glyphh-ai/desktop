@@ -14,12 +14,6 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.yo.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
-  // A DESKTOP-target layout never panels — main opens it on the desktop
-  // (native launches + external browsers), the same path .dip and the agent use.
-  if ((layout as { target?: string }).target === "desktop") {
-    await window.yo.layoutsOpen(name);
-    return;
-  }
   const cells: Array<{ slug: string; name: string; url: string; glyphh: boolean; col: number; row: number; sticky?: boolean; tool?: string }> = [];
   for (const s of layout.splits) {
     const sticky = !!(s as { sticky?: boolean }).sticky;
@@ -142,21 +136,10 @@ const mergeDownBtn = document.getElementById("grid-merge-down") as HTMLButtonEle
 const splitBtn = document.getElementById("grid-split-btn") as HTMLButtonElement;
 const folderModeRow = document.getElementById("layout-folder-mode-row")!;
 const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSelectElement;
-const layoutTargetSelect = document.getElementById("layout-target") as HTMLSelectElement;
 const glyphhRow = document.getElementById("layout-glyphh-row")!;
-const glyphhPosSelect = document.getElementById("layout-glyphh-pos") as HTMLSelectElement;
-const glyphhSizeSelect = document.getElementById("layout-glyphh-size") as HTMLSelectElement;
 
 /** The Glyphh-position row only means anything for desktop-target layouts;
  *  the size select only for the docked modes. */
-function refreshGlyphhRow(): void {
-  const desktop = layoutTargetSelect.value === "desktop";
-  glyphhRow.classList.toggle("hidden", !desktop);
-  const docked = glyphhPosSelect.value === "left" || glyphhPosSelect.value === "right";
-  glyphhSizeSelect.classList.toggle("hidden", !desktop || !docked);
-}
-layoutTargetSelect.addEventListener("change", refreshGlyphhRow);
-glyphhPosSelect.addEventListener("change", refreshGlyphhRow);
 
 /** Recompute whether this layout is folder-bound (any cell's app declares
  *  requiresFolder). Shows/hides the folder-mode row accordingly. */
@@ -545,11 +528,6 @@ async function editLayout(name: string) {
   gridColsSelect.value = String(builderCols);
   gridRowsSelect.value = String(builderRows);
   folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
-  layoutTargetSelect.value = (layout as any)?.target === "desktop" ? "desktop" : "glyphh";
-  const gp = (layout as any)?.glyphh as { mode?: string; fraction?: number } | undefined;
-  glyphhPosSelect.value = gp?.mode && ["rail", "left", "right", "none"].includes(gp.mode) ? gp.mode : "rail";
-  glyphhSizeSelect.value = String(gp?.fraction === 0.25 || gp?.fraction === 0.5 ? gp.fraction : 0.33);
-  refreshGlyphhRow();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
   document.getElementById("layout-open-btn")?.classList.remove("hidden");
@@ -593,18 +571,14 @@ function cancelLayout() {
   loadLayouts();
 }
 
-/** Is this cell impossible for the layout's target? Web apps and workbench
- *  tools go BOTH ways — the target decides panel vs external window (tools
- *  open as solo tool windows on the desktop). Only true impossibilities
- *  block: agent panels and installed Glyphh apps can't leave the Glyphh
- *  window, and native apps can't render as panels. */
-function cellBlockedFor(target: "glyphh" | "desktop", panelId: string): boolean {
+/** A layout is a grid of PANELS inside the Glyphh window. A native app opens in
+ *  its own OS window, so it is the one thing a cell cannot hold. */
+function cellBlocked(panelId: string): boolean {
   if (isToolPanel(panelId)) return false;
-  if (panelId.startsWith("agent:") || panelId === "agents-tabbed") return target === "desktop";
+  if (panelId.startsWith("agent:") || panelId === "agents-tabbed") return false;
   const app = resolveApp(panelId);
   if (!app || app.appArchetype === "glyphh-self") return false;
-  if (app.appArchetype === "glyphh-app") return target === "desktop";
-  return target === "glyphh" && (app.isBrowser === false || !!app.execPath);
+  return app.isBrowser === false || !!app.execPath;
 }
 
 async function saveLayout() {
@@ -628,20 +602,13 @@ async function saveLayout() {
   }
 
   const folderMode = (folderModeSelect.value === "multi" ? "multi" : "single") as "single" | "multi";
-  const target = (layoutTargetSelect.value === "desktop" ? "desktop" : "glyphh") as "glyphh" | "desktop";
-  const glyphhMode = glyphhPosSelect.value as "rail" | "left" | "right" | "none";
-  const glyphh = target === "desktop"
-    ? { mode: glyphhMode, ...(glyphhMode === "left" || glyphhMode === "right" ? { fraction: Number(glyphhSizeSelect.value) || 0.33 } : {}) }
-    : undefined;
-  // Feasibility: web apps follow the target either way; only impossible
-  // pairings block (tools/Glyphh apps on the desktop, natives as panels).
   const offenders = assignedCells
-    .filter((c) => cellBlockedFor(target, c.panelId))
+    .filter((c) => cellBlocked(c.panelId))
     .map((c) => panelLabel(c.panelId));
   if (offenders.length) {
-    layoutFormError.textContent = target === "desktop"
-      ? `A Desktop layout can't contain panel-only content: ${offenders.join(", ")}. Agent panels and installed Glyphh apps only open inside the Glyphh window.`
-      : `A Glyphh layout can't contain native apps: ${offenders.join(", ")}. Native apps can't render as panels — switch "Opens on" to Desktop.`;
+    layoutFormError.textContent =
+      `A layout can't contain native apps: ${offenders.join(", ")}. ` +
+      "A layout arranges panels inside Glyphh; a native app opens in its own OS window.";
     layoutFormError.classList.remove("hidden");
     return;
   }
@@ -653,8 +620,6 @@ async function saveLayout() {
     rowHeights: Array(builderRows).fill(1 / builderRows),
     cells: assignedCells,
     folderMode,
-    target,
-    ...(glyphh ? { glyphh } : {}),
   });
   cancelLayout();
 }

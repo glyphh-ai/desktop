@@ -1506,13 +1506,18 @@ async function init(): Promise<void> {
           const left = (c.col / cols) * 100, top = (c.row / rows) * 100;
           const w = (c.colSpan / cols) * 100, h = (c.rowSpan / rows) * 100;
           const app = resolveCell(c.panelId);
-          // Built-in tool panels (tool:files/terminal/…) have no app to resolve —
-          // render their VIEW_META glyph so the cell isn't blank/"unfinished".
-          const toolIcon = c.panelId?.startsWith("tool:") ? (VIEW_META[c.panelId.slice(5)]?.icon ?? "") : "";
+          // A built-in workspace panel (tool:files/terminal/…) has no app to
+          // resolve. It used to render VIEW_META's line-art glyph, which read as
+          // a different KIND of thing next to the branded app icons beside it —
+          // a lone outline among filled marks. It gets the same lettered tile the
+          // unbranded apps already fall back to, so a layout preview is one
+          // visual language: real icons where they exist, letters where they do not.
+          const toolView = c.panelId?.startsWith("tool:") ? c.panelId.slice(5) : "";
+          const toolTitle = toolView ? (VIEW_META[toolView]?.title ?? toolView) : "";
           const ico = app
             ? `<span class="cc-mini-ico">${appIconInner(iconApp(app), app.name, "cc-mini-initial")}</span>`
-            : toolIcon
-              ? `<span class="cc-mini-ico cc-mini-tool">${toolIcon}</span>`
+            : toolTitle
+              ? `<span class="cc-mini-ico cc-mini-tool"><span class="cc-mini-initial">${esc(toolTitle.charAt(0).toUpperCase())}</span></span>`
               : "";
           return `<div class="cc-mini-cell" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%">${ico}</div>`;
         }).join("");

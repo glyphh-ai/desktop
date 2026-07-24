@@ -1,8 +1,6 @@
 /**
  * native-launch — start real OS apps (the native-OS app model).
  *
- *   - a WEB app → its URL opens in the user's chosen real browser
- *     (launchWebApp: window or tab, per the app's config);
  *   - a NATIVE app (isBrowser=false) → launch its executable, honoring the
  *     archetype's launch config (terminal cwd, editor folder, generic args).
  *
@@ -12,7 +10,6 @@
 
 import { execFile, spawn } from "child_process";
 import { shell } from "electron";
-import { browserForExecPath, type InstalledBrowser } from "./browser-detect.js";
 
 export type LaunchResult = { ok: boolean; error?: string };
 
@@ -113,121 +110,8 @@ end tell
 return "0"`;
 }
 
-/**
- * If a tab with this URL is already open in the target browser, focus it
- * (select the tab, raise its window) and return true — the caller skips
- * opening a duplicate. Safari + Chromium only (Firefox has no tab
- * scripting); non-mac, unscriptable browsers, denied Automation permission,
- * or any script error resolve false so opening proceeds normally.
- *
- * `soloWindowOnly` — only match a tab that is the ONLY tab of its window.
- * Window-mode dedupe needs this: a matching tab buried among the user's
- * other tabs must not claim the whole hosting window (the caller would then
- * place the user's personal browser window into the app's rect).
- */
-export async function focusExistingBrowserTab(
-  url: string,
-  browser: InstalledBrowser,
-  opts?: { soloWindowOnly?: boolean },
-): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const target = url.replace(/\/+$/, "");
-  const appName = (browser.appPath.split("/").pop() || "").replace(/\.app$/, "");
-  if (!appName || !/^https?:\/\//.test(target)) return false;
-  const solo = !!opts?.soloWindowOnly;
-  let script: string;
-  if (browser.id === "safari") {
-    script = tabHuntScript(appName, target, "set current tab of w to t", solo);
-  } else if (browser.chromium) {
-    script = tabHuntScript(appName, target, "set active tab index of w to i", solo);
-  } else {
-    return false;
-  }
-  return await new Promise<boolean>((resolve) => {
-    execFile("osascript", ["-e", script], { timeout: 3000 }, (err, stdout) => {
-      resolve(!err && String(stdout).trim() === "1");
-    });
-  });
-}
 
-/**
- * Open a NEW empty browser window (lands on the browser's new-tab/home page).
- * Needed when a saved "native" app's binary IS a browser: `open -a` on an
- * already-running browser only activates it — no window is created, so a
- * tracked open has nothing to adopt (or worse, latches the user's personal
- * window and resizes it).
- */
-export function launchBrowserWindow(browser: InstalledBrowser): LaunchResult {
-  try {
-    if (process.platform === "darwin") {
-      if (browser.chromium) {
-        safeSpawn("open", ["-na", browser.appPath, "--args", "--new-window"]);
-      } else if (browser.id === "firefox") {
-        safeSpawn("open", ["-na", browser.appPath, "--args", "-new-window"]);
-      } else if (browser.id === "safari") {
-        runOsascript(['tell application "Safari"', "activate", "make new document", "end tell"]);
-      } else {
-        safeSpawn("open", ["-na", browser.appPath]);
-      }
-    } else {
-      safeSpawn(browser.appPath, [browser.chromium ? "--new-window" : "-new-window"]);
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
 
-/**
- * Open a web app in a real browser — the ONLY way web apps open (we stay
- * native OS: the user's own browser, extensions, sessions; no webview shell).
- *
- *   browser — a detected browser (browser-detect), or null = system default.
- *   openAs  — "window": a NEW browser window, trackable by the OS window
- *             manager so layouts/panels can tile, focus, and re-find it;
- *             "tab": a tab in the frontmost window (fire-and-forget — no
- *             cross-browser way to address a specific tab afterwards).
- */
-export function launchWebApp(url: string, browser: InstalledBrowser | null, openAs: "window" | "tab"): LaunchResult {
-  if (!/^https?:\/\//.test(url)) return { ok: false, error: "App has no web URL" };
-  try {
-    if (!browser) {
-      // "System default" — we can't know which app claims the URL, so this is
-      // always fire-and-forget (no window to track).
-      void shell.openExternal(url).catch(() => {});
-      return { ok: true };
-    }
-    if (process.platform === "darwin") {
-      if (openAs === "tab") {
-        safeSpawn("open", ["-a", browser.appPath, url]);
-      } else if (browser.chromium) {
-        // -n signals a fresh activation so --args reach a NEW window.
-        safeSpawn("open", ["-na", browser.appPath, "--args", "--new-window", url]);
-      } else if (browser.id === "firefox") {
-        safeSpawn("open", ["-na", browser.appPath, "--args", "-new-window", url]);
-      } else if (browser.id === "safari") {
-        // Safari has no CLI window flag — AppleScript makes a real new window.
-        runOsascript([
-          'tell application "Safari"',
-          "activate",
-          `make new document with properties {URL:"${appleEscape(url)}"}`,
-          "end tell",
-        ]);
-      } else {
-        safeSpawn("open", ["-a", browser.appPath, url]);
-      }
-    } else if (process.platform === "win32") {
-      safeSpawn(browser.appPath, openAs === "window"
-        ? [browser.chromium ? "--new-window" : "-new-window", url]
-        : [url]);
-    } else {
-      safeSpawn(browser.appPath, openAs === "window" ? ["--new-window", url] : [url]);
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
 
 /**
  * Launch a native desktop app by executable path. The archetype decides which
@@ -273,14 +157,6 @@ export function launchNativeApp(
   const genericArgs = archetype === "generic" && Array.isArray(lc.args)
     ? (lc.args as unknown[]).map(str).filter(Boolean)
     : [];
-
-  // The executable IS a browser (a saved Chrome/Safari card). `open -a` on a
-  // running browser activates it without creating a window — open a real NEW
-  // window instead. Custom args (profiles etc.) keep the generic path.
-  if (!pathArg && genericArgs.length === 0) {
-    const asBrowser = browserForExecPath(exec);
-    if (asBrowser) return launchBrowserWindow(asBrowser);
-  }
 
   try {
     if (process.platform === "darwin" && exec.endsWith(".app")) {

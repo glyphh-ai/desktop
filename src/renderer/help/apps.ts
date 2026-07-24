@@ -1461,8 +1461,6 @@ async function openPanelAppDetail(app: PanelApp) {
   (document.getElementById("app-detail-type") as HTMLSelectElement).value = detailType;
   {
     const lc = (app.launchConfig || {}) as Record<string, unknown>;
-    (document.getElementById("app-detail-browser") as HTMLSelectElement).value = typeof lc.browser === "string" && lc.browser ? String(lc.browser) : "glyphh-panel";
-    (document.getElementById("app-detail-open-as") as HTMLSelectElement).value = lc.openAs === "tab" ? "tab" : "window";
   }
   (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
   const detailArchetype = (app.appArchetype as Archetype) || "generic";
@@ -1564,19 +1562,6 @@ function initApps() {
   initReleasesTab();
   initMarketplaceTab();
 
-  // Browser dropdowns (add form + editor) — the real browsers on this machine.
-  void window.yo.browsersDetect?.().then((browsers) => {
-    for (const id of ["app-add-browser", "app-detail-browser"]) {
-      const sel = document.getElementById(id) as HTMLSelectElement | null;
-      if (!sel) continue;
-      for (const b of browsers) {
-        const opt = document.createElement("option");
-        opt.value = b.id;
-        opt.textContent = b.name;
-        sel.appendChild(opt);
-      }
-    }
-  }).catch(() => { /* dropdowns keep "System default" */ });
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
   document.querySelectorAll<HTMLElement>(".tab-upgrade-btn").forEach((btn) => {
@@ -1677,8 +1662,6 @@ function initApps() {
     addUrlInput.value = "";
     // Reset Browser ↔ Native fields to defaults (browser / webview / terminal).
     addTypeSelect.value = "browser";
-    (document.getElementById("app-add-browser") as HTMLSelectElement).value = "glyphh-panel";
-    (document.getElementById("app-add-open-as") as HTMLSelectElement).value = "window";
     addExecPath.value = "";
     addArchetypeSelect.value = "generic";
     writeLaunchConfig("app-add", "generic", null);
@@ -1742,11 +1725,9 @@ function initApps() {
     }
     const archetype = addArchetypeSelect.value as Archetype;
     const createInput = addType === "browser"
-      ? { name, slug: id, isBrowser: true, url, execPath: null,
-          launchConfig: {
-            browser: (document.getElementById("app-add-browser") as HTMLSelectElement).value,
-            openAs: (document.getElementById("app-add-open-as") as HTMLSelectElement).value,
-          } }
+      // A web app opens as a Glyphh panel — there is no browser or window
+      // placement to configure, so it carries no launcher config at all.
+      ? { name, slug: id, isBrowser: true, url, execPath: null, launchConfig: {} }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
     const created = await window.yo.panelAppsCreate(createInput);
     if (!created.ok || !created.app) {
@@ -1824,10 +1805,7 @@ function initApps() {
     } else if (type === "browser") {
       const url = appDetailUrl.value.trim();
       if (url) patch.url = url;
-      patch.launchConfig = {
-        browser: (document.getElementById("app-detail-browser") as HTMLSelectElement).value,
-        openAs: (document.getElementById("app-detail-open-as") as HTMLSelectElement).value,
-      };
+      patch.launchConfig = {};
       patch.execPath = null;
     } else {
       patch.url = null;

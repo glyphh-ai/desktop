@@ -1069,6 +1069,20 @@ function initWorkdirGate(): void {
 // Images (pasted screenshots, picked files), files, and folders queue as
 // chips and ride the next send. Pasted image DATA saves to the user-scoped
 // attachments dir in main; everything else is a path reference.
+/**
+ * Notes typed while a run is in flight.
+ *
+ * Enter used to do nothing at all while thinking, so a thought you had mid-run
+ * had nowhere to go — you either interrupted the agent or lost it. These queue
+ * instead, stay deletable, and go as the next turn when the run ends (whether it
+ * finished on its own or you stopped it).
+ *
+ * Deliberately NOT per-chat: switching sessions mid-run is rare, and a note that
+ * follows you is visible and removable, where one pinned to a chat you left is
+ * neither.
+ */
+let pendingNotes: Array<{ id: string; text: string }> = [];
+
 let pendingAttach: AttachRef[] = [];
 
 function attachChipEl(a: AttachRef, onRemove?: () => void): HTMLElement {
@@ -1117,6 +1131,79 @@ function paintAttachChips(): void {
   pendingAttach.forEach((a, i) => {
     wrap.appendChild(attachChipEl(a, () => { pendingAttach.splice(i, 1); paintAttachChips(); }));
   });
+}
+
+function paintPendingNotes(): void {
+  const wrap = el<HTMLDivElement>("code-pending-notes");
+  if (!wrap) return;
+  wrap.hidden = !pendingNotes.length;
+  wrap.textContent = "";
+  if (!pendingNotes.length) return;
+
+  const head = document.createElement("div");
+  head.className = "cpn-head";
+  head.textContent = pendingNotes.length === 1
+    ? "1 note waiting — sends when this run ends"
+    : `${pendingNotes.length} notes waiting — send when this run ends`;
+  wrap.appendChild(head);
+
+  for (const note of pendingNotes) {
+    const row = document.createElement("div");
+    row.className = "cpn-row";
+
+    const text = document.createElement("div");
+    text.className = "cpn-text";
+    text.textContent = note.text;
+    text.title = note.text;
+
+    const del = document.createElement("button");
+    del.className = "cpn-del";
+    del.type = "button";
+    del.textContent = "×";
+    del.title = "Remove this note";
+    del.setAttribute("aria-label", `Remove note: ${note.text.slice(0, 60)}`);
+    del.addEventListener("click", () => {
+      pendingNotes = pendingNotes.filter((n) => n.id !== note.id);
+      paintPendingNotes();
+    });
+
+    row.append(text, del);
+    wrap.appendChild(row);
+  }
+}
+
+/** Queue what is in the composer as a note. Returns false when there was nothing. */
+function queueNote(): boolean {
+  const ta = input();
+  const text = ta?.value.trim();
+  if (!ta || !text) return false;
+  pendingNotes.push({ id: `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`, text });
+  ta.value = "";
+  autoGrow(ta);
+  paintPendingNotes();
+  return true;
+}
+
+/**
+ * Send the queued notes as the next turn. Called when a run ends — including
+ * when the user stopped it, which is the point: stopping with notes waiting
+ * means "enough, here is what I actually want".
+ *
+ * They go through the composer and the normal send path so a queued note is
+ * indistinguishable from a typed one — same title handling, same store write,
+ * same run launch.
+ */
+function flushPendingNotes(): void {
+  if (!pendingNotes.length) return;
+  const ta = input();
+  if (!ta) return;
+  const text = pendingNotes.map((n) => n.text).join("\n\n");
+  pendingNotes = [];
+  paintPendingNotes();
+  ta.value = ta.value.trim() ? `${text}\n\n${ta.value.trim()}` : text;
+  autoGrow(ta);
+  // After the finishRun paint settles, so the new turn lands under the old one.
+  setTimeout(() => send(), 0);
 }
 
 function queueAttachments(refs: AttachRef[]): void {
@@ -1201,6 +1288,31 @@ function wireComposerAttachments(): void {
     if (!paths.length) return;
     void window.yo.glyphhClassifyPaths(paths).then((refs) => { if (refs.length) queueAttachments(refs); });
   });
+}
+
+/**
+ * Keep the window's drag strip clear of the chrome cluster.
+ *
+ * The strip is `-webkit-app-region: drag`, and a button underneath a drag region
+ * stops receiving clicks — Electron hands the whole area to the window manager.
+ * The offset used to be a hardcoded 176px, which was exactly the cluster's width
+ * until the Reset button was added: the launcher then sat 184–210px, entirely
+ * inside the strip, and went dead while Reset (ending at 176) still worked.
+ *
+ * Measuring instead of hardcoding means the next button added cannot repeat it.
+ */
+function syncDragStripOffset(): void {
+  const cluster = document.getElementById("panel-wc");
+  const strip = document.querySelector<HTMLElement>(".app-rail-top");
+  if (!cluster || !strip) return;
+  const apply = (): void => {
+    const w = cluster.getBoundingClientRect().width;
+    // Hidden (a locked single-section panel) → leave the CSS default alone.
+    if (w > 0) strip.style.marginLeft = `${Math.ceil(w) + 8}px`;
+  };
+  apply();
+  // Buttons appear and hide with mode (rail toggle, locked panels), so track it.
+  new ResizeObserver(apply).observe(cluster);
 }
 
 // ── Composer ─────────────────────────────────────────────────────────────
@@ -1438,6 +1550,8 @@ function finishRun(text: string, stopped = false): void {
   setThinking(false);
   renderThread();
   refreshCtxMeter();
+  // Anything typed while this run was in flight goes now, as its own turn.
+  flushPendingNotes();
 }
 
 // ── Ask dock — approvals + agent questions above the composer ─────────────
@@ -2087,6 +2201,7 @@ export function initCode(): void {
   // cold-safe path, so it works even before the Code workbench first mounts.
   el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());
   el("code-reset-btn")?.addEventListener("click", () => { void resetWorkspace(); });
+  syncDragStripOffset();
   // Apps open as workbench panels beside the agent (the OS-window
   // replacement). Every main-side opener — Glyphh's open_app, the relay's
   // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure
@@ -2173,7 +2288,10 @@ export function initCode(): void {
   ta?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!thinking) send();
+      // Mid-run, Enter QUEUES the note rather than doing nothing — the button
+      // beside it is the stop control while thinking, and stopping flushes.
+      if (thinking) queueNote();
+      else send();
     } else if (e.key === "Tab" && e.shiftKey) {
       e.preventDefault();
       cycleMode();

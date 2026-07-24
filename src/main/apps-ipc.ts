@@ -10,7 +10,6 @@ import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/client";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 
-import { detectBrowsers } from "./browser-detect";
 import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
@@ -79,9 +78,6 @@ function registerPanelAppsIpc(): void {
     ccOverlayWin.once("ready-to-show", () => ccOverlayWin?.show());
     return { ok: true };
   });
-
-  // Installed real browsers — feeds the app editor's Browser dropdown.
-  ipcMain.handle("browsers-detect", () => detectBrowsers());
 
   // Native-app icon as a data URL (Apps page, Layouts cards, command overlay),
   // session-cached per path and SERIALIZED through a promise chain.
@@ -486,9 +482,9 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
 
   registerPanelAppsIpc();
 
-  // Open a saved layout at the OS level — real windows tiled across the display
-  // (nothing renders inside the Glyphh client). This is the hand-off the Layouts
-  // tab's "Open" button uses instead of the legacy in-window layout manager.
+  // Open a saved layout: every cell becomes a workbench PANEL inside Glyphh.
+  // (Layouts used to be able to target the desktop and tile real OS windows —
+  // that is gone; Glyphh does not arrange other apps' windows.)
   ipcMain.handle("layouts-open", async (_e, name: string) => {
     showThinking();
     try { return { ok: true, ...(await openLayoutByName(String(name))) }; }

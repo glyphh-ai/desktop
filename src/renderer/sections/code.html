@@ -64,6 +64,9 @@
               <div id="code-thread" class="code-thread"></div>
               <div class="code-composer">
                 <div id="code-ask-dock" class="code-ask-dock" hidden></div>
+                <!-- Notes typed while the agent is running. They wait here until the
+                     run ends, then go as the next turn — deletable until they do. -->
+                <div id="code-pending-notes" class="code-pending-notes" hidden></div>
                 <div id="code-attach-chips" class="code-attach-chips" hidden></div>
                 <div class="code-input-wrap">
                   <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>

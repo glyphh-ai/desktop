@@ -154,7 +154,6 @@ declare global {
       appsAdd: (id: string, name: string, url?: string) => Promise<unknown>;
       // Dashboard shell (5a): server-authoritative Apps tab CRUD — see
       // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
-      browsersDetect: () => Promise<Array<{ id: string; name: string; chromium: boolean }>>;
       appFileIcon: (execPath: string) => Promise<string>;
       appLaunch: (spec: {
         slug: string; name: string; url?: string | null;

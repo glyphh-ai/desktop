@@ -15,7 +15,6 @@ import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
 import { openLayoutByName, openAppByRef, clearWbPanels, gridWbPanels } from "./app-resolver";
-import { tryDipOsCommand } from "./dip-os-commands";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { setPreference } from "./stores/preferences-db";
 export class CommandParser {
@@ -288,12 +287,6 @@ export class CommandParser {
     if (sub === "back" || (sub === "." && args.length === 1)) {
       return this.cycleTabs(true, win);
     }
-
-    // OS-window verbs (min/minAll/exp/expAll + the `os` namespace for
-    // grid/split) — arrange EVERY visible app window on the machine, not
-    // Glyphh's panels. Non-matches return null and dispatch continues.
-    const osResult = await tryDipOsCommand(args);
-    if (osResult !== null) return osResult;
 
     // `dip a | b | c` — open several apps, each per its own config.
     if (args.join(" ").includes("|")) {
