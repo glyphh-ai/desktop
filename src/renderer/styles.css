@@ -640,6 +640,33 @@ body {
 
 /* ── Device-flow confirmation code (square tiles) ─────────── */
 
+/* "Waiting for approval" — a quiet status bubble (not a dead button) with a
+   pulsing dot, shown while the browser half of the device grant is pending. */
+#onboarding-overlay .device-waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  margin: 0.25rem auto 0;
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  background: var(--surface, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  color: var(--text-2, #b6b6b6);
+  font-size: 0.875rem;
+}
+#onboarding-overlay .device-waiting-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #af5fff);
+  animation: device-waiting-pulse 1.2s ease-in-out infinite;
+}
+@keyframes device-waiting-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
 #onboarding-overlay .device-code-wrap {
   margin-top: 1.75rem;
   text-align: center;
@@ -935,10 +962,14 @@ body {
   transform: translateX(0);
   transition: none;
 }
+/* Once the purple→pink gradient wipes in (hover / active / focus, and the
+   disabled state that also shows it), the resting black text is unreadable on
+   it — switch to white. Resting (white button) keeps black. */
 #onboarding-overlay .btn-primary:hover:not(:disabled),
 #onboarding-overlay .btn-primary:active:not(:disabled),
-#onboarding-overlay .btn-primary:focus-visible:not(:disabled) {
-  color: #000;
+#onboarding-overlay .btn-primary:focus-visible:not(:disabled),
+#onboarding-overlay .btn-primary:disabled {
+  color: #fff;
 }
 
 #onboarding-overlay .btn-secondary {

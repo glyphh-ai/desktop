@@ -167,6 +167,15 @@ function renderAuthStep(): void {
   retry.type = "button";
   retry.style.display = "none";
 
+  // While the browser half is pending, we DON'T disable the primary button into a
+  // dead "Waiting…" control (it read as broken). Instead a quiet status bubble
+  // with a pulsing dot stands in, and the button hides until there's an action.
+  const waiting = el("div", "device-waiting");
+  const waitingDot = el("span", "device-waiting-dot");
+  const waitingText = el("span", undefined, "Waiting for approval…");
+  waiting.append(waitingDot, waitingText);
+  waiting.style.display = "none";
+
   let approvalUrl = "";
   openA.addEventListener("click", (e) => {
     e.preventDefault();
@@ -179,8 +188,8 @@ function renderAuthStep(): void {
   const start = async () => {
     const mine = ++attempt;
     err.clear();
-    btn.disabled = true;
-    btn.textContent = "Waiting for approval…";
+    btn.style.display = "none";
+    waiting.style.display = "";
     showPrompt = (prompt) => {
       if (mine !== attempt) return;
       approvalUrl = prompt.verificationUriComplete || prompt.verificationUri;
@@ -195,6 +204,8 @@ function renderAuthStep(): void {
       completeOnboarding();
       return;
     }
+    waiting.style.display = "none";
+    btn.style.display = "";
     btn.disabled = false;
     btn.textContent = "Continue in browser";
     codeWrap.style.display = "none";
@@ -207,6 +218,6 @@ function renderAuthStep(): void {
   btn.addEventListener("click", () => { void start(); });
   retry.addEventListener("click", () => { void start(); });
 
-  stepAuth.append(actions(btn), codeWrap, actions(retry), err.el);
+  stepAuth.append(actions(btn), waiting, codeWrap, actions(retry), err.el);
   stepAuth.append(legal());
 }
