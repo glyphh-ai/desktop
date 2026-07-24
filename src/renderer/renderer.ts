@@ -442,7 +442,7 @@ declare global {
       wbAppsChanged: (apps: Array<{ slug: string; name: string }>) => void;
       onWbAppCommand: (cb: (cmd: { action: string; app?: { slug: string; name: string; url: string; glyphh?: boolean }; apps?: Array<{ slug: string; name: string; url: string; glyphh?: boolean }>; slug?: string }) => void) => void;
       mcpConnectionsInstall: (slug: string) => Promise<{ ok: boolean; error?: string }>;
-      mcpConnectionsCreate: (fields: { name: string; url: string; headers?: Record<string, string> }) => Promise<{ ok: boolean; error?: string; connection?: { slug: string; name: string }; toolCount?: number }>;
+      mcpConnectionsCreate: (fields: { name: string; url: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret?: string } }) => Promise<{ ok: boolean; error?: string; connection?: { slug: string; name: string }; toolCount?: number }>;
       mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; connection?: unknown }>;
       mcpConnectionsDelete: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       mcpConnectionsTools: (slug: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;

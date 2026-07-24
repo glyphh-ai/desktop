@@ -24,15 +24,24 @@
                 <div id="conn-detail-head" class="edit-head"></div>
                 <label class="settings-label">Name</label>
                 <input id="conn-name" type="text" class="settings-input" placeholder="e.g. Gmail — work" spellcheck="false" autocomplete="off" />
-                <!-- Custom MCP only: remote server config — the add AND edit
-                     form. The SERVER dials the endpoint; header values are
-                     write-only (saved encrypted, never shown again). -->
+                <!-- Custom MCP: connect a remote server by URL. Auth is handled
+                     automatically on first connect (OAuth). The OAuth client +
+                     headers under Advanced are only for servers that need them
+                     (header values are write-only — saved encrypted, never shown). -->
                 <div id="conn-custom-config" class="hidden">
-                  <label class="settings-label">Server URL</label>
+                  <label class="settings-label">Remote MCP server URL</label>
                   <input id="conn-custom-url" type="text" class="settings-input" placeholder="https://mcp.example.com/mcp" spellcheck="false" autocomplete="off" />
-                  <label class="settings-label">Headers <span style="color:var(--text-2);font-weight:400;">(Name: value, one per line)</span></label>
-                  <textarea id="conn-custom-headers" class="settings-input" rows="3" placeholder="Authorization: Bearer sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
-                  <p id="conn-custom-headers-hint" class="settings-hint hidden" style="margin-top:4px;"></p>
+                  <button type="button" id="conn-advanced-toggle" class="mcp-advanced-toggle" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:8px 0;text-align:left;display:block;">▸ Advanced settings</button>
+                  <div id="conn-advanced" class="hidden">
+                    <label class="settings-label">OAuth Client ID <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                    <input id="conn-oauth-id" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">OAuth Client Secret <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                    <input id="conn-oauth-secret" type="password" class="settings-input" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Headers <span style="color:var(--text-2);font-weight:400;">(Name: value, one per line)</span></label>
+                    <textarea id="conn-custom-headers" class="settings-input" rows="3" placeholder="Authorization: Bearer sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
+                    <p id="conn-custom-headers-hint" class="settings-hint hidden" style="margin-top:4px;"></p>
+                  </div>
+                  <p class="settings-hint" style="margin-top:8px;">Authenticated servers sign you in automatically on first connect.</p>
                 </div>
                 <!-- Custom MCP only (saved connections): live status + enable/disable -->
                 <div id="conn-custom-status" class="hidden" style="margin-top:16px;">

@@ -439,12 +439,17 @@ async function saveCustomForm(): Promise<void> {
   const name = nameInput.value.trim();
   if (!name) { fail("Name is required."); nameInput.focus(); return; }
   const url = (document.getElementById("conn-custom-url") as HTMLInputElement).value.trim();
-  if (!url) { fail("Server URL is required."); return; }
+  if (!url) { fail("Remote MCP server URL is required."); return; }
   const headers = collectCustomHeaders();
+  // Optional pre-registered OAuth client (Advanced). Blank = the server is
+  // discovered + registered automatically on first connect (OAuth/PKCE).
+  const oauthId = (document.getElementById("conn-oauth-id") as HTMLInputElement | null)?.value.trim();
+  const oauthSecret = (document.getElementById("conn-oauth-secret") as HTMLInputElement | null)?.value.trim();
+  const oauth = oauthId ? { clientId: oauthId, ...(oauthSecret ? { clientSecret: oauthSecret } : {}) } : undefined;
 
   if (customMode === "new") {
     setBtnBusy(saveBtn, true, "Connecting…");
-    const res = await window.yo.mcpConnectionsCreate({ name, url, headers: headers ?? {} });
+    const res = await window.yo.mcpConnectionsCreate({ name, url, headers: headers ?? {}, ...(oauth ? { oauth } : {}) });
     if (!res.connection) {
       setBtnBusy(saveBtn, false, "Add & Connect");
       fail(res.error || "Couldn't create the connection.");
@@ -594,6 +599,12 @@ export function initConnections(): void {
   searchEl.addEventListener("input", () => { connSearch = searchEl.value; renderConnectionsList(); });
   document.getElementById("conn-add-btn")!.addEventListener("click", openCatalog);
   document.getElementById("conn-add-custom-btn")!.addEventListener("click", () => openCustomForm("new"));
+  document.getElementById("conn-advanced-toggle")?.addEventListener("click", () => {
+    const adv = document.getElementById("conn-advanced")!;
+    const btn = document.getElementById("conn-advanced-toggle")!;
+    const hidden = adv.classList.toggle("hidden");
+    btn.textContent = hidden ? "▸ Advanced settings" : "▾ Advanced settings";
+  });
   customToggle.addEventListener("click", async () => {
     if (!currentCustomSlug) return;
     const c = customServers.find((x) => x.slug === currentCustomSlug);

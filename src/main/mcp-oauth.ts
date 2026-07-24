@@ -286,7 +286,7 @@ export async function getValidAccessToken(serverUrl: string): Promise<string | n
 /** Run the full interactive OAuth flow for `serverUrl` (discovery → register →
  *  consent in the in-app web view → code exchange), persist the tokens, and
  *  return the access token. */
-export async function authorizeMcpServer(win: BrowserWindow, serverUrl: string, resourceMetadataUrl?: string): Promise<string> {
+export async function authorizeMcpServer(win: BrowserWindow, serverUrl: string, resourceMetadataUrl?: string, preClient?: { clientId: string; clientSecret?: string }): Promise<string> {
   const key = canonicalResource(serverUrl);
   const store = readStore();
 
@@ -300,7 +300,9 @@ export async function authorizeMcpServer(win: BrowserWindow, serverUrl: string, 
     token_endpoint: as.token_endpoint,
     registration_endpoint: as.registration_endpoint,
     resource: key,
-    client: store[key]?.client,
+    // Prefer a stored client, then a caller-supplied pre-registered one
+    // (Advanced settings), then fall back to dynamic registration.
+    client: store[key]?.client ?? (preClient ? { client_id: preClient.clientId, client_secret: preClient.clientSecret } : undefined),
   };
 
   if (!entry.client) {

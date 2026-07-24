@@ -438,18 +438,19 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
   });
-  ipcMain.handle("mcp-connections-create", async (_e, fields: { name: string; url: string; headers?: Record<string, string> }) => {
+  ipcMain.handle("mcp-connections-create", async (_e, fields: { name: string; url: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret?: string } }) => {
     try {
       const slug = fields.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
       let headers = fields.headers ?? {};
       // OAuth 2.1 endpoints: the server dials the URL, so it can't drive the
       // interactive consent. Probe here; if the server demands authorization,
       // run the consent in an in-app web view and hand the bearer to the server.
+      // A pre-registered OAuth client (Advanced) is used when provided, else DCR.
       const win = getMainWindow();
       if (win) {
         const probe = await probeMcpAuth(fields.url);
         if (probe.needsAuth) {
-          const token = await authorizeMcpServer(win, fields.url, probe.resourceMetadataUrl);
+          const token = await authorizeMcpServer(win, fields.url, probe.resourceMetadataUrl, fields.oauth?.clientId ? fields.oauth : undefined);
           headers = { ...headers, Authorization: `Bearer ${token}` };
         }
       }
