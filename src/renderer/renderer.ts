@@ -380,6 +380,7 @@ declare global {
       onGlyphhAgentDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
       onGlyphhAgentError: (cb: (d: { runId: string; error: string }) => void) => void;
       onGlyphhAgentSetup: (cb: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => void;
+      onGlyphhAgentCredits: (cb: (d: { runId: string; creditsMicro: number }) => void) => void;
       onGlyphhAgentProgress: (cb: (d: { runId: string; inTokens: number; outTokens: number }) => void) => void;
       onGlyphhAgentTool: (cb: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => void;
       glyphhApprovalRespond: (id: string, allow: boolean) => Promise<boolean>;

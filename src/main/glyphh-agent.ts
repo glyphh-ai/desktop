@@ -74,6 +74,10 @@ export function isGlyphhRunActive(): boolean {
 // a provider key, only the interceptor's per-process handle.
 let interceptor: Interceptor | null = null;
 
+// The interceptor is one-per-process but a run is one-at-a-time, so the active
+// run installs a sink here and the trailing usage frame (per turn) routes to it.
+let usageSink: ((u: { creditsMicro: number; inputTokens: number; outputTokens: number }) => void) | null = null;
+
 /** The agent subprocess's OWN config home — never the user's ~/.claude. */
 function agentConfigDir(): string {
   const dir = glyphhPath("agent-config");
@@ -121,6 +125,7 @@ async function ensureInterceptor(): Promise<Interceptor> {
   interceptor = await startInterceptor({
     client: getClient(),
     onError: (err: Error) => console.warn("[glyphh-agent] model turn failed:", err.message),
+    onUsage: (u) => usageSink?.(u),
   });
   return interceptor;
 }
@@ -309,6 +314,15 @@ async function sdkRun(
 ): Promise<void> {
   const emit = (channel: string, data: Record<string, unknown>) => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
+  };
+
+  // Per-turn credits arrive from the interceptor's usage frame; accumulate them
+  // across the run's turns and emit the running total. Credits are the server's
+  // computed PRICE — the number the user is billed — not the vendor's raw cost.
+  let runCreditsMicro = 0;
+  usageSink = (u) => {
+    runCreditsMicro += u.creditsMicro || 0;
+    emit("glyphh-agent:credits", { creditsMicro: runCreditsMicro });
   };
 
   const defs = glyphhToolDefs();
@@ -552,6 +566,7 @@ async function sdkRun(
     else emit("glyphh-agent:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) {
+      usageSink = null;
       emit("glyphh-agent:done", { stopped: true });
       captureRun({ kind: "agent", mode: glyphhMode(), turnsUsed, stopped: true, messages: base });
       return;
@@ -559,6 +574,10 @@ async function sdkRun(
     runError = err instanceof Error ? err.message : String(err);
     emit("glyphh-agent:error", { error: runError });
   }
+  // Stop routing usage frames to a finished run's emit — the next run installs
+  // its own sink, but a stray late frame must not paint a dead panel.
+  usageSink = null;
+
   // The flywheel: transcript + outcome are next-era training data (the
   // tripwire corpus — frontier turns teach the local model by example).
   captureRun({

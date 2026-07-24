@@ -570,6 +570,7 @@ let streamBubble: HTMLElement | null = null;
 let runStartAt = 0;
 let runIn = 0;
 let runOut = 0;
+let runCreditsMicro = 0;
 let runTicker: ReturnType<typeof setInterval> | null = null;
 // This run's step lines, mirrored to the workbench Plan rail's timeline.
 let runSteps: string[] = [];
@@ -578,6 +579,16 @@ function broadcastTimeline(running: boolean): void {
   try {
     document.dispatchEvent(new CustomEvent("glyphh-agent:timeline", { detail: { steps: [...runSteps], running } }));
   } catch { /* no listeners */ }
+}
+
+/** Micro-credits → a "N credits" label — the number the user is billed, the
+ *  headline of the footer. Small runs get decimals, big ones stay whole. */
+function fmtCredits(micro: number): string {
+  const c = micro / 1_000_000;
+  const n = c >= 100 ? Math.round(c).toLocaleString()
+    : c >= 1 ? c.toFixed(1)
+    : c.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  return `${n} credit${c === 1 ? "" : "s"}`;
 }
 
 /** 1_234 → "1.2k", so the footer stays tight as a run grows into six figures. */
@@ -600,13 +611,15 @@ function paintRunMeta(): void {
   if (!runStartAt) return;
   if (setupMeta) { spinner?.setMeta(setupMeta); return; }
   const io = runIn + runOut > 0 ? ` · ↑${fmtTok(runIn)} ↓${fmtTok(runOut)}` : "";
-  spinner?.setMeta(`${fmtElapsed(Date.now() - runStartAt)}${io}`);
+  const cr = runCreditsMicro > 0 ? ` · ${fmtCredits(runCreditsMicro)}` : "";
+  spinner?.setMeta(`${fmtElapsed(Date.now() - runStartAt)}${io}${cr}`);
 }
 
 function startRunTicker(): void {
   runStartAt = Date.now();
   runIn = 0;
   runOut = 0;
+  runCreditsMicro = 0;
   runSteps = [];
   broadcastTimeline(true);
   if (runTicker) clearInterval(runTicker);
@@ -618,6 +631,7 @@ function stopRunTicker(): void {
   runStartAt = 0;
   runIn = 0;
   runOut = 0;
+  runCreditsMicro = 0;
 }
 let menuEl: HTMLDivElement | null = null;
 
@@ -1723,6 +1737,11 @@ function initGlyphhAgentEvents(): void {
     } else {
       setupMeta = "";
     }
+    paintRunMeta();
+  });
+  window.yo.onGlyphhAgentCredits?.((d) => {
+    if (activeRunId && d.runId !== activeRunId) return;
+    runCreditsMicro = d.creditsMicro;
     paintRunMeta();
   });
   window.yo.onGlyphhAgentProgress?.((d) => {
