@@ -2301,7 +2301,8 @@ export function initCode(): void {
   // Header launcher button — bound here (home-panel startup) through the
   // cold-safe path, so it works even before the Code workbench first mounts.
   el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());
-  el("code-reset-btn")?.addEventListener("click", () => { void resetWorkspace(); });
+  // Reset lives in BOTH rail section headers (Apps + Layouts) — bind every one.
+  document.querySelectorAll(".rail-reset-btn").forEach((b) => b.addEventListener("click", () => { void resetWorkspace(); }));
   syncDragStripOffset();
   // Apps open as workbench panels beside the agent (the OS-window
   // replacement). Every main-side opener — Glyphh's open_app, the relay's
