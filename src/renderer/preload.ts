@@ -53,6 +53,19 @@ export interface Connection {
   agentAvailable?: number;
 }
 
+/** One immutable build of an app, as the Releases tab renders it. */
+export interface AppReleaseRow {
+  id: string;
+  version: string;
+  status: "pending" | "uploading" | "building" | "ready" | "failed";
+  error: string | null;
+  notes: string | null;
+  channel: "dev" | "live";
+  promotedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Fields the create/update calls forward to /api/panel-apps. Kept as a named
 // type so preload + renderer stay in sync on the accepted keys.
 export interface PanelAppInput {
@@ -355,6 +368,22 @@ contextBridge.exposeInMainWorld("yo", {
   hostingStatus: (slug: string) => ipcRenderer.invoke("hosting-status", slug) as Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>,
   hostingDeploy: (slug: string) => ipcRenderer.invoke("hosting-deploy", slug) as Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>,
   hostingDestroy: (id: string) => ipcRenderer.invoke("hosting-destroy", id) as Promise<{ ok: boolean; error?: string }>,
+  // Marketplace listing — copy, images, and the list/unlist decision.
+  appListingSet: (slug: string, patch: Record<string, unknown>) =>
+    ipcRenderer.invoke("app-listing-set", slug, patch) as Promise<{ ok: boolean; error?: string }>,
+  appListingImageAdd: (slug: string, kind: "icon" | "screenshot") =>
+    ipcRenderer.invoke("app-listing-image-add", slug, kind) as Promise<{ ok: boolean; key?: string; error?: string }>,
+  appListingImageRemove: (slug: string, key: string) =>
+    ipcRenderer.invoke("app-listing-image-remove", slug, key) as Promise<{ ok: boolean; error?: string }>,
+  appListingList: (slug: string, listed: boolean) =>
+    ipcRenderer.invoke("app-listing-list", slug, listed) as Promise<{ ok: boolean; listed?: boolean; error?: string }>,
+  // Releases — the app's version history, its notes, and dev → live promotion.
+  appReleases: (slug: string) =>
+    ipcRenderer.invoke("app-releases", slug) as Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>,
+  appReleaseNotes: (slug: string, releaseId: string, notes: string | null) =>
+    ipcRenderer.invoke("app-release-notes", slug, releaseId, notes) as Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>,
+  appReleasePromote: (slug: string, releaseId: string) =>
+    ipcRenderer.invoke("app-release-promote", slug, releaseId) as Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>,
   appGraduate: (slug: string) => ipcRenderer.invoke("app-graduate", slug) as Promise<{ ok: boolean; path?: string; error?: string }>,
   appsRemove: (id: string) => ipcRenderer.invoke("apps-remove", id) as Promise<boolean>,
   appsSetConnection: (id: string, pipedreamSlug: string) => ipcRenderer.invoke("apps-set-connection", id, pipedreamSlug) as Promise<boolean>,

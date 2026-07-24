@@ -35,6 +35,24 @@ export interface YoAppManifest {
   entry?: string;
   version: string;
   kind: "web" | "bundled";
+  /**
+   * The RELEASE this bundle was taken from — version, notes, when it went live, and
+   * the listing identity that is not machine-specific.
+   *
+   * Without it an exported app arrives as a version string with no story: the
+   * receiving side cannot tell what changed, what the app is called in a storefront,
+   * or which build it is looking at. Media beyond the icon is deliberately NOT
+   * bundled — a 50MB demo video inside every file is a real cost for a marginal gain,
+   * so the listing keeps it and the bundle points at the app.
+   */
+  release?: {
+    version: string;
+    notes: string | null;
+    channel: "dev" | "live";
+    releasedAt: string | null;
+    tagline?: string | null;
+    category?: string | null;
+  };
 }
 
 const MANIFEST_VERSION = "1";
@@ -69,7 +87,10 @@ export function fileUrlToPath(url?: string): string | undefined {
  * otherwise it's a `kind:"web"` manifest describing the launcher.
  */
 export function exportServerApp(
-  app: { id: string; slug: string; name: string; url: string | null },
+  app: {
+    id: string; slug: string; name: string; url: string | null;
+    release?: YoAppManifest["release"];
+  },
   destPath: string,
   sourceZip?: Buffer,
 ): ExportResult {
@@ -81,6 +102,7 @@ export function exportServerApp(
     kind: hasCode ? "bundled" : "web",
     ...(app.url ? { url: app.url } : {}),
     ...(hasCode ? { entry: "index.html" } : {}),
+    ...(app.release ? { release: app.release } : {}),
   };
   try {
     const zip = new AdmZip();

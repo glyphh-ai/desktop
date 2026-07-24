@@ -1,12 +1,35 @@
-; Custom NSIS include — electron-builder auto-detects this at
-; <buildResources>/installer.nsh and inserts the macros below into the
-; generated installer.
+; Custom NSIS include — wired in explicitly via electron-builder.yml
+; (nsis.include: installer.nsh).
 ;
+; ── About the "Glyphh Desktop cannot be closed" hang ────────────────────────
+; That message string, $(appCannotBeClosed), is emitted from THREE different
+; places in app-builder-lib's NSIS templates. Only one of them loops forever,
+; and it is NOT the app-running check:
+;
+;   1. allowOnlyOneInstallerInstance.nsh → _CHECK_APP_RUNNING
+;        The app-running check. Overridable via customCheckAppRunning (below).
+;   2. extractAppPackage.nsh → extractUsing7za
+;        CopyFiles into $INSTDIR failed 5x. Retry FALLS THROUGH to a
+;        last-resort Nsis7z::Extract, so this path always makes progress.
+;   3. installUtil.nsh → uninstallOldVersion          ← the one that hangs
+;        On UPGRADE, the previously installed version's uninstaller is run
+;        first. If it exits non-zero:
+;            UninstallLoop: ... MessageBox ... IDRETRY OneMoreAttempt
+;            OneMoreAttempt: ExecWait <old uninstaller>  → non-zero
+;                            Sleep 1000 / Goto UninstallLoop
+;        i.e. Retry re-runs the same failing uninstaller and comes straight
+;        back to the prompt. It can never succeed — an infinite loop.
+;
+; Symptom check for (3): the app is NOT running (taskkill reports "not found"),
+; the failure is identical on every attempt (a file lock would be
+; intermittent), and Retry never advances. Recovery is to remove the stale
+; installation + its Uninstall registry entry so uninstallOldVersion is never
+; reached; see docs/windows-installer.md.
+;
+; ── VC++ runtime ───────────────────────────────────────────────────────────
 ; kuzu's native module (kuzujs.node) links against the Microsoft Visual C++
-; 2015–2022 x64 runtime. Without it, loading the module fails on Windows with
-; "The specified module could not be found" and the app's graph-memory feature
-; stays disabled. We install the runtime here so it works out of the box.
-;
+; 2015–2022 x64 runtime. Without it the module fails to load with "The
+; specified module could not be found" and graph memory stays disabled.
 ; vc_redist.x64.exe is fetched into <buildResources> by scripts/before-pack.cjs
 ; before packaging, so ${BUILD_RESOURCES_DIR}\vc_redist.x64.exe exists at
 ; makensis time. The redist is idempotent; we still skip it when the runtime is
@@ -14,47 +37,34 @@
 
 !include "LogicLib.nsh"
 
-; Replace electron-builder's built-in "is the app running?" check (used by BOTH
-; the installer and the uninstaller). The stock check loops forever here on
-; "Glyphh Desktop cannot be closed" because:
-;   * Glyphh can stay resident in the BACKGROUND (tray) and refuses the graceful
-;     close the stock check asks for, and
-;   * Electron runs several processes all named ${APP_EXECUTABLE_FILENAME}
-;     (main, GPU, renderer, utility), and the stock kill uses /im WITHOUT /t, so
-;     the process count never reaches zero and it falls through to the box.
-; Defining customCheckAppRunning REPLACES that check: force TREE-kill the whole
-; group (two passes to absorb Electron's child respawns), then proceed. No
-; prompt, no infinite loop.
-; The blocking "cannot be closed" prompt during install is NOT the app-running
-; check — it comes from extractAppPackage.nsh, where CopyFiles into $INSTDIR
-; fails 5 times because something still holds a file there. Killing only
-; ${APP_EXECUTABLE_FILENAME} is not enough: helper processes launched from the
-; install folder (notably the Claude Agent SDK's claude.exe under
-; resources\app.asar.unpacked\...) keep handles open under a different name.
-; So: kill the app by name AND anything whose image path is inside $INSTDIR.
+; Force-close any running instance. Electron runs several processes all named
+; ${APP_EXECUTABLE_FILENAME} (main, GPU, renderer, utility) and Glyphh can stay
+; resident in the tray, so the stock check's kill (/im without /t) can leave
+; survivors. Tree-kill twice to absorb respawns.
+;
+; NOTE: deliberately by-name only. An earlier revision also ran a PowerShell
+; "stop every process whose image path is under $INSTDIR" sweep — but this
+; macro is also inserted into the UNINSTALLER, which on the upgrade path runs
+; with the install dir as its target. Killing by path there risks terminating
+; the uninstall run itself, which returns non-zero and drops straight into the
+; uninstallOldVersion loop described above. Do not reintroduce it.
 !macro _glyphhKill
   DetailPrint "Glyphh: clearing any running instances..."
   nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /f /t /im "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
-  ; Path-scoped: terminates claude.exe and any other bundled helper running out
-  ; of the install dir, without touching unrelated processes of the same name.
-  nsExec::Exec `powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force -ErrorAction SilentlyContinue"`
-  Pop $0
-  Sleep 1000
+  Sleep 800
   nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /f /t /im "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
   Sleep 400
 !macroend
 
-; Belt-and-braces: kill early in .onInit AND replace the running-app check.
 !macro customInit
   !insertmacro _glyphhKill
 !macroend
 
-; Replacing customCheckAppRunning REPLACES electron-builder's built-in check
-; entirely (installer + uninstaller), so its "cannot be closed" prompt never
-; runs — Glyphh's background/tray process + Electron's several same-named
-; processes made the stock check (which kills without /t) loop forever.
+; Defining customCheckAppRunning REPLACES electron-builder's built-in
+; running-app check (call site 1 above) in both installer and uninstaller, so
+; its prompt never runs.
 !macro customCheckAppRunning
   !insertmacro _glyphhKill
 !macroend

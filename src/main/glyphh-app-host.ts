@@ -90,6 +90,9 @@ export interface GlyphhAppManifest {
   connectors?: string[];
   tools?: GlyphhAppTool[];
   window?: { width?: number; height?: number };
+  /** The release this bundle was cut from. Carried so an imported app arrives
+   *  with its version and notes instead of a bare version string. */
+  release?: { version: string; notes?: string | null; channel?: "dev" | "live"; releasedAt?: string | null };
   description?: string;
 }
 
@@ -240,6 +243,9 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       tools: manifest.tools ?? [],
       window: manifest.window ?? null,
       worker: manifest.worker ?? null,
+      // What the installer sees on the Releases tab: this app came from a bundle,
+      // and the bundle knows which build it is.
+      ...(manifest.release ? { release: manifest.release } : {}),
     },
   };
   let updated = false;

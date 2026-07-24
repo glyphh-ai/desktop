@@ -124,8 +124,11 @@
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
               <!-- Hosted (built) apps: dev-host deploy + Supabase graduation. -->
-              <button class="app-detail-tab tab-hosted-only hidden" data-tab="deploy">Deploy</button>
-              <button class="app-detail-tab tab-hosted-only hidden" data-tab="production">Production</button>
+              <!-- Two axes, deliberately: Releases + Marketplace are how the app
+                   travels INSIDE Glyphh; Public hosting is the app on the open web. -->
+              <button class="app-detail-tab tab-built-only hidden" data-tab="releases">Releases</button>
+              <button class="app-detail-tab tab-built-only hidden" data-tab="marketplace">Marketplace</button>
+              <button class="app-detail-tab tab-built-only hidden" data-tab="hosting">Public hosting</button>
             </div>
 
             <div class="app-builder-split">
@@ -301,9 +304,35 @@
                   </div>
                 </div>
 
-                <!-- Deploy: status + the public URL + who can reach it. -->
-                <div class="app-tab-left" data-tab="deploy">
-                  <label class="settings-label">Hosting</label>
+                <!-- Releases left: the selected release's notes + promotion. The
+                     HISTORY is on the right, where a list belongs. -->
+                <div class="app-tab-left" data-tab="releases">
+                  <label class="settings-label">Release</label>
+                  <div id="release-selected" class="release-selected">Select a release from the history →</div>
+
+                  <label class="settings-label" style="margin-top:14px;">Release notes <span style="color:var(--text-2);font-weight:400;">— what changed, in your words</span></label>
+                  <textarea id="release-notes" class="settings-input" rows="8" spellcheck="true"
+                            placeholder="- Fixed the crash on launch&#10;- Added CSV export" style="resize:vertical;font-size:12.5px;"></textarea>
+                  <p class="proxy-field-hint">Markdown. This is what an installer reads when they upgrade, and what travels in an exported <code>.glyphh</code> bundle.</p>
+
+                  <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
+                  <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                    <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                    <button id="release-promote" class="action-btn" type="button" disabled>Promote to live</button>
+                    <button id="release-save-notes" class="action-btn primary" type="button" disabled>Save notes</button>
+                  </div>
+
+                  <p class="proxy-field-hint" style="margin-top:14px;">
+                    A build lands on <strong>dev</strong>. Promoting marks it <strong>live</strong> — the version installers get.
+                    Rolling back is promoting an older release again; nothing is rebuilt.
+                  </p>
+                </div>
+
+                <!-- Public hosting: the app on the OPEN WEB. Serving it at its Glyphh
+                     address and leaving Glyphh entirely are the same question — "who
+                     runs this for the public" — so they share a tab. -->
+                <div class="app-tab-left" data-tab="hosting">
+                  <label class="settings-label">Served by Glyphh</label>
                   <p class="proxy-field-hint" style="margin:2px 0 14px;">Serves this app's latest build at its Glyphh address. Deploying spends your org's compute credits while it's live.</p>
                   <div id="deploy-status" class="deploy-status">Checking…</div>
                   <div id="deploy-url-row" class="hidden" style="margin:10px 0;">
@@ -324,10 +353,9 @@
                     <button id="deploy-btn" class="action-btn primary" type="button">Deploy</button>
                     <button id="deploy-takedown-btn" class="action-btn danger hidden" type="button">Take down</button>
                   </div>
-                </div>
 
-                <!-- Production: graduate to a standalone Supabase-backed repo. -->
-                <div class="app-tab-left" data-tab="production">
+                  <div class="app-detail-section-sep"></div>
+
                   <label class="settings-label">Own your code</label>
                   <p class="proxy-field-hint" style="margin:2px 0 14px;">Export this app as a standalone repo backed by your own Supabase — the app's source plus a runtime shim (<code>db</code>/<code>vector</code>/<code>llm</code>), Postgres migrations, and a README. Deploy it anywhere; it no longer needs Glyphh.</p>
                   <div id="graduate-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
@@ -335,6 +363,59 @@
                     <button id="graduate-btn" class="action-btn primary" type="button">Export standalone repo</button>
                   </div>
                   <p class="proxy-field-hint" style="margin-top:14px;font-size:11px;">Requires a built release. <a id="graduate-api-soon" href="#" style="pointer-events:none;opacity:.6;">Direct Supabase connection — coming soon.</a></p>
+                </div>
+
+                <!-- Marketplace left: the listing an installer sees. Drafted by the
+                     agent, approved here — the List button is deliberately human. -->
+                <div class="app-tab-left" data-tab="marketplace">
+                  <div id="listing-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+
+                  <label class="settings-label">Title</label>
+                  <input id="listing-title" class="settings-input" placeholder="CRM" spellcheck="true" />
+
+                  <label class="settings-label">Tagline <span style="color:var(--text-2);font-weight:400;">— one line on the card</span></label>
+                  <input id="listing-tagline" class="settings-input" maxlength="140" placeholder="Your pipeline, in chat" spellcheck="true" />
+
+                  <label class="settings-label">Category</label>
+                  <select id="listing-category" class="settings-input">
+                    <option value="">Choose one…</option>
+                    <option value="productivity">Productivity</option>
+                    <option value="communication">Communication</option>
+                    <option value="developer">Developer tools</option>
+                    <option value="ai">AI &amp; automation</option>
+                    <option value="marketing">Marketing &amp; sales</option>
+                    <option value="finance">Finance</option>
+                    <option value="design">Design</option>
+                    <option value="data">Data &amp; analytics</option>
+                  </select>
+
+                  <label class="settings-label">Description <span style="color:var(--text-2);font-weight:400;">— markdown</span></label>
+                  <textarea id="listing-body" class="settings-input" rows="8" spellcheck="true"
+                            placeholder="## What it does&#10;&#10;- Reads your pipeline&#10;- Drafts the follow-up" style="resize:vertical;font-size:12.5px;"></textarea>
+
+                  <label class="settings-label">Demo video <span style="color:var(--text-2);font-weight:400;">— YouTube or Vimeo link</span></label>
+                  <input id="listing-video" class="settings-input" placeholder="https://youtube.com/watch?v=…" spellcheck="false" />
+
+                  <label class="settings-label">Website <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                  <input id="listing-website" class="settings-input" placeholder="https://example.com" spellcheck="false" />
+
+                  <label class="settings-label">Support email <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                  <input id="listing-support" class="settings-input" placeholder="help@example.com" spellcheck="false" />
+
+                  <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                    <span id="listing-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                    <button id="listing-save" class="action-btn primary" type="button">Save listing</button>
+                  </div>
+
+                  <div class="app-detail-section-sep"></div>
+
+                  <label class="settings-label">On the marketplace</label>
+                  <div id="listing-listed-state" class="deploy-status">Not listed</div>
+                  <p class="proxy-field-hint">Listing makes the app installable by other organizations, and open to reviews. Needs a tagline, a category, and an icon.</p>
+                  <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;">
+                    <button id="listing-list-btn" class="action-btn primary" type="button">List on marketplace</button>
+                    <button id="listing-unlist-btn" class="action-btn danger hidden" type="button">Unlist</button>
+                  </div>
                 </div>
               </div>
 
@@ -382,6 +463,51 @@
                 </div>
 
                 <!-- MCP right: explainer for the exposed endpoint. -->
+                <!-- Marketplace right: the images. Recommended sizes are stated up
+                     front — the server caps bytes, and a rejection after a 5MB upload
+                     is a worse way to learn the limit. -->
+                <div class="app-tab-right" data-tab="marketplace">
+                  <div style="padding:12px 16px;">
+                    <h3 class="settings-subheading" style="margin:0 0 10px;">Images</h3>
+
+                    <label class="settings-label">Icon <span style="color:var(--text-2);font-weight:400;">— 512×512 square, max 512KB</span></label>
+                    <div class="listing-icon-row">
+                      <div id="listing-icon-preview" class="listing-icon-preview">No icon</div>
+                      <div style="display:flex;flex-direction:column;gap:6px;">
+                        <button id="listing-icon-pick" class="action-btn" type="button">Choose image…</button>
+                        <button id="listing-icon-clear" class="action-btn hidden" type="button">Remove</button>
+                      </div>
+                    </div>
+
+                    <label class="settings-label" style="margin-top:18px;">Screenshots <span style="color:var(--text-2);font-weight:400;">— 1280×800 or wider, max 4MB each</span></label>
+                    <div id="listing-shots" class="listing-shots"></div>
+                    <div id="listing-shots-empty" class="help-item-empty">No screenshots yet.</div>
+                    <button id="listing-shot-add" class="action-btn" type="button" style="margin-top:8px;">Add screenshot…</button>
+
+                    <p class="proxy-field-hint" style="margin-top:14px;">
+                      PNG, JPEG, GIF, or WebP. The file's real type is checked from its bytes, so
+                      a renamed file is refused. Your agent can upload these for you — ask it to
+                      draft the listing, then review it here before you press List.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Releases right: the history. Version, channel, date, notes. -->
+                <div class="app-tab-right" data-tab="releases">
+                  <div style="padding:12px 16px;">
+                    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                      <h3 class="settings-subheading" style="margin:0;">Version history</h3>
+                      <span id="release-count" class="release-count"></span>
+                      <span style="flex:1;"></span>
+                      <button id="release-refresh" class="action-btn" type="button" style="height:24px;font-size:11px;padding:0 10px;">Refresh</button>
+                    </div>
+                    <div id="release-list" class="release-list"></div>
+                    <div id="release-empty" class="help-item-empty hidden">
+                      No releases yet. Building this app from its folder cuts the first one.
+                    </div>
+                  </div>
+                </div>
+
                 <div class="app-tab-right" data-tab="mcp">
                   <div style="padding:12px 16px;max-width:560px;">
                     <h3 class="settings-subheading" style="margin:0 0 8px;">Exposing tools over MCP</h3>
@@ -436,6 +562,36 @@
                   <svg class="mkt-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
                   <input id="mkt-search" class="mkt-search" type="text" placeholder="Search apps, developers, categories…" spellcheck="false" autocomplete="off" />
                 </div>
+              </div>
+
+              <!-- The DELIVERABLE, same idea as the web hero: not a screenshot of
+                   Glyphh, but a plausible app someone built with it, floating on the
+                   brand ramp. Receipts: forward a receipt, it files itself. -->
+              <div class="mkt-hero-art" aria-hidden="true">
+                <div class="mha-app">
+                  <div class="mha-bar">
+                    <span class="mha-dot"></span><span class="mha-dot"></span><span class="mha-dot"></span>
+                    <span class="mha-name">Receipts</span>
+                    <span class="mha-chip">live</span>
+                  </div>
+                  <div class="mha-body">
+                    <div class="mha-kpi">
+                      <span class="mha-kpi-label">This month</span>
+                      <span class="mha-kpi-value">$4,208<span class="mha-kpi-cents">.55</span></span>
+                    </div>
+                    <div class="mha-chart">
+                      <i style="height:38%"></i><i style="height:62%"></i><i style="height:44%"></i>
+                      <i style="height:81%"></i><i style="height:57%"></i><i class="on" style="height:96%"></i>
+                      <i style="height:48%"></i>
+                    </div>
+                    <div class="mha-rows">
+                      <div class="mha-row"><span class="mha-av">FL</span><span class="mha-vendor">Flight — SFO</span><span class="mha-tag">Travel</span><span class="mha-amt">$612.40</span></div>
+                      <div class="mha-row"><span class="mha-av">FS</span><span class="mha-vendor">Figma seats</span><span class="mha-tag">Software</span><span class="mha-amt">$180.00</span></div>
+                      <div class="mha-row"><span class="mha-av">CB</span><span class="mha-vendor">Coffee — offsite</span><span class="mha-tag">Meals</span><span class="mha-amt">$38.15</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mha-note">Built in Glyphh · 214 installs</div>
               </div>
             </div>
 

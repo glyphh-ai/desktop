@@ -84,6 +84,22 @@ type MarketplaceAppDetail = MarketplaceApp & {
 };
 
 // Mirrors preload.ts PanelAppInput — fields forwarded to /api/panel-apps.
+/** Mirrors the server's OrgApp.listing — the marketplace record. */
+type AppListingRecord = {
+  title: string;
+  tagline: string | null;
+  category: string | null;
+  body: string | null;
+  iconUrl: string | null;
+  screenshots: { url: string; caption: string }[];
+  videoUrl: string | null;
+  website: string | null;
+  supportEmail: string | null;
+  ratingAvg: number;
+  ratingCount: number;
+  listedAt: string | null;
+};
+
 type PanelAppInput = {
   name?: string;
   slug?: string;
@@ -93,6 +109,19 @@ type PanelAppInput = {
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
   access?: "public" | "members";
+};
+
+/** Mirrors preload.ts AppReleaseRow — one immutable build of an app. */
+type AppReleaseRow = {
+  id: string;
+  version: string;
+  status: "pending" | "uploading" | "building" | "ready" | "failed";
+  error: string | null;
+  notes: string | null;
+  channel: "dev" | "live";
+  promotedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 declare global {
@@ -170,6 +199,14 @@ declare global {
       hostingStatus: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>;
       hostingDeploy: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
       hostingDestroy: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      appListingSet: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
+      appListingImageAdd: (slug: string, kind: "icon" | "screenshot") => Promise<{ ok: boolean; key?: string; error?: string }>;
+      appListingImageRemove: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
+      appListingList: (slug: string, listed: boolean) => Promise<{ ok: boolean; listed?: boolean; error?: string }>;
+      // Releases — history, notes, and dev → live promotion (see preload's AppReleaseRow).
+      appReleases: (slug: string) => Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>;
+      appReleaseNotes: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
+      appReleasePromote: (slug: string, releaseId: string) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
       appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
       appsRemove: (id: string) => Promise<boolean>;
       appsSetConnection: (id: string, pipedreamSlug: string) => Promise<boolean>;

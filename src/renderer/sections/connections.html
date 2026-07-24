@@ -55,6 +55,12 @@
                 <div class="conn-tools-pane">
                   <h3 class="settings-subheading" style="margin:0 0 4px;">Tools exposed to your AI</h3>
                   <p id="conn-tools-hint" class="settings-hint" style="margin-top:2px;">Uncheck a tool to hide it — your AI won't see or be able to call it.</p>
+                  <!-- Hidden until there are tools to select; a connector can publish
+                       dozens, and toggling them one at a time is the common complaint. -->
+                  <label id="conn-tools-select-all-wrap" class="conn-tools-select-all hidden">
+                    <input type="checkbox" id="conn-tools-select-all" />
+                    <span id="conn-tools-select-all-label">Select all</span>
+                  </label>
                   <div id="conn-tools" class="conn-tools"></div>
                 </div>
               </div>

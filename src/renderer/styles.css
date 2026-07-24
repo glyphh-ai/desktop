@@ -13155,3 +13155,63 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .deploy-dot.pending { background: #fbbf24; box-shadow: 0 0 8px rgba(251, 191, 36, 0.6); }
 .deploy-url { font-family: var(--font-mono); font-size: 13px; color: var(--accent); text-decoration: none; word-break: break-all; }
 .deploy-url:hover { text-decoration: underline; }
+
+/* ── Connection tools: the select-all header ─────────────────────── */
+.conn-tools-select-all {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  margin: 8px 0 6px; font-size: 12px; color: var(--text-2); user-select: none;
+}
+.conn-tools-select-all input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--accent); }
+.conn-tools-select-all:hover { color: var(--text); }
+
+/* ── App-detail Marketplace tab: listing images ───────────────────── */
+.listing-icon-row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.listing-icon-preview {
+  width: 88px; height: 88px; flex: none; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--border-2); border-radius: 14px;
+  background: var(--surface); color: var(--text-3); font-size: 11px; overflow: hidden;
+}
+.listing-icon-preview img { width: 100%; height: 100%; object-fit: cover; }
+
+.listing-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
+.listing-shot { position: relative; border: 1px solid var(--border-2); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.listing-shot img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
+.listing-shot-remove {
+  position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; line-height: 18px;
+  border-radius: 50%; border: none; cursor: pointer; font-size: 14px;
+  background: rgba(0, 0, 0, .62); color: #fff;
+}
+.listing-shot-remove:hover { background: var(--danger, #f87171); }
+
+/* ── App-detail Releases tab ──────────────────────────────────────── */
+.release-selected { font-size: 13px; color: var(--text); }
+.release-count { font-size: 11.5px; color: var(--text-3); }
+.release-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+
+.release-row {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 9px 11px; border: 1px solid var(--border-2); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit;
+}
+.release-row:hover { border-color: var(--border-3); }
+.release-row.selected { border-color: var(--accent); background: var(--surface-2); }
+
+.release-row-head { display: flex; align-items: center; gap: 8px; }
+.release-version { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
+.release-date { margin-left: auto; font-size: 11px; color: var(--text-3); }
+
+.release-badge {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-3);
+}
+.release-badge.live { background: rgba(52, 211, 153, .16); color: #34d399; }
+/* A build that never finished is the row an author is looking for. */
+.release-state { font-size: 10.5px; color: var(--text-3); }
+.release-state.failed { color: var(--danger, #f87171); }
+
+.release-notes-preview { margin-top: 5px; font-size: 11.5px; color: var(--text-2); line-height: 1.45; }
+.release-build-error {
+  margin-top: 6px; padding: 5px 7px; border-radius: 5px;
+  background: rgba(248, 113, 113, .10); color: var(--danger, #f87171);
+  font-family: var(--font-mono); font-size: 10.5px; white-space: pre-wrap; word-break: break-word;
+}

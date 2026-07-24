@@ -270,8 +270,15 @@ interface PanelApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  /** Who may reach it once deployed — shown + set on the Deploy tab. */
+  /** Who may reach it once deployed — shown + set on the Public hosting tab. */
   access?: string;
+  /** The marketplace listing — copy, images, rating, listed state. */
+  listing?: {
+    title: string; tagline: string | null; category: string | null; body: string | null;
+    iconUrl: string | null; screenshots: { url: string; caption: string }[];
+    videoUrl: string | null; website: string | null; supportEmail: string | null;
+    ratingAvg: number; ratingCount: number; listedAt: string | null;
+  };
   commands?: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds?: string[];
   mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
@@ -281,7 +288,7 @@ function toPanelApp(a: {
   id: string; slug: string; name: string; system?: boolean; url: string | null;
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
-  access?: string;
+  access?: string; listing?: PanelApp["listing"];
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
@@ -289,7 +296,7 @@ function toPanelApp(a: {
   return {
     id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url,
     isBrowser: a.isBrowser, execPath: a.execPath,
-    appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
+    appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access, listing: a.listing,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
@@ -853,8 +860,352 @@ function switchAppTab(tab: string) {
   });
   if (tab === "dashboard") void loadPanelTab();
   if (tab === "config") void loadConfigVarsTab();
-  if (tab === "deploy") void loadDeployTab();
-  if (tab === "production") loadProductionTab();
+  if (tab === "releases") void loadReleasesTab();
+  if (tab === "marketplace") loadMarketplaceTab();
+  // Deploy + "own your code" share the Public hosting tab: both answer "who runs
+  // this for the public", which is a different question from how it is distributed
+  // inside Glyphh (Releases + Marketplace).
+  if (tab === "hosting") { void loadDeployTab(); loadProductionTab(); }
+}
+
+// ── Marketplace tab — the listing an installer sees ──────────────
+//
+// The agent can write every field here (set_app_listing / upload_app_image over
+// MCP). What it deliberately cannot do is press List: publishing to other orgs is
+// the irreversible half, so it stays a human click on this tab.
+
+function listingEls() {
+  return {
+    title: document.getElementById("listing-title") as HTMLInputElement,
+    tagline: document.getElementById("listing-tagline") as HTMLInputElement,
+    category: document.getElementById("listing-category") as HTMLSelectElement,
+    body: document.getElementById("listing-body") as HTMLTextAreaElement,
+    video: document.getElementById("listing-video") as HTMLInputElement,
+    website: document.getElementById("listing-website") as HTMLInputElement,
+    support: document.getElementById("listing-support") as HTMLInputElement,
+  };
+}
+
+function loadMarketplaceTab(): void {
+  document.getElementById("listing-error")!.classList.add("hidden");
+  const l = currentApp?.listing;
+  const el = listingEls();
+  el.title.value = l?.title || currentApp?.name || "";
+  el.tagline.value = l?.tagline || "";
+  el.category.value = l?.category || "";
+  el.body.value = l?.body || "";
+  el.video.value = l?.videoUrl || "";
+  el.website.value = l?.website || "";
+  el.support.value = l?.supportEmail || "";
+
+  // Icon + screenshots.
+  const icon = document.getElementById("listing-icon-preview")!;
+  const clear = document.getElementById("listing-icon-clear")!;
+  if (l?.iconUrl) {
+    icon.innerHTML = `<img src="${escMkt(l.iconUrl)}" alt="" />`;
+    clear.classList.remove("hidden");
+  } else {
+    icon.textContent = "No icon";
+    clear.classList.add("hidden");
+  }
+
+  const shots = document.getElementById("listing-shots")!;
+  const shotsEmpty = document.getElementById("listing-shots-empty")!;
+  const list = l?.screenshots ?? [];
+  shotsEmpty.classList.toggle("hidden", list.length > 0);
+  shots.innerHTML = "";
+  for (const shot of list) {
+    const key = mediaKeyFromUrl(shot.url);
+    const cell = document.createElement("div");
+    cell.className = "listing-shot";
+    cell.innerHTML = `<img src="${escMkt(shot.url)}" alt="${escMkt(shot.caption)}" />
+      <button class="listing-shot-remove" type="button" data-key="${escMkt(key)}" aria-label="Remove screenshot">×</button>`;
+    cell.querySelector<HTMLButtonElement>(".listing-shot-remove")!
+      .addEventListener("click", () => void removeListingImage(key));
+    shots.appendChild(cell);
+  }
+
+  // Listed state + which button to offer.
+  const state = document.getElementById("listing-listed-state")!;
+  const listBtn = document.getElementById("listing-list-btn")!;
+  const unlistBtn = document.getElementById("listing-unlist-btn")!;
+  const listed = !!l?.listedAt;
+  state.innerHTML = listed
+    ? `<span class="deploy-dot on"></span>Listed${l?.ratingCount ? ` · ${l.ratingAvg.toFixed(1)}★ from ${l.ratingCount} review${l.ratingCount === 1 ? "" : "s"}` : " · no reviews yet"}`
+    : `<span class="deploy-dot"></span>Not listed`;
+  listBtn.classList.toggle("hidden", listed);
+  unlistBtn.classList.toggle("hidden", !listed);
+}
+
+/** The stored key back out of a served media URL — the remove call takes the key,
+ *  and the listing hands us URLs so a client never builds one itself. */
+function mediaKeyFromUrl(url: string): string {
+  try { return decodeURIComponent(new URL(url).pathname.split("/media/")[1] ?? ""); }
+  catch { return ""; }
+}
+
+function listingError(msg: string): void {
+  const el = document.getElementById("listing-error")!;
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+function listingStatus(msg: string): void {
+  const el = document.getElementById("listing-status");
+  if (!el) return;
+  el.textContent = msg;
+  if (msg.endsWith("✓")) setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 2500);
+}
+
+/** Re-read the app so the tab renders what the server actually stored. */
+async function refreshCurrentApp(): Promise<void> {
+  const apps = await window.yo.panelAppsList();
+  reloadPanelApps(apps.map(toPanelApp));
+  const fresh = panelApps.find((a) => a.id === currentAppId);
+  if (fresh) currentApp = fresh;
+}
+
+async function saveListing(): Promise<void> {
+  if (!currentApp) return;
+  document.getElementById("listing-error")!.classList.add("hidden");
+  const el = listingEls();
+  const patch: Record<string, unknown> = {
+    title: el.title.value.trim() || undefined,
+    tagline: el.tagline.value.trim() || undefined,
+    category: el.category.value || undefined,
+    body: el.body.value.trim() || undefined,
+    website: el.website.value.trim() || undefined,
+    supportEmail: el.support.value.trim() || undefined,
+    // Empty means CLEAR, which is null on the wire — undefined would leave it.
+    videoUrl: el.video.value.trim() || null,
+  };
+  listingStatus("Saving…");
+  const res = await window.yo.appListingSet(currentApp.slug, patch);
+  if (!res.ok) { listingStatus(""); listingError(res.error || "Couldn't save the listing."); return; }
+  listingStatus("Saved ✓");
+  await refreshCurrentApp();
+  loadMarketplaceTab();
+}
+
+async function addListingImage(kind: "icon" | "screenshot"): Promise<void> {
+  if (!currentApp) return;
+  document.getElementById("listing-error")!.classList.add("hidden");
+  listingStatus("Uploading…");
+  const res = await window.yo.appListingImageAdd(currentApp.slug, kind);
+  if (!res.ok) {
+    listingStatus("");
+    if (res.error !== "Canceled") listingError(res.error || "Couldn't upload the image.");
+    return;
+  }
+  listingStatus("Uploaded ✓");
+  await refreshCurrentApp();
+  loadMarketplaceTab();
+}
+
+async function removeListingImage(key: string): Promise<void> {
+  if (!currentApp || !key) return;
+  const res = await window.yo.appListingImageRemove(currentApp.slug, key);
+  if (!res.ok) { listingError(res.error || "Couldn't remove the image."); return; }
+  await refreshCurrentApp();
+  loadMarketplaceTab();
+}
+
+async function setListed(listed: boolean): Promise<void> {
+  if (!currentApp) return;
+  document.getElementById("listing-error")!.classList.add("hidden");
+  if (listed) {
+    const confirmed = await confirmAction({
+      title: `List ${currentApp.name} on the marketplace?`,
+      body: "Other organizations will be able to find and install it, and installers can review it. You can unlist at any time — existing installs keep working.",
+      confirmLabel: "List it",
+    });
+    if (!confirmed) return;
+  }
+  listingStatus(listed ? "Listing…" : "Unlisting…");
+  const res = await window.yo.appListingList(currentApp.slug, listed);
+  if (!res.ok) { listingStatus(""); listingError(res.error || "Couldn't change the listing."); return; }
+  listingStatus(listed ? "Listed ✓" : "Unlisted ✓");
+  await refreshCurrentApp();
+  loadMarketplaceTab();
+}
+
+function initMarketplaceTab(): void {
+  document.getElementById("listing-save")?.addEventListener("click", () => { void saveListing(); });
+  document.getElementById("listing-icon-pick")?.addEventListener("click", () => { void addListingImage("icon"); });
+  document.getElementById("listing-shot-add")?.addEventListener("click", () => { void addListingImage("screenshot"); });
+  document.getElementById("listing-icon-clear")?.addEventListener("click", () => {
+    const url = currentApp?.listing?.iconUrl;
+    if (url) void removeListingImage(mediaKeyFromUrl(url));
+  });
+  document.getElementById("listing-list-btn")?.addEventListener("click", () => { void setListed(true); });
+  document.getElementById("listing-unlist-btn")?.addEventListener("click", () => { void setListed(false); });
+}
+
+// ── Releases tab — the app's version history ─────────────────────
+//
+// A build is immutable, so the only things editable here are its NOTES and its
+// channel. The left pane edits the selected release; the right pane is the history.
+
+type ReleaseRow = Awaited<ReturnType<typeof window.yo.appReleases>>["releases"][number];
+
+let releases: ReleaseRow[] = [];
+let selectedReleaseId: string | null = null;
+
+/** Human date for a release row — the thing an installer scans the list for. */
+function releaseDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+async function loadReleasesTab(): Promise<void> {
+  const listEl = document.getElementById("release-list")!;
+  const emptyEl = document.getElementById("release-empty")!;
+  const countEl = document.getElementById("release-count")!;
+  document.getElementById("release-error")!.classList.add("hidden");
+  listEl.innerHTML = `<div class="inline-empty">Loading…</div>`;
+
+  const slug = currentApp?.slug || currentAppId;
+  const res = await window.yo.appReleases(slug);
+  if (!res.ok) {
+    listEl.innerHTML = "";
+    releaseError(res.error || "Couldn't load the release history.");
+    return;
+  }
+  releases = res.releases;
+
+  // An INSTALLED app has no server-side history — its releases belong to whoever
+  // published it. What it does carry is the release its bundle was cut from, so
+  // the tab shows that rather than an empty list and a lie about having none.
+  const imported = (currentApp?.launchConfig as { release?: { version?: string; notes?: string | null; channel?: string; releasedAt?: string | null } } | null)?.release;
+  if (!releases.length && imported?.version) {
+    releases = [{
+      id: `imported:${imported.version}`,
+      version: imported.version,
+      status: "ready",
+      error: null,
+      notes: imported.notes ?? null,
+      channel: imported.channel === "live" ? "live" : "dev",
+      promotedAt: imported.releasedAt ?? null,
+      createdAt: imported.releasedAt ?? new Date().toISOString(),
+      updatedAt: imported.releasedAt ?? new Date().toISOString(),
+    }];
+  }
+  const readOnly = releases.some((r) => r.id.startsWith("imported:"));
+
+  countEl.textContent = releases.length
+    ? `${releases.length} release${releases.length === 1 ? "" : "s"}${readOnly ? " · from the bundle" : ""}`
+    : "";
+  emptyEl.classList.toggle("hidden", releases.length > 0);
+  listEl.innerHTML = "";
+
+  for (const r of releases) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `release-row${r.id === selectedReleaseId ? " selected" : ""}`;
+    row.dataset.id = r.id;
+    // A failed build is the row an author most needs to find, so it carries its
+    // compiler error inline rather than hiding it behind a click.
+    const badge = r.channel === "live"
+      ? `<span class="release-badge live">live</span>`
+      : `<span class="release-badge">dev</span>`;
+    const state = r.status === "ready" ? "" : `<span class="release-state ${r.status}">${escMkt(r.status)}</span>`;
+    row.innerHTML = `
+      <div class="release-row-head">
+        <span class="release-version">${escMkt(r.version)}</span>
+        ${badge}${state}
+        <span class="release-date">${escMkt(releaseDate(r.promotedAt || r.createdAt))}</span>
+      </div>
+      ${r.notes ? `<div class="release-notes-preview">${escMkt(r.notes.split("\n").slice(0, 3).join(" · ").slice(0, 160))}</div>` : ""}
+      ${r.status === "failed" && r.error ? `<div class="release-build-error">${escMkt(r.error.slice(0, 300))}</div>` : ""}`;
+    row.addEventListener("click", () => selectRelease(r.id));
+    listEl.appendChild(row);
+  }
+
+  // Default to the newest release, so the pane is never empty on open.
+  if (!releases.some((r) => r.id === selectedReleaseId)) selectedReleaseId = releases[0]?.id ?? null;
+  selectRelease(selectedReleaseId);
+}
+
+function selectRelease(id: string | null): void {
+  selectedReleaseId = id;
+  const r = releases.find((x) => x.id === id) ?? null;
+  document.querySelectorAll<HTMLElement>(".release-row").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.id === id);
+  });
+  const notes = document.getElementById("release-notes") as HTMLTextAreaElement;
+  const promote = document.getElementById("release-promote") as HTMLButtonElement;
+  const save = document.getElementById("release-save-notes") as HTMLButtonElement;
+  const head = document.getElementById("release-selected")!;
+
+  if (!r) {
+    head.textContent = "Select a release from the history →";
+    notes.value = "";
+    notes.disabled = true;
+    promote.disabled = true;
+    save.disabled = true;
+    return;
+  }
+  head.innerHTML = `<strong>${escMkt(r.version)}</strong> · ${escMkt(r.channel)} · ${escMkt(releaseDate(r.createdAt))}`;
+  notes.value = r.notes || "";
+  // A release you INSTALLED is the publisher's record, not yours: readable, not editable.
+  const imported = r.id.startsWith("imported:");
+  notes.disabled = imported;
+  save.disabled = imported;
+  if (imported) {
+    promote.disabled = true;
+    promote.textContent = "Published by its author";
+    return;
+  }
+  // Only a BUILT release can go live: promoting a failed one would publish a
+  // version that cannot run, and the server refuses it anyway.
+  promote.disabled = r.status !== "ready" || r.channel === "live";
+  promote.textContent = r.channel === "live" ? "Already live" : "Promote to live";
+}
+
+function releaseError(msg: string): void {
+  const el = document.getElementById("release-error")!;
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+function releaseStatus(msg: string): void {
+  const el = document.getElementById("release-status");
+  if (!el) return;
+  el.textContent = msg;
+  if (msg.endsWith("✓")) setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 2500);
+}
+
+function initReleasesTab(): void {
+  document.getElementById("release-refresh")?.addEventListener("click", () => { void loadReleasesTab(); });
+
+  document.getElementById("release-save-notes")?.addEventListener("click", async () => {
+    if (!selectedReleaseId) return;
+    document.getElementById("release-error")!.classList.add("hidden");
+    const notes = (document.getElementById("release-notes") as HTMLTextAreaElement).value;
+    releaseStatus("Saving…");
+    const res = await window.yo.appReleaseNotes(currentApp?.slug || currentAppId, selectedReleaseId, notes || null);
+    if (!res.ok) { releaseStatus(""); releaseError(res.error || "Couldn't save the notes."); return; }
+    releaseStatus("Saved ✓");
+    await loadReleasesTab();
+  });
+
+  document.getElementById("release-promote")?.addEventListener("click", async () => {
+    if (!selectedReleaseId) return;
+    const r = releases.find((x) => x.id === selectedReleaseId);
+    if (!r) return;
+    document.getElementById("release-error")!.classList.add("hidden");
+    const confirmed = await confirmAction({
+      title: `Promote ${r.version} to live?`,
+      body: "Everyone who installs this app gets this version. Promoting an older release again is how you roll back.",
+      confirmLabel: "Promote",
+    });
+    if (!confirmed) return;
+    releaseStatus("Promoting…");
+    const res = await window.yo.appReleasePromote(currentApp?.slug || currentAppId, selectedReleaseId);
+    if (!res.ok) { releaseStatus(""); releaseError(res.error || "Couldn't promote the release."); return; }
+    releaseStatus("Live ✓");
+    await loadReleasesTab();
+  });
 }
 
 // ── Deploy tab (dev-host) — status + deploy + take-down ──────────
@@ -1091,12 +1442,12 @@ async function openPanelAppDetail(app: PanelApp) {
   currentApp = app;
   panelLoaded = false;
 
-  // Deploy + Production tabs are for BUILT Glyphh apps only.
-  const isHosted = app.appArchetype === "glyphh-app";
-  document.querySelectorAll<HTMLElement>(".tab-hosted-only").forEach((el) => el.classList.toggle("hidden", !isHosted));
+  // Releases + Deploy + Production are for BUILT Glyphh apps only.
+  const isBuilt = app.appArchetype === "glyphh-app";
+  document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => el.classList.toggle("hidden", !isBuilt));
   // A built app's type is its bundle's, not a dropdown choice — the server refuses
   // to retype it, so offering the control would only produce a failed save.
-  document.getElementById("app-detail-type-row")?.classList.toggle("hidden", isHosted);
+  document.getElementById("app-detail-type-row")?.classList.toggle("hidden", isBuilt);
 
   // Populate dashboard fields
   appDetailId.value = app.slug;
@@ -1210,6 +1561,8 @@ function initMcpTab(): void {
 
 function initApps() {
   initMcpTab();
+  initReleasesTab();
+  initMarketplaceTab();
 
   // Browser dropdowns (add form + editor) — the real browsers on this machine.
   void window.yo.browsersDetect?.().then((browsers) => {

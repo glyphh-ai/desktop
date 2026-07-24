@@ -170,6 +170,7 @@ async function openConnDetail(id: string): Promise<void> {
   nameInput.value = c.label || c.appName;   // default to the Pipedream app name
   nameInput.placeholder = c.appName;
 
+  document.getElementById("conn-tools-select-all-wrap")?.classList.add("hidden");
   toolsEl.innerHTML = `<div class="crud-empty">Loading tools…</div>`;
   const res = await window.yo.connectionToolsList(id);
   if (!res.ok) { toolsEl.innerHTML = `<div class="crud-empty">Couldn't load tools.</div>`; return; }
@@ -193,8 +194,54 @@ async function openConnDetail(id: string): Promise<void> {
   }
   // Toggling any checkbox persists the full hidden set.
   toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check").forEach((cb) => {
-    cb.addEventListener("change", () => void saveHiddenTools());
+    cb.addEventListener("change", () => { syncToolsSelectAll(); void saveHiddenTools(); });
   });
+  wireToolsSelectAll(saveHiddenTools);
+}
+
+
+/**
+ * The tool list's "Select all" — one control for both tool panes (a Pipedream
+ * connection and a custom MCP server render into the same container).
+ *
+ * `save` differs per pane, so the caller hands in the persister it already uses;
+ * the checkbox itself only ever flips the rows and re-saves the whole set, exactly
+ * like a manual toggle does.
+ */
+function wireToolsSelectAll(save: () => void | Promise<void>): void {
+  const box = document.getElementById("conn-tools-select-all") as HTMLInputElement | null;
+  const wrap = document.getElementById("conn-tools-select-all-wrap");
+  const boxes = () => Array.from(toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check"));
+  if (!box || !wrap) return;
+
+  wrap.classList.toggle("hidden", boxes().length === 0);
+  syncToolsSelectAll();
+
+  // Re-wired per render (the pane is rebuilt each time), so replace the node to
+  // drop the previous pane's listener rather than stacking a second save.
+  const fresh = box.cloneNode(true) as HTMLInputElement;
+  box.replaceWith(fresh);
+  fresh.addEventListener("change", () => {
+    for (const cb of boxes()) cb.checked = fresh.checked;
+    syncToolsSelectAll();
+    void save();
+  });
+}
+
+/** Reflect the rows in the header box: all, none, or a mix (indeterminate). */
+function syncToolsSelectAll(): void {
+  const box = document.getElementById("conn-tools-select-all") as HTMLInputElement | null;
+  const label = document.getElementById("conn-tools-select-all-label");
+  if (!box) return;
+  const all = Array.from(toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check"));
+  const checked = all.filter((c) => c.checked).length;
+  box.checked = all.length > 0 && checked === all.length;
+  box.indeterminate = checked > 0 && checked < all.length;
+  if (label) {
+    label.textContent = checked === all.length && all.length > 0
+      ? `All ${all.length} exposed`
+      : `Select all · ${checked} of ${all.length} exposed`;
+  }
 }
 
 async function saveHiddenTools(): Promise<void> {
@@ -318,6 +365,7 @@ async function loadCustomStatus(c: McpConn): Promise<void> {
     return;
   }
   customStatusText.textContent = "checking…";
+  document.getElementById("conn-tools-select-all-wrap")?.classList.add("hidden");
   toolsEl.innerHTML = `<div class="crud-empty">Loading tools…</div>`;
   const res = await window.yo.mcpConnectionsTools(c.slug);
   if (currentCustomSlug !== c.slug) return;   // user navigated away meanwhile
@@ -347,8 +395,9 @@ async function loadCustomStatus(c: McpConn): Promise<void> {
     toolsEl.appendChild(row);
   }
   toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check").forEach((cb) => {
-    cb.addEventListener("change", () => void saveCustomHiddenTools());
+    cb.addEventListener("change", () => { syncToolsSelectAll(); void saveCustomHiddenTools(); });
   });
+  wireToolsSelectAll(saveCustomHiddenTools);
 }
 
 async function saveCustomHiddenTools(): Promise<void> {

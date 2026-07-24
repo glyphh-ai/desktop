@@ -6,7 +6,7 @@ import type { AppConnector, AppConfig } from "./app-connector";
 import { exportServerApp, importApp } from "./glyphh-app-package";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import { getClient } from "./glyphh-client";
-import type { OrgMcpConnection } from "@glyphh/client";
+import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/client";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 
@@ -644,14 +644,35 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
     const dest = result.filePath.endsWith(".glyphh") ? result.filePath : `${result.filePath}.glyphh`;
-    // Pull the app's built source (hosted apps have a release); a launcher or an
+    // Pull the app's built source (built apps have a release); a launcher or an
     // app with no finished build exports manifest-only.
     let sourceZip: Buffer | undefined;
     try {
       const buf = await getClient().apps.source(app.slug);
       sourceZip = Buffer.from(buf);
-    } catch { /* no build / not hosted — manifest-only export */ }
-    return exportServerApp({ id: app.id, slug: app.slug, name: app.name, url: app.url }, dest, sourceZip);
+    } catch { /* no build / not built — manifest-only export */ }
+
+    // The bundle carries its RELEASE identity: the live release if there is one,
+    // else the newest built. An export with no story is what this fixes.
+    let release: Parameters<typeof exportServerApp>[0]["release"];
+    try {
+      const rows = await getClient().apps.releases(app.slug);
+      const built = rows.filter((r) => r.status === "ready");
+      const chosen = built.find((r) => r.channel === "live") ?? built[0];
+      if (chosen) {
+        release = {
+          version: chosen.version,
+          notes: chosen.notes,
+          channel: chosen.channel,
+          releasedAt: chosen.promotedAt ?? chosen.createdAt,
+        };
+      }
+    } catch { /* no releases readable — export without the release block */ }
+
+    return exportServerApp(
+      { id: app.id, slug: app.slug, name: app.name, url: app.url, ...(release ? { release } : {}) },
+      dest, sourceZip,
+    );
   });
 
   // ── Deploy tab (dev-host): status + deploy + take-down ──────────────────────
@@ -681,6 +702,66 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  });
+
+  // ── Releases tab: the app's version history ─────────────────────────────────
+  // Read + the two owner actions. Cutting a release is the BUILD path
+  // (glyphh-app-builder) — this tab annotates and promotes what that produced.
+  ipcMain.handle("app-releases", async (_e, slug: string) => {
+    try { return { ok: true, releases: await getClient().apps.releases(slug) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), releases: [] }; }
+  });
+  ipcMain.handle("app-release-notes", async (_e, slug: string, releaseId: string, notes: string | null) => {
+    try { return { ok: true, release: await getClient().apps.updateReleaseNotes(slug, releaseId, notes) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("app-release-promote", async (_e, slug: string, releaseId: string) => {
+    try {
+      const release = await getClient().apps.promoteRelease(slug, releaseId);
+      invalidateOrgApps();
+      return { ok: true, release };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
+  // ── Marketplace tab: the listing + its images ───────────────────────────────
+  ipcMain.handle("app-listing-set", async (_e, slug: string, patch: Record<string, unknown>) => {
+    try {
+      await getClient().apps.updateListing(slug, patch as UpdateListingInput);
+      invalidateOrgApps();
+      return { ok: true };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
+  // The file dialog lives in main, so the renderer never handles a path or bytes:
+  // it asks for "an icon", and gets back the stored key.
+  ipcMain.handle("app-listing-image-add", async (_e, slug: string, kind: "icon" | "screenshot") => {
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
+    const picked = await dialog.showOpenDialog(win, {
+      title: kind === "icon" ? "Choose an app icon" : "Add a screenshot",
+      properties: ["openFile"],
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return { ok: false, error: "Canceled" };
+    try {
+      const bytes = fs.readFileSync(picked.filePaths[0]);
+      const stored = await getClient().apps.uploadMedia(slug, kind, new Uint8Array(bytes));
+      invalidateOrgApps();
+      return { ok: true, key: stored.key };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
+  ipcMain.handle("app-listing-image-remove", async (_e, slug: string, key: string) => {
+    try { await getClient().apps.removeMedia(slug, key); invalidateOrgApps(); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
+  ipcMain.handle("app-listing-list", async (_e, slug: string, listed: boolean) => {
+    try {
+      const res = listed ? await getClient().apps.list(slug) : await getClient().apps.unlist(slug);
+      invalidateOrgApps();
+      return { ok: true, listed: res.listed };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
   // ── Production tab: graduate to a standalone Supabase repo (download zip) ────
