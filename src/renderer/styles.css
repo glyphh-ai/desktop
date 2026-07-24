@@ -10088,6 +10088,13 @@ select.settings-input {
 /* Layouts PAGE reuses the command-center card + mini-preview, laid out as a
    left-aligned wrapping grid (the CC storefront centers; the page starts left). */
 .layouts-page-grid { justify-content: flex-start; padding: 6px 0; }
+
+/* Marketplace coming-soon placeholder — shown instead of the storefront. */
+.mkt-coming-soon { display: flex; align-items: center; justify-content: center; min-height: 340px; padding: 40px 20px; }
+.mkt-cs-inner { max-width: 420px; text-align: center; color: var(--text-2); }
+.mkt-cs-inner svg { width: 46px; height: 46px; color: var(--text-3); margin-bottom: 16px; }
+.mkt-cs-inner h2 { margin: 0 0 8px; font-size: 19px; color: var(--text); }
+.mkt-cs-inner p { margin: 0; font-size: 13.5px; line-height: 1.6; }
 .cc-overlay-btn {
   display: flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border: none; border-radius: 8px;

@@ -886,12 +886,29 @@ function renderMktDetail(d: MktDetail): void {
   });
 }
 
+/** The marketplace storefront is gated behind a coming-soon page for now. Flip
+ *  to false to bring the live storefront + the app-editor Marketplace tab back. */
+const MARKETPLACE_COMING_SOON = true;
+
 /** Switch between the "My apps" library and the Marketplace storefront. */
 function switchAppsPage(page: "library" | "marketplace"): void {
   document.querySelectorAll<HTMLButtonElement>(".apps-page-tab").forEach((t) => t.classList.toggle("active", t.dataset.page === page));
   marketplaceLibraryPage.classList.toggle("hidden", page !== "library");
   marketplacePage.classList.toggle("hidden", page !== "marketplace");
-  if (page === "marketplace") { closeMktDetail(); void loadMarketplace(); }
+  if (page !== "marketplace") return;
+  const soon = document.getElementById("mkt-coming-soon");
+  const store = document.getElementById("mkt-store");
+  if (MARKETPLACE_COMING_SOON) {
+    // Show the placeholder; keep the storefront + any open detail out of the way.
+    store?.classList.add("hidden");
+    closeMktDetail();
+    soon?.classList.remove("hidden");
+    return;
+  }
+  soon?.classList.add("hidden");
+  store?.classList.remove("hidden");
+  closeMktDetail();
+  void loadMarketplace();
 }
 
 // ── Tab switching ────────────────────────────────────────
@@ -1633,7 +1650,13 @@ async function openPanelAppDetail(app: PanelApp) {
   const isBuilt = app.appArchetype === "glyphh-app";
   const owned = app.owned !== false;   // undefined (self/legacy) reads as owned
   document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => el.classList.toggle("hidden", !isBuilt));
-  document.querySelectorAll<HTMLElement>(".tab-owner-only").forEach((el) => el.classList.toggle("hidden", !(isBuilt && owned)));
+  document.querySelectorAll<HTMLElement>(".tab-owner-only").forEach((el) => {
+    // The Marketplace tab stays hidden while the storefront is coming-soon —
+    // there is nothing to list an app into yet. Flip MARKETPLACE_COMING_SOON to
+    // bring it back with the rest of the owner-only tabs.
+    const marketplaceGated = MARKETPLACE_COMING_SOON && el.getAttribute("data-tab") === "marketplace";
+    el.classList.toggle("hidden", marketplaceGated || !(isBuilt && owned));
+  });
   // A built app's type is its bundle's, not a dropdown choice — the server refuses
   // to retype it, so offering the control would only produce a failed save.
   document.getElementById("app-detail-type-row")?.classList.toggle("hidden", isBuilt);

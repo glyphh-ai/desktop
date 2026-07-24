@@ -673,6 +673,16 @@
 
             <!-- App detail page (Shopify-style listing) — filled by renderMktDetail() -->
             <div id="mkt-detail" class="mkt-detail hidden"></div>
+
+            <!-- Coming-soon placeholder — shown instead of the storefront while
+                 the marketplace is gated (MARKETPLACE_COMING_SOON in apps.ts). -->
+            <div id="mkt-coming-soon" class="mkt-coming-soon hidden">
+              <div class="mkt-cs-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 9v3a3 3 0 0 0 6 0V9"/></svg>
+                <h2>Marketplace — coming soon</h2>
+                <p>A storefront of apps that give your agent new powers — published by developers or built inside your organization. We're putting the finishing touches on it.</p>
+              </div>
+            </div>
           </div>
 
         </div>
