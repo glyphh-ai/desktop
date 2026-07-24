@@ -81,6 +81,8 @@ type MarketplaceAppDetail = MarketplaceApp & {
   dataAccess: string[];
   languages: string[];
   similar: MarketplaceApp[];
+  requiredConnections: Array<{ slug: string; actAs: string; connected: boolean }>;
+  owned: boolean;
 };
 
 // Mirrors preload.ts PanelAppInput — fields forwarded to /api/panel-apps.
@@ -203,6 +205,7 @@ declare global {
       appListingImageRemove: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appListingList: (slug: string, listed: boolean) => Promise<{ ok: boolean; listed?: boolean; error?: string }>;
       // Releases — history, notes, and dev → live promotion (see preload's AppReleaseRow).
+      appUpdateInstalled: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       appReleases: (slug: string) => Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>;
       appReleaseNotes: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
       appReleasePromote: (slug: string, releaseId: string) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;

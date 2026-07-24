@@ -13263,6 +13263,54 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .conn-tools-select-all input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--accent); }
 .conn-tools-select-all:hover { color: var(--text); }
 
+/* ── Marketplace detail: video embed, required connections, markdown ── */
+.mkt-video { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #000; }
+.mkt-video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.mkt-req-conns { display: flex; flex-direction: column; gap: 8px; }
+.mkt-req-conn { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--surface); }
+.mkt-req-conn-name { font-size: 13px; font-weight: 600; }
+.mkt-req-conn .app-conn-status { margin-left: auto; }
+/* Markdown body — headings/lists/code render, tuned to the detail column. */
+.mkt-md { font-size: 13.5px; line-height: 1.65; color: var(--text-2); }
+.mkt-md h1, .mkt-md h2, .mkt-md h3 { color: var(--text); margin: 16px 0 8px; line-height: 1.3; }
+.mkt-md h1 { font-size: 20px; } .mkt-md h2 { font-size: 17px; } .mkt-md h3 { font-size: 15px; }
+.mkt-md p { margin: 0 0 10px; }
+.mkt-md ul, .mkt-md ol { margin: 0 0 10px; padding-left: 20px; }
+.mkt-md li { margin: 3px 0; }
+.mkt-md code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-family: var(--font-mono); font-size: 12px; }
+.mkt-md pre { background: var(--surface-2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 0 0 10px; }
+.mkt-md pre code { background: none; padding: 0; }
+.mkt-md a { color: var(--accent); }
+
+/* ── App-detail Connections tab: required connections + their tools ── */
+.app-conns-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.app-conn-row { border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.app-conn-head {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 10px 12px; background: none; border: none; cursor: pointer; color: var(--text); font: inherit;
+}
+.app-conn-head:hover { background: var(--surface-2); }
+.app-conn-chev { width: 12px; color: var(--text-3); font-size: 10px; flex: none; }
+.app-conn-name { font-size: 13px; font-weight: 600; }
+.app-conn-status { margin-left: auto; font-size: 11px; padding: 2px 8px; border-radius: 5px; flex: none; }
+.app-conn-status.ok { color: #34d399; background: rgba(52,211,153,.14); }
+.app-conn-status.missing { color: var(--danger, #f87171); background: rgba(248,113,113,.12); }
+.app-conn-tools { padding: 2px 12px 10px 33px; display: flex; flex-direction: column; gap: 5px; }
+.app-conn-tool { display: flex; align-items: center; gap: 8px; }
+.app-conn-tool-name { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); }
+.app-conn-tool-state { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 4px; }
+.app-conn-tool-state.allowed { color: #34d399; background: rgba(52,211,153,.12); }
+.app-conn-tool-state.blocked { color: var(--danger, #f87171); background: rgba(248,113,113,.12); }
+.app-conn-tool-empty { font-size: 11.5px; color: var(--text-3); }
+
+/* Installed-app release view: the "update available" banner. */
+.release-update-banner {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(140,59,242,.10); border: 1px solid var(--accent);
+}
+#release-update-text { flex: 1; font-size: 12.5px; color: var(--text); }
+
 /* ── App-detail Marketplace tab: listing images ───────────────────── */
 .listing-icon-row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .listing-icon-preview {

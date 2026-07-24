@@ -25,6 +25,9 @@ export interface SavedPanelApp {
   /** Who may reach it once deployed: 'public' (anyone with the link) or
    *  'members' (signed-in org members). Enforced at the edge. */
   access?: string;
+  owned?: boolean;
+  latestVersion?: string | null;
+  requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   connectionIds: string[];       // ids of first-class Connections this app uses
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
@@ -118,6 +121,10 @@ export interface MarketplaceAppDetail extends MarketplaceApp {
   dataAccess: string[];
   languages: string[];
   similar: MarketplaceApp[];
+  /** Manifest-declared connections + whether the caller's org has each connected. */
+  requiredConnections: Array<{ slug: string; actAs: string; connected: boolean }>;
+  /** True when the caller's org published this app (gates publish-side UI). */
+  owned: boolean;
 }
 
 /** The `{ ok, data | error }` envelope every library IPC handler returns. */
@@ -376,6 +383,10 @@ contextBridge.exposeInMainWorld("yo", {
   appListingList: (slug: string, listed: boolean) =>
     ipcRenderer.invoke("app-listing-list", slug, listed) as Promise<{ ok: boolean; listed?: boolean; error?: string }>,
   // Releases — the app's version history, its notes, and dev → live promotion.
+  // Re-fetch + reinstall an installed app at its newest published version. The
+  // download endpoint is server-side and not built yet, so this reports honestly.
+  appUpdateInstalled: (slug: string) =>
+    ipcRenderer.invoke("app-update-installed", slug) as Promise<{ ok: boolean; error?: string }>,
   appReleases: (slug: string) =>
     ipcRenderer.invoke("app-releases", slug) as Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>,
   appReleaseNotes: (slug: string, releaseId: string, notes: string | null) =>

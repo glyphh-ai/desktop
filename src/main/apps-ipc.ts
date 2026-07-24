@@ -671,6 +671,18 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     );
   });
 
+  // Update an installed app to its newest published version. The bundle a
+  // marketplace glyphh app installs from is not yet downloadable — a deployed
+  // app's stored source has its worker stripped, so re-installing that would
+  // break the app. Until a bundle-distribution endpoint exists, say so plainly
+  // rather than shipping a broken update.
+  ipcMain.handle("app-update-installed", async (_e, _slug: string) => {
+    return {
+      ok: false,
+      error: "In-place update isn't available yet — reinstall the app from the marketplace or its .glyphh file to get the newest version.",
+    };
+  });
+
   // ── Deploy tab (dev-host): status + deploy + take-down ──────────────────────
   // Deploy bundles the app's newest built release and serves it at a dev URL
   // (<slug>.glyphh.app / /hosted/<slug>). Status comes from the org's deployments.

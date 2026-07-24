@@ -8,6 +8,7 @@ import {
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection } from "./navigation.js";
+import { formatMarkdown } from "../format-markdown.js";
 
 declare const Chart: any;
 
@@ -272,6 +273,12 @@ interface PanelApp {
   launchConfig?: Record<string, unknown> | null;
   /** Who may reach it once deployed — shown + set on the Public hosting tab. */
   access?: string;
+  /** True when this org published the app — an installed app hides publish tabs. */
+  owned?: boolean;
+  /** Newest live release version, or null — drives the auto-update banner. */
+  latestVersion?: string | null;
+  /** Connections the manifest requires, with connected status. */
+  requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing — copy, images, rating, listed state. */
   listing?: {
     title: string; tagline: string | null; category: string | null; body: string | null;
@@ -289,6 +296,8 @@ function toPanelApp(a: {
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
   access?: string; listing?: PanelApp["listing"];
+  owned?: boolean; latestVersion?: string | null;
+  requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
@@ -297,6 +306,7 @@ function toPanelApp(a: {
     id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url,
     isBrowser: a.isBrowser, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access, listing: a.listing,
+    owned: a.owned, latestVersion: a.latestVersion, requiredConnections: a.requiredConnections,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
@@ -446,6 +456,38 @@ function mktConnChip(conn: { name: string; slug: string }): string {
 }
 
 /** Row of required-connection icons (icons only, like the Layouts card). */
+/** A YouTube or Vimeo demo as an embedded iframe. Only these two hosts (the
+ *  server restricts the link to them), so the embed URL is derived safely. */
+function mktVideoEmbed(url: string | null | undefined): string {
+  if (!url) return "";
+  let embed = "";
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") embed = `https://www.youtube.com/embed/${u.pathname.slice(1)}`;
+    else if (host.endsWith("youtube.com")) { const v = u.searchParams.get("v"); if (v) embed = `https://www.youtube.com/embed/${v}`; }
+    else if (host.endsWith("vimeo.com")) { const id = u.pathname.split("/").filter(Boolean).pop(); if (id) embed = `https://player.vimeo.com/video/${id}`; }
+  } catch { /* not a URL — no embed */ }
+  if (!embed) return "";
+  return `<section class="mkt-dt-section"><h3>Demo</h3>
+    <div class="mkt-video"><iframe src="${escMkt(embed)}" allow="fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe></div></section>`;
+}
+
+/** Required connections with connected status — what the app needs to work. */
+function mktRequiredConns(conns: Array<{ slug: string; actAs: string; connected: boolean }> | undefined): string {
+  if (!conns || !conns.length) return "";
+  const rows = conns.map((c) => `
+    <div class="mkt-req-conn">
+      ${mktConnChip({ name: connLabel(c.slug), slug: c.slug })}
+      <span class="mkt-req-conn-name">${escMkt(connLabel(c.slug))}</span>
+      <span class="app-conn-status ${c.connected ? "ok" : "missing"}">${c.connected ? "Connected" : "Not connected"}</span>
+    </div>`).join("");
+  return `<section class="mkt-dt-section">
+    <h3>Requires</h3>
+    <p class="settings-hint" style="margin:0 0 8px;">This app calls these connected accounts through Glyphh's governed connectors.</p>
+    <div class="mkt-req-conns">${rows}</div></section>`;
+}
+
 function mktConnRow(conns: Array<{ name: string; slug: string }>): string {
   if (!conns || conns.length === 0) return "";
   return `<div class="mkt-conns">${conns.map(mktConnChip).join("")}</div>`;
@@ -673,7 +715,12 @@ function renderMktDetail(d: MktDetail): void {
   const total = d.ratingCount || d.ratingBreakdown.reduce((a, b) => a + b.count, 0) || 1;
 
   const highlights = d.highlights.map((h) => `<li>${mktCheckIcon}<span>${escMkt(h)}</span></li>`).join("");
-  const paras = d.description.split("\n\n").map((p) => `<p>${escMkt(p)}</p>`).join("");
+  // The description is markdown — render it, don't escape it into raw syntax.
+  const descHtml = d.description ? formatMarkdown(d.description) : "";
+  // A demo video (YouTube/Vimeo) embeds above the gallery when present.
+  const videoHtml = mktVideoEmbed(d.videoUrl);
+  // Required connections with the caller's connected status.
+  const reqConnHtml = mktRequiredConns(d.requiredConnections);
 
   const plans = d.plans.map((p) => `
     <div class="mkt-plan">
@@ -740,10 +787,12 @@ function renderMktDetail(d: MktDetail): void {
           <ul class="mkt-highlights">${highlights}</ul>
         </section>
 
+        ${videoHtml}
         <section class="mkt-dt-section mkt-dt-desc">
           <h3>About ${escMkt(d.name)}</h3>
-          ${paras}
+          <div class="mkt-md">${descHtml}</div>
         </section>
+        ${reqConnHtml}
 
         <section class="mkt-dt-section">
           <h3>Pricing</h3>
@@ -861,6 +910,7 @@ function switchAppTab(tab: string) {
   if (tab === "dashboard") void loadPanelTab();
   if (tab === "config") void loadConfigVarsTab();
   if (tab === "releases") void loadReleasesTab();
+  if (tab === "connections") void loadAppConnectionsTab();
   if (tab === "marketplace") loadMarketplaceTab();
   // Deploy + "own your code" share the Public hosting tab: both answer "who runs
   // this for the public", which is a different question from how it is distributed
@@ -1064,6 +1114,13 @@ async function loadReleasesTab(): Promise<void> {
   document.getElementById("release-error")!.classList.add("hidden");
   listEl.innerHTML = `<div class="inline-empty">Loading…</div>`;
 
+  // Owner sees the notes editor + promotion; an installer sees a read-only
+  // version + update view. The history (right pane) is shown to both.
+  const owned = currentApp?.owned !== false;
+  document.getElementById("release-owner-view")?.classList.toggle("hidden", !owned);
+  document.getElementById("release-installed-view")?.classList.toggle("hidden", owned);
+  if (!owned) renderInstalledReleaseView();
+
   const slug = currentApp?.slug || currentAppId;
   const res = await window.yo.appReleases(slug);
   if (!res.ok) {
@@ -1175,8 +1232,137 @@ function releaseStatus(msg: string): void {
   if (msg.endsWith("✓")) setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 2500);
 }
 
+// ── Installed-app release view: version + update availability ────
+//
+// An installer doesn't edit notes or promote — they see which version they have
+// and whether a newer one is published. The auto-update toggle is per-app.
+
+/** The version the local bundle was cut from (its manifest's release). */
+function installedVersion(app: PanelApp | null): string | null {
+  const r = (app?.launchConfig as { release?: { version?: string } } | null)?.release;
+  return r?.version ?? null;
+}
+
+/** naive semver-ish compare — "1.2.0" vs "1.10.0". Non-numeric segments sort last. */
+function versionNewer(candidate: string, have: string): boolean {
+  const seg = (v: string) => v.split(".").map((n) => Number.parseInt(n, 10));
+  const a = seg(candidate), b = seg(have);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] ?? 0, y = b[i] ?? 0;
+    if (Number.isNaN(x) || Number.isNaN(y)) return candidate > have;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+function autoUpdateKey(slug: string): string { return `appAutoUpdate:${slug}`; }
+
+function renderInstalledReleaseView(): void {
+  const app = currentApp;
+  const have = installedVersion(app);
+  const latest = app?.latestVersion ?? null;
+  document.getElementById("release-installed-version")!.textContent = have ? `v${have}` : "—";
+
+  const banner = document.getElementById("release-update-banner")!;
+  const text = document.getElementById("release-update-text")!;
+  const updatable = !!(latest && have && versionNewer(latest, have));
+  banner.classList.toggle("hidden", !updatable);
+  if (updatable) text.textContent = `Version ${latest} is available — you have ${have}.`;
+
+  // Toggle reflects the stored preference (default on).
+  const toggle = document.getElementById("release-autoupdate") as HTMLInputElement;
+  void window.yo.getPreference?.(autoUpdateKey(app?.slug || ""), true).then((v) => { toggle.checked = v !== false; });
+}
+
+// ── Connections tab: the app's required connections + their tools ────
+
+/** The connection slugs the app requires (from the server's requiredConnections). */
+function requiredConnSlugs(app: PanelApp | null): { slug: string; connected: boolean }[] {
+  return (app?.requiredConnections || []).map((c) => ({ slug: c.slug, connected: c.connected }));
+}
+
+async function loadAppConnectionsTab(): Promise<void> {
+  const listEl = document.getElementById("app-conns-list")!;
+  const emptyEl = document.getElementById("app-conns-empty")!;
+  const required = requiredConnSlugs(currentApp);
+  emptyEl.classList.toggle("hidden", required.length > 0);
+  listEl.innerHTML = "";
+  if (!required.length) return;
+
+  // Map required slugs → the user's actual connection (for the id → tools lookup).
+  let byslug = new Map<string, { id: string; hiddenTools: string[] }>();
+  try {
+    const res = await window.yo.connectionsList();
+    byslug = new Map((res.connections || []).map((c) => [c.appSlug, { id: c.id, hiddenTools: c.hiddenTools }]));
+  } catch { /* offline — everything renders as not connected */ }
+
+  for (const { slug, connected } of required) {
+    const conn = byslug.get(slug);
+    const row = document.createElement("div");
+    row.className = "app-conn-row";
+    row.innerHTML = `
+      <button class="app-conn-head" type="button">
+        <span class="app-conn-chev">▸</span>
+        ${mktConnChip({ name: connLabel(slug), slug })}
+        <span class="app-conn-name">${escMkt(connLabel(slug))}</span>
+        <span class="app-conn-status ${connected ? "ok" : "missing"}">${connected ? "Connected" : "Not connected"}</span>
+      </button>
+      <div class="app-conn-tools hidden"></div>`;
+    const head = row.querySelector<HTMLButtonElement>(".app-conn-head")!;
+    const tools = row.querySelector<HTMLDivElement>(".app-conn-tools")!;
+    const chev = row.querySelector<HTMLElement>(".app-conn-chev")!;
+    head.addEventListener("click", async () => {
+      const open = tools.classList.toggle("hidden");
+      chev.textContent = open ? "▸" : "▾";
+      if (open || tools.dataset.loaded) return;
+      tools.dataset.loaded = "1";
+      if (!conn) { tools.innerHTML = `<div class="app-conn-tool-empty">Connect ${escMkt(connLabel(slug))} to see its tools.</div>`; return; }
+      tools.innerHTML = `<div class="app-conn-tool-empty">Loading tools…</div>`;
+      const tres = await window.yo.connectionToolsList(conn.id).catch(() => ({ ok: false as const, tools: [] }));
+      if (!tres.ok || !tres.tools.length) { tools.innerHTML = `<div class="app-conn-tool-empty">No tools.</div>`; return; }
+      // A tool the user/org has hidden is BLOCKED — the app can't call it, so the
+      // dependency is unmet even though the account is connected.
+      tools.innerHTML = tres.tools.map((t) => `
+        <div class="app-conn-tool">
+          <span class="app-conn-tool-name">${escMkt(t.name)}</span>
+          <span class="app-conn-tool-state ${t.hidden ? "blocked" : "allowed"}">${t.hidden ? "Blocked" : "Allowed"}</span>
+        </div>`).join("");
+    });
+    listEl.appendChild(row);
+    // Any required connection that's connected but has all tools blocked is a
+    // silent failure — surface it on the row without needing expansion.
+    if (conn) void window.yo.connectionToolsList(conn.id).then((tres) => {
+      if (tres.ok && tres.tools.length && tres.tools.every((t) => t.hidden)) {
+        const st = row.querySelector<HTMLElement>(".app-conn-status")!;
+        st.textContent = "Tools blocked";
+        st.className = "app-conn-status missing";
+      }
+    }).catch(() => {});
+  }
+  primeConnectedIcons(mktConnIconApps(required.map(({ slug }) => ({ slug }))), () => {});
+}
+
 function initReleasesTab(): void {
   document.getElementById("release-refresh")?.addEventListener("click", () => { void loadReleasesTab(); });
+
+  // Auto-update toggle (installed apps) — persisted per app slug.
+  document.getElementById("release-autoupdate")?.addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    void window.yo.setPreference?.(autoUpdateKey(currentApp?.slug || ""), on);
+  });
+  // Manual "Update now" — the download mechanism is server-side (a bundle
+  // endpoint); until it lands this reports honestly rather than silently no-op.
+  document.getElementById("release-update-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("release-update-btn") as HTMLButtonElement;
+    const prev = btn.textContent; btn.disabled = true; btn.textContent = "Updating…";
+    const res = await window.yo.appUpdateInstalled?.(currentApp?.slug || "");
+    btn.disabled = false; btn.textContent = res?.ok ? "Updated ✓" : prev;
+    if (res?.ok) { await refreshCurrentApp(); loadReleasesTab(); }
+    else if (res?.error) releaseError(res.error);
+  });
+
+  // Connections tab: jump to the Connections page to connect/allow.
+  document.getElementById("app-conns-goto")?.addEventListener("click", () => { void gotoSection("connections"); });
 
   document.getElementById("release-save-notes")?.addEventListener("click", async () => {
     if (!selectedReleaseId) return;
@@ -1442,9 +1628,12 @@ async function openPanelAppDetail(app: PanelApp) {
   currentApp = app;
   panelLoaded = false;
 
-  // Releases + Deploy + Production are for BUILT Glyphh apps only.
+  // Built-app tabs. Releases + Connections show for the builder AND anyone who
+  // installed it; Marketplace + Public hosting are the builder's alone.
   const isBuilt = app.appArchetype === "glyphh-app";
+  const owned = app.owned !== false;   // undefined (self/legacy) reads as owned
   document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => el.classList.toggle("hidden", !isBuilt));
+  document.querySelectorAll<HTMLElement>(".tab-owner-only").forEach((el) => el.classList.toggle("hidden", !(isBuilt && owned)));
   // A built app's type is its bundle's, not a dropdown choice — the server refuses
   // to retype it, so offering the control would only produce a failed save.
   document.getElementById("app-detail-type-row")?.classList.toggle("hidden", isBuilt);

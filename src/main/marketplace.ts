@@ -59,7 +59,10 @@ export interface MarketplacePlan {
 /** The full detail payload for one app — everything the Shopify-style
  *  detail page needs (gallery, highlights, plans, reviews, sidebar). */
 export interface MarketplaceAppDetail extends MarketplaceApp {
-  description: string;                                   // \n\n-separated paragraphs
+  /** Connections the app requires, with whether the caller's org has each. */
+  requiredConnections: Array<{ slug: string; actAs: string; connected: boolean }>;
+  owned: boolean;
+  description: string;                                   // markdown
   highlights: string[];
   worksWith: string[];
   screenshots: Array<{ url: string; caption: string }>;
@@ -160,22 +163,42 @@ export async function installMarketplaceApp(slug: string): Promise<{ ok: boolean
 export async function getMarketplaceApp(slug: string): Promise<MarketplaceAppDetail | null> {
   try {
     const client = getClient();
-    const [listing, installedApps] = await Promise.all([
+    const [detail, installedApps] = await Promise.all([
       client.apps.get(slug),
       client.apps.installed().catch(() => [] as InstalledApp[]),
     ]);
-    const base = listingToApp(listing, new Set(installedApps.map((a) => a.slug)));
+    const l = detail.listing;
     return {
-      ...base,
-      description: listing.description ?? "",
+      id: detail.slug,
+      slug: detail.slug,
+      name: l.title || detail.name,
+      tagline: l.tagline ?? "",
+      // The long-form pitch is MARKDOWN — the detail page renders it.
+      description: l.body ?? detail.description ?? "",
+      iconUrl: l.iconUrl ?? undefined,
+      developer: { name: "", verified: false },
+      rating: l.ratingAvg,
+      ratingCount: l.ratingCount,
+      priceCredits: 0,
+      category: l.category ?? "",
+      scope: "public",
+      featured: false,
+      popular: detail.installs > 0,
+      // Legacy connection chips (name/slug) alongside the richer required list.
+      connections: detail.requiredConnections.map((c) => ({ name: c.slug, slug: c.slug })),
+      requiredConnections: detail.requiredConnections,
+      owned: detail.owned,
+      version: detail.version,
+      installed: installedApps.some((a) => a.slug === detail.slug),
+      videoUrl: l.videoUrl ?? undefined,
+      ...(l.website ? { website: l.website } : {}),
+      screenshots: l.screenshots,
       highlights: [],
       worksWith: [],
-      screenshots: [],
       plans: [],
       ratingBreakdown: [],
       reviews: [],
-      launchedAt: listing.createdAt,
-      updatedAt: listing.updatedAt,
+      launchedAt: l.listedAt ?? "",
       dataAccess: [],
       languages: [],
       similar: [],

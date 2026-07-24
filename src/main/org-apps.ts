@@ -35,6 +35,12 @@ export interface OrgAppRow {
   launchConfig: Record<string, unknown> | null;
   /** Who may reach the deployed app — 'public' or 'members'. */
   access: string;
+  /** True when THIS org published the app — gates the publish-side tabs. */
+  owned: boolean;
+  /** Newest live release version, or null — drives the auto-update check. */
+  latestVersion: string | null;
+  /** The connections the app's manifest requires, with connected status. */
+  requiredConnections: { slug: string; actAs: string; connected: boolean }[];
   connectionIds: string[];
   mcp: null;
   commands: Record<string, never>;
@@ -62,6 +68,9 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
   appArchetype: "glyphh-self",
   launchConfig: null,
   access: "members",
+  owned: true,
+  latestVersion: null,
+  requiredConnections: [],
   connectionIds: [],
   mcp: null,
   commands: {},
@@ -86,6 +95,9 @@ function toRow(app: OrgApp): OrgAppRow {
     appArchetype: app.kind === "glyphh" ? "glyphh-app" : app.kind,
     launchConfig: app.config ?? null,
     access: app.access,
+    owned: app.owned,
+    latestVersion: app.latestVersion,
+    requiredConnections: app.requiredConnections,
     connectionIds: app.requiredConnections.map((c) => c.slug),
     mcp: null,
     commands: {},

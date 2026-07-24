@@ -117,9 +117,13 @@
               <!-- Hosted (built) apps: dev-host deploy + Supabase graduation. -->
               <!-- Two axes, deliberately: Releases + Marketplace are how the app
                    travels INSIDE Glyphh; Public hosting is the app on the open web. -->
+              <!-- Built-app tabs. Releases + Connections show for the builder AND
+                   anyone who installed the app; Marketplace + Public hosting are
+                   the builder's alone (tab-owner-only). -->
               <button class="app-detail-tab tab-built-only hidden" data-tab="releases">Releases</button>
-              <button class="app-detail-tab tab-built-only hidden" data-tab="marketplace">Marketplace</button>
-              <button class="app-detail-tab tab-built-only hidden" data-tab="hosting">Public hosting</button>
+              <button class="app-detail-tab tab-built-only hidden" data-tab="connections">Connections</button>
+              <button class="app-detail-tab tab-owner-only hidden" data-tab="marketplace">Marketplace</button>
+              <button class="app-detail-tab tab-owner-only hidden" data-tab="hosting">Public hosting</button>
             </div>
 
             <div class="app-builder-split">
@@ -289,25 +293,60 @@
                 <!-- Releases left: the selected release's notes + promotion. The
                      HISTORY is on the right, where a list belongs. -->
                 <div class="app-tab-left" data-tab="releases">
-                  <label class="settings-label">Release</label>
-                  <div id="release-selected" class="release-selected">Select a release from the history →</div>
-
-                  <label class="settings-label" style="margin-top:14px;">Release notes <span style="color:var(--text-2);font-weight:400;">— what changed, in your words</span></label>
-                  <textarea id="release-notes" class="settings-input" rows="8" spellcheck="true"
-                            placeholder="- Fixed the crash on launch&#10;- Added CSV export" style="resize:vertical;font-size:12.5px;"></textarea>
-                  <p class="proxy-field-hint">Markdown. This is what an installer reads when they upgrade, and what travels in an exported <code>.glyphh</code> bundle.</p>
-
-                  <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
-                  <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
-                    <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-                    <button id="release-promote" class="action-btn" type="button" disabled>Promote to live</button>
-                    <button id="release-save-notes" class="action-btn primary" type="button" disabled>Save notes</button>
+                  <!-- Installed apps: current version + an update banner when a newer
+                       live release exists, plus the auto-update toggle. -->
+                  <div id="release-installed-view" class="hidden">
+                    <label class="settings-label">Installed version</label>
+                    <div id="release-installed-version" class="release-selected">—</div>
+                    <div id="release-update-banner" class="release-update-banner hidden">
+                      <span id="release-update-text">A new version is available.</span>
+                      <button id="release-update-btn" class="action-btn primary" type="button">Update now</button>
+                    </div>
+                    <label class="settings-toggle" style="margin-top:16px;">
+                      <input type="checkbox" id="release-autoupdate" checked />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Auto-update</span>
+                        <span class="toggle-desc">Load the newest published version each time you open this app. Turn off to pin the version you have.</span>
+                      </div>
+                    </label>
+                    <p class="proxy-field-hint" style="margin-top:12px;">The release notes for each version are on the right.</p>
                   </div>
 
-                  <p class="proxy-field-hint" style="margin-top:14px;">
-                    A build lands on <strong>dev</strong>. Promoting marks it <strong>live</strong> — the version installers get.
-                    Rolling back is promoting an older release again; nothing is rebuilt.
-                  </p>
+                  <!-- Builder controls: notes + promotion. Owner only. -->
+                  <div id="release-owner-view">
+                    <label class="settings-label">Release</label>
+                    <div id="release-selected" class="release-selected">Select a release from the history →</div>
+
+                    <label class="settings-label" style="margin-top:14px;">Release notes <span style="color:var(--text-2);font-weight:400;">— what changed, in your words</span></label>
+                    <textarea id="release-notes" class="settings-input" rows="8" spellcheck="true"
+                              placeholder="- Fixed the crash on launch&#10;- Added CSV export" style="resize:vertical;font-size:12.5px;"></textarea>
+                    <p class="proxy-field-hint">Markdown. This is what an installer reads when they upgrade, and what travels in an exported <code>.glyphh</code> bundle.</p>
+
+                    <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
+                    <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                      <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                      <button id="release-promote" class="action-btn" type="button" disabled>Promote to live</button>
+                      <button id="release-save-notes" class="action-btn primary" type="button" disabled>Save notes</button>
+                    </div>
+
+                    <p class="proxy-field-hint" style="margin-top:14px;">
+                      A build lands on <strong>dev</strong>. Promoting marks it <strong>live</strong> — the version installers get.
+                      Rolling back is promoting an older release again; nothing is rebuilt.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Connections left: the connections this app requires, connected
+                     status, and (expandable) the tools it depends on. -->
+                <div class="app-tab-left" data-tab="connections">
+                  <label class="settings-label">Required connections</label>
+                  <p class="settings-hint" style="margin-top:2px;">This app calls these connected accounts. It won't work until each is connected and its tools are allowed.</p>
+                  <div id="app-conns-list" class="app-conns-list"></div>
+                  <div id="app-conns-empty" class="help-item-empty hidden">This app requires no connections.</div>
+                  <div class="settings-actions" style="margin-top:14px;">
+                    <button id="app-conns-goto" class="action-btn" type="button">Open Connections</button>
+                  </div>
                 </div>
 
                 <!-- Public hosting: the app on the OPEN WEB. Serving it at its Glyphh
@@ -470,6 +509,24 @@
                       PNG, JPEG, GIF, or WebP. The file's real type is checked from its bytes, so
                       a renamed file is refused. Your agent can upload these for you — ask it to
                       draft the listing, then review it here before you press List.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Connections right: explainer. -->
+                <div class="app-tab-right" data-tab="connections">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">What this app needs</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      A Glyphh app is deterministic because it calls your <strong>connected accounts</strong> —
+                      Gmail, Slack, a CRM — through Glyphh's governed connectors, never with its own keys.
+                      Each connection it requires is listed on the left with whether you have it connected.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Expand a connection to see the tools the app depends on. A connection can be
+                      connected but still have tools your org or workspace hasn't allowed — those show as
+                      <strong>blocked</strong>, and the app can't call them until they're permitted on the
+                      Connections page.
                     </p>
                   </div>
                 </div>
