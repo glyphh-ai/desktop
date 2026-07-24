@@ -6,6 +6,7 @@ import type { AppConnector, AppConfig } from "./app-connector";
 import { exportServerApp, importApp } from "./glyphh-app-package";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import { getClient } from "./glyphh-client";
+import { probeMcpAuth, authorizeMcpServer } from "./mcp-oauth";
 import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/client";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
@@ -21,7 +22,7 @@ import { resolveRoles, setSelection, invalidateRoles, applyLoopConfig, currentLo
  *  yo-server's /api/panel-apps (see saved-app-routes.ts). Errors surface as
  *  { ok: false, error } rather than throwing, so the renderer can show a
  *  message instead of crashing on a network hiccup. */
-function registerPanelAppsIpc(): void {
+function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   // Launch an app — every path opens a workbench panel beside the agent
   // (openAppByRef sends wb:app-cmd). OS windows and real-browser launches
   // are retired; a raw web URL not in the library still opens as a panel.
@@ -440,7 +441,19 @@ function registerPanelAppsIpc(): void {
   ipcMain.handle("mcp-connections-create", async (_e, fields: { name: string; url: string; headers?: Record<string, string> }) => {
     try {
       const slug = fields.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
-      const r = await getClient().connections.personalMcpCreate({ slug, ...fields });
+      let headers = fields.headers ?? {};
+      // OAuth 2.1 endpoints: the server dials the URL, so it can't drive the
+      // interactive consent. Probe here; if the server demands authorization,
+      // run the consent in an in-app web view and hand the bearer to the server.
+      const win = getMainWindow();
+      if (win) {
+        const probe = await probeMcpAuth(fields.url);
+        if (probe.needsAuth) {
+          const token = await authorizeMcpServer(win, fields.url, probe.resourceMetadataUrl);
+          headers = { ...headers, Authorization: `Bearer ${token}` };
+        }
+      }
+      const r = await getClient().connections.personalMcpCreate({ slug, name: fields.name, url: fields.url, headers });
       return { ok: r.ok, connection: withIconUrl(r.connection), toolCount: r.toolCount, ...(r.error ? { error: r.error } : {}) };
     }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
@@ -519,7 +532,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     getMainWindow,
   } = deps;
 
-  registerPanelAppsIpc();
+  registerPanelAppsIpc(getMainWindow);
 
   // Open a saved layout: every cell becomes a workbench PANEL inside Glyphh.
   // (Layouts used to be able to target the desktop and tile real OS windows —
