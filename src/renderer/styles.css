@@ -12180,7 +12180,10 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 }
 .app-rail-section-head .app-rail-section-toggle { flex: 1; min-width: 0; }
 .app-rail-section-head .rail-label-btn { flex: none; }
-.app-rail-section-body { display: flex; flex-direction: column; }
+/* Open section bodies SHARE the rail space below Recents (two open → split
+   evenly). A collapsed body is display:none, so its space flows to the other
+   open body — or, when both are closed, to Recents (see syncRailLayout). */
+.app-rail-section-body { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; }
 .rail-label-btn {
   display: inline-flex;
   align-items: center;
@@ -12901,14 +12904,11 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
    mode dims it further; hover and open restore full presence. */
 .app-rail-more-toggle { opacity: 0.85; }
 [data-theme="dark"] .app-rail-more-toggle { opacity: 0.55; }
-.app-rail-more-toggle:hover, .app-rail-more-toggle.open { opacity: 1; }
-.app-rail-more-toggle { opacity: 0.85; }
-[data-theme="dark"] .app-rail-more-toggle { opacity: 0.55; }
-.app-rail-more-toggle:hover, .app-rail-more-toggle.open { opacity: 1; }
-.app-rail-more-toggle .rail-more-caret { transition: transform 0.14s; display: inline-flex; }
-.app-rail-more-toggle.open .rail-more-caret { transform: rotate(180deg); }
-.app-rail-more-group { display: none; }
-.app-rail-more-group.open { display: block; }
+.app-rail-more-toggle:hover, .app-rail-more-toggle.open, .app-rail-more-toggle.active { opacity: 1; }
+/* The More fly-out — a code-menu (fixed + shadowed) holding rail nav items,
+   opened to the right of the More button. */
+.rail-more-menu { display: flex; flex-direction: column; gap: 2px; min-width: 152px; }
+.rail-more-menu .app-rail-nav-item { width: 100%; }
 
 /* "Create with AI" — a quiet link beside the breadcrumb, NEW pages only:
    an existing object is edited by hand, a blank one is worth delegating. */

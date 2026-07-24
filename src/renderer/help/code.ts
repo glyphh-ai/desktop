@@ -1842,9 +1842,8 @@ function initGlyphhAgentEvents(): void {
 function setRecentsOpen(open: boolean, persist: boolean): void {
   el("recents-toggle")?.classList.toggle("closed", !open);
   el("code-history")?.classList.toggle("hidden", !open);
-  // The resize handle belongs to Recents — it goes with it.
-  el("recents-vsplit")?.classList.toggle("hidden", !open);
   if (persist) void window.yo.setPreference?.("codeRecentsOpen", open);
+  syncRailLayout();
 }
 
 // ── Rail sections (Apps, Layouts) — each collapsible, state remembered ───────
@@ -1853,11 +1852,36 @@ const RAIL_SECTIONS: RailSectionDef[] = [
   { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railAppsOpen" },
   { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railLayoutsOpen" },
 ];
+/** The user's chosen Recents height — the splitter's flex-basis. Kept in a var
+ *  so syncRailLayout can restore it after a "both sections closed" fill. */
+let railRecentsH = 170;
 
 function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
   el(def.toggle)?.classList.toggle("closed", !open);
   el(def.body)?.classList.toggle("hidden", !open);
   if (persist) void window.yo.setPreference?.(def.pref, open);
+  syncRailLayout();
+}
+
+/**
+ * One authority over how the rail's lower stack shares vertical space:
+ *
+ *   - Recents open + a section open → the splitter is live; Recents holds its
+ *     chosen height and the open section(s) take the rest.
+ *   - Recents open + BOTH sections closed → nothing below to resize, so Recents
+ *     fills all the way to the user area and the splitter hides.
+ *   - Recents closed → the sections own the whole stack; no splitter.
+ *
+ * Without this, collapsing both sections left Recents pinned at its dragged
+ * height with dead space beneath it — the "doesn't go past a certain point" bug.
+ */
+function syncRailLayout(): void {
+  const hist = el("code-history");
+  const vs = el("recents-vsplit");
+  const recentsOpen = !hist?.classList.contains("hidden");
+  const anySectionOpen = RAIL_SECTIONS.some((d) => !el(d.body)?.classList.contains("hidden"));
+  vs?.classList.toggle("hidden", !(recentsOpen && anySectionOpen));
+  if (hist && recentsOpen) hist.style.flex = anySectionOpen ? `0 1 ${railRecentsH}px` : "1 1 auto";
 }
 
 /** Bind each rail section's disclosure toggle + restore its remembered state. */
@@ -2067,22 +2091,31 @@ function initRecentsVsplit(): void {
     e.preventDefault();
     document.body.classList.add("code-vdragging");
     const startY = e.clientY;
+    const startTop = hist.getBoundingClientRect().top;
     const startH = hist.getBoundingClientRect().height;
-    // Dragging down takes space from the apps grid — cap at the point the
-    // grid hits its 96px minimum so it always keeps a scrollable row.
-    const gridH = el("recent-apps-list")?.getBoundingClientRect().height ?? 0;
-    const maxH = startH + Math.max(0, gridH - 96);
+    // The cap is computed against the WHOLE lower stack, not a snapshot of one
+    // grid: Recents may grow until the still-open section(s) hit a usable
+    // minimum. A collapsed section reserves nothing, so Recents reclaims its
+    // space. This is what makes the splitter reach far down when only one
+    // section is open (the old cap stopped at the apps grid's 96px).
+    const MIN_BODY = 110;
+    const userTop = el("app-rail-user")?.getBoundingClientRect().top ?? window.innerHeight;
+    const available = userTop - startTop;
     const move = (ev: MouseEvent) => {
+      let reserve = vs.offsetHeight;
+      document.querySelectorAll<HTMLElement>(".app-rail-section-head").forEach((h) => { reserve += h.offsetHeight; });
+      const openBodies = RAIL_SECTIONS.filter((d) => !el(d.body)?.classList.contains("hidden")).length;
+      reserve += openBodies * MIN_BODY;
+      const maxH = Math.max(60, available - reserve);
       const h = Math.max(60, Math.min(maxH, startH + (ev.clientY - startY)));
       hist.style.flex = `0 1 ${h}px`;
+      railRecentsH = h;
     };
     const up = () => {
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
       document.body.classList.remove("code-vdragging");
-      const m = hist.style.flex.match(/(\d+)px/);
-      const h = m ? parseInt(m[1], 10) : 0;
-      if (h > 0) void window.yo.setPreference?.("codeRecentsH", h);
+      if (railRecentsH > 0) void window.yo.setPreference?.("codeRecentsH", railRecentsH);
     };
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
@@ -2093,8 +2126,8 @@ function initRecentsVsplit(): void {
 function initRailApps(): void {
   void (async () => {
     const recentsH = Number(await window.yo.getPreference?.("codeRecentsH", 0)) || 0;
-    const hist = el("code-history");
-    if (hist && recentsH > 0) hist.style.flex = `0 1 ${recentsH}px`;
+    if (recentsH > 0) railRecentsH = recentsH;
+    syncRailLayout();
   })();
   void loadRecentApps();
   // The rail no longer has Apps/Layouts nav buttons (they moved to these
@@ -2205,10 +2238,16 @@ export function openUrlInWorkbench(name: string, url: string): void {
  *  clear every workbench panel (no layout), return to the home surface, and
  *  ask main to un-dock the window + close any desktop-layout windows. If the
  *  user cancels the unsaved-changes prompt, nothing changes. */
+/**
+ * Reset REMOVES THE LAYOUT — nothing more. It closes every workbench panel and
+ * parks the agent back in its home column (clearAllPanels → renderRails →
+ * parkAgent do both). It deliberately does NOT touch the OS window (size,
+ * position, fullscreen) or the rail: a layout is workspace state, not window
+ * state, so resetting it should not throw the whole window around.
+ */
 export async function resetWorkspace(): Promise<void> {
   const w = window as unknown as {
     __initCodeWorkbench?: () => void; __wbClearPanels?: () => Promise<boolean | void>;
-    yo?: { appReset?: () => Promise<{ ok: boolean }> };
   };
   gotoSection("code");
   w.__initCodeWorkbench?.();
@@ -2219,9 +2258,7 @@ export async function resetWorkspace(): Promise<void> {
     if (w.__wbClearPanels) return w.__wbClearPanels();
     if (tries++ < 20) { await new Promise((r) => requestAnimationFrame(r)); return clear(); }
   };
-  const result = await clear();
-  if (result === false) return;
-  await w.yo?.appReset?.().catch(() => {});
+  await clear();
 }
 
 export function openCommandCenter(): void {

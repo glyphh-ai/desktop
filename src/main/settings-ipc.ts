@@ -1,6 +1,5 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, screen } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { isRailCollapsed, toggleRailCollapsed, setRailCollapsed } from "./screen-layout";
-import { getMainWindowRef } from "./main-window-ref";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -110,30 +109,10 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("rail-collapse-toggle", () => toggleRailCollapsed());
   ipcMain.handle("rail-collapse-set", (_e, on: boolean) => setRailCollapsed(!!on));
 
-  // Reset the app to a clean slate (the Reset button, top-left): un-collapse
-  // the rail and return the main window to a centered default size on its
-  // display. The renderer clears its panels + returns home separately
-  // (app-reset:renderer).
-  ipcMain.handle("app-reset", () => {
-    setRailCollapsed(false);
-    const win = getMainWindowRef();
-    if (win && !win.isDestroyed()) {
-      if (win.isFullScreen()) win.setFullScreen(false);
-      if (win.isMaximized()) win.unmaximize();
-      const wa = screen.getDisplayMatching(win.getBounds()).workArea;
-      const width = Math.min(1440, Math.round(wa.width * 0.8));
-      const height = Math.min(960, Math.round(wa.height * 0.85));
-      win.setBounds({
-        x: Math.round(wa.x + (wa.width - width) / 2),
-        y: Math.round(wa.y + (wa.height - height) / 2),
-        width, height,
-      });
-      if (win.isMinimized()) win.restore();
-      win.show();
-      win.focus();
-    }
-    return { ok: true };
-  });
+  // Reset is a RENDERER-only action now: it closes the workbench panels and
+  // parks the agent back in its home column (see resetWorkspace). It no longer
+  // touches the OS window (size, position, fullscreen) or the rail — a layout
+  // is workspace state, not window state.
 
   ipcMain.handle("user-timezone-set", async (_e, timezone: string) => {
     try {

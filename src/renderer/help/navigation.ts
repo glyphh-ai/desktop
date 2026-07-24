@@ -221,8 +221,52 @@ export function initHelp() {
     });
   });
 
-  // The "More" fold was removed — Loops/Skills/Agents are flat nav items now
-  // (Apps + Layouts moved to their own rail sections below Recents).
+  // ── "More" fly-out — everything but Home + Connections lives here, in a
+  //    popup that opens to the RIGHT of the More button so the rail stays a
+  //    short, tidy three-item column. ──
+  const MORE_ITEMS: Array<{ section: string; label: string; icon: string }> = [
+    { section: "drips", label: "Drips", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>` },
+    { section: "loops", label: "Loops", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg>` },
+    { section: "skills", label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg>` },
+    { section: "agents", label: "Agents", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>` },
+  ];
+  const moreToggle = document.getElementById("rail-more-toggle");
+  let moreMenu: HTMLDivElement | null = null;
+  // Capture phase, so a click ANYWHERE off the menu closes it even when the
+  // clicked control stops propagation (the rail's open-page buttons do).
+  const closeMore = (): void => { moreMenu?.remove(); moreMenu = null; document.removeEventListener("click", onMoreOutside, true); };
+  const onMoreOutside = (ev: MouseEvent): void => {
+    if (!(ev.target as HTMLElement).closest("#rail-more-menu, #rail-more-toggle")) closeMore();
+  };
+  const activeSection = (): string => document.body.dataset.railSection || "";
+  moreToggle?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (moreMenu) { closeMore(); return; }
+    const menu = document.createElement("div");
+    menu.id = "rail-more-menu";
+    menu.className = "code-menu rail-more-menu";
+    for (const it of MORE_ITEMS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "app-rail-nav-item" + (activeSection() === it.section ? " active" : "");
+      b.innerHTML = `${it.icon}<span>${it.label}</span>`;
+      b.addEventListener("click", () => { closeMore(); gotoSection(it.section); });
+      menu.appendChild(b);
+    }
+    document.body.appendChild(menu);
+    // Anchor to the RIGHT of the More button, top-aligned; nudge back on screen.
+    const r = moreToggle.getBoundingClientRect();
+    menu.style.left = `${r.right + 6}px`;
+    menu.style.top = `${Math.min(r.top, window.innerHeight - menu.offsetHeight - 8)}px`;
+    moreToggle.classList.add("open");
+    setTimeout(() => document.addEventListener("click", onMoreOutside, true), 0);
+  });
+  // The More button highlights when one of its sections is the active one.
+  const moreSections = new Set(MORE_ITEMS.map((i) => i.section));
+  new MutationObserver(() => {
+    moreToggle?.classList.toggle("active", moreSections.has(activeSection()));
+    if (!moreMenu) moreToggle?.classList.remove("open");
+  }).observe(document.body, { attributes: true, attributeFilter: ["data-rail-section"] });
 
   // User area — dropdown opens upward: Settings / Account / Logout.
   const GEAR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
