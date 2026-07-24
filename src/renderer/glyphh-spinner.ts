@@ -78,7 +78,7 @@ export function createGlyphhSpinner(opts?: { size?: number; phrases?: boolean })
 
   // ── Colors follow the theme (re-read on every beat) ──
   let wire = "#ffffff";
-  let accent = "#8c3bf2";
+  let accent = "#f59e0b";
   const readColors = () => {
     try {
       wire = getComputedStyle(root).color || wire;

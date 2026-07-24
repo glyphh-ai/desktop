@@ -39,7 +39,7 @@ export class PanelCommandInterceptor {
   // Yo conversation callbacks
   private yoClearer: (() => void) | null = null;
   private yoActiveWc: WebContents | null = null; // wc the current .yo conversation is in
-  private modeColor = "#a855f7"; // current agent mode color (ask=purple, plan=violet, auto=green, bypass=red)
+  private modeColor = "#fbbf24"; // current agent mode color (ask=purple, plan=violet, auto=green, bypass=red)
   private agentMode = "default";
   private theme = "dark";
   private lastAgentResult: (() => string) | null = null;
@@ -67,7 +67,7 @@ export class PanelCommandInterceptor {
   setModeColor(color: string): void { this.modeColor = color; }
   setAgentMode(mode: string): void {
     this.agentMode = mode;
-    const colors: Record<string, string> = { default: "#a855f7", plan: "#8B5CF6", acceptEdits: "#25C75E", bypassPermissions: "#FF2D55" };
+    const colors: Record<string, string> = { default: "#fbbf24", plan: "#8B5CF6", acceptEdits: "#25C75E", bypassPermissions: "#FF2D55" };
     this.modeColor = colors[mode] || colors.default;
     this.pushToAll(`if(window.__yoSetMode)window.__yoSetMode(${JSON.stringify(mode)},${JSON.stringify(this.modeColor)})`);
   }
@@ -160,7 +160,7 @@ export class PanelCommandInterceptor {
     return `
 (function(){
 if(window.__yoActive)return;window.__yoActive=true;
-var __yoThemes={dark:{'surface':'#111','surface2':'#1a1a1a','surface3':'#141414','border':'#1e1e1e','border2':'#2a2a2a','border3':'#333','text':'#e0e0e0','text-bright':'#fff','text2':'#ccc','text3':'#666','text-muted':'#555','text-faint':'#444','text-dim':'#333','accent':'#a855f7','accent-hover':'#c084fc','hover':'#222','shadow':'rgba(0,0,0,0.7)','shadow-med':'rgba(0,0,0,0.5)','shadow-sm':'rgba(0,0,0,0.3)'},light:{'surface':'#fff','surface2':'#f5f5f5','surface3':'#f0f0f0','border':'#e5e5e5','border2':'#d4d4d4','border3':'#c4c4c4','text':'#374151','text-bright':'#111','text2':'#4b5563','text3':'#6b7280','text-muted':'#6b7280','text-faint':'#9ca3af','text-dim':'#b0b8c4','accent':'#a855f7','accent-hover':'#b975f9','hover':'#e5e5e5','shadow':'rgba(0,0,0,0.18)','shadow-med':'rgba(0,0,0,0.12)','shadow-sm':'rgba(0,0,0,0.06)'}};
+var __yoThemes={dark:{'surface':'#111','surface2':'#1a1a1a','surface3':'#141414','border':'#1e1e1e','border2':'#2a2a2a','border3':'#333','text':'#e0e0e0','text-bright':'#fff','text2':'#ccc','text3':'#666','text-muted':'#555','text-faint':'#444','text-dim':'#333','accent':'#fbbf24','accent-hover':'#fbbf24','hover':'#222','shadow':'rgba(0,0,0,0.7)','shadow-med':'rgba(0,0,0,0.5)','shadow-sm':'rgba(0,0,0,0.3)'},light:{'surface':'#fff','surface2':'#f5f5f5','surface3':'#f0f0f0','border':'#e5e5e5','border2':'#d4d4d4','border3':'#c4c4c4','text':'#374151','text-bright':'#111','text2':'#4b5563','text3':'#6b7280','text-muted':'#6b7280','text-faint':'#9ca3af','text-dim':'#b0b8c4','accent':'#fbbf24','accent-hover':'#fbbf24','hover':'#e5e5e5','shadow':'rgba(0,0,0,0.18)','shadow-med':'rgba(0,0,0,0.12)','shadow-sm':'rgba(0,0,0,0.06)'}};
 var __yoT=__yoThemes[${JSON.stringify(this.theme)}]||__yoThemes.dark;
 (function(){var s=document.getElementById('__yo-theme-vars');if(!s){s=document.createElement('style');s.id='__yo-theme-vars';(document.head||document.documentElement).appendChild(s);}var css=':root{';for(var k in __yoT)css+='--yo-'+k+':'+__yoT[k]+';';css+='}';s.textContent=css;})();
 window.__yoSetTheme=function(t){__yoT=__yoThemes[t]||__yoThemes.dark;var s=document.getElementById('__yo-theme-vars');if(s){var css=':root{';for(var k in __yoT)css+='--yo-'+k+':'+__yoT[k]+';';css+='}';s.textContent=css;}};

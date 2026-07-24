@@ -227,7 +227,7 @@ const PRIVACY_POLICY = `
 
 <p><strong>5. Third-Party Services</strong></p>
 <p>When you use Glyphh with third-party AI providers (Anthropic, OpenAI, Google AI, etc.), your prompts and data are sent directly from your machine to those providers using your own API keys. We do not proxy, intercept, or store this data. Please review the privacy policies of those providers.</p>
-<p>We use Stripe for payment processing. Stripe's handling of your payment information is governed by <a href="https://stripe.com/privacy" style="color:#8c3bf2">Stripe's Privacy Policy</a>.</p>
+<p>We use Stripe for payment processing. Stripe's handling of your payment information is governed by <a href="https://stripe.com/privacy" style="color:#f59e0b">Stripe's Privacy Policy</a>.</p>
 
 <p><strong>6. Data Security</strong></p>
 <p>We implement industry-standard security measures to protect the information we collect, including encryption in transit (TLS) and at rest. However, no method of transmission or storage is 100% secure, and we cannot guarantee absolute security.</p>
