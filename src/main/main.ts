@@ -185,11 +185,15 @@ async function createWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
     // Not background mode (or a real Quit): closing the main window quits the
-    // app. Auxiliary windows (hidden app workers, overlays, per-app windows)
-    // can otherwise keep window-all-closed from firing, leaving a zombie
-    // process; quitting directly runs will-quit → cleanupAll. Idempotent
-    // during an update restart.
-    if (!isBackgroundEnabled() || isQuitting()) app.quit();
+    // app. Auxiliary windows (hidden app workers, overlays, per-app windows) can
+    // keep window-all-closed from firing AND can block app.quit() from ever
+    // reaching will-quit — leaving a zombie process with no window and no tray.
+    // So tear everything down here directly (idempotent) and arm the hard-exit
+    // backstop BEFORE asking to quit, so nothing can strand the process.
+    if (!isBackgroundEnabled() || isQuitting()) {
+      cleanupAll();
+      app.quit();
+    }
   });
 
   // Refresh auth/tier when window regains focus (e.g. returning from billing portal)
@@ -1945,29 +1949,36 @@ let cleanedUp = false;
 function cleanupAll() {
   if (cleanedUp) return;
   cleanedUp = true;
-  globalShortcut.unregisterAll();
-  stopMcpOAuthRefresh();
-  cleanupAuthTimers();
-  // Stops an in-flight agent run and its interceptor; dropped in the
-  // William → Glyphh port alongside the registration above.
-  shutdownGlyphh();
-  stopAgentScheduler();
+  // Arm the hard-exit FIRST: if any teardown step below throws, the process must
+  // still die rather than zombie. .unref() so it never keeps the loop alive on
+  // its own — a clean teardown exits well before this fires.
+  setTimeout(() => process.exit(0), 4000).unref();
   try {
     const tabs = getPreference<string[]>("openTabs", []);
     if (tabs.includes("cypher")) {
       setPreference("openTabs", tabs.filter((t: string) => t !== "cypher"));
     }
   } catch {}
-  terminalManager?.killAll();
-  connectorManager?.cleanup();
-  dripManager?.cleanup();
-  // Close the background handles that otherwise keep the Node event loop alive
-  // (and hidden app-worker windows that keep window-all-closed from firing).
-  stopLocalMcpServer();
-  stopAllAppWorkers();
-  stopAllSchedules();
-  closeLocalDb();
-  closeDataStoreDb();
-  // Hard exit if anything keeps the process alive
-  setTimeout(() => process.exit(0), 5000).unref();
+  // Each step is isolated so one failure can't strand the rest (or the exit).
+  // Order: unregister shortcuts, stop timers/loops, kill children, then close
+  // the background handles + hidden app-worker windows that otherwise keep the
+  // Node event loop alive and window-all-closed from firing.
+  const steps: Array<[string, () => void]> = [
+    ["globalShortcut", () => globalShortcut.unregisterAll()],
+    ["mcpOAuthRefresh", () => stopMcpOAuthRefresh()],
+    ["authTimers", () => cleanupAuthTimers()],
+    ["glyphh", () => shutdownGlyphh()],
+    ["agentScheduler", () => stopAgentScheduler()],
+    ["terminals", () => terminalManager?.killAll()],
+    ["connectors", () => connectorManager?.cleanup()],
+    ["drips", () => dripManager?.cleanup()],
+    ["localMcpServer", () => stopLocalMcpServer()],
+    ["appWorkers", () => stopAllAppWorkers()],
+    ["schedules", () => stopAllSchedules()],
+    ["localDb", () => closeLocalDb()],
+    ["dataStoreDb", () => closeDataStoreDb()],
+  ];
+  for (const [name, fn] of steps) {
+    try { fn(); } catch (err) { console.warn(`[quit] cleanup step "${name}" failed:`, err); }
+  }
 }
