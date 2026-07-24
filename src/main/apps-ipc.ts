@@ -14,7 +14,7 @@ import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
 import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
-import { resolveRoles, setSelection, invalidateRoles } from "./loop-selections";
+import { resolveRoles, setSelection, invalidateRoles, applyLoopConfig, currentLoop } from "./loop-selections";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -243,6 +243,45 @@ function registerPanelAppsIpc(): void {
     } catch (err) {
       console.warn(`[loop-roles] set "${loop}.${role}" failed:`, err instanceof Error ? err.message : String(err));
       return { ok: false, loop, roles: [] };
+    }
+  });
+
+  // Edit a loop's OWN default model for one slot — the model the loop suggests
+  // when a caller hasn't picked one. Writes manifest.roles[].default; a loop that
+  // declared no slots gets the implicit "default" slot materialised so it has one
+  // to carry the model. Server gates the write to org_admins (built-ins immutable).
+  ipcMain.handle("loop-set-role-default", async (_e, p: { loopId?: string; role?: string; modelId?: string | null }) => {
+    const loopId = String(p?.loopId || "");
+    const role = String(p?.role || "default");
+    if (!loopId) return { ok: false, error: "loop id is required" };
+    try {
+      const loop = await getClient().loops.get(loopId);
+      const manifest = { ...(loop.manifest ?? {}) };
+      const roles = Array.isArray(manifest.roles) && manifest.roles.length
+        ? manifest.roles.map((r) => ({ ...r }))
+        : [{ name: "default", label: "Model", description: "The model this loop runs on." }];
+      const slot = roles.find((r) => r.name === role);
+      if (slot) slot.default = p?.modelId ?? null;
+      else roles.push({ name: role, default: p?.modelId ?? null });
+      await getClient().loops.update(loopId, { manifest: { ...manifest, roles } });
+      // The loop's default changed → the composer's resolved slot may move.
+      invalidateRoles();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Apply a layout's loop + model config: make its loop active and bind each of
+  // its slots to the layout's chosen models. Called when a layout is opened so
+  // the workspace lands on the layout's program AND models, not just its panels.
+  ipcMain.handle("loop-apply-config", (_e, p: { loop?: string | null; modelSelections?: Record<string, string> }) => {
+    try {
+      applyLoopConfig(p?.loop ?? null, p?.modelSelections ?? {});
+      return { ok: true, loop: currentLoop() };
+    } catch (err) {
+      console.warn("[loop-apply-config] failed:", err instanceof Error ? err.message : String(err));
+      return { ok: false, loop: currentLoop() };
     }
   });
 
@@ -504,6 +543,8 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       rowHeights: l.rowHeights,
       target: (l as { target?: "glyphh" | "desktop" }).target ?? "glyphh",
       glyphh: (l as { glyphh?: { mode: string; fraction?: number } }).glyphh ?? null,
+      loop: (l as { loop?: string }).loop ?? null,
+      modelSelections: (l as { modelSelections?: Record<string, string> }).modelSelections ?? {},
       splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky })),
     }))
   );
@@ -531,13 +572,21 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number } }) => {
+  ipcMain.handle("layouts-save-grid", (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string> }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);
       if (!gate.allowed) return { error: gate.reason };
     }
-    layoutManager.saveLayout({ ...grid, version: 2, folderMode: grid.folderMode ?? "single", target: grid.target ?? "glyphh" });
+    const { loop, modelSelections, ...rest } = grid;
+    layoutManager.saveLayout({
+      ...rest,
+      version: 2,
+      folderMode: grid.folderMode ?? "single",
+      target: grid.target ?? "glyphh",
+      ...(loop ? { loop } : {}),
+      ...(modelSelections && Object.keys(modelSelections).length ? { modelSelections } : {}),
+    });
     return true;
   });
   /** True if any app in the layout declares requiresFolder. The UI uses

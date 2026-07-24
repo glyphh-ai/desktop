@@ -120,6 +120,12 @@ async function openDetail(ref: string): Promise<void> {
     ? [m.memory.read ? "read" : "", m.memory.write ? "write" : ""].filter(Boolean).join(" + ")
     : "";
 
+  // Resolve the loop's slots + their choices up front — the editable default-model
+  // pickers and the flow-node model subs both read from this one call.
+  let resolvedRoles: Awaited<ReturnType<typeof window.yo.loopRoles>>["roles"] = [];
+  try { resolvedRoles = (await window.yo.loopRoles(current.slug)).roles; }
+  catch { /* offline — pickers fall back to read-only, flow renders without subs */ }
+
   detailEl.innerHTML = `
     <h3 class="lib-read-title">${escapeHtml(current.name)}</h3>
     <p class="lib-read-desc">${escapeHtml(current.description || "")}</p>
@@ -130,6 +136,7 @@ async function openDetail(ref: string): Promise<void> {
       ${memory ? readRow("Memory", memory) : ""}
       ${readRow("Scope", current.builtIn ? "Built-in" : current.scope === "org" ? "Shared with the org" : "Personal")}
     </div>
+    ${renderDefaultModels(resolvedRoles, m, current.builtIn)}
     ${slotDescs ? `<span class="lib-read-label">What each slot is for</span><div class="lib-read-meta" style="margin-top:6px;">${slotDescs}</div>` : ""}
     ${current.code ? `<hr class="lib-divider" /><span class="lib-read-label">Program</span><pre class="lib-read-code">${escapeHtml(current.code)}</pre>` : ""}
     ${current.builtIn ? "" : `<div class="settings-actions lib-detail-actions">
@@ -138,23 +145,77 @@ async function openDetail(ref: string): Promise<void> {
     </div>`}`;
 
   detailEl.querySelector("#loop-delete-btn")?.addEventListener("click", () => void deleteCurrent());
+  wireDefaultModelPickers();
   builtinBadge.classList.toggle("hidden", !current.builtIn);
 
   toolbar.classList.add("hidden");
   listEl.classList.add("hidden");
   editor.classList.remove("hidden");
   // The slot nodes carry the RESOLVED model names — what would actually run.
-  void (async () => {
-    const models: Record<string, string> = {};
-    try {
-      const rolesRes = await window.yo.loopRoles(current!.slug);
-      for (const role of rolesRes.roles) {
-        const name = role.choices.find((c) => c.id === role.modelId)?.name;
-        if (name) models[role.name] = name;
-      }
-    } catch { /* offline — nodes render without model subs */ }
-    void renderFlow(flowHost, loopGraph(current!.name, m, models));
-  })();
+  const models: Record<string, string> = {};
+  for (const role of resolvedRoles) {
+    const name = role.choices.find((c) => c.id === role.modelId)?.name;
+    if (name) models[role.name] = name;
+  }
+  void renderFlow(flowHost, loopGraph(current.name, m, models));
+}
+
+/** The loop's OWN default model per slot — what it suggests when a caller hasn't
+ *  picked one. Editable (writes manifest.roles[].default) unless the loop is
+ *  built-in (immutable). "Auto" hands the slot to the platform default. */
+function renderDefaultModels(
+  roles: Awaited<ReturnType<typeof window.yo.loopRoles>>["roles"],
+  manifest: NonNullable<Loop["manifest"]>,
+  builtIn: boolean,
+): string {
+  if (!roles.length) return "";
+  const manifestDefault = (name: string): string =>
+    (manifest.roles ?? []).find((r) => r.name === name)?.default ?? "";
+  const rows = roles.map((r) => {
+    const def = manifestDefault(r.name);
+    if (builtIn) {
+      const label = r.choices.find((c) => c.id === def)?.name || "Platform default";
+      return `<div class="loop-model-row"><span class="loop-model-label">${escapeHtml(r.label || r.name)}</span><span class="lib-read-value">${escapeHtml(label)}</span></div>`;
+    }
+    const opts = [`<option value="">Auto — platform default</option>`]
+      .concat(r.choices.map((c) => `<option value="${c.id}"${c.id === def ? " selected" : ""}>${escapeHtml(c.name)}</option>`));
+    return `<div class="loop-model-row">
+      <span class="loop-model-label">${escapeHtml(r.label || r.name)}</span>
+      <select class="settings-input loop-model-select" data-role="${escapeHtml(r.name)}">${opts.join("")}</select>
+    </div>`;
+  }).join("");
+  return `<hr class="lib-divider" />
+    <span class="lib-read-label">Default models</span>
+    <p class="settings-hint" style="margin:4px 0 8px;">${builtIn
+      ? "Built-in loops run on the platform default — this can't be changed."
+      : "The model each slot defaults to. A member can still override it in the composer."}</p>
+    <div class="loop-model-list">${rows}</div>
+    <div id="loop-model-msg" class="settings-hint hidden" style="margin-top:6px;"></div>`;
+}
+
+/** Persist a default-model change to the loop's manifest (org_admin-gated
+ *  server-side — a member's write surfaces as an inline permission message). */
+function wireDefaultModelPickers(): void {
+  const msg = detailEl.querySelector<HTMLElement>("#loop-model-msg");
+  detailEl.querySelectorAll<HTMLSelectElement>(".loop-model-select").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      void (async () => {
+        if (!current) return;
+        const role = sel.dataset.role!;
+        sel.disabled = true;
+        const res = await window.yo.loopSetRoleDefault(current.id, role, sel.value || null);
+        sel.disabled = false;
+        if (!msg) return;
+        if (res.ok) { msg.textContent = "Saved."; msg.classList.remove("hidden", "danger"); }
+        else {
+          msg.textContent = res.error?.includes("forbidden") || res.error?.includes("admin")
+            ? "Only org admins can change a loop's default models."
+            : (res.error || "Couldn't save.");
+          msg.classList.remove("hidden"); msg.classList.add("danger");
+        }
+      })();
+    });
+  });
 }
 
 export function initLoopsEvents(): void {

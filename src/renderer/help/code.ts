@@ -2315,6 +2315,21 @@ export function initCode(): void {
     // Cold start can race auth: no slots yet → one quiet retry.
     if (!picker.currentRoles().length) setTimeout(() => void refreshModelList(), 2500);
   })();
+  // Opening a layout can switch the active loop (+ its slot models) out from
+  // under the composer. Re-sync the chip from the stored preference so it shows
+  // the loop that will actually run. (The turn itself already resolves the loop
+  // live main-side, so this is display-consistency, not correctness.)
+  document.addEventListener("glyphh:loop-applied", () => {
+    void (async () => {
+      const lp = String((await window.yo.getPreference?.("glyphhLoop", "default")) || "default");
+      if (lp === glyphhLoop) { await refreshModelList(true); return; }
+      glyphhLoop = lp;
+      await refreshLoops();
+      paintChips();
+      renderLoopMenu();
+      await refreshModelList(true);
+    })();
+  });
   const ta = input();
   ta?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {

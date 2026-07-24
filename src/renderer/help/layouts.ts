@@ -27,6 +27,15 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
     cells.push({ slug: app.id, name: app.name, url: app.url, glyphh: false, col: s.col ?? 0, row: s.row ?? 0, sticky });
   }
   if (!cells.length) return;
+  // A layout also sets the loop + its slot models — apply before the panels
+  // tile so the composer is already in the layout's program state.
+  if (layout.loop) {
+    try {
+      await window.yo.loopApplyConfig(layout.loop, layout.modelSelections ?? {});
+      // Tell the composer to re-sync its loop + model chips to the new state.
+      document.dispatchEvent(new CustomEvent("glyphh:loop-applied"));
+    } catch { /* offline — the panels still open; the loop just stays as-is */ }
+  }
   gotoSection("code");   // shows the agent surface + boots the workbench
   const payload = { cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells };
   const w = window as unknown as { __wbOpenLayout?: (l: typeof payload) => void };
@@ -134,16 +143,23 @@ const gridRowsSelect = document.getElementById("grid-rows") as HTMLSelectElement
 const mergeRightBtn = document.getElementById("grid-merge-right") as HTMLButtonElement;
 const mergeDownBtn = document.getElementById("grid-merge-down") as HTMLButtonElement;
 const splitBtn = document.getElementById("grid-split-btn") as HTMLButtonElement;
-const folderModeRow = document.getElementById("layout-folder-mode-row")!;
-const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSelectElement;
-const glyphhRow = document.getElementById("layout-glyphh-row")!;
+// Folder-mode + glyphh-placement rows were cut with OS desktop-layout
+// management — the markup is gone, so these are optional. Folder binding is
+// preserved on save as "single" (its only remaining value) without a control.
+const folderModeRow = document.getElementById("layout-folder-mode-row");
+const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSelectElement | null;
 
-/** The Glyphh-position row only means anything for desktop-target layouts;
- *  the size select only for the docked modes. */
+// ── Loop + models this layout activates on open ──────────────────────────
+const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
+const layoutLoopModels = document.getElementById("layout-loop-models");
+/** The layout's loop ("" = leave the active loop as-is) + its per-role picks. */
+let builderLoop = "";
+let builderModelSelections: Record<string, string> = {};
 
-/** Recompute whether this layout is folder-bound (any cell's app declares
- *  requiresFolder). Shows/hides the folder-mode row accordingly. */
+/** Recompute whether this layout is folder-bound. No-op now the control is
+ *  gone; kept so callers don't need to know it was cut. */
 async function refreshFolderModeRow(): Promise<void> {
+  if (!folderModeRow) return;
   try {
     const apps = await window.yo.panelAppsList();
     const byId = new Map(apps.map((a) => [a.id, a]));
@@ -156,6 +172,51 @@ async function refreshFolderModeRow(): Promise<void> {
   } catch {
     folderModeRow.classList.add("hidden");
   }
+}
+
+/** Fill the loop dropdown once — "Leave as-is" plus every loop the caller has. */
+async function ensureLoopOptions(): Promise<void> {
+  if (!layoutLoopSelect || layoutLoopSelect.dataset.filled) return;
+  try {
+    const res = await window.yo.loopsList();
+    const opts = [`<option value="">Leave as-is</option>`];
+    for (const l of res.loops) opts.push(`<option value="${l.id}">${escLayout(l.name)}</option>`);
+    layoutLoopSelect.innerHTML = opts.join("");
+    layoutLoopSelect.dataset.filled = "1";
+  } catch { layoutLoopSelect.innerHTML = `<option value="">Leave as-is</option>`; }
+}
+
+/** One model dropdown per slot the chosen loop declares. "" = Auto (the loop's
+ *  own default). Absent loop → nothing to configure. */
+async function renderLoopModels(): Promise<void> {
+  if (!layoutLoopModels) return;
+  if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
+  layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
+  let roles: Awaited<ReturnType<typeof window.yo.loopRoles>>["roles"] = [];
+  try { roles = (await window.yo.loopRoles(builderLoop)).roles; }
+  catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load this loop's models.</div>`; return; }
+  if (!roles.length) { layoutLoopModels.innerHTML = ""; return; }
+  layoutLoopModels.innerHTML = roles.map((r) => {
+    const picked = builderModelSelections[r.name] ?? "";
+    const opts = [`<option value="">Auto — loop default</option>`]
+      .concat(r.choices.map((c) => `<option value="${c.id}"${c.id === picked ? " selected" : ""}>${escLayout(c.name)}</option>`));
+    return `<label class="layout-loop-model">
+      <span class="layout-loop-model-label">${escLayout(r.label || r.name)}</span>
+      <select class="settings-input" data-role="${escLayout(r.name)}">${opts.join("")}</select>
+    </label>`;
+  }).join("");
+  layoutLoopModels.querySelectorAll<HTMLSelectElement>("select[data-role]").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      const role = sel.dataset.role!;
+      if (sel.value) builderModelSelections[role] = sel.value;
+      else delete builderModelSelections[role];
+    });
+  });
+}
+
+/** Minimal HTML escape for option labels. */
+function escLayout(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 interface BuilderCell {
@@ -527,7 +588,13 @@ async function editLayout(name: string) {
   renderLayoutHead(layout ?? null);
   gridColsSelect.value = String(builderCols);
   gridRowsSelect.value = String(builderRows);
-  folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
+  if (folderModeSelect) folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
+  // Loop + models this layout activates on open.
+  builderLoop = (layout as { loop?: string })?.loop ?? "";
+  builderModelSelections = { ...((layout as { modelSelections?: Record<string, string> })?.modelSelections ?? {}) };
+  await ensureLoopOptions();
+  if (layoutLoopSelect) layoutLoopSelect.value = builderLoop;
+  void renderLoopModels();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
   document.getElementById("layout-open-btn")?.classList.remove("hidden");
@@ -549,7 +616,10 @@ async function newLayout() {
   initBuilderCells();
   gridColsSelect.value = "2";
   gridRowsSelect.value = "1";
-  folderModeSelect.value = "single";
+  if (folderModeSelect) folderModeSelect.value = "single";
+  builderLoop = "";
+  builderModelSelections = {};
+  void ensureLoopOptions().then(() => { if (layoutLoopSelect) layoutLoopSelect.value = ""; void renderLoopModels(); });
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
   document.getElementById("layout-open-btn")?.classList.add("hidden");
@@ -601,7 +671,7 @@ async function saveLayout() {
     await window.yo.layoutsDelete(editingLayoutName);
   }
 
-  const folderMode = (folderModeSelect.value === "multi" ? "multi" : "single") as "single" | "multi";
+  const folderMode = (folderModeSelect?.value === "multi" ? "multi" : "single") as "single" | "multi";
   const offenders = assignedCells
     .filter((c) => cellBlocked(c.panelId))
     .map((c) => panelLabel(c.panelId));
@@ -612,6 +682,9 @@ async function saveLayout() {
     layoutFormError.classList.remove("hidden");
     return;
   }
+  // Only keep model picks for slots the chosen loop still declares — a stale
+  // pick from a loop the user switched away from must not ride along.
+  const selections = builderLoop ? builderModelSelections : {};
   await window.yo.layoutsSaveGrid({
     name,
     cols: builderCols,
@@ -620,6 +693,8 @@ async function saveLayout() {
     rowHeights: Array(builderRows).fill(1 / builderRows),
     cells: assignedCells,
     folderMode,
+    ...(builderLoop ? { loop: builderLoop } : {}),
+    ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
   });
   cancelLayout();
 }
@@ -654,6 +729,14 @@ export function initLayoutsEvents() {
     void openLayoutInWorkbench(editingLayoutName);
   });
   layoutSearchInput.addEventListener("input", () => { layoutsPage = 0; renderLayoutsList(); });
+
+  // Loop picker: switching loops clears the old loop's model picks (its slots
+  // don't apply to the new program) and re-renders the per-slot dropdowns.
+  layoutLoopSelect?.addEventListener("change", () => {
+    builderLoop = layoutLoopSelect.value;
+    builderModelSelections = {};
+    void renderLoopModels();
+  });
 
   // Grid builder dimension controls
   gridColsSelect.addEventListener("change", () => {

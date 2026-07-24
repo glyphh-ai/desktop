@@ -47,6 +47,31 @@ export function currentLoop(): string {
   return String(getPreference("glyphhLoop", "default") || "default");
 }
 
+/** Switch the composer's active loop. */
+export function setCurrentLoop(loop: string): void {
+  setPreference("glyphhLoop", loop || "default");
+}
+
+/**
+ * Apply a layout's loop + model config: make its loop active and bind each of
+ * its slots to the layout's chosen model. This is how "load a layout" also sets
+ * "which loop, on which models" — the layout is the one place that binds all
+ * three (arrangement, program, models) so opening it puts the workspace in a
+ * known state rather than only rearranging panels.
+ *
+ * A null/absent loop leaves the active loop untouched (the layout simply has no
+ * opinion about it). Selections are written through the normal per-loop store,
+ * so they persist and the composer's own picker reflects them.
+ */
+export function applyLoopConfig(loop: string | null | undefined, selections?: Record<string, string>): void {
+  if (!loop) return;
+  setCurrentLoop(loop);
+  for (const [role, modelId] of Object.entries(selections ?? {})) {
+    setSelection(loop, role, modelId || null);
+  }
+  invalidateRoles(loop);
+}
+
 function allSelections(): SelectionMap {
   const raw = getPreference<SelectionMap>(PREF_KEY, {});
   return raw && typeof raw === "object" ? raw : {};

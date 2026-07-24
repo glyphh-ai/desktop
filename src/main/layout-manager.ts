@@ -27,6 +27,12 @@ export interface ServerLayout {
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
   glyphh?: GlyphhPlacement;
+  /** The loop this layout activates on open — its program AND its models. Absent
+   *  → the layout has no opinion; the active loop stays as-is. */
+  loop?: string;
+  /** For that loop: role → catalog model id. Binds each of the loop's slots to a
+   *  model when the layout opens. Empty/absent → the loop's own defaults stand. */
+  modelSelections?: Record<string, string>;
 }
 
 const LAYOUTS_CACHE_KEY = "/api/layouts";
@@ -49,6 +55,10 @@ export function fetchServerLayouts(): Promise<ServerLayout[]> {
         folderMode: data.folderMode === "multi" ? "multi" : "single",
         target: data.target === "desktop" ? "desktop" : "glyphh",
         ...(data.glyphh && typeof data.glyphh === "object" ? { glyphh: data.glyphh as GlyphhPlacement } : {}),
+        ...(typeof data.loop === "string" && data.loop ? { loop: data.loop } : {}),
+        ...(data.modelSelections && typeof data.modelSelections === "object"
+          ? { modelSelections: data.modelSelections as Record<string, string> }
+          : {}),
       });
     }
     return layouts;
@@ -92,6 +102,10 @@ export interface GridLayout {
   target?: "glyphh" | "desktop";
   /** Desktop layouts: where Glyphh itself sits (rail/left/right/none). */
   glyphh?: GlyphhPlacement;
+  /** The loop this layout activates on open — its program AND its models. */
+  loop?: string;
+  /** For that loop: role → catalog model id. */
+  modelSelections?: Record<string, string>;
 }
 
 /** Per-cell bounds for renderer overlays (URL bars in grid) */
@@ -403,6 +417,8 @@ export class LayoutManager {
       folderMode: sl.folderMode,
       target: sl.target,
       ...(sl.glyphh ? { glyphh: sl.glyphh } : {}),
+      ...(sl.loop ? { loop: sl.loop } : {}),
+      ...(sl.modelSelections ? { modelSelections: sl.modelSelections } : {}),
     };
   }
 
@@ -416,6 +432,8 @@ export class LayoutManager {
       folderMode: grid.folderMode ?? "single",
       target: grid.target ?? "glyphh",
       ...(grid.glyphh ? { glyphh: grid.glyphh } : {}),
+      ...(grid.loop ? { loop: grid.loop } : {}),
+      ...(grid.modelSelections && Object.keys(grid.modelSelections).length ? { modelSelections: grid.modelSelections } : {}),
     };
     const id = this.serverIds.get(grid.name);
     const saved = await getClient().layouts.save({ name: grid.name, data: body, ...(id ? { id } : {}) });

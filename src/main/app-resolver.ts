@@ -14,6 +14,7 @@ import { spawn } from "child_process";
 import { ipcMain, webContents } from "electron";
 import { fetchOrgApps } from "./org-apps.js";
 import { fetchServerLayouts } from "./layout-manager.js";
+import { applyLoopConfig } from "./loop-selections.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { normKey, isSubsequence, findInstalledApp, launchInstalledApp } from "./installed-apps.js";
 import { isGlyphhAppRow } from "./glyphh-app-host.js";
@@ -256,6 +257,9 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
   }
   if (!refs.length) throw new Error(`layout "${layout.name}" has no apps to open`);
   sendWbCmd({ action: "open-many", apps: refs, layoutName: layout.name });
+  // A layout binds arrangement AND program+models: opening it also switches the
+  // active loop and its slot models, so the composer lands in the layout's state.
+  applyLoopConfig(layout.loop, layout.modelSelections);
   return { layout: layout.name, apps: opened };
 }
 

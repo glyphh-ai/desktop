@@ -4180,6 +4180,27 @@ ol.docs-list li::before {
   padding: 12px;
 }
 
+/* ── Loop detail: editable default-model pickers ── */
+.loop-model-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.loop-model-row { display: flex; align-items: center; gap: 10px; }
+.loop-model-label {
+  flex: 0 0 120px; font-size: 12px; color: var(--text-2);
+  text-align: right; text-transform: capitalize;
+}
+.loop-model-select { max-width: 300px; }
+.settings-hint.danger { color: var(--danger, #f87171); }
+
+/* ── Layout editor: the loop + its per-slot model pickers ── */
+.layout-loop-row { display: flex; flex-direction: column; gap: 10px; }
+.layout-loop-row > #layout-loop-select { max-width: 340px; }
+.layout-loop-models { display: flex; flex-direction: column; gap: 8px; }
+.layout-loop-model { display: flex; align-items: center; gap: 10px; }
+.layout-loop-model-label {
+  flex: 0 0 120px; font-size: 12px; color: var(--text-2);
+  text-align: right; text-transform: capitalize;
+}
+.layout-loop-model select { max-width: 300px; }
+
 .grid-dims {
   display: flex;
   align-items: center;

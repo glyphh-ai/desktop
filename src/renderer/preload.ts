@@ -176,13 +176,13 @@ contextBridge.exposeInMainWorld("yo", {
   panelsGetZoom: () => ipcRenderer.invoke("panels-get-zoom") as Promise<number>,
 
   // Layouts CRUD
-  layoutsList: () => ipcRenderer.invoke("layouts-list") as Promise<Array<{ name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> }>>,
+  layoutsList: () => ipcRenderer.invoke("layouts-list") as Promise<Array<{ name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> }>>,
   // Open a layout at the OS level (real tiled windows) — hands off to the OS
   // layout manager, not the legacy in-window one.
   layoutsOpen: (name: string) => ipcRenderer.invoke("layouts-open", name) as Promise<{ ok: boolean; error?: string }>,
   layoutsSave: (name: string, panelIds: string[]) => ipcRenderer.invoke("layouts-save", name, panelIds) as Promise<boolean>,
   layoutsFolderRequired: (name: string) => ipcRenderer.invoke("layouts-folder-required", name) as Promise<boolean>,
-  layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number } }) =>
+  layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string> }) =>
     ipcRenderer.invoke("layouts-save-grid", grid) as Promise<boolean>,
   layoutsDelete: (name: string) => ipcRenderer.invoke("layouts-delete", name) as Promise<boolean>,
   pickDirectory: () => ipcRenderer.invoke("pick-directory") as Promise<string | null>,
@@ -476,6 +476,12 @@ contextBridge.exposeInMainWorld("yo", {
   /** Bind a slot to a model, or pass null to hand it back to the loop's default. */
   loopRoleSet: (loop: string, role: string, modelId: string | null) =>
     ipcRenderer.invoke("loop-role-set", { loop, role, modelId }) as Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>,
+  /** Make a layout's loop active and bind its slot models (called on layout open). */
+  loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) =>
+    ipcRenderer.invoke("loop-apply-config", { loop, modelSelections }) as Promise<{ ok: boolean; loop: string }>,
+  /** Edit a loop's OWN default model for a role (writes manifest.roles[].default). */
+  loopSetRoleDefault: (loopId: string, role: string, modelId: string | null) =>
+    ipcRenderer.invoke("loop-set-role-default", { loopId, role, modelId }) as Promise<{ ok: boolean; error?: string }>,
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   glyphhStop: () => ipcRenderer.invoke("glyphh-agent-stop") as Promise<boolean>,
