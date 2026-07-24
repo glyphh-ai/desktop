@@ -10954,47 +10954,119 @@ select:focus {
 .mkt-banner {
   position: relative; overflow: hidden;
   margin-top: 20px; margin-bottom: 24px;
-  padding: 34px 34px 30px; border-radius: 18px;
+  padding: 30px 34px; border-radius: 18px;
+  /* The brand ramp from the web hero (glyphh.ai → Desktop, .hs-canvas): violet at
+     the bottom-left, peach at the top-right. One surface language across the site
+     and the app, so the marketplace reads as the same product as the landing page. */
   background:
-    radial-gradient(120% 160% at 100% 0%, rgba(236,72,153,.55), transparent 55%),
-    radial-gradient(120% 140% at 0% 100%, rgba(56,189,248,.28), transparent 50%),
-    linear-gradient(120deg, #4c1d95 0%, #6d28d9 45%, #8c3bf2 100%);
-  box-shadow: 0 12px 40px rgba(76,29,149,.35), inset 0 1px 0 rgba(255,255,255,.12);
+    radial-gradient(90% 80% at 100% 0%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 55%),
+    radial-gradient(100% 90% at 0% 100%, rgba(124,58,237,.5) 0%, rgba(124,58,237,0) 62%),
+    linear-gradient(35deg, #a78bfa 0%, #c4a9f8 44%, #f5c1e0 100%);
+  box-shadow: 0 18px 60px rgba(16,4,40,.45), inset 0 0 0 1px rgba(255,255,255,.35);
+  /* Ink on a LIGHT ramp — the old banner was white-on-violet. */
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center;
 }
+/* Braille-dot texture — the Glyphh mark, whispered. Same as the web canvas. */
 .mkt-banner::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background-image: radial-gradient(rgba(255,255,255,.10) 1px, transparent 1px);
-  background-size: 22px 22px; opacity: .5;
-  -webkit-mask-image: linear-gradient(105deg, #000, transparent 65%);
-          mask-image: linear-gradient(105deg, #000, transparent 65%);
+  background-image: radial-gradient(rgba(70,28,140,.16) 1px, transparent 1.4px);
+  background-size: 16px 16px;
+  -webkit-mask-image: linear-gradient(35deg, transparent 25%, #000 85%);
+          mask-image: linear-gradient(35deg, transparent 25%, #000 85%);
 }
+
+/* ── The deliverable: an app someone built, floating on the ramp ── */
+.mkt-hero-art {
+  position: relative; width: 316px; flex: none;
+  margin: 4px 6px 0 0;
+  transform: rotate(-1.4deg);
+}
+.mha-app {
+  background: #fbf9fe; border-radius: 13px; overflow: hidden;
+  box-shadow: 0 26px 70px rgba(16,4,40,.45), 0 0 0 1px rgba(255,255,255,.6);
+}
+.mha-bar {
+  display: flex; align-items: center; gap: 5px;
+  padding: 8px 11px; background: #f2edfa; border-bottom: 1px solid #e6dff2;
+}
+.mha-dot { width: 7px; height: 7px; border-radius: 50%; background: #d9cff0; }
+.mha-name { margin-left: 7px; font-size: 11px; font-weight: 680; color: #3b3350; letter-spacing: -.01em; }
+.mha-chip {
+  margin-left: auto; font-size: 8.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: #2f7d5b; background: rgba(52,211,153,.2); padding: 2px 6px; border-radius: 4px;
+}
+.mha-body { padding: 13px 14px 15px; }
+.mha-kpi { display: flex; align-items: baseline; gap: 8px; }
+.mha-kpi-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: #a49bb8; }
+.mha-kpi-value { margin-left: auto; font-size: 21px; font-weight: 760; color: #2c2735; letter-spacing: -.02em; }
+.mha-kpi-cents { font-size: 13px; color: #8e85a5; font-weight: 700; }
+
+.mha-chart { display: flex; align-items: flex-end; gap: 5px; height: 46px; margin: 11px 0 13px; }
+.mha-chart i { flex: 1; border-radius: 3px 3px 1px 1px; background: #e2d8f5; }
+/* One bar carries the brand accent — the month in progress. */
+.mha-chart i.on { background: linear-gradient(180deg, #a78bfa, #8c3bf2); }
+
+.mha-rows { display: flex; flex-direction: column; gap: 7px; }
+.mha-row { display: flex; align-items: center; gap: 7px; }
+.mha-av {
+  width: 19px; height: 19px; flex: none; border-radius: 6px;
+  background: #ede6fa; color: #6d28d9; font-size: 8px; font-weight: 750;
+  display: flex; align-items: center; justify-content: center; letter-spacing: .02em;
+}
+.mha-vendor { font-size: 10.5px; color: #3b3350; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mha-tag {
+  font-size: 8.5px; color: #7c6f96; background: #f1ecf8; border-radius: 4px; padding: 2px 5px; flex: none;
+}
+.mha-amt { margin-left: auto; font-size: 10.5px; font-weight: 700; color: #2c2735; font-variant-numeric: tabular-nums; }
+
+.mha-foot {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid #ece5f7;
+  font-size: 9.5px; color: #8e85a5; letter-spacing: .02em;
+}
+.mha-foot-dot { width: 5px; height: 5px; border-radius: 50%; background: #8c3bf2; flex: none; }
+.mha-foot-sep { color: #cec4e4; }
+
+/* The art is decoration: below this width the copy + search take the whole banner
+   rather than being squeezed beside it.
+   A CONTAINER query, not a media query — the Apps page is a panel inside the
+   workbench, so the window can be 1400px wide while this pane is 500px. Keying
+   off the viewport squeezed the search box on exactly the layouts people use. */
+#mkt-store { container-type: inline-size; }
+@container (max-width: 760px) {
+  .mkt-banner { grid-template-columns: minmax(0, 1fr); }
+  .mkt-hero-art { display: none; }
+}
+/* Beside the search, not in the banner's corner — the corner is where the app
+   mockup lives, and two things fighting for it read as a collision. */
 .mkt-refresh {
-  position: absolute; top: 16px; right: 16px; z-index: 1;
-  width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 9px; cursor: pointer;
-  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22); color: #fff;
+  position: relative; flex: none;
+  width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 12px; cursor: pointer;
+  background: rgba(255,255,255,.72); border: 1px solid rgba(255,255,255,.9); color: #4c1d95;
+  box-shadow: 0 8px 24px rgba(16,4,40,.16);
   transition: background .12s;
 }
-.mkt-refresh:hover { background: rgba(255,255,255,.26); }
+.mkt-refresh:hover { background: rgba(255,255,255,.85); }
 .mkt-refresh.spinning svg { animation: mkt-spin .7s linear infinite; }
 @keyframes mkt-spin { to { transform: rotate(360deg); } }
 .mkt-banner-inner { position: relative; max-width: 620px; }
 .mkt-banner-title {
-  font-size: 27px; font-weight: 760; color: #fff; margin: 0 0 8px;
-  letter-spacing: -0.02em; text-shadow: 0 1px 12px rgba(0,0,0,.25);
+  font-size: 27px; font-weight: 780; color: #2c2735; margin: 0 0 8px;
+  letter-spacing: -0.03em;
 }
-.mkt-banner-sub { font-size: 14px; line-height: 1.5; color: rgba(255,255,255,.9); margin: 0 0 20px; max-width: 54ch; }
+.mkt-banner-sub { font-size: 14px; line-height: 1.5; color: rgba(44,39,53,.72); margin: 0 0 20px; max-width: 54ch; }
 
-.mkt-search-wrap { position: relative; max-width: 460px; }
-.mkt-search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #7b7b86; }
+.mkt-search-wrap { position: relative; max-width: 508px; display: flex; align-items: center; gap: 8px; }
+.mkt-search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #7b7b86; z-index: 1; }
 .mkt-search {
   width: 100%; height: 44px; padding: 0 14px 0 38px; box-sizing: border-box;
   background: rgba(255,255,255,.96); border: 1px solid transparent; border-radius: 12px;
   color: #16161a; font-size: 14px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  box-shadow: 0 8px 24px rgba(16,4,40,.22);
 }
 .mkt-search::placeholder { color: #8a8a95; }
-.mkt-search:focus { outline: none; border-color: rgba(255,255,255,.9); box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+.mkt-search:focus { outline: none; border-color: #8c3bf2; box-shadow: 0 8px 28px rgba(16,4,40,.3); }
 
 .mkt-scopebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .mkt-scope-tabs { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 10px; padding: 3px; }
