@@ -1885,11 +1885,11 @@ app.on("login", (event, _wc, _details, authInfo, callback) => {
     h3{font-size:14px;font-weight:600;color:#fff}
     p{font-size:12px;color:#888}
     input{width:100%;padding:8px 10px;background:#0a0a0a;border:1px solid #333;border-radius:6px;color:#fff;font-size:13px;outline:none}
-    input:focus{border-color:#fbbf24}
+    input:focus{border-color:#a855f7}
     .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
     button{padding:6px 16px;border:none;border-radius:6px;font-size:13px;cursor:pointer}
     .cancel{background:#333;color:#ccc}
-    .login{background:#fbbf24;color:#000;font-weight:600}
+    .login{background:#a855f7;color:#000;font-weight:600}
   </style></head><body>
     <h3>Authentication Required</h3>
     <p>${host}${realm} requires credentials.</p>

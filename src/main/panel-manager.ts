@@ -52,7 +52,7 @@ export class PanelManager {
       display:flex;flex-direction:column;align-items:center;justify-content:center;
       height:100vh;margin:0;gap:20px}
     .dots{display:flex;gap:6px}
-    .dot{width:8px;height:8px;border-radius:50%;background:#fbbf24;
+    .dot{width:8px;height:8px;border-radius:50%;background:#a855f7;
       animation:pulse 1.4s infinite ease-in-out}
     .dot:nth-child(2){animation-delay:.2s}
     .dot:nth-child(3){animation-delay:.4s}
@@ -81,7 +81,7 @@ export class PanelManager {
       border-radius: 3px;
     }
     *::-webkit-scrollbar-thumb:hover {
-      background: rgba(251, 146, 60, 0.45);
+      background: rgba(168, 85, 247, 0.45);
     }
     *::-webkit-scrollbar-corner { background: transparent; }
   `;

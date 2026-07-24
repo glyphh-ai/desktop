@@ -2570,7 +2570,7 @@ async function init(): Promise<void> {
     const styles = getComputedStyle(document.body);
     const bg = styles.getPropertyValue("--ws-bg-card").trim() || "#1e1e1e";
     const fg = styles.getPropertyValue("--ws-text").trim() || "#d4d4d4";
-    const accent = styles.getPropertyValue("--ws-accent").trim() || "#fbbf24";
+    const accent = styles.getPropertyValue("--ws-accent").trim() || "#a855f7";
     return {
       background: bg,
       foreground: fg,
