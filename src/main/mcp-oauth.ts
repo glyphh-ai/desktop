@@ -381,3 +381,28 @@ export async function bearerHeaderFor(serverUrl: string): Promise<Record<string,
   const tok = await getValidAccessToken(serverUrl);
   return tok ? { Authorization: `Bearer ${tok}` } : null;
 }
+
+/** PROACTIVELY refresh the stored token if it expires within `withinMs`, then
+ *  return the current bearer header. This is for server-mediated connections
+ *  (desktop): the server dials the endpoint, so the app must keep the header
+ *  ahead of expiry rather than react to a 401 it never sees. Returns null when
+ *  there's no stored token or the refresh failed (needs interactive re-auth). */
+export async function refreshBearerIfExpiring(serverUrl: string, withinMs = 10 * 60_000): Promise<Record<string, string> | null> {
+  const key = canonicalResource(serverUrl);
+  const store = readStore();
+  const entry = store[key];
+  if (!entry?.tokens) return null;
+  const t = entry.tokens;
+  if (t.expires_at !== undefined && Date.now() > t.expires_at - withinMs && t.refresh_token) {
+    try {
+      const fresh = await refreshTokens(entry);
+      entry.tokens = { ...fresh, refresh_token: fresh.refresh_token ?? t.refresh_token };
+      store[key] = entry;
+      writeStore(store);
+    } catch (err) {
+      console.error("[mcp-oauth] proactive refresh failed:", err);
+      return null;
+    }
+  }
+  return entry.tokens ? { Authorization: `Bearer ${entry.tokens.access_token}` } : null;
+}

@@ -71,6 +71,7 @@ import { setMainWindowRef } from "./main-window-ref";
 import { isBackgroundEnabled, isQuitting, markQuitting, shouldHideOnClose, syncBackgroundMode, setReopenHandler } from "./background-mode";
 import { initRailCollapse } from "./screen-layout";
 import { McpManager } from "./mcp-manager";
+import { startMcpOAuthRefresh, stopMcpOAuthRefresh } from "./mcp-oauth-refresh";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
@@ -1220,6 +1221,11 @@ async function boot() {
   // Hard 3s timeout so splash never hangs if server is unreachable.
   await Promise.race([initAuth(), new Promise((r) => setTimeout(r, 3000))]);
 
+  // Keep OAuth-authed remote MCP connections alive: refresh their tokens ahead
+  // of expiry and re-stamp the server-side connection header (the server dials
+  // the endpoint, so we can't react to its 401s). Self-guards when signed out.
+  startMcpOAuthRefresh();
+
   // Working directory — the single project folder the app is focused on.
   if (!ipcMain.listenerCount("working-dir:get")) {
     registerWorkingDirectoryIpc({
@@ -1940,6 +1946,7 @@ function cleanupAll() {
   if (cleanedUp) return;
   cleanedUp = true;
   globalShortcut.unregisterAll();
+  stopMcpOAuthRefresh();
   cleanupAuthTimers();
   // Stops an in-flight agent run and its interceptor; dropped in the
   // William → Glyphh port alongside the registration above.
