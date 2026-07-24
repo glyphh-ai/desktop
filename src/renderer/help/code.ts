@@ -568,7 +568,8 @@ let streamText = "";
 let streamBubble: HTMLElement | null = null;
 // Run progress — elapsed · tokens painted onto the spinner every second.
 let runStartAt = 0;
-let runTokens = 0;
+let runIn = 0;
+let runOut = 0;
 let runTicker: ReturnType<typeof setInterval> | null = null;
 // This run's step lines, mirrored to the workbench Plan rail's timeline.
 let runSteps: string[] = [];
@@ -577,6 +578,13 @@ function broadcastTimeline(running: boolean): void {
   try {
     document.dispatchEvent(new CustomEvent("glyphh-agent:timeline", { detail: { steps: [...runSteps], running } }));
   } catch { /* no listeners */ }
+}
+
+/** 1_234 → "1.2k", so the footer stays tight as a run grows into six figures. */
+function fmtTok(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
 function fmtElapsed(ms: number): string {
@@ -591,12 +599,14 @@ let setupMeta = "";
 function paintRunMeta(): void {
   if (!runStartAt) return;
   if (setupMeta) { spinner?.setMeta(setupMeta); return; }
-  spinner?.setMeta(`${fmtElapsed(Date.now() - runStartAt)} · ${runTokens.toLocaleString()} token${runTokens === 1 ? "" : "s"}`);
+  const io = runIn + runOut > 0 ? ` · ↑${fmtTok(runIn)} ↓${fmtTok(runOut)}` : "";
+  spinner?.setMeta(`${fmtElapsed(Date.now() - runStartAt)}${io}`);
 }
 
 function startRunTicker(): void {
   runStartAt = Date.now();
-  runTokens = 0;
+  runIn = 0;
+  runOut = 0;
   runSteps = [];
   broadcastTimeline(true);
   if (runTicker) clearInterval(runTicker);
@@ -606,7 +616,8 @@ function startRunTicker(): void {
 function stopRunTicker(): void {
   if (runTicker) { clearInterval(runTicker); runTicker = null; }
   runStartAt = 0;
-  runTokens = 0;
+  runIn = 0;
+  runOut = 0;
 }
 let menuEl: HTMLDivElement | null = null;
 
@@ -1716,7 +1727,8 @@ function initGlyphhAgentEvents(): void {
   });
   window.yo.onGlyphhAgentProgress?.((d) => {
     if (activeRunId && d.runId !== activeRunId) return;
-    runTokens = d.tokens;
+    runIn = d.inTokens;
+    runOut = d.outTokens;
     paintRunMeta();
   });
   window.yo.onGlyphhAgentApproval?.((a) => {

@@ -422,7 +422,14 @@ async function sdkRun(
   let finalText = "";
   let runError = "";
   let turnsUsed = 0;
-  let tokens = 0;
+  // Real token accounting, like Claude Code: input (incl. cache) accumulates per
+  // turn from message_start; output ticks live from message_delta. The chars/4
+  // estimate this replaced measured only the visible prose — a fraction of the
+  // real cost, and the reason a 10-minute run reported "381 tokens".
+  let inTok = 0;        // cumulative input across the run's turns (+ cache)
+  let outDone = 0;      // output from completed turns
+  let outCur = 0;       // the in-flight turn's output (cumulative for that message)
+  const outTok = (): number => outDone + outCur;
   try {
     const q = query({
       prompt,
@@ -478,16 +485,29 @@ async function sdkRun(
     for await (const msg of q as AsyncIterable<SDKMessage>) {
       if (ctrl.signal.aborted) break;
       if (msg.type === "stream_event") {
-        const ev = (msg as unknown as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
-        if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
+        const ev = (msg as unknown as {
+          event?: {
+            type?: string;
+            delta?: { type?: string; text?: string };
+            message?: { usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
+            usage?: { output_tokens?: number };
+          };
+        }).event;
+        if (ev?.type === "message_start") {
+          // A new turn: bank the last turn's output, count this turn's input.
+          outDone += outCur; outCur = 0;
+          const u = ev.message?.usage;
+          if (u) inTok += (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+        } else if (ev?.type === "message_delta" && typeof ev.usage?.output_tokens === "number") {
+          outCur = ev.usage.output_tokens;  // cumulative for the current message
+          const now = Date.now();
+          if (now - lastProgressAt > 200) { lastProgressAt = now; emit("glyphh-agent:progress", { inTokens: inTok, outTokens: outTok() }); }
+        } else if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
           sawPartials = true;
           if (pendingSep && finalText) { finalText += "\n\n"; emit("glyphh-agent:delta", { delta: "\n\n" }); }
           pendingSep = false;
           finalText += ev.delta.text;
           emit("glyphh-agent:delta", { delta: ev.delta.text });
-          tokens = Math.ceil(finalText.length / 4);
-          const now = Date.now();
-          if (now - lastProgressAt > 400) { lastProgressAt = now; emit("glyphh-agent:progress", { tokens }); }
         }
       } else if (msg.type === "assistant") {
         turnsUsed++;
@@ -504,8 +524,9 @@ async function sdkRun(
             finalText = finalText ? `${finalText}\n\n${text}` : text;
             emit("glyphh-agent:delta", { delta: finalText === text ? text : `\n\n${text}` });
           }
-          tokens = Math.ceil(finalText.length / 4);
-          emit("glyphh-agent:progress", { tokens });
+          const u = (msg as unknown as { message?: { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } } }).message?.usage;
+          if (u) { inTok += (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0); outDone += u.output_tokens ?? 0; }
+          emit("glyphh-agent:progress", { inTokens: inTok, outTokens: outTok() });
         }
       } else if (msg.type === "result") {
         const r = msg as { subtype: string; result?: string; num_turns?: number };
@@ -515,10 +536,18 @@ async function sdkRun(
           runError = `run ended: ${r.subtype.replaceAll("_", " ")}`;
         }
         if (typeof r.num_turns === "number") turnsUsed = r.num_turns;
+        // The result's usage is the run's authoritative total — replace the
+        // streamed estimate with it so the final footer is exact.
+        const ru = (msg as unknown as { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }).usage;
+        if (ru) {
+          inTok = (ru.input_tokens ?? 0) + (ru.cache_read_input_tokens ?? 0) + (ru.cache_creation_input_tokens ?? 0);
+          outDone = ru.output_tokens ?? 0; outCur = 0;
+          emit("glyphh-agent:progress", { inTokens: inTok, outTokens: outTok() });
+        }
       }
     }
     if (ctrl.signal.aborted) throw new Error("aborted");
-    emit("glyphh-agent:progress", { tokens });
+    emit("glyphh-agent:progress", { inTokens: inTok, outTokens: outTok() });
     if (runError) emit("glyphh-agent:error", { error: runError });
     else emit("glyphh-agent:done", { stopped: false });
   } catch (err) {

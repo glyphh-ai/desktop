@@ -480,7 +480,7 @@ contextBridge.exposeInMainWorld("yo", {
   onGlyphhAgentSetup: (callback: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => {
     ipcRenderer.on("glyphh-agent:setup", (_event, d) => callback(d));
   },
-  onGlyphhAgentProgress: (callback: (d: { runId: string; tokens: number }) => void) => {
+  onGlyphhAgentProgress: (callback: (d: { runId: string; inTokens: number; outTokens: number }) => void) => {
     ipcRenderer.on("glyphh-agent:progress", (_event, d) => callback(d));
   },
   onGlyphhAgentTool: (callback: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => {
