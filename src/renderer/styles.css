@@ -11701,6 +11701,9 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
   gap: 6px;
   padding: 8px 10px 0;
 }
+/* Same [hidden] override as the pending-notes dock — keep the empty chip row
+   from reserving padding above the input. */
+.code-attach-chips[hidden] { display: none; }
 .code-attach-chip {
   display: inline-flex;
   align-items: center;
@@ -13273,6 +13276,9 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   border: 1px dashed var(--border-2); border-radius: 10px;
   background: var(--surface);
 }
+/* `display: flex` above outranks the UA [hidden] rule (equal specificity, later
+   wins), so the empty dock stayed visible as a stray dashed box. Restore it. */
+.code-pending-notes[hidden] { display: none; }
 .cpn-head {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--text-3);
