@@ -50,6 +50,20 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
 }
 
 
+/** A geometric mini-grid preview of a layout — the split structure only, no
+ *  app icons (command-center parity, minus the icons the page dropped). Cells
+ *  are positioned by their col/row/span as a fraction of the grid. */
+function layoutMini(layout: { cols?: number; rows?: number; splits: Array<{ col?: number; row?: number; colSpan?: number; rowSpan?: number }> }): string {
+  const cols = Math.max(1, layout.cols || 1);
+  const rows = Math.max(1, layout.rows || 1);
+  const cells = layout.splits.map((c) => {
+    const left = ((c.col ?? 0) / cols) * 100, top = ((c.row ?? 0) / rows) * 100;
+    const w = ((c.colSpan ?? 1) / cols) * 100, h = ((c.rowSpan ?? 1) / rows) * 100;
+    return `<div class="cc-mini-cell" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%"></div>`;
+  }).join("");
+  return `<div class="cc-mini">${cells}</div>`;
+}
+
 let layoutsPage = 0;
 let allLayouts: Array<{ name: string; splits: Array<{ panelId: string; col?: number; row?: number; colSpan?: number; rowSpan?: number }> }> = [];
 // Map of app id → the server app (Apps tab, /api/panel-apps), so layout cards
@@ -523,23 +537,16 @@ function renderLayoutsList() {
   const { items: layouts, state } = paginate(filtered, layoutsPage);
   layoutsPage = state.page;
 
+  // Cards mirror the command center's layout tiles: a geometric mini-grid
+  // preview (no app icons) + the name. One visual language across surfaces.
   const grid = document.createElement("div");
-  grid.className = "app-grid";
+  grid.className = "cc-layouts layouts-page-grid";
   for (const layout of layouts) {
-    const cellIds = layout.splits.map((s) => s.panelId).filter(Boolean);
-    const seen = new Set<string>();
-    const uniqueIds = cellIds.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
-    const iconsHtml = uniqueIds.map((id) => panelIconHtml(id)).join("")
-      || `<span class="layout-app-icon"><span class="layout-app-initial">▦</span></span>`;
-
     const card = document.createElement("div");
-    card.className = "app-card";
-    card.innerHTML = `
-      <div class="layout-card-icons">${iconsHtml}</div>
-      <div class="app-card-name"></div>
-      <div class="app-card-id">${uniqueIds.length} app${uniqueIds.length === 1 ? "" : "s"}</div>`;
-    card.querySelector(".app-card-name")!.textContent = layout.name;
-    // The Layouts page is for EDITING — the left-rail Apps tiles open layouts.
+    card.className = "cc-layout-card";
+    card.innerHTML = `${layoutMini(layout)}<span class="cc-card-name"></span>`;
+    card.querySelector(".cc-card-name")!.textContent = layout.name;
+    // The Layouts page is for EDITING — the left-rail Layouts tiles open them.
     card.addEventListener("click", () => editLayout(layout.name));
     grid.appendChild(card);
   }

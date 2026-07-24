@@ -1847,6 +1847,30 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
   if (persist) void window.yo.setPreference?.("codeRecentsOpen", open);
 }
 
+// ── Rail sections (Apps, Layouts) — each collapsible, state remembered ───────
+interface RailSectionDef { toggle: string; body: string; pref: string }
+const RAIL_SECTIONS: RailSectionDef[] = [
+  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railAppsOpen" },
+  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railLayoutsOpen" },
+];
+
+function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
+  el(def.toggle)?.classList.toggle("closed", !open);
+  el(def.body)?.classList.toggle("hidden", !open);
+  if (persist) void window.yo.setPreference?.(def.pref, open);
+}
+
+/** Bind each rail section's disclosure toggle + restore its remembered state. */
+function initRailSections(): void {
+  for (const def of RAIL_SECTIONS) {
+    el(def.toggle)?.addEventListener("click", () => {
+      const open = el(def.toggle)!.classList.contains("closed"); // was closed → open it
+      setRailSectionOpen(def, open, true);
+    });
+    void window.yo.getPreference?.(def.pref, true).then((v) => setRailSectionOpen(def, v !== false, false));
+  }
+}
+
 // ── Apps grid (rail, below Recents) — the same list + icons as the Apps page
 //    / command center, ordered by last-opened (recents), opened with the same
 //    launch the Apps page uses. All apps show; recents float to the top so the
@@ -1927,19 +1951,17 @@ async function loadRecentApps(): Promise<void> {
   void primeNativeIcons(railApps as never, renderRecentApps);
 }
 
-function renderRecentApps(): void {
+/** Both rail sections. Apps and Layouts each own a search + pagination and live
+ *  under their own collapsible header (see initRailSections). */
+function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); }
+
+function renderRailApps(): void {
   const list = el<HTMLDivElement>("recent-apps-list");
   if (!list) return;
   const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
   list.textContent = "";
-  const gridLabel = (text: string) => {
-    const label = document.createElement("div");
-    label.className = "code-rail-label rail-grid-label";
-    label.textContent = text;
-    return label;
-  };
 
-  // ── Apps (recency-first, name OR slug match — palette parity) ──
+  // Recency-first, name OR slug match — palette parity.
   const apps = railApps
     .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q))
     .sort((a, b) => {
@@ -1975,9 +1997,23 @@ function renderRecentApps(): void {
     });
     list.appendChild(tile);
   }
-  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { railAppsPage = pg; renderRecentApps(); }));
+  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { railAppsPage = pg; renderRailApps(); }));
+  if (!apps.length) {
+    const empty = document.createElement("div");
+    empty.className = "code-empty";
+    empty.style.margin = "10px auto";
+    empty.textContent = q ? "No matches." : "Your apps land here.";
+    list.appendChild(empty);
+  }
+}
 
-  // ── Layouts (mini icon stacks; same open as the Layouts page) ──
+function renderRailLayouts(): void {
+  const list = el<HTMLDivElement>("recent-layouts-list");
+  if (!list) return;
+  const q = (el<HTMLInputElement>("recent-layouts-search")?.value || "").trim().toLowerCase();
+  list.textContent = "";
+
+  // Mini icon stacks; same open (into the workbench) as the Layouts page.
   const layouts = railLayouts
     .filter((l) => !q || (l.name || "").toLowerCase().includes(q))
     .sort((a, b) => {
@@ -1985,44 +2021,39 @@ function renderRecentApps(): void {
       const tb = railRecentTs[`layout:${b.name}`] || 0;
       return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
     });
-  if (layouts.length) {
-    list.appendChild(gridLabel("Layouts"));
-    const lp = railPaginate(layouts, railLayoutsPage, RAIL_LAYOUTS_PER_PAGE);
-    railLayoutsPage = lp.page;
-    for (const l of lp.items) {
-      const tile = document.createElement("button");
-      tile.className = "app-rail-tile";
-      tile.type = "button";
-      tile.title = `${l.name} (layout)`;
-      const icon = document.createElement("div");
-      icon.className = "tile-icon tile-layout";
-      const seen = new Set<string>();
-      const ids = l.splits
-        .map((s) => s.panelId)
-        .filter((id) => id && !seen.has(id) && (seen.add(id), true))
-        .slice(0, 4);
-      icon.innerHTML = ids.length
-        ? ids.map((id) => {
-            const app = railApps.find((a) => a.id === id || a.slug === id);
-            return `<span class="mini">${appIconInner(app || {}, app?.name || id, "tile-mini-initial")}</span>`;
-          }).join("")
-        : `<span class="tile-initial">▦</span>`;
-      const nm = document.createElement("span");
-      nm.className = "tile-name";
-      nm.textContent = l.name;
-      tile.append(icon, nm);
-      tile.addEventListener("click", () => { void openLayoutInWorkbench(l.name); });
-      list.appendChild(tile);
-    }
-    if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRecentApps(); }));
+  const lp = railPaginate(layouts, railLayoutsPage, RAIL_LAYOUTS_PER_PAGE);
+  railLayoutsPage = lp.page;
+  for (const l of lp.items) {
+    const tile = document.createElement("button");
+    tile.className = "app-rail-tile";
+    tile.type = "button";
+    tile.title = `${l.name} (layout)`;
+    const icon = document.createElement("div");
+    icon.className = "tile-icon tile-layout";
+    const seen = new Set<string>();
+    const ids = l.splits
+      .map((s) => s.panelId)
+      .filter((id) => id && !seen.has(id) && (seen.add(id), true))
+      .slice(0, 4);
+    icon.innerHTML = ids.length
+      ? ids.map((id) => {
+          const app = railApps.find((a) => a.id === id || a.slug === id);
+          return `<span class="mini">${appIconInner(app || {}, app?.name || id, "tile-mini-initial")}</span>`;
+        }).join("")
+      : `<span class="tile-initial">▦</span>`;
+    const nm = document.createElement("span");
+    nm.className = "tile-name";
+    nm.textContent = l.name;
+    tile.append(icon, nm);
+    tile.addEventListener("click", () => { void openLayoutInWorkbench(l.name); });
+    list.appendChild(tile);
   }
-
-  if (!apps.length && !layouts.length) {
+  if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRailLayouts(); }));
+  if (!layouts.length) {
     const empty = document.createElement("div");
     empty.className = "code-empty";
     empty.style.margin = "10px auto";
-    // The old semantic-search fallback here was Ada, which is gone.
-    empty.textContent = q ? "No matches." : "Your apps land here.";
+    empty.textContent = q ? "No matches." : "Your layouts land here.";
     list.appendChild(empty);
   }
 }
@@ -2066,26 +2097,28 @@ function initRailApps(): void {
     if (hist && recentsH > 0) hist.style.flex = `0 1 ${recentsH}px`;
   })();
   void loadRecentApps();
-  // Open the Apps page by driving the SAME control the left-rail nav uses —
-  // its click handler (navigation.ts) shows the overlay + section correctly.
-  // Calling gotoSection('apps') directly from here skipped that and left the
-  // user staring at a blank/signed-out shell.
-  el("apps-open-btn")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    document.querySelector<HTMLButtonElement>('.app-rail-nav-item[data-section="apps"]')?.click();
-  });
+  // The rail no longer has Apps/Layouts nav buttons (they moved to these
+  // sections), so the open icons go straight through gotoSection — the same
+  // switcher the nav's own click handler calls.
+  el("apps-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("apps"); });
+  el("layouts-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("layouts"); });
   // Live updates: Apps/Layouts CRUD announces itself (same renderer).
   document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
   initRecentsVsplit();
+  initRailSections();
+
+  // Apps search — its own page; Enter runs the text as a command (palette parity).
   el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", () => {
-    railAppsPage = 0; railLayoutsPage = 0;
-    renderRecentApps();
+    railAppsPage = 0; renderRailApps();
   });
-  // Enter runs the text as a command — same as the palette input (dip x, …).
   el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     const text = (e.target as HTMLInputElement).value.trim();
     if (text) void window.yo.execCommand(text.replace(/^\./, ""));
+  });
+  // Layouts search — its own page + list.
+  el<HTMLInputElement>("recent-layouts-search")?.addEventListener("input", () => {
+    railLayoutsPage = 0; renderRailLayouts();
   });
 }
 

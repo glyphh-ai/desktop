@@ -10085,6 +10085,9 @@ select.settings-input {
   background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px;
 }
 .cc-empty { color: var(--text-3); font-size: 13px; padding: 8px 0; }
+/* Layouts PAGE reuses the command-center card + mini-preview, laid out as a
+   left-aligned wrapping grid (the CC storefront centers; the page starts left). */
+.layouts-page-grid { justify-content: flex-start; padding: 6px 0; }
 .cc-overlay-btn {
   display: flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border: none; border-radius: 8px;
@@ -12167,6 +12170,17 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   align-items: center;
   justify-content: space-between;
 }
+/* Collapsible rail section header — disclosure toggle (chevron + label) on the
+   left, the open-page icon on the right. */
+.app-rail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.app-rail-section-head .app-rail-section-toggle { flex: 1; min-width: 0; }
+.app-rail-section-head .rail-label-btn { flex: none; }
+.app-rail-section-body { display: flex; flex-direction: column; }
 .rail-label-btn {
   display: inline-flex;
   align-items: center;
