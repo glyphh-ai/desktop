@@ -25,11 +25,22 @@
 ; Defining customCheckAppRunning REPLACES that check: force TREE-kill the whole
 ; group (two passes to absorb Electron's child respawns), then proceed. No
 ; prompt, no infinite loop.
+; The blocking "cannot be closed" prompt during install is NOT the app-running
+; check — it comes from extractAppPackage.nsh, where CopyFiles into $INSTDIR
+; fails 5 times because something still holds a file there. Killing only
+; ${APP_EXECUTABLE_FILENAME} is not enough: helper processes launched from the
+; install folder (notably the Claude Agent SDK's claude.exe under
+; resources\app.asar.unpacked\...) keep handles open under a different name.
+; So: kill the app by name AND anything whose image path is inside $INSTDIR.
 !macro _glyphhKill
   DetailPrint "Glyphh: clearing any running instances..."
   nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /f /t /im "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
-  Sleep 800
+  ; Path-scoped: terminates claude.exe and any other bundled helper running out
+  ; of the install dir, without touching unrelated processes of the same name.
+  nsExec::Exec `powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force -ErrorAction SilentlyContinue"`
+  Pop $0
+  Sleep 1000
   nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /f /t /im "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
   Sleep 400

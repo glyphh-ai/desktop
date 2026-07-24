@@ -18,7 +18,6 @@ import type { McpManager } from "./mcp-manager.js";
 import { registerRelayHandler } from "./relay-client.js";
 import { openAppByRef, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
 import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
-import { runLlmAppTool } from "./glyphh-app-llm.js";
 import { connectorStatus } from "./glyphh-app-services.js";
 import fs from "fs";
 import os from "os";
@@ -97,23 +96,6 @@ export function installRelayHandlers(deps: Deps): void {
     const tool = String(p?.tool || "");
     if (!app || !tool) throw new Error("apps.callTool requires { app, tool }");
     return { result: await callAppTool(app, tool, p?.args || {}) };
-  });
-
-  // ── LLM apps — the per-app MCP endpoint's tools (send_prompt, use_tool, … ) ─
-  // Forwarded by the server's scoped <slug>.glyphh.app/mcp server. The model
-  // call runs here with the app's HOST-ONLY provider key; usage flows back so
-  // the server can meter it against the app's guardrails.
-  registerRelayHandler("apps.llmTool", async (params) => {
-    const p = params as { app?: string; tool?: string; args?: Record<string, unknown>; provider?: string; model?: string | null; maxOutputTokens?: number | null } | null;
-    const app = String(p?.app || "");
-    const tool = String(p?.tool || "");
-    if (!app || !tool) throw new Error("apps.llmTool requires { app, tool }");
-    // Fold the server-supplied provider/model/guardrail cap into the tool args.
-    const args: Record<string, unknown> = { ...(p?.args || {}) };
-    if (p?.provider) args.provider = p.provider;
-    if (p?.model != null) args.model = p.model;
-    if (p?.maxOutputTokens != null) args.maxOutputTokens = p.maxOutputTokens;
-    return runLlmAppTool(app, tool, args);
   });
 
   registerRelayHandler("apps.install", async (params) => {

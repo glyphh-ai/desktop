@@ -40,24 +40,7 @@
             <select id="app-add-type" class="settings-input">
               <option value="browser">Browser app (web URL)</option>
               <option value="native">Native app (desktop executable)</option>
-              <option value="http">HTTP app (local server, shared publicly)</option>
-              <option value="llm">LLM (lend your model over MCP)</option>
             </select>
-            <div id="app-add-http-fields" class="hidden">
-              <label class="settings-label">Local URL <span style="color:var(--text-2);font-weight:400;">— where your app runs on this machine</span></label>
-              <input id="app-add-http-target" class="settings-input" placeholder="http://127.0.0.1:3000" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
-            </div>
-            <!-- LLM has no create-time fields: pick the provider + configure
-                 tools/guardrails on the MCP + Guardrails tabs after creating. -->
-            <div id="app-add-llm-fields" class="hidden">
-              <label class="settings-label">Provider</label>
-              <select id="app-add-llm-provider" class="settings-input">
-                <option value="claude">Claude</option>
-                <option value="claude-agent-sdk">Claude Agent SDK</option>
-                <option value="gemini">Gemini</option>
-                <option value="openai">OpenAI</option>
-              </select>
-            </div>
             <!-- Browser fields -->
             <div id="app-add-browser-fields">
               <label class="settings-label">URL</label>
@@ -137,10 +120,7 @@
             <div class="app-detail-tabs">
               <button class="app-detail-tab" data-tab="dashboard">General</button>
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
-              <!-- Shown only for apps that expose an MCP endpoint (LLM type, or
-                   installed apps that declare tools). -->
-              <!-- Shown for apps that get a public URL (HTTP / LLM / agent). -->
-              <button class="app-detail-tab tab-public-only hidden" data-tab="public">Public URL</button>
+              <!-- Shown only for installed Glyphh apps, which declare tools. -->
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
               <!-- Hosted (built) apps: dev-host deploy + Supabase graduation. -->
@@ -158,33 +138,13 @@
                   <input id="app-detail-name" class="settings-input" spellcheck="false" />
                   <label class="settings-label">Slug <span style="color:var(--text-3);font-weight:400;font-size:11px;">— how you'll dip to it (.dip &lt;slug&gt;)</span></label>
                   <input id="app-detail-id" class="settings-input" spellcheck="false" style="font-family:var(--font-mono);font-size:12px;" />
-                  <label class="settings-label">Type</label>
-                  <select id="app-detail-type" class="settings-input">
-                    <option value="browser">Browser app (web URL)</option>
-                    <option value="native">Native app (desktop executable)</option>
-                    <option value="http">HTTP app (local server, shared publicly)</option>
-                    <option value="llm">LLM (lend your model over MCP)</option>
-                  </select>
-                  <!-- HTTP app: a local server exposed at <slug>.glyphh.app.
-                       Sharing (subdomain, auth, visibility) is on the Public URL tab. -->
-                  <div id="app-detail-http-fields" class="hidden">
-                    <label class="settings-label">Local URL <span style="color:var(--text-2);font-weight:400;">— where your app runs on this machine</span></label>
-                    <input id="app-detail-http-target" class="settings-input" placeholder="http://127.0.0.1:3000" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
-                    <p class="proxy-field-hint">Served by your machine over the relay — keep Glyphh running or visitors get "App offline". Configure the public URL + who can reach it on the <strong>Public URL</strong> tab.</p>
-                  </div>
-                  <!-- LLM fields — a local model exposed at <slug>.glyphh.app/mcp.
-                       Tools + limits live on the MCP + Guardrails tabs. -->
-                  <div id="app-detail-llm-fields" class="hidden">
-                    <label class="settings-label">Provider</label>
-                    <select id="app-detail-llm-provider" class="settings-input">
-                      <option value="claude">Claude</option>
-                      <option value="claude-agent-sdk">Claude Agent SDK</option>
-                      <option value="gemini">Gemini</option>
-                      <option value="openai">OpenAI</option>
+                  <!-- Hidden for a BUILT app: its type comes from its bundle. -->
+                  <div id="app-detail-type-row">
+                    <label class="settings-label">Type</label>
+                    <select id="app-detail-type" class="settings-input">
+                      <option value="browser">Browser app (web URL)</option>
+                      <option value="native">Native app (desktop executable)</option>
                     </select>
-                    <label class="settings-label">Model <span style="color:var(--text-2);font-weight:400;">(optional — provider default if blank)</span></label>
-                    <input id="app-detail-llm-model" class="settings-input" placeholder="claude-opus-4-8" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
-                    <p class="proxy-field-hint">Uses this app's <code>&lt;PROVIDER&gt;_API_KEY</code> config var. Set it on the Config Vars tab; the key stays encrypted on this machine and never leaves it.</p>
                   </div>
                   <!-- Browser fields -->
                   <div id="app-detail-browser-fields">
@@ -261,39 +221,6 @@
                     <button id="app-dash-save" class="action-btn primary">Save</button>
                   </div>
 
-                  <div class="app-detail-section-sep"></div>
-
-                  <div id="app-connect-status"></div>
-                  <div id="app-commands-list"></div>
-                  <div id="app-map-command" class="hidden">
-                    <div class="map-command-header">Map to Command</div>
-                    <div class="map-command-info">
-                      <span id="map-selector"></span>
-                      <span id="map-element-info"></span>
-                    </div>
-                    <div class="map-command-form">
-                      <select id="map-command-key">
-                        <option value="">Select command...</option>
-                        <option value="new">new</option>
-                        <option value="search">search</option>
-                        <option value="submit">submit</option>
-                        <option value="grab">grab</option>
-                        <option value="input">input</option>
-                        <option value="__custom__">+ custom command</option>
-                      </select>
-                      <input id="map-custom-key" type="text" placeholder="command name" class="hidden" spellcheck="false" />
-                      <select id="map-action">
-                        <option value="click">Click</option>
-                        <option value="extractText">Extract Text</option>
-                        <option value="extractHTML">Extract HTML</option>
-                        <option value="setValue">Set Value</option>
-                        <option value="custom">Custom Script</option>
-                      </select>
-                      <input id="map-description" type="text" placeholder="description" spellcheck="false" />
-                      <button id="map-save-btn" class="action-btn primary">Save</button>
-                      <button id="map-cancel-btn" class="action-btn">Cancel</button>
-                    </div>
-                  </div>
                 </div>
 
                 <!-- Connection left -->
@@ -374,44 +301,26 @@
                   </div>
                 </div>
 
-                <!-- Public URL left: this app's public address + status. Target
-                     (for HTTP apps) comes from the Local URL on General. -->
-                <div class="app-tab-left" data-tab="public">
-                  <div id="proxy-form-error" class="crud-form-error hidden"></div>
-                  <label class="settings-label">Subdomain</label>
-                  <input type="text" id="proxy-slug" class="settings-input" placeholder="my-app" spellcheck="false" autocomplete="off" />
-                  <div id="proxy-url-preview" class="proxy-url-preview"></div>
-                  <label class="settings-label">Label <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-                  <input type="text" id="proxy-label" class="settings-input" placeholder="My dev app" spellcheck="false" autocomplete="off" />
-                  <div class="proxy-field-hint" style="margin-top:14px;">Served by your machine over the relay — keep Glyphh running or visitors get "App offline". Requests spend your org's compute credits.</div>
-                  <div class="settings-toggles" style="margin-top:20px;">
-                    <label class="settings-toggle">
-                      <input type="checkbox" id="proxy-enabled" checked />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Enabled</span>
-                        <span class="toggle-desc" id="proxy-enabled-desc">When off, the URL returns "not found" — your config is kept so you can turn it back on.</span>
-                      </div>
-                    </label>
-                  </div>
-                  <div class="settings-actions" style="margin-top:24px;display:flex;gap:8px;align-items:center;">
-                    <span style="flex:1;"></span>
-                    <a id="proxy-open-link" class="action-btn hidden" target="_blank" rel="noreferrer">Open</a>
-                    <button id="proxy-save-btn" class="action-btn primary" type="button">Save</button>
-                  </div>
-                </div>
-
-                <!-- Deploy (dev-host): status + URL + deploy / take-down. -->
+                <!-- Deploy: status + the public URL + who can reach it. -->
                 <div class="app-tab-left" data-tab="deploy">
-                  <label class="settings-label">Dev hosting</label>
-                  <p class="proxy-field-hint" style="margin:2px 0 14px;">Bundles this app's latest build and hosts it at a Glyphh dev URL. Deploying spends your org's compute credits while it's live.</p>
+                  <label class="settings-label">Hosting</label>
+                  <p class="proxy-field-hint" style="margin:2px 0 14px;">Serves this app's latest build at its Glyphh address. Deploying spends your org's compute credits while it's live.</p>
                   <div id="deploy-status" class="deploy-status">Checking…</div>
                   <div id="deploy-url-row" class="hidden" style="margin:10px 0;">
                     <label class="settings-label">Live URL</label>
                     <a id="deploy-url" class="deploy-url" target="_blank" rel="noreferrer"></a>
                   </div>
+
+                  <label class="settings-label" style="margin-top:18px;">Who can reach it</label>
+                  <select id="deploy-access" class="settings-input">
+                    <option value="members">Signed-in members of your organization</option>
+                    <option value="public">Anyone with the link</option>
+                  </select>
+                  <p class="proxy-field-hint" id="deploy-access-hint">Checked at the edge on every request, before anything reaches the app.</p>
+
                   <div id="deploy-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
-                  <div class="settings-actions" style="margin-top:18px;display:flex;gap:8px;">
+                  <div class="settings-actions" style="margin-top:18px;display:flex;gap:8px;align-items:center;">
+                    <span id="deploy-access-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
                     <button id="deploy-btn" class="action-btn primary" type="button">Deploy</button>
                     <button id="deploy-takedown-btn" class="action-btn danger hidden" type="button">Take down</button>
                   </div>
@@ -441,10 +350,6 @@
                     <button id="app-preview-refresh" class="preview-action preview-action-visible">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                       Refresh
-                    </button>
-                    <button id="app-pick-btn" class="action-btn primary" style="height:24px;font-size:11px;padding:0 10px;">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                      <span id="app-pick-label">Pick Element</span>
                     </button>
                   </div>
                   <webview id="app-preview" partition="persist:yo" allowpopups></webview>
@@ -511,47 +416,6 @@
                   </div>
                 </div>
 
-                <!-- Public URL right: access control (who can reach the URL). -->
-                <div class="app-tab-right" data-tab="public">
-                  <div style="padding:12px 16px;">
-                    <h3 class="settings-subheading" style="margin:0 0 4px;">Access</h3>
-                    <p class="settings-hint" style="margin-top:2px;">Who can reach this URL and how they sign in.</p>
-
-                    <label class="settings-label">Authentication</label>
-                    <select id="proxy-auth-mode" class="settings-input">
-                      <option value="glyphh">Glyphh SSO — visitors sign in with a Glyphh account</option>
-                      <option value="public">Public (no auth) — anyone with the link</option>
-                      <option value="oidc">Single sign-on (OIDC) — Okta, Auth0, …</option>
-                      <option value="app_managed">App handles its own auth — passthrough</option>
-                    </select>
-                    <div id="proxy-public-warn" class="app-req-conns-warn hidden">Anyone with the link can reach this app anonymously, and requests spend your credits. Only expose apps you intend to share publicly.</div>
-
-                    <div id="proxy-visibility-wrap">
-                      <label class="settings-label">Visibility <span style="color:var(--text-2);font-weight:400;">— which Glyphh users may sign in</span></label>
-                      <select id="proxy-visibility" class="settings-input">
-                        <option value="private">Private — only you</option>
-                        <option value="org">Org — members of your organization</option>
-                        <option value="public">Public — any signed-in Glyphh user</option>
-                      </select>
-                    </div>
-
-                    <div id="proxy-oidc-fields" class="hidden">
-                      <label class="settings-label">Issuer URL</label>
-                      <input type="text" id="proxy-oidc-issuer" class="settings-input" placeholder="https://dev-123.okta.com/oauth2/default" spellcheck="false" autocomplete="off" />
-                      <label class="settings-label">Client ID</label>
-                      <input type="text" id="proxy-oidc-client-id" class="settings-input" spellcheck="false" autocomplete="off" />
-                      <label class="settings-label">Client secret</label>
-                      <input type="password" id="proxy-oidc-secret" class="settings-input" spellcheck="false" autocomplete="off" />
-                      <div id="proxy-oidc-secret-hint" class="proxy-field-hint hidden">Secret set ✓ — leave blank to keep it.</div>
-                      <label class="settings-label">Scopes <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-                      <input type="text" id="proxy-oidc-scopes" class="settings-input" placeholder="openid email profile" spellcheck="false" autocomplete="off" />
-                      <label class="settings-label">Allowed email domains <span style="color:var(--text-2);font-weight:400;">(optional, comma-separated)</span></label>
-                      <input type="text" id="proxy-oidc-domains" class="settings-input" placeholder="glyphh.ai" spellcheck="false" autocomplete="off" />
-                      <div class="proxy-field-hint">Callback URL for your IdP app config: <code id="proxy-oidc-callback"></code></div>
-                    </div>
-                  </div>
-                </div>
-
               </div>
             </div>
           </div>
@@ -559,16 +423,8 @@
 
           <!-- ══ MARKETPLACE PAGE ══ -->
           <div id="apps-marketplace-page" class="apps-page hidden">
-            <!-- Temporarily "Coming Soon" — the storefront below is kept intact
-                 but hidden; re-enable by removing this block + the hidden class
-                 on #mkt-store and restoring loadMarketplace() in switchAppsPage. -->
-            <div id="mkt-coming-soon" class="mkt-coming-soon">
-              <img class="mkt-cs-logo" src="brand/glyphh-mark.png" alt="" />
-              <div class="mkt-cs-title">Coming Soon</div>
-              <div class="mkt-cs-sub">The app marketplace is on its way.</div>
-            </div>
             <!-- Storefront (grid of listings) — hidden while a detail page is open -->
-            <div id="mkt-store" class="hidden">
+            <div id="mkt-store">
             <div class="mkt-banner">
               <button id="mkt-refresh" class="mkt-refresh" title="Refresh marketplace" aria-label="Refresh marketplace">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>

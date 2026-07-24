@@ -4909,110 +4909,6 @@ ol.docs-list li::before {
 .app-detail-option input[type="checkbox"] { accent-color: var(--accent); }
 .app-detail-option-hint { color: var(--text-muted); }
 
-.app-connect-status {
-  font-size: 12px;
-  color: var(--text-2);
-  margin-top: 8px;
-  min-height: 18px;
-}
-.app-connect-status.success { color: var(--text); }
-
-/* ── App command rows ───────────────────────────────────── */
-.command-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  margin-top: 6px;
-  transition: border-color 0.15s;
-}
-.command-row:hover { border-color: var(--border-3); }
-
-.command-key {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text);
-  white-space: nowrap;
-  min-width: 140px;
-}
-.command-desc {
-  font-size: 12px;
-  color: var(--text-2);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.command-selector {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-3);
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.command-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.command-row:hover .command-actions { opacity: 1; }
-
-/* ── Map command form ───────────────────────────────────── */
-#app-map-command {
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid var(--border-2);
-  border-radius: 8px;
-  background: var(--surface);
-}
-.map-command-header {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 8px;
-}
-.map-command-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 10px;
-}
-#map-selector {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text);
-  word-break: break-all;
-}
-#map-element-info {
-  font-size: 11px;
-  color: var(--text-3);
-}
-.map-command-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-.map-command-form select,
-.map-command-form input[type="text"] {
-  font-size: 12px;
-  padding: 5px 8px;
-  background: var(--bg);
-  border: 1px solid var(--border-2);
-  border-radius: 4px;
-  color: var(--text);
-  outline: none;
-  font-family: var(--font-mono);
-}
-.map-command-form select:focus,
-.map-command-form input[type="text"]:focus { border-color: var(--accent); }
-#map-description { flex: 1; min-width: 120px; }
-
 /* ── Help form inputs ──────────────────────────────────── */
 .help-input {
   padding: 6px 10px;
@@ -11186,15 +11082,6 @@ select:focus {
   color: var(--text); font-size: 12.5px; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px;
 }
 
-/* ── Marketplace "Coming Soon" placeholder ──────────────────────── */
-.mkt-coming-soon {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 12px; text-align: center; min-height: 62vh; margin-top: 20px;
-}
-.mkt-cs-logo { width: 96px; height: 96px; opacity: 0.16; filter: grayscale(1); user-select: none; }
-.mkt-cs-title { font-size: 22px; font-weight: 750; color: var(--text-2); letter-spacing: -0.01em; }
-.mkt-cs-sub { font-size: 14px; color: var(--text-3); }
-
 /* ── Marketplace app detail page (Shopify-style listing) ─────────── */
 .mkt-detail { margin-top: 18px; padding-bottom: 40px; }
 
@@ -11389,10 +11276,7 @@ select:focus {
 .app-req-conns-warn { margin-top: 8px; font-size: 12px; line-height: 1.5; color: #f87171; }
 .app-req-conns-warn a { color: var(--text); text-decoration: underline; cursor: pointer; }
 
-/* ── Public URLs (app proxy tunnels) ── */
-.proxy-url-preview {
-  margin-top: 6px; font-size: 12px; font-family: var(--font-mono); color: var(--text-2);
-}
+/* ── Field hints in the app editor ── */
 .proxy-field-hint { margin-top: 6px; font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
 .proxy-field-hint code {
   background: var(--surface-2); padding: 1px 6px; border-radius: 4px;

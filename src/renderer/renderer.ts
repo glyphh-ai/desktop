@@ -55,16 +55,6 @@ type Connection = {
   agentAllowed?: boolean; agentTools?: number; agentAvailable?: number;
 };
 
-// Mirrors preload.ts AppProxyRow — a public <slug>.glyphh.app tunnel.
-type AppProxyRow = {
-  id: string; org_id: string; user_id: string; saved_app_id: string | null;
-  kind: "http" | "mcp"; slug: string; target: string;
-  visibility: "private" | "org" | "public";
-  status: "active" | "flagged" | "disabled";
-  auth_mode: "public" | "glyphh" | "oidc" | "app_managed";
-  auth_config: { issuer?: string; clientId?: string; scopes?: string[]; allowedDomains?: string[]; hasClientSecret?: boolean } | null;
-  label: string | null; created_at: string; updated_at: string;
-};
 
 // Mirrors preload.ts MarketplaceApp — a marketplace listing.
 type MarketplaceApp = {
@@ -102,6 +92,7 @@ type PanelAppInput = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  access?: "public" | "members";
 };
 
 declare global {
@@ -164,7 +155,6 @@ declare global {
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      panelAppsSetConnections: (id: string, connectionIds: string[]) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       loopsList: () => Promise<{ ok: boolean; loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild: boolean }>;
       connectionsList: () => Promise<{ ok: boolean; error?: string; connections: Connection[] }>;
       connectionRename: (id: string, label: string) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
@@ -172,13 +162,6 @@ declare global {
       connectionToolsSet: (id: string, hiddenTools: string[]) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
       connectionDisconnect: (id: string) => Promise<{ ok: boolean; error?: string }>;
       // App proxies — public <slug>.glyphh.app tunnels
-      appProxyGet: (appId: string) => Promise<{ ok: boolean; proxy?: AppProxyRow | null; error?: string }>;
-      appProxyCreate: (body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
-      appProxyUpdate: (id: string, body: Record<string, unknown>) => Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>;
-      panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
-      panelAppsRemoveMcp: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
-      panelAppsRemoveCommand: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appSecretsList: (id: string) => Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean; appReadable?: boolean }>; error?: string }>;
       appSecretsSet: (id: string, key: string, value: string, appReadable?: boolean) => Promise<{ ok: boolean; error?: string }>;
       appSecretsDelete: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
@@ -197,9 +180,6 @@ declare global {
       appsSetConnectedSlug: (id: string, slug: string | null) => Promise<boolean>;
       appsSetCommand: (id: string, key: string, mapping: { selector: string; action: string; description: string }) => Promise<boolean>;
       appsRemoveCommand: (id: string, key: string) => Promise<boolean>;
-      appsTestCommand: (mapping: { selector: string; action: string; description?: string; text?: string } | null, wcId?: number) => Promise<string>;
-      startPicker: (wcId: number) => void;
-      onPickerResult: (cb: (result: { selector: string; tag: string; text: string; isEditable: boolean; isClickable: boolean }) => void) => void;
 
       // Layouts
       layoutsList: () => Promise<Array<{ name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> }>>;

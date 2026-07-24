@@ -22,6 +22,9 @@ export interface SavedPanelApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  /** Who may reach it once deployed: 'public' (anyone with the link) or
+   *  'members' (signed-in org members). Enforced at the edge. */
+  access?: string;
   connectionIds: string[];       // ids of first-class Connections this app uses
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
@@ -50,27 +53,6 @@ export interface Connection {
   agentAvailable?: number;
 }
 
-/** One public <slug>.glyphh.app tunnel (server AppProxyRow, sanitized). */
-export interface AppProxyRow {
-  id: string;
-  org_id: string;
-  user_id: string;
-  saved_app_id: string | null;
-  kind: "http" | "mcp";
-  slug: string;
-  target: string;
-  visibility: "private" | "org" | "public";
-  status: "active" | "flagged" | "disabled";
-  auth_mode: "public" | "glyphh" | "oidc" | "app_managed";
-  auth_config: {
-    issuer?: string; clientId?: string; scopes?: string[];
-    allowedDomains?: string[]; hasClientSecret?: boolean;
-  } | null;
-  label: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 // Fields the create/update calls forward to /api/panel-apps. Kept as a named
 // type so preload + renderer stay in sync on the accepted keys.
 export interface PanelAppInput {
@@ -81,6 +63,7 @@ export interface PanelAppInput {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  access?: "public" | "members";
 }
 
 /** A marketplace listing (public catalog or org-private). Rich enough for a
@@ -344,8 +327,6 @@ contextBridge.exposeInMainWorld("yo", {
   panelAppsUpdate: (id: string, patch: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-update", id, patch) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsDelete: (id: string) => ipcRenderer.invoke("panel-apps-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  panelAppsSetConnections: (id: string, connectionIds: string[]) =>
-    ipcRenderer.invoke("panel-apps-set-connections", id, connectionIds) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   // First-class Connections (connected accounts + per-connection tool exposure).
   loopsList: () =>
     ipcRenderer.invoke("loops-list") as Promise<{ ok: boolean; loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild: boolean }>,
@@ -359,21 +340,6 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("connection-tools-set", id, hiddenTools) as Promise<{ ok: boolean; connection?: Connection; error?: string }>,
   connectionDisconnect: (id: string) =>
     ipcRenderer.invoke("connection-disconnect", id) as Promise<{ ok: boolean; error?: string }>,
-  // App proxies — public <slug>.glyphh.app tunnels to locally-running apps.
-  appProxyGet: (appId: string) =>
-    ipcRenderer.invoke("app-proxy-get", appId) as Promise<{ ok: boolean; proxy?: AppProxyRow | null; error?: string }>,
-  appProxyCreate: (body: Record<string, unknown>) =>
-    ipcRenderer.invoke("app-proxy-create", body) as Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>,
-  appProxyUpdate: (id: string, body: Record<string, unknown>) =>
-    ipcRenderer.invoke("app-proxy-update", id, body) as Promise<{ ok: boolean; proxy?: AppProxyRow; error?: string }>,
-  panelAppsSetMcp: (id: string, mcp: Record<string, unknown>) =>
-    ipcRenderer.invoke("panel-apps-set-mcp", id, mcp) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
-  panelAppsRemoveMcp: (id: string) =>
-    ipcRenderer.invoke("panel-apps-remove-mcp", id) as Promise<{ ok: boolean; error?: string }>,
-  panelAppsSetCommand: (id: string, key: string, mapping: Record<string, unknown>) =>
-    ipcRenderer.invoke("panel-apps-set-command", id, key, mapping) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
-  panelAppsRemoveCommand: (id: string, key: string) =>
-    ipcRenderer.invoke("panel-apps-remove-command", id, key) as Promise<{ ok: boolean; error?: string }>,
   // Per-app config vars (encrypted secrets). List never includes values —
   // a value is visible only in the form where it's typed, at creation.
   appSecretsList: (id: string) =>
@@ -397,16 +363,6 @@ contextBridge.exposeInMainWorld("yo", {
   appsUpdateName: (id: string, name: string) => ipcRenderer.invoke("apps-update-name", id, name) as Promise<boolean>,
   appsUpdateUrl: (id: string, url: string) => ipcRenderer.invoke("apps-update-url", id, url) as Promise<boolean>,
   appsSetConnectedSlug: (id: string, slug: string | null) => ipcRenderer.invoke("apps-set-connected-slug", id, slug) as Promise<boolean>,
-  appsSetCommand: (id: string, key: string, mapping: { selector: string; action: string; description: string }) =>
-    ipcRenderer.invoke("apps-set-command", id, key, mapping) as Promise<boolean>,
-  appsRemoveCommand: (id: string, key: string) =>
-    ipcRenderer.invoke("apps-remove-command", id, key) as Promise<boolean>,
-  appsTestCommand: (mapping: { selector: string; action: string; description?: string; text?: string } | null, wcId?: number) =>
-    ipcRenderer.invoke("apps-test-command", mapping, wcId) as Promise<string>,
-  startPicker: (wcId: number) => ipcRenderer.send("start-picker", wcId),
-  onPickerResult: (cb: (result: { selector: string; tag: string; text: string; isEditable: boolean; isClickable: boolean }) => void) => {
-    ipcRenderer.on("picker-result", (_e, result) => cb(result));
-  },
 
   // Onboarding complete — triggers panel restore
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),

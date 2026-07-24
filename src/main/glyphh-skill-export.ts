@@ -141,20 +141,19 @@ tools directly (no UI needed):
 3. \`deploy_app { slug }\` only RE-deploys an already-built release; it never builds.
    If \`get_app\` shows a release with no finished build, call \`build_app\`.
 
-For an INSTALLED \`.glyphh\` bundle (private worker tools on the user's own relay),
-the older UI path still applies:
+A deployed app lives at \`<slug>.glyphh.app\`. Who may open it is the app's
+**access**, set on its Deploy tab (or \`apps edit --access\`): *members* (visitors
+sign in with a Glyphh account) or *public* (anyone with the link). It is checked
+at the edge on every request, before anything reaches the app.
 
-1. Open the app in Glyphh → its **Public URL** tab.
-2. Pick a subdomain → the app goes live at \`<slug>.glyphh.app\`.
-3. **HTTP app** → proxies a local server. **LLM app** → exposes a scoped MCP
-   endpoint at \`<slug>.glyphh.app/mcp\` (tools \`send_prompt\` / \`use_tool\` /
-   \`run_agent\`, backed by the user's OWN model and key).
-4. **Make it public or gated** — auth: *public* (anyone with the URL), *Glyphh
-   SSO* (signed-in users), or *OIDC*. Set per-app guardrails (input cap, rolling
-   token + call budgets, concurrency) and the Enabled toggle.
+An INSTALLED \`.glyphh\` bundle is the other shape: it runs on the user's own
+machine and exposes the tools its manifest declares. Those are reachable through
+\`app_list_tools\` / \`app_call_tool\` — the owner approves each tool, and the
+per-app guardrails (input cap, rolling token + call budgets, concurrency) bound
+every call.
 
-Provider keys stay host-only: even for a public endpoint, the model call runs on
-the user's machine and the server never sees the key.
+Provider keys stay host-only: the model call runs on the user's machine and the
+server never sees the key.
 
 ## How to work
 

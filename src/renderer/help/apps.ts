@@ -22,9 +22,6 @@ const appDetailId = document.getElementById("app-detail-id") as HTMLInputElement
 const appDetailName = document.getElementById("app-detail-name") as HTMLInputElement;
 const appDetailUrl = document.getElementById("app-detail-url") as HTMLInputElement;
 const appSearchInput = document.getElementById("app-search") as HTMLInputElement;
-const appConnectStatus = document.getElementById("app-connect-status")!;
-const appCommandsList = document.getElementById("app-commands-list")!;
-const appMapCommand = document.getElementById("app-map-command")!;
 const appPreview = document.getElementById("app-preview") as HTMLElement & {
   src: string;
   partition: string;
@@ -112,45 +109,27 @@ function toggleArchetypeFields(prefix: string, archetype: Archetype): void {
   document.getElementById(`${prefix}-generic-fields`)?.classList.toggle("hidden", archetype !== "generic");
 }
 
-// Show the browser-vs-native field blocks for a given form prefix.
-type AppType = "browser" | "native" | "llm" | "http";
+// Show the browser-vs-native field blocks for a given form prefix. A glyphh app
+// is BUILT, not configured here, so it is not one of the choices.
+type AppType = "browser" | "native";
 
 function toggleTypeFields(prefix: string, type: AppType): void {
   document.getElementById(`${prefix}-browser-fields`)?.classList.toggle("hidden", type !== "browser");
   document.getElementById(`${prefix}-native-fields`)?.classList.toggle("hidden", type !== "native");
-  document.getElementById(`${prefix}-llm-fields`)?.classList.toggle("hidden", type !== "llm");
-  document.getElementById(`${prefix}-http-fields`)?.classList.toggle("hidden", type !== "http");
 }
 
-// ── MCP-exposing apps: static LLM tool set + approval + guardrails ──────────
+// ── Installed Glyphh apps: tool approval + guardrails ───────────────────────
 
-/** Built-in tools an LLM-type app exposes at <slug>.glyphh.app/mcp — each
- *  bridges an incoming MCP call to the app's local model (BYOK). `sdkOnly`
- *  tools only make sense for the Claude Agent SDK provider (agentic loop). */
-const LLM_TOOLS: Array<{ name: string; description: string; sdkOnly?: boolean }> = [
-  { name: "send_prompt", description: "Send a prompt (or messages) to this local model and return its completion." },
-  { name: "use_tool", description: "Give the model a set of tools and let it choose/call one (function-calling passthrough)." },
-  { name: "run_agent", description: "Run an agentic loop against a task and return the result.", sdkOnly: true },
-  { name: "count_tokens", description: "Count the tokens a piece of text uses for this model — no inference, cheap." },
-  { name: "list_model", description: "Report the provider and model this endpoint exposes." },
-];
-
-/** The tool list an app exposes, by app shape: LLM apps use the static set
- *  (filtered by provider); installed apps declare theirs dynamically. */
+/** The tools an installed Glyphh app declares in its bundle manifest. */
 function appExposableTools(app: { appArchetype?: string | null; launchConfig?: Record<string, unknown> | null }): Array<{ name: string; description: string }> {
   const lc = (app.launchConfig || {}) as Record<string, unknown>;
-  if (app.appArchetype === "llm") {
-    const provider = String((lc.llm as Record<string, unknown> | undefined)?.provider || "claude");
-    return LLM_TOOLS.filter((t) => !t.sdkOnly || provider === "claude-agent-sdk").map((t) => ({ name: t.name, description: t.description }));
-  }
-  // Installed Glyphh app — its manifest declares tools (dynamic).
   const declared = Array.isArray(lc.tools) ? (lc.tools as Array<{ name?: string; description?: string }>) : [];
   return declared.filter((t) => t?.name).map((t) => ({ name: String(t.name), description: String(t.description || "") }));
 }
 
 /** True when an app has an MCP surface worth showing the MCP/Guardrails tabs. */
 function appExposesMcp(app: { appArchetype?: string | null; launchConfig?: Record<string, unknown> | null }): boolean {
-  return app.appArchetype === "llm" || appExposableTools(app).length > 0;
+  return appExposableTools(app).length > 0;
 }
 
 /** Show/hide + populate the MCP and Guardrails tabs for the open app. */
@@ -163,7 +142,7 @@ function syncMcpTabs(app: PanelApp): void {
 
   // Public endpoint URL.
   const ep = document.getElementById("app-mcp-endpoint");
-  if (ep) ep.textContent = `https://${app.slug}.${APP_DOMAIN}/mcp`;
+  if (ep) ep.textContent = `https://${app.slug}.glyphh.app/mcp`;
 
   // Approved-tools list — allowlist, so anything NOT in mcpApproved is off,
   // including newly-appeared tools (safe default).
@@ -185,9 +164,8 @@ function syncMcpTabs(app: PanelApp): void {
     list.appendChild(row);
   }
 
-  // Test-a-tool picker — installed apps only (LLM tools run against the model).
-  const canTest = app.appArchetype !== "llm" && tools.length > 0;
-  document.getElementById("app-mcp-test-section")?.classList.toggle("hidden", !canTest);
+  // Test-a-tool picker — runs the tool through the local runtime.
+  document.getElementById("app-mcp-test-section")?.classList.toggle("hidden", tools.length === 0);
   const testSel = document.getElementById("app-mcp-test-tool") as HTMLSelectElement | null;
   if (testSel) testSel.innerHTML = tools.map((t) => `<option value="${escMkt(t.name)}">${escMkt(t.name)}</option>`).join("");
 
@@ -204,27 +182,6 @@ function syncMcpTabs(app: PanelApp): void {
   setNum("app-gr-window-tokens", g.windowTokens ?? DEFAULT_GUARDRAILS.windowTokens);
   setNum("app-gr-window-calls", g.windowCalls ?? DEFAULT_GUARDRAILS.windowCalls);
   setNum("app-gr-concurrent", g.maxConcurrent ?? DEFAULT_GUARDRAILS.maxConcurrent);
-}
-
-/** Re-render the MCP/Guardrails tabs from the CURRENT form state (type +
- *  provider), preserving already-checked tools and typed guardrail values —
- *  used when the user flips the type or provider while editing. */
-function syncMcpTabsFromForm(): void {
-  if (!currentApp) return;
-  const type = (document.getElementById("app-detail-type") as HTMLSelectElement).value as AppType;
-  const provider = (document.getElementById("app-detail-llm-provider") as HTMLSelectElement).value;
-  const { mcpApproved, guardrails } = readMcpConfig(); // preserve current selections
-  const synthetic: PanelApp = {
-    ...currentApp,
-    appArchetype: type === "llm" ? "llm" : (type === "native" ? (currentApp.appArchetype || "generic") : null),
-    launchConfig: {
-      ...(currentApp.launchConfig || {}),
-      llm: { provider },
-      mcpApproved,
-      guardrails,
-    },
-  };
-  syncMcpTabs(synthetic);
 }
 
 /** Read the MCP-approval + guardrails fields back into a launchConfig patch. */
@@ -313,6 +270,8 @@ interface PanelApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  /** Who may reach it once deployed — shown + set on the Deploy tab. */
+  access?: string;
   commands?: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds?: string[];
   mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
@@ -322,6 +281,7 @@ function toPanelApp(a: {
   id: string; slug: string; name: string; system?: boolean; url: string | null;
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
+  access?: string;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
@@ -329,7 +289,7 @@ function toPanelApp(a: {
   return {
     id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url,
     isBrowser: a.isBrowser, execPath: a.execPath,
-    appArchetype: a.appArchetype, launchConfig: a.launchConfig,
+    appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
@@ -875,8 +835,7 @@ function switchAppsPage(page: "library" | "marketplace"): void {
   document.querySelectorAll<HTMLButtonElement>(".apps-page-tab").forEach((t) => t.classList.toggle("active", t.dataset.page === page));
   marketplaceLibraryPage.classList.toggle("hidden", page !== "library");
   marketplacePage.classList.toggle("hidden", page !== "marketplace");
-  // Marketplace is temporarily "Coming Soon" (storefront hidden in markup).
-  // To re-enable, restore: if (page === "marketplace") { closeMktDetail(); void loadMarketplace(); }
+  if (page === "marketplace") { closeMktDetail(); void loadMarketplace(); }
 }
 
 // ── Tab switching ────────────────────────────────────────
@@ -912,6 +871,13 @@ async function loadDeployTab(): Promise<void> {
   urlRow.classList.add("hidden");
   takedown.classList.add("hidden");
   deployCurrentId = null;
+
+  // Who can reach it — the app's own setting, not the deployment's. Shown here
+  // because "it's live" and "who can open it" are one question to the owner.
+  const accessSel = document.getElementById("deploy-access") as HTMLSelectElement;
+  accessSel.value = currentApp?.access === "public" ? "public" : "members";
+  syncDeployAccessHint();
+
   const slug = currentApp?.slug || currentAppId;
   const res = await window.yo.hostingStatus(slug);
   if (!res.ok) { statusEl.textContent = "Couldn't load deploy status."; return; }
@@ -925,6 +891,32 @@ async function loadDeployTab(): Promise<void> {
   } else {
     statusEl.innerHTML = `<span class="deploy-dot"></span>Not deployed`;
     deployBtn.textContent = "Deploy";
+  }
+}
+
+/** Spell out what the chosen access actually means — "public" is the one that
+ *  can surprise someone, so it says so plainly. */
+function syncDeployAccessHint(): void {
+  const hint = document.getElementById("deploy-access-hint");
+  const isPublic = (document.getElementById("deploy-access") as HTMLSelectElement).value === "public";
+  if (hint) {
+    hint.textContent = isPublic
+      ? "Anyone with the link can open this app, signed in or not, and their requests spend your org's credits."
+      : "Visitors sign in with a Glyphh account; anyone else is turned away at the edge, before the app is reached.";
+  }
+}
+
+/** Persist the access choice against the app entry. */
+async function saveDeployAccess(): Promise<void> {
+  if (!currentAppId) return;
+  const status = document.getElementById("deploy-access-status");
+  const access = (document.getElementById("deploy-access") as HTMLSelectElement).value as "public" | "members";
+  if (status) status.textContent = "Saving…";
+  const res = await window.yo.panelAppsUpdate(currentAppId, { access });
+  if (res?.ok && currentApp) currentApp.access = access;
+  if (status) {
+    status.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
+    setTimeout(() => { if (status.textContent === "Saved ✓") status.textContent = ""; }, 2500);
   }
 }
 
@@ -1080,7 +1072,6 @@ async function loadPanelTab() {
     }
     panelLoaded = true;
   }
-  refreshCommands();
 }
 
 /** The preview <webview> creates its guest (and thus a webContents id) shortly
@@ -1100,33 +1091,27 @@ async function openPanelAppDetail(app: PanelApp) {
   currentApp = app;
   panelLoaded = false;
 
-  // Deploy + Production tabs are for HOSTED (built) Glyphh apps only.
+  // Deploy + Production tabs are for BUILT Glyphh apps only.
   const isHosted = app.appArchetype === "glyphh-app";
   document.querySelectorAll<HTMLElement>(".tab-hosted-only").forEach((el) => el.classList.toggle("hidden", !isHosted));
+  // A built app's type is its bundle's, not a dropdown choice — the server refuses
+  // to retype it, so offering the control would only produce a failed save.
+  document.getElementById("app-detail-type-row")?.classList.toggle("hidden", isHosted);
 
   // Populate dashboard fields
   appDetailId.value = app.slug;
   appDetailName.value = app.name;
   appDetailUrl.value = app.url || "";
 
-  // Browser ↔ Native fields (pivot-mcp). Legacy apps have isBrowser undefined
-  // but always carry a url, so they default to browser.
+  // Browser ↔ Native fields. Legacy apps have isBrowser undefined but always
+  // carry a url, so they default to browser.
   const isBrowser = app.isBrowser !== undefined ? app.isBrowser : true;
-  const detailType: AppType = isBrowser ? "browser"
-    : app.appArchetype === "llm" ? "llm"
-    : app.appArchetype === "http" ? "http"
-    : "native";
+  const detailType: AppType = isBrowser ? "browser" : "native";
   (document.getElementById("app-detail-type") as HTMLSelectElement).value = detailType;
   {
     const lc = (app.launchConfig || {}) as Record<string, unknown>;
     (document.getElementById("app-detail-browser") as HTMLSelectElement).value = typeof lc.browser === "string" && lc.browser ? String(lc.browser) : "glyphh-panel";
     (document.getElementById("app-detail-open-as") as HTMLSelectElement).value = lc.openAs === "tab" ? "tab" : "window";
-    // LLM fields
-    const llm = (lc.llm || {}) as Record<string, unknown>;
-    (document.getElementById("app-detail-llm-provider") as HTMLSelectElement).value = String(llm.provider || "claude");
-    (document.getElementById("app-detail-llm-model") as HTMLInputElement).value = String(llm.model || "");
-    // HTTP app: local URL
-    (document.getElementById("app-detail-http-target") as HTMLInputElement).value = String(lc.httpTarget || "");
   }
   (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
   const detailArchetype = (app.appArchetype as Archetype) || "generic";
@@ -1135,13 +1120,9 @@ async function openPanelAppDetail(app: PanelApp) {
   toggleTypeFields("app-detail", detailType);
   toggleArchetypeFields("app-detail", detailArchetype);
 
-  // MCP + Guardrails tabs (MCP-exposing apps) + Public URL tab (anything with
-  // a public URL).
+  // MCP + Guardrails tabs — installed apps that declare tools.
   syncMcpTabs(app);
-  void syncPublicUrlTab(app);
 
-  appConnectStatus.textContent = "";
-  appMapCommand.classList.add("hidden");
   // Shared edit header: icon + name + slug (the header title span is now blank).
   appDetailHeading.textContent = "";
   document.getElementById("app-detail-head")!.innerHTML =
@@ -1168,197 +1149,27 @@ async function openPanelAppDetail(app: PanelApp) {
   switchAppTab("dashboard");
 }
 
-async function refreshCommands() {
-  const apps = await window.yo.panelAppsList();
-  const app = apps.find((a) => a.id === currentAppId);
-  const commands = app?.commands || {};
-  const keys = Object.keys(commands);
-
-  if (keys.length === 0) {
-    appCommandsList.innerHTML = `<div class="inline-empty">No commands mapped. Click "Pick Element" to add one.</div>`;
-    return;
-  }
-
-  appCommandsList.innerHTML = keys.map((key) => {
-    const cmd = commands[key];
-    return `<div class="command-row" data-key="${key}">
-      <span class="command-key">${key}</span>
-      <span class="command-desc">${cmd.description || cmd.action}</span>
-      <span class="command-selector" title="${cmd.selector}">${cmd.selector.length > 40 ? cmd.selector.slice(0, 40) + "…" : cmd.selector}</span>
-      <div class="command-actions">
-        <button class="action-btn command-edit-btn" title="Edit">Edit</button>
-        <button class="action-btn command-test-btn" title="Test">Test</button>
-        <button class="action-btn danger command-remove-btn" title="Remove">×</button>
-      </div>
-    </div>`;
-  }).join("");
-
-  appCommandsList.querySelectorAll(".command-edit-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const key = (btn.closest(".command-row") as HTMLElement).dataset.key!;
-      const cmd = commands[key];
-      if (!cmd) return;
-      openMappingForm(key, cmd.selector, cmd.action, cmd.description || "", (cmd as any).text);
-    });
-  });
-
-  appCommandsList.querySelectorAll(".command-remove-btn").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const key = (btn.closest(".command-row") as HTMLElement).dataset.key!;
-      await window.yo.panelAppsRemoveCommand(currentAppId, key);
-      refreshCommands();
-    });
-  });
-
-  appCommandsList.querySelectorAll(".command-test-btn").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const key = (btn.closest(".command-row") as HTMLElement).dataset.key!;
-      const wcId = getPreviewWebContentsId();
-      const result = await window.yo.appsTestCommand(commands[key] || null, wcId);
-      appConnectStatus.textContent = result ? `Test ${key}: ${result.slice(0, 80)}` : `Test ${key}: executed`;
-      setTimeout(() => { appConnectStatus.textContent = ""; }, 3000);
-    });
-  });
-}
-
 function getPreviewWebContentsId(): number | undefined {
   try { return appPreview.getWebContentsId(); } catch { return undefined; }
 }
-
-async function pickElement() {
-  if (!currentAppId) return;
-  const pickLabel = document.getElementById("app-pick-label");
-  const setPickLabel = (txt: string) => { if (pickLabel) pickLabel.textContent = txt; };
-  const wcId = getPreviewWebContentsId();
-  if (!wcId) {
-    setPickLabel("Preview not ready");
-    setTimeout(() => setPickLabel("Pick Element"), 2000);
-    return;
-  }
-
-  setPickLabel("Picking…");
-
-  // Lock the close buttons while picking. Guard against any that no longer
-  // exist (#help-close is gone since Home became a panel, not an overlay) —
-  // touching a null element here used to throw and abort the whole picker.
-  const closeBtns = ["help-close", "app-detail-close"]
-    .map((id) => document.getElementById(id))
-    .filter((el): el is HTMLElement => el !== null);
-  const lockCloseBtns = (locked: boolean) => {
-    for (const el of closeBtns) {
-      (el as HTMLButtonElement).disabled = locked;
-      el.style.opacity = locked ? "0.3" : "";
-    }
-  };
-  lockCloseBtns(true);
-
-  const picked = await new Promise<{
-    selector: string; tag: string; text: string; isEditable: boolean; isClickable: boolean;
-  } | null>((resolve) => {
-    window.yo.onPickerResult((result) => {
-      resolve(result);
-    });
-    window.yo.startPicker(wcId);
-  });
-
-  lockCloseBtns(false);
-  setPickLabel("Pick Element");
-
-  if (!picked) {
-    appMapCommand.classList.add("hidden");
-    return;
-  }
-
-  const action = picked.isEditable ? "setValue" : picked.isClickable ? "click" : "extractText";
-  const info = `<${picked.tag}>` +
-    `${picked.text ? ' "' + picked.text.slice(0, 60) + '"' : ""}` +
-    `${picked.isEditable ? " [editable]" : ""}${picked.isClickable ? " [clickable]" : ""}`;
-
-  document.getElementById("map-element-info")!.textContent = info;
-  openMappingForm("", picked.selector, action, "", picked.text);
-}
-
-let mappingText = "";
-
-function openMappingForm(key: string, selector: string, action: string, description: string, text?: string) {
-  document.getElementById("map-selector")!.textContent = selector;
-  mappingText = text ?? "";
-
-  const keySelect = document.getElementById("map-command-key") as HTMLSelectElement;
-  const customKeyInput = document.getElementById("map-custom-key") as HTMLInputElement;
-  const actionSelect = document.getElementById("map-action") as HTMLSelectElement;
-  const descInput = document.getElementById("map-description") as HTMLInputElement;
-
-  // Check if key matches a preset option
-  const presetOption = keySelect.querySelector(`option[value="${key}"]`);
-  if (key && presetOption) {
-    keySelect.value = key;
-    customKeyInput.classList.add("hidden");
-  } else if (key) {
-    keySelect.value = "__custom__";
-    customKeyInput.value = key;
-    customKeyInput.classList.remove("hidden");
-  } else {
-    keySelect.value = "";
-    customKeyInput.value = "";
-    customKeyInput.classList.add("hidden");
-  }
-
-  actionSelect.value = action;
-  descInput.value = description;
-  appMapCommand.classList.remove("hidden");
-}
-
-async function saveMapping() {
-  const keySelect = document.getElementById("map-command-key") as HTMLSelectElement;
-  const customKeyInput = document.getElementById("map-custom-key") as HTMLInputElement;
-  const actionSelect = document.getElementById("map-action") as HTMLSelectElement;
-  const descInput = document.getElementById("map-description") as HTMLInputElement;
-  const selector = document.getElementById("map-selector")!.textContent || "";
-
-  let key = keySelect.value;
-  if (key === "__custom__") {
-    key = customKeyInput.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
-    if (!key) { customKeyInput.focus(); return; }
-  }
-  if (!key || !selector) return;
-
-  const mapping: Record<string, string> = {
-    selector,
-    action: actionSelect.value,
-    description: descInput.value.trim() || key,
-  };
-  if (mappingText) mapping.text = mappingText;
-  await window.yo.panelAppsSetCommand(currentAppId, key, mapping);
-
-  appMapCommand.classList.add("hidden");
-  appConnectStatus.textContent = `Mapped: ${key}`;
-  setTimeout(() => { appConnectStatus.textContent = ""; }, 2000);
-  refreshCommands();
-}
-
 
 function closeAppDetail() {
   // Drop any glyphh capability grant on the reused preview webContents.
   void window.yo.glyphhAppPreviewClear(getPreviewWebContentsId());
   appPreview.src = "about:blank";
   panelLoaded = false;
-  appMapCommand.classList.add("hidden");
   appDetail.classList.add("hidden");
   appsList.classList.remove("hidden");
   appsToolbar.classList.remove("hidden");
   loadApps();
 }
 
+/** The apps the panel/launcher paths can open — a system row (Glyphh itself)
+ *  and a row with nothing to open are both excluded. */
 function reloadPanelApps(apps: Array<PanelApp>) {
   panelApps = apps.filter((a) => !a.system && (a.url || a.isBrowser === false));
 }
 
-// When a browser tab is "Create App"'d, the originating tab id is stashed here
-// so the save handler can convert that tab into the new app.
 let pendingOriginTab: string | null = null;
 
 /**
@@ -1381,159 +1192,9 @@ export function openNewAppForm(url = "", name = "", tabId: string | null = null)
   nameInput.focus();
 }
 
-// ── Public URLs (app proxy tunnels — APP-PROXY-UI-SPEC) ────────────────────
+// ── MCP tab wiring — approvals + guardrails for an installed app ───────────
 
-// ── Public URL tab — the app's 1:1 <slug>.glyphh.app proxy ─────────────────
-
-type ProxyRow = NonNullable<Awaited<ReturnType<typeof window.yo.appProxyGet>>["proxy"]>;
-
-const APP_DOMAIN = "glyphh.app";
-const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
-
-const proxyEl = (id: string) => document.getElementById(id)!;
-const proxyInput = (id: string) => document.getElementById(id) as HTMLInputElement;
-const proxySelect = (id: string) => document.getElementById(id) as HTMLSelectElement;
-
-function proxyUrl(slug: string): string { return `https://${slug || "<name>"}.${APP_DOMAIN}`; }
-
-// The open app's proxy (or null = the app has no public URL yet).
-let currentProxy: ProxyRow | null = null;
-
-/** Which proxy kind an app serves: http = tunnel to its Local URL; mcp = a
- *  scoped MCP endpoint (LLM / agent apps). Prefers the live detail-form type
- *  so a just-changed (not-yet-saved) type still saves the right kind. */
-function appProxyKind(app: PanelApp): "http" | "mcp" {
-  const formType = (document.getElementById("app-detail-type") as HTMLSelectElement | null)?.value;
-  const t = formType || app.appArchetype;
-  return t === "http" ? "http" : "mcp";
-}
-
-/** Apps that get a public URL at all — HTTP servers, and MCP-exposing apps. */
-function appHasPublicUrl(app: PanelApp): boolean {
-  return app.appArchetype === "http" || appExposesMcp(app);
-}
-
-/** Show/hide the auth-mode-dependent field blocks + the public warning. */
-function syncProxyAuthFields(): void {
-  const mode = proxySelect("proxy-auth-mode").value;
-  proxyEl("proxy-visibility-wrap").classList.toggle("hidden", mode !== "glyphh");
-  proxyEl("proxy-oidc-fields").classList.toggle("hidden", mode !== "oidc");
-  proxyEl("proxy-public-warn").classList.toggle("hidden", mode !== "public");
-}
-
-function syncProxySlugPreview(): void {
-  const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
-  proxyEl("proxy-url-preview").textContent = proxyUrl(slug);
-  const cb = document.getElementById("proxy-oidc-callback");
-  if (cb) cb.textContent = `${proxyUrl(slug)}/__glyphh/oidc/callback`;
-}
-
-function proxyFormError(msg: string): void {
-  const el = proxyEl("proxy-form-error");
-  el.textContent = msg;
-  el.classList.remove("hidden");
-}
-
-/** Show/hide the Public URL tab for the open app, and load its proxy. */
-async function syncPublicUrlTab(app: PanelApp): Promise<void> {
-  const has = appHasPublicUrl(app);
-  document.querySelectorAll<HTMLElement>(".tab-public-only").forEach((el) => el.classList.toggle("hidden", !has));
-  if (!has) { currentProxy = null; return; }
-  const res = await window.yo.appProxyGet(app.id).catch(() => ({ ok: false as const }));
-  currentProxy = res.ok ? (res.proxy || null) : null;
-  populatePublicUrlForm(app, currentProxy);
-}
-
-function populatePublicUrlForm(app: PanelApp, p: ProxyRow | null): void {
-  proxyEl("proxy-form-error").classList.add("hidden");
-  // Subdomain defaults to the app slug and stays editable — renaming it moves
-  // the public URL (old address stops resolving, new one starts).
-  proxyInput("proxy-slug").value = p?.slug || app.slug;
-  proxyInput("proxy-slug").disabled = false;
-  proxySelect("proxy-auth-mode").value = p?.auth_mode || "glyphh";
-  proxySelect("proxy-visibility").value = p?.visibility || "private";
-  proxyInput("proxy-oidc-issuer").value = p?.auth_config?.issuer || "";
-  proxyInput("proxy-oidc-client-id").value = p?.auth_config?.clientId || "";
-  proxyInput("proxy-oidc-secret").value = "";
-  proxyEl("proxy-oidc-secret-hint").classList.toggle("hidden", !p?.auth_config?.hasClientSecret);
-  proxyInput("proxy-oidc-scopes").value = (p?.auth_config?.scopes || []).join(" ");
-  proxyInput("proxy-oidc-domains").value = (p?.auth_config?.allowedDomains || []).join(", ");
-  proxyInput("proxy-label").value = p?.label || "";
-  // Enabled flag: on = active. A new (unsaved) URL defaults to enabled.
-  // A moderation-flagged URL can't be self-enabled, so lock the toggle off.
-  const flagged = p?.status === "flagged";
-  const enabled = proxyInput("proxy-enabled");
-  enabled.checked = p ? p.status === "active" : true;
-  enabled.disabled = flagged;
-  proxyEl("proxy-enabled-desc").textContent = flagged
-    ? "This URL was flagged and is unavailable — contact support."
-    : 'When off, the URL returns "not found" — your config is kept so you can turn it back on.';
-  // Open only makes sense once the URL exists and is live.
-  const openLink = proxyEl("proxy-open-link") as HTMLAnchorElement;
-  openLink.classList.toggle("hidden", !p || p.status !== "active");
-  if (p) openLink.href = proxyUrl(p.slug);
-  syncProxySlugPreview();
-  syncProxyAuthFields();
-}
-
-async function savePublicUrl(): Promise<void> {
-  if (!currentApp) return;
-  proxyEl("proxy-form-error").classList.add("hidden");
-  const slug = proxyInput("proxy-slug").value.trim().toLowerCase();
-  const authMode = proxySelect("proxy-auth-mode").value;
-  const visibility = proxySelect("proxy-visibility").value;
-  const label = proxyInput("proxy-label").value.trim();
-  const kind = appProxyKind(currentApp);
-  // For HTTP apps the tunnel target is the app's Local URL (General tab).
-  const target = kind === "http" ? (document.getElementById("app-detail-http-target") as HTMLInputElement).value.trim() : "";
-
-  if (!SLUG_RE.test(slug)) { proxyFormError("Subdomain must be 1–63 lowercase letters, digits, or hyphens (no leading/trailing hyphen)."); return; }
-  if (kind === "http" && !/^https?:\/\//i.test(target)) { proxyFormError("Set the app's Local URL on the General tab first (http://…)."); return; }
-
-  let authConfig: Record<string, unknown> | undefined;
-  if (authMode === "oidc") {
-    const issuer = proxyInput("proxy-oidc-issuer").value.trim();
-    const clientId = proxyInput("proxy-oidc-client-id").value.trim();
-    const clientSecret = proxyInput("proxy-oidc-secret").value;
-    const hadSecret = !proxyEl("proxy-oidc-secret-hint").classList.contains("hidden");
-    if (!/^https:\/\//i.test(issuer)) { proxyFormError("OIDC issuer must be an https:// URL."); return; }
-    if (!clientId) { proxyFormError("OIDC client ID is required."); return; }
-    if (!clientSecret && !hadSecret) { proxyFormError("OIDC client secret is required."); return; }
-    const scopes = proxyInput("proxy-oidc-scopes").value.trim().split(/[\s,]+/).filter(Boolean);
-    const allowedDomains = proxyInput("proxy-oidc-domains").value.split(",").map((s) => s.trim()).filter(Boolean);
-    authConfig = {
-      issuer, clientId,
-      ...(clientSecret ? { clientSecret } : {}),
-      ...(scopes.length ? { scopes } : {}),
-      ...(allowedDomains.length ? { allowedDomains } : {}),
-    };
-  }
-
-  // The Enabled toggle is the on/off switch: on = active, off = disabled. A
-  // flagged URL is a moderation state the owner can't self-clear, so we never
-  // send status for it.
-  const wasFlagged = currentProxy?.status === "flagged";
-  const status: "active" | "disabled" = proxyInput("proxy-enabled").checked ? "active" : "disabled";
-
-  const res = currentProxy
-    ? await window.yo.appProxyUpdate(currentProxy.id, { slug, target, visibility, label: label || null, authMode, kind, ...(wasFlagged ? {} : { status }), ...(authConfig ? { authConfig } : {}) })
-    : await window.yo.appProxyCreate({ slug, target, visibility, label: label || undefined, authMode, kind, savedAppId: currentApp.id, ...(authConfig ? { authConfig } : {}) });
-
-  if (!res.ok) {
-    proxyFormError(/taken/i.test(res.error || "") ? "That subdomain is already taken — pick another." : (res.error || "Save failed"));
-    return;
-  }
-  currentProxy = res.proxy || currentProxy;
-  // New URLs are created active; if the owner saved with Enabled off, apply it.
-  if (!wasFlagged && currentProxy && currentProxy.status !== status) {
-    const upd = await window.yo.appProxyUpdate(currentProxy.id, { status });
-    if (upd.ok && upd.proxy) currentProxy = upd.proxy;
-  }
-  populatePublicUrlForm(currentApp, currentProxy);
-}
-
-function initPublicUrlTab(): void {
-  document.getElementById("proxy-save-btn")?.addEventListener("click", () => { void savePublicUrl(); });
+function initMcpTab(): void {
   document.getElementById("app-mcp-save")?.addEventListener("click", () => { void saveMcpGuardrails("app-mcp-status"); });
   document.getElementById("app-gr-save")?.addEventListener("click", () => { void saveMcpGuardrails("app-gr-status"); });
   document.getElementById("app-mcp-test-btn")?.addEventListener("click", () => { void testMcpTool(); });
@@ -1545,17 +1206,10 @@ function initPublicUrlTab(): void {
   document.getElementById("app-mcp-tools")?.addEventListener("change", (e) => {
     if ((e.target as HTMLElement).classList?.contains("mcp-tool-check")) updateMcpSelectAll();
   });
-  document.getElementById("proxy-auth-mode")?.addEventListener("change", syncProxyAuthFields);
-  const slugInput = proxyInput("proxy-slug");
-  slugInput?.addEventListener("input", () => {
-    const lower = slugInput.value.toLowerCase();
-    if (slugInput.value !== lower) slugInput.value = lower;
-    syncProxySlugPreview();
-  });
 }
 
 function initApps() {
-  initPublicUrlTab();
+  initMcpTab();
 
   // Browser dropdowns (add form + editor) — the real browsers on this machine.
   void window.yo.browsersDetect?.().then((browsers) => {
@@ -1701,21 +1355,13 @@ function initApps() {
     const addType = addTypeSelect.value as AppType;
     const isBrowser = addType === "browser";
     const execPath = addExecPath.value.trim();
-    const httpTarget = (document.getElementById("app-add-http-target") as HTMLInputElement).value.trim();
     if (!name) { addNameInput.classList.add("invalid"); clearInvalid(addNameInput); valid = false; }
     if (addType === "browser" && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
     if (addType === "native" && !execPath) { addExecPath.classList.add("invalid"); clearInvalid(addExecPath); valid = false; }
-    if (addType === "http" && !/^https?:\/\//i.test(httpTarget)) {
-      (document.getElementById("app-add-http-target") as HTMLInputElement).classList.add("invalid");
-      clearInvalid(document.getElementById("app-add-http-target") as HTMLInputElement);
-      valid = false;
-    }
     if (!valid) {
-      appFormError.textContent =
-        addType === "browser" ? "Name and URL are required."
-        : addType === "native" ? "Name and executable path are required."
-        : addType === "http" ? "Name and a Local URL (http://…) are required."
-        : "Name is required.";
+      appFormError.textContent = addType === "browser"
+        ? "Name and URL are required."
+        : "Name and executable path are required.";
       appFormError.classList.remove("hidden");
       return;
     }
@@ -1748,12 +1394,6 @@ function initApps() {
             browser: (document.getElementById("app-add-browser") as HTMLSelectElement).value,
             openAs: (document.getElementById("app-add-open-as") as HTMLSelectElement).value,
           } }
-      : addType === "llm"
-      ? { name, slug: id, isBrowser: false, url: null, execPath: null, appArchetype: "llm",
-          launchConfig: { llm: { provider: (document.getElementById("app-add-llm-provider") as HTMLSelectElement).value, model: null } } }
-      : addType === "http"
-      ? { name, slug: id, isBrowser: false, url: null, execPath: null, appArchetype: "http",
-          launchConfig: { httpTarget } }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
     const created = await window.yo.panelAppsCreate(createInput);
     if (!created.ok || !created.app) {
@@ -1785,23 +1425,6 @@ function initApps() {
     if (!r.ok && r.error) { appFormError.textContent = r.error; appFormError.classList.remove("hidden"); }
   });
 
-  // Panel tab: "Pick Element" — start the element picker on the app preview.
-  document.getElementById("app-pick-btn")?.addEventListener("click", () => { void pickElement(); });
-
-  // Panel tab: command mapping form — Save / Cancel were never wired, so a
-  // captured command had no way to persist.
-  document.getElementById("map-save-btn")?.addEventListener("click", () => { void saveMapping(); });
-  document.getElementById("map-cancel-btn")?.addEventListener("click", () => {
-    appMapCommand.classList.add("hidden");
-  });
-  // Reveal the custom-key input when "+ custom command" is chosen.
-  document.getElementById("map-command-key")?.addEventListener("change", (e) => {
-    const sel = e.target as HTMLSelectElement;
-    const custom = document.getElementById("map-custom-key") as HTMLInputElement;
-    custom.classList.toggle("hidden", sel.value !== "__custom__");
-    if (sel.value === "__custom__") custom.focus();
-  });
-
   // App add form cancel
   document.getElementById("app-add-cancel")!.addEventListener("click", () => { pendingOriginTab = null; loadApps(); });
   document.getElementById("app-add-cancel-btn")!.addEventListener("click", () => { pendingOriginTab = null; loadApps(); });
@@ -1819,17 +1442,8 @@ function initApps() {
   const detailArchetypeSelect = document.getElementById("app-detail-archetype") as HTMLSelectElement;
   const detailExecPath = document.getElementById("app-detail-exec-path") as HTMLInputElement;
   detailTypeSelect.addEventListener("change", () => {
-    const type = detailTypeSelect.value as AppType;
-    toggleTypeFields("app-detail", type);
-    // Switching to/from LLM changes whether this app exposes MCP — re-sync the
-    // tabs against a synthetic app view of the current form state.
-    syncMcpTabsFromForm();
-    // Public URL availability follows the form type too (http + mcp-exposing).
-    const hasPublic = type === "http" || type === "llm";
-    document.querySelectorAll<HTMLElement>(".tab-public-only").forEach((el) => el.classList.toggle("hidden", !hasPublic));
+    toggleTypeFields("app-detail", detailTypeSelect.value as AppType);
   });
-  // Provider affects which static tools apply (run_agent is Agent-SDK only).
-  document.getElementById("app-detail-llm-provider")?.addEventListener("change", syncMcpTabsFromForm);
   detailArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-detail", detailArchetypeSelect.value as Archetype));
   document.getElementById("app-detail-exec-browse")!.addEventListener("click", async () => {
     const picked = await window.yo.pickExecutable();
@@ -1841,14 +1455,20 @@ function initApps() {
     if (!currentAppId) return;
     const newSlug = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
     const type = detailTypeSelect.value as AppType;
-    // LLM apps are non-browser executables (archetype "llm") that expose an
-    // MCP endpoint rather than launching anything.
-    const patch: PanelAppInput = { isBrowser: type === "browser" };
+    // A BUILT app keeps its kind (the server refuses to retype one) and its bundle
+    // config; only its owner-set fields — name, tool approvals, limits — move here.
+    const isBuilt = currentApp?.appArchetype === "glyphh-app";
+    const patch: PanelAppInput = isBuilt ? {} : { isBrowser: type === "browser" };
     if (newSlug) patch.slug = newSlug;
     const name = appDetailName.value.trim();
     if (name) patch.name = name;
 
-    if (type === "browser") {
+    if (isBuilt) {
+      // The approvals + guardrails ride on top of the bundle's own contract, so
+      // spread the existing config rather than replacing it.
+      const { mcpApproved, guardrails } = readMcpConfig();
+      patch.launchConfig = { ...(currentApp?.launchConfig || {}), mcpApproved, guardrails };
+    } else if (type === "browser") {
       const url = appDetailUrl.value.trim();
       if (url) patch.url = url;
       patch.launchConfig = {
@@ -1856,36 +1476,19 @@ function initApps() {
         openAs: (document.getElementById("app-detail-open-as") as HTMLSelectElement).value,
       };
       patch.execPath = null;
-    } else if (type === "llm") {
-      patch.url = null;
-      patch.execPath = null;
-      patch.appArchetype = "llm";
-      const { mcpApproved, guardrails } = readMcpConfig();
-      patch.launchConfig = {
-        llm: {
-          provider: (document.getElementById("app-detail-llm-provider") as HTMLSelectElement).value,
-          model: (document.getElementById("app-detail-llm-model") as HTMLInputElement).value.trim() || null,
-        },
-        mcpApproved,
-        guardrails,
-      };
-    } else if (type === "http") {
-      patch.url = null;
-      patch.execPath = null;
-      patch.appArchetype = "http";
-      patch.launchConfig = {
-        httpTarget: (document.getElementById("app-detail-http-target") as HTMLInputElement).value.trim(),
-      };
     } else {
       patch.url = null;
       patch.execPath = detailExecPath.value.trim();
       const archetype = detailArchetypeSelect.value as Archetype;
       patch.appArchetype = archetype;
-      // Preserve MCP approval + guardrails for installed apps that expose tools.
-      const { mcpApproved, guardrails } = readMcpConfig();
-      patch.launchConfig = { ...readLaunchConfig("app-detail", archetype), mcpApproved, guardrails };
+      patch.launchConfig = readLaunchConfig("app-detail", archetype);
     }
-    await window.yo.panelAppsUpdate(currentAppId, patch);
+    const saved = await window.yo.panelAppsUpdate(currentAppId, patch);
+    if (!saved?.ok) {
+      appFormError.textContent = saved?.error || "Failed to save app.";
+      appFormError.classList.remove("hidden");
+      return;
+    }
 
     closeAppDetail();
   });
@@ -1924,7 +1527,14 @@ function initApps() {
     }
   });
 
-  // Deploy tab: deploy (dev-host) + take-down.
+  // Deploy tab: who can reach the app. Saved on change — it is one control, and
+  // a separate Save would let someone leave the page believing it took.
+  document.getElementById("deploy-access")?.addEventListener("change", () => {
+    syncDeployAccessHint();
+    void saveDeployAccess();
+  });
+
+  // Deploy tab: deploy + take-down.
   document.getElementById("deploy-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("deploy-btn") as HTMLButtonElement;
     const err = document.getElementById("deploy-error")!;
@@ -2024,4 +1634,4 @@ function initApps() {
   divider.addEventListener("pointercancel", releaseDivider);
 }
 
-export { loadApps, initApps, closeAppDetail, pickElement, saveMapping };
+export { loadApps, initApps, closeAppDetail };

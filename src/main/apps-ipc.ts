@@ -152,9 +152,8 @@ function registerPanelAppsIpc(): void {
   // App CRUD is the entries API (`/api/apps/entries`). The renderer still
   // speaks the older field names, so translate here: a native app carries an
   // execPath, everything else a url, and `launchConfig` is the entry `config`.
-  const entryKind = (o: Record<string, unknown>): "web" | "native" | "http" | "llm" => {
-    const archetype = String(o.appArchetype ?? "");
-    if (archetype === "llm" || archetype === "http") return archetype;
+  const entryKind = (o: Record<string, unknown>): "web" | "native" | "glyphh" => {
+    if (String(o.appArchetype ?? "") === "glyphh-app") return "glyphh";
     return o.isBrowser === false || o.execPath ? "native" : "web";
   };
   const entryFields = (o: Record<string, unknown>) => ({
@@ -163,6 +162,7 @@ function registerPanelAppsIpc(): void {
     ...(o.execPath !== undefined && o.execPath !== null ? { nativeRef: String(o.execPath) } : {}),
     ...(o.description !== undefined ? { description: String(o.description) } : {}),
     ...(o.launchConfig !== undefined ? { config: (o.launchConfig ?? {}) as Record<string, unknown> } : {}),
+    ...(o.access !== undefined ? { access: o.access as "public" | "members" } : {}),
   });
   /** The renderer addresses apps by row id; the entries API by slug. */
   const appSlug = async (id: string): Promise<string> => {
@@ -188,7 +188,15 @@ function registerPanelAppsIpc(): void {
   });
   ipcMain.handle("panel-apps-update", async (_e, id: string, patch: Record<string, unknown>) => {
     try {
-      const app = await getClient().apps.updateEntry(await appSlug(id), entryFields(patch));
+      // A retype only travels when the renderer asserts a LAUNCHER shape
+      // (`isBrowser`). Without this the type dropdown appeared to save and the
+      // row kept its old kind; with it on a built app, the server would refuse
+      // the whole patch — a glyphh app's kind comes from its bundle.
+      const kind = patch.isBrowser !== undefined ? entryKind(patch) : undefined;
+      const app = await getClient().apps.updateEntry(await appSlug(id), {
+        ...entryFields(patch),
+        ...(kind === "web" || kind === "native" ? { kind } : {}),
+      });
       invalidateOrgApps();
       return { ok: true, app };
     }
@@ -198,12 +206,6 @@ function registerPanelAppsIpc(): void {
     try { await getClient().apps.removeEntry(await appSlug(id)); invalidateOrgApps(); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  // An app's connections are declared by its MANIFEST now (requiredConnections),
-  // not set per-app from the client — the server resolves connected/required.
-  ipcMain.handle("panel-apps-set-connections", async () => {
-    return { ok: false, error: "An app's connections come from its manifest — edit the app's manifest to change them." };
-  });
-
   // ── Loops (Build → Loops on the platform; role-scoped) ───────
   // Offline / signed-out falls back to the built-in Default so the composer's
   // loop picker always has something to show.
@@ -433,23 +435,6 @@ function registerPanelAppsIpc(): void {
     return { ok: true };
   });
 
-  // ── App proxies (retired) ──────────────────────────────────────
-  // A public address is a hosting deployment (plus the app's variants) now,
-  // so there is no proxy row to read and nothing to create or edit.
-  ipcMain.handle("app-proxy-get", async () => ({ ok: true, proxy: null }));
-  const PROXIES_MOVED = "Public app addresses come from deploying the app (and its variants) — the proxy tunnel is retired.";
-  ipcMain.handle("app-proxy-create", async () => ({ ok: false, error: PROXIES_MOVED }));
-  ipcMain.handle("app-proxy-update", async () => ({ ok: false, error: PROXIES_MOVED }));
-  // Per-app MCP config and command mappings have no home on the apps API: an
-  // MCP endpoint is a custom MCP CONNECTION now, and command mappings await
-  // the app-state work. Fail with the reason rather than a bare 404.
-  const MCP_MOVED = "An app's MCP server is a Connection now — add it under Connections → + Custom MCP.";
-  const COMMANDS_UNAVAILABLE = "Per-app commands aren't available on this server version yet.";
-  ipcMain.handle("panel-apps-set-mcp", async () => ({ ok: false, error: MCP_MOVED }));
-  ipcMain.handle("panel-apps-remove-mcp", async () => ({ ok: false, error: MCP_MOVED }));
-  ipcMain.handle("panel-apps-set-command", async () => ({ ok: false, error: COMMANDS_UNAVAILABLE }));
-  ipcMain.handle("panel-apps-remove-command", async () => ({ ok: false, error: COMMANDS_UNAVAILABLE }));
-
   // Per-app config vars (encrypted secrets — app-secrets.ts). List returns key
   // names + set-dates ONLY; there is deliberately no handler that returns a
   // decrypted value to a renderer — plaintext exists once, at creation.
@@ -480,7 +465,6 @@ interface AppsIpcDeps {
   canAddApp: (count: number) => { allowed: boolean; reason?: string };
   canSaveLayout: (count: number) => { allowed: boolean; reason?: string };
   getMainWindow: () => import("electron").BrowserWindow | null;
-  PICKER_SCRIPT: string;
 }
 
 /** Hide system-kind apps from the Layouts cell picker.
@@ -498,7 +482,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     canAddApp,
     canSaveLayout,
     getMainWindow,
-    PICKER_SCRIPT,
   } = deps;
 
   registerPanelAppsIpc();
@@ -746,46 +729,5 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       if (app?.url) panelManager.addPanel(res.appId, app.url);
     }
     return res;
-  });
-
-  // IPC: app command mapping (DOM picker)
-  ipcMain.handle("apps-set-command", (_e, id: string, key: string, mapping: { selector: string; action: string; description: string }) => {
-    return appConnector.setCommand(id, key, mapping as any);
-  });
-  ipcMain.handle("apps-remove-command", (_e, id: string, key: string) => {
-    return appConnector.removeCommand(id, key);
-  });
-  // Dashboard shell (5a): commands now live server-side (saved_apps.commands),
-  // so the renderer passes the mapping it already has in hand rather than
-  // asking main to look it up by (id, key) in the local appConnector — that
-  // registry no longer holds user-added panel apps' command data.
-  ipcMain.handle("apps-test-command", async (_e, mapping: import("./app-connector").CommandMapping | null, wcId?: number) => {
-    if (!mapping) return "Command not found";
-    let wc: import("electron").WebContents | null = null;
-    if (wcId) {
-      const { webContents } = require("electron") as typeof import("electron");
-      wc = webContents.fromId(wcId) ?? null;
-    }
-    if (!wc || wc.isDestroyed()) return "Panel not open";
-    const { executeCommand: execCmd } = await import("./dom-bridge");
-    return execCmd(wc, mapping);
-  });
-
-  ipcMain.on("start-picker", (e, wcId: number) => {
-    const { webContents } = require("electron") as typeof import("electron");
-    const wc = webContents.fromId(wcId);
-    if (!wc || wc.isDestroyed()) return;
-    // Reply to the renderer that asked — the Apps section runs inside the
-    // Home panel's own BrowserView, not the main window.
-    const sender = e.sender;
-    // PICKER_SCRIPT resolves a Promise with the pick (or null on cancel);
-    // executeJavaScript hands us that value directly — no console-message bridge.
-    wc.executeJavaScript(PICKER_SCRIPT, true)
-      .then((result) => {
-        if (!sender.isDestroyed()) sender.send("picker-result", result ?? null);
-      })
-      .catch(() => {
-        if (!sender.isDestroyed()) sender.send("picker-result", null);
-      });
   });
 }

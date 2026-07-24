@@ -33,6 +33,8 @@ export interface OrgAppRow {
   execPath: string | null;
   appArchetype: string | null;
   launchConfig: Record<string, unknown> | null;
+  /** Who may reach the deployed app — 'public' or 'members'. */
+  access: string;
   connectionIds: string[];
   mcp: null;
   commands: Record<string, never>;
@@ -59,6 +61,7 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
   execPath: null,
   appArchetype: "glyphh-self",
   launchConfig: null,
+  access: "members",
   connectionIds: [],
   mcp: null,
   commands: {},
@@ -82,6 +85,7 @@ function toRow(app: OrgApp): OrgAppRow {
     execPath: app.nativeRef,
     appArchetype: app.kind === "glyphh" ? "glyphh-app" : app.kind,
     launchConfig: app.config ?? null,
+    access: app.access,
     connectionIds: app.requiredConnections.map((c) => c.slug),
     mcp: null,
     commands: {},
