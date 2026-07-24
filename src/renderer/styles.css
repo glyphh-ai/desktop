@@ -969,7 +969,7 @@ body {
 #onboarding-overlay .btn-primary:active:not(:disabled),
 #onboarding-overlay .btn-primary:focus-visible:not(:disabled),
 #onboarding-overlay .btn-primary:disabled {
-  color: #fff;
+  color: #000;
 }
 
 #onboarding-overlay .btn-secondary {
