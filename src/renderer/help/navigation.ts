@@ -254,6 +254,7 @@ export function initHelp() {
       menu.appendChild(b);
     }
     document.body.appendChild(menu);
+    moreMenu = menu; // track it so closeMore() and the outside-click can remove it
     // Anchor to the RIGHT of the More button, top-aligned; nudge back on screen.
     const r = moreToggle.getBoundingClientRect();
     menu.style.left = `${r.right + 6}px`;
