@@ -1392,6 +1392,24 @@ function initReleasesTab(): void {
     await loadReleasesTab();
   });
 
+  // Build & deploy — packages the working folder's compiled dist, cuts a
+  // release, uploads the source, and deploys. THE recovery for "its source is
+  // gone from storage — rebuild the app": until now nothing on this tab could
+  // actually build.
+  document.getElementById("release-build")?.addEventListener("click", async () => {
+    const btn = document.getElementById("release-build") as HTMLButtonElement;
+    const slug = currentApp?.slug || currentAppId;
+    document.getElementById("release-error")!.classList.add("hidden");
+    btn.disabled = true;
+    releaseStatus("Building from your working folder…");
+    try {
+      const res = await window.yo.appBuildDeploy(slug);
+      if (!res.ok) { releaseStatus(""); releaseError(res.error || "Build failed."); return; }
+      releaseStatus(`Built v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : " — uploaded"} ✓`);
+      await loadReleasesTab();
+    } finally { btn.disabled = false; }
+  });
+
   document.getElementById("release-promote")?.addEventListener("click", async () => {
     if (!selectedReleaseId) return;
     const r = releases.find((x) => x.id === selectedReleaseId);

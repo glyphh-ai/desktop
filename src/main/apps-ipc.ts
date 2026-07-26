@@ -4,6 +4,7 @@ import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
 import type { AppConnector, AppConfig } from "./app-connector";
 import { exportServerApp, importApp } from "./glyphh-app-package";
+import { deployAppFromWorkdir } from "./glyphh-app-builder";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import { getClient } from "./glyphh-client";
 import { probeMcpAuth, authorizeMcpServer } from "./mcp-oauth";
@@ -776,8 +777,19 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   });
 
   // ── Releases tab: the app's version history ─────────────────────────────────
-  // Read + the two owner actions. Cutting a release is the BUILD path
-  // (glyphh-app-builder) — this tab annotates and promotes what that produced.
+  // Read + the owner actions. Cutting a release is the BUILD path
+  // (glyphh-app-builder) — annotate/promote what it produced, or run it right
+  // here: Build packages the working folder's compiled dist, cuts a release,
+  // uploads the source, and deploys. This is also the recovery path when a
+  // release's source archive is gone from storage ("rebuild the app").
+  ipcMain.handle("app-build-deploy", async (_e, slug: string) => {
+    try {
+      const r = await deployAppFromWorkdir(slug || undefined);
+      return { ok: r.status === "ready", result: r, error: r.error };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
   ipcMain.handle("app-releases", async (_e, slug: string) => {
     try { return { ok: true, releases: await getClient().apps.releases(slug) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), releases: [] }; }

@@ -136,7 +136,7 @@ export async function updateAppFromWorkdir(
  * serves it), and deploy it live. Returns the release outcome — `ready` with a
  * public URL, or `failed` with the build error to fix.
  */
-export async function deployAppFromWorkdir(): Promise<{ slug: string; version: string; status: string; url?: string; error?: string }> {
+export async function deployAppFromWorkdir(expectSlug?: string): Promise<{ slug: string; version: string; status: string; url?: string; error?: string }> {
   const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set");
   const dir = resolveAppDir(wd);
@@ -147,6 +147,12 @@ export async function deployAppFromWorkdir(): Promise<{ slug: string; version: s
   }
   const manifest = JSON.parse(built.manifestJson) as { slug: string; name: string; version?: string };
   const slug = manifest.slug;
+  // The Releases tab builds FOR a specific app — refuse before any upload if
+  // the working folder holds a different project, so a stray cwd can't cut a
+  // release (or deploy) under the wrong slug.
+  if (expectSlug && slug !== expectSlug) {
+    throw new Error(`the working folder builds '${slug}', not '${expectSlug}' — open that app's project folder and try again`);
+  }
 
   // Same remote-asset guard the local install runs — hosted apps get the same CSP.
   const textAssets: Record<string, string> = {};
