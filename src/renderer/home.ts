@@ -97,10 +97,11 @@ void (async () => {
           position: fixed; inset: 0; z-index: 1;
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          /* the ghost scrim: a WHISPER of tint — the OS material ("under-window"
-             vibrancy / acrylic) does the blur and carries most of the body, so
-             anything heavier here stacks too dark to see through. */
-          background: rgba(8, 6, 12, 0.12) !important;
+          /* the ghost scrim: essentially OFF — the OS material ("menu"
+             vibrancy / acrylic) supplies the blur AND the body; any real tint
+             here stacks the glass too dark to see through. Legibility comes
+             from the text glow + per-element glass, not a window-wide fill. */
+          background: rgba(8, 6, 12, 0.08) !important;
           animation: ghost-in 0.16s ease both;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
@@ -142,6 +143,15 @@ void (async () => {
       let tries = 0;
       const go = () => { if (w.__wbOpenLayout) w.__wbOpenLayout(payload); else if (tries++ < 40) requestAnimationFrame(go); };
       go();
+      // Land ready to type: focus the agent's composer as soon as it mounts,
+      // so the hotkey → prompt flow needs zero clicks.
+      let ftries = 0;
+      const focusInput = () => {
+        const inp = document.querySelector<HTMLElement>(".code-input");
+        if (inp) inp.focus();
+        else if (ftries++ < 90) requestAnimationFrame(focusInput);
+      };
+      focusInput();
       return;
     }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
