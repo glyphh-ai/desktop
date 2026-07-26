@@ -159,6 +159,9 @@ contextBridge.exposeInMainWorld("yo", {
   windowMinimize: () => ipcRenderer.send("window-minimize"),
   // Ghost Mode overlay dismisses itself (Esc / backdrop click).
   ghostClose: () => ipcRenderer.invoke("ghost-close"),
+  // @-mention summon: the alias lookup table + the summon itself.
+  mentionCatalog: () => ipcRenderer.invoke("mention-catalog") as Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>,
+  ghostSummon: (model: string, prompt: string) => ipcRenderer.invoke("ghost-summon", model, prompt) as Promise<{ ok: boolean }>,
   windowMaximize: () => ipcRenderer.send("window-maximize"),
   // Screen layout (Settings → Appearance): dock mode + draggable fraction.
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,

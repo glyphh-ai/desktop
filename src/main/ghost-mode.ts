@@ -16,8 +16,39 @@
 import { BrowserWindow, globalShortcut, ipcMain, screen } from "electron";
 import { execFile } from "child_process";
 import path from "path";
+import { getClient } from "./glyphh-client";
 
 let ghostWin: BrowserWindow | null = null;
+
+/** What a summon opens with: the model to select + the first prompt. */
+interface GhostOpts { model?: string; prompt?: string }
+
+// ── @-mention catalog ────────────────────────────────────────────────────────
+// "@<provider-alias>-<model-alias>" resolves against the platform catalog. The
+// renderer needs SYNCHRONOUS matching (Enter must be consumed or not, no await),
+// so main serves a flat lookup map — every alias/slug/bare-id combination →
+// model id — cached briefly.
+let mentionCache: { at: number; pairs: Record<string, string> } | null = null;
+const MENTION_TTL_MS = 5 * 60_000;
+
+async function mentionPairs(): Promise<Record<string, string>> {
+  if (mentionCache && Date.now() - mentionCache.at < MENTION_TTL_MS) return mentionCache.pairs;
+  const client = getClient();
+  const [providers, models] = await Promise.all([client.catalog.providers(), client.catalog.models()]);
+  const byProvider = new Map(providers.map((p) => [p.slug, p]));
+  const pairs: Record<string, string> = {};
+  for (const m of models) {
+    const p = byProvider.get(m.providerSlug);
+    const bare = m.id.startsWith(`${m.providerSlug}::`) ? m.id.slice(m.providerSlug.length + 2) : m.id;
+    const providerKeys = [p?.alias, m.providerSlug].filter((v): v is string => !!v);
+    const modelKeys = [m.alias, bare].filter((v): v is string => !!v);
+    for (const pk of providerKeys) {
+      for (const mk of modelKeys) pairs[`${pk.toLowerCase()}-${mk.toLowerCase()}`] = m.id;
+    }
+  }
+  mentionCache = { at: Date.now(), pairs };
+  return pairs;
+}
 
 interface Bounds { x: number; y: number; width: number; height: number }
 
@@ -48,8 +79,13 @@ function centeredFallback(): Bounds {
   return { x: Math.round(wa.x + (wa.width - width) / 2), y: Math.round(wa.y + (wa.height - height) / 2), width, height };
 }
 
-async function openGhost(): Promise<void> {
-  if (ghostWin && !ghostWin.isDestroyed()) { ghostWin.show(); ghostWin.focus(); return; }
+async function openGhost(opts?: GhostOpts): Promise<void> {
+  // A summon carries context (model + prompt) the window reads at load — an
+  // already-open ghost reloads fresh rather than showing a stale session.
+  if (ghostWin && !ghostWin.isDestroyed()) {
+    if (!opts?.model && !opts?.prompt) { ghostWin.show(); ghostWin.focus(); return; }
+    closeGhost();
+  }
   // Size + position the overlay to EXACTLY match the target app's window.
   const bounds = (await frontmostWindowBounds()) ?? centeredFallback();
   ghostWin = new BrowserWindow({
@@ -87,7 +123,10 @@ async function openGhost(): Promise<void> {
   ghostWin.setAlwaysOnTop(true, "screen-saver");
   ghostWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   ghostWin.on("closed", () => { ghostWin = null; });
-  void ghostWin.loadFile(path.join(__dirname, "..", "renderer", "home.html"), { query: { solo: "ghost" } });
+  const query: Record<string, string> = { solo: "ghost" };
+  if (opts?.model) query.gmodel = opts.model;
+  if (opts?.prompt) query.gprompt = opts.prompt;
+  void ghostWin.loadFile(path.join(__dirname, "..", "renderer", "home.html"), { query });
   ghostWin.once("ready-to-show", () => { ghostWin?.show(); ghostWin?.focus(); });
 }
 
@@ -114,6 +153,17 @@ export function registerGhostMode(): void {
   } catch { /* accelerator unavailable — non-fatal, ghost just won't hotkey */ }
   // The overlay renderer asks to dismiss itself (Esc / backdrop click).
   ipcMain.handle("ghost-close", () => { closeGhost(); return { ok: true }; });
+  // The @-mention alias table, flattened for synchronous renderer matching.
+  ipcMain.handle("mention-catalog", async () => {
+    try { return { ok: true, pairs: await mentionPairs() }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  // "@an-fable ship it" → open the ghost on that model with the prompt seeded.
+  ipcMain.handle("ghost-summon", async (_e, model: string, prompt: string) => {
+    mentionCache = null; // a summon implies the catalog is in use — refresh soon
+    await openGhost({ model: String(model || ""), prompt: String(prompt || "") });
+    return { ok: true };
+  });
 }
 
 /** Tear the overlay down on quit. globalShortcut.unregisterAll() runs elsewhere. */

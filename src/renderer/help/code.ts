@@ -698,6 +698,20 @@ function ensureCodeSection(): void {
   startNew: (): void => newChat(),
 };
 
+// The @-mention summon ("@an-fable …") sets the model on the CURRENT loop's
+// primary role and repaints the chip — the ghost overlay calls this after boot.
+(window as unknown as { __agentUseModel?: (modelId: string) => Promise<boolean> }).__agentUseModel =
+  async (modelId: string): Promise<boolean> => {
+    try {
+      await picker.refreshRoles(glyphhLoop);
+      const role = picker.currentRoles()[0];
+      if (!role) return false;
+      await window.yo.loopRoleSet?.(glyphhLoop, role.name, modelId);
+      await refreshModelList(true);
+      return true;
+    } catch { return false; }
+  };
+
 function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [] };
   chats.unshift(c);

@@ -6,7 +6,7 @@
  */
 
 import { initHelp, openNewAppDeepLink, gotoSection } from "./help/index.js";
-import { openCommandCenter } from "./help/code.js";
+import { openCommandCenter, seedNewSession } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
 
 // Theme: the inline script in home.html applied localStorage theme synchronously.
@@ -52,6 +52,41 @@ void (async () => {
     // workbench tools as their own OS windows. The full home page loads, but
     // only the workbench shows, booted with exactly one slot.
     const solo = params.get("solo");
+    // ── @-mention summon ─────────────────────────────────────────────────
+    // "@<provider-alias>-<model-alias> prompt…" + Enter in ANY shell input
+    // opens the ghost overlay on that model with a fresh session and the
+    // prompt seeded (e.g. "@an-fable ship it"). The alias table is cached
+    // from main so matching is SYNCHRONOUS — Enter is consumed only when the
+    // mention actually resolves; everything else passes through untouched.
+    // Not registered inside the ghost itself (it already hosts the agent).
+    if (solo !== "ghost") {
+      let mentionPairs: Record<string, string> | null = null;
+      const loadMentions = () => {
+        void window.yo.mentionCatalog?.().then((r) => { if (r?.ok && r.pairs) mentionPairs = r.pairs; }).catch(() => {});
+      };
+      loadMentions();
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || e.isComposing || e.shiftKey) return;
+        const t = e.target as HTMLElement;
+        const field = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement;
+        if (!field && !t.isContentEditable) return;
+        const raw = field ? (t as HTMLInputElement | HTMLTextAreaElement).value : (t.textContent || "");
+        const m = raw.trim().match(/^@([^\s-]+)-(\S+)(?:\s+([\s\S]*))?$/);
+        if (!m) return;
+        if (!mentionPairs) { loadMentions(); return; } // table still loading — let this Enter pass
+        const modelId = mentionPairs[`${m[1].toLowerCase()}-${m[2].toLowerCase()}`];
+        if (!modelId) return; // not a known alias pair — normal send
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (field) {
+          (t as HTMLInputElement | HTMLTextAreaElement).value = "";
+          t.dispatchEvent(new Event("input", { bubbles: true }));
+        } else {
+          t.textContent = "";
+        }
+        void window.yo.ghostSummon?.(modelId, (m[3] || "").trim());
+      }, true);
+    }
     // Command-center DESKTOP OVERLAY host (?solo=cc): a transparent
     // fullscreen window whose only content is the command center.
     if (solo === "cc") {
@@ -143,6 +178,22 @@ void (async () => {
       let tries = 0;
       const go = () => { if (w.__wbOpenLayout) w.__wbOpenLayout(payload); else if (tries++ < 40) requestAnimationFrame(go); };
       go();
+      // Summon context ("@an-fable ship it"): once the agent mounts, start a
+      // fresh session with the prompt seeded and select the mentioned model on
+      // the current loop's primary role.
+      const gmodel = params.get("gmodel") || "";
+      const gprompt = params.get("gprompt") || "";
+      if (gmodel || gprompt) {
+        let stries = 0;
+        const applySummon = () => {
+          const sess = (window as unknown as { __agentSessions?: { startNew: () => void } }).__agentSessions;
+          if ((!document.querySelector(".code-input") || !sess) && stries++ < 120) { requestAnimationFrame(applySummon); return; }
+          if (gprompt) seedNewSession(gprompt);
+          else sess?.startNew();
+          if (gmodel) void (window as unknown as { __agentUseModel?: (m: string) => Promise<boolean> }).__agentUseModel?.(gmodel);
+        };
+        applySummon();
+      }
       // Land ready to type: focus the agent's composer as soon as it mounts,
       // so the hotkey → prompt flow needs zero clicks. The immediate focus can
       // lose to the window's own focus dance (the OS is still handing focus to
