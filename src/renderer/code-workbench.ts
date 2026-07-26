@@ -3120,9 +3120,9 @@ async function init(): Promise<void> {
 
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession = () => {
     // A fresh session normally starts with a clean workbench — but when the
-    // agent is HOSTED, the user built this arrangement deliberately (that is
-    // the panel's whole point); keep it.
-    if (codingHosted()) return;
+    // agent is HOSTED, or the user has a named LAYOUT open, that arrangement was
+    // built deliberately, so keep it instead of tearing it down on new session.
+    if (codingHosted() || activeLayoutName) return;
     rails.length = 0;
     maximizedSlotId = null;
     renderRails();
