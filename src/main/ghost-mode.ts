@@ -20,13 +20,22 @@ let ghostWin: BrowserWindow | null = null;
 
 function openGhost(): void {
   if (ghostWin && !ghostWin.isDestroyed()) { ghostWin.show(); ghostWin.focus(); return; }
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  // A card-sized panel that floats over the active app — NOT the whole screen.
+  // Centered on the display under the cursor; the user can drag it (the card's
+  // top strip is a drag region) to sit right over the app they're working in.
+  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = Math.min(980, Math.round(wa.width * 0.9));
+  const height = Math.min(760, Math.round(wa.height * 0.82));
+  const x = Math.round(wa.x + (wa.width - width) / 2);
+  const y = Math.round(wa.y + (wa.height - height) / 2);
   ghostWin = new BrowserWindow({
-    ...display.bounds,
+    x, y, width, height,
+    minWidth: 420,
+    minHeight: 320,
     frame: false,
     transparent: true,
-    resizable: false,
-    movable: false,
+    resizable: true,
+    movable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,

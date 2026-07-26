@@ -90,25 +90,38 @@ void (async () => {
         [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
         [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
         [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }
-        /* Ghost chrome: transparent window, dim blurred backdrop, one floating card. */
+        /* Ghost: the WINDOW itself is the card — a mostly-transparent frosted
+           panel floating over the active app (no full-screen dim backdrop). */
         :root[data-ghost="1"], [data-ghost="1"] body { background: transparent !important; overflow: hidden !important; }
-        #ghost-backdrop { position: fixed; inset: 0; z-index: 0; background: rgba(6, 4, 12, 0.34); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
         [data-ghost="1"] .code-root {
-          position: fixed; z-index: 1; left: 50%; top: 50%; transform: translate(-50%, -50%);
-          width: min(920px, 92vw); height: min(72vh, 760px);
-          border-radius: 16px; overflow: hidden;
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          background: var(--bg, #0e0b16);
-          box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
-          animation: ghost-in 0.18s ease both;
+          position: fixed; inset: 0; z-index: 1;
+          border-radius: 14px; overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(12, 9, 18, 0.44);
+          -webkit-backdrop-filter: blur(30px) saturate(1.3);
+          backdrop-filter: blur(30px) saturate(1.3);
+          box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+          animation: ghost-in 0.16s ease both;
         }
-        @keyframes ghost-in { from { opacity: 0; transform: translate(-50%, -46%) scale(0.985); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }`;
+        /* let the frosted glass show through the agent's own opaque surfaces */
+        [data-ghost="1"] .code-workbench, [data-ghost="1"] .ws-right-rails, [data-ghost="1"] .ws-right-rail,
+        [data-ghost="1"] .ws-rail-slot, [data-ghost="1"] .ws-rail-slot-body, [data-ghost="1"] .code-agent { background: transparent !important; }
+        @keyframes ghost-in { from { opacity: 0; transform: scale(0.99); } to { opacity: 1; transform: scale(1); } }
+        /* thin top strip to drag the panel over the app, + a close button */
+        #ghost-drag { position: fixed; top: 0; left: 0; right: 40px; height: 16px; z-index: 4; -webkit-app-region: drag; }
+        #ghost-close { position: fixed; top: 8px; right: 10px; z-index: 6; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag; }
+        #ghost-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }`;
       document.head.appendChild(style);
       const close = () => (window.yo as unknown as { ghostClose?: () => void }).ghostClose?.();
-      const backdrop = document.createElement("div");
-      backdrop.id = "ghost-backdrop";
-      backdrop.addEventListener("mousedown", close);
-      document.body.appendChild(backdrop);
+      const drag = document.createElement("div");
+      drag.id = "ghost-drag";
+      document.body.appendChild(drag);
+      const closeBtn = document.createElement("div");
+      closeBtn.id = "ghost-close";
+      closeBtn.title = "Close (Esc)";
+      closeBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
+      closeBtn.addEventListener("click", close);
+      document.body.appendChild(closeBtn);
       document.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
       document.title = "Glyphh Ghost";
       gotoSection("code");
