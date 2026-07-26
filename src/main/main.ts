@@ -40,6 +40,7 @@ import { PanelManager } from "./panel-manager";
 import { TerminalManager, AgentSpawnConfig } from "./terminal";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
+import { registerGhostMode, destroyGhostMode } from "./ghost-mode";
 import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, getAuthToken } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { AppConnector } from "./app-connector";
@@ -1395,6 +1396,8 @@ async function boot() {
 
   // Global hotkey: Cmd+Y / Ctrl+Y
   registerHotkey(mainWindow!);
+  // Ghost Mode: Cmd+Shift+G / Ctrl+Shift+G — coding agent as a translucent overlay.
+  registerGhostMode();
 
   // App menu (Cmd+Q, Cmd+W, etc.)
   Menu.setApplicationMenu(
@@ -1964,6 +1967,7 @@ function cleanupAll() {
   // the background handles + hidden app-worker windows that otherwise keep the
   // Node event loop alive and window-all-closed from firing.
   const steps: Array<[string, () => void]> = [
+    ["ghostMode", () => destroyGhostMode()],
     ["globalShortcut", () => globalShortcut.unregisterAll()],
     ["mcpOAuthRefresh", () => stopMcpOAuthRefresh()],
     ["authTimers", () => cleanupAuthTimers()],

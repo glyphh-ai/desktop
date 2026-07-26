@@ -157,6 +157,8 @@ contextBridge.exposeInMainWorld("yo", {
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },
   windowClose: () => ipcRenderer.send("window-close"),
   windowMinimize: () => ipcRenderer.send("window-minimize"),
+  // Ghost Mode overlay dismisses itself (Esc / backdrop click).
+  ghostClose: () => ipcRenderer.invoke("ghost-close"),
   windowMaximize: () => ipcRenderer.send("window-maximize"),
   // Screen layout (Settings → Appearance): dock mode + draggable fraction.
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,

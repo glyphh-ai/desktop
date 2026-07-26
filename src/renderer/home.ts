@@ -76,6 +76,52 @@ void (async () => {
       mo.observe(document.body, { childList: true });
       return;
     }
+    // GHOST MODE (?solo=ghost): the coding agent as a translucent overlay over
+    // whatever app is in front — a floating glass card on a dim, blurred backdrop
+    // that lets the app behind show through. A global hotkey toggles the window;
+    // Esc or a backdrop click asks main to dismiss it.
+    if (solo === "ghost") {
+      document.documentElement.setAttribute("data-home-scope", "solo-tool");
+      document.documentElement.setAttribute("data-ghost", "1");
+      const style = document.createElement("style");
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
+        [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
+        [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
+        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }
+        /* Ghost chrome: transparent window, dim blurred backdrop, one floating card. */
+        :root[data-ghost="1"], [data-ghost="1"] body { background: transparent !important; overflow: hidden !important; }
+        #ghost-backdrop { position: fixed; inset: 0; z-index: 0; background: rgba(6, 4, 12, 0.34); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+        [data-ghost="1"] .code-root {
+          position: fixed; z-index: 1; left: 50%; top: 50%; transform: translate(-50%, -50%);
+          width: min(920px, 92vw); height: min(72vh, 760px);
+          border-radius: 16px; overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: var(--bg, #0e0b16);
+          box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+          animation: ghost-in 0.18s ease both;
+        }
+        @keyframes ghost-in { from { opacity: 0; transform: translate(-50%, -46%) scale(0.985); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }`;
+      document.head.appendChild(style);
+      const close = () => (window.yo as unknown as { ghostClose?: () => void }).ghostClose?.();
+      const backdrop = document.createElement("div");
+      backdrop.id = "ghost-backdrop";
+      backdrop.addEventListener("mousedown", close);
+      document.body.appendChild(backdrop);
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
+      document.title = "Glyphh Ghost";
+      gotoSection("code");
+      const payload = {
+        cols: 1, colWidths: [], rowHeights: [],
+        cells: [{ slug: "tool:coding", name: "Coding Agent", url: "", glyphh: false, col: 0, row: 0, tool: "coding" }],
+      };
+      const w = window as unknown as { __wbOpenLayout?: (l: typeof payload) => void };
+      let tries = 0;
+      const go = () => { if (w.__wbOpenLayout) w.__wbOpenLayout(payload); else if (tries++ < 40) requestAnimationFrame(go); };
+      go();
+      return;
+    }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
     // workbench tools as their own OS windows.
     if (solo && solo.startsWith("tool:")) {
