@@ -13456,7 +13456,6 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 [data-ghost="1"] #home-root,
 [data-ghost="1"] #help-overlay,
 [data-ghost="1"] .help-section,
-[data-ghost="1"] .code-root,
 [data-ghost="1"] .code-workbench,
 [data-ghost="1"] .ws-right-rails,
 [data-ghost="1"] .ws-right-rail,

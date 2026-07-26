@@ -97,7 +97,11 @@ void (async () => {
           position: fixed; inset: 0; z-index: 1;
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          background: transparent !important;
+          /* the ghost scrim: a translucent frosted veil over the app behind —
+             see-through, but enough body that the agent reads on anything */
+          background: rgba(10, 8, 16, 0.52) !important;
+          -webkit-backdrop-filter: blur(18px) saturate(1.2);
+          backdrop-filter: blur(18px) saturate(1.2);
           animation: ghost-in 0.16s ease both;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
