@@ -97,10 +97,11 @@ void (async () => {
           position: fixed; inset: 0; z-index: 1;
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          /* NO scrim — the OS material ("selection" vibrancy / acrylic) is the
-             only window-wide layer: pure blur, no added tint. Legibility comes
-             entirely from the text glow + per-element glass. */
-          background: transparent !important;
+          /* The ghost scrim: a dark SEE-THROUGH tint — no OS material on mac
+             (every vibrancy is too milky to see through in dark mode), so the
+             window is crystal-clear and this tint alone sets the mood. Dark
+             enough to seat the text, thin enough to read the app behind. */
+          background: rgba(8, 6, 12, 0.45) !important;
           animation: ghost-in 0.16s ease both;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
@@ -143,14 +144,19 @@ void (async () => {
       const go = () => { if (w.__wbOpenLayout) w.__wbOpenLayout(payload); else if (tries++ < 40) requestAnimationFrame(go); };
       go();
       // Land ready to type: focus the agent's composer as soon as it mounts,
-      // so the hotkey → prompt flow needs zero clicks.
+      // so the hotkey → prompt flow needs zero clicks. The immediate focus can
+      // lose to the window's own focus dance (the OS is still handing focus to
+      // the overlay while the DOM mounts), so re-assert shortly after and every
+      // time the ghost window itself gains focus.
+      const focusComposer = () => document.querySelector<HTMLElement>(".code-input")?.focus();
       let ftries = 0;
       const focusInput = () => {
         const inp = document.querySelector<HTMLElement>(".code-input");
-        if (inp) inp.focus();
+        if (inp) { inp.focus(); setTimeout(focusComposer, 250); }
         else if (ftries++ < 90) requestAnimationFrame(focusInput);
       };
       focusInput();
+      window.addEventListener("focus", () => setTimeout(focusComposer, 0));
       return;
     }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
