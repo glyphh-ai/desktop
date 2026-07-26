@@ -2975,6 +2975,22 @@ async function init(): Promise<void> {
       if (raw) saved = JSON.parse(raw) as SavedLayout;
     } catch { /* no remembered geometry */ }
     activeLayoutName = layout.name;
+    // FULL-arrangement recall: when the remembered arrangement holds exactly
+    // the same panels as the definition, rebuild wholesale from the memory —
+    // slot order, rail grouping, widths, heights, everything the user dragged.
+    // (The width-patch path below only recalled rail widths + one slot height,
+    // so every re-open snapped back to the pristine definition.) A memory with
+    // different panels is stale (the layout was edited) — definition wins.
+    const viewKey = (v: SavedView): string => (typeof v === "string" ? v : `app:${(v.slug || "").toLowerCase()}`);
+    const savedKeys = (saved?.rails || []).flatMap((r) => (r.views || []).map(viewKey)).sort().join("|");
+    const defKeys = cells.map((c) => (c.tool ? c.tool : `app:${c.slug.toLowerCase()}`)).sort().join("|");
+    if (saved && savedKeys && savedKeys === defKeys) {
+      maximizedSlotId = null;
+      applySavedLayout(saved);
+      // No saveLayout() here: nothing changed — the memory stays as the user
+      // left it, and the next drag re-saves anyway.
+      return;
+    }
     openLayoutInWorkbench({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
     // Geometry recall: only when the remembered shape still matches this
     // layout's rail count — anything else is stale and gets overwritten by
