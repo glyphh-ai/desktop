@@ -97,11 +97,11 @@ void (async () => {
           position: fixed; inset: 0; z-index: 1;
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          /* the ghost scrim: a dark frosted veil over the app behind — heavy
-             blur + real body so the page under it can't bleed into the text */
-          background: rgba(8, 6, 12, 0.78) !important;
-          -webkit-backdrop-filter: blur(30px) saturate(1.15);
-          backdrop-filter: blur(30px) saturate(1.15);
+          /* the ghost scrim: a LIGHT tint only — the OS window material
+             (vibrancy/acrylic) now does the real blur-behind, so a heavy dark
+             fill here stacks into near-opaque. Just enough tint to seat the
+             text; the blurred app stays clearly visible through it. */
+          background: rgba(8, 6, 12, 0.30) !important;
           animation: ghost-in 0.16s ease both;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
