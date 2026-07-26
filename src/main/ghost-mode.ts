@@ -14,24 +14,48 @@
  */
 
 import { BrowserWindow, globalShortcut, ipcMain, screen } from "electron";
+import { execFile } from "child_process";
 import path from "path";
 
 let ghostWin: BrowserWindow | null = null;
 
-function openGhost(): void {
-  if (ghostWin && !ghostWin.isDestroyed()) { ghostWin.show(); ghostWin.focus(); return; }
-  // A card-sized panel that floats over the active app — NOT the whole screen.
-  // Centered on the display under the cursor; the user can drag it (the card's
-  // top strip is a drag region) to sit right over the app they're working in.
+interface Bounds { x: number; y: number; width: number; height: number }
+
+/**
+ * Bounds of the app window that is frontmost RIGHT NOW — read before our own
+ * window steals focus, so Ghost Mode can size itself exactly over it. macOS via
+ * System Events (needs Accessibility permission); null elsewhere or on failure.
+ */
+function frontmostWindowBounds(): Promise<Bounds | null> {
+  if (process.platform !== "darwin") return Promise.resolve(null);
+  const script =
+    'tell application "System Events" to tell (first application process whose frontmost is true) to get {position, size} of front window';
+  return new Promise((resolve) => {
+    execFile("osascript", ["-e", script], { timeout: 1500 }, (err, stdout) => {
+      if (err) { resolve(null); return; }
+      const n = String(stdout).trim().split(",").map((s) => parseInt(s.trim(), 10));
+      if (n.length !== 4 || n.some((v) => Number.isNaN(v)) || n[2] < 80 || n[3] < 80) { resolve(null); return; }
+      resolve({ x: n[0], y: n[1], width: n[2], height: n[3] });
+    });
+  });
+}
+
+/** Centered fallback when the active window's bounds can't be read. */
+function centeredFallback(): Bounds {
   const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const width = Math.min(980, Math.round(wa.width * 0.9));
   const height = Math.min(760, Math.round(wa.height * 0.82));
-  const x = Math.round(wa.x + (wa.width - width) / 2);
-  const y = Math.round(wa.y + (wa.height - height) / 2);
+  return { x: Math.round(wa.x + (wa.width - width) / 2), y: Math.round(wa.y + (wa.height - height) / 2), width, height };
+}
+
+async function openGhost(): Promise<void> {
+  if (ghostWin && !ghostWin.isDestroyed()) { ghostWin.show(); ghostWin.focus(); return; }
+  // Size + position the overlay to EXACTLY match the target app's window.
+  const bounds = (await frontmostWindowBounds()) ?? centeredFallback();
   ghostWin = new BrowserWindow({
-    x, y, width, height,
-    minWidth: 420,
-    minHeight: 320,
+    ...bounds,
+    minWidth: 320,
+    minHeight: 240,
     frame: false,
     transparent: true,
     resizable: true,
@@ -67,7 +91,7 @@ function closeGhost(): void {
 
 export function toggleGhost(): void {
   if (ghostWin && !ghostWin.isDestroyed()) closeGhost();
-  else openGhost();
+  else void openGhost();
 }
 
 export function isGhostOpen(): boolean {

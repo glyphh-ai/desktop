@@ -95,12 +95,9 @@ void (async () => {
         :root[data-ghost="1"], [data-ghost="1"] body { background: transparent !important; overflow: hidden !important; }
         [data-ghost="1"] .code-root {
           position: fixed; inset: 0; z-index: 1;
-          border-radius: 14px; overflow: hidden;
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          background: rgba(12, 9, 18, 0.44);
-          -webkit-backdrop-filter: blur(30px) saturate(1.3);
-          backdrop-filter: blur(30px) saturate(1.3);
-          box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+          border-radius: 10px; overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: transparent !important;
           animation: ghost-in 0.16s ease both;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
