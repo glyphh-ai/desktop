@@ -187,7 +187,9 @@ export async function deployAppFromWorkdir(expectSlug?: string): Promise<{ slug:
   if (outcome.status !== "ready") {
     return { slug, version, status: outcome.status, error: outcome.error ?? undefined };
   }
-  // Deploy the newest ready release — the one we just built + uploaded.
-  const dep = await client.hosting.deploy({ appSlug: slug });
+  // Deploy EXACTLY the release we just built + uploaded — pinned by id, so a
+  // stale "newest ready" (e.g. an old release whose source has since been
+  // lost from storage) can never be what actually ships.
+  const dep = await client.hosting.deploy({ appSlug: slug, releaseId: release.id });
   return { slug, version, status: "ready", url: dep.url ?? undefined };
 }
