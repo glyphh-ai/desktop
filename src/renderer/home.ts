@@ -137,7 +137,7 @@ void (async () => {
           border: 1px solid rgba(255, 255, 255, 0.12);
           /* OS-frost variant: a real material (vibrancy/acrylic) blurs the app
              behind, so the scrim is just a light tint over it. */
-          background: rgba(8, 6, 12, 0.30) !important;
+          background: rgba(8, 6, 12, 0.38) !important;
           animation: ghost-in 0.16s ease both;
         }
         /* CSS-frost variant ("Reduce transparency" on, or no material): the OS
@@ -148,7 +148,7 @@ void (async () => {
             url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='linear' slope='0.06'/></feComponentTransfer></filter><rect width='140' height='140' filter='url(%23n)'/></svg>"),
             radial-gradient(120% 90% at 18% 0%, rgba(90, 70, 140, 0.16), transparent 58%),
             radial-gradient(110% 90% at 100% 100%, rgba(50, 40, 90, 0.14), transparent 60%),
-            rgba(10, 8, 16, 0.55) !important;
+            rgba(10, 8, 16, 0.62) !important;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
         [data-ghost="1"] .code-workbench, [data-ghost="1"] .ws-right-rails, [data-ghost="1"] .ws-right-rail,
