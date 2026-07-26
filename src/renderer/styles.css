@@ -13448,9 +13448,34 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
    dress the agent as a ghost: transparent panels, frosted-glass bubbles, and
    glowing text so it stays legible over ANY app showing through behind it.
    ══════════════════════════════════════════════════════════════════════ */
+/* The FULL ancestor chain must go transparent, or any one opaque layer makes
+   the window look solid: body → #help-overlay → .help-section → code shell →
+   workbench rails → slot → slot body → the reparented .code-agent. Also
+   re-point the workbench surface vars so slot chrome built from them follows. */
+[data-ghost="1"] body,
+[data-ghost="1"] #home-root,
+[data-ghost="1"] #help-overlay,
+[data-ghost="1"] .help-section,
+[data-ghost="1"] .code-root,
+[data-ghost="1"] .code-workbench,
+[data-ghost="1"] .ws-right-rails,
+[data-ghost="1"] .ws-right-rail,
+[data-ghost="1"] .ws-rail-slot,
+[data-ghost="1"] .ws-rail-slot-body,
+[data-ghost="1"] .ws-coding-body,
 [data-ghost="1"] .code-agent,
 [data-ghost="1"] .code-thread,
 [data-ghost="1"] .code-thread-inner { background: transparent !important; }
+[data-ghost="1"] {
+  --ws-bg-card: transparent;
+  --ws-bg-rail: transparent;
+}
+/* Slot header becomes a faint glass strip instead of a solid surface. */
+[data-ghost="1"] .ws-rail-slot-header {
+  background: rgba(14, 11, 22, 0.28) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
 
 /* Header — a faint, blurred ghost bar (still the window drag region). */
 [data-ghost="1"] .code-agent-head {
