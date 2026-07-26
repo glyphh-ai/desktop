@@ -97,11 +97,11 @@ void (async () => {
           position: fixed; inset: 0; z-index: 1;
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          /* the ghost scrim: a translucent frosted veil over the app behind —
-             see-through, but enough body that the agent reads on anything */
-          background: rgba(10, 8, 16, 0.52) !important;
-          -webkit-backdrop-filter: blur(18px) saturate(1.2);
-          backdrop-filter: blur(18px) saturate(1.2);
+          /* the ghost scrim: a dark frosted veil over the app behind — heavy
+             blur + real body so the page under it can't bleed into the text */
+          background: rgba(8, 6, 12, 0.78) !important;
+          -webkit-backdrop-filter: blur(30px) saturate(1.15);
+          backdrop-filter: blur(30px) saturate(1.15);
           animation: ghost-in 0.16s ease both;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
@@ -124,6 +124,12 @@ void (async () => {
       closeBtn.addEventListener("click", close);
       document.body.appendChild(closeBtn);
       document.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
+      // ANY close × inside the ghost (e.g. the coding tile's slot-close in the
+      // workbench header) dismisses the WHOLE overlay — capture phase, so the
+      // slot handler can't just remove the agent and leave an empty ghost.
+      document.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).closest?.(".slot-close")) { e.preventDefault(); e.stopPropagation(); close(); }
+      }, true);
       document.title = "Glyphh Ghost";
       gotoSection("code");
       const payload = {
