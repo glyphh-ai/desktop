@@ -71,7 +71,7 @@ async function openGhost(): Promise<void> {
     // REAL blur-behind: CSS backdrop-filter can only blur content inside the
     // page — it cannot touch the other apps behind a transparent window. The
     // OS compositor does that: vibrancy (macOS) / acrylic (Windows 11).
-    ...(process.platform === "darwin" ? { vibrancy: "hud" as const } : {}),
+    ...(process.platform === "darwin" ? { vibrancy: "under-window" as const } : {}),
     ...(process.platform === "win32" ? { backgroundMaterial: "acrylic" as const } : {}),
     webPreferences: {
       preload: path.join(__dirname, "..", "renderer", "preload.js"),

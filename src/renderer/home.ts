@@ -97,11 +97,10 @@ void (async () => {
           position: fixed; inset: 0; z-index: 1;
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          /* the ghost scrim: a LIGHT tint only — the OS window material
-             (vibrancy/acrylic) now does the real blur-behind, so a heavy dark
-             fill here stacks into near-opaque. Just enough tint to seat the
-             text; the blurred app stays clearly visible through it. */
-          background: rgba(8, 6, 12, 0.30) !important;
+          /* the ghost scrim: a WHISPER of tint — the OS material ("under-window"
+             vibrancy / acrylic) does the blur and carries most of the body, so
+             anything heavier here stacks too dark to see through. */
+          background: rgba(8, 6, 12, 0.12) !important;
           animation: ghost-in 0.16s ease both;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
@@ -124,11 +123,14 @@ void (async () => {
       closeBtn.addEventListener("click", close);
       document.body.appendChild(closeBtn);
       document.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
-      // ANY close × inside the ghost (e.g. the coding tile's slot-close in the
-      // workbench header) dismisses the WHOLE overlay — capture phase, so the
-      // slot handler can't just remove the agent and leave an empty ghost.
+      // The CODING tile's × dismisses the WHOLE overlay (closing just the agent
+      // would leave an empty ghost) — capture phase so the slot handler can't
+      // run first. Other slots' × close normally: just that panel.
       document.addEventListener("click", (e) => {
-        if ((e.target as HTMLElement).closest?.(".slot-close")) { e.preventDefault(); e.stopPropagation(); close(); }
+        const btn = (e.target as HTMLElement).closest?.(".slot-close");
+        if (!btn) return;
+        const slot = (btn as HTMLElement).closest(".ws-rail-slot");
+        if (slot?.querySelector(".ws-coding-body, .code-agent")) { e.preventDefault(); e.stopPropagation(); close(); }
       }, true);
       document.title = "Glyphh Ghost";
       gotoSection("code");

@@ -482,6 +482,11 @@ async function init(): Promise<void> {
 
   function placeSlot(slot: Slot): void {
     for (const rail of rails) {
+      // Never auto-stack under the hosted agent: a rail holding the coding
+      // tile keeps its column to itself, so the first new item opens BESIDE
+      // the agent, not squeezed beneath it. (Deliberate drag-drop placement
+      // is a different path and can still stack anywhere.)
+      if (rail.slots.some((s) => s.view === "coding")) continue;
       if (rail.slots.length < 2) { rail.slots.push(slot); renderRails(); saveLayout(); return; }
     }
     rails.push({ id: nextRailId++, slots: [slot] });
