@@ -97,11 +97,10 @@ void (async () => {
           position: fixed; inset: 0; z-index: 1;
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          /* the ghost scrim: essentially OFF — the OS material ("menu"
-             vibrancy / acrylic) supplies the blur AND the body; any real tint
-             here stacks the glass too dark to see through. Legibility comes
-             from the text glow + per-element glass, not a window-wide fill. */
-          background: rgba(8, 6, 12, 0.08) !important;
+          /* NO scrim — the OS material ("selection" vibrancy / acrylic) is the
+             only window-wide layer: pure blur, no added tint. Legibility comes
+             entirely from the text glow + per-element glass. */
+          background: transparent !important;
           animation: ghost-in 0.16s ease both;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
