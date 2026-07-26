@@ -81,3 +81,10 @@ export function getClient(): Client {
   }
   return client;
 }
+
+/** Drop the app-wide client. Logout calls this AFTER deleting the session file:
+ *  the live instance still holds the old session in memory and would keep
+ *  authenticating requests with it; the next getClient() starts clean. */
+export function resetClient(): void {
+  client = null;
+}

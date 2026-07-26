@@ -16,7 +16,7 @@ import { shell } from "electron";
 import type { DevicePrompt } from "@glyphh/client";
 import { GLYPHH_DIR } from "./app-paths.js";
 import { setActiveUser } from "./user-scope.js";
-import { getClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";
+import { getClient, resetClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, SESSION_FILE, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";
 
 export const AUTH_SERVER = SERVER_URL;
 export const PLATFORM_URL = PLATFORM;
@@ -196,9 +196,19 @@ export function cleanupAuthTimers(): void {
   if (accountTimer) { clearInterval(accountTimer); accountTimer = null; }
 }
 
-/** Log out — revoke the session server-side and clear all cached state. */
+/** Log out — LOCAL-FIRST, then a best-effort server revoke.
+ *
+ *  The old order (SDK signOut = network revoke, THEN local clear) left the
+ *  session file on disk for the whole revoke round-trip — and isAuthenticated()
+ *  re-hydrates `signedIn` from that file on any check (window focus fires one
+ *  immediately), so logout kept resurrecting and took two tries. Worse, quitting
+ *  before the delete landed left a file whose token the revoke had ALREADY
+ *  killed — the next boot opened "signed in" on a dead session.
+ *
+ *  Now: read the token, delete the file + drop the SDK client synchronously
+ *  (nothing left to resurrect from), then fire the revoke in the background. */
 export function logout(): void {
-  void getClient().auth.signOut().catch(() => { /* local state clears regardless */ });
+  const token = getAuthToken(); // read BEFORE clearing — the revoke needs it
   signedIn = false;
   cachedToken = null;
   cachedAccount = null;
@@ -206,6 +216,14 @@ export function logout(): void {
   clearIdentitySidecar();
   setActiveUser(null);
   attachStop();
+  try { fs.unlinkSync(SESSION_FILE); } catch { /* already gone */ }
+  resetClient(); // the live instance still holds the old session in memory
+  if (token) {
+    void fetch(`${SERVER_URL}/api/session/revoke`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    }).catch(() => { /* best-effort: the device is signed out regardless */ });
+  }
 }
 
 /** Get cached account info. */
