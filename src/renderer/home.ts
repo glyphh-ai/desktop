@@ -58,8 +58,9 @@ void (async () => {
     // prompt seeded (e.g. "@an-fable ship it"). The alias table is cached
     // from main so matching is SYNCHRONOUS — Enter is consumed only when the
     // mention actually resolves; everything else passes through untouched.
-    // Not registered inside the ghost itself (it already hosts the agent).
-    if (solo !== "ghost") {
+    // Registered in EVERY home window, the ghost included — a mention typed in
+    // the ghost's composer re-summons it on the new model with a new session.
+    {
       let mentionPairs: Record<string, string> | null = null;
       const loadMentions = () => {
         void window.yo.mentionCatalog?.().then((r) => { if (r?.ok && r.pairs) mentionPairs = r.pairs; }).catch(() => {});
@@ -118,6 +119,8 @@ void (async () => {
     if (solo === "ghost") {
       document.documentElement.setAttribute("data-home-scope", "solo-tool");
       document.documentElement.setAttribute("data-ghost", "1");
+      // Which frost variant main gave this window (real OS material vs CSS fake).
+      document.documentElement.setAttribute("data-ghost-frost", params.get("gfrost") === "css" ? "css" : "os");
       const style = document.createElement("style");
       style.textContent = `
         [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
@@ -132,12 +135,20 @@ void (async () => {
           position: fixed; inset: 0; z-index: 1;
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          /* The ghost scrim: a dark SEE-THROUGH tint — no OS material on mac
-             (every vibrancy is too milky to see through in dark mode), so the
-             window is crystal-clear and this tint alone sets the mood. Dark
-             enough to seat the text, thin enough to read the app behind. */
-          background: rgba(8, 6, 12, 0.45) !important;
+          /* OS-frost variant: a real material (vibrancy/acrylic) blurs the app
+             behind, so the scrim is just a light tint over it. */
+          background: rgba(8, 6, 12, 0.30) !important;
           animation: ghost-in 0.16s ease both;
+        }
+        /* CSS-frost variant ("Reduce transparency" on, or no material): the OS
+           can't blur, so FAKE the frost — fine noise + soft tinted gradients
+           over a see-through dark veil. Fuzzy-looking, app still readable. */
+        [data-ghost-frost="css"] .code-root {
+          background:
+            url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='linear' slope='0.06'/></feComponentTransfer></filter><rect width='140' height='140' filter='url(%23n)'/></svg>"),
+            radial-gradient(120% 90% at 18% 0%, rgba(90, 70, 140, 0.16), transparent 58%),
+            radial-gradient(110% 90% at 100% 100%, rgba(50, 40, 90, 0.14), transparent 60%),
+            rgba(10, 8, 16, 0.55) !important;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
         [data-ghost="1"] .code-workbench, [data-ghost="1"] .ws-right-rails, [data-ghost="1"] .ws-right-rail,

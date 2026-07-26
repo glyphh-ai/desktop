@@ -13,7 +13,7 @@
  * appears even over a fullscreen editor or browser.
  */
 
-import { BrowserWindow, globalShortcut, ipcMain, screen } from "electron";
+import { BrowserWindow, globalShortcut, ipcMain, nativeTheme, screen } from "electron";
 import { execFile } from "child_process";
 import path from "path";
 import { getClient } from "./glyphh-client";
@@ -107,10 +107,15 @@ async function openGhost(opts?: GhostOpts): Promise<void> {
     // REAL blur-behind: CSS backdrop-filter can only blur content inside the
     // page — it cannot touch the other apps behind a transparent window. The
     // OS compositor does that: vibrancy (macOS) / acrylic (Windows 11).
-    // NO macOS vibrancy: every system material (hud → selection) is too milky
-    // in dark mode to see the app through — and CSS cannot blur behind a
-    // window. Crystal-clear transparency + the renderer's dark scrim reads
-    // best. Windows keeps acrylic (its translucency is actually good).
+    // Blur-behind comes ONLY from the OS compositor (CSS cannot blur another
+    // app). macOS vibrancy honors "Reduce transparency": with it ON, every
+    // material renders opaque grey — which is why the frost kept reading as
+    // "can't see behind it". So: real material when the system allows
+    // transparency; otherwise stay crystal-clear and let the renderer paint a
+    // FAKE frost (noise + tint) that keeps the app visible.
+    ...(process.platform === "darwin" && !nativeTheme.prefersReducedTransparency
+      ? { vibrancy: "hud" as const }
+      : {}),
     ...(process.platform === "win32" ? { backgroundMaterial: "acrylic" as const } : {}),
     webPreferences: {
       preload: path.join(__dirname, "..", "renderer", "preload.js"),
@@ -124,6 +129,12 @@ async function openGhost(opts?: GhostOpts): Promise<void> {
   ghostWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   ghostWin.on("closed", () => { ghostWin = null; });
   const query: Record<string, string> = { solo: "ghost" };
+  // Tell the renderer which frost it's getting: "os" (a real material blurs
+  // behind) or "css" (no material — paint the fake frost).
+  const hasMaterial =
+    (process.platform === "darwin" && !nativeTheme.prefersReducedTransparency) ||
+    process.platform === "win32";
+  query.gfrost = hasMaterial ? "os" : "css";
   if (opts?.model) query.gmodel = opts.model;
   if (opts?.prompt) query.gprompt = opts.prompt;
   void ghostWin.loadFile(path.join(__dirname, "..", "renderer", "home.html"), { query });
@@ -160,11 +171,19 @@ export function registerGhostMode(): void {
   });
   // "@an-fable ship it" → open the ghost on that model with the prompt seeded.
   ipcMain.handle("ghost-summon", async (_e, model: string, prompt: string) => {
-    mentionCache = null; // a summon implies the catalog is in use — refresh soon
-    await openGhost({ model: String(model || ""), prompt: String(prompt || "") });
+    await summonGhost(String(model || ""), String(prompt || ""));
     return { ok: true };
   });
 }
+
+/** Summon programmatically (panel injections route here, not through IPC). */
+export function summonGhost(model: string, prompt: string): Promise<void> {
+  mentionCache = null; // a summon implies the catalog is in use — refresh soon
+  return openGhost({ model, prompt });
+}
+
+/** The flattened alias table, for surfaces that inject matchers into pages. */
+export { mentionPairs };
 
 /** Tear the overlay down on quit. globalShortcut.unregisterAll() runs elsewhere. */
 export function destroyGhostMode(): void {

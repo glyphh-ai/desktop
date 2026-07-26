@@ -22,6 +22,7 @@ import { WebContents } from "electron";
 import { AppConnector } from "./app-connector";
 import { SessionCache } from "./session-cache";
 import { executeCommand } from "./dom-bridge";
+import { summonGhost, mentionPairs } from "./ghost-mode";
 
 import crypto from "crypto";
 
@@ -42,6 +43,9 @@ export class PanelCommandInterceptor {
   private modeColor = "#a855f7"; // current agent mode color (ask=purple, plan=violet, auto=green, bypass=red)
   private agentMode = "default";
   private theme = "dark";
+  /** Snapshot of the @-mention alias table, baked into injected page scripts.
+   *  Refreshed on every inject (the source is cached in ghost-mode). */
+  private mentionPairs: Record<string, string> | null = null;
   private lastAgentResult: (() => string) | null = null;
   private getFavicons: (() => Record<string, string>) | null = null;
   private getLayouts: (() => Array<{ name: string }>) | null = null;
@@ -140,6 +144,9 @@ export class PanelCommandInterceptor {
   // ── Injection ──────────────────────────────────────────
 
   private async inject(wc: WebContents): Promise<void> {
+    // Refresh the alias table first so the baked-in matcher is current (cached
+    // upstream; signed-out or offline just means no mentions this load).
+    try { this.mentionPairs = await mentionPairs(); } catch { /* keep the last snapshot */ }
     const script = this.buildScript();
     try { await wc.executeJavaScript(script); } catch {}
     this.injectFrames(wc);
@@ -166,6 +173,10 @@ var __yoT=__yoThemes[${JSON.stringify(this.theme)}]||__yoThemes.dark;
 window.__yoSetTheme=function(t){__yoT=__yoThemes[t]||__yoThemes.dark;var s=document.getElementById('__yo-theme-vars');if(s){var css=':root{';for(var k in __yoT)css+='--yo-'+k+':'+__yoT[k]+';';css+='}';s.textContent=css;}};
 var _n=${JSON.stringify(nonce)};
 var CMD_RE=/^\\.(yo|sup|dip|drip|peace|waz)(?:\\s+([\\s\\S]+))?$/i;
+// @-mention summon: "@<provider>-<model> prompt…" in any panel input opens the
+// ghost overlay on that model. Valid alias pairs are baked in at inject time.
+var MENTION_RE=/^@([^\\s-]+)-(\\S+)(?:\\s+([\\s\\S]*))?$/;
+var MPAIRS=${JSON.stringify(this.mentionPairs ?? {})};
 var lastText='';
 var handled=false;
 var firing=false;
@@ -221,7 +232,12 @@ document.addEventListener('keydown',function(e){
   if(e.key!=='Enter'||e.shiftKey||firing)return;
   var el=ed();if(!el)return;
   var t=tx(el).trim();
-  if(!CMD_RE.test(t))return;
+  var isCmd=CMD_RE.test(t);
+  var mm=null;
+  if(!isCmd){
+    mm=t.match(MENTION_RE);
+    if(!mm||!MPAIRS[(mm[1]+'-'+mm[2]).toLowerCase()])return;
+  }
   handled=false;
   e.preventDefault();e.stopImmediatePropagation();e.stopPropagation();
   var srcEl=el;
@@ -238,7 +254,11 @@ document.addEventListener('keydown',function(e){
     document.execCommand('delete',false);
   }
   // Fire after clearing — prevents any async app handlers from seeing the text
-  setTimeout(function(){fire(t,srcEl);},0);
+  setTimeout(function(){
+    if(isCmd){fire(t,srcEl);return;}
+    handled=true;
+    console.log('${PREFIX}'+JSON.stringify({type:'mention',model:MPAIRS[(mm[1]+'-'+mm[2]).toLowerCase()],prompt:(mm[3]||'').trim(),_nonce:_n}));
+  },0);
 },true);
 
 var lastEl=null;
@@ -277,9 +297,16 @@ window.addEventListener('beforeunload',function(e){
   private async dispatch(
     wc: WebContents,
     appId: string,
-    data: { type: string; instruction?: string | null },
+    data: { type: string; instruction?: string | null; model?: string; prompt?: string },
   ): Promise<void> {
     switch (data.type) {
+      case "mention": {
+        // "@an-fable …" typed in a panel input — summon the ghost overlay.
+        // The model id is re-validated against the table (the page could lie).
+        const valid = Object.values(this.mentionPairs ?? {}).includes(String(data.model || ""));
+        if (valid) await summonGhost(String(data.model), String(data.prompt || "").slice(0, 4000));
+        return;
+      }
       case "yo":
         await this.handleYo(wc, appId, data.instruction ?? undefined);
         break;
