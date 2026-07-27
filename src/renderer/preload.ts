@@ -750,6 +750,8 @@ contextBridge.exposeInMainWorld("wb", {
     return () => { ipcRenderer.removeListener("workdir:file-changed", handler); };
   },
   listDir: (dir: string) => ipcRenderer.invoke("files:list-dir", dir),
+  searchFiles: (dir: string, query: string) =>
+    ipcRenderer.invoke("files:search", dir, query) as Promise<{ entries: Array<{ name: string; rel: string; path: string; kind: "dir" | "file" }>; truncated?: boolean; error?: string }>,
   pickFile: () => ipcRenderer.invoke("files:pick-file") as Promise<string | null>,
   mkdir: (dirPath: string) => ipcRenderer.invoke("files:mkdir", dirPath) as Promise<{ ok: boolean; error?: string }>,
   deletePath: (target: string) => ipcRenderer.invoke("files:delete", target) as Promise<{ ok: boolean; error?: string }>,

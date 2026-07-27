@@ -321,6 +321,51 @@ export function registerWorkingDirectoryIpc(deps: {
     }
   });
 
+  // Recursive NAME search under a root — powers the file tree's search box.
+  // The old search only filtered rows already rendered, so anything inside a
+  // collapsed (or never-expanded) folder was unfindable. This walks the whole
+  // folder (skipping the usual heavy dirs), case-insensitive substring on the
+  // entry name, capped so a giant repo can't stall the tree.
+  ipcMain.handle("files:search", async (_e, root: string, query: string) => {
+    if (typeof root !== "string" || !root) return { entries: [], error: "missing dir" };
+    const q = String(query ?? "").trim().toLowerCase();
+    if (!q) return { entries: [] };
+    const SKIP = new Set([".git", "node_modules", "dist", "build", "out", ".next", "coverage", "vendor", "__pycache__", ".venv", "target"]);
+    const MAX_RESULTS = 200;
+    const MAX_DIRS = 4000; // hard walk ceiling — search must never hang the tree
+    const entries: Array<{ name: string; rel: string; path: string; kind: "dir" | "file" }> = [];
+    const stack = [root];
+    let visited = 0;
+    try {
+      while (stack.length && entries.length < MAX_RESULTS && visited < MAX_DIRS) {
+        const dir = stack.pop()!;
+        visited++;
+        let items: Array<{ name: string; isDirectory(): boolean }> = [];
+        try { items = await fs.readdir(dir, { withFileTypes: true }); } catch { continue; }
+        for (const d of items) {
+          if (SKIP.has(d.name)) continue;
+          const abs = path.join(dir, d.name);
+          const isDir = d.isDirectory();
+          if (d.name.toLowerCase().includes(q)) {
+            entries.push({ name: d.name, rel: path.relative(root, abs), path: abs, kind: isDir ? "dir" : "file" });
+            if (entries.length >= MAX_RESULTS) break;
+          }
+          if (isDir) stack.push(abs);
+        }
+      }
+      // Shallow matches first, then alphabetical — the file you meant is
+      // usually near the top of the repo, not five vendored levels down.
+      entries.sort((a, b) => {
+        const da = a.rel.split(path.sep).length, dbb = b.rel.split(path.sep).length;
+        if (da !== dbb) return da - dbb;
+        return a.rel.localeCompare(b.rel);
+      });
+      return { entries, truncated: entries.length >= MAX_RESULTS };
+    } catch (err) {
+      return { entries: [], error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // Read a file's text contents. Cap to ~1MB to avoid blowing up the renderer
   // on accidental clicks into a giant binary.
   ipcMain.handle("files:read-file", async (_e, filePath: string) => {

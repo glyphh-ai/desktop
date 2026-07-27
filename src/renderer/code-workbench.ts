@@ -38,6 +38,7 @@ interface WbApi {
   onCwdChanged: (cb: (dir: string | null) => void) => () => void;
   onFileChanged: (cb: (absPath: string) => void) => () => void;
   listDir: (dir: string) => Promise<{ entries: FileEntry[]; error?: string }>;
+  searchFiles: (dir: string, query: string) => Promise<{ entries: Array<{ name: string; rel: string; path: string; kind: "dir" | "file" }>; truncated?: boolean; error?: string }>;
   pickFile: () => Promise<string | null>;
   mkdir: (dirPath: string) => Promise<{ ok: boolean; error?: string }>;
   deletePath: (target: string) => Promise<{ ok: boolean; error?: string }>;
@@ -1703,13 +1704,39 @@ async function init(): Promise<void> {
       };
     }
     renderTreeRows(treeEl, slot.root);
-    searchInput.addEventListener("input", (e) => {
-      const q = ((e.target as HTMLInputElement).value || "").trim().toLowerCase();
-      treeEl.querySelectorAll<HTMLElement>(".ws-files-row").forEach((r) => {
-        const nm = r.querySelector(".ws-files-name")?.textContent?.toLowerCase() || "";
-        r.classList.toggle("hidden", !!q && !nm.includes(q));
-      });
-    });
+    // REAL search: the old handler only filtered rows already rendered, so a
+    // file inside any collapsed (or never-expanded) folder was unfindable.
+    // A query now walks the whole working folder in main and renders a flat
+    // result list (rel paths, click-to-open); clearing it restores the tree.
+    // oninput (assignment) so slot re-renders never stack duplicate handlers.
+    let searchSeq = 0;
+    searchInput.oninput = () => {
+      const q = searchInput.value.trim();
+      const seq = ++searchSeq;
+      if (!q) { if (slot.root) renderTreeRows(treeEl, slot.root); return; }
+      void window.wb.searchFiles(cwd, q).then((res) => {
+        if (seq !== searchSeq || !slot.root) return; // stale response / slot gone
+        treeEl.innerHTML = "";
+        const hits = res.entries ?? [];
+        if (!hits.length) {
+          const empty = document.createElement("div");
+          empty.style.cssText = "padding:14px;color:var(--text-faint);font-size:12px;";
+          empty.textContent = `No files match "${q}".`;
+          treeEl.appendChild(empty);
+          return;
+        }
+        for (const e of hits) {
+          const node: TreeNode = { name: e.rel, path: e.path, kind: e.kind, depth: 0, open: false, loaded: false, children: [] };
+          treeEl.appendChild(renderTreeRow(node, treeEl, slot.root));
+        }
+        if (res.truncated) {
+          const more = document.createElement("div");
+          more.style.cssText = "padding:8px 14px;color:var(--text-faint);font-size:11px;";
+          more.textContent = "More matches exist — narrow the search.";
+          treeEl.appendChild(more);
+        }
+      }).catch(() => { /* search is best-effort; the tree returns on clear */ });
+    };
   }
 
   function renderTreeRows(treeEl: HTMLElement, root: TreeNode): void {
