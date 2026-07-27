@@ -31,9 +31,21 @@ die() { echo "✗ $1" >&2; exit 1; }
 
 # The app must not be running — it writes these dirs on quit and would
 # resurrect (or corrupt) state mid-reset. Background/tray mode counts.
+# Match the actual app BINARY, not any command line mentioning the phrase —
+# helper processes (e.g. the llama-server embeddings child) carry model paths
+# under ".../Glyphh Desktop/..." and would false-positive forever.
 require_quit() {
-  if pgrep -f "Glyphh Desktop" >/dev/null 2>&1; then
+  if pgrep -f "Glyphh Desktop.app/Contents/MacOS" >/dev/null 2>&1; then
     die "Glyphh Desktop is running (check the menu-bar tray too). Quit it, then re-run."
+  fi
+  # Orphaned helpers holding files under the support dir would survive the app
+  # and block a clean move/delete — reap them instead of refusing.
+  local strays
+  strays=$(pgrep -f "llama-server.*Glyphh Desktop" || true)
+  if [[ -n "$strays" ]]; then
+    echo "· reaping orphaned helper process(es): $strays"
+    kill $strays 2>/dev/null || true
+    sleep 1
   fi
 }
 
