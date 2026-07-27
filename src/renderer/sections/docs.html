@@ -2,269 +2,227 @@
           <div class="settings-layout">
             <nav class="settings-nav docs-nav">
               <button id="docs-back-settings" class="settings-nav-back">&#x2190; Settings</button>
-              <button class="settings-nav-item active" data-doc="navigation">Navigation</button>
-              <button class="settings-nav-item" data-doc="commands">Commands</button>
+              <button class="settings-nav-item active" data-doc="start">Getting started</button>
+              <button class="settings-nav-item" data-doc="agent">The Agent</button>
+              <button class="settings-nav-item" data-doc="models">Models</button>
+              <button class="settings-nav-item" data-doc="credits">Credits &amp; billing</button>
+              <button class="settings-nav-item" data-doc="mentions">Mentions &amp; Ghost</button>
+              <button class="settings-nav-item" data-doc="workspace">Workspace</button>
               <button class="settings-nav-item" data-doc="apps">Apps</button>
-              <button class="settings-nav-item" data-doc="skills">Skills</button>
               <button class="settings-nav-item" data-doc="layouts">Layouts</button>
-              <button class="settings-nav-item" data-doc="devspaces">Dev Spaces</button>
-
-              <button class="settings-nav-item" data-doc="agent">Agent</button>
+              <button class="settings-nav-item" data-doc="building">Build &amp; publish</button>
+              <button class="settings-nav-item" data-doc="connections">Connections</button>
+              <button class="settings-nav-item" data-doc="cli">CLI</button>
               <button class="settings-nav-item" data-doc="mcp">MCP</button>
+              <button class="settings-nav-item" data-doc="links">Links</button>
             </nav>
             <div class="settings-panels docs-panels">
-            <div class="docs-panel active" data-doc="navigation">
-              <h3>Navigation</h3>
-              <p>Glyphh is a multi-panel workspace. You can view one app at a time, or split the screen into a grid of panels. Every panel is a live web app running inside Glyphh.</p>
 
-              <h4>Switching panels</h4>
-              <p>Use the <strong>.dip</strong> command to switch between panels. Type it in the command bar (Cmd+&gt;) or the agent panel.</p>
-              <div class="cmd-row"><code>.dip claude</code><span>Switch to Claude</span></div>
-              <div class="cmd-row"><code>.dip gmail</code><span>Switch to Gmail</span></div>
-              <div class="cmd-row"><code>.dip back</code><span>Go to the previous panel</span></div>
-              <p>You can also click on tabs in the tab bar to switch panels.</p>
+            <div class="docs-panel active" data-doc="start">
+              <h3>Getting started</h3>
+              <p>Glyphh Desktop is an AI workspace: a coding agent, your everyday web apps, and the tools to build and publish your own — in one window.</p>
 
-              <h4>Split view</h4>
-              <p>Put multiple panels side by side with <strong>.dip split</strong>.</p>
-              <div class="cmd-row"><code>.dip split claude gpt</code><span>Two panels side by side</span></div>
-              <div class="cmd-row"><code>.dip split claude gpt / gemini code</code><span>2&times;2 grid — <code>/</code> separates rows</span></div>
+              <h4>Sign in</h4>
+              <p>Signing in opens your browser at <code>platform.glyphh.ai</code> — approve the device code shown in the app (Google, Apple, or email). Your session is stored locally under <code>~/.glyphh</code> and follows you into the CLI too.</p>
 
-              <h4>URL bar</h4>
-              <p>The URL bar at the top shows the current panel's address. You can type any URL to navigate, or use it as a search bar (searches Google by default). Use <strong>Cmd+L</strong> to focus it.</p>
-
-              <h4>Keyboard shortcuts</h4>
-              <div class="cmd-row"><code>&#8984;.</code><span>Toggle the Glyphh agent panel</span></div>
-              <div class="cmd-row"><code>&#8984;&gt;</code><span>Open the command bar</span></div>
-              <div class="cmd-row"><code>&#8984;L</code><span>Focus the URL bar</span></div>
-              <div class="cmd-row"><code>&#8984;R</code><span>Refresh the active panel</span></div>
-              <div class="cmd-row"><code>&#8984;+</code><span>Zoom in</span></div>
-              <div class="cmd-row"><code>&#8984;-</code><span>Zoom out</span></div>
-              <div class="cmd-row"><code>Esc</code><span>Close current overlay</span></div>
-            </div>
-
-            <div class="docs-panel" data-doc="commands">
-              <h3>Commands</h3>
-              <p>Commands are the core of Glyphh. Type them in the command bar (Cmd+&gt;), inside any panel, or chain them together. Every command starts with a dot.</p>
-
-              <h4>.yo — Agent</h4>
-              <p>Opens the AI agent panel. The agent can search your captures, run shell commands, navigate panels, and more. Works from any panel.</p>
-              <div class="cmd-row"><code>.yo</code><span>Open the agent panel</span></div>
-              <div class="cmd-row"><code>.yo find my notes about pricing</code><span>Agent searches your captures</span></div>
-              <div class="cmd-row"><code>.yo what was my last git commit</code><span>Agent runs read-only shell commands</span></div>
-
-              <h4>.yo . — Inline process</h4>
-              <p>Processes the last <code>.sup</code> capture with a prompt and injects the result directly into the active text field. No agent panel — just capture, switch, and process.</p>
-              <div class="cmd-row"><code>.yo . summarize this</code><span>Summarize and inject into text field</span></div>
-              <div class="cmd-row"><code>.yo . rewrite as bullet points</code><span>Transform captured content inline</span></div>
-
-              <h4>.sup — Capture</h4>
-              <p>Manually captures the active panel into memory and your clipboard. Panels also auto-capture on blur and navigation — this is for explicit capture or processing.</p>
-              <div class="cmd-row"><code>.sup</code><span>Capture to memory + clipboard</span></div>
-              <div class="cmd-row"><code>.sup . formalize</code><span>Capture + run the "formalize" skill</span></div>
-              <div class="cmd-row"><code>.sup . translate to spanish</code><span>Capture + run a freeform prompt</span></div>
-              <div class="cmd-row"><code>.sup ..</code><span>Capture last agent result into the text field</span></div>
-
-              <h4>.dip — Navigate</h4>
-              <p>Switches panels, creates split views, restores layouts, and chains app commands.</p>
-              <div class="cmd-row"><code>.dip claude</code><span>Switch to a panel</span></div>
-              <div class="cmd-row"><code>.dip split claude gpt</code><span>Side by side</span></div>
-              <div class="cmd-row"><code>.dip layout workspace</code><span>Restore a saved layout</span></div>
-              <div class="cmd-row"><code>.dip claude new</code><span>Switch + run app commands</span></div>
-              <div class="cmd-row"><code>.dip gmail compose</code><span>Switch to Gmail + open compose</span></div>
-
-              <h4>.drip — Effects</h4>
-              <p>Visual celebration effects. Reward yourself.</p>
-              <div class="cmd-row"><code>.drip</code><span>Default fireworks effect</span></div>
-              <div class="cmd-row"><code>.drip 3 fireworks, hearts</code><span>Stacked count + mixed effects</span></div>
-
-              <h4>swarm mode — Delegate to a local agent swarm</h4>
-              <p>Switch the .yo mode dropdown to <strong>swarm</strong> and the agent spins up a local swarm to work your goal: it picks the best agents from your Agents library, a leader decomposes the goal, and the rest execute and report into the swarm feed.</p>
-              <div class="cmd-row"><code>spin up a swarm to refactor the auth module</code><span>Auto-picks agents for the job</span></div>
-              <div class="cmd-row"><code>have 3 agents debate Postgres vs Mongo</code><span>Read-only agents debate a question</span></div>
-
-              <h4>Chaining</h4>
-              <p>Commands can be chained together. Each command runs in sequence.</p>
-              <div class="cmd-row"><code>.dip claude new</code><span>Switch to Claude, then start new chat</span></div>
-              <div class="cmd-row"><code>.sup .dip gpt .yo . explain this</code><span>Capture, switch to GPT, process inline</span></div>
-            </div>
-
-            <div class="docs-panel" data-doc="apps">
-              <h3>Apps</h3>
-              <p>Apps are web applications that run inside Glyphh panels. Each app has an ID, a URL, and a set of mapped commands that the agent can execute.</p>
-
-              <h4>Pre-configured apps</h4>
-              <p>Glyphh ships with pre-configured apps including ChatGPT, Claude, Gemini, Gmail, Slack, GitHub, Linear, Notion, Grok, Perplexity, YouTube, Reddit, Google Docs, and X. Each has commands mapped to their specific UI elements.</p>
-
-              <h4>Adding apps</h4>
-              <p>Open the <strong>Apps</strong> page in this help panel and click <strong>+ New</strong>. Give it an ID (used in commands like <code>.dip myapp</code>), a name, and a URL. You can optionally map commands.</p>
-
-              <h4>App commands</h4>
-              <p>Commands are actions mapped to specific selectors in the app's DOM. Common commands:</p>
-              <div class="cmd-row"><code>grab</code><span>Extract the main content as text</span></div>
-              <div class="cmd-row"><code>input</code><span>Focus the text input field</span></div>
-              <div class="cmd-row"><code>submit</code><span>Click the send/submit button</span></div>
-              <div class="cmd-row"><code>new</code><span>Start a new conversation/document</span></div>
-              <div class="cmd-row"><code>search</code><span>Focus the search bar</span></div>
-              <div class="cmd-row"><code>compose</code><span>Open compose window (email)</span></div>
-              <p>The .yo agent uses these commands when navigating for you. You can also run app commands via <code>.dip claude new</code> (switch + execute).</p>
-
-              <h4>Force web mode</h4>
-              <p>Some apps (like ChatGPT, Claude, Gmail) need to run in a web view instead of Electron's BrowserView. This is the "Force Web" toggle — enable it if the app doesn't render correctly.</p>
-
-              <h4>Do Not Record</h4>
-              <p>Prevents ambient capture of sensitive apps. When enabled, the app's content is never captured on blur or navigation. Banking, health, password manager, and tax/gov domains are blocked by default. Toggle per-app in the app detail view.</p>
-            </div>
-
-            <div class="docs-panel" data-doc="skills">
-              <h3>Skills</h3>
-              <p>Skills are reusable prompt templates that process captured content. Think of them as saved instructions — capture something with <code>.sup</code>, then apply a skill to transform it.</p>
-
-              <h4>Using skills</h4>
-              <div class="cmd-row"><code>.sup . summarize</code><span>Capture + run the "summarize" skill</span></div>
-              <div class="cmd-row"><code>.sup . formalize</code><span>Capture + formalize the text</span></div>
-              <div class="cmd-row"><code>.yo . summarize</code><span>Process last capture with a skill</span></div>
-              <p>When you use <code>.sup . skillname</code>, the content is captured and then processed through the skill's prompt template. The result replaces your clipboard content.</p>
-              <p>When you use <code>.yo . skillname</code>, the result is injected directly into the active text field.</p>
-
-              <h4>Creating skills</h4>
-              <p>Go to the <strong>Skills</strong> page in this panel and click <strong>+ New</strong>. Each skill has:</p>
+              <h4>Your workspace comes furnished</h4>
+              <p>A new account starts with the apps most people already live in — Gmail, Calendar, Drive, Docs, Sheets, Slack, GitHub, Notion, the AI chats, and more — plus two starter layouts:</p>
               <ul class="docs-list">
-                <li><strong>Name</strong> — the keyword you use to invoke it (e.g., "summarize")</li>
-                <li><strong>Prompt</strong> — the instruction template. Use <code>{{input}}</code> as a placeholder for the captured content.</li>
+                <li><strong>Email</strong> — Gmail on the left, Calendar on the right</li>
+                <li><strong>Dev</strong> — Files and Diff on the left, Editor over Terminal in the center, the Coding Agent on the right</li>
               </ul>
-              <p>Example prompt: <code>Summarize the following in 3 bullet points:\n\n{{input}}</code></p>
-              <p>The .yo agent can also create skills for you — just ask: <code>.yo create a skill called translate that converts text to Spanish</code></p>
-            </div>
+              <p>Everything is yours to rename, delete, or rearrange.</p>
 
-            <div class="docs-panel" data-doc="layouts">
-              <h3>Layouts</h3>
-              <p>Layouts save your panel arrangement so you can restore it later with one command. Save a 3-panel workspace, switch away, and come back to it instantly.</p>
+              <h4>First prompt</h4>
+              <p>Pick a <strong>working folder</strong> (the agent header) and just ask. The agent reads and writes files there, runs commands, and streams every step as a receipt you can expand. New here? Start in <strong>ask</strong> mode — every action waits for your approval.</p>
 
-              <h4>Saving layouts</h4>
-              <p>Arrange your panels the way you want (using <code>.dip split</code> or <code>.dip grid</code>), then save:</p>
-              <p>Save layouts from the <strong>Layouts</strong> page in this panel, or ask the .yo agent to save one for you.</p>
-
-              <h4>Restoring layouts</h4>
-              <div class="cmd-row"><code>.dip layout workspace</code><span>Restore the "workspace" layout</span></div>
-              <p>This restores the exact panel arrangement, sizes, and apps that were active when you saved.</p>
-
-              <h4>Grid layouts</h4>
-              <p>For advanced arrangements, use <code>.dip grid</code> with column/row spans and custom sizing:</p>
-              <div class="cmd-row"><code>.dip grid claude,gpt / gemini,code</code><span>2&times;2 grid</span></div>
-              <div class="cmd-row"><code>.dip grid claude:2,gpt / gemini,code</code><span>Claude spans 2 columns</span></div>
-              <div class="cmd-row"><code>.dip grid [70,30] claude,gpt</code><span>70/30 split</span></div>
-              <p>Drag the grid handles between panels to resize them live.</p>
-            </div>
-
-
-            <div class="docs-panel" data-doc="devspaces">
-              <h3>Dev Spaces</h3>
-              <p>A <strong>dev space</strong> is a workspace bound to a project directory plus a team of named code-terminal agents that coordinate through a shared event log. Each agent runs its own Claude Code session with a role, an inbox, and a shared MCP toolkit for talking to the team.</p>
-
-              <h4>Workspaces</h4>
-              <p>A workspace binds a yo session to a project directory. Captures, agents, and layouts are scoped to it. The active workspace persists across app restarts. Manage workspaces from the <strong>Workspaces</strong> page in this help panel.</p>
-              <p>Storage: <code>~/yo/workspaces.json</code> (index) + <code>~/yo/workspaces/&lt;slug&gt;/</code> (per-workspace event log, agent metadata, inbox state).</p>
-
-              <h4>Scaffolding agents</h4>
-              <p>A <strong>code-terminal</strong> is a named pty panel running an LLM CLI (default <code>claude</code>) in the workspace's <code>rootDir</code>. Each agent has a name and a role. Configure agents from the <strong>Agents</strong> page in this help panel.</p>
-
-              <h4>How agents coordinate</h4>
-              <p>Each code-terminal boots with <code>YO_AGENT_NAME</code> and <code>YO_WORKSPACE</code> in its env, plus a project-local <code>CLAUDE.md</code> dispatcher and a <code>.mcp.json</code> pointing at the MCP server. Agents see a personalized briefing at <code>${rootDir}/.yo/agents/&lt;name&gt;.md</code>.</p>
-              <p>The MCP server (loopback HTTP, bearer token auth) exposes:</p>
-              <ul class="docs-list">
-                <li><strong>team_status()</strong> — list agents, roles, last-post timestamps</li>
-                <li><strong>read_log(filter?)</strong> — read the event log; filter by tag/from/to/kind/time</li>
-                <li><strong>read_agent(name, kind?)</strong> — read another agent's scratchpad or post history</li>
-                <li><strong>post(body, tags?, kind?, refs?)</strong> — append to the team event log</li>
-                <li><strong>post_to(agent, body, tags?)</strong> — direct message, fast-path delivery</li>
-                <li><strong>subscribe(filter)</strong> / <strong>unsubscribe(id)</strong> — manage tag-filter subscriptions</li>
-              </ul>
-
-              <h4>Default subscriptions</h4>
-              <p>Auto-added on agent creation: <code>mentions_me</code>, <code>role:&lt;my-role&gt;</code>, <code>broadcast</code>.</p>
-
-              <h4>Sender conventions</h4>
-              <ul class="docs-list">
-                <li>Status updates → <code>post(body, tags: ["broadcast"])</code></li>
-                <li>Cross-role asks → <code>post_to("server", body)</code> or <code>post(body, tags: ["role:server"])</code></li>
-                <li>Internal scratch → <code>post(body)</code> with no tags (logged but not delivered)</li>
-                <li>Use tag <code>blocking</code> for anything that needs a teammate response</li>
-              </ul>
-
-              <h4>Inbox delivery</h4>
-              <p>When an event lands and an agent has a matching subscription, the orchestrator appends it to <code>${rootDir}/.yo/inbox/&lt;agent&gt;.md</code> (rolling tail of the last 50 events). Each agent's <code>CLAUDE.md</code> instructs it to read this file at the start of every turn — events newer than its last activity are new.</p>
-
-              <h4>Storage layout</h4>
-              <pre class="docs-code">~/yo/workspaces.json                           # workspace index
-~/yo/workspaces/&lt;slug&gt;/agents.json             # roster + subscriptions
-~/yo/workspaces/&lt;slug&gt;/events.jsonl            # append-only event log
-~/yo/workspaces/&lt;slug&gt;/inbox-state.json        # per-agent lastDeliveredTs
-${rootDir}/.mcp.json                           # MCP config (managed)
-${rootDir}/CLAUDE.md                           # dispatcher section (managed)
-${rootDir}/.yo/agents/&lt;name&gt;.md                # per-agent role briefing
-${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
-
+              <h4>Two shortcuts worth learning on day one</h4>
+              <div class="cmd-row"><code>&#8984;&#8679;G</code><span>Ghost Mode — summon the agent over whatever app you're in</span></div>
+              <div class="cmd-row"><code>@an-fable fix this</code><span>An @-mention in any input opens a fresh session on that model</span></div>
             </div>
 
             <div class="docs-panel" data-doc="agent">
               <h3>The Glyphh Agent</h3>
-              <p>The agent is your AI assistant that lives in the side panel. It searches your captures, runs shell commands, and executes workspace operations — all through natural language.</p>
+              <p>The same engine as the CLI: real local tools (files, shell, web), streamed answers, and tool receipts you can audit. Sessions live in the left history; <strong>+</strong> starts a fresh one.</p>
 
-              <h4>What it can do</h4>
+              <h4>Permission modes</h4>
+              <p>The mode chip in the composer controls how far the agent goes without you:</p>
+              <div class="cmd-row"><code>ask</code><span>Every write, edit, and shell command waits for approval (default)</span></div>
+              <div class="cmd-row"><code>auto</code><span>Reads run free; the agent acts, and you watch the receipts</span></div>
+              <div class="cmd-row"><code>plan</code><span>No tools run — the agent outlines what it would do</span></div>
+              <div class="cmd-row"><code>read-only</code><span>Reads only; nothing on disk changes</span></div>
+
+              <h4>Loops</h4>
+              <p>A <strong>loop</strong> is the agent's program: its roles (planner, worker, &hellip;) and the model bound to each. Switch loops from the loop chip; edit them (or build new ones) on the platform's Loops page. Layouts can carry a loop, so opening "Dev" can also mean "plan with Fable, work with a local model".</p>
+
+              <h4>Context</h4>
+              <p>The context meter shows how full the model's window is and where compaction kicks in. The agent folds older turns automatically; your working-folder choice, plans, and receipts survive it.</p>
+
+              <h4>Working folder</h4>
+              <p>Sessions inherit the last working folder. The workbench's file tree, terminal, diff, and editor are all rooted there, and saved arrangements are remembered <em>per folder</em>.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="models">
+              <h3>Models</h3>
+              <p>The model picker (composer chip) shows every model your org allows — frontier and open-weight in one list, priced per token in credits. The loop decides how many model slots you're picking for.</p>
+
+              <h4>The catalog</h4>
+              <p>Anthropic (Fable, Opus, Sonnet, Haiku), OpenAI (GPT-5.x), Google (Gemini), xAI (Grok), Mistral, DeepSeek, and hosted open-weight models. Admins govern which models an org and workspace can use; usage is attributed per model in your usage feed.</p>
+
+              <h4>On-device models — zero credits</h4>
+              <p>Models under <strong>On-device</strong> (Qwen2.5 1.5B&ndash;14B) run on your machine: picked like any other model, but the turn never leaves your computer and costs <strong>0 credits</strong>. First use downloads the weights (one-time, size-dependent) and starts a local server. Requires <code>llama-server</code> — <code>brew install llama.cpp</code> — or point <code>GLYPHH_LLAMA_BIN</code> at a binary. Best as a loop's worker; keep a frontier model as the planner.</p>
+
+              <h4>Bring your own key</h4>
+              <p>Org admins can add a provider API key on the platform (Workspace &rarr; Connections &rarr; provider). With a key set, that provider's calls use it directly; without one, calls ride the Glyphh gateway and meter as credits.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="credits">
+              <h3>Credits &amp; billing</h3>
+              <p>One prepaid currency for everything: model calls, tools, compute. Every charge is itemized per call in your usage feed — never billed in arrears.</p>
+
+              <h4>How a turn is priced</h4>
               <ul class="docs-list">
-                <li><strong>Search captures</strong> — vector search across all ambient and manual captures</li>
-                <li><strong>Run commands</strong> — read-only shell commands (git log, ls, cat, etc.)</li>
-                <li><strong>Read files</strong> — read any file under your home directory</li>
-                <li><strong>Search notes</strong> — keyword search across saved notes in ~/yo/notes/</li>
-                <li><strong>Format</strong> — apply skills to transform content</li>
-                <li><strong>Save memory</strong> — remember preferences and patterns for future conversations</li>
+                <li><strong>Tokens</strong> — each model has an input and output rate in credits per million tokens (shown in the picker's info tip).</li>
+                <li><strong>Prompt cache</strong> — cached input bills at a fraction of the input rate (reads 10%, writes 125%), matching what providers charge.</li>
+                <li><strong>On-device models</strong> — 0 credits, always.</li>
+                <li><strong>Compute</strong> (hosted runs) — metered by wall-clock time.</li>
               </ul>
 
-              <h4>Agent modes</h4>
-              <p>The mode selector at the bottom of the agent panel controls how the agent uses its tools. Every tool is classified as either <strong>observe</strong> (read-only, safe) or <strong>mutate</strong> (has side effects). The mode determines what happens when the agent wants to use a tool.</p>
+              <h4>Plans</h4>
+              <p><strong>Free</strong> starts you with 100 credits. Paid tiers add monthly credits, seats, connected services, and cloud sync. Top up any time — manage billing, invoices, and the live usage feed at <a class="docs-ext" data-href="https://platform.glyphh.ai">platform.glyphh.ai</a>.</p>
 
-              <div class="cmd-row"><code>ask</code><span>Every tool requires your approval before running (default)</span></div>
-              <p>The safest mode. The agent will describe what it wants to do and wait for you to approve or deny each action. Good for learning what the agent can do.</p>
+              <h4>Stretching credits</h4>
+              <p>Point your loop's worker role at an on-device or open-weight model and save the frontier model for planning — most of an agent session's tokens are worker traffic.</p>
+            </div>
 
-              <div class="cmd-row"><code>plan</code><span>No tools run — agent only outlines its plan</span></div>
-              <p>The agent thinks through what it would do and shows you a numbered plan, but never executes anything. Use this to preview the agent's approach before switching to ask or auto.</p>
+            <div class="docs-panel" data-doc="mentions">
+              <h3>@-mentions &amp; Ghost Mode</h3>
 
-              <div class="cmd-row"><code>auto</code><span>Observe tools run immediately, mutate tools still ask</span></div>
-              <p>Read-only tools (search captures, get context, read files, run commands, list files, search notes) execute without confirmation. Tools that change state (save memory, etc.) still require your approval. The balance between speed and safety.</p>
+              <h4>Summon a model from anywhere</h4>
+              <p>Type <code>@&lt;provider&gt;-&lt;model&gt; your prompt</code> in <em>any</em> text input — the shell, an app panel, even Gmail's compose box — and press Enter. The text never reaches the app; instead the Ghost overlay opens with a <strong>fresh session</strong>, that model selected, and your prompt ready to send.</p>
+              <div class="cmd-row"><code>@an-fable ship it</code><span>Fable 5, new session, prompt seeded</span></div>
+              <div class="cmd-row"><code>@oai-gpt51 summarize this doc</code><span>GPT-5.1</span></div>
+              <div class="cmd-row"><code>@local-q7 draft a reply</code><span>Qwen 7B on-device — zero credits</span></div>
+              <p>Aliases are set per provider and model on the platform's admin Models page. The provider part never contains a hyphen; the model part may.</p>
 
-              <h4>Tool permissions</h4>
-              <p>You can override the mode for individual tools in <strong>Settings &gt; Agent &gt; Tool Permissions</strong>. Each tool can be set to:</p>
+              <h4>Ghost Mode</h4>
+              <p><code>&#8984;&#8679;G</code> (Ctrl+Shift+G on Windows) from anywhere — app focused or in the background — floats the agent over the window you're working in, sized to it, on a see-through dark veil. Type, get your answer, and dismiss with <strong>Esc</strong> or the agent's <strong>&times;</strong>; focus returns to where you were. New workspace panels opened from the ghost land <em>beside</em> the agent, never under it.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="workspace">
+              <h3>Workspace</h3>
+              <p>The workbench tiles live tools next to the agent. Open them from the header toggles or a layout; drag headers to rearrange; drag edges to resize. Arrangements are remembered per working folder, and named layouts remember exactly how you left them.</p>
+
+              <h4>Tiles</h4>
               <ul class="docs-list">
-                <li><strong>Default</strong> — follows the global mode above</li>
-                <li><strong>Auto</strong> — always runs without asking, regardless of mode</li>
-                <li><strong>Ask</strong> — always asks for approval, even in auto mode</li>
+                <li><strong>Files</strong> — the working folder's tree. The search box searches the <em>whole folder</em> (not just what's expanded) — results are click-to-open paths.</li>
+                <li><strong>Editor</strong> — a Monaco editor over the tree's files.</li>
+                <li><strong>Terminal</strong> — a real shell in the working folder.</li>
+                <li><strong>Diff</strong> — what changed, as the agent works.</li>
+                <li><strong>Browser</strong> — web preview with an address bar; right-click a page to save it as an app.</li>
+                <li><strong>Plan</strong> — the agent's plan files, live.</li>
+                <li><strong>Coding Agent</strong> — the agent itself, hostable as a tile in any layout.</li>
               </ul>
-              <p>For example, you might set search_captures to "auto" so the agent can always search freely, while keeping save_memory on "ask" so it always confirms before persisting state.</p>
 
-              <h4>Ambient capture</h4>
-              <p>Content is automatically captured when you switch away from a panel (blur) or navigate to a new page. SmartGrab extracts the meaningful content and indexes it for vector search. Apps marked "Do Not Record" are excluded. This means the agent can search everything you've looked at without you ever typing <code>.sup</code>.</p>
+              <h4>Apps beside the agent</h4>
+              <p>Any app from the rail opens as a panel in the workspace. Panels are live — signed-in sessions, notifications, everything — and the agent can read from and act through them.</p>
+            </div>
 
-              <h4>Model selection</h4>
-              <p>The model selector lets you choose which LLM powers the agent. Configure your API key and preferred provider in <strong>Settings &gt; Model Configuration</strong>. Supports Anthropic, OpenAI, Google, xAI, and DeepSeek.</p>
+            <div class="docs-panel" data-doc="apps">
+              <h3>Apps</h3>
+              <p>Apps live on the left rail. Three kinds: <strong>web</strong> (any URL, opens as a live panel), <strong>native</strong> (launches a local application), and <strong>glyphh</strong> (apps built on the Glyphh runtime — see Build &amp; publish).</p>
 
-              <h4>Chat history</h4>
-              <p>Click the hamburger menu (&#9776;) in the agent panel header to see your conversation history. Each conversation is saved automatically. Click <strong>+</strong> to start a new chat.</p>
+              <h4>Adding your own</h4>
+              <p>Apps page &rarr; <strong>+ New</strong>: a slug, a name, and a URL (or a native app path). Org-visible by default so your team gets it too.</p>
+
+              <h4>Panel commands</h4>
+              <p>Inside any app panel, dot-commands drive the workspace without leaving the keyboard:</p>
+              <div class="cmd-row"><code>.yo &lt;ask&gt;</code><span>Ask the agent from any panel</span></div>
+              <div class="cmd-row"><code>.sup</code><span>Capture the panel's content</span></div>
+              <div class="cmd-row"><code>.sup . &lt;skill&gt;</code><span>Capture + process with a skill</span></div>
+              <div class="cmd-row"><code>.dip &lt;app&gt;</code><span>Switch panels</span></div>
+              <div class="cmd-row"><code>.dip layout &lt;name&gt;</code><span>Open a saved layout</span></div>
+              <div class="cmd-row"><code>.drip</code><span>Fireworks. You earned it.</span></div>
+              <p>The command text is intercepted before the app sees it — nothing leaks into the page.</p>
+
+              <h4>Marketplace</h4>
+              <p>The Marketplace lists published Glyphh apps — public and your org's own. Installs auto-update by default; pin a version from the app's Releases tab.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="layouts">
+              <h3>Layouts</h3>
+              <p>A layout is a saved arrangement — which tools and apps, in what grid — restorable in one click from the rail, the command palette, or <code>.dip layout &lt;name&gt;</code>.</p>
+
+              <h4>What a layout can carry</h4>
+              <ul class="docs-list">
+                <li><strong>Panels + tools</strong> — any mix of apps, Files, Editor, Terminal, Diff, Browser, Plan, and the Coding Agent.</li>
+                <li><strong>A loop + its models</strong> — opening the layout activates that loop with those model bindings.</li>
+                <li><strong>A target</strong> — <em>glyphh</em> (tiles inside the window) or <em>desktop</em> (panels open as positioned OS windows; native apps launch).</li>
+              </ul>
+
+              <h4>Your changes stick</h4>
+              <p>Rearrange or resize inside an open layout and it remembers — reopening brings back exactly what you left, not the original definition. Starting a new agent session never resets an open layout.</p>
+
+              <h4>Starters</h4>
+              <p>Every account begins with <strong>Email</strong> (Gmail | Calendar) and <strong>Dev</strong> (Files/Diff | Editor/Terminal | Coding Agent) as working examples.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="building">
+              <h3>Build &amp; publish apps</h3>
+              <p>Glyphh apps are Vite static projects with a <code>glyphh.app.json</code> manifest, built by the agent (or you) in the working folder. The runtime gives them SQLite, on-device vector search, a knowledge graph, cron, your connections, and models — inside a strict sandbox (no external scripts; everything bundles).</p>
+
+              <h4>The loop</h4>
+              <div class="cmd-row"><code>ask the agent</code><span>"Build me an app that&hellip;" — it scaffolds, builds, and installs locally</span></div>
+              <div class="cmd-row"><code>update_app</code><span>The agent reinstalls the working folder's build into your workspace</span></div>
+              <div class="cmd-row"><code>deploy</code><span>Cut a release, upload the source, go live at <code>&lt;slug&gt;.glyphh.app</code></span></div>
+
+              <h4>Releases</h4>
+              <p>The app's <strong>Releases</strong> tab is the lifecycle: <strong>Build &amp; deploy</strong> packages the working folder's compiled build, cuts a release, uploads, and deploys; write notes; <strong>Promote to live</strong> is what installers get. Rolling back is promoting an older release again.</p>
+
+              <h4>Listing</h4>
+              <p>The Listing tab publishes to the Marketplace: description, media, required connections. Public or org-only.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="connections">
+              <h3>Connections</h3>
+              <p>Connections give the agent (and your Glyphh apps) authenticated reach into 3,500+ services — Gmail, Slack, Notion, Sheets, calendars, CRMs, and the rest.</p>
+
+              <h4>Two kinds</h4>
+              <ul class="docs-list">
+                <li><strong>Org connectors</strong> — shared by an admin; members use them without doing their own auth. Governed per workspace, down to individual tools.</li>
+                <li><strong>Personal connections</strong> — your own accounts, connected by you, usable only by you.</li>
+              </ul>
+              <p>Manage both under <strong>Workspace &rarr; Connections</strong> on the platform, or from the desktop's Connections page.</p>
+
+              <h4>Custom MCP connections</h4>
+              <p>Point a connection at any remote MCP server URL — OAuth or headers — and its tools join the agent's toolkit. Custom MCP executes server-side under your org's governance; nothing runs on or dials into your machine.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="cli">
+              <h3>The CLI</h3>
+              <p>The whole agent, in your terminal — the same engine, loops, models, permission modes, and metering as Desktop.</p>
+              <pre class="docs-code">npm i -g @glyphh-ai/cli
+glyphh</pre>
+              <h4>Good to know</h4>
+              <ul class="docs-list">
+                <li>Sign-in is the same device flow, and the session is shared with Desktop (<code>~/.glyphh</code>) — sign in once.</li>
+                <li><code>/login</code>, <code>/status</code>, <code>/loop</code>, <code>/theme</code>, <code>/help</code> in-session; <strong>Shift+Tab</strong> cycles the permission mode.</li>
+                <li>Headless and scriptable — drop it in CI, cron, or a Makefile.</li>
+                <li>Install it on a remote box and that machine becomes reachable from your other Glyphh surfaces (machine-reach).</li>
+              </ul>
             </div>
 
             <div class="docs-panel" data-doc="mcp">
-              <h3>MCP (Model Context Protocol)</h3>
-              <p>Glyphh supports MCP in two ways: as a <strong>server</strong> — the cloud relay exposes your workspace to external LLM tools — and as a <strong>client</strong>, where your saved apps can attach their own MCP servers whose tools ride the same relay.</p>
+              <h3>MCP</h3>
+              <p>Glyphh speaks MCP in both directions.</p>
 
-              <h4>The Glyphh relay</h4>
-              <p>Enable in <strong>Settings &gt; MCP &gt; Enable remote relay</strong>. Your signed-in device keeps a WebSocket to the Glyphh cloud, and external tools connect to a single endpoint:</p>
+              <h4>As a client</h4>
+              <p>Add remote MCP servers as <strong>custom connections</strong> (see Connections) — their tools join the agent's toolkit, executed server-side under org governance.</p>
+
+              <h4>As a server — drive Glyphh from other tools</h4>
+              <p>External tools (Claude, Cursor, anything MCP-capable) can connect to your workspace at:</p>
               <pre class="docs-code">https://api.glyphh.ai/mcp</pre>
-              <p>Connected tools can open your apps and layouts as native windows and drive them — click, type, read the DOM, take screenshots. Everything executes on your machine; the relay only forwards commands from clients you've approved.</p>
-
-              <h4>Connecting from Claude</h4>
-              <p>Add the endpoint in Claude's <strong>Connectors</strong> settings and approve the OAuth prompt — no token to copy. This is the recommended path for any OAuth-capable client.</p>
-
-              <h4>Clients without OAuth support (Cursor / Windsurf / others)</h4>
-              <p>Generate a token in <strong>Settings &gt; MCP</strong>, then add this to the tool's MCP config:</p>
+              <p>In Claude, add it under <strong>Connectors</strong> and approve the OAuth prompt. Clients without OAuth use a token via <code>mcp-remote</code>:</p>
               <pre class="docs-code">{
   "mcpServers": {
     "glyphh": {
@@ -274,17 +232,31 @@ ${rootDir}/.yo/inbox/&lt;name&gt;.md                 # per-agent inbox</pre>
     }
   }
 }</pre>
-
-              <h4>Available MCP tools</h4>
-              <p>When connected, external tools can use:</p>
-              <ul class="docs-list">
-                <li><strong>panels_open / panels_list / panels_switch / panels_close</strong> — open and manage your apps as native windows</li>
-                <li><strong>layouts_open</strong> — open a saved layout, tiled in one window or across the whole screen</li>
-                <li><strong>rpa_click / rpa_type / rpa_read / rpa_screenshot</strong> — drive an open app by CSS selector</li>
-                <li><strong>connector tools</strong> — call your connected apps' APIs</li>
-              </ul>
-              <p>Tokens generated in Settings authenticate MCP clients to the relay. They're separate from any LLM API keys configured inside the external tool itself.</p>
+              <p>Connected tools can open your apps and layouts, run your installed apps' tools, call your connections, and build + deploy Glyphh apps. Security model: your desktop holds an <em>outbound</em> connection to the cloud — nothing ever dials into your machine, and only clients you approve get through.</p>
             </div>
+
+            <div class="docs-panel" data-doc="links">
+              <h3>Links</h3>
+              <h4>Product</h4>
+              <ul class="docs-list">
+                <li><a class="docs-ext" data-href="https://platform.glyphh.ai">platform.glyphh.ai</a> — account, billing, usage, loops, models, workspace governance</li>
+                <li><a class="docs-ext" data-href="https://glyphh.ai">glyphh.ai</a> — the site; <a class="docs-ext" data-href="https://glyphh.ai/pricing">pricing</a>, <a class="docs-ext" data-href="https://glyphh.ai/research">research</a></li>
+                <li><a class="docs-ext" data-href="https://www.npmjs.com/package/@glyphh-ai/cli">@glyphh-ai/cli on npm</a></li>
+              </ul>
+              <h4>Open source</h4>
+              <ul class="docs-list">
+                <li><a class="docs-ext" data-href="https://github.com/glyphh-ai/adaL">adaL</a> — schema-on-write memory that never confabulates</li>
+                <li><a class="docs-ext" data-href="https://github.com/glyphh-ai/ada">ada</a> — the engine: ingest, query, stream</li>
+                <li><a class="docs-ext" data-href="https://github.com/glyphh-ai/models">models</a> — pure-HDC models, no GPU in the loop</li>
+                <li><a class="docs-ext" data-href="https://github.com/glyphh-ai/rrotor">rrotor</a> — the open runtime for RotorSpec deterministic agent loops</li>
+              </ul>
+              <h4>Help</h4>
+              <ul class="docs-list">
+                <li><strong>Support</strong> — the Support page in this panel (Discord + tickets)</li>
+                <li><a class="docs-ext" data-href="mailto:support@glyphh.ai">support@glyphh.ai</a> · <a class="docs-ext" data-href="mailto:sales@glyphh.ai">sales@glyphh.ai</a></li>
+              </ul>
+            </div>
+
           </div>
         </div>
         </div>

@@ -3,9 +3,21 @@
  */
 
 
+let docsLinksWired = false;
+
 function loadDocs() {
-  // Docs sub-nav is handled above (docsSubNav click handlers)
-  // Nothing dynamic to load — all content is static HTML
+  // Docs sub-nav is handled above (docsSubNav click handlers). Content is
+  // static HTML; the one live piece is external links — <a class="docs-ext"
+  // data-href> opens in the system browser, never inside the shell.
+  if (docsLinksWired) return;
+  docsLinksWired = true;
+  document.querySelector(".docs-panels")?.addEventListener("click", (e) => {
+    const a = (e.target as HTMLElement).closest?.(".docs-ext") as HTMLElement | null;
+    if (!a) return;
+    e.preventDefault();
+    const href = a.dataset.href;
+    if (href) void window.yo.openExternal(href);
+  });
 }
 
 // ── Support ───────────────────────────────────────────────
