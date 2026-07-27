@@ -32,10 +32,16 @@ export type AdaOp =
 
 export interface AdaTold { thoughtId: string; slots: number; key?: string; version?: number }
 
-let db: BetterSqlite3.Database | null = null;
+// A PROVIDER, not a handle: local-db closes and reopens on every user-scope
+// switch (login/logout), and a snapshot taken at boot becomes a permanently
+// CLOSED connection — every Ada/Recall call then throws "The database
+// connection is not open". Resolving the current handle per call tracks the
+// live database through scope changes.
+let dbProvider: (() => BetterSqlite3.Database) | null = null;
 
-export function initAdaStore(database: BetterSqlite3.Database): void {
-  db = database;
+export function initAdaStore(provider: () => BetterSqlite3.Database): void {
+  dbProvider = provider;
+  const db = provider();
   db.exec(`
     CREATE TABLE IF NOT EXISTS ada_thoughts (
       thought_id TEXT PRIMARY KEY,
@@ -71,8 +77,8 @@ export function initAdaStore(database: BetterSqlite3.Database): void {
 }
 
 function d(): BetterSqlite3.Database {
-  if (!db) throw new Error("Ada store not initialized");
-  return db;
+  if (!dbProvider) throw new Error("Ada store not initialized");
+  return dbProvider();
 }
 
 const SPACE = "main";

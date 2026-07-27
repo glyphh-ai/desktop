@@ -231,7 +231,9 @@ async function boot() {
   restoreUserScopeFromSidecar();
   // Initialize local SQLite database (agents, layouts, preferences)
   initLocalDb();
-  initAdaStore(getLocalDb()); // Ada — schema-on-write fact memory
+  // Ada — schema-on-write fact memory. A PROVIDER, not the handle: local-db
+  // reopens on user-scope switches and Ada must follow the live connection.
+  initAdaStore(() => getLocalDb());
   registerAdaIpc();
   registerAdaSync(); // mirror the workspace catalog into facts (idempotent)
   const migrationResult = migrateFromFiles();

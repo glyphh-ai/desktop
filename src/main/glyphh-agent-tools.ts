@@ -750,7 +750,17 @@ const TOOLS: ToolDef[] = [
     doc: "ada_ask(op) — exact query over Ada's facts. op ∈ {lookup(person,slot), prev(person,slot), count(conditions), count_not(slot,value), top(slot,k?), who(conditions), compare(slot,a,b)}; slots are layer.role (entity.kind, spatial.location, relational.object, …)",
     action: () => ({ kind: "read", title: "Ask Ada" }),
     run: async (a) => {
-      try { return adaExecuteOp((a.op ?? a) as AdaOp); }
+      // Models often send bare {person, slot} (or the args object itself) with
+      // no `op` — infer the obvious lookup rather than failing the turn; only
+      // a truly unusable call gets the corrective example back.
+      const raw = (a.op ?? a) as Partial<AdaOp> & Record<string, unknown>;
+      const op = raw && typeof raw === "object" && typeof raw.op === "string"
+        ? raw
+        : (raw?.person && raw?.slot ? { ...raw, op: "lookup" } : null);
+      if (!op) {
+        return "ERROR: ada_ask needs an op — e.g. {op:\"lookup\", person:\"chris\", slot:\"entity.kind\"}. Valid ops: lookup, prev, count, count_not, top, who, compare. For free-text questions use ada_recall(query) instead.";
+      }
+      try { return adaExecuteOp(op as AdaOp); }
       catch (err) { return `ERROR: ${err instanceof Error ? err.message : String(err)}`; }
     },
   },
