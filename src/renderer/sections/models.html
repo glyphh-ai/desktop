@@ -1,8 +1,6 @@
         <div class="help-section" data-section="models">
-          <div class="crud-header">
-            <h2>Models</h2>
-            <p class="crud-sub">The models your organization supports, the providers they run on, and your own custom endpoints. Roles pick from the supported set — nothing outside it can be used.</p>
-          </div>
+          <h2>Models</h2>
+          <p class="section-desc">The models your organization supports, the providers they run on, and your own custom endpoints. Roles pick from the supported set — nothing outside it can be used.</p>
 
           <div id="models-admin-error" class="crud-form-error hidden"></div>
 
@@ -14,19 +12,19 @@
           </div>
 
           <div class="mdl-tab active" data-mtab="proxy">
-            <p class="crud-sub">Frontier models served through the gateway. Toggle which ones your organization supports. A supported model also needs its provider enabled — Providers tab.</p>
+            <p class="section-desc">Frontier models served through the gateway. Toggle which ones your organization supports. A supported model also needs its provider enabled — Providers tab.</p>
             <div class="crud-toolbar"><input id="models-search-proxy" type="text" class="crud-search" placeholder="Search proxy models…" spellcheck="false" autocomplete="off" /></div>
             <div id="models-grid-proxy" class="mdl-grid"></div>
           </div>
 
           <div class="mdl-tab" data-mtab="open">
-            <p class="crud-sub">Open-weight models — including the zero-credit on-device set run by llama.cpp. Toggle which ones your organization supports.</p>
+            <p class="section-desc">Open-weight models — including the zero-credit on-device set run by llama.cpp. Toggle which ones your organization supports.</p>
             <div class="crud-toolbar"><input id="models-search-open" type="text" class="crud-search" placeholder="Search open weight models…" spellcheck="false" autocomplete="off" /></div>
             <div id="models-grid-open" class="mdl-grid"></div>
           </div>
 
           <div class="mdl-tab" data-mtab="custom">
-            <p class="crud-sub">Point at any OpenAI-compatible endpoint — Together, Fireworks, a self-hosted vLLM, anything that speaks <code>/chat/completions</code>. The key is write-only and pays the vendor directly.</p>
+            <p class="section-desc">Point at any OpenAI-compatible endpoint — Together, Fireworks, a self-hosted vLLM, anything that speaks <code>/chat/completions</code>. The key is write-only and pays the vendor directly.</p>
             <div class="mdl-custom-form">
               <label class="settings-label">Display name<input id="mc-name" class="settings-input" placeholder="My Llama 3 70B" /></label>
               <label class="settings-label">Slug <span class="mdl-hint">(id: custom::&lt;slug&gt;)</span><input id="mc-slug" class="settings-input" placeholder="my-llama" /></label>
@@ -44,7 +42,7 @@
           </div>
 
           <div class="mdl-tab" data-mtab="providers">
-            <p class="crud-sub">Enable the vendors your org runs on. Enabling a provider makes its catalog models reachable; add a BYOK key to have your own key pay the vendor instead of the proxy. Keys are write-only.</p>
+            <p class="section-desc">Enable the vendors your org runs on. Enabling a provider makes its catalog models reachable; add a BYOK key to have your own key pay the vendor instead of the proxy. Keys are write-only.</p>
             <div class="crud-toolbar"><input id="models-search-providers" type="text" class="crud-search" placeholder="Search providers…" spellcheck="false" autocomplete="off" /></div>
             <div id="models-providers-list"></div>
           </div>
