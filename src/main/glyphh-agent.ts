@@ -78,6 +78,17 @@ let interceptor: Interceptor | null = null;
 // run installs a sink here and the trailing usage frame (per turn) routes to it.
 let usageSink: ((u: { creditsMicro: number; inputTokens: number; outputTokens: number }) => void) | null = null;
 
+/** The hosted harness speaks as "Claude Code" and hints at ITS OWN CLI flags —
+ *  neither exists for Glyphh users. Re-voice harness errors as Glyphh's own
+ *  before they reach the chat. Model ids like "claude-sonnet-5" are data, not
+ *  branding, and pass through untouched. */
+function brandError(message: string): string {
+  return message
+    .replaceAll("Claude Code", "Glyphh")
+    .replace(/Run --model to pick a different model\.?/g, "Pick a different model from the composer's model chip.")
+    .replace(/Run \/login[^.]*\./g, "Sign in again from Settings.");
+}
+
 /** The agent subprocess's OWN config home — never the user's ~/.claude. */
 function agentConfigDir(): string {
   const dir = glyphhPath("agent-config");
@@ -562,7 +573,7 @@ async function sdkRun(
     }
     if (ctrl.signal.aborted) throw new Error("aborted");
     emit("glyphh-agent:progress", { inTokens: inTok, outTokens: outTok() });
-    if (runError) emit("glyphh-agent:error", { error: runError });
+    if (runError) emit("glyphh-agent:error", { error: brandError(runError) });
     else emit("glyphh-agent:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) {
@@ -571,7 +582,7 @@ async function sdkRun(
       captureRun({ kind: "agent", mode: glyphhMode(), turnsUsed, stopped: true, messages: base });
       return;
     }
-    runError = err instanceof Error ? err.message : String(err);
+    runError = brandError(err instanceof Error ? err.message : String(err));
     emit("glyphh-agent:error", { error: runError });
   }
   // Stop routing usage frames to a finished run's emit — the next run installs
