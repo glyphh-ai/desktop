@@ -159,6 +159,15 @@ contextBridge.exposeInMainWorld("yo", {
   windowMinimize: () => ipcRenderer.send("window-minimize"),
   // Ghost Mode overlay dismisses itself (Esc / backdrop click).
   ghostClose: () => ipcRenderer.invoke("ghost-close"),
+  // Org-admin Models page (mirrors the platform's Configure → Models).
+  orgModelsList: () => ipcRenderer.invoke("org-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
+  orgModelsSetSupported: (id: string, supported: boolean) => ipcRenderer.invoke("org-models-set-supported", id, supported) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  orgCustomModelsList: () => ipcRenderer.invoke("org-custom-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
+  orgCustomModelsSave: (input: unknown) => ipcRenderer.invoke("org-custom-models-save", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  orgCustomModelsDelete: (id: string) => ipcRenderer.invoke("org-custom-models-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  orgProvidersList: () => ipcRenderer.invoke("org-providers-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
+  orgProviderEnable: (slug: string, key?: string) => ipcRenderer.invoke("org-provider-enable", slug, key) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  orgProviderDisable: (slug: string) => ipcRenderer.invoke("org-provider-disable", slug) as Promise<{ ok: boolean; error?: string }>,
   // @-mention summon: the alias lookup table + the summon itself.
   mentionCatalog: () => ipcRenderer.invoke("mention-catalog") as Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>,
   ghostSummon: (model: string, prompt: string) => ipcRenderer.invoke("ghost-summon", model, prompt) as Promise<{ ok: boolean }>,

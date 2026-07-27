@@ -1,0 +1,51 @@
+        <div class="help-section" data-section="models">
+          <div class="crud-header">
+            <h2>Models</h2>
+            <p class="crud-sub">The models your organization supports, the providers they run on, and your own custom endpoints. Roles pick from the supported set — nothing outside it can be used.</p>
+          </div>
+
+          <div id="models-admin-error" class="crud-form-error hidden"></div>
+
+          <div class="app-detail-tabs" id="models-tabs">
+            <button class="app-detail-tab active" data-mtab="proxy">Proxy models <span id="models-count-proxy" class="mdl-count"></span></button>
+            <button class="app-detail-tab" data-mtab="open">Open weight <span id="models-count-open" class="mdl-count"></span></button>
+            <button class="app-detail-tab" data-mtab="custom">Custom <span id="models-count-custom" class="mdl-count"></span></button>
+            <button class="app-detail-tab" data-mtab="providers">Providers <span id="models-count-providers" class="mdl-count"></span></button>
+          </div>
+
+          <div class="mdl-tab active" data-mtab="proxy">
+            <p class="crud-sub">Frontier models served through the gateway. Toggle which ones your organization supports. A supported model also needs its provider enabled — Providers tab.</p>
+            <div class="crud-toolbar"><input id="models-search-proxy" type="text" class="crud-search" placeholder="Search proxy models…" spellcheck="false" autocomplete="off" /></div>
+            <div id="models-grid-proxy" class="mdl-grid"></div>
+          </div>
+
+          <div class="mdl-tab" data-mtab="open">
+            <p class="crud-sub">Open-weight models — including the zero-credit on-device set run by llama.cpp. Toggle which ones your organization supports.</p>
+            <div class="crud-toolbar"><input id="models-search-open" type="text" class="crud-search" placeholder="Search open weight models…" spellcheck="false" autocomplete="off" /></div>
+            <div id="models-grid-open" class="mdl-grid"></div>
+          </div>
+
+          <div class="mdl-tab" data-mtab="custom">
+            <p class="crud-sub">Point at any OpenAI-compatible endpoint — Together, Fireworks, a self-hosted vLLM, anything that speaks <code>/chat/completions</code>. The key is write-only and pays the vendor directly.</p>
+            <div class="mdl-custom-form">
+              <label class="settings-label">Display name<input id="mc-name" class="settings-input" placeholder="My Llama 3 70B" /></label>
+              <label class="settings-label">Slug <span class="mdl-hint">(id: custom::&lt;slug&gt;)</span><input id="mc-slug" class="settings-input" placeholder="my-llama" /></label>
+              <label class="settings-label mdl-span">Endpoint base URL <span class="mdl-hint">(OpenAI-compatible)</span><input id="mc-url" class="settings-input" placeholder="https://api.together.xyz/v1" /></label>
+              <label class="settings-label mdl-span">Model name <span class="mdl-hint">(sent as "model")</span><input id="mc-model" class="settings-input" placeholder="meta-llama/Llama-3-70b-chat-hf" /></label>
+              <label class="settings-label">Context window<input id="mc-ctx" class="settings-input" type="number" placeholder="8192" /></label>
+              <label class="settings-label">Max output<input id="mc-max" class="settings-input" type="number" placeholder="4096" /></label>
+              <label class="settings-label mdl-span">API key <span class="mdl-hint">(write-only; blank keeps the existing key on edit)</span><input id="mc-key" class="settings-input" type="password" autocomplete="new-password" placeholder="sk-…" /></label>
+              <div class="mdl-form-actions">
+                <button id="mc-clear" class="action-btn" type="button">Clear</button>
+                <button id="mc-save" class="action-btn primary" type="button">Add model</button>
+              </div>
+            </div>
+            <div id="models-custom-list"></div>
+          </div>
+
+          <div class="mdl-tab" data-mtab="providers">
+            <p class="crud-sub">Enable the vendors your org runs on. Enabling a provider makes its catalog models reachable; add a BYOK key to have your own key pay the vendor instead of the proxy. Keys are write-only.</p>
+            <div class="crud-toolbar"><input id="models-search-providers" type="text" class="crud-search" placeholder="Search providers…" spellcheck="false" autocomplete="off" /></div>
+            <div id="models-providers-list"></div>
+          </div>
+        </div>

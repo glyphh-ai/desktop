@@ -13543,3 +13543,40 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 /* Slim, faint scrollbar. */
 [data-ghost="1"] .code-thread::-webkit-scrollbar { width: 8px; }
 [data-ghost="1"] .code-thread::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 4px; }
+
+/* ── Models (org admin) — desktop mirror of platform Configure → Models ── */
+.mdl-count { color: var(--text-3); font-size: 11px; margin-left: 4px; }
+.mdl-tab { display: none; }
+.mdl-tab.active { display: block; }
+.mdl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }
+.mdl-card {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+}
+.mdl-card.mdl-provider-off { opacity: 0.6; }
+.mdl-card-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.mdl-card-sub { font-size: 10.5px; color: var(--text-3); margin-top: 2px; }
+.mdl-chip-warn {
+  align-self: flex-start; padding: 2px 8px; border-radius: 100px; cursor: pointer;
+  font-size: 10.5px; color: #f59e0b; background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.mdl-toggle { margin-top: auto; }
+.mdl-toggle-text { font-size: 12px; color: var(--text-2); }
+.mdl-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-top: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+}
+.mdl-row-id { flex: 0 0 150px; min-width: 0; }
+.mdl-row-wide { flex: 1; }
+.mdl-key { flex: 1; }
+.mdl-key-state { flex: 0 0 64px; text-align: center; font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.mdl-key-state.mdl-key-ok { color: #34d399; }
+.mdl-custom-form {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px;
+  margin-top: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+}
+.mdl-custom-form .settings-label { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.mdl-span { grid-column: 1 / -1; }
+.mdl-hint { color: var(--text-3); font-weight: 400; font-size: 11px; }
+.mdl-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }

@@ -86,6 +86,7 @@ import { DripManager, BUILTIN_EFFECTS, setDripManagerInstance } from "./drip-man
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
+import { registerModelsIpc } from "./models-ipc";
 import { getClient } from "./glyphh-client";
 import { ApiError } from "@glyphh/client";
 import { registerAppsIpc } from "./apps-ipc";
@@ -1673,6 +1674,7 @@ async function boot() {
   // cypherBus directly and was never routed through this machinery.
 
   // ── Extracted IPC modules ──────────────────────────────
+  registerModelsIpc();
   registerSettingsIpc({
     getPreference, setPreference, broadcastTheme,
     startAuthFlow, isAuthenticated,

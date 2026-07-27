@@ -375,6 +375,15 @@ declare global {
       libraryAgentTaskDelete: (ref: string, taskId: string) => Promise<LibEnvelope>;
       loopRoles: (loop: string, force?: boolean) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
+      // Org-admin Models page.
+      orgModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
+      orgModelsSetSupported: (id: string, supported: boolean) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      orgCustomModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
+      orgCustomModelsSave: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      orgCustomModelsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      orgProvidersList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
+      orgProviderEnable: (slug: string, key?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      orgProviderDisable: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       // @-mention summon (ghost overlay): alias lookup + summon.
       mentionCatalog: () => Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>;
       ghostSummon: (model: string, prompt: string) => Promise<{ ok: boolean }>;
