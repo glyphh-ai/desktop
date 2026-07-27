@@ -3144,13 +3144,24 @@ async function init(): Promise<void> {
   };
   wbApp.__wbOpenApp = (app, newPanel) => openAppInWorkbench(app, { newPanel });
   wbApp.__wbOpenApps = (apps, layoutName?: string) => {
+    // A NAMED layout comes up through the grid path — its definition plus the
+    // user's remembered geometry — never as a flat stack. The old fallback
+    // stacked panels flat and then SAVED that stack under the layout's name,
+    // which is why every re-open lost the user's arrangement.
+    if (layoutName) {
+      void wbApp.__wbOpenLayoutByName!(layoutName).then((ok) => {
+        if (ok) return;
+        // Unknown name (deleted layout?) — flat open, but write no named memory.
+        activeLayoutName = null;
+        for (const a of apps) openAppInWorkbench(a, { newPanel: true });
+      });
+      return;
+    }
     for (const a of apps) openAppInWorkbench(a, { newPanel: true });
-    // Fallback flat open of a NAMED layout still remembers geometry under
-    // the layout's name (stamped AFTER the loop — openAppInWorkbench clears
-    // it, correctly, for individual opens).
-    if (layoutName) { activeLayoutName = layoutName; saveLayout(); }
   };
-  wbApp.__wbOpenLayout = (layout) => openLayoutInWorkbench(layout);
+  // An anonymous grid (no name) must not write into whatever named layout was
+  // active before — openLayoutInWorkbench ends in saveLayout().
+  wbApp.__wbOpenLayout = (layout) => { activeLayoutName = null; openLayoutInWorkbench(layout); };
   // `.dip clear` — close all workspace panels. JUST the panels: sessions,
   // history, everything else stays untouched.
   wbApp.__wbClearPanels = () => clearAllPanels();

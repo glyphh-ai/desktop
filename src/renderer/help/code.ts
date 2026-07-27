@@ -691,6 +691,7 @@ function ensureCodeSection(): void {
   switch: (id: string): void => {
     if (!chats.some((c) => c.id === id)) return;
     currentId = id;
+    threadPinned = true;
     void saveStore();
     renderHistory();
     renderThread();
@@ -716,6 +717,7 @@ function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [] };
   chats.unshift(c);
   currentId = c.id;
+  threadPinned = true;
   void saveStore();
   ensureCodeSection();
   // Fresh sessions start clean: all workbench rails closed, folder reset.
@@ -828,6 +830,7 @@ function renderHistory(): void {
     row.append(dot, label, menuBtn);
     row.addEventListener("click", () => {
       currentId = c.id;
+      threadPinned = true;
       void saveStore();
       ensureCodeSection();
       renderHistory();
@@ -876,9 +879,32 @@ function declineCardEl(d: { kind: string; url: string }): HTMLElement {
   return card;
 }
 
+// ── Stick-to-bottom ──────────────────────────────────────────
+// While the agent streams, the thread follows the newest token ONLY if the
+// user is already at the bottom. Scrolling up releases the pin (so history is
+// readable mid-generation); scrolling back to the bottom re-engages it.
+let threadPinned = true;
+let threadScrollWired = false;
+
+function wireThreadScroll(thread: HTMLDivElement): void {
+  if (threadScrollWired) return;
+  threadScrollWired = true;
+  thread.addEventListener("scroll", () => {
+    threadPinned = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48;
+  }, { passive: true });
+}
+
+/** Jump to the newest message and re-engage following (send / chat switch). */
+function pinThreadToBottom(): void {
+  threadPinned = true;
+  const thread = el<HTMLDivElement>("code-thread");
+  if (thread) thread.scrollTop = thread.scrollHeight;
+}
+
 function renderThread(): void {
   const thread = el<HTMLDivElement>("code-thread");
   if (!thread) return;
+  wireThreadScroll(thread);
   thread.textContent = "";
   const inner = document.createElement("div");
   inner.className = "code-thread-inner";
@@ -968,7 +994,7 @@ function renderThread(): void {
     row.appendChild(spinner.el);
     inner.appendChild(row);
   }
-  thread.scrollTop = thread.scrollHeight;
+  if (threadPinned) thread.scrollTop = thread.scrollHeight;
 }
 
 const FILE_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
@@ -1525,6 +1551,8 @@ function send(): void {
   ta.value = "";
   autoGrow(ta);
   void saveStore();
+  // Sending re-engages following: the user's own turn always comes into view.
+  pinThreadToBottom();
   // Working state first so the spinner row + rail dot paint immediately.
   startRunTicker();
   setThinking(true);
@@ -1818,7 +1846,7 @@ function initGlyphhAgentEvents(): void {
     const thread = el<HTMLDivElement>("code-thread");
     if (streamBubble && streamBubble.isConnected) {
       streamBubble.innerHTML = formatMarkdown(streamText);
-      if (thread) thread.scrollTop = thread.scrollHeight;
+      if (thread && threadPinned) thread.scrollTop = thread.scrollHeight;
     } else {
       renderThread(); // first token — adds the live block under the spinner
     }

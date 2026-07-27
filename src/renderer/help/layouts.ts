@@ -14,19 +14,6 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.yo.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
-  const cells: Array<{ slug: string; name: string; url: string; glyphh: boolean; col: number; row: number; sticky?: boolean; tool?: string }> = [];
-  for (const s of layout.splits) {
-    const sticky = !!(s as { sticky?: boolean }).sticky;
-    if (isToolPanel(s.panelId)) {
-      // Workbench tool panel — carry its ViewKind; the receiver builds the slot.
-      cells.push({ slug: s.panelId, name: toolPanelLabel(s.panelId), url: "", glyphh: false, col: s.col ?? 0, row: s.row ?? 0, sticky, tool: s.panelId.slice(5) });
-      continue;
-    }
-    const app = resolveApp(s.panelId);
-    if (!app?.url) continue;
-    cells.push({ slug: app.id, name: app.name, url: app.url, glyphh: false, col: s.col ?? 0, row: s.row ?? 0, sticky });
-  }
-  if (!cells.length) return;
   // A layout also sets the loop + its slot models — apply before the panels
   // tile so the composer is already in the layout's program state.
   if (layout.loop) {
@@ -37,13 +24,17 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
     } catch { /* offline — the panels still open; the loop just stays as-is */ }
   }
   gotoSection("code");   // shows the agent surface + boots the workbench
-  const payload = { cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells };
-  const w = window as unknown as { __wbOpenLayout?: (l: typeof payload) => void };
+  // Open BY NAME so the workbench's recall path runs: the layout's definition
+  // plus the geometry the user last dragged it into (its named memory). The
+  // old path here handed over a pristine payload via __wbOpenLayout, which
+  // skipped recall — every click snapped back to the server's default
+  // placement until an app restart.
+  const w = window as unknown as { __wbOpenLayoutByName?: (n: string) => Promise<boolean> };
   // The workbench init runs on the code section's first load; wait a few
-  // frames for __wbOpenLayout to exist rather than dropping the click.
+  // frames for the hook to exist rather than dropping the click.
   let tries = 0;
   const go = () => {
-    if (w.__wbOpenLayout) w.__wbOpenLayout(payload);
+    if (w.__wbOpenLayoutByName) void w.__wbOpenLayoutByName(layout.name);
     else if (tries++ < 20) requestAnimationFrame(go);
   };
   go();
