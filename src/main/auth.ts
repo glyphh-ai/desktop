@@ -181,9 +181,15 @@ export async function initAuth(): Promise<void> {
     // Scope local state to the restored account BEFORE anything reads it —
     // offline-safe via the sidecar; corrected by the refresh below if stale.
     setActiveUser(readIdentitySidecar());
-    void ensureFreshToken();
-    void refreshAccountState();
-    attachStart();
+    // AWAITED on purpose: a locally-unexpired token can be DEAD server-side
+    // (revoked family). The first account fetch 401s, the SDK's forced refresh
+    // fails, onSignedOut flips `signedIn` — all BEFORE boot decides login vs
+    // workspace, so a ghost "signed in with no data" boot cannot happen. A
+    // plain network failure keeps the session (offline boot still works), and
+    // main.ts races this whole init against a 3s cap so splash never hangs.
+    await ensureFreshToken();
+    await refreshAccountState().catch(() => null);
+    if (signedIn) attachStart();
   }
   if (accountTimer) clearInterval(accountTimer);
   accountTimer = setInterval(() => {
@@ -219,7 +225,9 @@ export function logout(): void {
   try { fs.unlinkSync(SESSION_FILE); } catch { /* already gone */ }
   resetClient(); // the live instance still holds the old session in memory
   if (token) {
-    void fetch(`${SERVER_URL}/api/session/revoke`, {
+    // Per-device logout: revokes THIS session family only. Signing out of the
+    // desktop must never kill the platform's (or any other device's) login.
+    void fetch(`${SERVER_URL}/api/session/logout`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
     }).catch(() => { /* best-effort: the device is signed out regardless */ });
