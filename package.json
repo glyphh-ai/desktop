@@ -3,7 +3,7 @@
   "private": true,
   "productName": "Glyphh Desktop",
   "version": "2.3.9",
-  "description": "Glyphh Desktop — Your AI workspace.",
+  "description": "Glyphh Desktop \u2014 Your AI workspace.",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "WILLIAM_TRAINING_CAPTURE=1 npm run build && ELECTRON_RUN_AS_NODE= electron .",
@@ -42,7 +42,7 @@
     "@types/three": "^0.184.1",
     "@types/ws": "^8.18.1",
     "electron": "^42.5.1",
-    "electron-builder": "^25.1.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "shx": "^0.4.0",
     "typescript": "^5.8.0"
@@ -53,20 +53,20 @@
     "@glyphh/client": "file:../sdk",
     "@google/genai": "^2.10.0",
     "@huggingface/transformers": "^4.1.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@types/cytoscape": "^3.21.9",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "@xyflow/react": "^12.10.2",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "better-sqlite3": "^12.11.1",
     "chart.js": "^4.5.1",
     "cytoscape": "^3.33.3",
     "cytoscape-dagre": "^2.5.0",
     "dagre": "^0.8.5",
-    "dompurify": "^3.2.7",
+    "dompurify": "^3.4.12",
     "dotenv": "^17.4.2",
-    "electron-updater": "^6.8.3",
+    "electron-updater": "^6.8.9",
     "js-yaml": "^4.1.1",
     "kuzu": "^0.11.3",
     "marked": "^14.0.0",
@@ -83,8 +83,14 @@
   },
   "overrides": {
     "monaco-editor": {
-      "dompurify": "^3.4.11"
+      "dompurify": "^3.4.12"
     },
-    "tar": "7.5.16"
+    "tar": "^7.5.22",
+    "sharp": "^0.35.3",
+    "fast-uri": "^3.1.4",
+    "body-parser": "^2.3.0",
+    "adm-zip": "^0.6.0",
+    "brace-expansion": "^5.0.8",
+    "@hono/node-server": "^2.0.5"
   }
 }
