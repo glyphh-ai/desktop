@@ -35,6 +35,7 @@ const MAX_CHARS = 2000; // ≈500 tokens — comfortably inside the 2048 serve w
 let child: ChildProcess | null = null;
 let starting: Promise<boolean> | null = null;
 let downloadFailed = false; // one attempt per launch — no retry storms offline
+let serverUnavailable = false; // spawn failed (no llama-server on this machine) — don't retry per prompt
 
 const base = () => `http://127.0.0.1:${EMBED_PORT}`;
 
@@ -82,6 +83,7 @@ async function ensureEmbedServing(): Promise<boolean> {
   if (await healthy()) return true;
   if (starting) return starting;
   starting = (async () => {
+    if (serverUnavailable) return false;
     const model = await modelPath();
     if (!model) return false;
     try {
@@ -93,6 +95,15 @@ async function ensureEmbedServing(): Promise<boolean> {
         "--embeddings", "--pooling", "mean",
       ], { stdio: ["ignore", "ignore", "ignore"] });
       child = c;
+      // spawn() does NOT throw on a missing binary — it emits an ASYNC 'error'
+      // (ENOENT). Unhandled, that is an uncaught exception that took the whole
+      // app down with the OS crash dialog on every prompt on Windows (no
+      // llama-server there). Missing embedder = memory features off, that's all.
+      c.on("error", (err) => {
+        serverUnavailable = true;
+        if (child === c) child = null;
+        console.warn(`[embeddings] llama-server unavailable (memory features off this session): ${err.message}`);
+      });
       c.on("exit", () => { if (child === c) child = null; });
     } catch { return false; }
     for (let i = 0; i < 30; i++) {

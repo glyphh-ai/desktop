@@ -1349,6 +1349,12 @@ async function boot() {
     broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
     if (mainWindow) panelManager.hideActive(mainWindow);
     setTimeout(() => {
+      // Tear down BEFORE the installer runs: children (ptys, the agent
+      // subprocess) and background handles die here, so when NSIS checks for
+      // a running copy the answer is already no. markQuitting also disarms
+      // the hide-on-close/tray keep-alives for the quit that follows.
+      markQuitting();
+      cleanupAll();
       try { autoUpdater.quitAndInstall(false, true); }
       catch (err) { console.error("[auto-update] quitAndInstall failed:", err); }
     }, 1200);
@@ -1868,7 +1874,25 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "glyphh-preview", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
-app.whenReady().then(boot);
+// ── Single instance ──────────────────────────────────────────
+// Without this, a second launch (or a background-resident copy from an earlier
+// session) runs alongside the first — and the Windows updater then hangs
+// forever on "an existing version is running": the updating instance exits,
+// but NSIS finds the other one. A half-finished install after that is how a
+// mixed-binary tree (agent subprocess access violations) happens. One instance,
+// ever; a second launch fronts the existing window instead.
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+  app.whenReady().then(boot);
+}
 
 // Handle HTTP Basic Auth prompts (401 WWW-Authenticate) from any webContents
 app.on("login", (event, _wc, _details, authInfo, callback) => {
@@ -1947,6 +1971,13 @@ app.on("activate", () => {
 // An explicit Quit (⌘Q, menu, tray) must tear down even in background mode —
 // mark it so the window's close guard stops hiding.
 app.on("before-quit", () => { markQuitting(); });
+
+// A missing helper binary (spawn ENOENT surfaces as an ASYNC uncaught
+// exception) must degrade the feature, never crash the app into the OS error
+// dialog. Anything landing here is a bug to fix — but the user keeps working.
+process.on("uncaughtException", (err) => {
+  console.error("[main] uncaught exception (survived):", err?.stack || err);
+});
 
 app.on("will-quit", () => {
   cleanupAll();
