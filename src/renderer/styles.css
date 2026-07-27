@@ -13545,11 +13545,13 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 [data-ghost="1"] .code-thread::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 4px; }
 
 /* ── Models (org admin) — desktop mirror of platform Configure → Models ── */
-#models-tabs { padding: 0; margin-bottom: 16px; }
+#models-tabs { padding: 0; margin: 8px 0 20px; }
 .mdl-count { color: var(--text-3); font-size: 11px; margin-left: 4px; }
 .mdl-tab { display: none; }
 .mdl-tab.active { display: block; }
-.mdl-tab > .section-desc { margin-bottom: 14px; }
+/* .section-desc's global -16px top margin exists to tuck it under an h2 —
+   inside a tab panel it drags the intro into the tab strip. Reset it. */
+.mdl-tab > .section-desc { margin: 0 0 18px; }
 .mdl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
 .mdl-card {
   display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
