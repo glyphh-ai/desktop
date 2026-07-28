@@ -159,6 +159,10 @@ contextBridge.exposeInMainWorld("yo", {
   windowMinimize: () => ipcRenderer.send("window-minimize"),
   // Ghost Mode overlay dismisses itself (Esc / backdrop click).
   ghostClose: () => ipcRenderer.invoke("ghost-close"),
+  // Ghost Mode overlay drives its own resize grips (no native edge zones on a
+  // transparent frameless window).
+  ghostBounds: () => ipcRenderer.invoke("ghost-bounds") as Promise<{ x: number; y: number; width: number; height: number } | null>,
+  ghostResize: (size: { width?: number; height?: number }) => ipcRenderer.invoke("ghost-resize", size) as Promise<{ ok: boolean }>,
   // Org-admin Models page (mirrors the platform's Configure → Models).
   orgModelsList: () => ipcRenderer.invoke("org-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
   orgModelsSetSupported: (id: string, supported: boolean) => ipcRenderer.invoke("org-models-set-supported", id, supported) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
@@ -454,6 +458,10 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("glyphh-agent-sessions-load") as Promise<{ chats: unknown[]; currentId: string }>,
   glyphhSessionsSave: (chats: unknown[], currentId: string) =>
     ipcRenderer.invoke("glyphh-agent-sessions-save", { chats, currentId }) as Promise<boolean>,
+  // Another window (ghost overlay ↔ main app) saved the shared session store.
+  onGlyphhSessionsUpdated: (callback: () => void) => {
+    ipcRenderer.on("glyphh-sessions-updated", () => callback());
+  },
   glyphhRemember: (fact: string) => ipcRenderer.invoke("glyphh-agent-remember", fact) as Promise<boolean>,
   glyphhCompact: (chatId: string, focus: string) =>
     ipcRenderer.invoke("glyphh-agent-compact", { chatId, focus }) as Promise<{ ok: boolean; reason?: string }>,

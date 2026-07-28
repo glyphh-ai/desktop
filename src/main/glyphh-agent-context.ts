@@ -18,7 +18,7 @@
  * store/UI — summaries only shape the prompt.
  */
 
-import { ipcMain } from "electron";
+import { ipcMain, webContents } from "electron";
 import { currentLoop, resolveRoles, runContextWindow } from "./loop-selections";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
@@ -547,8 +547,14 @@ export async function contextUsage(chatId: string, replyBudget: number): Promise
 
 export function registerGlyphhContextIpc(): void {
   ipcMain.handle("glyphh-agent-sessions-load", () => loadSessions());
-  ipcMain.handle("glyphh-agent-sessions-save", (_e, p: { chats: StoredChat[]; currentId: string }) => {
+  ipcMain.handle("glyphh-agent-sessions-save", (e, p: { chats: StoredChat[]; currentId: string }) => {
     saveSessions(Array.isArray(p?.chats) ? p.chats : [], String(p?.currentId || ""));
+    // Other windows (main app vs ghost overlay) hold their own in-memory copy
+    // of this store — tell them it moved so a ghost-created session shows up
+    // in the main rail immediately, not on next launch.
+    for (const wc of webContents.getAllWebContents()) {
+      if (wc.id !== e.sender.id && !wc.isDestroyed()) wc.send("glyphh-sessions-updated");
+    }
     return true;
   });
   ipcMain.handle("glyphh-agent-context-usage", async (_e, p: { chatId?: string; replyBudget?: number }) => {

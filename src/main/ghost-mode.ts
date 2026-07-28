@@ -164,6 +164,23 @@ export function registerGhostMode(): void {
   } catch { /* accelerator unavailable — non-fatal, ghost just won't hotkey */ }
   // The overlay renderer asks to dismiss itself (Esc / backdrop click).
   ipcMain.handle("ghost-close", () => { closeGhost(); return { ok: true }; });
+  // Renderer-driven resize: transparent frameless windows don't get reliable
+  // native edge-resize zones (the content covers them), so the overlay paints
+  // its own grips and drives the window size through these two channels.
+  ipcMain.handle("ghost-bounds", () => {
+    if (!ghostWin || ghostWin.isDestroyed()) return null;
+    return ghostWin.getBounds();
+  });
+  ipcMain.handle("ghost-resize", (_e, size: { width?: number; height?: number }) => {
+    if (!ghostWin || ghostWin.isDestroyed()) return { ok: false };
+    const b = ghostWin.getBounds();
+    ghostWin.setBounds({
+      ...b,
+      width: Math.max(320, Math.round(Number(size?.width) || b.width)),
+      height: Math.max(240, Math.round(Number(size?.height) || b.height)),
+    });
+    return { ok: true };
+  });
   // The @-mention alias table, flattened for synchronous renderer matching.
   ipcMain.handle("mention-catalog", async () => {
     try { return { ok: true, pairs: await mentionPairs() }; }

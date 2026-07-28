@@ -2478,6 +2478,23 @@ export function initCode(): void {
     // currentId still resumes, and only highlights while on the agent.
     renderHistory();
   })();
+  // Another window (the ghost overlay) saved the shared store — adopt its
+  // list so a ghost-created session appears in this rail immediately. The
+  // CURRENT chat keeps its local object: it may be mid-stream, and the disk
+  // copy of it is never newer than this window's memory.
+  (window.yo as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => {
+    void (async () => {
+      try {
+        const s = await window.yo.glyphhSessionsLoad?.();
+        const disk = ((s?.chats as CodeChat[]) || []);
+        if (!disk.length || !storeLoaded) return;
+        const cur = current();
+        chats = disk.map((d) => (cur && d.id === cur.id ? cur : d));
+        if (cur && !chats.some((c) => c.id === cur.id)) chats.unshift(cur);
+        renderHistory();
+      } catch { /* stale repaint only — next save syncs */ }
+    })();
+  });
   void applyPanelPrefs();
 }
 

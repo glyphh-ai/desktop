@@ -136,8 +136,9 @@ void (async () => {
           border-radius: 10px; overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
           /* OS-frost variant: a real material (vibrancy/acrylic) blurs the app
-             behind, so the scrim is just a light tint over it. */
-          background: rgba(8, 6, 12, 0.38) !important;
+             behind, so the scrim is a tint over it — dark enough that white
+             apps behind don't wash out the transcript. */
+          background: rgba(8, 6, 12, 0.55) !important;
           animation: ghost-in 0.16s ease both;
         }
         /* CSS-frost variant ("Reduce transparency" on, or no material): the OS
@@ -148,7 +149,7 @@ void (async () => {
             url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='linear' slope='0.06'/></feComponentTransfer></filter><rect width='140' height='140' filter='url(%23n)'/></svg>"),
             radial-gradient(120% 90% at 18% 0%, rgba(90, 70, 140, 0.16), transparent 58%),
             radial-gradient(110% 90% at 100% 100%, rgba(50, 40, 90, 0.14), transparent 60%),
-            rgba(10, 8, 16, 0.62) !important;
+            rgba(10, 8, 16, 0.72) !important;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
         [data-ghost="1"] .code-workbench, [data-ghost="1"] .ws-right-rails, [data-ghost="1"] .ws-right-rail,
@@ -157,7 +158,14 @@ void (async () => {
         /* thin top strip to drag the panel over the app, + a close button */
         #ghost-drag { position: fixed; top: 0; left: 0; right: 40px; height: 16px; z-index: 4; -webkit-app-region: drag; }
         #ghost-close { position: fixed; top: 8px; right: 10px; z-index: 6; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag; }
-        #ghost-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }`;
+        #ghost-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+        /* Resize grips — a transparent frameless window gets no reliable
+           native edge zones, so the overlay paints its own (right, bottom,
+           corner) and drives the window size over IPC. */
+        .ghost-grip { position: fixed; z-index: 5; -webkit-app-region: no-drag; }
+        #ghost-grip-e { top: 16px; right: 0; bottom: 12px; width: 8px; cursor: ew-resize; }
+        #ghost-grip-s { left: 12px; right: 12px; bottom: 0; height: 8px; cursor: ns-resize; }
+        #ghost-grip-se { right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }`;
       document.head.appendChild(style);
       const close = () => (window.yo as unknown as { ghostClose?: () => void }).ghostClose?.();
       const drag = document.createElement("div");
@@ -169,6 +177,52 @@ void (async () => {
       closeBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
       closeBtn.addEventListener("click", close);
       document.body.appendChild(closeBtn);
+      // Grip drag → window resize. Bounds are read once at pointerdown and the
+      // target size is absolute (start + delta), so IPC latency can't compound
+      // into drift; moves are throttled to one in-flight call.
+      const ghostApi = window.yo as unknown as {
+        ghostBounds?: () => Promise<{ width: number; height: number } | null>;
+        ghostResize?: (size: { width?: number; height?: number }) => Promise<{ ok: boolean }>;
+      };
+      const addGrip = (id: string, east: boolean, south: boolean): void => {
+        const g = document.createElement("div");
+        g.id = id;
+        g.className = "ghost-grip";
+        g.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          g.setPointerCapture(e.pointerId);
+          const sx = e.screenX, sy = e.screenY;
+          void ghostApi.ghostBounds?.().then((start) => {
+            if (!start) return;
+            let inFlight = false;
+            let next: { width?: number; height?: number } | null = null;
+            const send = (size: { width?: number; height?: number }): void => {
+              if (inFlight) { next = size; return; }
+              inFlight = true;
+              void ghostApi.ghostResize?.(size).then(() => {
+                inFlight = false;
+                if (next) { const n = next; next = null; send(n); }
+              });
+            };
+            const onMove = (ev: PointerEvent): void => send({
+              ...(east ? { width: start.width + (ev.screenX - sx) } : {}),
+              ...(south ? { height: start.height + (ev.screenY - sy) } : {}),
+            });
+            const onUp = (): void => {
+              g.removeEventListener("pointermove", onMove);
+              g.removeEventListener("pointerup", onUp);
+              g.removeEventListener("pointercancel", onUp);
+            };
+            g.addEventListener("pointermove", onMove);
+            g.addEventListener("pointerup", onUp);
+            g.addEventListener("pointercancel", onUp);
+          });
+        });
+        document.body.appendChild(g);
+      };
+      addGrip("ghost-grip-e", true, false);
+      addGrip("ghost-grip-s", false, true);
+      addGrip("ghost-grip-se", true, true);
       document.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
       // The CODING tile's × dismisses the WHOLE overlay (closing just the agent
       // would leave an empty ghost) — capture phase so the slot handler can't
