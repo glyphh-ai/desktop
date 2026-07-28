@@ -12316,6 +12316,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   inset: 0;
   z-index: 100000;
   display: none;
+  flex-direction: column; /* mascot stacked above the spinner */
   align-items: center;
   justify-content: center;
   background: color-mix(in srgb, var(--bg) 78%, transparent);
@@ -13587,3 +13588,17 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .mdl-hint { color: var(--text-3); font-weight: 400; font-size: 10.5px; text-transform: none; letter-spacing: 0; }
 .mdl-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .mdl-card-sub.mono { font-family: var(--font-mono, ui-monospace, monospace); font-size: 10.5px; }
+
+/* The ghost above the cube on the app-level overlay ("Connecting…"). */
+.app-overlay-mascot {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  margin-bottom: 14px;
+  opacity: 0.92;
+  animation: overlay-mascot-bob 2.6s ease-in-out infinite;
+}
+@keyframes overlay-mascot-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}

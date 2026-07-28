@@ -20,6 +20,13 @@ export function showAppOverlay(meta?: string): void {
   if (!overlay) {
     overlay = document.createElement("div");
     overlay.className = "app-overlay";
+    // The ghost above the cube — the wait should feel like Glyphh working,
+    // not a frozen page.
+    const mascot = document.createElement("img");
+    mascot.className = "app-overlay-mascot";
+    mascot.src = "brand/glyphh-mark.png";
+    mascot.alt = "";
+    overlay.appendChild(mascot);
     document.body.appendChild(overlay);
   }
   if (!spinner) {

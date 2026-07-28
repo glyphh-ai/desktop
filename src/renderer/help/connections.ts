@@ -557,12 +557,20 @@ async function loadCatalog(search?: string): Promise<void> {
       const beforeIds = new Set(connections.map((c) => c.id));
       const result = await window.yo.connectorsConnect(app.id);
       if (!result.ok) { nameEl.textContent = result.error || "Failed"; setTimeout(() => { nameEl.textContent = app.name; }, 2500); return; }
-      closeCatalog();
-      await loadConnections();
-      // Open the just-connected connection so the user can name it + choose tools.
-      const fresh = connections.filter((c) => !beforeIds.has(c.id));
-      const target = fresh.find((c) => c.appSlug === app.id) || fresh[0];
-      if (target) void openConnDetail(target.id);
+      // The overlay is already up (the "verifying" phase raised it). The SLOW
+      // tail is here — reloading the list and fetching the detail screen's
+      // tool catalog — so it stays up until the details actually paint.
+      showAppOverlay("Connecting");
+      try {
+        closeCatalog();
+        await loadConnections();
+        // Open the just-connected connection so the user can name it + choose tools.
+        const fresh = connections.filter((c) => !beforeIds.has(c.id));
+        const target = fresh.find((c) => c.appSlug === app.id) || fresh[0];
+        if (target) await openConnDetail(target.id);
+      } finally {
+        hideAppOverlay();
+      }
     });
     catalogGrid.appendChild(card);
   }
@@ -592,8 +600,11 @@ export function initConnections(): void {
   // connection is verified (or ruled cancelled), the standard spinner covers
   // the whole app so the handoff never looks dead.
   window.yo.onConnectorsConnectProgress?.((p) => {
-    if (p.phase === "verifying") showAppOverlay(`Finishing ${p.appSlug}`);
-    else hideAppOverlay();
+    if (p.phase === "verifying") showAppOverlay("Connecting");
+    // A SUCCESSFUL done keeps the overlay up — the connect click handler
+    // drops it once the detail screen has painted (the slow tail lives
+    // there). A failure drops it here so the error is immediately visible.
+    else if (p.phase === "done" && !p.ok) hideAppOverlay();
   });
 
   searchEl.addEventListener("input", () => { connSearch = searchEl.value; renderConnectionsList(); });
