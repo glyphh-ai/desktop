@@ -39,7 +39,10 @@ export async function refreshConnectorCatalog(): Promise<ConnectorTool[]> {
         slug: conn.slug,
         name: t.key,
         description: t.description ?? t.name,
-        inputSchema: {},
+        // The REAL parameter schema (component definition / MCP tools/list).
+        // Empty = none known; the wire layer substitutes a permissive object,
+        // and the model guesses names from the description — the old world.
+        inputSchema: t.inputSchema ?? {},
       })),
     );
     slugs = new Set(cached.map((t) => t.slug));
