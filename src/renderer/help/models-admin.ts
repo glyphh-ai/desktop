@@ -115,6 +115,7 @@ function renderProviders(): void {
       </div>
       <input class="settings-input mdl-key" type="password" autocomplete="new-password" />
       <button type="button" class="action-btn mdl-key-save" disabled></button>
+      <button type="button" class="action-btn mdl-key-remove" title="Remove the saved key — the provider stays enabled on the platform proxy key">Remove key</button>
       <span class="mdl-key-state"></span>
       <label class="settings-toggle" title="">
         <input type="checkbox" ${p.enabledForOrg ? "checked" : ""} />
@@ -142,6 +143,17 @@ function renderProviders(): void {
     };
     saveBtn.addEventListener("click", saveKey);
     keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") saveKey(); });
+    const removeBtn = row.querySelector(".mdl-key-remove") as HTMLButtonElement;
+    removeBtn.classList.toggle("hidden", !p.hasByokKey);
+    removeBtn.addEventListener("click", () => {
+      removeBtn.disabled = true;
+      void window.yo.orgProviderClearKey(p.slug).then((r) => {
+        removeBtn.disabled = false;
+        if (!r.ok) { showError(r.error || "Remove failed"); return; }
+        showError("");
+        void refresh();
+      });
+    });
     const toggle = row.querySelector(".settings-toggle input") as HTMLInputElement;
     toggle.addEventListener("change", () => {
       const call = toggle.checked ? window.yo.orgProviderEnable(p.slug) : window.yo.orgProviderDisable(p.slug);

@@ -385,6 +385,7 @@ declare global {
       orgProvidersList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       orgProviderEnable: (slug: string, key?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgProviderDisable: (slug: string) => Promise<{ ok: boolean; error?: string }>;
+      orgProviderClearKey: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       // @-mention summon (ghost overlay): alias lookup + summon.
       mentionCatalog: () => Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>;
       ghostSummon: (model: string, prompt: string) => Promise<{ ok: boolean }>;

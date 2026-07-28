@@ -168,6 +168,7 @@ contextBridge.exposeInMainWorld("yo", {
   orgProvidersList: () => ipcRenderer.invoke("org-providers-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
   orgProviderEnable: (slug: string, key?: string) => ipcRenderer.invoke("org-provider-enable", slug, key) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   orgProviderDisable: (slug: string) => ipcRenderer.invoke("org-provider-disable", slug) as Promise<{ ok: boolean; error?: string }>,
+  orgProviderClearKey: (slug: string) => ipcRenderer.invoke("org-provider-clear-key", slug) as Promise<{ ok: boolean; error?: string }>,
   // @-mention summon: the alias lookup table + the summon itself.
   mentionCatalog: () => ipcRenderer.invoke("mention-catalog") as Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>,
   ghostSummon: (model: string, prompt: string) => ipcRenderer.invoke("ghost-summon", model, prompt) as Promise<{ ok: boolean }>,

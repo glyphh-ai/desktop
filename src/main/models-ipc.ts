@@ -34,4 +34,6 @@ export function registerModelsIpc(): void {
     wrap(() => getClient().providers.enable(String(slug), key ? String(key) : undefined)));
   ipcMain.handle("org-provider-disable", (_e, slug: string) =>
     wrap(() => getClient().providers.disable(String(slug))));
+  ipcMain.handle("org-provider-clear-key", (_e, slug: string) =>
+    wrap(() => getClient().providers.clearKey(String(slug))));
 }
