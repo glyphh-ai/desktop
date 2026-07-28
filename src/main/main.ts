@@ -1184,6 +1184,10 @@ async function boot() {
 
   let accountLocked = false;
   setHeartbeatObserver((hb) => {
+    // The rail's identity chip repaints from this — without it, logging out
+    // and back in as a DIFFERENT account kept showing the previous user's
+    // name for the whole app run (the renderer filled it once at boot).
+    mainWindow?.webContents.send("account-updated", getAccountInfo());
     // One-shot: lift legacy LOCAL custom MCP servers (the old client-side
     // path) up to the server as custom MCP connections. Runs on heartbeat
     // because it needs an authenticated session; retries next beat on error.

@@ -306,14 +306,18 @@ export function initHelp() {
   document.addEventListener("mousedown", (e) => {
     if (userMenu && !userMenu.contains(e.target as Node) && e.target !== userBtn) closeUserMenu();
   });
-  // Fill the user name from account info (email fallback).
-  void window.yo.getAccountInfo?.().then((info) => {
+  // Fill the user name from account info (email fallback) — and REFILL on
+  // every account update, so logging out and back in as a different user
+  // repaints the rail instead of showing the previous identity all run.
+  const fillRailUser = (info: { email?: string; firstName?: string; lastName?: string } | null): void => {
     const nameEl = document.getElementById("app-rail-user-name");
-    if (nameEl && info) {
-      nameEl.textContent =
-        (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account";
-    }
-  }).catch(() => { /* signed out — keep the placeholder */ });
+    if (!nameEl) return;
+    if (!info) { nameEl.textContent = "Account"; return; }
+    nameEl.textContent =
+      (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account";
+  };
+  void window.yo.getAccountInfo?.().then(fillRailUser).catch(() => { /* signed out — placeholder stays */ });
+  window.yo.onAccountUpdated?.(fillRailUser);
 
   // Initialize all section event handlers
   initDashboardEvents();

@@ -534,6 +534,9 @@ contextBridge.exposeInMainWorld("yo", {
   onShowOnboarding: (callback: () => void) => {
     ipcRenderer.on("show-onboarding", () => callback());
   },
+  onAccountUpdated: (callback: (info: { email: string; firstName: string; lastName: string } | null) => void) => {
+    ipcRenderer.on("account-updated", (_e, info) => callback(info));
+  },
   onAccountLocked: (callback: (info: { status: string; upgradeUrl: string }) => void) => {
     ipcRenderer.on("account-locked", (_event, info) => callback(info));
   },
