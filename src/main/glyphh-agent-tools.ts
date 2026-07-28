@@ -28,6 +28,7 @@ import { gateGlyphhAction, askUserQuestions, type GlyphhActionKind } from "./gly
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { dispatchRelayMethod } from "./relay-client";
+import { getAccountInfo } from "./auth";
 import { getClient } from "./glyphh-client";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
@@ -570,9 +571,18 @@ const TOOLS: ToolDef[] = [
     action: () => ({ kind: "read", title: "List connections" }),
     run: async () => {
       const connections = await getClient().connections.list();
+      // Connections are PER USER + PER ORG — the classic support ticket is a
+      // user who connected an account in the browser as one identity and asks
+      // the agent as another. Always say WHO was checked, so an empty list
+      // reads as "wrong identity", never "production is broken".
+      const acct = getAccountInfo();
+      const who = acct ? `${acct.email}${acct.orgName ? ` in ${acct.orgName}` : ""}` : "the signed-in account";
       const rows = connections.map((c) =>
         `${c.slug || "?"} (${c.name || "?"})${c.enabled ? "" : " — DISABLED"}`);
-      return cap(rows.join("\n") || "(no connected accounts)");
+      if (!rows.length) {
+        return `(no connected accounts for ${who} — connections are per account + per organization; connect from THIS app's Connections page, or switch to the account that holds them)`;
+      }
+      return cap(`Connected accounts for ${who}:\n${rows.join("\n")}`);
     },
   },
   // ── The LIBRARY: loops, skills, agents — the objects /create-* authors. ────
