@@ -570,15 +570,23 @@ const TOOLS: ToolDef[] = [
     doc: "list_connections() — the user's connected accounts (Slack, GitHub, …)",
     action: () => ({ kind: "read", title: "List connections" }),
     run: async () => {
-      const connections = await getClient().connections.list();
+      // BOTH axes, or the answer lies: /api/connections is ORG-SHARED only —
+      // a user whose six Google accounts are all PERSONAL heard "(no connected
+      // accounts)" from this tool while everything was connected and healthy.
+      const [org, personal] = await Promise.all([
+        getClient().connections.list().catch(() => []),
+        getClient().connections.personalList().catch(() => []),
+      ]);
       // Connections are PER USER + PER ORG — the classic support ticket is a
       // user who connected an account in the browser as one identity and asks
       // the agent as another. Always say WHO was checked, so an empty list
       // reads as "wrong identity", never "production is broken".
       const acct = getAccountInfo();
       const who = acct ? `${acct.email}${acct.orgName ? ` in ${acct.orgName}` : ""}` : "the signed-in account";
-      const rows = connections.map((c) =>
-        `${c.slug || "?"} (${c.name || "?"})${c.enabled ? "" : " — DISABLED"}`);
+      const rows = [
+        ...personal.map((c) => `${c.appSlug || "?"} (${c.appName || c.label || "?"}) — personal`),
+        ...org.map((c) => `${c.slug || "?"} (${c.name || "?"}) — org-shared${c.enabled ? "" : " — DISABLED"}`),
+      ];
       if (!rows.length) {
         return `(no connected accounts for ${who} — connections are per account + per organization; connect from THIS app's Connections page, or switch to the account that holds them)`;
       }
