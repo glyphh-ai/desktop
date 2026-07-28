@@ -179,6 +179,16 @@ function collectionOf(db: Database.Database, name: string): { name: string; mode
     { name: string; model: string; dim: number } | undefined;
 }
 
+/** Every collection in an app's vector store, with item counts — the map the
+ *  semantic agent tools (glyphh-agent-semantic.ts) read before building. */
+export function listCollections(slug: string): Array<{ name: string; model: string; dim: number; items: number }> {
+  const db = getVecDb(slug);
+  const rows = db.prepare("SELECT name, model, dim FROM collections ORDER BY name").all() as
+    Array<{ name: string; model: string; dim: number }>;
+  const count = db.prepare("SELECT COUNT(*) AS n FROM items WHERE collection = ?");
+  return rows.map((r) => ({ ...r, items: (count.get(r.name) as { n: number }).n }));
+}
+
 export async function vectorUpsert(slug: string, args: Record<string, unknown>): Promise<{ upserted: number; collection: string }> {
   const collection = String(args.collection || "").trim();
   if (!/^[a-z0-9_-]{1,64}$/i.test(collection)) throw new Error("collection is required ([a-zA-Z0-9_-])");

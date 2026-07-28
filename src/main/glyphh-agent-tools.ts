@@ -29,6 +29,7 @@ import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { dispatchRelayMethod } from "./relay-client";
 import { getAccountInfo } from "./auth";
+import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
 import { getClient } from "./glyphh-client";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
@@ -228,6 +229,14 @@ async function executeConnectorWire(
 // create_app (the one-shot LLM builder) is retired — frontier agents build
 // apps as real projects in the workspace and ship them with update_app.
 const TOOLS: ToolDef[] = [
+  // ── The semantic stack: per-app vector + knowledge-graph primitives the
+  //    RAG and KG loops orchestrate (docs/semantic-stack.md). ──
+  ...SEMANTIC_TOOLS.map((t): ToolDef => ({
+    name: t.name,
+    doc: t.doc,
+    action: t.action,
+    run: (args) => t.run(args),
+  })),
   {
     name: "list_dir",
     doc: "list_dir(path?) — list a folder in the workspace (name, type, size)",
