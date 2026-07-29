@@ -527,10 +527,11 @@ async function init(): Promise<void> {
   //    embedded LibreOffice→PDF when a converter exists, else the platform's
   //    native viewer (Quick Look on macOS, default app on Windows); text →
   //    Monaco, as ever. ──
+  // html/htm are deliberately NOT here: a tree click means EDIT — they open
+  // in Monaco like any source file; the browser panel is for browsing.
   const BROWSER_EXTS = new Set([
     "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif",
     "pdf", "mp4", "webm", "mov", "m4v", "mp3", "wav", "ogg", "m4a", "flac",
-    "html", "htm",
   ]);
   const OFFICE_EXTS = new Set([
     "ppt", "pptx", "doc", "docx", "xls", "xlsx",
@@ -3088,6 +3089,13 @@ async function init(): Promise<void> {
     if (saved && savedKeys && savedKeys === defKeys) {
       maximizedSlotId = null;
       applySavedLayout(saved);
+      // The PIN comes from the DEFINITION, never the snapshot — a memory
+      // saved before the layout gained (or moved) its sticky cell would
+      // otherwise erase the pin, and every .dip/app open stops swapping.
+      const stickySlugs = new Set(cells.filter((c) => c.sticky && !c.tool).map((c) => c.slug.toLowerCase()));
+      rails.flatMap((r) => r.slots).forEach((sl) => {
+        if (sl.view === "app") sl.sticky = stickySlugs.has(sl.slug.toLowerCase());
+      });
       // No saveLayout() here: nothing changed — the memory stays as the user
       // left it, and the next drag re-saves anyway.
       return;
