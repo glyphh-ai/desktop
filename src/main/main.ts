@@ -1335,7 +1335,18 @@ async function boot() {
   const autoUpdateEnabled = getPreference<boolean>("autoUpdate", true);
   autoUpdater.autoDownload = autoUpdateEnabled;
   autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.logger = null;
+  // Every updater step lands in userData/updater.log — "it closed and never
+  // came back" was undiagnosable with the logger nulled.
+  const updaterLogPath = path.join(app.getPath("userData"), "updater.log");
+  const upLog = (level: string, ...args: unknown[]): void => {
+    try { fs.appendFileSync(updaterLogPath, `${new Date().toISOString()} ${level} ${args.map(String).join(" ")}\n`); } catch { /* disk */ }
+  };
+  autoUpdater.logger = {
+    info: (...a: unknown[]) => upLog("INFO", ...a),
+    warn: (...a: unknown[]) => upLog("WARN", ...a),
+    error: (...a: unknown[]) => upLog("ERROR", ...a),
+    debug: (...a: unknown[]) => upLog("DEBUG", ...a),
+  } as unknown as typeof autoUpdater.logger;
 
   // Latest update the feed has offered this session; `ready` once downloaded.
   let pendingUpdate: { version: string; ready: boolean } | null = null;
@@ -1358,19 +1369,28 @@ async function boot() {
     broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
     if (mainWindow) panelManager.hideActive(mainWindow);
     setTimeout(() => {
+      upLog("INFO", "install: begin teardown");
       // Tear down BEFORE the installer runs: children (ptys, the agent
       // subprocess) and background handles die here, so when NSIS checks for
       // a running copy the answer is already no. markQuitting also disarms
       // the hide-on-close/tray keep-alives for the quit that follows.
       markQuitting();
-      cleanupAll();
+      // quitAndInstall closes every window — our window-all-closed handler
+      // then fires a PLAIN app.quit(), and with autoInstallOnAppQuit=false a
+      // plain quit that wins the race exits WITHOUT installing: app closed,
+      // installer never ran, version unchanged. Silence it for this quit.
+      app.removeAllListeners("window-all-closed");
+      // Long backstop: the 4s hard-exit inside cleanupAll killed the process
+      // mid-handoff and aborted the install the same way.
+      cleanupAll(30_000);
       // Hand the single-instance lock back BEFORE the installer runs: the
       // relaunched new version arrives while this process is still dying,
       // and without this it lost the lock race and exited on the spot —
       // "the app closed and never came back" after every update.
       try { app.releaseSingleInstanceLock(); } catch { /* already released */ }
+      upLog("INFO", "install: calling quitAndInstall");
       try { autoUpdater.quitAndInstall(false, true); }
-      catch (err) { console.error("[auto-update] quitAndInstall failed:", err); }
+      catch (err) { upLog("ERROR", "quitAndInstall failed:", err instanceof Error ? err.message : String(err)); }
     }, 1200);
   };
   // The About "Relaunch to Update" button invokes this via the update-install
@@ -2007,13 +2027,15 @@ app.on("will-quit", () => {
 });
 
 let cleanedUp = false;
-function cleanupAll() {
+function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on
-  // its own — a clean teardown exits well before this fires.
-  setTimeout(() => process.exit(0), 4000).unref();
+  // its own — a clean teardown exits well before this fires. The UPDATE path
+  // passes a much longer budget: process.exit(0) during quitAndInstall's
+  // handoff KILLS the installer — the app closed, nothing installed.
+  setTimeout(() => process.exit(0), backstopMs).unref();
   try {
     const tabs = getPreference<string[]>("openTabs", []);
     if (tabs.includes("cypher")) {
