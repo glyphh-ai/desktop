@@ -396,7 +396,7 @@ declare global {
       adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
       glyphhContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;
       glyphhCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
-      glyphhStop: () => Promise<boolean>;
+      glyphhStop: (chatId?: string) => Promise<boolean>;
       onGlyphhAgentDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onGlyphhAgentDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
       onGlyphhAgentError: (cb: (d: { runId: string; error: string }) => void) => void;

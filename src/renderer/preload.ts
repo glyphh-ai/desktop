@@ -506,7 +506,7 @@ contextBridge.exposeInMainWorld("yo", {
     ipcRenderer.invoke("loop-set-role-default", { loopId, role, modelId }) as Promise<{ ok: boolean; error?: string }>,
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
-  glyphhStop: () => ipcRenderer.invoke("glyphh-agent-stop") as Promise<boolean>,
+  glyphhStop: (chatId?: string) => ipcRenderer.invoke("glyphh-agent-stop", { chatId }) as Promise<boolean>,
   onGlyphhAgentDelta: (callback: (d: { runId: string; delta: string }) => void) => {
     ipcRenderer.on("glyphh-agent:delta", (_event, d) => callback(d));
   },

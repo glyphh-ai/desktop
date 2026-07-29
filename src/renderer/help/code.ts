@@ -59,8 +59,8 @@ let glyphhMode: (typeof MODES)[number]["id"] = "ask";
 // Ask dock queue — approvals and agent questions render one at a time in a
 // card docked just above the composer (never inline in the thread).
 type AskDockItem =
-  | { type: "approval"; id: string; kind: string; title: string; detail: string }
-  | { type: "ask"; id: string; questions: Array<{ question: string; options?: string[] }>; answers: string[]; step: number };
+  | { type: "approval"; id: string; kind: string; title: string; detail: string; runId?: string }
+  | { type: "ask"; id: string; questions: Array<{ question: string; options?: string[] }>; answers: string[]; step: number; runId?: string };
 let askQueue: AskDockItem[] = [];
 
 function paintChips(): void {
@@ -557,27 +557,35 @@ let chats: CodeChat[] = [];
 let currentId = "";
 let inited = false;
 let thinking = false;
-// Which chat the agent loop is working (drives the rail dot + spinner row).
-let workingChatId: string | null = null;
 let spinner: GlyphhSpinner | null = null;
-// Active Glyphh stream — text accumulates here (chat-keyed, not DOM-keyed,
-// so switching sessions mid-stream loses nothing).
-let activeRunId: string | null = null;
-let streamChatId: string | null = null;
-let streamText = "";
-let streamBubble: HTMLElement | null = null;
-// Run progress — elapsed · tokens painted onto the spinner every second.
-let runStartAt = 0;
-let runIn = 0;
-let runOut = 0;
-let runCreditsMicro = 0;
+// One live run PER SESSION — sessions are independent in main (concurrent
+// runs) and independent streams here: each chat accumulates its own run
+// (chat-keyed, not DOM-keyed), and the panel paints only the CURRENT chat's.
+interface LiveRun {
+  runId: string | null;        // stamped by glyphhRun's ack, or the first event
+  text: string;                // streamed text since the last commit
+  bubble: HTMLElement | null;  // live DOM block (current chat only)
+  startAt: number;
+  inTok: number;
+  outTok: number;
+  creditsMicro: number;
+  steps: string[];             // timeline breadcrumbs for the Plan rail
+  setupMeta: string;           // first-run model-download status
+}
+const liveRuns = new Map<string, LiveRun>();
 let runTicker: ReturnType<typeof setInterval> | null = null;
-// This run's step lines, mirrored to the workbench Plan rail's timeline.
-let runSteps: string[] = [];
+/** The chat entry that owns a runId. Events can beat the IPC ack that stamps
+ *  the id, so an unmatched runId claims the OLDEST launch still waiting. */
+function runEntry(runId: string): [string, LiveRun] | null {
+  for (const e of liveRuns) { if (e[1].runId === runId) return e; }
+  for (const e of liveRuns) { if (e[1].runId === null) { e[1].runId = runId; return e; } }
+  return null;
+}
+const currentRun = (): LiveRun | null => liveRuns.get(currentId) ?? null;
 
 function broadcastTimeline(running: boolean): void {
   try {
-    document.dispatchEvent(new CustomEvent("glyphh-agent:timeline", { detail: { steps: [...runSteps], running } }));
+    document.dispatchEvent(new CustomEvent("glyphh-agent:timeline", { detail: { steps: [...(currentRun()?.steps ?? [])], running } }));
   } catch { /* no listeners */ }
 }
 
@@ -603,35 +611,23 @@ function fmtElapsed(ms: number): string {
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 }
 
-// While Glyphh sets himself up (first-run model download), the setup
-// line owns the spinner meta; the token meter takes over once ready.
-let setupMeta = "";
-
 function paintRunMeta(): void {
-  if (!runStartAt) return;
-  if (setupMeta) { spinner?.setMeta(setupMeta); return; }
-  const io = runIn + runOut > 0 ? ` · ↑${fmtTok(runIn)} ↓${fmtTok(runOut)}` : "";
-  const cr = runCreditsMicro > 0 ? ` · ${fmtCredits(runCreditsMicro)}` : "";
-  spinner?.setMeta(`${fmtElapsed(Date.now() - runStartAt)}${io}${cr}`);
+  const run = currentRun();
+  if (!run) return;
+  // While Glyphh sets himself up (first-run model download), the setup
+  // line owns the spinner meta; the token meter takes over once ready.
+  if (run.setupMeta) { spinner?.setMeta(run.setupMeta); return; }
+  const io = run.inTok + run.outTok > 0 ? ` · ↑${fmtTok(run.inTok)} ↓${fmtTok(run.outTok)}` : "";
+  const cr = run.creditsMicro > 0 ? ` · ${fmtCredits(run.creditsMicro)}` : "";
+  spinner?.setMeta(`${fmtElapsed(Date.now() - run.startAt)}${io}${cr}`);
 }
 
-function startRunTicker(): void {
-  runStartAt = Date.now();
-  runIn = 0;
-  runOut = 0;
-  runCreditsMicro = 0;
-  runSteps = [];
-  broadcastTimeline(true);
-  if (runTicker) clearInterval(runTicker);
-  runTicker = setInterval(paintRunMeta, 1000);
+/** One ticker serves every live run; it stops when the last one lands. */
+function ensureRunTicker(): void {
+  if (!runTicker) runTicker = setInterval(paintRunMeta, 1000);
 }
-
-function stopRunTicker(): void {
-  if (runTicker) { clearInterval(runTicker); runTicker = null; }
-  runStartAt = 0;
-  runIn = 0;
-  runOut = 0;
-  runCreditsMicro = 0;
+function stopRunTickerIfIdle(): void {
+  if (liveRuns.size === 0 && runTicker) { clearInterval(runTicker); runTicker = null; }
 }
 let menuEl: HTMLDivElement | null = null;
 
@@ -693,8 +689,10 @@ function ensureCodeSection(): void {
     currentId = id;
     threadPinned = true;
     void saveStore();
+    syncThinking();   // this session's own run state, not the last one's
     renderHistory();
     renderThread();
+    broadcastTimeline(!!currentRun());
   },
   startNew: (): void => newChat(),
 };
@@ -719,6 +717,7 @@ function newChat(): void {
   currentId = c.id;
   threadPinned = true;
   void saveStore();
+  syncThinking();   // fresh session — no run of its own yet
   ensureCodeSection();
   // Fresh sessions start clean: all workbench rails closed, folder reset.
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession?.();
@@ -819,7 +818,7 @@ function renderHistory(): void {
     // selection-gated title click fought the row's own select handler and
     // never reliably fired. The label is now just a label.
     const dot = document.createElement("span");
-    const working = thinking && workingChatId === c.id;
+    const working = liveRuns.has(c.id);
     dot.className = "code-chat-dot" + (working ? " working" : "");
     dot.title = working ? "Working" : "Idle";
     const menuBtn = document.createElement("button");
@@ -939,7 +938,7 @@ function renderThread(): void {
       blocks.push({ tool: false, msg: m });
     }
   }
-  const liveRun = thinking && workingChatId === c.id;
+  const liveRun = liveRuns.get(c.id) ?? null;
   blocks.forEach((b, i) => {
     if (!b.tool) {
       // User = right-aligned pill; agent = markdown transcript text (no
@@ -979,13 +978,13 @@ function renderThread(): void {
   // execution and inter-turn waits, not just before the first token).
   spinner?.destroy();
   spinner = null;
-  streamBubble = null;
-  if (thinking && workingChatId === c.id) {
-    if (streamText && streamChatId === c.id) {
-      streamBubble = document.createElement("div");
-      streamBubble.className = "code-agent-text";
-      streamBubble.innerHTML = formatMarkdown(streamText);
-      inner.appendChild(streamBubble);
+  if (liveRun) {
+    liveRun.bubble = null;
+    if (liveRun.text) {
+      liveRun.bubble = document.createElement("div");
+      liveRun.bubble.className = "code-agent-text";
+      liveRun.bubble.innerHTML = formatMarkdown(liveRun.text);
+      inner.appendChild(liveRun.bubble);
     }
     spinner = createGlyphhSpinner();
     paintRunMeta();
@@ -1389,7 +1388,6 @@ function autoGrow(ta: HTMLTextAreaElement): void {
 
 function setThinking(on: boolean): void {
   thinking = on;
-  workingChatId = on ? (current()?.id ?? null) : null;
   if (!on) { spinner?.destroy(); spinner = null; }
   const send = el("code-send");
   send?.classList.toggle("thinking", on);
@@ -1397,10 +1395,16 @@ function setThinking(on: boolean): void {
   renderHistory(); // rail dots track the loop state
 }
 
+/** `thinking` is VIEW state: whether the CURRENT chat is running. Re-derive
+ *  on session switches so each session shows its own spinner and composer. */
+function syncThinking(): void {
+  setThinking(!!currentRun());
+}
+
 function stopThinking(): void {
-  // Abort the stream — main answers with glyphh-agent:done { stopped: true },
-  // which finalizes whatever streamed so far.
-  void window.yo.glyphhStop?.();
+  // Abort the CURRENT chat's stream — main answers with glyphh-agent:done
+  // { stopped: true } for that run; other sessions keep working.
+  void window.yo.glyphhStop?.(currentId);
 }
 
 /** `.dip <app-or-layout>` — the ONE mechanism, callable from any input in the
@@ -1554,19 +1558,22 @@ function send(): void {
   // Sending re-engages following: the user's own turn always comes into view.
   pinThreadToBottom();
   // Working state first so the spinner row + rail dot paint immediately.
-  startRunTicker();
+  liveRuns.set(c.id, {
+    runId: null, text: "", bubble: null, startAt: Date.now(),
+    inTok: 0, outTok: 0, creditsMicro: 0, steps: [], setupMeta: "",
+  });
+  ensureRunTicker();
+  broadcastTimeline(true);
   setThinking(true);
   renderHistory();
   renderThread();
-  streamChatId = c.id;
-  streamText = "";
   refreshCtxMeter();
   // Main assembles the prompt from the store — the save must land first.
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
   const launch = (retried: boolean): Promise<void> =>
     window.yo.glyphhRun({ chatId: c.id, attachments })
-      .then((r) => { activeRunId = r.runId; })
+      .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("NO_WORKDIR") && !retried) {
@@ -1574,10 +1581,10 @@ function send(): void {
           return launch(true);
         }
         if (msg.includes("NO_WORKDIR")) {
-          finishRun("⚠ Pick a working folder to start — Glyphh works inside the folder you choose (folder button at the top of this pane).");
+          finishRun(c.id, "⚠ Pick a working folder to start — Glyphh works inside the folder you choose (folder button at the top of this pane).");
           return;
         }
-        finishRun(`⚠ ${msg}`);
+        finishRun(c.id, `⚠ ${msg}`);
       });
   void saveStore().then(() => launch(false));
 }
@@ -1592,10 +1599,11 @@ const STOP_LINES = [
   "Stillness. The trail so far is saved.",
 ];
 
-/** Land the run's outcome in its chat (found by id — the user may have
- *  switched sessions mid-stream) and reset the working state. */
-function finishRun(text: string, stopped = false): void {
-  const chat = chats.find((ch) => ch.id === streamChatId);
+/** Land a run's outcome in ITS chat (the user may be looking at another
+ *  session) and reset only that run's state — other sessions keep working. */
+function finishRun(chatId: string, text: string, stopped = false): void {
+  const run = liveRuns.get(chatId);
+  const chat = chats.find((ch) => ch.id === chatId);
   if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now() });
   if (chat && stopped) {
     chat.messages.push({
@@ -1606,19 +1614,20 @@ function finishRun(text: string, stopped = false): void {
     });
   }
   void saveStore();
-  activeRunId = null;
-  streamChatId = null;
-  streamText = "";
-  streamBubble = null;
-  askQueue = [];
+  liveRuns.delete(chatId);
+  // This run's pending cards vanish; other runs' stay queued.
+  if (run?.runId) askQueue = askQueue.filter((q) => q.runId !== run.runId);
   paintAskDock();
-  broadcastTimeline(false);
-  stopRunTicker();
-  setThinking(false);
-  renderThread();
-  refreshCtxMeter();
-  // Anything typed while this run was in flight goes now, as its own turn.
-  flushPendingNotes();
+  stopRunTickerIfIdle();
+  renderHistory();   // the rail dot goes idle even for a background session
+  if (chatId === currentId) {
+    broadcastTimeline(false);
+    setThinking(false);
+    renderThread();
+    refreshCtxMeter();
+    // Anything typed while this run was in flight goes now, as its own turn.
+    flushPendingNotes();
+  }
 }
 
 // ── Ask dock — approvals + agent questions above the composer ─────────────
@@ -1764,11 +1773,11 @@ function paintAskDock(): void {
 function initGlyphhAgentEvents(): void {
   window.yo.onGlyphhAgentSetup?.((d) => {
     if (d.phase === "downloading") {
-      setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
+      for (const r of liveRuns.values()) r.setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
     } else if (d.phase === "manifest") {
-      setupMeta = "Fetching model manifest…";
+      for (const r of liveRuns.values()) r.setupMeta = "Fetching model manifest…";
     } else if (d.phase === "building") {
-      setupMeta = String((d as { text?: string }).text || "");
+      for (const r of liveRuns.values()) r.setupMeta = String((d as { text?: string }).text || "");
     } else if (d.phase === "preview") {
       const { html, label } = d as { html?: string; label?: string };
       if (html) {
@@ -1777,50 +1786,54 @@ function initGlyphhAgentEvents(): void {
         (window as unknown as { __wbPreviewHtml?: (h: string, l?: string) => void }).__wbPreviewHtml?.(doc, label);
       }
     } else {
-      setupMeta = "";
+      for (const r of liveRuns.values()) r.setupMeta = "";
     }
     paintRunMeta();
   });
   window.yo.onGlyphhAgentCredits?.((d) => {
-    if (activeRunId && d.runId !== activeRunId) return;
-    runCreditsMicro = d.creditsMicro;
-    paintRunMeta();
+    const e = runEntry(d.runId);
+    if (!e) return;
+    e[1].creditsMicro = d.creditsMicro;
+    if (e[0] === currentId) paintRunMeta();
   });
   window.yo.onGlyphhAgentProgress?.((d) => {
-    if (activeRunId && d.runId !== activeRunId) return;
-    runIn = d.inTokens;
-    runOut = d.outTokens;
-    paintRunMeta();
+    const e = runEntry(d.runId);
+    if (!e) return;
+    e[1].inTok = d.inTokens;
+    e[1].outTok = d.outTokens;
+    if (e[0] === currentId) paintRunMeta();
   });
   window.yo.onGlyphhAgentApproval?.((a) => {
     askQueue.push({ type: "approval", ...a });
     paintAskDock();
   });
   window.yo.onGlyphhAgentAsk?.((d) => {
-    askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0 });
+    askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0, runId: (d as { runId?: string }).runId });
     paintAskDock();
   });
   // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
   // so a re-render or restart keeps the run's story).
   window.yo.onGlyphhAgentTool?.((d) => {
-    if (activeRunId && d.runId !== activeRunId) return;
-    const chat = chats.find((ch) => ch.id === streamChatId);
+    const e = runEntry(d.runId);
+    if (!e) return;
+    const [runChatId, run] = e;
+    const chat = chats.find((ch) => ch.id === runChatId);
     if (!chat) return;
-    if (d.phase === "start") runSteps.push(`⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`);
-    else if (d.phase === "done" && runSteps.length) {
-      runSteps[runSteps.length - 1] = `${d.denied || d.failed ? "✕" : "✓"} ${d.title || d.name}`;
+    if (d.phase === "start") run.steps.push(`⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`);
+    else if (d.phase === "done" && run.steps.length) {
+      run.steps[run.steps.length - 1] = `${d.denied || d.failed ? "✕" : "✓"} ${d.title || d.name}`;
     }
-    broadcastTimeline(true);
+    if (runChatId === currentId) broadcastTimeline(true);
     if (d.phase === "start") {
       // COMMIT the text streamed so far before appending the tool row, and
       // start a fresh live block after it. Without this the live bubble stays
       // pinned at the bottom while tool rows insert above it — the run reads
       // as spooling upward and "stuck" even though it is advancing. The real
       // order is text → tool → more text, flowing DOWN the page.
-      if (streamText.trim()) {
-        chat.messages.push({ role: "assistant", text: streamText, at: Date.now() });
-        streamText = "";
-        streamBubble = null;
+      if (run.text.trim()) {
+        chat.messages.push({ role: "assistant", text: run.text, at: Date.now() });
+        run.text = "";
+        run.bubble = null;
       }
       chat.messages.push({ role: "assistant", kind: "tool", text: `⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`, at: Date.now() });
     } else if (d.phase === "done") {
@@ -1835,7 +1848,7 @@ function initGlyphhAgentEvents(): void {
       else chat.messages.push({ role: "assistant", kind: "tool", text, at: Date.now() });
     }
     void saveStore();
-    if (currentId === streamChatId) renderThread();
+    if (currentId === runChatId) renderThread();
   });
   // Streamed tokens re-render the live block as MARKDOWN, throttled to one
   // paint per animation frame — smooth at token rate, code fences and lists
@@ -1843,40 +1856,44 @@ function initGlyphhAgentEvents(): void {
   let streamPaintQueued = false;
   const paintStream = () => {
     streamPaintQueued = false;
+    const run = currentRun();
     const thread = el<HTMLDivElement>("code-thread");
-    if (streamBubble && streamBubble.isConnected) {
-      streamBubble.innerHTML = formatMarkdown(streamText);
+    if (run?.bubble && run.bubble.isConnected) {
+      run.bubble.innerHTML = formatMarkdown(run.text);
       if (thread && threadPinned) thread.scrollTop = thread.scrollHeight;
     } else {
       renderThread(); // first token — adds the live block under the spinner
     }
   };
   window.yo.onGlyphhAgentDelta?.((d) => {
-    if (activeRunId && d.runId !== activeRunId) return;
-    streamText += d.delta;
-    if (currentId === streamChatId && !streamPaintQueued) {
+    const e = runEntry(d.runId);
+    if (!e) return;
+    e[1].text += d.delta;
+    if (currentId === e[0] && !streamPaintQueued) {
       streamPaintQueued = true;
       requestAnimationFrame(paintStream);
     }
   });
   window.yo.onGlyphhAgentDone?.((d) => {
-    if (activeRunId && d.runId !== activeRunId) return;
-    finishRun(streamText, d.stopped);
+    const e = runEntry(d.runId);
+    if (!e) return;
+    finishRun(e[0], e[1].text, d.stopped);
   });
   window.yo.onGlyphhAgentError?.((d) => {
-    if (activeRunId && d.runId !== activeRunId) return;
+    const e = runEntry(d.runId);
+    if (!e) return;
+    const [runChatId, run] = e;
     // A picked-frontier decline (out of credits / role / rate) arrives with a
     // %%GLYPHHERR:<kind>:<url>%% marker — render a styled card, not the raw
     // "API Error: 400 …" echo. Look in both the stream buffer and the error.
-    const marker = /%%GLYPHHERR:([a-z]+):([^%]*)%%/.exec(`${streamText}\n${d.error}`);
+    const marker = /%%GLYPHHERR:([a-z]+):([^%]*)%%/.exec(`${run.text}\n${d.error}`);
     if (marker) {
-      const chat = chats.find((ch) => ch.id === streamChatId);
+      const chat = chats.find((ch) => ch.id === runChatId);
       if (chat) chat.messages.push({ role: "assistant", kind: "decline", text: "", decline: { kind: marker[1], url: marker[2].trim() }, at: Date.now() });
-      streamText = "";
-      finishRun("");
+      finishRun(runChatId, "");
       return;
     }
-    finishRun(streamText ? `${streamText}\n\n⚠ ${d.error}` : `⚠ ${d.error}`);
+    finishRun(runChatId, run.text ? `${run.text}\n\n⚠ ${d.error}` : `⚠ ${d.error}`);
   });
 }
 

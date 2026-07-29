@@ -63,15 +63,20 @@ function workdir(): string {
   return wd;
 }
 
-// Paths the user attached to the CURRENT run (composer chips) — attaching
-// is consent, so reads of these gate as plain reads even when they live
-// outside the working folder. Replaced wholesale at every run start.
-let runAttachments: string[] = [];
-export function setRunAttachments(paths: string[]): void {
-  runAttachments = paths.filter(Boolean);
+// Paths the user attached via composer chips — attaching is consent, so
+// reads of these gate as plain reads even outside the working folder.
+// Attach = consent, scoped to the run that carried it. Concurrent runs each
+// hold their own whitelist; the effective set is the union of LIVE runs (a
+// path the user attached anywhere is fair to read until that run ends).
+const runAttachments = new Map<string, string[]>();
+export function setRunAttachments(runId: string, paths: string[]): void {
+  runAttachments.set(runId, paths.filter(Boolean));
+}
+export function clearRunAttachments(runId: string): void {
+  runAttachments.delete(runId);
 }
 const isAttachedPath = (abs: string) =>
-  runAttachments.some((p) => abs === p || abs.startsWith(p + sep));
+  [...runAttachments.values()].some((paths) => paths.some((p) => abs === p || abs.startsWith(p + sep)));
 
 /** Resolve inside the working folder; escapes are flagged, not thrown —
  *  the gate decides (dangerous), so bypass mode can still allow them. */

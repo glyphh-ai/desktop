@@ -28,7 +28,7 @@ import { glyphhPath } from "./app-paths";
 import { runModel, runMaxOutputTokens, currentLoop, resolveRoles } from "./loop-selections";
 import { glyphhMode, registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
-import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, type ConnectorWireDef } from "./glyphh-agent-tools";
+import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, clearRunAttachments, type ConnectorWireDef } from "./glyphh-agent-tools";
 import { selectConnectorTools } from "./tool-vectors";
 import {
   pickAttachments, classifyPaths, saveClipboardImage, validAttachments,
@@ -46,7 +46,10 @@ import { startInterceptor, type Interceptor } from "@glyphh/client/runtime";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
-let active: { id: string; ctrl: AbortController } | null = null;
+// One live run PER SESSION (chatId) — sessions are independent: an agent
+// working in one session never blocks a send in another. `stop` targets a
+// chat; shutdown aborts everything.
+const activeRuns = new Map<string, { id: string; ctrl: AbortController }>();
 
 function baseUrl(): string {
   return String(getPreference("glyphhBaseUrl", "http://127.0.0.1:8089")).replace(/\/+$/, "");
@@ -56,10 +59,6 @@ function baseUrl(): string {
  *  turns through this. */
 export function glyphhBaseUrl(): string {
   return baseUrl();
-}
-
-export function isGlyphhRunActive(): boolean {
-  return !!active;
 }
 
 // ── The agent's model endpoint ─────────────────────────────────────────────
@@ -74,9 +73,11 @@ export function isGlyphhRunActive(): boolean {
 // a provider key, only the interceptor's per-process handle.
 let interceptor: Interceptor | null = null;
 
-// The interceptor is one-per-process but a run is one-at-a-time, so the active
-// run installs a sink here and the trailing usage frame (per turn) routes to it.
-let usageSink: ((u: { creditsMicro: number; inputTokens: number; outputTokens: number }) => void) | null = null;
+// The interceptor is one-per-process; each run installs a sink keyed by its
+// runId, and the usage frame routes by the x-glyphh-run tag the subprocess
+// sends. An untagged frame (older subprocess) falls back to the only sink
+// when exactly one run is live — ambiguous otherwise, so it drops.
+const usageSinks = new Map<string, (u: { creditsMicro: number; inputTokens: number; outputTokens: number }) => void>();
 
 /** The hosted harness speaks as "Claude Code" and hints at ITS OWN CLI flags —
  *  neither exists for Glyphh users. Re-voice harness errors as Glyphh's own
@@ -136,7 +137,10 @@ async function ensureInterceptor(): Promise<Interceptor> {
   interceptor = await startInterceptor({
     client: getClient(),
     onError: (err: Error) => console.warn("[glyphh-agent] model turn failed:", err.message),
-    onUsage: (u) => usageSink?.(u),
+    onUsage: (u, runId) => {
+      const sink = runId ? usageSinks.get(runId) : (usageSinks.size === 1 ? [...usageSinks.values()][0] : undefined);
+      sink?.(u);
+    },
   });
   return interceptor;
 }
@@ -152,7 +156,7 @@ async function ensureInterceptor(): Promise<Interceptor> {
 /** Abort any in-flight run and stop the on-device embedder. Wired to app
  *  will-quit — nothing outlives the client. */
 export function shutdownGlyphh(): void {
-  active?.ctrl.abort();
+  for (const run of activeRuns.values()) run.ctrl.abort();
   stopEmbedServer();
   void interceptor?.close().catch(() => { /* already down */ });
   interceptor = null;
@@ -180,25 +184,27 @@ export function registerGlyphhIpc(): void {
   registerGlyphhPermissionIpc();
   registerGlyphhContextIpc();
   ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[] }) => {
-    if (active) throw new Error("a run is already in progress");
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
+    // Only the SAME session serializes — other sessions run concurrently.
+    if (activeRuns.has(chatId)) throw new Error("this session is already running — stop it or wait");
     // Sessions run inside a folder the USER chose — never ~/, never the
     // launch cwd. The renderer turns this into the folder picker.
     if (!getExplicitWorkingDirectory()) throw new Error("NO_WORKDIR: pick a working folder to start");
     // Composer attachments: validate paths, then whitelist them for reads
     // (attach = consent) for the duration of this run.
     const attachments = validAttachments(payload?.attachments);
-    setRunAttachments(attachments.map((a) => a.path));
     // Assembly is token-true (needs the server for /tokenize) — bring the
     // runtime up first so counting and completion share one warm process.
     const replyBudget = await runMaxOutputTokens();
     const messages = await assemblePrompt(chatId, replyBudget);
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    setRunAttachments(id, attachments.map((a) => a.path));
     const ctrl = new AbortController();
-    active = { id, ctrl };
+    activeRuns.set(chatId, { id, ctrl });
     void sdkRun(e.sender, id, messages, ctrl, attachments, chatId).finally(() => {
-      if (active?.id === id) active = null;
+      if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
+      clearRunAttachments(id);
       // Fold history AFTER the reply lands — a send never waits on it.
       // (The renderer saves the assistant turn right away; a short delay
       // lets that write land before compaction reads the store.)
@@ -216,14 +222,16 @@ export function registerGlyphhIpc(): void {
   });
 
   ipcMain.handle("glyphh-agent-compact", async (_e, p: { chatId?: string; focus?: string }) => {
-    if (active) return { ok: false, reason: "wait for the current run to finish" };
     const chatId = String(p?.chatId || "");
     if (!chatId) return { ok: false, reason: "chatId is required" };
+    if (activeRuns.has(chatId)) return { ok: false, reason: "wait for this session's run to finish" };
     return compactNow(chatId, await runMaxOutputTokens(), (msgs, opts) => glyphhComplete(msgs, opts), String(p?.focus || ""));
   });
 
-  ipcMain.handle("glyphh-agent-stop", () => {
-    active?.ctrl.abort();
+  ipcMain.handle("glyphh-agent-stop", (_e, p?: { chatId?: string }) => {
+    const chatId = String(p?.chatId || "");
+    if (chatId) activeRuns.get(chatId)?.ctrl.abort();
+    else for (const run of activeRuns.values()) run.ctrl.abort();   // legacy callers: stop everything
     return true;
   });
 
@@ -351,10 +359,10 @@ async function sdkRun(
   // across the run's turns and emit the running total. Credits are the server's
   // computed PRICE — the number the user is billed — not the vendor's raw cost.
   let runCreditsMicro = 0;
-  usageSink = (u) => {
+  usageSinks.set(runId, (u) => {
     runCreditsMicro += u.creditsMicro || 0;
     emit("glyphh-agent:credits", { creditsMicro: runCreditsMicro });
-  };
+  });
 
   const defs = glyphhToolDefs();
   // Connected accounts ride as FIRST-CLASS tools with their real input
@@ -503,6 +511,9 @@ async function sdkRun(
         env: {
           ...process.env,
           ANTHROPIC_BASE_URL: endpoint.url,
+          // Tag this subprocess's requests so the shared interceptor can
+          // attribute usage to THIS run when several sessions run at once.
+          ANTHROPIC_CUSTOM_HEADERS: `x-glyphh-run: ${runId}`,
           // The interceptor's per-process handle, not a provider key: the real
           // credential is decrypted server-side and never reaches this machine.
           ANTHROPIC_API_KEY: endpoint.apiKey,
@@ -597,7 +608,7 @@ async function sdkRun(
     else emit("glyphh-agent:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) {
-      usageSink = null;
+      usageSinks.delete(runId);
       emit("glyphh-agent:done", { stopped: true });
       captureRun({ kind: "agent", mode: glyphhMode(), turnsUsed, stopped: true, messages: base });
       return;
@@ -607,7 +618,7 @@ async function sdkRun(
   }
   // Stop routing usage frames to a finished run's emit — the next run installs
   // its own sink, but a stray late frame must not paint a dead panel.
-  usageSink = null;
+  usageSinks.delete(runId);
 
   // The flywheel: transcript + outcome are next-era training data (the
   // tripwire corpus — frontier turns teach the local model by example).
