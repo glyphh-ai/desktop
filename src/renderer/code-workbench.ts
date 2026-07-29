@@ -126,7 +126,7 @@ interface AppSlot {
 }
 type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | AppSlot;
 
-interface Rail { id: number; slots: Slot[]; prefWidth?: number }
+interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
 function makeTermId(): string {
   return `wbt-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
@@ -349,7 +349,7 @@ async function init(): Promise<void> {
   // Monaco is spawned on demand by clicking a file in the tree — its tabs are
   // runtime state and would feel surprising to restore.
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
-  type SavedLayout = { rails: { width?: number; topSlotHeight?: number; views: SavedView[] }[] };
+  type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; launchConfig?: Record<string, unknown> | null };
   type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
 
@@ -378,6 +378,8 @@ async function init(): Promise<void> {
           // this when the container can't fit everything at preference.
           width: r.prefWidth,
           topSlotHeight: r.slots.length === 2 ? topHeightByIdx.get(i) : undefined,
+          banner: r.banner,
+          heightFrac: r.heightFrac,
           // Monaco persists as the PANE only — tabs are runtime state; the
           // editor comes back empty, ready for the Files tree.
           views: r.slots.map((s): SavedView =>
@@ -409,7 +411,7 @@ async function init(): Promise<void> {
         }
       }
       if (slots.length) {
-        rails.push({ id: nextRailId++, slots, prefWidth: savedRail.width });
+        rails.push({ id: nextRailId++, slots, prefWidth: savedRail.width, banner: savedRail.banner, heightFrac: savedRail.heightFrac });
       }
     }
     renderRails();
@@ -452,10 +454,12 @@ async function init(): Promise<void> {
     const container = document.getElementById("code-wb-rails");
     if (!container || rails.length === 0) return;
     const containerW = railsBudget();
-    // (rails.length + 1) drop strips × 6px each.
-    const stripsW = (rails.length + 1) * 6;
+    // Bands span the full width and stay out of the apportioning entirely;
+    // only the column rails (and their drop strips) share the budget.
+    const sized = rails.filter((r) => !r.banner);
+    const stripsW = (sized.length + 1) * 6;
     const available = Math.max(0, containerW - stripsW);
-    const prefs = rails.map((r) => r.prefWidth ?? 320);
+    const prefs = sized.map((r) => r.prefWidth ?? 320);
     const widths = prefs.slice();
     let total = widths.reduce((a, b) => a + b, 0);
     for (let i = widths.length - 1; i >= 0 && total > available; i--) {
@@ -476,8 +480,12 @@ async function init(): Promise<void> {
     const railsFill = maximizedSlotId !== null || codingHosted();
     if (railsFill && total < available && widths.length) widths[widths.length - 1] += available - total;
     const railEls = container.querySelectorAll<HTMLElement>(".ws-right-rail");
-    rails.forEach((_r, idx) => {
-      if (railEls[idx]) railEls[idx].style.width = widths[idx] + "px";
+    let si = 0;
+    rails.forEach((r, idx) => {
+      const el = railEls[idx];
+      if (!el) return;
+      if (r.banner) { el.style.width = ""; return; }
+      el.style.width = widths[si++] + "px";
     });
   }
 
@@ -804,11 +812,25 @@ async function init(): Promise<void> {
       if (slotEl.dataset.slotId && slotEl.style.flex) savedFlex.set(slotEl.dataset.slotId, slotEl.style.flex);
     });
     container.innerHTML = "";
+    // Bands (full-width spanning rails) sit ABOVE/BELOW the column row: the
+    // container flips to a column flex and the normal rails live in an inner
+    // .ws-rails-row. Without bands the structure is exactly as before.
+    const hasBanner = rails.some((r) => r.banner);
+    container.classList.toggle("has-banner", hasBanner);
+    const rowHost = hasBanner ? document.createElement("div") : container;
+    if (hasBanner) rowHost.className = "ws-rails-row";
+    rails.forEach((rail, idx) => { if (rail.banner === "top") container.appendChild(renderRail(rail, idx)); });
+    if (hasBanner) container.appendChild(rowHost);
+    const topCount = rails.filter((r) => r.banner === "top").length;
+    let normalPos = 0;
     rails.forEach((rail, idx) => {
-      container.appendChild(makeRailDropStrip(idx));
-      container.appendChild(renderRail(rail, idx));
+      if (rail.banner) return;
+      rowHost.appendChild(makeRailDropStrip(topCount + normalPos));
+      rowHost.appendChild(renderRail(rail, idx));
+      normalPos++;
     });
-    container.appendChild(makeRailDropStrip(rails.length));
+    rowHost.appendChild(makeRailDropStrip(topCount + normalPos));
+    rails.forEach((rail, idx) => { if (rail.banner === "bottom") container.appendChild(renderRail(rail, idx)); });
     container.querySelectorAll<HTMLElement>(".ws-rail-slot").forEach((slotEl) => {
       const kept = slotEl.dataset.slotId && savedFlex.get(slotEl.dataset.slotId);
       if (kept) slotEl.style.flex = kept;
@@ -852,15 +874,21 @@ async function init(): Promise<void> {
 
   function renderRail(rail: Rail, railIdx: number): HTMLElement {
     const railEl = document.createElement("aside");
-    railEl.className = "ws-right-rail";
+    railEl.className = "ws-right-rail" + (rail.banner ? " ws-rail-banner" : "");
     railEl.dataset.railId = String(rail.id);
-    // Width drag handle on the RIGHT edge — drag right grows the rail, drag
-    // left shrinks it. Intuitive for left-to-right rails.
-    const handle = document.createElement("div");
-    handle.className = "ws-resize-v";
-    handle.style.right = "0";
-    railEl.appendChild(handle);
-    wireRailWidthResize(handle, railEl);
+    if (rail.banner) {
+      // A band spans the full width; its share of the height comes from the
+      // layout's rowHeights (40% default). No width handle — width is fixed.
+      railEl.style.flex = `0 0 ${((rail.heightFrac ?? 0.4) * 100).toFixed(1)}%`;
+    } else {
+      // Width drag handle on the RIGHT edge — drag right grows the rail, drag
+      // left shrinks it. Intuitive for left-to-right rails.
+      const handle = document.createElement("div");
+      handle.className = "ws-resize-v";
+      handle.style.right = "0";
+      railEl.appendChild(handle);
+      wireRailWidthResize(handle, railEl);
+    }
     rail.slots.forEach((slot, idx) => {
       if (idx > 0) {
         const vsep = document.createElement("div");
@@ -1304,7 +1332,7 @@ async function init(): Promise<void> {
   }
 
   interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
-  interface WbLayoutCell extends WbAppRef { col: number; row: number; sticky?: boolean; tool?: string }
+  interface WbLayoutCell extends WbAppRef { col: number; row: number; span?: number; sticky?: boolean; tool?: string }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 
   /** Open an app in the workbench. Default = STACK a new panel, so apps
@@ -3037,9 +3065,9 @@ async function init(): Promise<void> {
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
     };
     const cells = layout.splits.map((c): WbLayoutCell | null => {
-      if (c.panelId?.startsWith("tool:")) return { slug: c.panelId, name: c.panelId.slice(5), url: "", col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky, tool: c.panelId.slice(5) };
+      if (c.panelId?.startsWith("tool:")) return { slug: c.panelId, name: c.panelId.slice(5), url: "", col: c.col ?? 0, row: c.row ?? 0, span: c.colSpan ?? 1, sticky: c.sticky, tool: c.panelId.slice(5) };
       const app = resolveCell(c.panelId);
-      return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0, sticky: c.sticky } : null;
+      return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0, span: c.colSpan ?? 1, sticky: c.sticky } : null;
     }).filter((c): c is WbLayoutCell => c !== null);
     if (!cells.length) return;
     let saved: SavedLayout | null = null;
@@ -3090,19 +3118,39 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const railCols: number[] = [];
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "monaco"]);
+    const toSlot = (c: WbLayoutCell): Slot =>
+      c.tool && TOOL_VIEWS.has(c.tool)
+        ? makeSlot(c.tool as Exclude<ViewKind, "app">)
+        : { id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault() };
+    // A cell spanning EVERY column can't live inside the column rails — it
+    // renders as a full-width BAND above/below them (the one span shape real
+    // layouts use). Partial spans still fall back to their anchor column.
+    const spanning = cols > 1 ? layout.cells.filter((c) => (c.span ?? 1) >= cols) : [];
+    const columnar = layout.cells.filter((c) => !spanning.includes(c));
+    const minRow = columnar.length ? Math.min(...columnar.map((c) => c.row)) : 0;
+    const rowFrac = (row: number): number | undefined => {
+      const f = layout.rowHeights[row];
+      return typeof f === "number" && f > 0 && f < 1 ? f : undefined;
+    };
+    // rails[] stays in DOM order — top bands, columns, bottom bands — so every
+    // positional railEls lookup keeps lining up.
+    const railCells: WbLayoutCell[][] = [];
+    for (const c of spanning.filter((b) => b.row <= minRow)) {
+      rails.push({ id: nextRailId++, slots: [toSlot(c)], banner: "top", heightFrac: rowFrac(c.row) });
+      railCells.push([c]);
+    }
     for (let col = 0; col < cols; col++) {
-      const colCells = layout.cells.filter((c) => c.col === col).sort((a, b) => a.row - b.row);
+      const colCells = columnar.filter((c) => c.col === col).sort((a, b) => a.row - b.row);
       if (!colCells.length) continue;
-      const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "monaco"]);
-      const slots: Slot[] = colCells.map((c) =>
-        c.tool && TOOL_VIEWS.has(c.tool)
-          ? makeSlot(c.tool as Exclude<ViewKind, "app">)
-          : { id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault() },
-      );
+      const slots: Slot[] = colCells.map(toSlot);
       const frac = layout.colWidths[col] ?? 1 / cols;
       rails.push({ id: nextRailId++, slots, prefWidth: Math.max(240, Math.round(usable * frac)) });
-      railCols.push(col);
+      railCells.push(colCells);
+    }
+    for (const c of spanning.filter((b) => b.row > minRow)) {
+      rails.push({ id: nextRailId++, slots: [toSlot(c)], banner: "bottom", heightFrac: rowFrac(c.row) });
+      railCells.push([c]);
     }
     renderRails();
     // Proportion the stacked slot heights per rowHeights (post-render so the
@@ -3111,8 +3159,8 @@ async function init(): Promise<void> {
       const railEls = document.querySelectorAll<HTMLElement>("#code-wb-rails .ws-right-rail");
       rails.forEach((rail, ri) => {
         const el = railEls[ri];
-        if (!el) return;
-        const colCells = layout.cells.filter((c) => c.col === railCols[ri]).sort((a, b) => a.row - b.row);
+        if (!el || rail.banner) return;   // a band's single slot always fills it
+        const colCells = railCells[ri] ?? [];
         // NORMALIZE the rail's grow factors to sum to 1. Flexbox only fills
         // the container when grows sum to >= 1 — a rail holding one slot of a
         // [0.6, 0.4] layout would otherwise take 60% and leave 40% EMPTY,

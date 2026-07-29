@@ -9538,6 +9538,11 @@ select.settings-input {
   height: 100%;
   min-width: 0;
 }
+/* A layout with a full-width spanning cell: bands stack above/below the
+   column row, so the rails container flips vertical. */
+.ws-right-rails.has-banner { flex-direction: column; }
+.ws-rails-row { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; }
+.ws-right-rail.ws-rail-banner { width: auto !important; min-height: 120px; }
 .ws-right-rail {
   background: var(--ws-bg-rail);
   /* Right border on every rail so the column's right edge is visible
