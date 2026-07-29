@@ -3112,6 +3112,26 @@ async function init(): Promise<void> {
       void (window as unknown as { yo?: { layoutsOpen?: (n: string) => Promise<unknown> } }).yo?.layoutsOpen?.(layout.name);
       return;
     }
+    // The layout's FOLDER leads the whole open: arrange only once the switch
+    // landed, so every workspace app roots itself in the right place from its
+    // first render. cwd is stamped locally too — the working-dir-changed
+    // event round trip must not race the arrangement's spawns.
+    if (layout.folder && layout.folder !== cwd) {
+      const folder = layout.folder;
+      void window.wb.setCwd(folder)
+        .catch(() => { /* folder gone — open in place */ })
+        .then(() => {
+          cwd = folder;
+          lastCwd = folder;
+          void paintWorkdirBar(cwd);
+          openLayoutRowArranged(layout, appRows);
+        });
+      return;
+    }
+    openLayoutRowArranged(layout, appRows);
+  }
+
+  function openLayoutRowArranged(layout: LayoutRow, appRows: PanelAppRow[]): void {
     const resolveCell = (panelId: string): PanelAppRow | undefined => {
       const key = panelId.trim().toLowerCase();
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
@@ -3137,15 +3157,12 @@ async function init(): Promise<void> {
     const viewKey = (v: SavedView): string => (typeof v === "string" ? v : `app:${(v.slug || "").toLowerCase()}`);
     const savedKeys = (saved?.rails || []).flatMap((r) => (r.views || []).map(viewKey)).sort().join("|");
     const defKeys = cells.map((c) => (c.tool ? c.tool : `app:${c.slug.toLowerCase()}`)).sort().join("|");
-    // Folder + session are the layout's OPENING behavior, applied after the
-    // panels land: switch the agent's folder when the layout names one, then
-    // start fresh / resume the layout's own last session per sessionMode
-    // ("keep", the default, carries the current session untouched).
+    // Session behavior applies after the panels land; the FOLDER applied
+    // before them (openLayoutRow is entered through switchFolderFirst) so
+    // every workspace app — terminal pty cwd, Files tree, Diff repo, Plan
+    // file — comes up rooted in the layout's folder, not the previous one.
     const applyFolderAndSession = (): void => {
       void (async () => {
-        if (layout.folder) {
-          try { await window.wb.setCwd(layout.folder); } catch { /* folder gone — panels still open */ }
-        }
         type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
         const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
         const mode = layout.sessionMode ?? "keep";
