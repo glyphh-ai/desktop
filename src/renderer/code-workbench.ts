@@ -351,7 +351,7 @@ async function init(): Promise<void> {
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; launchConfig?: Record<string, unknown> | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -360,6 +360,8 @@ async function init(): Promise<void> {
   // left it, not the server's default placement.
   let activeLayoutName: string | null = null;
   function namedLayoutKey(name: string): string { return `workbench:namedlayout:${name.trim().toLowerCase()}`; }
+  /** The chat session last used while this named layout was active. */
+  function layoutSessionKey(name: string): string { return `workbench:layoutsession:${name.trim().toLowerCase()}`; }
   function saveLayout(): void {
     try {
       const railEls = document.querySelectorAll<HTMLElement>(".ws-right-rail");
@@ -3084,6 +3086,26 @@ async function init(): Promise<void> {
     const viewKey = (v: SavedView): string => (typeof v === "string" ? v : `app:${(v.slug || "").toLowerCase()}`);
     const savedKeys = (saved?.rails || []).flatMap((r) => (r.views || []).map(viewKey)).sort().join("|");
     const defKeys = cells.map((c) => (c.tool ? c.tool : `app:${c.slug.toLowerCase()}`)).sort().join("|");
+    // Folder + session are the layout's OPENING behavior, applied after the
+    // panels land: switch the agent's folder when the layout names one, then
+    // start fresh / resume the layout's own last session per sessionMode
+    // ("keep", the default, carries the current session untouched).
+    const applyFolderAndSession = (): void => {
+      void (async () => {
+        if (layout.folder) {
+          try { await window.wb.setCwd(layout.folder); } catch { /* folder gone — panels still open */ }
+        }
+        type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
+        const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+        const mode = layout.sessionMode ?? "keep";
+        if (!sess || mode === "keep") return;
+        if (mode === "new") { sess.startNew(); return; }
+        let last: string | null = null;
+        try { last = localStorage.getItem(layoutSessionKey(layout.name)); } catch { /* no memory */ }
+        if (last && sess.list().some((c) => c.id === last)) sess.switch(last);
+        else sess.startNew();
+      })();
+    };
     if (saved && savedKeys && savedKeys === defKeys) {
       maximizedSlotId = null;
       applySavedLayout(saved);
@@ -3096,9 +3118,11 @@ async function init(): Promise<void> {
       });
       // No saveLayout() here: nothing changed — the memory stays as the user
       // left it, and the next drag re-saves anyway.
+      applyFolderAndSession();
       return;
     }
     openLayoutInWorkbench({ cols: layout.cols || 2, colWidths: layout.colWidths || [], rowHeights: layout.rowHeights || [], cells });
+    applyFolderAndSession();
     // Geometry recall: only when the remembered shape still matches this
     // layout's rail count — anything else is stale and gets overwritten by
     // the save that openLayoutInWorkbench just made.
@@ -3266,22 +3290,21 @@ async function init(): Promise<void> {
   // it works cold (before this async init runs) and Cmd+. shares the same path.
 
   window.addEventListener("agent-sessions-changed", () => {
-    type SessionsApi = { currentTitle(): string };
+    type SessionsApi = { currentTitle(): string; currentId(): string | null };
     const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
     const titleEl = document.querySelector<HTMLElement>('.ws-rail-slot[data-view="coding"] .ws-rail-slot-header .title');
     if (titleEl && sess) titleEl.textContent = sess.currentTitle();
+    // Remember which session rode this layout — "last" sessionMode resumes it.
+    const cur = sess?.currentId?.();
+    if (activeLayoutName && cur) {
+      try { localStorage.setItem(layoutSessionKey(activeLayoutName), cur); } catch { /* best effort */ }
+    }
   });
 
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession = () => {
-    // A fresh session normally starts with a clean workbench — but when the
-    // agent is HOSTED, or the user has a named LAYOUT open, that arrangement was
-    // built deliberately, so keep it instead of tearing it down on new session.
-    if (codingHosted() || activeLayoutName) return;
-    rails.length = 0;
-    maximizedSlotId = null;
-    renderRails();
-    // Sessions inherit the working folder (last-used carries) — blanking
-    // cwd here made every post-new-session terminal spawn at ~.
+    // A new session KEEPS the workbench — every arrangement was built
+    // deliberately; the folder-backed views follow the folder, not the
+    // session. (This used to close all rails unless a layout was active.)
     void paintWorkdirBar(cwd);
   };
 
@@ -3301,7 +3324,16 @@ async function init(): Promise<void> {
     cwd = next;
     lastCwd = next;
     void paintWorkdirBar(cwd);
-    loadLayout();
+    // KEEP the user's arrangement — a folder change re-roots the
+    // folder-backed views in place (Files re-lists, Diff re-fetches, Plan
+    // reloads on render). Tearing the workbench down and rebuilding from the
+    // new folder's snapshot reset panels the user had deliberately arranged.
+    for (const rail of rails) {
+      for (const slot of rail.slots) {
+        if (slot.view === "files") (slot as FilesSlot).root = null;
+      }
+    }
+    renderRails();
   });
 
   // ── Live file updates ──

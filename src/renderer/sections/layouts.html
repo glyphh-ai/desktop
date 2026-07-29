@@ -47,6 +47,21 @@
               <div id="layout-loop-models" class="layout-loop-models"></div>
             </div>
 
+            <label class="settings-label" style="margin-top:16px;">Agent session</label>
+            <div class="settings-hint" style="margin:-2px 0 8px;">What the agent&rsquo;s session does when this layout opens.</div>
+            <select id="layout-session-mode" class="settings-input">
+              <option value="keep">Keep the current session</option>
+              <option value="new">Start a new session</option>
+              <option value="last">Resume this layout&rsquo;s last session</option>
+            </select>
+
+            <label class="settings-label" style="margin-top:16px;">Working folder</label>
+            <div class="settings-hint" style="margin:-2px 0 8px;">Opening this layout switches the agent to this folder. Leave empty to keep the current folder.</div>
+            <div class="layout-loop-row">
+              <input id="layout-folder-input" class="settings-input" placeholder="/path/to/project" spellcheck="false" style="flex:1;" />
+              <button id="layout-folder-current" class="action-btn">Use current</button>
+            </div>
+
             <div class="settings-actions" style="margin-top:28px;">
               <button id="layout-delete-btn" class="action-btn danger">Delete</button>
               <div style="flex:1;"></div>

@@ -33,6 +33,12 @@ export interface ServerLayout {
   /** For that loop: role → catalog model id. Binds each of the loop's slots to a
    *  model when the layout opens. Empty/absent → the loop's own defaults stand. */
   modelSelections?: Record<string, string>;
+  /** What the agent's session does when this layout opens: keep the current
+   *  one (default), start fresh, or resume the layout's own last session. */
+  sessionMode?: "keep" | "new" | "last";
+  /** Opening this layout switches the agent to this folder. Absent → the
+   *  current working folder stays. */
+  folder?: string;
 }
 
 const LAYOUTS_CACHE_KEY = "/api/layouts";
@@ -56,6 +62,8 @@ export function fetchServerLayouts(): Promise<ServerLayout[]> {
         target: data.target === "desktop" ? "desktop" : "glyphh",
         ...(data.glyphh && typeof data.glyphh === "object" ? { glyphh: data.glyphh as GlyphhPlacement } : {}),
         ...(typeof data.loop === "string" && data.loop ? { loop: data.loop } : {}),
+        ...(data.sessionMode === "new" || data.sessionMode === "last" ? { sessionMode: data.sessionMode } : {}),
+        ...(typeof data.folder === "string" && data.folder ? { folder: data.folder } : {}),
         ...(data.modelSelections && typeof data.modelSelections === "object"
           ? { modelSelections: data.modelSelections as Record<string, string> }
           : {}),
@@ -106,6 +114,10 @@ export interface GridLayout {
   loop?: string;
   /** For that loop: role → catalog model id. */
   modelSelections?: Record<string, string>;
+  /** Session behavior on open: keep (default) | new | last. */
+  sessionMode?: "keep" | "new" | "last";
+  /** Folder the agent switches to on open. */
+  folder?: string;
 }
 
 /** Per-cell bounds for renderer overlays (URL bars in grid) */
@@ -419,6 +431,8 @@ export class LayoutManager {
       ...(sl.glyphh ? { glyphh: sl.glyphh } : {}),
       ...(sl.loop ? { loop: sl.loop } : {}),
       ...(sl.modelSelections ? { modelSelections: sl.modelSelections } : {}),
+      ...(sl.sessionMode ? { sessionMode: sl.sessionMode } : {}),
+      ...(sl.folder ? { folder: sl.folder } : {}),
     };
   }
 
@@ -434,6 +448,8 @@ export class LayoutManager {
       ...(grid.glyphh ? { glyphh: grid.glyphh } : {}),
       ...(grid.loop ? { loop: grid.loop } : {}),
       ...(grid.modelSelections && Object.keys(grid.modelSelections).length ? { modelSelections: grid.modelSelections } : {}),
+      ...(grid.sessionMode && grid.sessionMode !== "keep" ? { sessionMode: grid.sessionMode } : {}),
+      ...(grid.folder ? { folder: grid.folder } : {}),
     };
     const id = this.serverIds.get(grid.name);
     const saved = await getClient().layouts.save({ name: grid.name, data: body, ...(id ? { id } : {}) });

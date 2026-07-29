@@ -156,6 +156,14 @@ const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSe
 
 // ── Loop + models this layout activates on open ──────────────────────────
 const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
+const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
+const layoutFolderInput = document.getElementById("layout-folder-input") as HTMLInputElement | null;
+const layoutFolderCurrentBtn = document.getElementById("layout-folder-current") as HTMLButtonElement | null;
+layoutFolderCurrentBtn?.addEventListener("click", () => {
+  void (window as unknown as { wb?: { getCwd?: () => Promise<string> } }).wb?.getCwd?.().then((d) => {
+    if (d && layoutFolderInput) layoutFolderInput.value = d;
+  });
+});
 const layoutLoopModels = document.getElementById("layout-loop-models");
 /** The layout's loop ("" = leave the active loop as-is) + its per-role picks. */
 let builderLoop = "";
@@ -587,6 +595,11 @@ async function editLayout(name: string) {
   gridColsSelect.value = String(builderCols);
   gridRowsSelect.value = String(builderRows);
   if (folderModeSelect) folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
+  if (layoutSessionSelect) {
+    const sm = (layout as { sessionMode?: string })?.sessionMode;
+    layoutSessionSelect.value = sm === "new" || sm === "last" ? sm : "keep";
+  }
+  if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
   // Loop + models this layout activates on open.
   builderLoop = (layout as { loop?: string })?.loop ?? "";
   builderModelSelections = { ...((layout as { modelSelections?: Record<string, string> })?.modelSelections ?? {}) };
@@ -615,6 +628,8 @@ async function newLayout() {
   gridColsSelect.value = "2";
   gridRowsSelect.value = "1";
   if (folderModeSelect) folderModeSelect.value = "single";
+  if (layoutSessionSelect) layoutSessionSelect.value = "keep";
+  if (layoutFolderInput) layoutFolderInput.value = "";
   builderLoop = "";
   builderModelSelections = {};
   void ensureLoopOptions().then(() => { if (layoutLoopSelect) layoutLoopSelect.value = ""; void renderLoopModels(); });
@@ -693,6 +708,9 @@ async function saveLayout() {
     folderMode,
     ...(builderLoop ? { loop: builderLoop } : {}),
     ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
+    sessionMode: (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last"
+      ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
+    folder: layoutFolderInput?.value.trim() || null,
   });
   cancelLayout();
 }

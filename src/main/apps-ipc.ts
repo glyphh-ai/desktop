@@ -277,7 +277,7 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   // Apply a layout's loop + model config: make its loop active and bind each of
   // its slots to the layout's chosen models. Called when a layout is opened so
   // the workspace lands on the layout's program AND models, not just its panels.
-  ipcMain.handle("loop-apply-config", (_e, p: { loop?: string | null; modelSelections?: Record<string, string> }) => {
+  ipcMain.handle("loop-apply-config", (_e, p: { loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null }) => {
     try {
       applyLoopConfig(p?.loop ?? null, p?.modelSelections ?? {});
       return { ok: true, loop: currentLoop() };
@@ -560,6 +560,8 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       glyphh: (l as { glyphh?: { mode: string; fraction?: number } }).glyphh ?? null,
       loop: (l as { loop?: string }).loop ?? null,
       modelSelections: (l as { modelSelections?: Record<string, string> }).modelSelections ?? {},
+      sessionMode: (l as { sessionMode?: "keep" | "new" | "last" }).sessionMode ?? "keep",
+      folder: (l as { folder?: string }).folder ?? null,
       splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky })),
     }))
   );
@@ -587,13 +589,13 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string> }) => {
+  ipcMain.handle("layouts-save-grid", (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);
       if (!gate.allowed) return { error: gate.reason };
     }
-    const { loop, modelSelections, ...rest } = grid;
+    const { loop, modelSelections, sessionMode, folder, ...rest } = grid;
     layoutManager.saveLayout({
       ...rest,
       version: 2,
@@ -601,6 +603,8 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       target: grid.target ?? "glyphh",
       ...(loop ? { loop } : {}),
       ...(modelSelections && Object.keys(modelSelections).length ? { modelSelections } : {}),
+      ...(sessionMode && sessionMode !== "keep" ? { sessionMode } : {}),
+      ...(folder ? { folder } : {}),
     });
     return true;
   });
