@@ -1030,18 +1030,19 @@ async function runRolePacket(
   ].filter(Boolean).join("\n\n");
 
   const client = getClient();
+  const packetModel = slot.modelId;   // narrowed above; closures don't carry the guard
   let messages: Array<{ role: string; content: unknown }> = [{ role: "user", content: task }];
   /** One rate-limit retry per round: provider caps are per-minute, so a
    *  single ~35s backoff usually clears them; a second hit reports out. */
   const turnWithBackoff = async (): Promise<Awaited<ReturnType<typeof client.gateway.turn>>> => {
     try {
-      return await client.gateway.turn({ model: slot.modelId, system, maxTokens: 8192, messages, tools });
+      return await client.gateway.turn({ model: packetModel, system, maxTokens: 8192, messages, tools });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!/rate.?limit|429/i.test(msg)) throw err;
       await new Promise((r) => setTimeout(r, 35_000));
       if (signal?.aborted) throw new Error("aborted");
-      return client.gateway.turn({ model: slot.modelId, system, maxTokens: 8192, messages, tools });
+      return client.gateway.turn({ model: packetModel, system, maxTokens: 8192, messages, tools });
     }
   };
   for (let round = 0; round < ROLE_RUN_ROUNDS; round++) {
