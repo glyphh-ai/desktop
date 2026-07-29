@@ -98,8 +98,8 @@ export type LayoutFolderMode = "single" | "multi";
 export interface GridLayout {
   name: string;
   version: 2;
-  cols: number;           // 1–4
-  rows: number;           // 1–4
+  cols: number;           // 1–25
+  rows: number;           // 1–25
   colWidths: number[];    // fractions summing to ~1
   rowHeights: number[];   // fractions summing to ~1
   cells: GridCell[];

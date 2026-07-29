@@ -585,8 +585,8 @@ const TOOLS: ToolDef[] = [
     run: async (a) => {
       const name = String(a.name ?? "").trim();
       if (!name) return "ERROR: name is required";
-      const cols = Math.max(1, Math.min(4, Number(a.cols) || 1));
-      const rows = Math.max(1, Math.min(4, Number(a.rows) || 1));
+      const cols = Math.max(1, Math.min(25, Number(a.cols) || 1));
+      const rows = Math.max(1, Math.min(25, Number(a.rows) || 1));
       const rawCells = Array.isArray(a.cells) ? (a.cells as Array<Record<string, unknown>>) : [];
       if (!rawCells.length) return "ERROR: cells is required — at least one panel";
       const cells = rawCells.map((c) => {

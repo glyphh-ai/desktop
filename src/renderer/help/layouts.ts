@@ -144,6 +144,17 @@ let editingLayoutName: string | null = null;
 const layoutGridBuilder = document.getElementById("layout-grid-builder")!;
 const gridPreview = document.getElementById("grid-preview")!;
 const gridColsSelect = document.getElementById("grid-cols") as HTMLSelectElement;
+// Grids go up to 25×25 — a swarm layout is a wall of terminals, not a 2×2.
+const MAX_GRID = 25;
+for (const sel of [document.getElementById("grid-cols"), document.getElementById("grid-rows")] as Array<HTMLSelectElement | null>) {
+  if (!sel || sel.options.length) continue;
+  for (let n = 1; n <= MAX_GRID; n++) {
+    const o = document.createElement("option");
+    o.value = String(n);
+    o.textContent = String(n);
+    sel.appendChild(o);
+  }
+}
 const gridRowsSelect = document.getElementById("grid-rows") as HTMLSelectElement;
 const mergeRightBtn = document.getElementById("grid-merge-right") as HTMLButtonElement;
 const mergeDownBtn = document.getElementById("grid-merge-down") as HTMLButtonElement;
