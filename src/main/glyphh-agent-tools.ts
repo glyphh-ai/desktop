@@ -1008,7 +1008,16 @@ async function runRolePacket(
   }
   if (!slot.modelId) return `ERROR: role "${role}" has no model bound — the user picks one in the composer's model chip`;
 
-  const tools = TOOLS.filter((t) => !ROLE_RUN_EXCLUDED.has(t.name)).map((t) => ({
+  // A packet's toolset is the BUILD core, not the whole surface: every tool
+  // schema rides EVERY round's prompt, and ~50 schemas on mistral-large blew
+  // per-minute token caps in one request. find_tools/call_tool keep the rest
+  // of the surface reachable when a packet genuinely needs it.
+  const PACKET_TOOLS = new Set([
+    "list_dir", "read_file", "write_file", "search_files", "run_command",
+    "semantic_search", "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
+    "update_app", "deploy_app", "open_browser", "find_tools", "call_tool",
+  ]);
+  const tools = TOOLS.filter((t) => PACKET_TOOLS.has(t.name) && !ROLE_RUN_EXCLUDED.has(t.name)).map((t) => ({
     name: t.name,
     description: t.doc,
     input_schema: { type: "object" as const, additionalProperties: true },
@@ -1022,9 +1031,22 @@ async function runRolePacket(
 
   const client = getClient();
   let messages: Array<{ role: string; content: unknown }> = [{ role: "user", content: task }];
+  /** One rate-limit retry per round: provider caps are per-minute, so a
+   *  single ~35s backoff usually clears them; a second hit reports out. */
+  const turnWithBackoff = async (): Promise<Awaited<ReturnType<typeof client.gateway.turn>>> => {
+    try {
+      return await client.gateway.turn({ model: slot.modelId, system, maxTokens: 8192, messages, tools });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/rate.?limit|429/i.test(msg)) throw err;
+      await new Promise((r) => setTimeout(r, 35_000));
+      if (signal?.aborted) throw new Error("aborted");
+      return client.gateway.turn({ model: slot.modelId, system, maxTokens: 8192, messages, tools });
+    }
+  };
   for (let round = 0; round < ROLE_RUN_ROUNDS; round++) {
     if (signal?.aborted) return "ERROR: aborted";
-    const turn = await client.gateway.turn({ model: slot.modelId, system, maxTokens: 8192, messages, tools });
+    const turn = await turnWithBackoff();
     if (!turn.toolUses.length) return cap(`[${role} · ${slot.modelId}]\n${turn.text}`);
     messages = messages.concat([{ role: "assistant", content: turn.content }]);
     const results: Array<Record<string, unknown>> = [];
