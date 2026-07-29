@@ -206,10 +206,10 @@ export function initHelp() {
     btn.addEventListener("click", () => { showDocPanel(btn.dataset.doc!); });
   });
 
-  // Docs has its own topics nav, so it can't show the Settings menu — give it
-  // a breadcrumb back to Settings instead.
+  // Docs has its own topics nav — the breadcrumb CLOSES the section (back to
+  // the agent), it does not open the Settings menu.
   document.getElementById("docs-back-settings")?.addEventListener("click", () => {
-    gotoSection("settings", "general");
+    gotoSection("code");
   });
 
   // ── App rail (Code-primary surface) ─────────────────────────────────────

@@ -74,6 +74,9 @@ interface FilesSlot { id: number; view: "files"; root?: TreeNode | null }
 interface WbTerminal {
   /** Stable id used as the IPC channel suffix (`wb-term:data:<id>`). */
   ptyId: string;
+  /** A layout-slotted first command — written to the pty once, right after
+   *  spawn (the working folder is already the spawn cwd). */
+  initCmd?: string;
   /** xterm instance — kept alive across re-renders so scrollback survives. */
   term?: Terminal;
   fit?: FitAddon;
@@ -351,7 +354,7 @@ async function init(): Promise<void> {
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; launchConfig?: Record<string, unknown> | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -401,7 +404,7 @@ async function init(): Promise<void> {
 
   /** Rebuild the rails from a saved snapshot — shared by the per-folder
    *  restore (loadLayout) and named-layout recall. */
-  function applySavedLayout(data: SavedLayout): void {
+  function applySavedLayout(data: SavedLayout, postBuild?: () => void): void {
     rails.length = 0;
     for (const savedRail of data.rails || []) {
       const slots: Slot[] = [];
@@ -416,6 +419,7 @@ async function init(): Promise<void> {
         rails.push({ id: nextRailId++, slots, prefWidth: savedRail.width, banner: savedRail.banner, heightFrac: savedRail.heightFrac });
       }
     }
+    postBuild?.();
     renderRails();
     requestAnimationFrame(() => {
       applyResponsiveWidths();
@@ -1386,7 +1390,7 @@ async function init(): Promise<void> {
   }
 
   interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
-  interface WbLayoutCell extends WbAppRef { col: number; row: number; span?: number; sticky?: boolean; tool?: string }
+  interface WbLayoutCell extends WbAppRef { col: number; row: number; span?: number; sticky?: boolean; tool?: string; config?: { url?: string; cmd?: string } }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 
   /** Open an app in the workbench. Default = STACK a new panel, so apps
@@ -2811,6 +2815,12 @@ async function init(): Promise<void> {
         try { fit.fit(); } catch { /* noop */ }
         const { cols, rows } = term;
         window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows);
+        if (wbt.initCmd) {
+          // The layout's slotted first command — once, after the shell boots.
+          const cmd = wbt.initCmd;
+          wbt.initCmd = undefined;
+          setTimeout(() => window.wb.termWrite(wbt.ptyId, `${cmd}\r`), 600);
+        }
         // One more fit next frame — the first can land mid-reflow.
         requestAnimationFrame(() => { try { fit.fit(); } catch { /* noop */ } });
       };
@@ -3107,7 +3117,7 @@ async function init(): Promise<void> {
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
     };
     const cells = layout.splits.map((c): WbLayoutCell | null => {
-      if (c.panelId?.startsWith("tool:")) return { slug: c.panelId, name: c.panelId.slice(5), url: "", col: c.col ?? 0, row: c.row ?? 0, span: c.colSpan ?? 1, sticky: c.sticky, tool: c.panelId.slice(5) };
+      if (c.panelId?.startsWith("tool:")) return { slug: c.panelId, name: c.panelId.slice(5), url: "", col: c.col ?? 0, row: c.row ?? 0, span: c.colSpan ?? 1, sticky: c.sticky, tool: c.panelId.slice(5), config: c.config };
       const app = resolveCell(c.panelId);
       return app?.url ? { slug: app.slug || app.id, name: app.name, url: app.url, col: c.col ?? 0, row: c.row ?? 0, span: c.colSpan ?? 1, sticky: c.sticky } : null;
     }).filter((c): c is WbLayoutCell => c !== null);
@@ -3147,9 +3157,26 @@ async function init(): Promise<void> {
         else sess.startNew();
       })();
     };
+    // App setup (Browser URL / Terminal command) comes from the DEFINITION —
+    // snapshots persist geometry, not configs. Applied to rails BEFORE render
+    // so the Browser loads the right page and the Terminal's spawn sees its
+    // first command.
+    const applyCellConfigs = (): void => {
+      const claimed = new Set<Slot>();
+      for (const c of cells) {
+        if (!c.tool || !c.config || (!c.config.url && !c.config.cmd)) continue;
+        const view = c.tool === "preview" ? "preview" : c.tool === "terminal" ? "terminal" : null;
+        if (!view) continue;
+        const slot = rails.flatMap((r) => r.slots).find((sl) => sl.view === view && !claimed.has(sl));
+        if (!slot) continue;
+        claimed.add(slot);
+        if (slot.view === "preview" && c.config.url) slot.url = c.config.url;
+        if (slot.view === "terminal" && c.config.cmd) slot.terminals[0]!.initCmd = c.config.cmd;
+      }
+    };
     if (saved && savedKeys && savedKeys === defKeys) {
       maximizedSlotId = null;
-      applySavedLayout(saved);
+      applySavedLayout(saved, applyCellConfigs);
       // The PIN comes from the DEFINITION, never the snapshot — a memory
       // saved before the layout gained (or moved) its sticky cell would
       // otherwise erase the pin, and every .dip/app open stops swapping.
@@ -3198,10 +3225,17 @@ async function init(): Promise<void> {
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
     const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "monaco"]);
-    const toSlot = (c: WbLayoutCell): Slot =>
-      c.tool && TOOL_VIEWS.has(c.tool)
-        ? makeSlot(c.tool as Exclude<ViewKind, "app">)
-        : { id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault() };
+    const toSlot = (c: WbLayoutCell): Slot => {
+      if (c.tool && TOOL_VIEWS.has(c.tool)) {
+        const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
+        // Layout-slotted app setup: the Browser opens AT the layout's URL,
+        // the Terminal runs the layout's first command once its shell is up.
+        if (slot.view === "preview" && c.config?.url) slot.url = c.config.url;
+        if (slot.view === "terminal" && c.config?.cmd) slot.terminals[0]!.initCmd = c.config.cmd;
+        return slot;
+      }
+      return { id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault() };
+    };
     // A cell spanning EVERY column can't live inside the column rails — it
     // renders as a full-width BAND above/below them (the one span shape real
     // layouts use). Partial spans still fall back to their anchor column.

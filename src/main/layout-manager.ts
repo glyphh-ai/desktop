@@ -23,7 +23,7 @@ export interface ServerLayout {
   name: string;
   cols: number;
   rows: number;
-  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }>;
+  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }>;
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
   glyphh?: GlyphhPlacement;
@@ -83,6 +83,9 @@ export interface GridCell {
   rowSpan: number;
   /** At most one cell per layout: the app-switch target ("sticky" panel). */
   sticky?: boolean;
+  /** Per-cell app setup the layout applies on open: the Browser cell's URL,
+   *  the Terminal cell's first command (runs after the folder is set). */
+  config?: { url?: string; cmd?: string };
 }
 
 /** Folder-binding mode for layouts that contain any folder-bound app
@@ -442,7 +445,7 @@ export class LayoutManager {
       name: grid.name,
       cols: grid.cols,
       rows: grid.rows,
-      cells: grid.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky })),
+      cells: grid.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, ...(c.config ? { config: c.config } : {}) })),
       folderMode: grid.folderMode ?? "single",
       target: grid.target ?? "glyphh",
       ...(grid.glyphh ? { glyphh: grid.glyphh } : {}),

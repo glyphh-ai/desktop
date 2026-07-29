@@ -245,6 +245,9 @@ interface BuilderCell {
   /** The app-switch target: opening an app reuses THIS panel. At most one cell
    *  per layout is sticky; if none, the workbench falls back to the first. */
   sticky?: boolean;
+  /** Per-cell app setup: the Browser cell's URL, the Terminal cell's first
+   *  command (runs after the working folder is set). */
+  config?: { url?: string; cmd?: string };
 }
 
 /** Mark exactly one cell sticky (or clear it). Enforces single-sticky. */
@@ -358,8 +361,54 @@ function healUnresolvedNames(): void {
   }).catch(() => { namesRefreshing = false; });
 }
 
+// ── App setup — per-cell config the layout applies on open ──────────────────
+// Only two slottable configs exist for now: the Browser cell's URL and the
+// Terminal cell's first command. The section renders one field per matching
+// cell and hides itself when the grid holds neither.
+const CELL_CONFIG_SPECS: Record<string, { key: "url" | "cmd"; label: string; placeholder: string }> = {
+  "tool:preview": { key: "url", label: "Browser URL", placeholder: "https://…" },
+  "tool:terminal": { key: "cmd", label: "Terminal command", placeholder: "npm run dev" },
+};
+
+function renderCellConfigs(): void {
+  const wrap = document.getElementById("layout-cell-configs");
+  const list = document.getElementById("layout-cell-config-list");
+  if (!wrap || !list) return;
+  list.innerHTML = "";
+  let fields = 0;
+  builderCells.forEach((c, i) => {
+    const spec = CELL_CONFIG_SPECS[c.panelId];
+    if (!spec) return;
+    fields++;
+    const row = document.createElement("div");
+    row.className = "layout-cell-config-row";
+    const label = document.createElement("span");
+    label.className = "layout-cell-config-label";
+    label.textContent = `${spec.label} · cell ${c.col + 1},${c.row + 1}`;
+    const input = document.createElement("input");
+    input.className = "settings-input";
+    input.placeholder = spec.placeholder;
+    input.spellcheck = false;
+    input.value = String(c.config?.[spec.key] ?? "");
+    input.addEventListener("input", () => {
+      const cell = builderCells[i];
+      if (!cell) return;
+      const v = input.value.trim();
+      if (v) cell.config = { ...(cell.config || {}), [spec.key]: v };
+      else if (cell.config) {
+        delete cell.config[spec.key];
+        if (!Object.keys(cell.config).length) delete cell.config;
+      }
+    });
+    row.append(label, input);
+    list.appendChild(row);
+  });
+  wrap.classList.toggle("hidden", fields === 0);
+}
+
 function renderGridPreview() {
   void refreshFolderModeRow();
+  renderCellConfigs();
   gridPreview.style.gridTemplateColumns = `repeat(${builderCols}, 1fr)`;
   gridPreview.style.gridTemplateRows = `repeat(${builderRows}, 1fr)`;
 
@@ -578,6 +627,8 @@ async function editLayout(name: string) {
         cell.colSpan = s.colSpan ?? 1;
         cell.rowSpan = s.rowSpan ?? 1;
         cell.sticky = !!(s as { sticky?: boolean }).sticky;
+        const cfg = (s as { config?: { url?: string; cmd?: string } }).config;
+        if (cfg && (cfg.url || cfg.cmd)) cell.config = { ...cfg };
       }
     }
     // Drop the freshly-initialized 1×1 cells that a merged cell's span now

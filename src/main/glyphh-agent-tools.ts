@@ -31,7 +31,7 @@ import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
 import { getAccountInfo } from "./auth";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
-import { getClient } from "./glyphh-client";
+import { getClient, appCache } from "./glyphh-client";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
@@ -563,6 +563,50 @@ const TOOLS: ToolDef[] = [
     run: async (a) => {
       const r = await openLayoutByName(String(a.name ?? ""));
       return `opened layout ${r.layout} — apps: ${r.apps.join(", ")}`;
+    },
+  },
+  {
+    name: "save_layout",
+    doc: 'save_layout(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved layout. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan. Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the layout switches the agent to on open.',
+    action: (a) => ({ kind: "edit", title: `Save layout "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const name = String(a.name ?? "").trim();
+      if (!name) return "ERROR: name is required";
+      const cols = Math.max(1, Math.min(4, Number(a.cols) || 1));
+      const rows = Math.max(1, Math.min(4, Number(a.rows) || 1));
+      const rawCells = Array.isArray(a.cells) ? (a.cells as Array<Record<string, unknown>>) : [];
+      if (!rawCells.length) return "ERROR: cells is required — at least one panel";
+      const cells = rawCells.map((c) => {
+        const cfg = (c.config ?? {}) as { url?: unknown; cmd?: unknown };
+        const config: { url?: string; cmd?: string } = {};
+        if (typeof cfg.url === "string" && cfg.url) config.url = cfg.url;
+        if (typeof cfg.cmd === "string" && cfg.cmd) config.cmd = cfg.cmd;
+        return {
+          panelId: String(c.panelId ?? ""),
+          col: Math.max(0, Number(c.col) || 0),
+          row: Math.max(0, Number(c.row) || 0),
+          colSpan: Math.max(1, Number(c.colSpan) || 1),
+          rowSpan: Math.max(1, Number(c.rowSpan) || 1),
+          ...(c.sticky ? { sticky: true } : {}),
+          ...(Object.keys(config).length ? { config } : {}),
+        };
+      });
+      if (cells.some((c) => !c.panelId)) return "ERROR: every cell needs a panelId";
+      if (cells.filter((c) => c.sticky).length > 1) return "ERROR: at most one cell may be sticky";
+      const client = getClient();
+      const body: Record<string, unknown> = {
+        name, cols, rows, cells,
+        folderMode: "single",
+        target: "glyphh",
+        ...(typeof a.loop === "string" && a.loop ? { loop: a.loop } : {}),
+        ...(a.modelSelections && typeof a.modelSelections === "object" ? { modelSelections: a.modelSelections } : {}),
+        ...(a.sessionMode === "new" || a.sessionMode === "last" ? { sessionMode: a.sessionMode } : {}),
+        ...(typeof a.folder === "string" && a.folder ? { folder: a.folder } : {}),
+      };
+      const existing = (await client.layouts.list()).find((it) => it.name.toLowerCase() === name.toLowerCase());
+      const saved = await client.layouts.save({ name, data: body, ...(existing ? { id: existing.id } : {}) });
+      appCache.invalidate("/api/layouts");
+      return `saved ✓ layout "${name}" (${cols}×${rows}, ${cells.length} panels)${existing ? " — updated" : ""}. Open it with open_layout("${saved.name ?? name}").`;
     },
   },
   {

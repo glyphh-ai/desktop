@@ -4223,6 +4223,11 @@ ol.docs-list li::before {
 
 /* ── Layout editor: the loop + its per-slot model pickers ── */
 .layout-loop-row { display: flex; flex-direction: column; gap: 10px; }
+/* App setup — one field per configurable cell (Browser URL, Terminal cmd). */
+.layout-cell-config-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; max-width: 480px; }
+.layout-cell-config-label { flex: 0 0 170px; font-size: 12px; color: var(--text-2); text-align: right; }
+.layout-cell-config-row .settings-input { flex: 1; }
+
 /* Working-folder field — the picker + clear ride INSIDE the input's right edge. */
 .layout-folder-row { position: relative; max-width: 480px; }
 .layout-folder-row .settings-input { width: 100%; padding-right: 66px; text-overflow: ellipsis; }
