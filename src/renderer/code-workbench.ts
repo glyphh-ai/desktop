@@ -3163,15 +3163,17 @@ async function init(): Promise<void> {
     // file — comes up rooted in the layout's folder, not the previous one.
     const applyFolderAndSession = (): void => {
       void (async () => {
-        type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
+        type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir(dir: string): void };
         const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
         const mode = layout.sessionMode ?? "keep";
-        if (!sess || mode === "keep") return;
-        if (mode === "new") { sess.startNew(); return; }
+        const stamp = (): void => { if (layout.folder) sess?.stampWorkdir(layout.folder); };
+        if (!sess || mode === "keep") { stamp(); return; }
+        if (mode === "new") { sess.startNew(); stamp(); return; }
         let last: string | null = null;
         try { last = localStorage.getItem(layoutSessionKey(layout.name)); } catch { /* no memory */ }
         if (last && sess.list().some((c) => c.id === last)) sess.switch(last);
         else sess.startNew();
+        stamp();
       })();
     };
     // App setup (Browser URL / Terminal command) comes from the DEFINITION —

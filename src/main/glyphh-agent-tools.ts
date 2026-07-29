@@ -21,6 +21,7 @@
  */
 
 import { exec } from "child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
@@ -57,11 +58,23 @@ interface ToolDef {
 
 const cap = (s: string, n = OUTPUT_CAP) => (s.length > n ? `${s.slice(0, n)}\n…(truncated, ${s.length} chars total)` : s);
 
+// ── Per-run working directory ────────────────────────────────────────────────
+// Sessions are independent processes; each run executes its tools inside ITS
+// OWN folder. The run's folder rides an AsyncLocalStorage context set by
+// executeGlyphhTool (it survives every await in the tool chain, including
+// run_role's nested packets), with the global pick as the fallback for
+// callers outside a run (relay, loopback MCP).
+const toolRunContext = new AsyncLocalStorage<{ workdir: string }>();
+
 function workdir(): string {
-  const wd = getExplicitWorkingDirectory();
+  const wd = toolRunContext.getStore()?.workdir || getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set — ask the user to pick one in the Code header");
   return wd;
 }
+
+/** Every live agent run on this machine, registered by the agent loop —
+ *  the data behind list_active_agents and (soon) the swarm surface. */
+export const activeAgentRuns = new Map<string, { runId: string; workdir: string; startedAt: number }>();
 
 // Paths the user attached via composer chips — attaching is consent, so
 // reads of these gate as plain reads even outside the working folder.
@@ -664,6 +677,46 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "list_active_agents",
+    doc: "list_active_agents() — every coding/CLI agent alive on this machine right now: desktop sessions (title, folder, running or idle) and CLI agent instances (pid, folder). THE map of your peers — read it before dividing work across sessions or folders.",
+    action: () => ({ kind: "read", title: "List active agents" }),
+    run: async () => {
+      const lines: string[] = [];
+      // Desktop sessions — the store names them; the run registry marks live ones.
+      try {
+        const { loadSessions } = await import("./glyphh-agent-context");
+        const { chats, currentId } = loadSessions();
+        for (const chat of chats.slice(0, 30)) {
+          const run = activeAgentRuns.get(chat.id);
+          const state = run ? `RUNNING (${Math.round((Date.now() - run.startedAt) / 1000)}s, ${run.workdir})` : "idle";
+          lines.push(`desktop session "${chat.title}" [${chat.id}]${chat.id === currentId ? " (current)" : ""} — ${state}`);
+        }
+      } catch { /* no session store yet */ }
+      // CLI agents — each instance owns agent-config-cli/i-<pid>; a live pid = a live agent.
+      try {
+        const { join: pjoin } = await import("node:path");
+        const { homedir } = await import("node:os");
+        const base = pjoin(process.env.GLYPHH_HOME ?? pjoin(homedir(), ".glyphh"), "agent-config-cli");
+        for (const d of readdirSync(base)) {
+          const m = /^i-(\d+)$/.exec(d);
+          if (!m) continue;
+          const pid = Number(m[1]);
+          try { process.kill(pid, 0); } catch { continue; }   // dead — sweep handles it
+          let cwd = "";
+          try {
+            const sess = pjoin(base, d, "sessions");
+            for (const f of readdirSync(sess)) {
+              const j = JSON.parse(readFileSync(pjoin(sess, f), "utf8")) as { cwd?: string };
+              if (j?.cwd) { cwd = j.cwd; break; }
+            }
+          } catch { /* no session file yet */ }
+          lines.push(`cli agent pid ${pid}${cwd ? ` — ${cwd}` : ""} — RUNNING`);
+        }
+      } catch { /* no CLI instances */ }
+      return cap(lines.join("\n") || "(no other agents are alive right now)");
+    },
+  },
+  {
     name: "run_role",
     doc: "run_role(role, task, context?) — delegate a work packet to another role of the ACTIVE loop: it runs as a bounded tool-using sub-run on the model the USER bound to that role (your system prompt lists the active loop's roles). When the loop assigns a kind of work to another role — e.g. build/implementation packets to a 'builder' or 'worker' — route it here AUTOMATICALLY instead of doing it yourself; those bindings are why the user picked the loop. Tools inside the packet gate/approve exactly like your own.",
     action: (a) => ({
@@ -988,6 +1041,21 @@ async function runRolePacket(
 }
 
 export async function executeGlyphhTool(
+  wc: WebContents,
+  call: { name: string; arguments?: Record<string, unknown> },
+  signal?: AbortSignal,
+  ctx?: { workdir?: string },
+): Promise<ToolOutcome> {
+  // A caller with a run context executes inside it; nested calls (run_role
+  // packets) inherit the outer context through the ALS chain.
+  if (ctx?.workdir) {
+    const c = { workdir: ctx.workdir };
+    return toolRunContext.run(c, () => executeGlyphhToolInner(wc, call, signal));
+  }
+  return executeGlyphhToolInner(wc, call, signal);
+}
+
+async function executeGlyphhToolInner(
   wc: WebContents,
   call: { name: string; arguments?: Record<string, unknown> },
   signal?: AbortSignal,

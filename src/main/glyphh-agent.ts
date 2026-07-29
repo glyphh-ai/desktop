@@ -28,7 +28,7 @@ import { glyphhPath } from "./app-paths";
 import { runModel, runMaxOutputTokens, currentLoop, resolveRoles } from "./loop-selections";
 import { glyphhMode, registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
-import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, clearRunAttachments, type ConnectorWireDef } from "./glyphh-agent-tools";
+import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, clearRunAttachments, activeAgentRuns, type ConnectorWireDef } from "./glyphh-agent-tools";
 import { selectConnectorTools } from "./tool-vectors";
 import {
   pickAttachments, classifyPaths, saveClipboardImage, validAttachments,
@@ -183,14 +183,17 @@ export function assertGlyphhExternalAllowed(via: "relay" | "local-mcp"): void {
 export function registerGlyphhIpc(): void {
   registerGlyphhPermissionIpc();
   registerGlyphhContextIpc();
-  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[] }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
     if (activeRuns.has(chatId)) throw new Error("this session is already running — stop it or wait");
     // Sessions run inside a folder the USER chose — never ~/, never the
-    // launch cwd. The renderer turns this into the folder picker.
-    if (!getExplicitWorkingDirectory()) throw new Error("NO_WORKDIR: pick a working folder to start");
+    // launch cwd. The SESSION's own folder (stamped by its layout or the
+    // pick made while it was current) wins over the global pick, so
+    // concurrent sessions can work different projects at once.
+    const runWorkdir = (typeof payload?.workdir === "string" && payload.workdir) || getExplicitWorkingDirectory();
+    if (!runWorkdir) throw new Error("NO_WORKDIR: pick a working folder to start");
     // Composer attachments: validate paths, then whitelist them for reads
     // (attach = consent) for the duration of this run.
     const attachments = validAttachments(payload?.attachments);
@@ -202,8 +205,10 @@ export function registerGlyphhIpc(): void {
     setRunAttachments(id, attachments.map((a) => a.path));
     const ctrl = new AbortController();
     activeRuns.set(chatId, { id, ctrl });
-    void sdkRun(e.sender, id, messages, ctrl, attachments, chatId).finally(() => {
+    activeAgentRuns.set(chatId, { runId: id, workdir: runWorkdir, startedAt: Date.now() });
+    void sdkRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir).finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
+      if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);
       clearRunAttachments(id);
       // Fold history AFTER the reply lands — a send never waits on it.
       // (The renderer saves the assistant turn right away; a short delay
@@ -350,6 +355,7 @@ async function sdkRun(
   ctrl: AbortController,
   attachments: AttachRef[] = [],
   chatId = "",
+  runWorkdir?: string,
 ): Promise<void> {
   const emit = (channel: string, data: Record<string, unknown>) => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
@@ -410,7 +416,7 @@ async function sdkRun(
     const name = String(rq.params.name || "");
     const args = (rq.params.arguments ?? {}) as Record<string, unknown>;
     emit("glyphh-agent:tool", { phase: "start", name });
-    const outcome = await executeGlyphhTool(wc, { name, arguments: args }, ctrl.signal);
+    const outcome = await executeGlyphhTool(wc, { name, arguments: args }, ctrl.signal, runWorkdir ? { workdir: runWorkdir } : undefined);
     emit("glyphh-agent:tool", {
       phase: "done",
       name,
@@ -487,7 +493,7 @@ async function sdkRun(
     const q = query({
       prompt,
       options: {
-        cwd: getExplicitWorkingDirectory() ?? undefined,
+        cwd: runWorkdir ?? getExplicitWorkingDirectory() ?? undefined,
         // The user's pick, constrained to what their workspace allows.
         model: (await effectiveModel()) ?? undefined,
         systemPrompt: system,

@@ -20,7 +20,12 @@ import { openLayoutInWorkbench } from "./layouts.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline"; attachments?: AttachRef[]; decline?: { kind: string; url: string } }
-interface CodeChat { id: string; title: string; createdAt: number; messages: CodeMsg[] }
+interface CodeChat {
+  id: string; title: string; createdAt: number; messages: CodeMsg[];
+  /** The folder THIS session works in — stamped by its layout or by the pick
+   *  made while it was current. Absent → the global workspace folder. */
+  workdir?: string;
+}
 
 const STORE_KEY = "codeChats";
 const CURRENT_KEY = "codeCurrentChat";
@@ -695,6 +700,13 @@ function ensureCodeSection(): void {
     broadcastTimeline(!!currentRun());
   },
   startNew: (): void => newChat(),
+  /** Bind the CURRENT session to a folder (layout opens + folder picks). */
+  stampWorkdir: (dir: string): void => {
+    const c = current();
+    if (!c || !dir) return;
+    c.workdir = dir;
+    void saveStore();
+  },
 };
 
 // The @-mention summon ("@an-fable …") sets the model on the CURRENT loop's
@@ -1572,7 +1584,7 @@ function send(): void {
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
   const launch = (retried: boolean): Promise<void> =>
-    window.yo.glyphhRun({ chatId: c.id, attachments })
+    window.yo.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -2495,6 +2507,12 @@ export function initCode(): void {
     // currentId still resumes, and only highlights while on the agent.
     renderHistory();
   })();
+  // A folder change while a session is current binds THAT session to it —
+  // its runs keep working there even after another layout moves the global.
+  (window as unknown as { wb?: { onCwdChanged?: (cb: (dir: string | null) => void) => void } }).wb?.onCwdChanged?.((dir) => {
+    const c = current();
+    if (c && dir) { c.workdir = dir; void saveStore(); }
+  });
   // Another window (the ghost overlay) saved the shared store — adopt its
   // list so a ghost-created session appears in this rail immediately. The
   // CURRENT chat keeps its local object: it may be mid-stream, and the disk
