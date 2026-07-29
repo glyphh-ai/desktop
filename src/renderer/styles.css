@@ -9554,6 +9554,9 @@ select.settings-input {
 }
 .ws-band-hsep:hover, .ws-band-hsep.dragging { background: var(--accent, #8c3bf2); }
 .ws-right-rails.has-fullscreen .ws-band-hsep { display: none; }
+/* Modals vs <webview>: the webview compositing layer beats every z-index, so
+   while a modal is open the workspace panels' webviews go invisible. */
+body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
 .ws-right-rail {
   background: var(--ws-bg-rail);
   /* Right border on every rail so the column's right edge is visible

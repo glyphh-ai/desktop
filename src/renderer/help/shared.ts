@@ -48,6 +48,16 @@ export function cssVar(name: string): string {
 
 // ── Confirm modal ──────────────────────────────────────────
 
+/** <webview> composites ABOVE all page content regardless of z-index, so any
+ *  modal renders UNDER the workspace panels. While a modal is up, the
+ *  workbench webviews go invisible (their slots keep their size and come
+ *  right back on close). Counted, so overlapping modals can't flicker. */
+let modalGuardCount = 0;
+export function guardWebviewsForModal(on: boolean): void {
+  modalGuardCount = Math.max(0, modalGuardCount + (on ? 1 : -1));
+  document.body.classList.toggle("wb-modal-open", modalGuardCount > 0);
+}
+
 export interface ConfirmOptions {
   /** Header — the question, short and specific ("Delete this layout?"). */
   title: string;
@@ -80,10 +90,12 @@ export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
     noBtn.textContent = opts.cancelLabel || "Cancel";
     yesBtn.classList.toggle("danger", !!opts.danger);
     overlay.classList.remove("hidden");
+    guardWebviewsForModal(true);
     yesBtn.focus();
 
     function cleanup() {
       overlay.classList.add("hidden");
+      guardWebviewsForModal(false);
       yesBtn.removeEventListener("click", onYes);
       noBtn.removeEventListener("click", onNo);
       overlay.removeEventListener("mousedown", onOverlay);
@@ -125,10 +137,12 @@ export function promptAction(message: string, defaultValue = "", placeholder = "
     ansEl.value = defaultValue;
     ansEl.placeholder = placeholder;
     overlay.classList.remove("hidden");
+    guardWebviewsForModal(true);
     ansEl.focus();
 
     function cleanup() {
       overlay!.classList.add("hidden");
+      guardWebviewsForModal(false);
       submitBtn!.removeEventListener("click", onSubmit);
       cancelBtn!.removeEventListener("click", onCancel);
       ansEl!.removeEventListener("keydown", onKey);
