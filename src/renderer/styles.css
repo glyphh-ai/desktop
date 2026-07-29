@@ -4223,16 +4223,17 @@ ol.docs-list li::before {
 
 /* ── Layout editor: the loop + its per-slot model pickers ── */
 .layout-loop-row { display: flex; flex-direction: column; gap: 10px; }
-/* App setup — a sticky side panel on the editor's RIGHT, one field per
-   configurable cell (Browser URL, Terminal cmd). Hidden when the grid holds
-   neither; the main column then takes the full width. */
-.layout-editor-cols { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
-.layout-editor-main { flex: 1 1 480px; min-width: 0; }
+/* App setup — the layout editor mirrors the Apps form's split: a fixed-width
+   form column on the LEFT, the dynamic pane filling the RIGHT. No wrapping —
+   the side pane never drops below the form. */
+.layout-editor-cols { display: flex; align-items: flex-start; gap: 24px; }
+.layout-editor-main { width: 620px; flex-shrink: 0; min-width: 0; }
 .layout-editor-side {
-  flex: 0 0 300px; position: sticky; top: 12px;
+  flex: 1; min-width: 240px; position: sticky; top: 12px;
   padding: 14px 16px; background: var(--surface-3);
   border: 1px solid var(--border); border-radius: 8px;
 }
+.layout-editor-side .settings-hint { margin: 0; }
 .layout-cell-config-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .layout-cell-config-label { font-size: 12px; color: var(--text-2); }
 .layout-cell-config-row .settings-input { width: 100%; }

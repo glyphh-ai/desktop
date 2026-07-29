@@ -382,9 +382,9 @@ const CELL_CONFIG_SPECS: Record<string, { key: "url" | "cmd"; label: string; pla
 };
 
 function renderCellConfigs(): void {
-  const wrap = document.getElementById("layout-cell-configs");
   const list = document.getElementById("layout-cell-config-list");
-  if (!wrap || !list) return;
+  const empty = document.getElementById("layout-cell-config-empty");
+  if (!list) return;
   list.innerHTML = "";
   let fields = 0;
   builderCells.forEach((c, i) => {
@@ -414,7 +414,7 @@ function renderCellConfigs(): void {
     row.append(label, input);
     list.appendChild(row);
   });
-  wrap.classList.toggle("hidden", fields === 0);
+  empty?.classList.toggle("hidden", fields > 0);
 }
 
 function renderGridPreview() {
