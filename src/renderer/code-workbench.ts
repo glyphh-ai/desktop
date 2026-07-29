@@ -2343,27 +2343,28 @@ async function init(): Promise<void> {
   }
 
   // ── Plan view ──
-  // Single markdown file at <cwd>/.yo/plan.md. Writable Monaco editor with
+  // Single markdown file at <cwd>/.glyphh/plan.md. Writable Monaco editor with
   // eye/code toggle so preview/source flips inline. Same file watcher used
   // elsewhere in the Workbench re-reads silently when the file changes on
-  // disk (e.g. the right-rail Yo agent wrote it). Matches Claude Desktop's
-  // pattern — one plan doc, no phases.
-  /** Canonical plan path. Also accepts the legacy nested form
-   *  `.yo/plan/plan.md` so an agent that finds the older folder layout
-   *  isn't punished — see resolvePlanReadPath() for the read fallback. */
+  // disk (e.g. the agent wrote it). One plan doc, no phases.
+  /** Canonical plan path. Reads ALSO accept a root-level plan.md (planning
+   *  skills write there) and the legacy pre-Glyphh `.yo/…` locations so an
+   *  existing project's plan still appears; saves follow the loaded path. */
   function planFilePath(): string {
-    return `${cwd.replace(/\/+$/, "")}/.yo/plan.md`;
+    return `${cwd.replace(/\/+$/, "")}/.glyphh/plan.md`;
   }
-  function planFilePathNested(): string {
-    return `${cwd.replace(/\/+$/, "")}/.yo/plan/plan.md`;
+  function planReadFallbacks(): string[] {
+    const root = cwd.replace(/\/+$/, "");
+    return [`${root}/plan.md`, `${root}/.yo/plan.md`, `${root}/.yo/plan/plan.md`];
   }
   async function resolvePlanReadPath(): Promise<string> {
     const canonical = planFilePath();
     const res = await window.wb.readFile(canonical);
     if (!res.error && (res.content ?? "").length > 0) return canonical;
-    const nested = planFilePathNested();
-    const res2 = await window.wb.readFile(nested);
-    if (!res2.error && (res2.content ?? "").length > 0) return nested;
+    for (const path of planReadFallbacks()) {
+      const r = await window.wb.readFile(path);
+      if (!r.error && (r.content ?? "").length > 0) return path;
+    }
     return canonical;
   }
   async function renderPlanIntoSlot(body: HTMLElement, slot: PlanSlot): Promise<void> {
@@ -2506,7 +2507,9 @@ async function init(): Promise<void> {
     // segments) so a strict equality check sometimes misses — endsWith is
     // robust and the only plan files we care about are these two.
     function isPlanPath(abs: string): boolean {
-      return abs.endsWith("/.yo/plan.md") || abs.endsWith("/.yo/plan/plan.md");
+      if (abs.endsWith("/.glyphh/plan.md") || abs.endsWith("/.yo/plan.md") || abs.endsWith("/.yo/plan/plan.md")) return true;
+      // Root plan.md: match the exact file, not every plan.md in the tree.
+      return abs === `${cwd.replace(/\/+$/, "")}/plan.md`;
     }
     const unsubscribeWatch = window.wb.onFileChanged(async (abs: string) => {
       if (!cwd) return;

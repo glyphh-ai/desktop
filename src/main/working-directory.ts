@@ -1,7 +1,7 @@
 /**
  * Working directory — the single project folder the app is focused on.
  *
- * One explicit, persisted folder. The .yo agent runs in it, and (todo) a
+ * One explicit, persisted folder. The Glyphh agent runs in it, and (todo) a
  * cypher clones the repo into it. Changing it broadcasts `working-dir-changed`
  * to the main window and every panel so they re-point.
  *
@@ -301,7 +301,7 @@ export function registerWorkingDirectoryIpc(deps: {
     if (typeof dir !== "string" || !dir) return { entries: [], error: "missing dir" };
     try {
       const items = await fs.readdir(dir, { withFileTypes: true });
-      // Show dotfiles. The user wants `.yo/` visible so they can see the
+      // Show dotfiles. The user wants `.glyphh/` visible so they can see the
       // plan files the agent is writing; .git is filtered explicitly since
       // it's noisy and rarely useful in a file tree.
       const entries = items
@@ -473,7 +473,7 @@ export function registerWorkingDirectoryIpc(deps: {
   });
 
   // Write a text file, creating parent directories as needed. Used by the
-  // Code workbench's Plan slot to persist <cwd>/.yo/plan.md.
+  // Code workbench's Plan slot to persist <cwd>/.glyphh/plan.md.
   ipcMain.handle("files:write-file", async (_e, filePath: string, content: string) => {
     if (typeof filePath !== "string" || !filePath) return { ok: false, error: "missing path" };
     try {

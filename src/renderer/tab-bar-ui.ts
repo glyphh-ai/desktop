@@ -298,7 +298,7 @@ export function initTabBar(deps: TabBarDeps): {
     emptyState.classList.toggle("hidden", !showEmpty);
   }
 
-  // Swarm mode is controlled solely by the .yo mode dropdown — there is no
+  // Swarm mode is controlled solely by the mode dropdown — there is no
   // dedicated panel to auto-switch for, and it must persist across tabs.
   function autoSwitchModeForActiveTab(_tabs: TabInfo[], _activeId: string): void {
     /* no-op */
