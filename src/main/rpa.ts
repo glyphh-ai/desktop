@@ -22,6 +22,11 @@ export function registerRpaTarget(slug: string, wcId: number): void {
 export function unregisterRpaTarget(slug: string): void {
   targets.delete(slug);
 }
+/** Reverse lookup: which panel slug owns this webContents (null if none). */
+export function slugForWebContents(wcId: number): string | null {
+  for (const [slug, id] of targets) { if (id === wcId) return slug; }
+  return null;
+}
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];

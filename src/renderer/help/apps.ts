@@ -1683,6 +1683,8 @@ async function openPanelAppDetail(app: PanelApp) {
   appDetailId.value = app.slug;
   appDetailName.value = app.name;
   appDetailUrl.value = app.url || "";
+  const detailForce = document.getElementById("app-detail-force-web") as HTMLInputElement | null;
+  if (detailForce) detailForce.checked = !!(app.launchConfig as { forceWeb?: boolean } | null)?.forceWeb;
 
   // Browser ↔ Native fields. Legacy apps have isBrowser undefined but always
   // carry a url, so they default to browser.
@@ -1957,7 +1959,10 @@ function initApps() {
     const createInput = addType === "browser"
       // A web app opens as a Glyphh panel — there is no browser or window
       // placement to configure, so it carries no launcher config at all.
-      ? { name, slug: id, isBrowser: true, url, execPath: null, launchConfig: {} }
+      ? {
+          name, slug: id, isBrowser: true, url, execPath: null,
+          launchConfig: (document.getElementById("app-add-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {},
+        }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
     const created = await window.yo.panelAppsCreate(createInput);
     if (!created.ok || !created.app) {
@@ -2035,7 +2040,7 @@ function initApps() {
     } else if (type === "browser") {
       const url = appDetailUrl.value.trim();
       if (url) patch.url = url;
-      patch.launchConfig = {};
+      patch.launchConfig = (document.getElementById("app-detail-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {};
       patch.execPath = null;
     } else {
       patch.url = null;

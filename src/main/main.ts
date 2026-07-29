@@ -79,6 +79,7 @@ import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { installAttachHandlers } from "./attach-handlers";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
+import { wireForceWebGuest } from "./force-web";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWbAppRegistry } from "./app-resolver";
@@ -402,6 +403,10 @@ async function boot() {
       // Track URL changes in browser tabs for persistence
       if (baseAppId === "browser") trackBrowserUrl(id, wc);
     }
+
+    // Force-web guard: any workbench webview whose app opted in stays in
+    // its panel when the page bounces to a native client (slack:// etc.).
+    (wc as any).on("did-attach-webview", (_event: unknown, guestWc: Electron.WebContents) => wireForceWebGuest(guestWc));
 
     // Track URL + favicon for URL bar and tab favicons
     const isBrowserPanel = baseAppId === "browser";

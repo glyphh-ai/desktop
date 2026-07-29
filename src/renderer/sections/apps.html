@@ -46,6 +46,10 @@
               <label class="settings-label">URL</label>
               <input id="app-add-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" autocomplete="off" />
               <p class="settings-hint">Opens as a Glyphh panel, beside your agent.</p>
+              <label class="settings-label" style="display:flex;align-items:center;gap:8px;margin-top:12px;text-transform:none;letter-spacing:0;">
+                <input id="app-add-force-web" type="checkbox" style="width:auto;margin:0;flex:none;" />
+                Keep in panel — block redirects to the native app (Slack, Teams, Zoom)
+              </label>
             </div>
             <!-- Native fields -->
             <div id="app-add-native-fields" class="hidden">
@@ -149,6 +153,10 @@
                     <label class="settings-label">URL</label>
                     <input id="app-detail-url" class="settings-input" spellcheck="false" placeholder="https://..." />
                     <p class="settings-hint">Opens as a Glyphh panel, beside your agent.</p>
+              <label class="settings-label" style="display:flex;align-items:center;gap:8px;margin-top:12px;text-transform:none;letter-spacing:0;">
+                <input id="app-detail-force-web" type="checkbox" style="width:auto;margin:0;flex:none;" />
+                Keep in panel — block redirects to the native app (Slack, Teams, Zoom)
+              </label>
                   </div>
                   <!-- Native fields -->
                   <div id="app-detail-native-fields" class="hidden">

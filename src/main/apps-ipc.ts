@@ -1,4 +1,5 @@
 import { app, ipcMain, dialog, BrowserWindow, screen } from "electron";
+import { refreshForceWebSlugs } from "./force-web";
 import fs from "fs";
 import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
@@ -169,6 +170,7 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   };
 
   ipcMain.handle("panel-apps-create", async (_e, input: Record<string, unknown>) => {
+    setTimeout(() => { void refreshForceWebSlugs(); }, 500);   // guard set follows app edits
     try {
       const slug = String(input.slug || input.name || "").toLowerCase().trim()
         .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -185,6 +187,7 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-update", async (_e, id: string, patch: Record<string, unknown>) => {
+    setTimeout(() => { void refreshForceWebSlugs(); }, 500);   // guard set follows app edits
     try {
       // A retype only travels when the renderer asserts a LAUNCHER shape
       // (`isBrowser`). Without this the type dropdown appeared to save and the
