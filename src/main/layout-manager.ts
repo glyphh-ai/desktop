@@ -370,21 +370,25 @@ export class LayoutManager {
   }
 
   /** Save a grid layout */
-  saveLayout(grid: GridLayout): void {
+  /** Save locally at once; the returned promise resolves when the SERVER has
+   *  the row too. Callers that reload-from-server right after a save (the
+   *  Layouts page does) must await it, or refreshAndList's server-is-truth
+   *  replace reverts them to the pre-save state — the stale-cards bug. */
+  saveLayout(grid: GridLayout): Promise<void> {
     this.layouts.set(grid.name, grid);
     this.persist();
-    void this.persistToServer(grid).catch(() => {});
+    return this.persistToServer(grid).catch(() => { /* offline — local copy stands */ });
   }
 
-  /** Delete a layout */
-  deleteLayout(name: string): boolean {
+  /** Delete a layout. Same server-side await contract as saveLayout. */
+  async deleteLayout(name: string): Promise<boolean> {
     if (!this.layouts.has(name)) return false;
     this.layouts.delete(name);
     this.persist();
     const id = this.serverIds.get(name);
     this.serverIds.delete(name);
     appCache.invalidate(LAYOUTS_CACHE_KEY);
-    if (id) void getClient().layouts.delete(id).catch(() => {});
+    if (id) await getClient().layouts.delete(id).catch(() => { /* offline */ });
     return true;
   }
 
