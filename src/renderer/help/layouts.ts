@@ -682,6 +682,7 @@ async function editLayout(name: string) {
   layoutsList.classList.add("hidden");
   layoutsToolbar.classList.add("hidden");
   layoutEditor.classList.remove("hidden");
+  document.getElementById("layouts-heading")?.classList.add("hidden");
   renderGridPreview();
 }
 
@@ -716,6 +717,7 @@ function cancelLayout() {
   layoutEditor.classList.add("hidden");
   layoutsList.classList.remove("hidden");
   layoutsToolbar.classList.remove("hidden");
+  document.getElementById("layouts-heading")?.classList.remove("hidden");
   editingLayoutName = null;
   loadLayouts();
 }

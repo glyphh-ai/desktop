@@ -4226,6 +4226,9 @@ ol.docs-list li::before {
 /* App setup — the layout editor uses the Apps form's OWN split classes
    (.app-builder-split/-controls/-preview): fixed 620px form column left, the
    dynamic pane fills the right, full height. This pane just pads it. */
+/* The editor container is a crud-inline-form, which caps at 620px — the very
+   reason no right pane could ever exist. Full width like the Apps editor. */
+#layout-editor.crud-inline-form { max-width: none !important; }
 .layout-setup-pane { padding: 14px 16px; overflow-y: auto; flex: 1; min-height: 0; }
 .layout-setup-pane .settings-hint { margin: 0; }
 .layout-cell-config-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }

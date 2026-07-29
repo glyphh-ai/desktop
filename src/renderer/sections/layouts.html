@@ -1,5 +1,5 @@
         <div class="help-section" data-section="layouts">
-          <h2>Layouts</h2>
+          <h2 id="layouts-heading">Layouts</h2>
           <div id="layouts-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 5 layouts. <a id="layouts-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
           <div id="layouts-toolbar" class="crud-toolbar">
             <input id="layout-search" type="text" class="crud-search" placeholder="Search layouts..." spellcheck="false" autocomplete="off" />
@@ -13,7 +13,10 @@
               <button id="layout-open-btn" class="action-btn primary" type="button" title="Open this layout">Open layout</button>
             </div>
             <div id="layout-form-error" class="crud-form-error hidden"></div>
-            <div id="layout-detail-head" class="edit-head"></div>
+            <div id="layout-detail-head" class="edit-head" style="padding:0 16px;margin-top:12px;"></div>
+            <div class="app-detail-tabs">
+              <button class="app-detail-tab active" type="button">General</button>
+            </div>
             <div class="app-builder-split">
             <div class="app-builder-controls">
             <label class="settings-label">Name</label>
