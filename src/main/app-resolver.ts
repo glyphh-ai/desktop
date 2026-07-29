@@ -185,6 +185,14 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
 }
 
 
+/** Open the tabbed Browser panel at a specific URL (the agent's preview
+ *  surface for built/deployed apps — url bar, tabs, DevTools, unlike the raw
+ *  app panel). Same slot semantics as open_app("browser"). */
+export function openBrowserAt(url: string): { slug: string; name: string } {
+  sendWbCmd({ action: "open", app: { slug: "browser", name: "Browser", url } });
+  return { slug: "browser", name: "Browser" };
+}
+
 /** Launch a NATIVE library row on this machine (path first, name fallback). */
 function launchNativeRow(app: ServerApp): void {
   if (app.execPath) {

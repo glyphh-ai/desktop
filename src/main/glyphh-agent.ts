@@ -25,7 +25,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { getPreference } from "./stores/preferences-db";
 import { glyphhPath } from "./app-paths";
-import { runModel, runMaxOutputTokens } from "./loop-selections";
+import { runModel, runMaxOutputTokens, currentLoop, resolveRoles } from "./loop-selections";
 import { glyphhMode, registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, type ConnectorWireDef } from "./glyphh-agent-tools";
@@ -304,10 +304,30 @@ async function workspaceExtras(): Promise<string> {
     const connections = await getClient().connections.list();
     connList = [...new Set(connections.map((c) => String(c.slug || "")).filter(Boolean))].join(", ");
   } catch { /* signed out */ }
+  // The ACTIVE loop's role→model bindings are the user's standing instruction
+  // for who does what — without this block the agent runs everything itself
+  // and has to be TOLD "use mistral for the build" every session.
+  let loopBlock = "";
+  try {
+    const loop = currentLoop();
+    const roles = await resolveRoles(loop);
+    if (roles.length > 1) {
+      const lead = roles[0]!;
+      const others = roles.slice(1).map((r) => `"${r.name}" → ${r.modelId ?? "(no model bound)"}`).join(", ");
+      loopBlock =
+        `ACTIVE LOOP: "${loop}". Your own turns run as its "${lead.name}" role (${lead.modelId ?? "default model"}). ` +
+        `The user bound the other roles to specific models on purpose: ${others}. ` +
+        `Work that belongs to another role — e.g. implementation/build packets when there is a "builder" or "worker" role — ` +
+        `MUST be delegated with run_role(role, task) instead of done by you, automatically, without the user asking. ` +
+        `Say which role executed what in your reply.`;
+    }
+  } catch { /* offline — the loop block is advisory */ }
   return [
     appList ? `The user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "",
     connList ? `Connected accounts: ${connList} — each one's API tools are FIRST-CLASS tools in your toolset (real schemas; call them directly, never invent names).` : "",
+    loopBlock,
     "RULE: the working folder ROOT holds the current app's project — build it there, then call update_app() to ship it (it packages the built dist/, never your source). After any change, rebuild + update_app or tool calls run the stale installed version.",
+    "RULE: to SHOW the user an app you built or deployed, open it in the Browser panel — open_browser(<deployed URL>) — never the raw app panel. Only fall back to open_app(<slug>) when there is no reachable URL (local-only install, or the deployed app requires a login the embedded browser lacks).",
     "RULE: update_app() is the ONLY way to ship — never a CLI, never npx, and NEVER any login/device-auth flow. Your session is already authenticated; initiating authentication is forbidden.",
     GLYPHH_APP_SPEC,
     "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",

@@ -26,7 +26,8 @@ import { dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { openAppByRef, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
 import { getAccountInfo } from "./auth";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
@@ -399,7 +400,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "deploy_app",
-    doc: "deploy_app() — PUBLISH the app in the working folder to the web at <slug>.glyphh.app. Build the Vite project first (`npm run build`), then call this: it packages the compiled dist/, cuts a release, builds it on the server, and deploys it live. Returns the public URL, or the build error to fix. (update_app installs it LOCALLY on this machine; deploy_app puts it on the internet.)",
+    doc: "deploy_app() — PUBLISH the app in the working folder to the web at <slug>.glyphh.app. Build the Vite project first (`npm run build`), then call this: it packages the compiled dist/, cuts a release, builds it on the server, and deploys it live. Returns the public URL, or the build error to fix. (update_app installs it LOCALLY on this machine; deploy_app puts it on the internet.) Then SHOW the user: open_browser(<returned URL>).",
     action: () => ({ kind: "edit", title: "Publish app to <slug>.glyphh.app" }),
     run: async () => {
       const r = await deployAppFromWorkdir();
@@ -485,11 +486,22 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "open_app",
-    doc: "open_app(name) — open an app from the user's library (or 'browser'/'terminal') as a panel beside this conversation",
+    doc: "open_app(name) — open an INSTALLED app from the user's library (or 'terminal') as a panel beside this conversation. To show something you built or deployed, use open_browser(url) instead — the user wants the browser surface for previews, not the raw app panel.",
     action: (a) => ({ kind: "command", title: `Open app "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const r = await openAppByRef(String(a.name ?? ""));
       return `opened ${r.name} (${r.slug})`;
+    },
+  },
+  {
+    name: "open_browser",
+    doc: "open_browser(url) — open the tabbed Browser panel at a URL beside this conversation (address bar, tabs, DevTools). THE way to show a built or deployed app: after deploy_app, open the returned <slug>.glyphh.app URL here. Falls back: if the page needs a login the embedded browser doesn't have (a non-public app), open the installed app with open_app instead.",
+    action: (a) => ({ kind: "command", title: `Open browser at ${String(a.url ?? "")}` }),
+    run: async (a) => {
+      const url = String(a.url ?? "").trim();
+      if (!/^https?:\/\//i.test(url)) return "ERROR: url must start with http:// or https://";
+      openBrowserAt(url);
+      return `opened the Browser panel at ${url}`;
     },
   },
   {
@@ -601,6 +613,17 @@ const TOOLS: ToolDef[] = [
       }
       return cap(`Connected accounts for ${who}:\n${rows.join("\n")}`);
     },
+  },
+  {
+    name: "run_role",
+    doc: "run_role(role, task, context?) — delegate a work packet to another role of the ACTIVE loop: it runs as a bounded tool-using sub-run on the model the USER bound to that role (your system prompt lists the active loop's roles). When the loop assigns a kind of work to another role — e.g. build/implementation packets to a 'builder' or 'worker' — route it here AUTOMATICALLY instead of doing it yourself; those bindings are why the user picked the loop. Tools inside the packet gate/approve exactly like your own.",
+    action: (a) => ({
+      kind: "command",
+      title: `Delegate to ${String(a.role ?? "")} role`,
+      detail: String(a.task ?? "").slice(0, 500),
+    }),
+    run: (a, signal, wc) =>
+      runRolePacket(String(a.role ?? ""), String(a.task ?? ""), String(a.context ?? ""), signal, wc),
   },
   // ── The LIBRARY: loops, skills, agents — the objects /create-* authors. ────
   // Without these the create-skill/loop/agent prompts said "save through the
@@ -854,6 +877,67 @@ export interface ToolOutcome { result: string; denied: boolean; title: string }
 
 /** Gate → execute. Denials and failures come back as results the model can
  *  react to — the loop never throws on a tool. */
+// ── run_role — delegate a work packet to another role of the ACTIVE loop ─────
+// The interactive agent's own turns run on the loop's FIRST role; the other
+// roles hold the models the user explicitly bound (builder=mistral, …). This
+// runs a bounded tool-using sub-run on the delegated role's model, executing
+// every tool through executeGlyphhTool so the SAME gate fires (approval cards,
+// mode model) as for the outer loop's own calls.
+const ROLE_RUN_ROUNDS = 16;
+const ROLE_RESULT_CAP = 24_000;
+// No recursion, and no interactive asks a delegated packet can't answer.
+const ROLE_RUN_EXCLUDED = new Set(["run_role", "ask_user"]);
+
+async function runRolePacket(
+  role: string,
+  task: string,
+  context: string,
+  signal: AbortSignal | undefined,
+  wc: WebContents | undefined,
+): Promise<string> {
+  if (!role) return "ERROR: role is required";
+  if (!task) return "ERROR: task is required";
+  if (!wc) return "ERROR: this run has no session surface to gate tool calls against";
+  const loop = currentLoop();
+  const roles = await resolveRoles(loop).catch(() => []);
+  const slot = roles.find((r) => r.name === role);
+  if (!slot) {
+    return `ERROR: loop "${loop}" has no role "${role}" — its roles: ${roles.map((r) => r.name).join(", ") || "(none)"}`;
+  }
+  if (!slot.modelId) return `ERROR: role "${role}" has no model bound — the user picks one in the composer's model chip`;
+
+  const tools = TOOLS.filter((t) => !ROLE_RUN_EXCLUDED.has(t.name)).map((t) => ({
+    name: t.name,
+    description: t.doc,
+    input_schema: { type: "object" as const, additionalProperties: true },
+  }));
+  const system = [
+    `You are the "${role}" role of the "${loop}" loop, executing ONE delegated work packet inside the user's Glyphh workspace.`,
+    `Working folder: ${workdir()}`,
+    context ? `Context from the delegating role:\n${context}` : "",
+    "Complete the task with the tools, then reply with a concise report of what you did (files touched, commands run, outcomes). No preamble, no questions — decisions you can't make go in the report.",
+  ].filter(Boolean).join("\n\n");
+
+  const client = getClient();
+  let messages: Array<{ role: string; content: unknown }> = [{ role: "user", content: task }];
+  for (let round = 0; round < ROLE_RUN_ROUNDS; round++) {
+    if (signal?.aborted) return "ERROR: aborted";
+    const turn = await client.gateway.turn({ model: slot.modelId, system, maxTokens: 8192, messages, tools });
+    if (!turn.toolUses.length) return cap(`[${role} · ${slot.modelId}]\n${turn.text}`);
+    messages = messages.concat([{ role: "assistant", content: turn.content }]);
+    const results: Array<Record<string, unknown>> = [];
+    for (const call of turn.toolUses) {
+      if (signal?.aborted) return "ERROR: aborted";
+      const outcome = ROLE_RUN_EXCLUDED.has(call.name)
+        ? { result: `ERROR: "${call.name}" is not available inside a delegated packet` }
+        : await executeGlyphhTool(wc, { name: call.name, arguments: (call.input ?? {}) as Record<string, unknown> }, signal);
+      results.push({ type: "tool_result", tool_use_id: call.id, content: String(outcome.result).slice(0, ROLE_RESULT_CAP) });
+    }
+    messages = messages.concat([{ role: "user", content: results }]);
+  }
+  return `ERROR: the ${role} packet stopped after ${ROLE_RUN_ROUNDS} tool rounds without finishing — split the task into smaller packets`;
+}
+
 export async function executeGlyphhTool(
   wc: WebContents,
   call: { name: string; arguments?: Record<string, unknown> },
