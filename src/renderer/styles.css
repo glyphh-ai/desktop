@@ -4223,6 +4223,17 @@ ol.docs-list li::before {
 
 /* ── Layout editor: the loop + its per-slot model pickers ── */
 .layout-loop-row { display: flex; flex-direction: column; gap: 10px; }
+/* Working-folder field — the picker + clear ride INSIDE the input's right edge. */
+.layout-folder-row { position: relative; max-width: 480px; }
+.layout-folder-row .settings-input { width: 100%; padding-right: 66px; text-overflow: ellipsis; }
+.layout-folder-icon {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 6px; background: transparent; color: var(--text-3); cursor: pointer;
+}
+.layout-folder-icon:hover { background: var(--surface-3); color: var(--text); }
+#layout-folder-pick { right: 34px; }
+#layout-folder-clear { right: 6px; }
 .layout-loop-row > #layout-loop-select { max-width: 340px; }
 .layout-loop-models { display: flex; flex-direction: column; gap: 8px; }
 .layout-loop-model { display: flex; align-items: center; gap: 10px; }
