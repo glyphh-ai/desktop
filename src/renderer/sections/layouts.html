@@ -14,8 +14,8 @@
             </div>
             <div id="layout-form-error" class="crud-form-error hidden"></div>
             <div id="layout-detail-head" class="edit-head"></div>
-            <div class="layout-editor-cols">
-            <div class="layout-editor-main">
+            <div class="app-builder-split">
+            <div class="app-builder-controls">
             <label class="settings-label">Name</label>
             <input id="layout-new-name" type="text" class="settings-input" placeholder="layout name" spellcheck="false" autocomplete="off" />
 
@@ -60,20 +60,21 @@
               </button>
             </div>
 
-            </div>
-            <aside id="layout-cell-configs" class="layout-editor-side">
-              <label class="settings-label" style="margin-top:0;">App setup</label>
-              <div class="settings-hint" style="margin:2px 0 10px;">How this layout opens its panels: the Browser&rsquo;s page, the Terminal&rsquo;s first command (runs after the working folder is set).</div>
-              <div id="layout-cell-config-list"></div>
-              <div id="layout-cell-config-empty" class="settings-hint">Add a Browser or Terminal panel to the grid and its setup appears here.</div>
-            </aside>
-            </div>
-
             <div class="settings-actions" style="margin-top:28px;">
               <button id="layout-delete-btn" class="action-btn danger">Delete</button>
               <div style="flex:1;"></div>
               <button id="layout-cancel-btn" class="action-btn">Cancel</button>
               <button id="layout-save-btn" class="action-btn primary">Save</button>
+            </div>
+            </div>
+            <div class="app-builder-preview">
+              <div id="layout-cell-configs" class="layout-setup-pane">
+                <label class="settings-label" style="margin-top:0;">App setup</label>
+                <div class="settings-hint" style="margin:2px 0 10px;">How this layout opens its panels: the Browser&rsquo;s page, the Terminal&rsquo;s first command (runs after the working folder is set).</div>
+                <div id="layout-cell-config-list"></div>
+                <div id="layout-cell-config-empty" class="settings-hint">Add a Browser or Terminal panel to the grid and its setup appears here.</div>
+              </div>
+            </div>
             </div>
           </div>
         </div>

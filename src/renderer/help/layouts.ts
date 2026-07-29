@@ -779,6 +779,10 @@ async function saveLayout() {
     folder: layoutFolderInput?.value.trim() || null,
   });
   cancelLayout();
+  // Settle pass: re-pull once the server write has certainly landed, so the
+  // page cards AND the rail tiles repaint with what was actually saved even
+  // if a stale main process answered the first reload early.
+  setTimeout(() => { void loadLayouts(); }, 1200);
 }
 
 async function deleteLayout() {
@@ -792,6 +796,7 @@ async function deleteLayout() {
   if (!confirmed) return;
   await window.yo.layoutsDelete(editingLayoutName);
   cancelLayout();
+  setTimeout(() => { void loadLayouts(); }, 1200);
 }
 
 
