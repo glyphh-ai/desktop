@@ -14,6 +14,8 @@
             </div>
             <div id="layout-form-error" class="crud-form-error hidden"></div>
             <div id="layout-detail-head" class="edit-head"></div>
+            <div class="layout-editor-cols">
+            <div class="layout-editor-main">
             <label class="settings-label">Name</label>
             <input id="layout-new-name" type="text" class="settings-input" placeholder="layout name" spellcheck="false" autocomplete="off" />
 
@@ -40,11 +42,6 @@
               <div id="grid-preview"></div>
             </div>
 
-            <div id="layout-cell-configs" class="hidden">
-              <label class="settings-label" style="margin-top:16px;">App setup</label>
-              <div class="settings-hint" style="margin:-2px 0 8px;">How this layout opens its panels: the Browser&rsquo;s page, the Terminal&rsquo;s first command (runs after the working folder is set).</div>
-              <div id="layout-cell-config-list"></div>
-            </div>
 
             <label class="settings-label" style="margin-top:16px;">Loop &amp; models</label>
             <div class="settings-hint" style="margin:-2px 0 8px;">Opening this layout switches to this loop and binds its models. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>
@@ -71,6 +68,14 @@
               <button id="layout-folder-clear" class="layout-folder-icon" title="Clear">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
               </button>
+            </div>
+
+            </div>
+            <aside id="layout-cell-configs" class="layout-editor-side hidden">
+              <label class="settings-label">App setup</label>
+              <div class="settings-hint" style="margin:2px 0 10px;">How this layout opens its panels: the Browser&rsquo;s page, the Terminal&rsquo;s first command (runs after the working folder is set).</div>
+              <div id="layout-cell-config-list"></div>
+            </aside>
             </div>
 
             <div class="settings-actions" style="margin-top:28px;">

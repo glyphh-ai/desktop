@@ -4223,10 +4223,19 @@ ol.docs-list li::before {
 
 /* ── Layout editor: the loop + its per-slot model pickers ── */
 .layout-loop-row { display: flex; flex-direction: column; gap: 10px; }
-/* App setup — one field per configurable cell (Browser URL, Terminal cmd). */
-.layout-cell-config-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; max-width: 480px; }
-.layout-cell-config-label { flex: 0 0 170px; font-size: 12px; color: var(--text-2); text-align: right; }
-.layout-cell-config-row .settings-input { flex: 1; }
+/* App setup — a sticky side panel on the editor's RIGHT, one field per
+   configurable cell (Browser URL, Terminal cmd). Hidden when the grid holds
+   neither; the main column then takes the full width. */
+.layout-editor-cols { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+.layout-editor-main { flex: 1 1 480px; min-width: 0; }
+.layout-editor-side {
+  flex: 0 0 300px; position: sticky; top: 12px;
+  padding: 14px 16px; background: var(--surface-3);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.layout-cell-config-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.layout-cell-config-label { font-size: 12px; color: var(--text-2); }
+.layout-cell-config-row .settings-input { width: 100%; }
 
 /* Working-folder field — the picker + clear ride INSIDE the input's right edge. */
 .layout-folder-row { position: relative; max-width: 480px; }
