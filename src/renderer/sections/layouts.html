@@ -58,8 +58,9 @@
             <label class="settings-label" style="margin-top:16px;">Working folder</label>
             <div class="settings-hint" style="margin:-2px 0 8px;">Opening this layout switches the agent to this folder. Leave empty to keep the current folder.</div>
             <div class="layout-loop-row">
-              <input id="layout-folder-input" class="settings-input" placeholder="/path/to/project" spellcheck="false" style="flex:1;" />
-              <button id="layout-folder-current" class="action-btn">Use current</button>
+              <input id="layout-folder-input" class="settings-input" placeholder="No folder — keeps the current one" spellcheck="false" readonly style="flex:1;" />
+              <button id="layout-folder-pick" class="action-btn">Choose folder&hellip;</button>
+              <button id="layout-folder-clear" class="action-btn">Clear</button>
             </div>
 
             <div class="settings-actions" style="margin-top:28px;">

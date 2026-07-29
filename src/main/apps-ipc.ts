@@ -608,6 +608,18 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
+  // Folder-only picker for the layout editor's working-folder field. Pick
+  // only — never touches the actual working directory.
+  ipcMain.handle("layouts-pick-folder", async () => {
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return null;
+    const picked = await dialog.showOpenDialog(win, {
+      title: "Choose the layout's working folder",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    return picked.canceled ? null : (picked.filePaths[0] ?? null);
+  });
+
   /** True if any app in the layout declares requiresFolder. The UI uses
    *  this to show the folder-mode toggle + the layout-level folder picker. */
   ipcMain.handle("layouts-folder-required", (_e, name: string) => {

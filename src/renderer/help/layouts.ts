@@ -158,11 +158,15 @@ const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSe
 const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
 const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
 const layoutFolderInput = document.getElementById("layout-folder-input") as HTMLInputElement | null;
-const layoutFolderCurrentBtn = document.getElementById("layout-folder-current") as HTMLButtonElement | null;
-layoutFolderCurrentBtn?.addEventListener("click", () => {
-  void (window as unknown as { wb?: { getCwd?: () => Promise<string> } }).wb?.getCwd?.().then((d) => {
-    if (d && layoutFolderInput) layoutFolderInput.value = d;
+const layoutFolderPickBtn = document.getElementById("layout-folder-pick") as HTMLButtonElement | null;
+const layoutFolderClearBtn = document.getElementById("layout-folder-clear") as HTMLButtonElement | null;
+layoutFolderPickBtn?.addEventListener("click", () => {
+  void window.yo.layoutsPickFolder().then((dir) => {
+    if (dir && layoutFolderInput) layoutFolderInput.value = dir;
   });
+});
+layoutFolderClearBtn?.addEventListener("click", () => {
+  if (layoutFolderInput) layoutFolderInput.value = "";
 });
 const layoutLoopModels = document.getElementById("layout-loop-models");
 /** The layout's loop ("" = leave the active loop as-is) + its per-role picks. */
