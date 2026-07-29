@@ -783,8 +783,10 @@ async function saveLayout() {
   cancelLayout();
   // Settle pass: re-pull once the server write has certainly landed, so the
   // page cards AND the rail tiles repaint with what was actually saved even
-  // if a stale main process answered the first reload early.
-  setTimeout(() => { void loadLayouts(); }, 1200);
+  // if a stale main process answered the first reload early. ONLY while the
+  // card list is showing — loadLayouts hides the editor, and firing into a
+  // freshly reopened one blanked the whole page (editor hidden, list hidden).
+  setTimeout(() => { if (layoutEditor.classList.contains("hidden")) void loadLayouts(); }, 1200);
 }
 
 async function deleteLayout() {
@@ -798,7 +800,7 @@ async function deleteLayout() {
   if (!confirmed) return;
   await window.yo.layoutsDelete(editingLayoutName);
   cancelLayout();
-  setTimeout(() => { void loadLayouts(); }, 1200);
+  setTimeout(() => { if (layoutEditor.classList.contains("hidden")) void loadLayouts(); }, 1200);
 }
 
 
