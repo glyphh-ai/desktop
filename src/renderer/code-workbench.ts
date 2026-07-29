@@ -832,7 +832,44 @@ async function init(): Promise<void> {
     container.classList.toggle("has-banner", hasBanner);
     const rowHost = hasBanner ? document.createElement("div") : container;
     if (hasBanner) rowHost.className = "ws-rails-row";
-    rails.forEach((rail, idx) => { if (rail.banner === "top") container.appendChild(renderRail(rail, idx)); });
+    // Divider between a band and the column row — drag it to resize the
+    // band's share of the height (persisted via the rail's heightFrac).
+    const wireBandResize = (sep: HTMLElement, rail: Rail, pos: "top" | "bottom"): void => {
+      sep.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        sep.classList.add("dragging");
+        document.body.classList.add("wb-mouse-drag");
+        const contRect = container.getBoundingClientRect();
+        const railEl = container.querySelector<HTMLElement>(`.ws-right-rail[data-rail-id="${rail.id}"]`);
+        const onMove = (ev: MouseEvent) => {
+          const frac = pos === "bottom"
+            ? (contRect.bottom - ev.clientY) / contRect.height
+            : (ev.clientY - contRect.top) / contRect.height;
+          rail.heightFrac = Math.max(0.12, Math.min(0.8, frac));
+          if (railEl) railEl.style.flex = `0 0 ${(rail.heightFrac * 100).toFixed(1)}%`;
+        };
+        const onUp = () => {
+          sep.classList.remove("dragging");
+          document.body.classList.remove("wb-mouse-drag");
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          saveLayout();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    };
+    const bandSep = (rail: Rail, pos: "top" | "bottom"): HTMLElement => {
+      const sep = document.createElement("div");
+      sep.className = "ws-band-hsep";
+      wireBandResize(sep, rail, pos);
+      return sep;
+    };
+    rails.forEach((rail, idx) => {
+      if (rail.banner !== "top") return;
+      container.appendChild(renderRail(rail, idx));
+      container.appendChild(bandSep(rail, "top"));
+    });
     if (hasBanner) container.appendChild(rowHost);
     const topCount = rails.filter((r) => r.banner === "top").length;
     let normalPos = 0;
@@ -843,7 +880,11 @@ async function init(): Promise<void> {
       normalPos++;
     });
     rowHost.appendChild(makeRailDropStrip(topCount + normalPos));
-    rails.forEach((rail, idx) => { if (rail.banner === "bottom") container.appendChild(renderRail(rail, idx)); });
+    rails.forEach((rail, idx) => {
+      if (rail.banner !== "bottom") return;
+      container.appendChild(bandSep(rail, "bottom"));
+      container.appendChild(renderRail(rail, idx));
+    });
     container.querySelectorAll<HTMLElement>(".ws-rail-slot").forEach((slotEl) => {
       const kept = slotEl.dataset.slotId && savedFlex.get(slotEl.dataset.slotId);
       if (kept) slotEl.style.flex = kept;
@@ -3112,10 +3153,18 @@ async function init(): Promise<void> {
       // The PIN comes from the DEFINITION, never the snapshot — a memory
       // saved before the layout gained (or moved) its sticky cell would
       // otherwise erase the pin, and every .dip/app open stops swapping.
-      const stickySlugs = new Set(cells.filter((c) => c.sticky && !c.tool).map((c) => c.slug.toLowerCase()));
-      rails.flatMap((r) => r.slots).forEach((sl) => {
-        if (sl.view === "app") sl.sticky = stickySlugs.has(sl.slug.toLowerCase());
-      });
+      // Keyed off the RAW panelIds: builtin cells ("browser") don't resolve
+      // through the app library, and resolving first wiped their pins. A
+      // definition with NO sticky cell leaves the snapshot's pins alone.
+      const defSticky = layout.splits
+        .filter((c) => c.sticky)
+        .map((c) => { const id = c.panelId.trim().toLowerCase(); return id.startsWith("tool:") ? id.slice(5) : id; });
+      if (defSticky.length) {
+        const stickyKeys = new Set(defSticky);
+        rails.flatMap((r) => r.slots).forEach((sl) => {
+          if (sl.view === "app") sl.sticky = stickyKeys.has(sl.slug.toLowerCase());
+        });
+      }
       // No saveLayout() here: nothing changed — the memory stays as the user
       // left it, and the next drag re-saves anyway.
       applyFolderAndSession();

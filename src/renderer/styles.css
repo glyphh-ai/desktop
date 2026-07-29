@@ -9543,6 +9543,17 @@ select.settings-input {
 .ws-right-rails.has-banner { flex-direction: column; }
 .ws-rails-row { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; }
 .ws-right-rail.ws-rail-banner { width: auto !important; min-height: 120px; }
+/* Drag handle between the column row and a band — resizes the band height. */
+.ws-band-hsep {
+  height: 5px;
+  flex-shrink: 0;
+  background: transparent;
+  border-top: 1px solid var(--ws-line);
+  cursor: row-resize;
+  transition: background 0.10s;
+}
+.ws-band-hsep:hover, .ws-band-hsep.dragging { background: var(--accent, #8c3bf2); }
+.ws-right-rails.has-fullscreen .ws-band-hsep { display: none; }
 .ws-right-rail {
   background: var(--ws-bg-rail);
   /* Right border on every rail so the column's right edge is visible
