@@ -1359,6 +1359,11 @@ async function boot() {
       // the hide-on-close/tray keep-alives for the quit that follows.
       markQuitting();
       cleanupAll();
+      // Hand the single-instance lock back BEFORE the installer runs: the
+      // relaunched new version arrives while this process is still dying,
+      // and without this it lost the lock race and exited on the spot —
+      // "the app closed and never came back" after every update.
+      try { app.releaseSingleInstanceLock(); } catch { /* already released */ }
       try { autoUpdater.quitAndInstall(false, true); }
       catch (err) { console.error("[auto-update] quitAndInstall failed:", err); }
     }, 1200);
@@ -1885,18 +1890,27 @@ protocol.registerSchemesAsPrivileged([
 // but NSIS finds the other one. A half-finished install after that is how a
 // mixed-binary tree (agent subprocess access violations) happens. One instance,
 // ever; a second launch fronts the existing window instead.
-if (!app.requestSingleInstanceLock()) {
-  app.exit(0);
-} else {
-  app.on("second-instance", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
-  app.whenReady().then(boot);
-}
+// The lock can be briefly held by a DYING copy of the app — most commonly
+// the old version tearing down while the auto-updater relaunches the new
+// one. Retry for a few seconds before concluding we're a true second
+// launch; exiting immediately here is what made updated installs "never
+// come back".
+const startWithLock = (attempt: number): void => {
+  if (app.requestSingleInstanceLock()) {
+    app.on("second-instance", () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+    void app.whenReady().then(boot);
+    return;
+  }
+  if (attempt < 3) setTimeout(() => startWithLock(attempt + 1), 1200);
+  else app.exit(0);
+};
+startWithLock(0);
 
 // Handle HTTP Basic Auth prompts (401 WWW-Authenticate) from any webContents
 app.on("login", (event, _wc, _details, authInfo, callback) => {
