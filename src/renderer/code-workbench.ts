@@ -1198,6 +1198,25 @@ async function init(): Promise<void> {
     const webview = document.createElement("webview") as WebviewEl;
     webview.setAttribute("partition", "persist:yo");
     webview.setAttribute("allowpopups", "true");
+    // Sites request HTML fullscreen (Google Slides' Present mode). Without
+    // these the guest wedges in a half-fullscreen state the panel can't
+    // leave — the browser looked dead until an app restart. Follow the guest:
+    // maximize the slot on enter, restore on leave (only if WE maximized).
+    let fullscreenMaximized = false;
+    webview.addEventListener("enter-html-full-screen", () => {
+      if (maximizedSlotId === null) {
+        fullscreenMaximized = true;
+        maximizedSlotId = slot.id;
+        paintFullscreenClasses();
+      }
+    });
+    webview.addEventListener("leave-html-full-screen", () => {
+      if (fullscreenMaximized && maximizedSlotId === slot.id) {
+        fullscreenMaximized = false;
+        maximizedSlotId = null;
+        paintFullscreenClasses();
+      }
+    });
     // Some sites refuse to embed (X-Frame-Options/CSP) — surface that (to the
     // main terminal too), since it looks identical to "blank" otherwise.
     webview.addEventListener("did-fail-load", (e) => {

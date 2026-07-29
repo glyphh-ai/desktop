@@ -10483,8 +10483,14 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
 .ws-right-rails.has-fullscreen .ws-rail-dropstrip { display: none; }
 .ws-right-rails.has-fullscreen .ws-right-rail.rail-has-fullscreen {
   width: auto !important;
-  flex: 1;
+  /* !important: a BAND rail carries an inline flex (its rowHeights share),
+     which otherwise beats this rule and pins the maximized band to ~40%. */
+  flex: 1 1 auto !important;
 }
+/* A maximized band floods the whole column: the rails row holding the
+   non-maximized panels leaves the layout entirely. (When the maximized slot
+   is INSIDE the row, the row stays and its siblings hide as usual.) */
+.ws-right-rails.has-fullscreen .ws-rails-row:not(:has(.rail-has-fullscreen)) { display: none; }
 .ws-right-rails.has-fullscreen .ws-rail-slot:not(.fullscreen),
 .ws-right-rails.has-fullscreen .ws-rail-vsep { display: none; }
 .ws-right-rails.has-fullscreen .ws-rail-slot.fullscreen {
