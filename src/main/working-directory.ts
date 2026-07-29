@@ -489,6 +489,28 @@ export function registerWorkingDirectoryIpc(deps: {
   // Probes the dir first so a non-repo cwd gets a clean "not a git repo"
   // message instead of the noisy `git diff --no-index` usage dump that git
   // emits when the path isn't inside a work tree.
+  /** `git diff HEAD` NEVER shows untracked files — exactly what the agent
+   *  creates all day. Synthesize an added-file diff per untracked file
+   *  (`diff --no-index /dev/null <f>` exits 1 WITH the diff on stdout) and
+   *  append. Read-only: never stages, never touches the index. */
+  async function untrackedAsDiff(root: string): Promise<string> {
+    try {
+      const { stdout } = await execFileP("git", ["ls-files", "--others", "--exclude-standard"], { cwd: root });
+      const files = stdout.split("\n").filter(Boolean).slice(0, 200);
+      let text = "";
+      for (const f of files) {
+        try {
+          await execFileP("git", ["diff", "--no-index", "--", "/dev/null", f], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
+        } catch (err) {
+          const out = (err as { stdout?: string }).stdout;
+          if (out) text += out;
+        }
+      }
+      return text;
+    } catch {
+      return "";   // untracked listing failed — the tracked diff still shows
+    }
+  }
   ipcMain.handle("files:git-diff", async (_e, root: string) => {
     if (typeof root !== "string" || !root) return { text: "", error: "missing root" };
     try {
@@ -499,7 +521,7 @@ export function registerWorkingDirectoryIpc(deps: {
     }
     try {
       const { stdout } = await execFileP("git", ["diff", "HEAD"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
-      return { text: stdout };
+      return { text: stdout + (await untrackedAsDiff(root)) };
     } catch (err) {
       // Initial commit (no HEAD) is a normal state — show staged + unstaged.
       const msg = err instanceof Error
@@ -508,7 +530,7 @@ export function registerWorkingDirectoryIpc(deps: {
       if (/unknown revision|ambiguous argument 'HEAD'|bad revision/i.test(msg)) {
         try {
           const { stdout } = await execFileP("git", ["diff"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
-          return { text: stdout };
+          return { text: stdout + (await untrackedAsDiff(root)) };
         } catch (err2) {
           const msg2 = err2 instanceof Error
             ? (err2 as Error & { stderr?: string }).stderr || err2.message
