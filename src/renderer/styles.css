@@ -63,7 +63,6 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --white:       #111111;
   --hover:       #f0f0f0;
   --active-bg:   rgba(140, 59, 242, 0.06);
-  --rail-active-bg: rgba(17, 17, 17, 0.09);
   --accent:      #8c3bf2;
   --accent-hover:#a855f7;
   --accent-text: #b975f9;
@@ -107,7 +106,6 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --white:       #ffffff;
   --hover:       #303035;
   --active-bg:   rgba(140, 59, 242, 0.08);
-  --rail-active-bg: rgba(255, 255, 255, 0.12);
   --accent:      #8c3bf2;
   --accent-hover:#a855f7;
   --accent-text: #b975f9;
@@ -151,7 +149,6 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --white:       #ffffff;
   --hover:       #2e2046;
   --active-bg:   rgba(173, 93, 248, 0.12);
-  --rail-active-bg: rgba(255, 255, 255, 0.12);
   --accent:      #ad5df8;
   --accent-hover:#b975f9;
   --accent-text: #c98ffb;
@@ -204,7 +201,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #f4f4fb; --bg-raised: #ffffff; --surface: #ffffff; --surface-2: #f6f5fd; --surface-3: #eef0fb;
   --border: #e6e5f2; --border-2: #d6d5ea; --border-3: #c4c3e0;
   --text: #1c1b2e; --text-bright: #0d0c1a; --text-2: #4a4866; --text-3: #6f6d8c; --text-muted: #6f6d8c; --text-faint: #9c9ab8;
-  --white: #0d0c1a; --hover: #eeecfb; --active-bg: rgba(109, 94, 252, 0.09); --rail-active-bg: rgba(28, 27, 46, 0.08);
+  --white: #0d0c1a; --hover: #eeecfb; --active-bg: rgba(109, 94, 252, 0.09);
   --accent: #6d5efc; --accent-hover: #8a7dff; --accent-text: #6d5efc; --accent-dark: #4b3fd6; --accent-bg: #edeafe;
   --danger: #e5484d; --danger-soft: #f16469; --danger-bg: #fdecec; --warning: #f59e0b; --success: #16a34a; --blue: #3b82f6; --purple: #6d5efc;
   --overlay-bg: rgba(28, 27, 46, 0.28); --shadow: rgba(76, 63, 214, 0.14); --selection: rgba(109, 94, 252, 0.20);
@@ -227,7 +224,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #0d1117; --bg-raised: #161b22; --surface: #161b22; --surface-2: #1c2128; --surface-3: #21262d;
   --border: #30363d; --border-2: #3d444d; --border-3: #4a525b;
   --text: #e6edf3; --text-bright: #ffffff; --text-2: #adbac7; --text-3: #7d8590; --text-muted: #7d8590; --text-faint: #636c76;
-  --white: #ffffff; --hover: #21262d; --active-bg: rgba(47, 129, 247, 0.12); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --white: #ffffff; --hover: #21262d; --active-bg: rgba(47, 129, 247, 0.12);
   --accent: #2f81f7; --accent-hover: #539bf5; --accent-text: #6cb6ff; --accent-dark: #1f6feb; --accent-bg: #12233d;
   --danger: #f85149; --danger-soft: #ff6a63; --danger-bg: #2a1616; --warning: #d29922; --success: #3fb950; --blue: #2f81f7; --purple: #a371f7;
   --overlay-bg: rgba(1, 4, 9, 0.7); --shadow: rgba(1, 4, 9, 0.5); --selection: rgba(47, 129, 247, 0.30);
@@ -241,7 +238,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #000000; --bg-raised: #0a0a0a; --surface: #0d0d0d; --surface-2: #141414; --surface-3: #1a1a1a;
   --border: #5a5a5a; --border-2: #7a7a7a; --border-3: #9a9a9a;
   --text: #ffffff; --text-bright: #ffffff; --text-2: #eaeaea; --text-3: #c8c8c8; --text-muted: #b0b0b0; --text-faint: #909090;
-  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(255, 214, 0, 0.16); --rail-active-bg: rgba(255, 214, 0, 0.20);
+  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(255, 214, 0, 0.16);
   --accent: #ffd600; --accent-hover: #ffe23d; --accent-text: #ffe23d; --accent-dark: #c7a600; --accent-bg: #2a2600;
   --danger: #ff2b2b; --danger-soft: #ff5555; --danger-bg: #2a0000; --warning: #ff9500; --success: #00e676; --blue: #00b0ff; --purple: #d500f9;
   --overlay-bg: rgba(0, 0, 0, 0.8); --shadow: rgba(0, 0, 0, 0.7); --selection: rgba(255, 214, 0, 0.35);
@@ -256,7 +253,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #f0eee6; --bg-raised: #faf9f5; --surface: #ffffff; --surface-2: #f5f4ee; --surface-3: #eeece3;
   --border: #e3e1d6; --border-2: #d4d1c3; --border-3: #c2beac;
   --text: #3d3d3a; --text-bright: #1f1e1c; --text-2: #605d55; --text-3: #837f74; --text-muted: #837f74; --text-faint: #a8a496;
-  --white: #1f1e1c; --hover: #eae8de; --active-bg: rgba(217, 119, 87, 0.10); --rail-active-bg: rgba(61, 61, 58, 0.08);
+  --white: #1f1e1c; --hover: #eae8de; --active-bg: rgba(217, 119, 87, 0.10);
   --accent: #d97757; --accent-hover: #c96442; --accent-text: #bd5d3a; --accent-dark: #a54e30; --accent-bg: #f7e9e2;
   --danger: #bf4d43; --danger-soft: #d46a60; --danger-bg: #f7e6e4; --warning: #cc8500; --success: #6a8f4e; --blue: #4b7fb5; --purple: #9b7bc4;
   --overlay-bg: rgba(61, 61, 58, 0.30); --shadow: rgba(61, 61, 58, 0.14); --selection: rgba(217, 119, 87, 0.22);
@@ -270,7 +267,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #212121; --bg-raised: #2a2a2a; --surface: #2f2f2f; --surface-2: #343434; --surface-3: #303030;
   --border: #424242; --border-2: #4d4d4d; --border-3: #5c5c5c;
   --text: #ececec; --text-bright: #ffffff; --text-2: #c5c5c5; --text-3: #9a9a9a; --text-muted: #8e8e8e; --text-faint: #6e6e6e;
-  --white: #ffffff; --hover: #383838; --active-bg: rgba(16, 163, 127, 0.14); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --white: #ffffff; --hover: #383838; --active-bg: rgba(16, 163, 127, 0.14);
   --accent: #10a37f; --accent-hover: #1ab896; --accent-text: #2bd4ae; --accent-dark: #0d8268; --accent-bg: #10261f;
   --danger: #ef4146; --danger-soft: #f56b6f; --danger-bg: #2a1414; --warning: #e0a800; --success: #10a37f; --blue: #4a9eff; --purple: #ab68ff;
   --overlay-bg: rgba(0, 0, 0, 0.6); --shadow: rgba(0, 0, 0, 0.45); --selection: rgba(16, 163, 127, 0.30);
@@ -284,7 +281,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #131314; --bg-raised: #1e1f20; --surface: #1e1f20; --surface-2: #282a2c; --surface-3: #232527;
   --border: #37393b; --border-2: #444649; --border-3: #545659;
   --text: #e3e3e3; --text-bright: #ffffff; --text-2: #c4c7c5; --text-3: #9aa0a6; --text-muted: #868b90; --text-faint: #6b6f73;
-  --white: #ffffff; --hover: #2d2f31; --active-bg: rgba(138, 180, 248, 0.14); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --white: #ffffff; --hover: #2d2f31; --active-bg: rgba(138, 180, 248, 0.14);
   --accent: #8ab4f8; --accent-hover: #a6c6fa; --accent-text: #a6c6fa; --accent-dark: #4285f4; --accent-bg: #1a2438;
   --danger: #f28b82; --danger-soft: #f6a49d; --danger-bg: #2a1614; --warning: #fdd663; --success: #81c995; --blue: #8ab4f8; --purple: #c58af9;
   --overlay-bg: rgba(0, 0, 0, 0.65); --shadow: rgba(0, 0, 0, 0.5); --selection: rgba(138, 180, 248, 0.30);
@@ -306,7 +303,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #282a36; --bg-raised: #2f3140; --surface: #343746; --surface-2: #3c3f51; --surface-3: #383b4c;
   --border: #44475a; --border-2: #565a72; --border-3: #6272a4;
   --text: #f8f8f2; --text-bright: #ffffff; --text-2: #d5d5e0; --text-3: #a5abcc; --text-muted: #7c82a8; --text-faint: #6272a4;
-  --white: #ffffff; --hover: #3c3f51; --active-bg: rgba(189, 147, 249, 0.14); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --white: #ffffff; --hover: #3c3f51; --active-bg: rgba(189, 147, 249, 0.14);
   --accent: #bd93f9; --accent-hover: #cba9fb; --accent-text: #cba9fb; --accent-dark: #9d6ef0; --accent-bg: #2f2846;
   --danger: #ff5555; --danger-soft: #ff7b7b; --danger-bg: #2c1620; --warning: #ffb86c; --success: #50fa7b; --blue: #8be9fd; --purple: #bd93f9;
   --overlay-bg: rgba(20, 21, 28, 0.6); --shadow: rgba(0, 0, 0, 0.5); --selection: rgba(189, 147, 249, 0.32);
@@ -320,7 +317,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #2e3440; --bg-raised: #333b4a; --surface: #3b4252; --surface-2: #434c5e; --surface-3: #3f485a;
   --border: #4c566a; --border-2: #5b667c; --border-3: #6b7689;
   --text: #eceff4; --text-bright: #ffffff; --text-2: #d8dee9; --text-3: #a9b2c3; --text-muted: #8b95a7; --text-faint: #6b7689;
-  --white: #ffffff; --hover: #434c5e; --active-bg: rgba(136, 192, 208, 0.14); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --white: #ffffff; --hover: #434c5e; --active-bg: rgba(136, 192, 208, 0.14);
   --accent: #88c0d0; --accent-hover: #8fbcbb; --accent-text: #9fd3e0; --accent-dark: #5e81ac; --accent-bg: #2b3a44;
   --danger: #bf616a; --danger-soft: #cf757e; --danger-bg: #2f2024; --warning: #ebcb8b; --success: #a3be8c; --blue: #81a1c1; --purple: #b48ead;
   --overlay-bg: rgba(20, 24, 31, 0.6); --shadow: rgba(0, 0, 0, 0.45); --selection: rgba(136, 192, 208, 0.30);
@@ -334,7 +331,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #1a1030; --bg-raised: #221641; --surface: #281a4a; --surface-2: #322058; --surface-3: #2c1d50;
   --border: #45307a; --border-2: #563e92; --border-3: #6a4fae;
   --text: #f5e9ff; --text-bright: #ffffff; --text-2: #d3c0ee; --text-3: #a892cf; --text-muted: #8570ad; --text-faint: #675588;
-  --white: #ffffff; --hover: #32205a; --active-bg: rgba(255, 46, 151, 0.16); --rail-active-bg: rgba(255, 255, 255, 0.10);
+  --white: #ffffff; --hover: #32205a; --active-bg: rgba(255, 46, 151, 0.16);
   --accent: #ff2e97; --accent-hover: #ff5cae; --accent-text: #ff77bd; --accent-dark: #d61f7c; --accent-bg: #3a1436;
   --danger: #ff4d5e; --danger-soft: #ff7280; --danger-bg: #331420; --warning: #ffb347; --success: #2bf5c8; --blue: #00e5ff; --purple: #b14dff;
   --overlay-bg: rgba(10, 5, 24, 0.65); --shadow: rgba(255, 46, 151, 0.18); --selection: rgba(0, 229, 255, 0.30);
@@ -357,7 +354,7 @@ html[data-theme="dark"] .glyphh-logo--black { display: block; }
   --bg: #020a02; --bg-raised: #051005; --surface: #071507; --surface-2: #0b1f0b; --surface-3: #091a09;
   --border: #14371a; --border-2: #1d4d26; --border-3: #276634;
   --text: #b9ffc4; --text-bright: #e6ffe9; --text-2: #57e06f; --text-3: #3aa64f; --text-muted: #2c8a3f; --text-faint: #206630;
-  --white: #e6ffe9; --hover: #0c220f; --active-bg: rgba(0, 255, 102, 0.14); --rail-active-bg: rgba(0, 255, 102, 0.18);
+  --white: #e6ffe9; --hover: #0c220f; --active-bg: rgba(0, 255, 102, 0.14);
   --accent: #00ff66; --accent-hover: #4dff92; --accent-text: #4dff92; --accent-dark: #00cc52; --accent-bg: #06240f;
   --danger: #ff3b3b; --danger-soft: #ff6161; --danger-bg: #250606; --warning: #d8ff00; --success: #00ff66; --blue: #00e0c0; --purple: #6bff8a;
   --overlay-bg: rgba(0, 8, 0, 0.75); --shadow: rgba(0, 255, 102, 0.14); --selection: rgba(0, 255, 102, 0.30);
@@ -3046,9 +3043,6 @@ body.account-locked #dl-btn-wrap {
 }
 .dash-refresh:hover { color: var(--text); border-color: var(--border-2); background: var(--hover); }
 
-/* ── Pending-update badge (bottom-right, all home pages) ─────────────── */
-/* The update prompt moved from a floating bottom-right badge to a rail button
-   (.app-rail-relaunch) — the old .update-badge* rules are gone with it. */
 
 /* The library page wrapper (added for the My apps | Marketplace tabs) must
    pass the section's flex layout through — otherwise #app-detail's flex:1
@@ -11597,119 +11591,6 @@ select:focus {
    child of .code-root and only shows when the coding slot adopts it. */
 .code-root > .code-agent { display: none; }
 
-/* App rail — the persistent left rail (Home|Code, sessions, nav, user) */
-#app-rail {
-  width: 232px;
-  min-width: 232px;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--border);
-  background: var(--surface-2);
-  overflow: hidden;
-  transition: width 0.16s ease, min-width 0.16s ease;
-}
-#app-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
-.code-new-session {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 10px 6px;
-  padding: 8px 12px;
-  border: 1px solid var(--border-2);
-  border-radius: 9px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-}
-.code-new-session:hover { border-color: var(--accent); color: var(--text-bright); }
-/* Link treatment: same row, no button chrome. Accent in light mode; plain
-   WHITE in dark — a purple link at the rail's top read as noise there. */
-.code-new-session.code-new-session-link {
-  border: none; background: none; padding: 8px 6px; border-radius: 6px;
-  color: var(--accent); font-weight: 500;
-}
-[data-theme="dark"] .code-new-session.code-new-session-link,
-[data-theme="purple"] .code-new-session.code-new-session-link,
-[data-theme="aurora"] .code-new-session.code-new-session-link {
-  color: #fff;
-}
-.code-new-session.code-new-session-link:hover { color: var(--text-bright); background: var(--hover); }
-.code-rail-label {
-  padding: 12px 14px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-/* Recents shares the rail with the Apps grid below it, so it is capped rather
-   than flex:1 — the grid takes the remaining space. */
-.code-history { flex: 0 1 170px; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
-#recent-apps-list { flex: 1; min-height: 96px; }
-.code-history-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 3px 3px 10px;
-  border-radius: 7px;
-  cursor: pointer;
-  color: var(--text-3);
-  font-size: 12.5px;
-  line-height: 1.5;
-  min-height: 24px;
-}
-/* Agent-loop status — faint dot per session, strobing green while working. */
-.code-chat-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-left: 2px;
-  background: var(--text-faint);
-  opacity: 0.35;
-}
-.code-chat-dot.working {
-  background: #34d399;
-  animation: gs-dot-strobe 1.5s ease-in-out infinite;
-}
-@keyframes gs-dot-strobe {
-  0%, 100% { opacity: 0.25; box-shadow: 0 0 2px rgba(52, 211, 153, 0.2); }
-  50% { opacity: 0.95; box-shadow: 0 0 7px rgba(52, 211, 153, 0.6); }
-}
-.code-history-item:hover { background: var(--hover); color: var(--text-2); }
-/* The Recent-session highlight only shows while the agent (code) is the
-   active section — so the rail never shows two highlights at once. */
-body[data-rail-section="code"] .code-history-item.active { background: var(--rail-active-bg); color: var(--white); }
-.code-history-title { flex: 1; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Inline rename field — swaps in for the title when the active row's title
-   is clicked; matches the row's type so nothing jumps. */
-.code-history-rename {
-  flex: 1; min-width: 0; margin-left: 6px;
-  background: var(--surface-2); color: var(--text);
-  border: 1px solid var(--border-2); border-radius: 5px;
-  font: inherit; padding: 1px 6px; outline: none;
-}
-.code-chat-menu-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--text-2);
-  cursor: pointer;
-  padding: 0;
-  margin-left: auto;
-  opacity: 0;
-}
-.code-history-item:hover .code-chat-menu-btn,
-body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { opacity: 1; }
-.code-chat-menu-btn:hover { color: var(--text); background: var(--hover); }
 
 /* Center — agent */
 .code-agent { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
@@ -11724,8 +11605,6 @@ body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { o
 }
 .code-agent-head button,
 .code-agent-head .code-wd-btn { -webkit-app-region: no-drag; }
-/* Rail collapsed → the fixed chrome cluster floats over the page; shove the
-   header content right so they don't overlap. */
 .code-spacer { flex: 1; }
 .code-icon-btn {
   display: inline-flex;
@@ -12026,47 +11905,6 @@ body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { o
 .code-send.thinking .icon-return { display: none; }
 .code-send.thinking .icon-stop { display: block; }
 
-/* Drag splitters between the rails and the agent column. */
-.code-splitter {
-  flex: 0 0 4px;
-  width: 4px;
-  margin: 0 -2px;
-  position: relative;
-  z-index: 2;
-  cursor: col-resize;
-  background: transparent;
-}
-.code-splitter:hover { background: var(--border-2); }
-#app-rail.collapsed + .code-splitter { display: none; }
-body.code-dragging { cursor: col-resize; user-select: none; }
-body.code-dragging #app-rail { transition: none; }
-
-/* Session row menu (⋯ → Delete) */
-.code-menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: 120px;
-  padding: 4px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-2);
-  border-radius: 9px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-}
-.code-menu-item {
-  display: block;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--text);
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-}
-.code-menu-item:hover { background: var(--hover); }
-.code-menu-item.danger { color: #e5484d; }
-.code-menu-item.danger:hover { background: rgba(229, 72, 77, 0.1); }
 
 /* Workdir controls (old workbench header, adapted) */
 .code-wd-btn,
@@ -12132,80 +11970,6 @@ body.wb-max .ws-right-rails { width: 100%; }
 .code-wb-edge:hover,
 .code-wb-edge.dragging { background: var(--border-2); }
 
-/* App rail — Home|Code switcher */
-/* App rail — section nav */
-.app-rail-nav { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 0; }
-.app-rail-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-2);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.app-rail-nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
-.app-rail-nav-item:hover { background: var(--hover); color: var(--text); }
-.app-rail-nav-item.active { background: var(--rail-active-bg); color: var(--white); }
-
-/* App rail — user area (bottom) */
-.app-rail-user {
-  margin-top: auto;
-  padding: 8px;
-  border-top: 1px solid var(--border);
-}
-/* "Relaunch to update" — an accent CTA that sits just above the account button,
-   shown only when an update has downloaded (home.ts toggles .hidden). */
-.app-rail-relaunch {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  margin-bottom: 6px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-.app-rail-relaunch svg { width: 15px; height: 15px; flex-shrink: 0; }
-.app-rail-relaunch:hover { background: var(--accent-hover, var(--accent)); }
-.app-rail-relaunch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-rail-relaunch.hidden { display: none; }
-.app-rail-user-btn {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-2);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.app-rail-user-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
-.app-rail-user-btn:hover { background: var(--hover); color: var(--text); }
-.app-rail-user-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* User dropdown (opens upward; reuses .code-menu) */
-.app-rail-user-menu { min-width: 168px; }
-.app-rail-user-menu .code-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-.app-rail-user-menu .code-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
 
 /* Full-bleed chrome — the home panel covers the titlebar strip. */
 #panel-wc {
@@ -12236,97 +12000,7 @@ body.wb-max .ws-right-rails { width: 100%; }
 }
 .app-rail-mark { width: 16px; height: 16px; opacity: 0.9; }
 
-/* Recents vertical resize + Recent apps search */
-.recents-vsplit {
-  flex: 0 0 4px;
-  margin: 1px 8px;
-  border-radius: 2px;
-  cursor: row-resize;
-  background: var(--text-faint);
-  opacity: 0.7;
-}
-.recents-vsplit:hover { background: var(--accent); opacity: 1; }
-body.code-vdragging { cursor: row-resize; user-select: none; }
-.app-rail-search { padding: 0 10px 6px; }
-.app-rail-search input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12.5px;
-  outline: none;
-}
-.app-rail-search input:focus { border-color: var(--accent); }
-/* Apps grid (rail) — Apps-page icons in tiles */
-.app-rail-grid {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 2px 10px 10px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
-  gap: 6px;
-  align-content: start;
-}
-.app-rail-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  padding: 8px 2px 6px;
-  border: none;
-  border-radius: 9px;
-  background: none;
-  color: var(--text-2);
-  cursor: pointer;
-}
-.app-rail-tile:hover { background: var(--hover); color: var(--text); }
-.app-rail-tile .tile-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-3);
-}
-.app-rail-tile .tile-icon img {
-  /* contain in a fixed inset (not cover) so every logo reads the same size */
-  width: 100%; height: 100%; object-fit: contain;
-  padding: 5px; box-sizing: border-box;
-}
-.app-rail-tile .tile-initial {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.app-rail-tile .tile-name {
-  max-width: 100%;
-  font-size: 10.5px;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Layout tiles — mini 2x2 stack of the layout's app icons. */
-.app-rail-tile .tile-icon.tile-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 1fr;
-  gap: 1px;
-  padding: 2px;
-  box-sizing: border-box;
-}
 .tile-layout .mini {
   display: flex;
   align-items: center;
@@ -12342,51 +12016,7 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   padding: 2px; box-sizing: border-box;
 }
 .tile-layout .tile-mini-initial { font-size: 8px; font-weight: 600; color: var(--text-3); }
-/* Section labels + pagers inside the rail grid (palette parity) */
-.rail-grid-label {
-  grid-column: 1 / -1;
-  padding: 10px 2px 2px;
-}
-.rail-grid-pager { grid-column: 1 / -1; padding: 2px 0 4px; }
-.rail-grid-pager .pagination-nav { justify-content: center; }
 
-/* Apps label row — open icon on the far right */
-.app-rail-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-/* Collapsible rail section header — disclosure toggle (chevron + label) on the
-   left, the open-page icon on the right. */
-.app-rail-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-.app-rail-section-head .app-rail-section-toggle { flex: 1; min-width: 0; }
-.app-rail-section-head .rail-label-btn { flex: none; }
-/* Open section bodies SHARE the rail space below Recents (two open → split
-   evenly). A collapsed body is display:none, so its space flows to the other
-   open body — or, when both are closed, to Recents (see syncRailLayout). */
-.app-rail-section-body { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; }
-.rail-label-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 5px;
-  background: none;
-  color: var(--text-3);
-  cursor: pointer;
-  padding: 0;
-}
-.rail-label-btn svg { width: 12px; height: 12px; }
-.rail-label-btn:hover { background: var(--hover); color: var(--text); }
-.app-rail-tile--os { opacity: 0.78; }
-.app-rail-tile--os:hover { opacity: 1; }
 
 
 /* While the full-bleed home panel is active, the base titlebar's OS drag
@@ -12424,25 +12054,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   transition: opacity 0.5s ease;
 }
 
-/* Recents disclosure */
-.code-rail-disclosure {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-}
-/* Breathing room between the nav and the Recents header. */
-#recents-toggle { margin-top: 14px; }
-.code-rail-disclosure .disc-chevron {
-  width: 11px;
-  height: 11px;
-  transition: transform 0.15s ease;
-}
-.code-rail-disclosure.closed .disc-chevron { transform: rotate(-90deg); }
 
 
 /* Slim the leading drop strip inside the rails (between-rail strips keep
@@ -12450,7 +12061,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 #code-wb-rails > .ws-rail-dropstrip:first-child { width: 2px; flex-basis: 2px; }
 
 
-/* Collapse-to-rail toggle — accent when the window is railed. */
 
 /* ── Glyphh spinner — tumbling wireframe cube + typed working phrase ────── */
 /* App-level loading overlay — the standard spinner over the entire app,
@@ -12988,13 +12598,11 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
    otherwise a rail-resize freezes the instant it crosses the Preview frame
    and the mouseup is never seen. */
 body.wb-mouse-drag iframe { pointer-events: none !important; }
-body.code-dragging iframe { pointer-events: none !important; }
 /* App panels are <webview>s in the overlay layer, not iframes — they'd swallow
    the drag's mousemove the instant the cursor crossed a panel (e.g. resizing a
    rail rightward, over its own webview), freezing the resize. Disable the whole
    holder during a workbench drag so events reach the document. */
-body.wb-mouse-drag .ws-app-holder,
-body.code-dragging .ws-app-holder { pointer-events: none !important; }
+body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 
 /* Monaco save button — appears when the file is dirty */
 .ws-monaco-save {
@@ -13086,16 +12694,6 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 
 
 
-/* ── Rail "More" disclosure — Loops/Skills/Agents fold under it ── */
-/* Quieter than the real destinations — it is a disclosure, not a page. Dark
-   mode dims it further; hover and open restore full presence. */
-.app-rail-more-toggle { opacity: 0.85; }
-[data-theme="dark"] .app-rail-more-toggle { opacity: 0.55; }
-.app-rail-more-toggle:hover, .app-rail-more-toggle.open, .app-rail-more-toggle.active { opacity: 1; }
-/* The More fly-out — a code-menu (fixed + shadowed) holding rail nav items,
-   opened to the right of the More button. */
-.rail-more-menu { display: flex; flex-direction: column; gap: 2px; min-width: 152px; }
-.rail-more-menu .app-rail-nav-item { width: 100%; }
 
 /* "Create with AI" — a quiet link beside the breadcrumb, NEW pages only:
    an existing object is edited by hand, a blank one is worth delegating. */

@@ -1,5 +1,6 @@
 /**
- * Code — the Glyphh agent surface: sessions rail | agent | workbench rails.
+ * Code — the Glyphh agent surface: agent | workbench rails (sessions live
+ * in the Coding Agent panel's history dropdown).
  *
  * Sessions persist in localStorage (moves to a real store as the loop
  * matures); replies stream from the local Glyphh model (llama-server,
@@ -633,8 +634,6 @@ function ensureRunTicker(): void {
 function stopRunTickerIfIdle(): void {
   if (liveRuns.size === 0 && runTicker) { clearInterval(runTicker); runTicker = null; }
 }
-let menuEl: HTMLDivElement | null = null;
-
 function el<T extends HTMLElement = HTMLElement>(id: string): T | null {
   return document.getElementById(id) as T | null;
 }
@@ -737,119 +736,11 @@ function newChat(): void {
   input()?.focus();  void checkWorkdirGate();
 }
 
-async function deleteChat(chat: CodeChat): Promise<void> {
-  if (!(await confirmAction({
-    title: `Delete “${chat.title}”?`,
-    body: "This session's history is gone for good.",
-    confirmLabel: "Delete session",
-    danger: true,
-  }))) return;
-  chats = chats.filter((x) => x.id !== chat.id);
-  if (currentId === chat.id) currentId = chats[0]?.id || "";
-  void saveStore();
-  renderHistory();
-  renderThread();
-}
-
-// ── Session row menu (⋯ → Delete) ────────────────────────────────────────
-function closeMenu(): void { menuEl?.remove(); menuEl = null; }
-
-/** Swap a history row's title for an inline input to rename the chat. Committed
- *  on Enter/blur, cancelled on Escape. Edits IN PLACE (no renderHistory) so a
- *  rebuild can't destroy the field mid-edit. Triggered from the row menu. */
-function beginRename(chat: CodeChat, label: HTMLElement): void {
-  const field = document.createElement("input");
-  field.type = "text";
-  field.className = "code-history-rename";
-  field.value = chat.title;
-  field.addEventListener("click", (ev) => ev.stopPropagation());
-  let done = false;
-  const restore = (): void => { label.textContent = chat.title; label.title = chat.title; field.replaceWith(label); };
-  const commit = (): void => {
-    if (done) return;
-    done = true;
-    const t = field.value.trim();
-    if (t && t !== chat.title) {
-      chat.title = t;
-      void saveStore();
-      // The coding tile's header/dropdown follow this event.
-      window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
-    }
-    restore();
-  };
-  field.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
-    else if (ev.key === "Escape") { ev.preventDefault(); done = true; restore(); }
-  });
-  field.addEventListener("blur", commit);
-  label.replaceWith(field);
-  field.focus();
-  field.select();
-}
-
-function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
-  closeMenu();
-  const m = document.createElement("div");
-  m.className = "code-menu";
-  const ren = document.createElement("button");
-  ren.className = "code-menu-item";
-  ren.textContent = "Rename";
-  ren.addEventListener("click", () => {
-    closeMenu();
-    const label = anchor.closest(".code-history-item")?.querySelector<HTMLElement>(".code-history-title");
-    if (label) beginRename(chat, label);
-  });
-  m.appendChild(ren);
-  const del = document.createElement("button");
-  del.className = "code-menu-item danger";
-  del.textContent = "Delete";
-  del.addEventListener("click", () => { closeMenu(); void deleteChat(chat); });
-  m.appendChild(del);
-  const r = anchor.getBoundingClientRect();
-  m.style.top = `${r.bottom + 4}px`;
-  m.style.left = `${Math.max(8, r.right - 120)}px`;
-  document.body.appendChild(m);
-  menuEl = m;
-}
-
 // ── Rendering ────────────────────────────────────────────────────────────
+/** (2.5.0) The rail's session list is gone — the Coding Agent panel's header
+ *  dropdown is the only session UI, and it repaints off this event. */
 function renderHistory(): void {
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
-  const list = el<HTMLDivElement>("code-history");
-  if (!list) return;
-  list.textContent = "";
-  for (const c of chats) {
-    const row = document.createElement("div");
-    row.className = "code-history-item" + (c.id === currentId ? " active" : "");
-    const label = document.createElement("span");
-    label.className = "code-history-title";
-    label.textContent = c.title;
-    label.title = c.title;
-    // Rename is a menu action (⋯ → Rename), not a click on the title — a
-    // selection-gated title click fought the row's own select handler and
-    // never reliably fired. The label is now just a label.
-    const dot = document.createElement("span");
-    const working = liveRuns.has(c.id);
-    dot.className = "code-chat-dot" + (working ? " working" : "");
-    dot.title = working ? "Working" : "Idle";
-    const menuBtn = document.createElement("button");
-    menuBtn.className = "code-chat-menu-btn";
-    menuBtn.title = "More";
-    menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
-    menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openChatMenu(menuBtn, c); });
-    row.append(dot, label, menuBtn);
-    row.addEventListener("click", () => {
-      currentId = c.id;
-      threadPinned = true;
-      void saveStore();
-      ensureCodeSection();
-      renderHistory();
-      renderThread();
-      refreshCtxMeter();
-      void checkWorkdirGate();
-    });
-    list.appendChild(row);
-  }
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
@@ -1403,7 +1294,7 @@ function setThinking(on: boolean): void {
   const send = el("code-send");
   send?.classList.toggle("thinking", on);
   if (send) send.title = on ? "Stop" : "Send";
-  renderHistory(); // rail dots track the loop state
+  renderHistory(); // the panel header tracks the loop state
 }
 
 /** `thinking` is VIEW state: whether the CURRENT chat is running. Re-derive
@@ -1644,7 +1535,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   if (run?.runId) askQueue = askQueue.filter((q) => q.runId !== run.runId);
   paintAskDock();
   stopRunTickerIfIdle();
-  renderHistory();   // the rail dot goes idle even for a background session
+  renderHistory();   // the panel header goes idle even for a background session
   if (chatId === currentId) {
     broadcastTimeline(false);
     setThinking(false);
@@ -1966,33 +1857,6 @@ export function openUrlInWorkbench(name: string, url: string): void {
  *  the Code workbench has ever mounted. Flips to the agent surface, boots the
  *  workbench (idempotent async init), then retries the toggle over rAF because
  *  __wbToggleAppSwitcher isn't assigned until that init() resolves. */
-/** Reset the workspace to a clean slate (the Reset button, top-left):
- *  clear every workbench panel (no layout), return to the home surface, and
- *  ask main to un-dock the window + close any desktop-layout windows. If the
- *  user cancels the unsaved-changes prompt, nothing changes. */
-/**
- * Reset REMOVES THE LAYOUT — nothing more. It closes every workbench panel and
- * parks the agent back in its home column (clearAllPanels → renderRails →
- * parkAgent do both). It deliberately does NOT touch the OS window (size,
- * position, fullscreen) or the rail: a layout is workspace state, not window
- * state, so resetting it should not throw the whole window around.
- */
-export async function resetWorkspace(): Promise<void> {
-  const w = window as unknown as {
-    __initCodeWorkbench?: () => void; __wbClearPanels?: () => Promise<boolean | void>;
-  };
-  gotoSection("code");
-  w.__initCodeWorkbench?.();
-  // Clear panels — resolves to false only if the user cancelled the
-  // unsaved-changes confirm, in which case the reset is aborted entirely.
-  let tries = 0;
-  const clear = async (): Promise<boolean | void> => {
-    if (w.__wbClearPanels) return w.__wbClearPanels();
-    if (tries++ < 20) { await new Promise((r) => requestAnimationFrame(r)); return clear(); }
-  };
-  await clear();
-}
-
 export function openCommandCenter(opts: { forceInline?: boolean } = {}): void {
   void (async () => {
     // Desktop-overlay mode (toggle inside the command center): open the
@@ -2023,7 +1887,6 @@ export function openCommandCenter(opts: { forceInline?: boolean } = {}): void {
 export function initCode(): void {
   if (inited) return;
   inited = true;
-  el("code-new-chat")?.addEventListener("click", newChat);
   // "/" in the composer pops the installed-skill menu at the caret.
   const composerTa = input();
   if (composerTa) attachSlashMenu(composerTa);
@@ -2036,8 +1899,6 @@ export function initCode(): void {
   // Header launcher button — bound here (home-panel startup) through the
   // cold-safe path, so it works even before the Code workbench first mounts.
   el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());
-  // Reset lives in BOTH rail section headers (Apps + Layouts) — bind every one.
-  document.querySelectorAll(".rail-reset-btn").forEach((b) => b.addEventListener("click", () => { void resetWorkspace(); }));
   syncDragStripOffset();
   // Apps open as workbench panels beside the agent (the OS-window
   // replacement). Every main-side opener — Glyphh's open_app, the relay's
@@ -2145,9 +2006,6 @@ export function initCode(): void {
     }
   });
   ta?.addEventListener("input", () => autoGrow(ta!));
-  document.addEventListener("mousedown", (e) => {
-    if (menuEl && !menuEl.contains(e.target as Node)) closeMenu();
-  });
   // loadStore is ASYNC: sessions arrive before the first history paint (the
   // Coding Agent panel's dropdown reads the same store).
   void (async () => {
@@ -2164,7 +2022,7 @@ export function initCode(): void {
     if (c && dir) { c.workdir = dir; void saveStore(); }
   });
   // Another window (the ghost overlay) saved the shared store — adopt its
-  // list so a ghost-created session appears in this rail immediately. The
+  // list so a ghost-created session appears in the history dropdown immediately. The
   // CURRENT chat keeps its local object: it may be mid-stream, and the disk
   // copy of it is never newer than this window's memory.
   (window.yo as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => {
