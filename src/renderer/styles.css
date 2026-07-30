@@ -486,6 +486,10 @@ body {
   margin-bottom: 32px;
 }
 
+/* "Agents. Models. Apps. / One workspace." — the accent mirrors the web
+   hero's rhero-accent treatment on the second line. */
+.intro-accent { color: var(--accent); }
+
 .splash-status {
   font-size: 12px;
   color: var(--text-faint);
