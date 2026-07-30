@@ -94,6 +94,7 @@ const NAV_SECTIONS: Array<{ slug: string; name: string; nav: string }> = [
   { slug: "loops", name: "Loops", nav: "loops" },
   { slug: "agents", name: "Agents", nav: "agents" },
   { slug: "models", name: "Models", nav: "models" },
+  { slug: "drips", name: "Drips", nav: "drips" },
   { slug: "settings", name: "Settings", nav: "settings" },
   { slug: "docs", name: "Docs", nav: "docs" },
   { slug: "account", name: "Account", nav: "settings:account" },

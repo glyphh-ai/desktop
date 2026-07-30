@@ -60,7 +60,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "app";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "section" | "app";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -97,6 +97,10 @@ interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: 
 /** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
  *  composer); nothing of its own beyond the header's session controls. */
 interface CodingSlot { id: number; view: "coding"; sticky?: boolean }
+/** A whole app SECTION (Home, Apps, Settings, Drips, …) hosted as a panel —
+ *  the section's singleton DOM is adopted into the slot body (the same
+ *  reparenting trick the coding slot uses for the agent). */
+interface SectionSlot { id: number; view: "section"; section: string; sticky?: boolean }
 interface PreviewSlot {
   id: number; view: "preview"; url?: string; viewKey?: string; sticky?: boolean;
   /** Inline document (Glyphh build previews) — runtime-only, never persisted. */
@@ -129,7 +133,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | SectionSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -158,6 +162,13 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   coding:   { title: "Coding Agent", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
+};
+
+/** Panel titles for hosted sections (slot headers + layout minis). */
+const SECTION_TITLES: Record<string, string> = {
+  dashboard: "Home", connections: "Connections", apps: "Apps", layouts: "Layouts",
+  skills: "Skills", loops: "Loops", agents: "Agents", models: "Models",
+  settings: "Settings", docs: "Docs", drips: "Drips",
 };
 
 // ── Monaco loader (AMD path: window.require + monaco/ assets in dist) ──
@@ -353,7 +364,7 @@ async function init(): Promise<void> {
   // Persists the toggleable views' positions only (Files/Terminal/Diff/Preview).
   // Monaco is spawned on demand by clicking a file in the tree — its tabs are
   // runtime state and would feel surprising to restore.
-  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
+  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
   type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> };
@@ -392,7 +403,9 @@ async function init(): Promise<void> {
           views: r.slots.map((s): SavedView =>
             s.view === "app"
               ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh, sticky: s.sticky }
-              : s.view),
+              : s.view === "section"
+                ? { view: "section", section: s.section }
+                : s.view),
         })).filter((r) => r.views.length > 0),
       };
       localStorage.setItem(layoutKey(), JSON.stringify(data));
@@ -413,6 +426,8 @@ async function init(): Promise<void> {
       for (const v of (savedRail.views || []).slice(0, 2)) {
         if (typeof v === "object" && v !== null && v.view === "app" && v.slug) {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
+        } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
+          slots.push({ id: nextSlotId++, view: "section", section: v.section });
         } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "coding" || v === "monaco") {
           slots.push(makeSlot(v));
         }
@@ -452,11 +467,10 @@ async function init(): Promise<void> {
     if (rails.length === 0) { pushDefaultLayout(); renderRails(); }
   }
   function railsBudget(): number {
-    // .code-root spans agent + rails (the app rail sits outside it).
+    // 2.5.0: there is no center agent column — the rails ARE the surface.
     const root = document.querySelector<HTMLElement>(".code-root");
     const rootW = root ? root.getBoundingClientRect().width : window.innerWidth;
-    const MIN_AGENT = (maximizedSlotId !== null || codingHosted()) ? 0 : 440;
-    return Math.max(260, rootW - MIN_AGENT);
+    return Math.max(260, rootW);
   }
   function applyResponsiveWidths(): void {
     const container = document.getElementById("code-wb-rails");
@@ -485,8 +499,8 @@ async function init(): Promise<void> {
     // With the agent visible beside the workbench the aside sizes to the
     // rails, so stretching here forced the workbench to max width and
     // snapped every edge drag right back.
-    const railsFill = maximizedSlotId !== null || codingHosted();
-    if (railsFill && total < available && widths.length) widths[widths.length - 1] += available - total;
+    // Full-width surface: the last rail always absorbs the surplus.
+    if (total < available && widths.length) widths[widths.length - 1] += available - total;
     const railEls = container.querySelectorAll<HTMLElement>(".ws-right-rail");
     let si = 0;
     rails.forEach((r, idx) => {
@@ -818,10 +832,67 @@ async function init(): Promise<void> {
     return rails.some((r) => r.slots.some((s) => s.view === "coding"));
   }
 
+  /** Return every hosted SECTION's singleton DOM to the hidden #page-body pen
+   *  (before any rails rebuild, and when a section panel closes). The same
+   *  contract as parkAgent — adopt on render, park before wipe. */
+  function parkSections(): void {
+    const pen = document.getElementById("page-body");
+    document.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
+      sec.classList.remove("active", "wb-hosted");
+      pen?.appendChild(sec);
+    });
+  }
+
+  /** Adopt a section's DOM into the slot and run its loader. */
+  function renderSectionIntoSlot(body: HTMLElement, slot: SectionSlot): void {
+    const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${slot.section}"]`);
+    if (!sec) { body.innerHTML = `<div class="ws-empty">This page is unavailable.</div>`; return; }
+    body.classList.add("ws-section-body");
+    sec.classList.add("active", "wb-hosted");
+    body.appendChild(sec);
+  }
+
+  /**
+   * Navigate the workbench to a SECTION — the 2.5.0 shell's page switch.
+   * Opening a section clears every other panel (with the unsaved-work
+   * confirm) and renders just that panel, full width. "code" is the agent
+   * surface: section panels close, the workspace stays, and a coding panel
+   * is ensured so the agent is always reachable.
+   */
+  function openSectionInWorkbench(section: string): void {
+    const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
+    if (section === "code" || section === "workspace") {
+      // Back to the working surface: section panels close, the workspace
+      // stays. "code" additionally guarantees the agent panel exists;
+      // "workspace" is the neutral flip used before app/layout opens (the
+      // incoming panels define the view — no uninvited agent).
+      for (let i = rails.length - 1; i >= 0; i--) {
+        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "section");
+        if (!rails[i].slots.length) rails.splice(i, 1);
+      }
+      if (section === "code" && !codingHosted()) { placeSlot(makeSlot("coding")); return; }   // placeSlot renders+saves
+      renderRails();
+      saveLayout();
+      return;
+    }
+    const already = rails.flatMap((r) => r.slots).some((sl) => sl.view === "section" && sl.section === section);
+    if (already) { loadSection?.(section); return; }
+    void clearAllPanels().then((cleared) => {
+      if (!cleared) return;   // the user kept unsaved work
+      const slot: SectionSlot = { id: nextSlotId++, view: "section", section };
+      rails.push({ id: nextRailId++, slots: [slot] });
+      renderRails();
+      saveLayout();
+      scheduleAppSync();
+      loadSection?.(section);
+    });
+  }
+
   function renderRails(): void {
     const container = document.getElementById("code-wb-rails");
     if (!container) return;
     parkAgent();
+    parkSections();
     // Custom slot heights (drag-set or layout-set) live as inline flex on the
     // slot elements — a rebuild would silently reset them (e.g. opening a
     // file re-renders and the panel under the editor snapped back). Snapshot
@@ -928,8 +999,8 @@ async function init(): Promise<void> {
       const v = btn.dataset.view as ViewKind;
       btn.classList.toggle("active", viewIsOpen(v));
     });
-    // Rails-empty ⇒ the whole workbench aside collapses out of the layout.
-    document.getElementById("code-workbench")?.classList.toggle("collapsed", rails.length === 0);
+    // 2.5.0: the workbench IS the surface — it never collapses.
+    document.getElementById("code-workbench")?.classList.remove("collapsed");
   }
 
   function renderRail(rail: Rail, railIdx: number): HTMLElement {
@@ -963,7 +1034,9 @@ async function init(): Promise<void> {
 
   function renderSlot(slot: Slot, railIdx: number, slotIdx: number): HTMLElement {
     const meta = VIEW_META[slot.view] || { title: slot.view, icon: "" };
-    const title = slot.view === "app" ? slot.name : meta.title;
+    const title = slot.view === "app" ? slot.name
+      : slot.view === "section" ? (SECTION_TITLES[slot.section] || slot.section)
+      : meta.title;
     const icon = meta.icon;
     const wrap = document.createElement("div");
     wrap.className = "ws-rail-slot";
@@ -1067,6 +1140,7 @@ async function init(): Promise<void> {
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
+    else if (slot.view === "section") renderSectionIntoSlot(body, slot);
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
   }
@@ -3312,7 +3386,8 @@ async function init(): Promise<void> {
     // (The width-patch path below only recalled rail widths + one slot height,
     // so every re-open snapped back to the pristine definition.) A memory with
     // different panels is stale (the layout was edited) — definition wins.
-    const viewKey = (v: SavedView): string => (typeof v === "string" ? v : `app:${(v.slug || "").toLowerCase()}`);
+    const viewKey = (v: SavedView): string =>
+      typeof v === "string" ? v : v.view === "section" ? `section:${v.section}` : `app:${(v.slug || "").toLowerCase()}`;
     const savedKeys = (saved?.rails || []).flatMap((r) => (r.views || []).map(viewKey)).sort().join("|");
     const defKeys = cells.map((c) => (c.tool ? c.tool : `app:${c.slug.toLowerCase()}`)).sort().join("|");
     // Session behavior applies after the panels land; the FOLDER applied
@@ -3487,6 +3562,7 @@ async function init(): Promise<void> {
     __wbCloseApp?: (slug: string) => boolean;
     __wbFocusApp?: (slug: string) => boolean;
     __wbToggleAppSwitcher?: () => void;
+    __wbOpenSection?: (section: string) => void;
   };
   wbApp.__wbOpenApp = (app, newPanel) => openAppInWorkbench(app, { newPanel });
   wbApp.__wbOpenApps = (apps, layoutName?: string) => {
@@ -3554,6 +3630,7 @@ async function init(): Promise<void> {
     return true;
   };
   wbApp.__wbToggleAppSwitcher = () => toggleAppSwitcher();
+  wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);
   // #code-apps-btn is bound in help/code.ts initCode() via openCommandCenter so
   // it works cold (before this async init runs) and Cmd+. shares the same path.
 

@@ -10188,6 +10188,40 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
   background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px;
 }
 .cc-empty { color: var(--text-3); font-size: 13px; padding: 8px 0; }
+
+/* A SECTION hosted as a workbench panel (2.5.0 shell): the section's own
+   DOM fills the slot and scrolls itself; padding matches the old #page-body. */
+.ws-section-body { display: flex; flex-direction: column; overflow: hidden; }
+.ws-section-body > .help-section {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 24px 32px;
+}
+.ws-section-body > .help-section[data-section="docs"],
+.ws-section-body > .help-section[data-section="settings"],
+.ws-section-body > .help-section[data-section="dashboard"],
+.ws-section-body > .help-section[data-section="apps"],
+.ws-section-body > .help-section[data-section="connections"],
+.ws-section-body > .help-section[data-section="layouts"] {
+  display: flex; flex-direction: column;
+}
+
+/* Floating relaunch-to-update badge (was in the rail; the rail is gone). */
+.app-relaunch-float {
+  position: fixed; right: 16px; bottom: 16px; z-index: 240;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border: 1px solid var(--border-2); border-radius: 10px;
+  background: var(--surface-2); color: var(--text); font-size: 12.5px;
+  cursor: pointer; box-shadow: 0 8px 28px rgba(0,0,0,.3);
+}
+.app-relaunch-float:hover { border-color: var(--accent); }
+.app-relaunch-float svg { width: 14px; height: 14px; color: var(--accent); }
+.app-relaunch-float.hidden { display: none; }
+
+/* Top window-drag strip (2.5.0 shell) — reuses .app-rail-top's measured
+   margin-left so it never overlaps the chrome cluster's buttons. */
+#shell-drag-strip {
+  position: fixed; top: 0; left: 0; right: 0; height: 9px; z-index: 200;
+  -webkit-app-region: drag;
+}
 /* Layouts PAGE reuses the command-center card + mini-preview, laid out as a
    left-aligned wrapping grid (the CC storefront centers; the page starts left). */
 .layouts-page-grid { justify-content: flex-start; padding: 6px 0; }
@@ -11533,6 +11567,9 @@ select:focus {
   overflow: hidden;
 }
 .code-root { display: flex; flex: 1; min-width: 0; min-height: 0; width: 100%; }
+/* 2.5.0: no center agent column — the agent DOM parks hidden as a direct
+   child of .code-root and only shows when the coding slot adopts it. */
+.code-root > .code-agent { display: none; }
 
 /* App rail — the persistent left rail (Home|Code, sessions, nav, user) */
 #app-rail {
@@ -11663,7 +11700,6 @@ body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { o
 .code-agent-head .code-wd-btn { -webkit-app-region: no-drag; }
 /* Rail collapsed → the fixed chrome cluster floats over the page; shove the
    header content right so they don't overlap. */
-body.rail-collapsed .code-agent-head { margin-left: 200px; }
 .code-spacer { flex: 1; }
 .code-icon-btn {
   display: inline-flex;
@@ -11923,14 +11959,12 @@ body.rail-collapsed .code-agent-head { margin-left: 200px; }
 /* Right — the workbench rails (ported old-workbench engine). The aside sizes
    to its rails; each rail carries its own width (drag its right edge). */
 .code-workbench {
-  flex: 0 0 auto;
-  display: flex;
+  position: relative;
+  flex: 1 1 auto;
   min-width: 0;
-  border-left: 1px solid var(--border);
-  background: var(--surface-2);
+  display: flex;
   overflow: hidden;
 }
-.code-workbench.collapsed { display: none; }
 .code-workbench .ws-right-rails { height: 100%; }
 
 /* Shared empty state */

@@ -5,6 +5,7 @@
 import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection } from "./navigation.js";
+import { showWorkspaceSurface } from "./code.js";
 
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
  *  right) instead of tiling OS windows. Resolves each cell's panel to its
@@ -23,7 +24,7 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
       document.dispatchEvent(new CustomEvent("glyphh:loop-applied"));
     } catch { /* offline — the panels still open; the loop just stays as-is */ }
   }
-  gotoSection("code");   // shows the agent surface + boots the workbench
+  showWorkspaceSurface();   // neutral flip — the layout's cells define the view
   // Open BY NAME so the workbench's recall path runs: the layout's definition
   // plus the geometry the user last dragged it into (its named memory). The
   // old path here handed over a pristine payload via __wbOpenLayout, which
