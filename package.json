@@ -2,7 +2,7 @@
   "name": "glyphh-apps",
   "private": true,
   "productName": "Glyphh Desktop",
-  "version": "2.4.5",
+  "version": "2.5.0",
   "description": "Glyphh Desktop — Your AI workspace.",
   "main": "dist/main/main.js",
   "scripts": {
