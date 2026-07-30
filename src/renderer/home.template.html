@@ -46,9 +46,11 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
       </button>
     </div>
-    <!-- Window-drag strip along the very top (the rail's drag area is gone).
-         Starts right of the chrome cluster; syncDragStripOffset() measures. -->
-    <div id="shell-drag-strip" class="app-rail-top"></div>
+    <!-- The APP HEADER — a real full-width bar across the top. The chrome
+         cluster (#panel-wc, fixed) sits on it; every panel opens below it
+         (#help-overlay starts at the same 38px). Whole bar drags the window;
+         the cluster's buttons are explicitly no-drag. -->
+    <header id="shell-drag-strip"></header>
     <div id="help-overlay">
     <div id="help-layout">
 

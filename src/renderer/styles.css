@@ -10216,10 +10216,14 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
 .app-relaunch-float svg { width: 14px; height: 14px; color: var(--accent); }
 .app-relaunch-float.hidden { display: none; }
 
-/* Top window-drag strip (2.5.0 shell) — reuses .app-rail-top's measured
-   margin-left so it never overlaps the chrome cluster's buttons. */
+/* The app header (2.5.0 shell): a full-width 38px bar — the same height
+   #help-overlay offsets by, so every panel opens exactly under it. The whole
+   bar is a window-drag surface; #panel-wc (fixed, z 300) rides on top with
+   no-drag buttons. */
 #shell-drag-strip {
-  position: fixed; top: 0; left: 0; right: 0; height: 9px; z-index: 200;
+  position: fixed; top: 0; left: 0; right: 0; height: 38px; z-index: 200;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
 }
 /* Layouts PAGE reuses the command-center card + mini-preview, laid out as a
@@ -13606,6 +13610,8 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
   --ws-bg-card: transparent;
   --ws-bg-rail: transparent;
 }
+/* Ghost mode: no opaque header bar over the desktop showing through. */
+[data-ghost="1"] #shell-drag-strip { background: transparent !important; border-bottom-color: transparent !important; }
 /* Slot header becomes a faint glass strip instead of a solid surface. */
 [data-ghost="1"] .ws-rail-slot-header {
   background: rgba(14, 11, 22, 0.28) !important;

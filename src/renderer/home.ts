@@ -95,7 +95,7 @@ void (async () => {
       (window as unknown as { __ccOverlayHost?: boolean }).__ccOverlayHost = true;
       const style = document.createElement("style");
       style.textContent = `
-        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
         [data-home-scope="solo-cc"] .code-root { display: none !important; }
         :root[data-home-scope="solo-cc"], [data-home-scope="solo-cc"] body { background: transparent !important; }
         [data-home-scope="solo-cc"] .command-center { background: rgba(0,0,0,.45); }`;
@@ -123,7 +123,7 @@ void (async () => {
       document.documentElement.setAttribute("data-ghost-frost", params.get("gfrost") === "css" ? "css" : "os");
       const style = document.createElement("style");
       style.textContent = `
-        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
         [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
         [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
         [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
@@ -284,7 +284,7 @@ void (async () => {
       // Coding Agent slot REPARENTS the live .code-agent into the workbench,
       // and it must stay visible there. The workbench takes the full window.
       style.textContent = `
-        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
         [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
         [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
         [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
@@ -320,7 +320,7 @@ void (async () => {
       const style = document.createElement("style");
       // Locked panels sit below the real titlebar — hide the full-bleed
       // chrome (rail, splitter, page-top strip, panel window controls).
-      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }`;
+      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }`;
       document.head.appendChild(style);
       gotoSection(urlSection);
       return;
