@@ -10528,18 +10528,6 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
 
 /* ── Workbench slot maximize / restore ── */
 /* The coding tile's session controls — sized like every header button. */
-.ws-rail-slot-header .slot-session-new,
-.ws-rail-slot-header .slot-session-history {
-  background: transparent; border: none; padding: 0;
-  width: 24px; height: 24px; border-radius: 4px; flex-shrink: 0;
-  color: var(--ws-text-faint); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.10s, color 0.10s;
-}
-.ws-rail-slot-header .slot-session-new:hover,
-.ws-rail-slot-header .slot-session-history:hover { background: var(--hover); color: var(--ws-text); }
-.ws-rail-slot-header .slot-session-new svg,
-.ws-rail-slot-header .slot-session-history svg { width: 13px; height: 13px; }
 
 .ws-rail-slot-header .slot-maximize {
   background: transparent; border: none; padding: 0;
@@ -12839,6 +12827,14 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-identity-edit:hover { background: var(--surface-3); color: var(--text); }
 .lib-identity-form { display: flex; flex-direction: column; gap: 8px; margin: 0 0 24px; max-width: 560px; }
 .lib-identity-form textarea { resize: vertical; min-height: 64px; }
+
+/* The coding panel's header row is REMOVED — the agent head is its header. */
+.ws-rail-slot[data-view="coding"] .ws-rail-slot-header.hidden-header { display: none; }
+#code-session-title {
+  font-size: 12.5px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 220px; flex-shrink: 0; margin-right: 4px;
+}
 
 /* Built-in nav-app glyphs — inline SVG on currentColor so they render white
    on dark themes and black on light ones, wherever the tile lives. */

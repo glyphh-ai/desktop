@@ -695,6 +695,33 @@ async function boot() {
     wc.send("terminal:data", `\x1b[90m${lines}\x1b[0m\r\n`);
   });
 
+  // EVERY renderer-facing handler registers BEFORE the first window loads —
+  // the home panel's boot modules invoke get-preference/tab-list immediately,
+  // and a handler registered after createWindow loses that race ("No handler
+  // registered for …" at every launch).
+  // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
+  if (!ipcMain.listenerCount("wb-term:spawn")) {
+    registerWorkbenchTerminalIpc();
+    // The agent's whole IPC surface — sessions, context, runs, permissions.
+    // Without this the composer has no handlers to call and simply spins.
+    registerGlyphhIpc();
+    // The library pages: loops, skills, agents.
+    registerLibraryIpc();
+    // Live agents' scheduled tasks fire while the app runs.
+    startAgentScheduler();
+  }
+
+  if (!ipcMain.listenerCount("get-preference")) {
+    ipcMain.handle("get-preference", (_e, key: string, defaultVal: unknown) => {
+      return getPreference(key, defaultVal);
+    });
+  }
+  if (!ipcMain.listenerCount("tab-list")) {
+    ipcMain.handle("tab-list", () => {
+      return buildTabState();
+    });
+  }
+
   // Create window
   await createWindow();
   // Background mode: rebuild the window when the tray asks, and reflect the
@@ -1269,29 +1296,6 @@ async function boot() {
           openFreshInternalApp("layouts");
         }
       },
-    });
-  }
-
-  // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
-  if (!ipcMain.listenerCount("wb-term:spawn")) {
-    registerWorkbenchTerminalIpc();
-    // The agent's whole IPC surface — sessions, context, runs, permissions.
-    // Without this the composer has no handlers to call and simply spins.
-    registerGlyphhIpc();
-    // The library pages: loops, skills, agents.
-    registerLibraryIpc();
-    // Live agents' scheduled tasks fire while the app runs.
-    startAgentScheduler();
-  }
-
-  if (!ipcMain.listenerCount("get-preference")) {
-    ipcMain.handle("get-preference", (_e, key: string, defaultVal: unknown) => {
-      return getPreference(key, defaultVal);
-    });
-  }
-  if (!ipcMain.listenerCount("tab-list")) {
-    ipcMain.handle("tab-list", () => {
-      return buildTabState();
     });
   }
 

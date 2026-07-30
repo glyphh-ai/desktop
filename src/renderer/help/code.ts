@@ -741,6 +741,9 @@ function newChat(): void {
  *  dropdown is the only session UI, and it repaints off this event. */
 function renderHistory(): void {
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+  // The agent head's session title (the slot header row is gone).
+  const sessTitleEl = el("code-session-title");
+  if (sessTitleEl) sessTitleEl.textContent = current()?.title ?? "New session";
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
@@ -1959,6 +1962,38 @@ export function initCode(): void {
     }
   });
   el("code-send")?.addEventListener("click", send);
+  // Session controls in the agent head (the coding panel's own header row is
+  // hidden): + starts a new session, the clock drops the history list.
+  type HeadSessionsApi = { list(): Array<{ id: string; title: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
+  const sessApi = (): HeadSessionsApi | undefined => (window as unknown as { __agentSessions?: HeadSessionsApi }).__agentSessions;
+  el("code-session-new")?.addEventListener("click", () => sessApi()?.startNew());
+  el("code-session-history")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const anchor = ev.currentTarget as HTMLElement;
+    document.querySelector(".wb-session-menu")?.remove();
+    const sess = sessApi();
+    if (!sess) return;
+    const menu = document.createElement("div");
+    menu.className = "code-drop wb-session-menu";
+    const cur = sess.currentId();
+    for (const c of sess.list().slice(0, 20)) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "code-drop-item" + (c.id === cur ? " selected" : "");
+      item.textContent = c.title;
+      item.addEventListener("click", () => { menu.remove(); sess.switch(c.id); });
+      menu.appendChild(item);
+    }
+    const r = anchor.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.top = `${r.bottom + 6}px`;
+    menu.style.left = `${r.left}px`;
+    document.body.appendChild(menu);
+    const dismiss = (e: MouseEvent): void => {
+      if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
+    };
+    document.addEventListener("mousedown", dismiss, true);
+  });
   wireComposerAttachments();
   initGlyphhAgentEvents();
   initWorkdirGate();

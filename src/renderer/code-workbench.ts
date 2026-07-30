@@ -1162,93 +1162,12 @@ async function init(): Promise<void> {
   function renderCodingIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     const agent = document.querySelector<HTMLElement>(".code-agent");
     if (!agent) { body.innerHTML = `<div class="ws-empty">The agent is unavailable.</div>`; return; }
+    // The coding panel has NO header row — the agent's own head carries the
+    // session title + history/+ controls (help/code.ts wires them).
+    wrap.querySelector(".ws-rail-slot-header")?.classList.add("hidden-header");
     body.classList.add("ws-coding-body");
     body.appendChild(agent);
     document.querySelector(".code-root")?.classList.add("agent-hosted");
-
-    type SessionsApi = {
-      list(): Array<{ id: string; title: string; createdAt: number }>;
-      currentId(): string | null;
-      currentTitle(): string;
-      switch(id: string): void;
-      startNew(): void;
-    };
-    // The sessions API lives in the help MODULE bundle, which loads after
-    // this classic script. At boot the shell places the coding panel before
-    // that module evaluates — wait for the bridge instead of silently
-    // rendering a header with no history/+ controls (2.5.0 regression).
-    const getSess = (): SessionsApi | undefined =>
-      (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-    const sessNow = getSess();
-    if (!sessNow) {
-      let tries = 0;
-      const wait = (): void => {
-        if (!wrap.isConnected) return;          // slot re-rendered/closed
-        if (getSess()) { renderCodingHeaderControls(wrap); return; }
-        if (tries++ < 200) requestAnimationFrame(wait);
-      };
-      requestAnimationFrame(wait);
-      return;
-    }
-    renderCodingHeaderControls(wrap);
-  }
-
-  /** The coding slot's header extras: session title, + new session, and the
-   *  history dropdown. Separate so a late-arriving sessions bridge (boot
-   *  race) can attach them after the fact. */
-  function renderCodingHeaderControls(wrap: HTMLElement): void {
-    type SessionsApi = {
-      list(): Array<{ id: string; title: string; createdAt: number }>;
-      currentId(): string | null;
-      currentTitle(): string;
-      switch(id: string): void;
-      startNew(): void;
-    };
-    const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-    if (!sess || wrap.querySelector(".slot-session-new")) return;   // gone or already wired
-    const titleEl = wrap.querySelector<HTMLElement>(".ws-rail-slot-header .title");
-    if (titleEl) titleEl.textContent = sess.currentTitle();
-    const maxBtn = wrap.querySelector(".slot-maximize");
-    if (!maxBtn) return;
-
-    // + New session — keeps the arranged layout (see __codeWorkbenchNewSession).
-    const plus = document.createElement("button");
-    plus.className = "ws-icon-btn slot-session-new";
-    plus.title = "New session";
-    plus.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-    plus.addEventListener("click", (ev) => { ev.stopPropagation(); sess.startNew(); });
-
-    // History — the session list as a dropdown anchored under the button.
-    const hist = document.createElement("button");
-    hist.className = "ws-icon-btn slot-session-history";
-    hist.title = "Session history";
-    hist.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
-    hist.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      document.querySelector(".wb-session-menu")?.remove();
-      const menu = document.createElement("div");
-      menu.className = "code-drop wb-session-menu";
-      const cur = sess.currentId();
-      for (const s of sess.list().slice(0, 20)) {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "code-drop-item" + (s.id === cur ? " selected" : "");
-        item.textContent = s.title;
-        item.addEventListener("click", () => { menu.remove(); sess.switch(s.id); });
-        menu.appendChild(item);
-      }
-      const r = hist.getBoundingClientRect();
-      menu.style.position = "fixed";
-      menu.style.top = `${r.bottom + 6}px`;
-      menu.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
-      document.body.appendChild(menu);
-      const dismiss = (e: MouseEvent): void => {
-        if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
-      };
-      document.addEventListener("mousedown", dismiss, true);
-    });
-
-    maxBtn.before(hist, plus);
   }
 
   // ── App view — in-workbench apps (the OS-window replacement) ──
@@ -3788,12 +3707,6 @@ async function init(): Promise<void> {
   window.addEventListener("agent-sessions-changed", () => {
     type SessionsApi = { currentTitle(): string; currentId(): string | null };
     const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-    const titleEl = document.querySelector<HTMLElement>('.ws-rail-slot[data-view="coding"] .ws-rail-slot-header .title');
-    if (titleEl && sess) titleEl.textContent = sess.currentTitle();
-    // If the history/+ controls ever missed their attach (boot ordering),
-    // the next session event heals the header. Idempotent.
-    const codingWrap = document.querySelector<HTMLElement>('.ws-rail-slot[data-view="coding"]');
-    if (codingWrap) renderCodingHeaderControls(codingWrap);
     // Remember which session rode this layout — "last" sessionMode resumes it.
     const cur = sess?.currentId?.();
     if (activeLayoutName && cur) {
