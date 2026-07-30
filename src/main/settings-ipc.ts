@@ -12,7 +12,6 @@ import type { SessionCache } from "./session-cache";
 /** Theme ids whose BASE MODE is light — everything else maps to dark for the OS
  *  window chrome. Must list every light [data-theme] block in styles.css. */
 export const LIGHT_THEMES = new Set(["light", "prism", "claude"]);
-import type { PanelManager } from "./panel-manager";
 
 interface SettingsIpcDeps {
   getPreference: <T>(key: string, def?: T) => T;
@@ -26,9 +25,10 @@ interface SettingsIpcDeps {
   logout: () => void;
   session: SessionCache;
   sendSessionState: () => void;
-  execCommand: (cmd: string, sourcePanelId?: string) => Promise<string>;
+  execCommand: (cmd: string) => Promise<string>;
   getMainWindow: () => BrowserWindow | null;
-  panelManager: PanelManager;
+  /** Detach the home view so the onboarding overlay is visible (logout). */
+  hidePanels: () => void;
 }
 
 export function registerSettingsIpc(deps: SettingsIpcDeps): void {
@@ -37,7 +37,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     startAuthFlow, isAuthenticated,
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     session, sendSessionState,
-    getMainWindow, panelManager,
+    getMainWindow, hidePanels,
   } = deps;
 
   ipcMain.handle("get-theme", () => getPreference<string>("theme", "dark"));
@@ -60,7 +60,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   });
 
   ipcMain.handle("exec-command", async (_e, cmd: string) => {
-    return deps.execCommand(cmd, panelManager.activePanelId ?? undefined);
+    return deps.execCommand(cmd);
   });
 
   ipcMain.handle("session-info", () => session.getInfo());
@@ -141,7 +141,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("logout", () => {
     const mainWindow = getMainWindow();
     logout();
-    if (mainWindow) panelManager.hideActive(mainWindow);
+    hidePanels();
     mainWindow?.webContents.send("show-onboarding");
   });
 

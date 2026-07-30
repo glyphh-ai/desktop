@@ -5,6 +5,7 @@
 import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection } from "./navigation.js";
+import { showWorkspaceSurface } from "./code.js";
 
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
  *  right) instead of tiling OS windows. Resolves each cell's panel to its
@@ -23,7 +24,7 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
       document.dispatchEvent(new CustomEvent("glyphh:loop-applied"));
     } catch { /* offline — the panels still open; the loop just stays as-is */ }
   }
-  gotoSection("code");   // shows the agent surface + boots the workbench
+  showWorkspaceSurface();   // neutral flip — the layout's cells define the view
   // Open BY NAME so the workbench's recall path runs: the layout's definition
   // plus the geometry the user last dragged it into (its named memory). The
   // old path here handed over a pristine payload via __wbOpenLayout, which
@@ -97,7 +98,9 @@ function panelLabel(panelId: string): string {
 // white in dark mode — and they size to the tile via .layout-tool-icon svg.
 const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   { id: "tool:preview",  label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
-  { id: "tool:coding",   label: "Coding Agent", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
+  // "Glyphh" to match the command center — the agent tile, hosting the live
+  // .code-agent (ViewKind "coding").
+  { id: "tool:coding",   label: "Glyphh", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   { id: "tool:diff",     label: "Diff", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
   { id: "tool:monaco",   label: "Editor", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
   { id: "tool:files",    label: "Files", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
@@ -464,9 +467,12 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
   type PickerOption = { id: string; label: string };
   // Server apps only — the exact list shown on the Apps page (/api/panel-apps),
   // matching how apps.ts filters it (web apps with a URL, plus native apps).
+  // The seeded Glyphh row (glyphh-self — the agent itself) is excluded: the
+  // agent is the "Glyphh" workbench tool above, not an app cell.
   let apps: Array<{ id: string; name: string }>;
   try {
-    apps = (await window.yo.panelAppsList()).filter((a: any) => a.url || a.isBrowser === false);
+    apps = (await window.yo.panelAppsList()).filter((a: any) =>
+      (a.url || a.isBrowser === false) && a.appArchetype !== "glyphh-self" && a.slug !== "glyphh");
   } catch {
     apps = [];
   }
@@ -766,6 +772,15 @@ async function saveLayout() {
   // Only keep model picks for slots the chosen loop still declares — a stale
   // pick from a loop the user switched away from must not ride along.
   const selections = builderLoop ? builderModelSelections : {};
+  // An EDITED layout invalidates its remembered arrangement — the workbench's
+  // named-layout snapshot recalls the OLD geometry whenever the panel set is
+  // unchanged, which is exactly the common edit (resize rows/cols, re-place
+  // the same panels). Definition wins after a save. (Rename drops both keys.)
+  for (const n of new Set([name, editingLayoutName].filter(Boolean) as string[])) {
+    try {
+      localStorage.removeItem(`workbench:namedlayout:${n.trim().toLowerCase()}`);
+    } catch { /* storage unavailable — recall just goes stale */ }
+  }
   await window.yo.layoutsSaveGrid({
     name,
     cols: builderCols,
@@ -798,6 +813,10 @@ async function deleteLayout() {
     danger: true,
   });
   if (!confirmed) return;
+  try {
+    localStorage.removeItem(`workbench:namedlayout:${editingLayoutName.trim().toLowerCase()}`);
+    localStorage.removeItem(`workbench:layoutsession:${editingLayoutName.trim().toLowerCase()}`);
+  } catch { /* best effort */ }
   await window.yo.layoutsDelete(editingLayoutName);
   cancelLayout();
   setTimeout(() => { if (layoutEditor.classList.contains("hidden")) void loadLayouts(); }, 1200);

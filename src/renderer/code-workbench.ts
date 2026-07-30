@@ -60,7 +60,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "app";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "section" | "app";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -97,6 +97,10 @@ interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: 
 /** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
  *  composer); nothing of its own beyond the header's session controls. */
 interface CodingSlot { id: number; view: "coding"; sticky?: boolean }
+/** A whole app SECTION (Home, Apps, Settings, Drips, …) hosted as a panel —
+ *  the section's singleton DOM is adopted into the slot body (the same
+ *  reparenting trick the coding slot uses for the agent). */
+interface SectionSlot { id: number; view: "section"; section: string; sticky?: boolean }
 interface PreviewSlot {
   id: number; view: "preview"; url?: string; viewKey?: string; sticky?: boolean;
   /** Inline document (Glyphh build previews) — runtime-only, never persisted. */
@@ -129,7 +133,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | SectionSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -158,6 +162,13 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   coding:   { title: "Coding Agent", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
+};
+
+/** Panel titles for hosted sections (slot headers + layout minis). */
+const SECTION_TITLES: Record<string, string> = {
+  dashboard: "Home", connections: "Connections", apps: "Apps", layouts: "Layouts",
+  skills: "Skills", loops: "Loops", agents: "Agents", models: "Models",
+  settings: "Settings", docs: "Docs",
 };
 
 // ── Monaco loader (AMD path: window.require + monaco/ assets in dist) ──
@@ -353,9 +364,9 @@ async function init(): Promise<void> {
   // Persists the toggleable views' positions only (Files/Terminal/Diff/Preview).
   // Monaco is spawned on demand by clicking a file in the tree — its tabs are
   // runtime state and would feel surprising to restore.
-  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
+  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
-  type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; launchConfig?: Record<string, unknown> | null };
+  type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
   type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
@@ -392,7 +403,9 @@ async function init(): Promise<void> {
           views: r.slots.map((s): SavedView =>
             s.view === "app"
               ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh, sticky: s.sticky }
-              : s.view),
+              : s.view === "section"
+                ? { view: "section", section: s.section }
+                : s.view),
         })).filter((r) => r.views.length > 0),
       };
       localStorage.setItem(layoutKey(), JSON.stringify(data));
@@ -413,6 +426,8 @@ async function init(): Promise<void> {
       for (const v of (savedRail.views || []).slice(0, 2)) {
         if (typeof v === "object" && v !== null && v.view === "app" && v.slug) {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
+        } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
+          slots.push({ id: nextSlotId++, view: "section", section: v.section });
         } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "coding" || v === "monaco") {
           slots.push(makeSlot(v));
         }
@@ -452,11 +467,10 @@ async function init(): Promise<void> {
     if (rails.length === 0) { pushDefaultLayout(); renderRails(); }
   }
   function railsBudget(): number {
-    // .code-root spans agent + rails (the app rail sits outside it).
+    // 2.5.0: there is no center agent column — the rails ARE the surface.
     const root = document.querySelector<HTMLElement>(".code-root");
     const rootW = root ? root.getBoundingClientRect().width : window.innerWidth;
-    const MIN_AGENT = (maximizedSlotId !== null || codingHosted()) ? 0 : 440;
-    return Math.max(260, rootW - MIN_AGENT);
+    return Math.max(260, rootW);
   }
   function applyResponsiveWidths(): void {
     const container = document.getElementById("code-wb-rails");
@@ -465,7 +479,7 @@ async function init(): Promise<void> {
     // Bands span the full width and stay out of the apportioning entirely;
     // only the column rails (and their drop strips) share the budget.
     const sized = rails.filter((r) => !r.banner);
-    const stripsW = (sized.length + 1) * 6;
+    const stripsW = 0;   // drop strips are zero-width until a drag opens them
     const available = Math.max(0, containerW - stripsW);
     const prefs = sized.map((r) => r.prefWidth ?? 320);
     const widths = prefs.slice();
@@ -485,8 +499,13 @@ async function init(): Promise<void> {
     // With the agent visible beside the workbench the aside sizes to the
     // rails, so stretching here forced the workbench to max width and
     // snapped every edge drag right back.
-    const railsFill = maximizedSlotId !== null || codingHosted();
-    if (railsFill && total < available && widths.length) widths[widths.length - 1] += available - total;
+    // Full-width surface: surplus spreads across ALL rails proportionally —
+    // dumping it on the last rail made every freshly opened panel swallow
+    // the pane (and instantly overrode that rail's own width drags).
+    if (total < available && widths.length && total > 0) {
+      const scale = available / total;
+      for (let i = 0; i < widths.length; i++) widths[i] = Math.round(widths[i] * scale);
+    }
     const railEls = container.querySelectorAll<HTMLElement>(".ws-right-rail");
     let si = 0;
     rails.forEach((r, idx) => {
@@ -498,6 +517,15 @@ async function init(): Promise<void> {
   }
 
   function placeSlot(slot: Slot): void {
+    // Internal section panels render FULL SCREEN, period — they never share
+    // the grid. Placing anything else first closes any hosted section
+    // (renderRails parks its DOM back to the pen).
+    if (slot.view !== "section") {
+      for (let i = rails.length - 1; i >= 0; i--) {
+        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "section");
+        if (!rails[i].slots.length) rails.splice(i, 1);
+      }
+    }
     for (const rail of rails) {
       // Never auto-stack under the hosted agent: a rail holding the coding
       // tile keeps its column to itself, so the first new item opens BESIDE
@@ -658,10 +686,14 @@ async function init(): Promise<void> {
       const r = rails[i];
       const idx = r.slots.findIndex((s) => s.id === slotId);
       if (idx >= 0) {
+        const wasSection = r.slots[idx].view === "section";
         r.slots.splice(idx, 1);
         if (r.slots.length === 0) rails.splice(i, 1);
         renderRails();
         saveLayout();
+        // Closing an internal app panel (a section) goes back to the
+        // launcher — pick the next destination from the command center.
+        if (wasSection && !switcherEl) toggleAppSwitcher();
         return;
       }
     }
@@ -814,14 +846,86 @@ async function init(): Promise<void> {
     document.querySelector(".code-root")?.classList.remove("agent-hosted");
   }
 
+  /** Exactly one non-band rail holding exactly one slot — the solo panel. */
+  function soloPanel(): boolean {
+    return rails.length === 1 && rails[0]!.slots.length === 1 && !rails[0]!.banner;
+  }
+
   function codingHosted(): boolean {
     return rails.some((r) => r.slots.some((s) => s.view === "coding"));
+  }
+
+  /** Return every hosted SECTION's singleton DOM to the hidden #page-body pen
+   *  (before any rails rebuild, and when a section panel closes). The same
+   *  contract as parkAgent — adopt on render, park before wipe. */
+  function parkSections(): void {
+    const pen = document.getElementById("page-body");
+    document.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
+      sec.classList.remove("active", "wb-hosted");
+      pen?.appendChild(sec);
+    });
+  }
+
+  /** Adopt a section's DOM into the slot and run its loader. */
+  function renderSectionIntoSlot(body: HTMLElement, slot: SectionSlot): void {
+    const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${slot.section}"]`);
+    if (!sec) { body.innerHTML = `<div class="ws-empty">This page is unavailable.</div>`; return; }
+    body.classList.add("ws-section-body");
+    sec.classList.add("active", "wb-hosted");
+    body.appendChild(sec);
+  }
+
+  /**
+   * Navigate the workbench to a SECTION — the 2.5.0 shell's page switch.
+   * Opening a section clears every other panel (with the unsaved-work
+   * confirm) and renders just that panel, full width. "code" is the agent
+   * surface: section panels close, the workspace stays, and a coding panel
+   * is ensured so the agent is always reachable.
+   */
+  function openSectionInWorkbench(section: string): void {
+    const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
+    if (section === "agent") {
+      // The Glyphh mark / Glyphh app: the coding agent, FULL SCREEN — the
+      // workspace clears (unsaved-work confirm included) and the agent panel
+      // is the only thing left.
+      void clearAllPanels().then((cleared) => {
+        if (!cleared) return;
+        placeSlot(makeSlot("coding"));
+      });
+      return;
+    }
+    if (section === "code" || section === "workspace") {
+      // Back to the working surface: section panels close, the workspace
+      // stays. "code" additionally guarantees the agent panel exists;
+      // "workspace" is the neutral flip used before app/layout opens (the
+      // incoming panels define the view — no uninvited agent).
+      for (let i = rails.length - 1; i >= 0; i--) {
+        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "section");
+        if (!rails[i].slots.length) rails.splice(i, 1);
+      }
+      if (section === "code" && !codingHosted()) { placeSlot(makeSlot("coding")); return; }   // placeSlot renders+saves
+      renderRails();
+      saveLayout();
+      return;
+    }
+    const already = rails.flatMap((r) => r.slots).some((sl) => sl.view === "section" && sl.section === section);
+    if (already) { loadSection?.(section); return; }
+    void clearAllPanels().then((cleared) => {
+      if (!cleared) return;   // the user kept unsaved work
+      const slot: SectionSlot = { id: nextSlotId++, view: "section", section };
+      rails.push({ id: nextRailId++, slots: [slot] });
+      renderRails();
+      saveLayout();
+      scheduleAppSync();
+      loadSection?.(section);
+    });
   }
 
   function renderRails(): void {
     const container = document.getElementById("code-wb-rails");
     if (!container) return;
     parkAgent();
+    parkSections();
     // Custom slot heights (drag-set or layout-set) live as inline flex on the
     // slot elements — a rebuild would silently reset them (e.g. opening a
     // file re-renders and the panel under the editor snapped back). Snapshot
@@ -895,6 +999,9 @@ async function init(): Promise<void> {
       const kept = slotEl.dataset.slotId && savedFlex.get(slotEl.dataset.slotId);
       if (kept) slotEl.style.flex = kept;
     });
+    // A LONE panel fills the page as if maximized — no drop strips, no width
+    // handle, edge to edge (its expand button renders toggled-on too).
+    container.classList.toggle("solo-slot", soloPanel());
     paintSectionToggles();
     // Re-apportion displayed widths after every (re)render — handles slot
     // adds/closes/DnD that change the rail count and the drop-strip total.
@@ -928,8 +1035,8 @@ async function init(): Promise<void> {
       const v = btn.dataset.view as ViewKind;
       btn.classList.toggle("active", viewIsOpen(v));
     });
-    // Rails-empty ⇒ the whole workbench aside collapses out of the layout.
-    document.getElementById("code-workbench")?.classList.toggle("collapsed", rails.length === 0);
+    // 2.5.0: the workbench IS the surface — it never collapses.
+    document.getElementById("code-workbench")?.classList.remove("collapsed");
   }
 
   function renderRail(rail: Rail, railIdx: number): HTMLElement {
@@ -963,14 +1070,16 @@ async function init(): Promise<void> {
 
   function renderSlot(slot: Slot, railIdx: number, slotIdx: number): HTMLElement {
     const meta = VIEW_META[slot.view] || { title: slot.view, icon: "" };
-    const title = slot.view === "app" ? slot.name : meta.title;
-    const icon = meta.icon;
+    const title = slot.view === "app" ? slot.name
+      : slot.view === "section" ? (SECTION_TITLES[slot.section] || slot.section)
+      : meta.title;
+    const icon = slot.view === "coding" ? "" : meta.icon;
     const wrap = document.createElement("div");
     wrap.className = "ws-rail-slot";
     wrap.dataset.slotId = String(slot.id);
     wrap.dataset.view = slot.view;
-    const isMax = (slot.id === maximizedSlotId);
-    if (isMax) wrap.classList.add("fullscreen");
+    const isMax = (slot.id === maximizedSlotId) || soloPanel();
+    if (slot.id === maximizedSlotId) wrap.classList.add("fullscreen");
     const urlToggle = slot.view === "app"
       ? `<button class="ws-icon-btn slot-urltoggle${(slot as AppSlot).urlBarHidden ? "" : " active"}" title="Address bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>`
       : "";
@@ -1067,6 +1176,7 @@ async function init(): Promise<void> {
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
+    else if (slot.view === "section") renderSectionIntoSlot(body, slot);
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
   }
@@ -1078,62 +1188,12 @@ async function init(): Promise<void> {
   function renderCodingIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     const agent = document.querySelector<HTMLElement>(".code-agent");
     if (!agent) { body.innerHTML = `<div class="ws-empty">The agent is unavailable.</div>`; return; }
+    // The coding panel has NO header row — the agent's own head carries the
+    // session title + history/+ controls (help/code.ts wires them).
+    wrap.querySelector(".ws-rail-slot-header")?.classList.add("hidden-header");
     body.classList.add("ws-coding-body");
     body.appendChild(agent);
     document.querySelector(".code-root")?.classList.add("agent-hosted");
-
-    type SessionsApi = {
-      list(): Array<{ id: string; title: string; createdAt: number }>;
-      currentId(): string | null;
-      currentTitle(): string;
-      switch(id: string): void;
-      startNew(): void;
-    };
-    const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-    const titleEl = wrap.querySelector<HTMLElement>(".ws-rail-slot-header .title");
-    if (titleEl && sess) titleEl.textContent = sess.currentTitle();
-
-    if (!sess) return;
-    const maxBtn = wrap.querySelector(".slot-maximize")!;
-
-    // + New session — keeps the arranged layout (see __codeWorkbenchNewSession).
-    const plus = document.createElement("button");
-    plus.className = "ws-icon-btn slot-session-new";
-    plus.title = "New session";
-    plus.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-    plus.addEventListener("click", (ev) => { ev.stopPropagation(); sess.startNew(); });
-
-    // History — the session list as a dropdown anchored under the button.
-    const hist = document.createElement("button");
-    hist.className = "ws-icon-btn slot-session-history";
-    hist.title = "Session history";
-    hist.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
-    hist.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      document.querySelector(".wb-session-menu")?.remove();
-      const menu = document.createElement("div");
-      menu.className = "code-drop wb-session-menu";
-      const cur = sess.currentId();
-      for (const s of sess.list().slice(0, 20)) {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "code-drop-item" + (s.id === cur ? " selected" : "");
-        item.textContent = s.title;
-        item.addEventListener("click", () => { menu.remove(); sess.switch(s.id); });
-        menu.appendChild(item);
-      }
-      const r = hist.getBoundingClientRect();
-      menu.style.position = "fixed";
-      menu.style.top = `${r.bottom + 6}px`;
-      menu.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
-      document.body.appendChild(menu);
-      const dismiss = (e: MouseEvent): void => {
-        if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
-      };
-      document.addEventListener("mousedown", dismiss, true);
-    });
-
-    maxBtn.before(hist, plus);
   }
 
   // ── App view — in-workbench apps (the OS-window replacement) ──
@@ -1419,7 +1479,7 @@ async function init(): Promise<void> {
    *  when a layout PINNED a section (a sticky slot — that section is the
    *  designated swap target) or the caller asks to switch the active panel
    *  (`replaceActive`, e.g. `.dip .`). newPanel forces a fresh slot even past a pin. */
-  function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean } = {}): void {
+  function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean; replaceWorkspace?: boolean } = {}): void {
     const existing = appSlots().find((s) => s.slug === app.slug);
     if (existing) { focusAppSlot(existing.id); return; }
     // Opening an individual app means the workbench is no longer "the named
@@ -1429,6 +1489,17 @@ async function init(): Promise<void> {
     // kind: a pinned Browser band means "apps land here". Absent a pin,
     // switch the active panel ONLY when asked (.dip .); otherwise stack.
     const pinned = rails.flatMap((r) => r.slots).find((s) => s.sticky);
+    // Command-bar semantics: the app REPLACES the workspace — unless a layout
+    // pinned a landing section (the pin wins, below) or the caller stacks.
+    if (opts.replaceWorkspace && !opts.newPanel && !pinned) {
+      void clearAllPanels().then((cleared) => {
+        if (!cleared) return;   // the user kept unsaved work — abort the open
+        const slot: AppSlot = { id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url, glyphh: app.glyphh, urlBarHidden: urlBarHiddenDefault() };
+        placeSlot(slot);
+        scheduleAppSync();
+      });
+      return;
+    }
     const target = opts.newPanel ? undefined : (pinned ?? (opts.replaceActive ? appSlots()[0] : undefined));
     if (target && target.view !== "app") {
       // A pinned TOOL panel is REPLACED by the app at the same spot, pin
@@ -1494,13 +1565,25 @@ async function init(): Promise<void> {
   // <body> (above the z-120 webview layer) that opens apps into workbench
   // panels and layouts into the workbench grid.
   let switcherEl: HTMLDivElement | null = null;
-  function closeSwitcher(): void { switcherEl?.remove(); switcherEl = null; }
+  function closeSwitcher(opts: { ensureSurface?: boolean } = {}): void {
+    switcherEl?.remove();
+    switcherEl = null;
+    // Explicit dismissal (×, Esc, backdrop, Cmd+.) over an empty workspace
+    // lands on HOME — never a blank surface. (Not in the solo overlay
+    // window, which has no workbench of its own.)
+    const solo = (window as unknown as { __ccOverlayHost?: boolean }).__ccOverlayHost;
+    if (opts.ensureSurface && !solo && rails.length === 0) openSectionInWorkbench("dashboard");
+  }
   function toggleAppSwitcher(): void {
-    if (switcherEl) { closeSwitcher(); return; }
+    if (switcherEl) { closeSwitcher({ ensureSurface: true }); return; }
 
     type CcYo = {
       panelAppsList?: () => Promise<PanelAppRow[]>;
       layoutsList?: () => Promise<LayoutRow[]>;
+      panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      layoutsDelete?: (name: string) => Promise<boolean>;
+      getPreference?: (k: string, d: unknown) => Promise<unknown>;
+      setPreference?: (k: string, v: unknown) => Promise<unknown>;
       dripsList?: () => Promise<Array<{ name: string; recipe: string }>>;
       dripsBuiltinEffects?: () => Promise<string[]>;
       dripsPreview?: (recipe: string) => Promise<string>;
@@ -1508,22 +1591,38 @@ async function init(): Promise<void> {
     };
     const yo = (window as unknown as { yo?: CcYo }).yo;
 
-    const APPS_PER_PAGE = 14;
-    const LAYOUTS_PER_PAGE = 8;
+    // ONE grid: apps and layouts together, iOS-launcher style. Glyphh is
+    // always first; a saved order (long-press → drag) covers everything else.
+    const PER_PAGE = 30;
+    interface CcEntry { key: string; name: string; app?: PanelAppRow; layout?: LayoutRow }
     let appRows: PanelAppRow[] = [];
     let layouts: LayoutRow[] = [];
+    let entries: CcEntry[] = [];
+    let entryByKey = new Map<string, CcEntry>();
+    let orderKeys: string[] = [];
+    // The DOCK — sticky slots above the search bar. Slot 0 is ALWAYS Glyphh;
+    // empty slots render as dotted outlines and accept dragged tiles.
+    const GLYPHH_KEY = "app:glyphh";
+    const DOCK_DEFAULTS = [
+      GLYPHH_KEY, "app:home", "app:connections", "app:apps", "app:layouts",
+      "app:skills", "app:loops", "app:agents", "app:models", "app:settings",
+    ];
+    const DOCK_N = DOCK_DEFAULTS.length;
+    let dockKeys: string[] = DOCK_DEFAULTS.slice();
     let query = "";
-    let appsPage = 0;
-    let layoutsPage = 0;
+    let page = 0;
+    let editMode = false;
+    let dragKey: string | null = null;
 
     const toRef = (a: PanelAppRow): WbAppRef => ({ slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app" });
     /** Open a library row RESPECTING its declared type: native rows and rows
      *  whose browser choice isn't the Glyphh Panel route through app-launch
      *  (main decides: native launch / external browser); only Glyphh Panel
      *  rows open as workbench panels here. */
-    const openRow = (a: PanelAppRow, opts: { newPanel?: boolean } = {}): void => {
+    const openRow = (a: PanelAppRow, opts: { newPanel?: boolean; replaceWorkspace?: boolean } = {}): void => {
       const browser = typeof a.launchConfig?.browser === "string" && a.launchConfig.browser ? (a.launchConfig.browser as string) : "glyphh-panel";
-      const external = a.isBrowser === false || !!a.execPath || (browser !== "glyphh-panel" && a.appArchetype !== "glyphh-app");
+      // Nav apps route through main (goto-section), never into a panel.
+      const external = a.isBrowser === false || !!a.execPath || a.appArchetype === "glyphh-nav" || (browser !== "glyphh-panel" && a.appArchetype !== "glyphh-app");
       if (external) {
         void (window as unknown as { yo?: { appLaunch?: (s: unknown) => Promise<unknown> } }).yo?.appLaunch?.({
           slug: a.slug || a.id, name: a.name, url: a.url,
@@ -1534,7 +1633,7 @@ async function init(): Promise<void> {
       }
       openAppInWorkbench(toRef(a), opts);
     };
-    const iconApp = (a: PanelAppRow): { slug: string; url: string | null; execPath: string | null } => ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null });
+    const iconApp = (a: PanelAppRow): { slug: string; url: string | null; execPath: string | null; appArchetype: string | null } => ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null });
     const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
     const matches = (name: string): boolean => !query || name.toLowerCase().includes(query);
 
@@ -1542,7 +1641,9 @@ async function init(): Promise<void> {
     el.id = "command-center";
     el.className = "command-center";
     el.innerHTML = `
+      <button class="cc-close" title="Close (Esc)">&times;</button>
       <div class="cc-inner">
+        <div class="cc-dock"></div>
         <div class="cc-header">
           <input id="cc-input" class="cc-input" type="text" autocomplete="off" autocorrect="off" spellcheck="false"
                  placeholder="Search apps and layouts — Enter opens the top match" />
@@ -1555,31 +1656,23 @@ async function init(): Promise<void> {
           <button class="cc-overlay-btn" title="Overlay the whole desktop">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </button>
-          <button class="cc-close" title="Close (Esc)">&times;</button>
         </div>
         <div class="cc-apps"></div>
         <div class="cc-apps-pager cc-pager"></div>
-        <div class="cc-layouts-wrap hidden">
-          <div class="cc-section-label">Layouts</div>
-          <div class="cc-layouts"></div>
-          <div class="cc-layouts-pager cc-pager"></div>
-        </div>
         <div class="cc-empty hidden">No apps yet — add one from the Apps tab.</div>
       </div>`;
     document.body.appendChild(el);
     switcherEl = el;
 
     const input = el.querySelector<HTMLInputElement>("#cc-input")!;
-    const appsEl = el.querySelector<HTMLElement>(".cc-apps")!;
-    const appsPagerEl = el.querySelector<HTMLElement>(".cc-apps-pager")!;
-    const layoutsWrapEl = el.querySelector<HTMLElement>(".cc-layouts-wrap")!;
-    const layoutsEl = el.querySelector<HTMLElement>(".cc-layouts")!;
-    const layoutsPagerEl = el.querySelector<HTMLElement>(".cc-layouts-pager")!;
+    const dockEl = el.querySelector<HTMLElement>(".cc-dock")!;
+    const gridEl = el.querySelector<HTMLElement>(".cc-apps")!;
+    const pagerEl = el.querySelector<HTMLElement>(".cc-apps-pager")!;
     const emptyEl = el.querySelector<HTMLElement>(".cc-empty")!;
     input.focus();
 
     // Close: Esc, the × button, and clicking the darkened backdrop.
-    el.querySelector(".cc-close")?.addEventListener("click", () => closeSwitcher());
+    el.querySelector(".cc-close")?.addEventListener("click", () => closeSwitcher({ ensureSurface: true }));
 
     // Desktop-overlay toggle: when ON, the command center opens as a
     // transparent fullscreen window over the whole desktop (any monitor app).
@@ -1596,10 +1689,13 @@ async function init(): Promise<void> {
       if (on && !ccWin.__ccOverlayHost) { closeSwitcher(); void ccWin.yo?.ccOverlayOpen?.(); }
       else if (!on && ccWin.__ccOverlayHost) window.close();
     });
-    input.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeSwitcher(); });
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      if (editMode) exitEdit(); else closeSwitcher({ ensureSurface: true });
+    });
     el.addEventListener("mousedown", (ev) => {
       const t = ev.target as HTMLElement;
-      if (t === el || t.classList.contains("cc-inner")) closeSwitcher();
+      if (t === el || t.classList.contains("cc-inner")) { if (editMode) exitEdit(); else closeSwitcher({ ensureSurface: true }); }
       else if (!t.closest(".cc-drip-wrap")) dripMenu.classList.add("hidden");
     });
 
@@ -1638,67 +1734,243 @@ async function init(): Promise<void> {
     };
     const openLayout = (layout: LayoutRow): void => openLayoutRow(layout, appRows);
 
-    function renderApps(): void {
-      const all = appRows.filter((a) => matches(a.name) || matches(a.slug || ""));
-      const { items, page, totalPages } = paginate(all, appsPage, APPS_PER_PAGE);
-      appsPage = page;
-      appsEl.innerHTML = "";
-      const openSlugs = new Set(appSlots().map((s) => s.slug));
-      for (const a of items) {
-        const ref = toRef(a);
-        const card = document.createElement("button");
-        card.className = "cc-card" + (openSlugs.has(ref.slug) ? " open" : "");
-        card.innerHTML = `
-          <div class="cc-card-shot">
-            ${appIconInner(iconApp(a), a.name, "cc-card-initial")}
-            ${a.slug ? `<span class="cc-card-slug">${esc(a.slug)}</span>` : ""}
-          </div>
-          <span class="cc-card-name">${esc(a.name)}</span>`;
-        card.addEventListener("click", (ev) => { openRow(a, { newPanel: (ev as MouseEvent).altKey }); closeSwitcher(); });
-        appsEl.appendChild(card);
+    // ── The unified grid: Glyphh first, then the saved order, new items after.
+    function buildEntries(): void {
+      const apps: CcEntry[] = appRows.map((a) => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a }));
+      const ls: CcEntry[] = layouts.map((l) => ({ key: `layout:${(l.name || "").toLowerCase()}`, name: l.name, layout: l }));
+      const all = [...apps, ...ls];
+      const self = all.find((e) => e.app?.appArchetype === "glyphh-self");
+      const byKey = new Map(all.map((e) => [e.key, e]));
+      const ordered: CcEntry[] = [];
+      const used = new Set<string>();
+      for (const k of orderKeys) {
+        const e = byKey.get(k);
+        if (e && e !== self && !used.has(k)) { ordered.push(e); used.add(k); }
       }
-      appsPagerEl.innerHTML = "";
-      if (totalPages > 1) appsPagerEl.appendChild(pager(page, totalPages, (p) => { appsPage = p; renderApps(); }));
-      emptyEl.classList.toggle("hidden", all.length > 0 || layouts.length > 0);
-      renderAda();
+      for (const e of all) if (e !== self && !used.has(e.key)) { ordered.push(e); used.add(e.key); }
+      entries = self ? [self, ...ordered] : ordered;
+      entryByKey = new Map(entries.map((e) => [e.key, e]));
     }
 
-    function renderLayouts(): void {
-      const all = layouts.filter((l) => matches(l.name));
-      layoutsEl.innerHTML = "";
-      layoutsPagerEl.innerHTML = "";
-      if (!all.length) { layoutsWrapEl.classList.add("hidden"); return; }
-      layoutsWrapEl.classList.remove("hidden");
-      const { items, page, totalPages } = paginate(all, layoutsPage, LAYOUTS_PER_PAGE);
-      layoutsPage = page;
-      for (const layout of items) {
-        const cols = layout.cols || 1, rows = layout.rows || 1;
-        const cells = layout.splits.map((c) => {
-          const left = (c.col / cols) * 100, top = (c.row / rows) * 100;
-          const w = (c.colSpan / cols) * 100, h = (c.rowSpan / rows) * 100;
-          const app = resolveCell(c.panelId);
-          // A built-in workspace panel (tool:files/terminal/…) has no app to
-          // resolve. It used to render VIEW_META's line-art glyph, which read as
-          // a different KIND of thing next to the branded app icons beside it —
-          // a lone outline among filled marks. It gets the same lettered tile the
-          // unbranded apps already fall back to, so a layout preview is one
-          // visual language: real icons where they exist, letters where they do not.
-          const toolView = c.panelId?.startsWith("tool:") ? c.panelId.slice(5) : "";
-          const toolTitle = toolView ? (VIEW_META[toolView]?.title ?? toolView) : "";
-          const ico = app
-            ? `<span class="cc-mini-ico">${appIconInner(iconApp(app), app.name, "cc-mini-initial")}</span>`
-            : toolTitle
-              ? `<span class="cc-mini-ico cc-mini-tool"><span class="cc-mini-initial">${esc(toolTitle.charAt(0).toUpperCase())}</span></span>`
-              : "";
-          return `<div class="cc-mini-cell" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%">${ico}</div>`;
-        }).join("");
-        const card = document.createElement("button");
-        card.className = "cc-layout-card";
-        card.innerHTML = `<div class="cc-mini">${cells}</div><span class="cc-card-name">${esc(layout.name)}</span>`;
-        card.addEventListener("click", () => { openLayout(layout); closeSwitcher(); });
-        layoutsEl.appendChild(card);
+    /** The icon element for an entry — app icon, or a layout's mini stack. */
+    function entryIcon(e: CcEntry): HTMLElement {
+      const icon = document.createElement("div");
+      if (e.layout) {
+        icon.className = "tile-icon tile-layout";
+        const seen = new Set<string>();
+        const ids = e.layout.splits
+          .map((c) => c.panelId)
+          .filter((id) => id && !seen.has(id) && (seen.add(id), true))
+          .slice(0, 4);
+        icon.innerHTML = ids.length
+          ? ids.map((id) => {
+              const app = resolveCell(id);
+              if (app) return `<span class="mini">${appIconInner(iconApp(app), app.name, "tile-mini-initial")}</span>`;
+              const toolView = id.startsWith("tool:") ? id.slice(5) : "";
+              const label = toolView ? (VIEW_META[toolView]?.title ?? toolView) : id;
+              return `<span class="mini"><span class="tile-mini-initial">${esc(label.charAt(0).toUpperCase())}</span></span>`;
+            }).join("")
+          : `<span class="tile-initial">▦</span>`;
+      } else {
+        icon.className = "tile-icon";
+        icon.innerHTML = appIconInner(iconApp(e.app!), e.name, "tile-initial");
       }
-      if (totalPages > 1) layoutsPagerEl.appendChild(pager(page, totalPages, (p) => { layoutsPage = p; renderLayouts(); }));
+      return icon;
+    }
+
+    function openEntry(e: CcEntry, alt: boolean): void {
+      if (e.layout) { openLayout(e.layout); closeSwitcher(); return; }
+      openRow(e.app!, { newPanel: alt, replaceWorkspace: !alt });
+      closeSwitcher();
+    }
+
+    function persistDock(): void {
+      dockKeys[0] = GLYPHH_KEY;   // Glyphh owns the top-left, always
+      void yo?.setPreference?.("ccDock", dockKeys);
+    }
+
+    /** The sticky dock: filled slots are normal tiles, empty ones dotted
+     *  outlines. Static across search/pagination. Drops assign; in edit
+     *  mode a × clears any slot but Glyphh's. */
+    function renderDock(): void {
+      dockKeys[0] = GLYPHH_KEY;
+      dockEl.innerHTML = "";
+      for (let i = 0; i < DOCK_N; i++) {
+        const e = dockKeys[i] ? entryByKey.get(dockKeys[i]) : undefined;
+        const slot = document.createElement("button");
+        slot.type = "button";
+        if (e) {
+          slot.className = "cc-tile cc-dock-tile";
+          slot.title = e.layout ? `${e.name} (layout)` : e.name;
+          const nm = document.createElement("span");
+          nm.className = "tile-name";
+          nm.textContent = e.name;
+          slot.append(entryIcon(e), nm);
+          slot.addEventListener("click", (ev) => { if (!editMode) openEntry(e, (ev as MouseEvent).altKey); });
+          if (i > 0) {
+            slot.draggable = true;
+            slot.addEventListener("dragstart", (ev) => {
+              dragKey = e.key;
+              ev.dataTransfer?.setData("text/plain", e.key);
+              slot.classList.add("dragging");
+            });
+            slot.addEventListener("dragend", () => { slot.classList.remove("dragging"); dragKey = null; });
+          }
+          if (editMode && i > 0) {
+            slot.classList.add("cc-jiggle");
+            const del = document.createElement("span");
+            del.className = "cc-del";
+            del.title = "Clear slot";
+            del.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+            del.addEventListener("mousedown", (ev) => ev.stopPropagation());
+            del.addEventListener("click", (ev) => { ev.stopPropagation(); dockKeys[i] = ""; persistDock(); renderDock(); });
+            slot.appendChild(del);
+          }
+        } else {
+          slot.className = "cc-dock-slot";
+          slot.title = "Drag an app here";
+        }
+        // Slot 0 is Glyphh's — never a drop target.
+        if (i > 0) {
+          slot.addEventListener("dragover", (ev) => {
+            if (!dragKey) return;
+            ev.preventDefault();
+            slot.classList.add("drag-over");
+          });
+          slot.addEventListener("dragleave", () => slot.classList.remove("drag-over"));
+          slot.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            slot.classList.remove("drag-over");
+            if (!dragKey || dragKey === GLYPHH_KEY) return;
+            const from = dockKeys.indexOf(dragKey);
+            if (from > 0) dockKeys[from] = "";   // moving within the dock
+            dockKeys[i] = dragKey;
+            persistDock();
+            renderDock();
+          });
+        }
+        dockEl.appendChild(slot);
+      }
+    }
+
+    function persistOrder(): void {
+      orderKeys = entries.filter((e) => e.app?.appArchetype !== "glyphh-self").map((e) => e.key);
+      void yo?.setPreference?.("ccIconOrder", orderKeys);
+    }
+
+    const enterEdit = (): void => { if (!editMode) { editMode = true; renderAll(); } };
+    const exitEdit = (): void => { if (editMode) { editMode = false; persistOrder(); renderAll(); } };
+
+    /** Live-reorder during a drag: mutate `entries` AND move the DOM node —
+     *  a full re-render mid-drag would cancel the native drag session. */
+    function moveEntry(fromKey: string, toKey: string): void {
+      const fi = entries.findIndex((e) => e.key === fromKey);
+      const ti = entries.findIndex((e) => e.key === toKey);
+      if (fi < 0 || ti < 0 || fi === ti) return;
+      const [m] = entries.splice(fi, 1);
+      entries.splice(ti, 0, m);
+      const fromEl = gridEl.querySelector(`[data-key="${CSS.escape(fromKey)}"]`);
+      const toEl = gridEl.querySelector(`[data-key="${CSS.escape(toKey)}"]`);
+      if (fromEl && toEl) { if (fi < ti) toEl.after(fromEl); else toEl.before(fromEl); }
+    }
+
+    async function deleteEntry(e: CcEntry): Promise<void> {
+      const ok = await appConfirm({
+        title: `Delete "${e.name}"?`,
+        body: e.layout ? "The layout is removed from your library." : "The app is uninstalled from your library.",
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        if (e.layout) await yo?.layoutsDelete?.(e.layout.name);
+        else if (e.app) await yo?.panelAppsDelete?.(e.app.id);
+      } catch { /* reload below re-syncs to server truth either way */ }
+      await reload();
+      document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+    }
+
+    function renderAll(): void {
+      // A docked app lives in the dock ONLY — the grid below drops it.
+      const docked = new Set(dockKeys.filter(Boolean));
+      const all = entries.filter((e) => !docked.has(e.key) && (matches(e.name) || matches(e.app?.slug || "")));
+      const { items, page: p, totalPages } = paginate(all, page, PER_PAGE);
+      page = p;
+      gridEl.innerHTML = "";
+      gridEl.classList.toggle("cc-editing", editMode);
+      renderDock();
+      const openSlugs = new Set(appSlots().map((sl) => sl.slug));
+      items.forEach((e, i) => {
+        const fixed = e.app?.appArchetype === "glyphh-self";   // Glyphh: no move, no delete
+        const deletable = !!e.layout || !!(e.app && !e.app.system && e.app.appArchetype !== "glyphh-nav");
+        const tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = "cc-tile" + (e.app && openSlugs.has(e.app.slug || e.app.id) ? " open" : "");
+        tile.dataset.key = e.key;
+        tile.title = e.layout ? `${e.name} (layout)` : e.name;
+        const nm = document.createElement("span");
+        nm.className = "tile-name";
+        nm.textContent = e.name;
+        tile.append(entryIcon(e), nm);
+
+        // Always draggable — a tile can be dropped on a DOCK slot any time;
+        // grid REORDER stays an edit-mode behavior (dragover below).
+        if (!fixed) {
+          tile.draggable = true;
+          tile.addEventListener("dragstart", (ev) => {
+            dragKey = e.key;
+            ev.dataTransfer?.setData("text/plain", e.key);
+            tile.classList.add("dragging");
+          });
+          tile.addEventListener("dragend", () => {
+            tile.classList.remove("dragging");
+            dragKey = null;
+            if (editMode) { persistOrder(); renderAll(); }
+          });
+        }
+
+        if (editMode && !fixed) {
+          tile.classList.add("cc-jiggle");
+          tile.style.animationDelay = `${(i % 5) * -0.07}s`;
+          if (deletable) {
+            const del = document.createElement("span");
+            del.className = "cc-del";
+            del.title = `Delete ${e.name}`;
+            del.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+            del.addEventListener("mousedown", (ev) => ev.stopPropagation());
+            del.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteEntry(e); });
+            tile.appendChild(del);
+          }
+          tile.addEventListener("dragover", (ev) => {
+            ev.preventDefault();
+            if (editMode && dragKey && dragKey !== e.key) moveEntry(dragKey, e.key);
+          });
+        }
+
+        tile.addEventListener("click", (ev) => {
+          if (editMode) return;   // jiggle mode: taps rearrange, never launch
+          openEntry(e, (ev as MouseEvent).altKey);
+        });
+        // iOS-style: left-click and HOLD enters jiggle mode.
+        tile.addEventListener("mousedown", (ev) => {
+          if (ev.button !== 0 || editMode) return;
+          const x0 = ev.clientX, y0 = ev.clientY;
+          const timer = window.setTimeout(() => { cleanup(); enterEdit(); }, 550);
+          const onMove = (m: MouseEvent): void => { if (Math.hypot(m.clientX - x0, m.clientY - y0) > 6) cleanup(); };
+          const cleanup = (): void => {
+            window.clearTimeout(timer);
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", cleanup);
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", cleanup);
+        });
+        gridEl.appendChild(tile);
+      });
+      pagerEl.innerHTML = "";
+      if (totalPages > 1) pagerEl.appendChild(pager(page, totalPages, (pp) => { page = pp; renderAll(); }));
+      emptyEl.classList.toggle("hidden", all.length > 0);
+      renderAda();
     }
 
     // Ada fallback — nothing matched by name → surface fact-memory hits; a hit
@@ -1706,7 +1978,7 @@ async function init(): Promise<void> {
     let adaSeq = 0;
     function renderAda(): void {
       el.querySelector(".cc-ada")?.remove();
-      const shown = appsEl.children.length > 0 || layoutsEl.children.length > 0;
+      const shown = gridEl.children.length > 0;
       if (!query || shown || !yo?.adaRecall) return;
       const seq = ++adaSeq;
       void yo.adaRecall(query, 4).then((hits) => {
@@ -1722,29 +1994,28 @@ async function init(): Promise<void> {
           const ref = m?.[1];
           const app = ref ? resolveCell(ref) : undefined;
           const layout = ref ? layouts.find((l) => l.name.toLowerCase() === ref.toLowerCase()) : undefined;
-          if (app) row.addEventListener("click", () => { openRow(app, {}); closeSwitcher(); });
+          if (app) row.addEventListener("click", () => { openRow(app, { replaceWorkspace: true }); closeSwitcher(); });
           else if (layout) row.addEventListener("click", () => { openLayout(layout); closeSwitcher(); });
           else row.disabled = true;
           wrap.appendChild(row);
         }
-        appsEl.after(wrap);
+        gridEl.after(wrap);
       }).catch(() => { /* quiet */ });
     }
 
-    function renderAll(): void { renderApps(); renderLayouts(); }
-
-    // Filter as you type; Enter opens the top match.
+    // Filter as you type; Enter opens the top match (app or layout).
     input.addEventListener("input", () => {
       query = input.value.trim().toLowerCase();
-      appsPage = 0; layoutsPage = 0;
+      page = 0;
       renderAll();
     });
     input.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter") return;
-      const a = appRows.find((x) => matches(x.name) || matches(x.slug || ""));
-      if (a) { openRow(a, {}); closeSwitcher(); return; }
-      const l = layouts.find((x) => matches(x.name));
-      if (l) { openLayout(l); closeSwitcher(); }
+      const e = entries.find((x) => matches(x.name) || matches(x.app?.slug || ""));
+      if (!e) return;
+      if (e.layout) openLayout(e.layout);
+      else openRow(e.app!, { replaceWorkspace: true });
+      closeSwitcher();
     });
 
     // Drip control — the built-in effects + the user's saved presets, played
@@ -1778,17 +2049,44 @@ async function init(): Promise<void> {
     }
     dripBtn.addEventListener("click", (e) => { e.stopPropagation(); void populateDrips(); dripMenu.classList.toggle("hidden"); });
 
-    // Load apps + layouts, paint, then stream native-app icons in.
-    void Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).then(([rows, ls]) => {
-      appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app" || a.appArchetype === "glyphh-self");
-      // Built-in Glyphh first, then installed glyphh-apps, then web apps.
-      const weight = (a: PanelAppRow): number =>
-        a.appArchetype === "glyphh-self" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
-      appRows.sort((x, y) => weight(y) - weight(x));
-      layouts = ls || [];
+    // Load apps + layouts into the ONE grid, paint, then stream icons in.
+    async function reload(): Promise<void> {
+      try {
+        const [rows, ls] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]);
+        appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app" || a.appArchetype === "glyphh-self" || a.appArchetype === "glyphh-nav");
+        // Default order (before any saved drag order): built-in Glyphh, the
+        // nav apps, installed glyphh-apps, web apps, then layouts. (sort is
+        // stable — nav apps keep their seeded order.)
+        const weight = (a: PanelAppRow): number =>
+          a.appArchetype === "glyphh-self" ? 3 : a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
+        appRows.sort((x, y) => weight(y) - weight(x));
+        layouts = ls || [];
+      } catch { appRows = []; layouts = []; }
+      buildEntries();
       renderAll();
       void primeNativeIcons(appRows.map((a) => ({ execPath: a.execPath || null })), renderAll);
-    }).catch(() => { appRows = []; layouts = []; renderAll(); });
+    }
+    void (async () => {
+      try {
+        const saved = await yo?.getPreference?.("ccIconOrder", []);
+        orderKeys = Array.isArray(saved) ? saved.map(String) : [];
+      } catch { orderKeys = []; }
+      try {
+        const dock = await yo?.getPreference?.("ccDock", null);
+        if (Array.isArray(dock) && dock.length) {
+          dockKeys = Array.from({ length: DOCK_N }, (_, i) => String(dock[i] ?? ""));
+          // Backfill empty slots with defaults the user isn't already showing —
+          // newly added built-ins land instead of permanent holes.
+          const have = new Set(dockKeys.filter(Boolean));
+          const spare = DOCK_DEFAULTS.filter((k) => !have.has(k));
+          for (let i = 0; i < DOCK_N && spare.length; i++) {
+            if (!dockKeys[i]) dockKeys[i] = spare.shift()!;
+          }
+        }
+      } catch { /* defaults stand */ }
+      dockKeys[0] = GLYPHH_KEY;
+      await reload();
+    })();
   }
 
   // ── Files view ──
@@ -3192,7 +3490,8 @@ async function init(): Promise<void> {
     // (The width-patch path below only recalled rail widths + one slot height,
     // so every re-open snapped back to the pristine definition.) A memory with
     // different panels is stale (the layout was edited) — definition wins.
-    const viewKey = (v: SavedView): string => (typeof v === "string" ? v : `app:${(v.slug || "").toLowerCase()}`);
+    const viewKey = (v: SavedView): string =>
+      typeof v === "string" ? v : v.view === "section" ? `section:${v.section}` : `app:${(v.slug || "").toLowerCase()}`;
     const savedKeys = (saved?.rails || []).flatMap((r) => (r.views || []).map(viewKey)).sort().join("|");
     const defKeys = cells.map((c) => (c.tool ? c.tool : `app:${c.slug.toLowerCase()}`)).sort().join("|");
     // Session behavior applies after the panels land; the FOLDER applied
@@ -3367,6 +3666,7 @@ async function init(): Promise<void> {
     __wbCloseApp?: (slug: string) => boolean;
     __wbFocusApp?: (slug: string) => boolean;
     __wbToggleAppSwitcher?: () => void;
+    __wbOpenSection?: (section: string) => void;
   };
   wbApp.__wbOpenApp = (app, newPanel) => openAppInWorkbench(app, { newPanel });
   wbApp.__wbOpenApps = (apps, layoutName?: string) => {
@@ -3434,14 +3734,13 @@ async function init(): Promise<void> {
     return true;
   };
   wbApp.__wbToggleAppSwitcher = () => toggleAppSwitcher();
+  wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);
   // #code-apps-btn is bound in help/code.ts initCode() via openCommandCenter so
   // it works cold (before this async init runs) and Cmd+. shares the same path.
 
   window.addEventListener("agent-sessions-changed", () => {
     type SessionsApi = { currentTitle(): string; currentId(): string | null };
     const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-    const titleEl = document.querySelector<HTMLElement>('.ws-rail-slot[data-view="coding"] .ws-rail-slot-header .title');
-    if (titleEl && sess) titleEl.textContent = sess.currentTitle();
     // Remember which session rode this layout — "last" sessionMode resumes it.
     const cur = sess?.currentId?.();
     if (activeLayoutName && cur) {

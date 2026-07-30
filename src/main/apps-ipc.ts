@@ -3,8 +3,7 @@ import { refreshForceWebSlugs } from "./force-web";
 import fs from "fs";
 import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
-import type { AppConnector, AppConfig } from "./app-connector";
-import { exportServerApp, importApp } from "./glyphh-app-package";
+import { exportServerApp } from "./glyphh-app-package";
 import { deployAppFromWorkdir } from "./glyphh-app-builder";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import { getClient } from "./glyphh-client";
@@ -496,43 +495,20 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   ipcMain.handle("app-secrets-delete", async (_e, id: string, key: string) => deleteAppSecret(id, key));
 }
 
-/** Strip the MCP OAuth client secret before any app config crosses IPC to the
- *  renderer. The secret stays in the main process / encrypted on disk; the UI
- *  sends a blank secret on save and the main process preserves the stored one. */
-function redactSecrets(apps: AppConfig[]): AppConfig[] {
-  return apps.map((a) =>
-    a.mcp?.oauth?.clientSecret
-      ? { ...a, mcp: { ...a.mcp, oauth: { ...a.mcp.oauth, clientSecret: "" } } }
-      : a,
-  );
-}
 import type { LayoutManager } from "./layout-manager";
 import type { DripManager } from "./drip-manager";
-import type { PanelManager } from "./panel-manager";
 
 interface AppsIpcDeps {
-  appConnector: AppConnector;
   layoutManager: LayoutManager;
   dripManager: DripManager | null;
-  panelManager: PanelManager;
-  canAddApp: (count: number) => { allowed: boolean; reason?: string };
   canSaveLayout: (count: number) => { allowed: boolean; reason?: string };
   getMainWindow: () => import("electron").BrowserWindow | null;
 }
 
-/** Hide system-kind apps from the Layouts cell picker.
- *  They're still mountable via the `+` picker and `.dip`, just not in layouts. */
-function isUserKindApp(a: { kind?: "user" | "system" }): boolean {
-  return (a.kind ?? "user") !== "system";
-}
-
 export function registerAppsIpc(deps: AppsIpcDeps): void {
   const {
-    appConnector,
     layoutManager,
     dripManager,
-    panelManager,
-    canAddApp,
     canSaveLayout,
     getMainWindow,
   } = deps;
@@ -623,14 +599,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     return picked.canceled ? null : (picked.filePaths[0] ?? null);
   });
 
-  /** True if any app in the layout declares requiresFolder. The UI uses
-   *  this to show the folder-mode toggle + the layout-level folder picker. */
-  ipcMain.handle("layouts-folder-required", (_e, name: string) => {
-    const layout = layoutManager.listLayouts().find(l => l.name === name);
-    if (!layout) return false;
-    const apps = appConnector.list();
-    return layout.cells.some(c => apps.find(a => a.id === c.panelId)?.requiresFolder);
-  });
   ipcMain.handle("layouts-delete", async (_e, name: string) => layoutManager.deleteLayout(name));
 
   // IPC: Drips CRUD
@@ -648,60 +616,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     return dripManager.execute(recipe.split(/\s+/));
   });
 
-  // IPC: apps CRUD (panel apps).
-  // Apps registry shows ONLY user-owned apps — internal apps that ship
-  // with .Yo (Agent, Vibe, Spec, Council, Terminal, plus the system rail
-  // surfaces) are uneditable and hidden here. They're still openable from
-  // the `+` picker, `.dip`, and (where allowed) Layouts.
   // Renderer-side tier check (same gate the connect IPCs enforce) so the UI
   // can lock the MCP / Connection tabs for Free users instead of showing a
   // form that silently fails to save.
   ipcMain.handle("has-mcp-access", () => hasMcpAccess());
-  ipcMain.handle("apps-list", () =>
-    redactSecrets(appConnector.list().filter((a) => !a.internal)),
-  );
-  // All apps including system. Used by the panel `+` picker so users can
-  // mount Dashboard/Apps/Agents/etc. as standalone panels.
-  ipcMain.handle("apps-list-all", () => redactSecrets(appConnector.list()));
-  // Mountable in Layouts: user apps + non-system internal apps (Agent,
-  // Vibe, Spec, Council, Terminal, Browser). System rail surfaces stay
-  // out per the design.
-  ipcMain.handle("apps-list-mountable", () =>
-    redactSecrets(appConnector.list().filter(isUserKindApp)),
-  );
-  // "apps-add" stays for the still-local INTERNAL_APPS registry (system nav
-  // apps, .dip-openable panels) — NOT the Apps tab's user-facing library,
-  // which is server-authoritative via panel-apps-* above (see apps.ts).
-  ipcMain.handle("apps-add", (_e, id: string, name: string, url?: string) => {
-    const userApps = appConnector.list().filter(a => a.url && !a.url.startsWith("yo://")).length;
-    const gate = canAddApp(userApps);
-    if (!gate.allowed) return { error: gate.reason };
-    const app = appConnector.add(id, name, url);
-    if (url) panelManager.addPanel(id, url);
-    return app;
-  });
-  // Defense in depth — internal apps are ALL uneditable/undeletable via IPC.
-  // The Apps registry UI already filters them out (see apps-list), but a
-  // direct IPC call would otherwise still mutate them.
-  const refuseIfInternal = (id: string) => appConnector.isInternal(id);
-  ipcMain.handle("apps-remove", (_e, id: string) => refuseIfInternal(id) ? false : appConnector.remove(id));
-  // Connections are available to all tiers — no pay gate. refuseIfInternal
-  // still blocks editing built-in apps.
-  ipcMain.handle("apps-set-connection", (_e, id: string, pipedreamSlug: string) =>
-    refuseIfInternal(id) ? false : appConnector.setConnection(id, { pipedreamSlug }));
-  ipcMain.handle("apps-remove-connection", (_e, id: string) =>
-    refuseIfInternal(id) ? false : appConnector.removeConnection(id));
-  ipcMain.handle("apps-update-id", (_e, oldId: string, newId: string) => {
-    if (refuseIfInternal(oldId)) return false;
-    const ok = appConnector.updateId(oldId, newId);
-    if (ok) layoutManager.renamePanelId(oldId, newId);
-    return ok;
-  });
-  ipcMain.handle("apps-update-name", (_e, id: string, name: string) =>
-    refuseIfInternal(id) ? false : appConnector.updateName(id, name));
-  ipcMain.handle("apps-update-url", (_e, id: string, url: string) =>
-    refuseIfInternal(id) ? false : appConnector.updateUrl(id, url));
-  ipcMain.handle("apps-set-connected-slug", () => false);
 
   // ── yo app package (import / export) ──────────────────────
   // Export an app to a .glyphh bundle. Resolves the app from the org's SERVER
@@ -888,8 +806,9 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     }
   });
 
-  // Import a .glyphh bundle. A glyphh-app bundle (marketplace unit) installs as
-  // a server saved-app; a legacy .glyphh registers into the local connector.
+  // Import a .glyphh bundle — the glyphh-app (marketplace unit) format installs
+  // as a server saved-app. The legacy local-connector format died with the
+  // local app registry.
   ipcMain.handle("app-import", async () => {
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
@@ -906,11 +825,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       return installGlyphhAppBundle(file);
     }
 
-    const res = importApp(appConnector, file);
-    if (res.ok && res.appId) {
-      const app = appConnector.get(res.appId);
-      if (app?.url) panelManager.addPanel(res.appId, app.url);
-    }
-    return res;
+    return { ok: false, error: "This bundle uses the legacy local-app format, which is no longer supported." };
   });
 }

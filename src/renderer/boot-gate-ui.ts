@@ -58,11 +58,10 @@ export function isCcModalShowing(): boolean { return ccModalShowing; }
 
 // ── Tutorial ────────────────────────────────────────────────────────────────
 
-// One entry per tutorial step (sections/tutorial.html): Add apps → Connect
-// systems → Connect AI → Build & host. These are visual steps (icon + copy),
-// not command demos, so nothing is typed — the array length drives the step
-// count and the final "Get Started" button.
-const TUTORIAL_SEQUENCES = ["", "", "", ""];
+// Tutorial steps (sections/tutorial.html): Connections → Apps → Loops →
+// Layouts → Command center. Visual steps (icon + copy) — the count drives
+// the dots and the final "Get Started" button.
+const TUTORIAL_STEPS = 5;
 
 function showTutorial(cb: BootGateCallbacks): void {
   tutorialShowing = true;
@@ -71,26 +70,8 @@ function showTutorial(cb: BootGateCallbacks): void {
   // BrowserViews are native — they paint over HTML. Hide them so tutorial is visible.
   cb.hidePanels();
   let step = 0;
-  let typeTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function typeText(stepIdx: number) {
-    const el = document.getElementById(`tutorial-typed-${stepIdx}`)!;
-    if (!el) return;
-    const text = TUTORIAL_SEQUENCES[stepIdx];
-    let i = 0;
-    el.textContent = "";
-    function tick() {
-      if (i < text.length) {
-        el!.textContent = text.slice(0, i + 1);
-        i++;
-        typeTimer = setTimeout(tick, 40 + Math.random() * 30);
-      }
-    }
-    typeTimer = setTimeout(tick, 400);
-  }
 
   function goToStep(idx: number) {
-    if (typeTimer) clearTimeout(typeTimer);
     step = idx;
     overlay.querySelectorAll(".tutorial-step").forEach((s, i) => {
       s.classList.toggle("active", i === idx);
@@ -99,18 +80,12 @@ function showTutorial(cb: BootGateCallbacks): void {
       d.classList.toggle("active", i === idx);
     });
 
-    // Clear previous typed text
-    const typed = document.getElementById(`tutorial-typed-${idx}`);
-    if (typed) typed.textContent = "";
-
     const nextBtn = document.getElementById("tutorial-next") as HTMLButtonElement;
-    nextBtn.textContent = idx === TUTORIAL_SEQUENCES.length - 1 ? "Get Started" : "Next";
-
-    typeText(idx);
+    nextBtn.textContent = idx === TUTORIAL_STEPS - 1 ? "Get Started" : "Next";
   }
 
   document.getElementById("tutorial-next")!.addEventListener("click", () => {
-    if (step < TUTORIAL_SEQUENCES.length - 1) {
+    if (step < TUTORIAL_STEPS - 1) {
       goToStep(step + 1);
     } else {
       closeTutorial();
@@ -124,7 +99,6 @@ function showTutorial(cb: BootGateCallbacks): void {
   });
 
   function closeTutorial() {
-    if (typeTimer) clearTimeout(typeTimer);
     tutorialShowing = false;
     window.yo.setPreference("hasSeenTutorial", true);
     overlay.classList.add("hidden");

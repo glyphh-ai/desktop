@@ -1,11 +1,12 @@
         <div class="help-section" data-section="code">
           <div class="code-root">
 
-            <!-- Sessions live in the global #app-rail (home.template.html). -->
+            <!-- Sessions live in the Coding Agent panel's history dropdown. -->
 
             <!-- Center — the agent -->
             <section class="code-agent">
               <div class="code-agent-head">
+                <span id="code-session-title" title="Current session">New session</span>
                 <!-- Workdir controls (old workbench header): folder picker +
                      git branch (shown once a repo is picked) + add-folder.
                      Wiring lands with the William loop. -->
@@ -26,20 +27,25 @@
                 <!-- Workbench view toggles (old wb-section-toggles): each opens
                      its rail on the right; accent = open. -->
                 <div class="code-view-toggles">
-                  <button class="code-view-btn" data-view="files" title="Files">
-                    <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                  <button id="code-session-history" class="code-icon-btn" title="Session history" type="button">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   </button>
-                  <button class="code-view-btn" data-view="terminal" title="Terminal">
-                    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                  </button>
-                  <button class="code-view-btn" data-view="coding" title="Coding Agent">
-                    <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>
+                  <button id="code-session-new" class="code-icon-btn" title="New session" type="button">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   </button>
                   <div class="code-view-more-wrap">
                     <button id="code-view-more" class="code-view-btn" title="More panels" type="button">
                       <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
                     </button>
                     <div id="code-view-more-menu" class="code-drop code-view-more-menu hidden">
+                      <button class="code-view-btn code-view-menu-item" data-view="files" title="Files">
+                        <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                        <span>Files</span>
+                      </button>
+                      <button class="code-view-btn code-view-menu-item" data-view="terminal" title="Terminal">
+                        <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                        <span>Terminal</span>
+                      </button>
                       <button class="code-view-btn code-view-menu-item" data-view="monaco" title="Editor">
                         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <span>Editor</span>

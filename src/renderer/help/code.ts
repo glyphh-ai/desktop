@@ -1,5 +1,6 @@
 /**
- * Code — the Glyphh agent surface: sessions rail | agent | workbench rails.
+ * Code — the Glyphh agent surface: agent | workbench rails (sessions live
+ * in the Coding Agent panel's history dropdown).
  *
  * Sessions persist in localStorage (moves to a real store as the loop
  * matures); replies stream from the local Glyphh model (llama-server,
@@ -15,7 +16,6 @@ import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
-import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
@@ -25,6 +25,8 @@ interface CodeChat {
   /** The folder THIS session works in — stamped by its layout or by the pick
    *  made while it was current. Absent → the global workspace folder. */
   workdir?: string;
+  /** Pinned sessions float to the top of the history dropdown. */
+  pinned?: boolean;
 }
 
 const STORE_KEY = "codeChats";
@@ -634,8 +636,6 @@ function ensureRunTicker(): void {
 function stopRunTickerIfIdle(): void {
   if (liveRuns.size === 0 && runTicker) { clearInterval(runTicker); runTicker = null; }
 }
-let menuEl: HTMLDivElement | null = null;
-
 function el<T extends HTMLElement = HTMLElement>(id: string): T | null {
   return document.getElementById(id) as T | null;
 }
@@ -738,119 +738,14 @@ function newChat(): void {
   input()?.focus();  void checkWorkdirGate();
 }
 
-async function deleteChat(chat: CodeChat): Promise<void> {
-  if (!(await confirmAction({
-    title: `Delete “${chat.title}”?`,
-    body: "This session's history is gone for good.",
-    confirmLabel: "Delete session",
-    danger: true,
-  }))) return;
-  chats = chats.filter((x) => x.id !== chat.id);
-  if (currentId === chat.id) currentId = chats[0]?.id || "";
-  void saveStore();
-  renderHistory();
-  renderThread();
-}
-
-// ── Session row menu (⋯ → Delete) ────────────────────────────────────────
-function closeMenu(): void { menuEl?.remove(); menuEl = null; }
-
-/** Swap a history row's title for an inline input to rename the chat. Committed
- *  on Enter/blur, cancelled on Escape. Edits IN PLACE (no renderHistory) so a
- *  rebuild can't destroy the field mid-edit. Triggered from the row menu. */
-function beginRename(chat: CodeChat, label: HTMLElement): void {
-  const field = document.createElement("input");
-  field.type = "text";
-  field.className = "code-history-rename";
-  field.value = chat.title;
-  field.addEventListener("click", (ev) => ev.stopPropagation());
-  let done = false;
-  const restore = (): void => { label.textContent = chat.title; label.title = chat.title; field.replaceWith(label); };
-  const commit = (): void => {
-    if (done) return;
-    done = true;
-    const t = field.value.trim();
-    if (t && t !== chat.title) {
-      chat.title = t;
-      void saveStore();
-      // The coding tile's header/dropdown follow this event.
-      window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
-    }
-    restore();
-  };
-  field.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
-    else if (ev.key === "Escape") { ev.preventDefault(); done = true; restore(); }
-  });
-  field.addEventListener("blur", commit);
-  label.replaceWith(field);
-  field.focus();
-  field.select();
-}
-
-function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
-  closeMenu();
-  const m = document.createElement("div");
-  m.className = "code-menu";
-  const ren = document.createElement("button");
-  ren.className = "code-menu-item";
-  ren.textContent = "Rename";
-  ren.addEventListener("click", () => {
-    closeMenu();
-    const label = anchor.closest(".code-history-item")?.querySelector<HTMLElement>(".code-history-title");
-    if (label) beginRename(chat, label);
-  });
-  m.appendChild(ren);
-  const del = document.createElement("button");
-  del.className = "code-menu-item danger";
-  del.textContent = "Delete";
-  del.addEventListener("click", () => { closeMenu(); void deleteChat(chat); });
-  m.appendChild(del);
-  const r = anchor.getBoundingClientRect();
-  m.style.top = `${r.bottom + 4}px`;
-  m.style.left = `${Math.max(8, r.right - 120)}px`;
-  document.body.appendChild(m);
-  menuEl = m;
-}
-
 // ── Rendering ────────────────────────────────────────────────────────────
+/** (2.5.0) The rail's session list is gone — the Coding Agent panel's header
+ *  dropdown is the only session UI, and it repaints off this event. */
 function renderHistory(): void {
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
-  const list = el<HTMLDivElement>("code-history");
-  if (!list) return;
-  list.textContent = "";
-  for (const c of chats) {
-    const row = document.createElement("div");
-    row.className = "code-history-item" + (c.id === currentId ? " active" : "");
-    const label = document.createElement("span");
-    label.className = "code-history-title";
-    label.textContent = c.title;
-    label.title = c.title;
-    // Rename is a menu action (⋯ → Rename), not a click on the title — a
-    // selection-gated title click fought the row's own select handler and
-    // never reliably fired. The label is now just a label.
-    const dot = document.createElement("span");
-    const working = liveRuns.has(c.id);
-    dot.className = "code-chat-dot" + (working ? " working" : "");
-    dot.title = working ? "Working" : "Idle";
-    const menuBtn = document.createElement("button");
-    menuBtn.className = "code-chat-menu-btn";
-    menuBtn.title = "More";
-    menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
-    menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openChatMenu(menuBtn, c); });
-    row.append(dot, label, menuBtn);
-    row.addEventListener("click", () => {
-      currentId = c.id;
-      threadPinned = true;
-      void saveStore();
-      ensureCodeSection();
-      renderHistory();
-      renderThread();
-      refreshCtxMeter();
-      void checkWorkdirGate();
-    });
-    list.appendChild(row);
-  }
+  // The agent head's session title (the slot header row is gone).
+  const sessTitleEl = el("code-session-title");
+  if (sessTitleEl) sessTitleEl.textContent = current()?.title ?? "New session";
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
@@ -1404,7 +1299,7 @@ function setThinking(on: boolean): void {
   const send = el("code-send");
   send?.classList.toggle("thinking", on);
   if (send) send.title = on ? "Stop" : "Send";
-  renderHistory(); // rail dots track the loop state
+  renderHistory(); // the panel header tracks the loop state
 }
 
 /** `thinking` is VIEW state: whether the CURRENT chat is running. Re-derive
@@ -1423,8 +1318,22 @@ function stopThinking(): void {
  *  app: layouts run the exact function a layout click in the launcher runs
  *  (`__wbOpenLayoutByName` → the switcher's `openLayoutRow` → grid open);
  *  apps fall back to the app card's resolver (appLaunch). Nothing else. */
+/** Flip to the working surface WITHOUT injecting the agent panel — the
+ *  neutral pre-open used by .dip, app commands, and layout opens (their
+ *  panels define the view). */
+export function showWorkspaceSurface(): void {
+  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbOpenSection?: (s: string) => void };
+  w.__initCodeWorkbench?.();
+  let tries = 0;
+  const go = (): void => {
+    if (w.__wbOpenSection) w.__wbOpenSection("workspace");
+    else if (tries++ < 40) requestAnimationFrame(go);
+  };
+  go();
+}
+
 export function runDip(ref: string): void {
-  gotoSection("code");
+  showWorkspaceSurface();
   const w = window as unknown as {
     __initCodeWorkbench?: () => void;
     __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
@@ -1631,7 +1540,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   if (run?.runId) askQueue = askQueue.filter((q) => q.runId !== run.runId);
   paintAskDock();
   stopRunTickerIfIdle();
-  renderHistory();   // the rail dot goes idle even for a background session
+  renderHistory();   // the panel header goes idle even for a background session
   if (chatId === currentId) {
     broadcastTimeline(false);
     setThinking(false);
@@ -1909,360 +1818,9 @@ function initGlyphhAgentEvents(): void {
   });
 }
 
-// ── Recents disclosure ───────────────────────────────────────────────────
-function setRecentsOpen(open: boolean, persist: boolean): void {
-  el("recents-toggle")?.classList.toggle("closed", !open);
-  el("code-history")?.classList.toggle("hidden", !open);
-  if (persist) void window.yo.setPreference?.("codeRecentsOpen", open);
-  syncRailLayout();
-}
-
-// ── Rail sections (Apps, Layouts) — each collapsible, state remembered ───────
-interface RailSectionDef { toggle: string; body: string; pref: string }
-const RAIL_SECTIONS: RailSectionDef[] = [
-  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railAppsOpen" },
-  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railLayoutsOpen" },
-];
-/** The user's chosen Recents height — the splitter's flex-basis. Kept in a var
- *  so syncRailLayout can restore it after a "both sections closed" fill. */
-let railRecentsH = 170;
-
-function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
-  el(def.toggle)?.classList.toggle("closed", !open);
-  el(def.body)?.classList.toggle("hidden", !open);
-  if (persist) void window.yo.setPreference?.(def.pref, open);
-  syncRailLayout();
-}
-
-/**
- * One authority over how the rail's lower stack shares vertical space:
- *
- *   - Recents open + a section open → the splitter is live; Recents holds its
- *     chosen height and the open section(s) take the rest.
- *   - Recents open + BOTH sections closed → nothing below to resize, so Recents
- *     fills all the way to the user area and the splitter hides.
- *   - Recents closed → the sections own the whole stack; no splitter.
- *
- * Without this, collapsing both sections left Recents pinned at its dragged
- * height with dead space beneath it — the "doesn't go past a certain point" bug.
- */
-function syncRailLayout(): void {
-  const hist = el("code-history");
-  const vs = el("recents-vsplit");
-  const recentsOpen = !hist?.classList.contains("hidden");
-  const anySectionOpen = RAIL_SECTIONS.some((d) => !el(d.body)?.classList.contains("hidden"));
-  vs?.classList.toggle("hidden", !(recentsOpen && anySectionOpen));
-  if (hist && recentsOpen) hist.style.flex = anySectionOpen ? `0 1 ${railRecentsH}px` : "1 1 auto";
-}
-
-/** Bind each rail section's disclosure toggle + restore its remembered state. */
-function initRailSections(): void {
-  for (const def of RAIL_SECTIONS) {
-    el(def.toggle)?.addEventListener("click", () => {
-      const open = el(def.toggle)!.classList.contains("closed"); // was closed → open it
-      setRailSectionOpen(def, open, true);
-    });
-    void window.yo.getPreference?.(def.pref, true).then((v) => setRailSectionOpen(def, v !== false, false));
-  }
-}
-
-// ── Apps grid (rail, below Recents) — the same list + icons as the Apps page
-//    / command center, ordered by last-opened (recents), opened with the same
-//    launch the Apps page uses. All apps show; recents float to the top so the
-//    search still covers the long tail. ─────────────────────────────────────
-interface RailApp {
-  id: string;
-  slug?: string | null;
-  name: string;
-  url?: string | null;
-  execPath?: string | null;
-  isBrowser?: boolean;
-  appArchetype?: string | null;
-  launchConfig?: Record<string, unknown> | null;
-  system?: boolean;
-  connection?: { accountId?: string; pipedreamSlug: string } | null;
-}
-interface RailLayout { name: string; splits: Array<{ panelId: string }> }
-let railApps: RailApp[] = [];
-let railLayouts: RailLayout[] = [];
-let railRecentTs: Record<string, number> = {};
-let railAppsPage = 0;
-let railLayoutsPage = 0;
-const RAIL_APPS_PER_PAGE = 9;
-const RAIL_LAYOUTS_PER_PAGE = 6;
-
-/** Slice items to a page, clamping in-range (palette parity). */
-function railPaginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; totalPages: number } {
-  const totalPages = Math.max(1, Math.ceil(items.length / size));
-  const pp = Math.max(0, Math.min(page, totalPages - 1));
-  return { items: items.slice(pp * size, (pp + 1) * size), page: pp, totalPages };
-}
-
-/** Prev / n / Next bar (reuses .pagination-* styling), spanning the grid. */
-function railPager(page: number, totalPages: number, onPage: (p: number) => void): HTMLElement {
-  const bar = document.createElement("div");
-  bar.className = "pagination-bar rail-grid-pager";
-  if (totalPages <= 1) return bar;
-  const nav = document.createElement("div");
-  nav.className = "pagination-nav";
-  const mk = (label: string, to: number, disabled: boolean) => {
-    const b = document.createElement("button");
-    b.className = "pagination-btn";
-    b.textContent = label;
-    b.disabled = disabled;
-    b.addEventListener("click", () => onPage(to));
-    return b;
-  };
-  nav.appendChild(mk("‹", page - 1, page === 0));
-  const info = document.createElement("span");
-  info.className = "pagination-info";
-  info.textContent = `${page + 1}/${totalPages}`;
-  nav.appendChild(info);
-  nav.appendChild(mk("›", page + 1, page >= totalPages - 1));
-  bar.appendChild(nav);
-  return bar;
-}
-
-async function loadRecentApps(): Promise<void> {
-  try {
-    const [apps, layouts, recents] = await Promise.all([
-      window.yo.panelAppsList?.() ?? Promise.resolve([]),
-      window.yo.layoutsList?.() ?? Promise.resolve([]),
-      window.yo.recentsList?.() ?? Promise.resolve([]),
-    ]);
-    // Palette parity: web apps (have a url) + native library apps.
-    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.url || a.isBrowser === false);
-    railLayouts = (layouts || []) as unknown as RailLayout[];
-    railRecentTs = {};
-    for (const r of recents || []) {
-      const key = `${r.kind}:${r.id}`;
-      railRecentTs[key] = Math.max(railRecentTs[key] || 0, r.ts || 0);
-    }
-  } catch { railApps = []; railLayouts = []; railRecentTs = {}; }
-  renderRecentApps();
-  // Icons land async (Pipedream catalog + OS file icons), then re-render —
-  // same as the palette / Apps page.
-  void primeConnectedIcons(railApps as never, renderRecentApps);
-  void primeNativeIcons(railApps as never, renderRecentApps);
-}
-
-/** Both rail sections. Apps and Layouts each own a search + pagination and live
- *  under their own collapsible header (see initRailSections). */
-function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); }
-
-function renderRailApps(): void {
-  const list = el<HTMLDivElement>("recent-apps-list");
-  if (!list) return;
-  const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
-  list.textContent = "";
-
-  // Recency-first, name OR slug match — palette parity.
-  const apps = railApps
-    .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q))
-    .sort((a, b) => {
-      // The built-in Glyphh app is ALWAYS first, ahead of recency.
-      const ga = a.appArchetype === "glyphh-self" ? 1 : 0;
-      const gb = b.appArchetype === "glyphh-self" ? 1 : 0;
-      if (ga !== gb) return gb - ga;
-      const ta = railRecentTs[`app:${a.id}`] || 0;
-      const tb = railRecentTs[`app:${b.id}`] || 0;
-      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
-    });
-  const ap = railPaginate(apps, railAppsPage, RAIL_APPS_PER_PAGE);
-  railAppsPage = ap.page;
-  for (const a of ap.items) {
-    const tile = document.createElement("button");
-    tile.className = "app-rail-tile";
-    tile.type = "button";
-    tile.title = a.name;
-    const icon = document.createElement("div");
-    icon.className = "tile-icon";
-    icon.innerHTML = appIconInner(a, a.name, "tile-initial");
-    const nm = document.createElement("span");
-    nm.className = "tile-name";
-    nm.textContent = a.name;
-    tile.append(icon, nm);
-    tile.addEventListener("click", () => {
-      // Same open the Apps page's "Open app" uses (per-config launch).
-      void window.yo.appLaunch?.({
-        slug: a.slug || a.id, name: a.name, url: a.url,
-        isBrowser: a.isBrowser, execPath: a.execPath,
-        appArchetype: a.appArchetype, launchConfig: a.launchConfig,
-      });
-    });
-    list.appendChild(tile);
-  }
-  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { railAppsPage = pg; renderRailApps(); }));
-  if (!apps.length) {
-    const empty = document.createElement("div");
-    empty.className = "code-empty";
-    empty.style.margin = "10px auto";
-    empty.textContent = q ? "No matches." : "Your apps land here.";
-    list.appendChild(empty);
-  }
-}
-
-function renderRailLayouts(): void {
-  const list = el<HTMLDivElement>("recent-layouts-list");
-  if (!list) return;
-  const q = (el<HTMLInputElement>("recent-layouts-search")?.value || "").trim().toLowerCase();
-  list.textContent = "";
-
-  // Mini icon stacks; same open (into the workbench) as the Layouts page.
-  const layouts = railLayouts
-    .filter((l) => !q || (l.name || "").toLowerCase().includes(q))
-    .sort((a, b) => {
-      const ta = railRecentTs[`layout:${a.name}`] || 0;
-      const tb = railRecentTs[`layout:${b.name}`] || 0;
-      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
-    });
-  const lp = railPaginate(layouts, railLayoutsPage, RAIL_LAYOUTS_PER_PAGE);
-  railLayoutsPage = lp.page;
-  for (const l of lp.items) {
-    const tile = document.createElement("button");
-    tile.className = "app-rail-tile";
-    tile.type = "button";
-    tile.title = `${l.name} (layout)`;
-    const icon = document.createElement("div");
-    icon.className = "tile-icon tile-layout";
-    const seen = new Set<string>();
-    const ids = l.splits
-      .map((s) => s.panelId)
-      .filter((id) => id && !seen.has(id) && (seen.add(id), true))
-      .slice(0, 4);
-    icon.innerHTML = ids.length
-      ? ids.map((id) => {
-          const app = railApps.find((a) => a.id === id || a.slug === id);
-          return `<span class="mini">${appIconInner(app || {}, app?.name || id, "tile-mini-initial")}</span>`;
-        }).join("")
-      : `<span class="tile-initial">▦</span>`;
-    const nm = document.createElement("span");
-    nm.className = "tile-name";
-    nm.textContent = l.name;
-    tile.append(icon, nm);
-    tile.addEventListener("click", () => { void openLayoutInWorkbench(l.name); });
-    list.appendChild(tile);
-  }
-  if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRailLayouts(); }));
-  if (!layouts.length) {
-    const empty = document.createElement("div");
-    empty.className = "code-empty";
-    empty.style.margin = "10px auto";
-    empty.textContent = q ? "No matches." : "Your layouts land here.";
-    list.appendChild(empty);
-  }
-}
-
-// ── Recents vertical resize ──────────────────────────────────────────────
-function initRecentsVsplit(): void {
-  const vs = el("recents-vsplit");
-  const hist = el("code-history");
-  if (!vs || !hist) return;
-  vs.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    document.body.classList.add("code-vdragging");
-    const startY = e.clientY;
-    const startTop = hist.getBoundingClientRect().top;
-    const startH = hist.getBoundingClientRect().height;
-    // The cap is computed against the WHOLE lower stack, not a snapshot of one
-    // grid: Recents may grow until the still-open section(s) hit a usable
-    // minimum. A collapsed section reserves nothing, so Recents reclaims its
-    // space. This is what makes the splitter reach far down when only one
-    // section is open (the old cap stopped at the apps grid's 96px).
-    const MIN_BODY = 110;
-    const userTop = el("app-rail-user")?.getBoundingClientRect().top ?? window.innerHeight;
-    const available = userTop - startTop;
-    const move = (ev: MouseEvent) => {
-      let reserve = vs.offsetHeight;
-      document.querySelectorAll<HTMLElement>(".app-rail-section-head").forEach((h) => { reserve += h.offsetHeight; });
-      const openBodies = RAIL_SECTIONS.filter((d) => !el(d.body)?.classList.contains("hidden")).length;
-      reserve += openBodies * MIN_BODY;
-      const maxH = Math.max(60, available - reserve);
-      const h = Math.max(60, Math.min(maxH, startH + (ev.clientY - startY)));
-      hist.style.flex = `0 1 ${h}px`;
-      railRecentsH = h;
-    };
-    const up = () => {
-      document.removeEventListener("mousemove", move);
-      document.removeEventListener("mouseup", up);
-      document.body.classList.remove("code-vdragging");
-      if (railRecentsH > 0) void window.yo.setPreference?.("codeRecentsH", railRecentsH);
-    };
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
-  });
-}
-
-/** Wire the rail's Apps grid: restore its height, load, and bind search. */
-function initRailApps(): void {
-  void (async () => {
-    const recentsH = Number(await window.yo.getPreference?.("codeRecentsH", 0)) || 0;
-    if (recentsH > 0) railRecentsH = recentsH;
-    syncRailLayout();
-  })();
-  void loadRecentApps();
-  // The rail no longer has Apps/Layouts nav buttons (they moved to these
-  // sections), so the open icons go straight through gotoSection — the same
-  // switcher the nav's own click handler calls.
-  el("apps-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("apps"); });
-  el("layouts-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("layouts"); });
-  // Live updates: Apps/Layouts CRUD announces itself (same renderer).
-  document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
-  initRecentsVsplit();
-  initRailSections();
-
-  // Apps search — its own page; Enter runs the text as a command (palette parity).
-  el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", () => {
-    railAppsPage = 0; renderRailApps();
-  });
-  el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    const text = (e.target as HTMLInputElement).value.trim();
-    if (text) void window.yo.execCommand(text.replace(/^\./, ""));
-  });
-  // Layouts search — its own page + list.
-  el<HTMLInputElement>("recent-layouts-search")?.addEventListener("input", () => {
-    railLayoutsPage = 0; renderRailLayouts();
-  });
-}
-
-
-// ── Left-rail splitter ───────────────────────────────────────────────────
-function initRailSplitter(): void {
-  const splitter = el("code-rail-splitter");
-  if (!splitter) return;
-  splitter.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    const pane = el("app-rail");
-    if (!pane) return;
-    document.body.classList.add("code-dragging");
-    const move = (ev: MouseEvent) => {
-      const w = Math.min(420, Math.max(170, ev.clientX));
-      pane.style.width = `${w}px`;
-      pane.style.minWidth = `${w}px`;
-    };
-    const up = () => {
-      document.removeEventListener("mousemove", move);
-      document.removeEventListener("mouseup", up);
-      document.body.classList.remove("code-dragging");
-      const w = parseInt(pane.style.width || "0", 10);
-      if (w > 0) void window.yo.setPreference?.("codeRailWidth", w);
-    };
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
-  });
-}
-
-async function applyPanelPrefs(): Promise<void> {
-  const railCollapsed = ((await window.yo.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
-  el("app-rail")?.classList.toggle("collapsed", railCollapsed);
-  document.body.classList.toggle("rail-collapsed", railCollapsed);
-  const railW = Number(await window.yo.getPreference?.("codeRailWidth", 0)) || 0;
-  const rail = el("app-rail");
-  if (rail && railW > 0) { rail.style.width = `${railW}px`; rail.style.minWidth = `${railW}px`; }
-  const recentsOpen = (await window.yo.getPreference?.("codeRecentsOpen", true)) as boolean;
-  setRecentsOpen(recentsOpen !== false, false);
-}
+// ── (2.5.0) The left rail is gone — its Recents/Apps/Layouts grids, section
+//    disclosures, splitter, and collapse/width prefs went with it. Sessions
+//    live in the Coding Agent panel; apps + layouts live on the command bar. ──
 
 // ── Entry points ─────────────────────────────────────────────────────────
 export function loadCode(): void {
@@ -2276,7 +1834,6 @@ export function loadCode(): void {
     refreshCtxMeter();
     void checkWorkdirGate();
   })();
-  void applyPanelPrefs();
   // Boot the ported workbench engine (idempotent) — it owns the workdir
   // controls, the view toggles, and everything inside #code-workbench.
   (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
@@ -2286,7 +1843,7 @@ export function loadCode(): void {
  *  same mechanics Settings → Manage Account uses. Cold-safe: flips to Code,
  *  boots the workbench (async init), then drives __wbOpenApp once it exists. */
 export function openUrlInWorkbench(name: string, url: string): void {
-  gotoSection("code");
+  showWorkspaceSurface();
   const w = window as unknown as {
     __initCodeWorkbench?: () => void;
     __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
@@ -2305,47 +1862,23 @@ export function openUrlInWorkbench(name: string, url: string): void {
  *  the Code workbench has ever mounted. Flips to the agent surface, boots the
  *  workbench (idempotent async init), then retries the toggle over rAF because
  *  __wbToggleAppSwitcher isn't assigned until that init() resolves. */
-/** Reset the workspace to a clean slate (the Reset button, top-left):
- *  clear every workbench panel (no layout), return to the home surface, and
- *  ask main to un-dock the window + close any desktop-layout windows. If the
- *  user cancels the unsaved-changes prompt, nothing changes. */
-/**
- * Reset REMOVES THE LAYOUT — nothing more. It closes every workbench panel and
- * parks the agent back in its home column (clearAllPanels → renderRails →
- * parkAgent do both). It deliberately does NOT touch the OS window (size,
- * position, fullscreen) or the rail: a layout is workspace state, not window
- * state, so resetting it should not throw the whole window around.
- */
-export async function resetWorkspace(): Promise<void> {
-  const w = window as unknown as {
-    __initCodeWorkbench?: () => void; __wbClearPanels?: () => Promise<boolean | void>;
-  };
-  gotoSection("code");
-  w.__initCodeWorkbench?.();
-  // Clear panels — resolves to false only if the user cancelled the
-  // unsaved-changes confirm, in which case the reset is aborted entirely.
-  let tries = 0;
-  const clear = async (): Promise<boolean | void> => {
-    if (w.__wbClearPanels) return w.__wbClearPanels();
-    if (tries++ < 20) { await new Promise((r) => requestAnimationFrame(r)); return clear(); }
-  };
-  await clear();
-}
-
-export function openCommandCenter(): void {
+export function openCommandCenter(opts: { forceInline?: boolean } = {}): void {
   void (async () => {
     // Desktop-overlay mode (toggle inside the command center): open the
     // fullscreen transparent overlay window instead of the inline switcher —
-    // unless THIS page already is that overlay.
+    // unless THIS page already is that overlay, or the caller wants the
+    // inline surface regardless (boot landing).
     const w = window as unknown as {
       __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __ccOverlayHost?: boolean;
       yo?: { getPreference?: (k: string, d: unknown) => Promise<unknown>; ccOverlayOpen?: () => Promise<unknown> };
     };
-    if (!w.__ccOverlayHost && w.yo?.ccOverlayOpen) {
+    if (!opts.forceInline && !w.__ccOverlayHost && w.yo?.ccOverlayOpen) {
       const overlay = await w.yo.getPreference?.("ccDesktopOverlay", false).catch(() => false);
       if (overlay) { void w.yo.ccOverlayOpen(); return; }
     }
-    gotoSection("code");
+    // 2.5.0: the workbench IS the surface — the launcher overlays whatever is
+    // open. No gotoSection("code") here: opening the launcher must not touch
+    // the workspace (that call now ensures/clears panels).
     w.__initCodeWorkbench?.();
     let tries = 0;
     const go = (): void => {
@@ -2359,7 +1892,6 @@ export function openCommandCenter(): void {
 export function initCode(): void {
   if (inited) return;
   inited = true;
-  el("code-new-chat")?.addEventListener("click", newChat);
   // "/" in the composer pops the installed-skill menu at the caret.
   const composerTa = input();
   if (composerTa) attachSlashMenu(composerTa);
@@ -2368,19 +1900,21 @@ export function initCode(): void {
   // renderer.ts (the index shell — different webContents, no overlay reach).
   document.addEventListener("keydown", (e) => {
     if (e.key === "." && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
+    // ⌘⇧Space — same launcher (mirrors the OS-wide global shortcut).
+    if (e.code === "Space" && e.shiftKey && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
   });
+  // The OS-wide ⌘⇧Space lands here from main once the window is fronted.
+  (window.yo as unknown as { onOpenCommandCenter?: (cb: () => void) => void }).onOpenCommandCenter?.(() => openCommandCenter());
   // Header launcher button — bound here (home-panel startup) through the
   // cold-safe path, so it works even before the Code workbench first mounts.
   el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());
-  // Reset lives in BOTH rail section headers (Apps + Layouts) — bind every one.
-  document.querySelectorAll(".rail-reset-btn").forEach((b) => b.addEventListener("click", () => { void resetWorkspace(); }));
   syncDragStripOffset();
   // Apps open as workbench panels beside the agent (the OS-window
   // replacement). Every main-side opener — Glyphh's open_app, the relay's
   // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure
   // the workbench booted, then drive the wb bridge.
   window.yo.onWbAppCommand?.((cmd) => {
-    gotoSection("code");
+    showWorkspaceSurface();
     (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
     const w = window as unknown as {
       __wbOpenApp?: (app: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
@@ -2433,12 +1967,104 @@ export function initCode(): void {
       (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
     }
   });
-  el("recents-toggle")?.addEventListener("click", () => {
-    const open = el("recents-toggle")!.classList.contains("closed");
-    setRecentsOpen(open, true);
-  });
-  initRailApps();
   el("code-send")?.addEventListener("click", send);
+  // Session controls in the agent head (the coding panel's own header row is
+  // hidden): + starts a new session, the clock drops the history list.
+  type HeadSessionsApi = { list(): Array<{ id: string; title: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
+  const sessApi = (): HeadSessionsApi | undefined => (window as unknown as { __agentSessions?: HeadSessionsApi }).__agentSessions;
+  el("code-session-new")?.addEventListener("click", () => sessApi()?.startNew());
+  el("code-session-history")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const anchor = ev.currentTarget as HTMLElement;
+    document.querySelector(".wb-session-menu")?.remove();
+    const sess = sessApi();
+    if (!sess) return;
+    const menu = document.createElement("div");
+    menu.className = "code-drop wb-session-menu";
+    const PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
+    const TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
+    const paint = (): void => {
+      menu.innerHTML = "";
+      const cur = currentId;
+      // Pinned first (stable — recency holds within each group).
+      const rows = [...chats].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 20);
+      for (const c of rows) {
+        const row = document.createElement("div");
+        row.className = "wb-session-row" + (c.id === cur ? " selected" : "");
+        const title = document.createElement("button");
+        title.type = "button";
+        title.className = "code-drop-item wb-session-title";
+        title.textContent = c.title;
+        title.addEventListener("click", () => { menu.remove(); sessApi()?.switch(c.id); });
+        const pin = document.createElement("button");
+        pin.type = "button";
+        pin.className = "code-icon-btn wb-session-pin" + (c.pinned ? " on" : "");
+        pin.title = c.pinned ? "Unpin" : "Pin to top";
+        pin.innerHTML = PIN_SVG;
+        pin.addEventListener("click", (e) => {
+          e.stopPropagation();
+          c.pinned = !c.pinned;
+          void saveStore();
+          renderHistory();
+          paint();
+        });
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "code-icon-btn wb-session-del";
+        del.title = "Delete session";
+        del.innerHTML = TRASH_SVG;
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          void (async () => {
+            const sure = await confirmAction({
+              title: `Delete "${c.title}"?`,
+              body: "This session's history is gone for good.",
+              confirmLabel: "Delete",
+              danger: true,
+            });
+            if (!sure) return;
+            chats = chats.filter((x) => x.id !== c.id);
+            if (currentId === c.id) {
+              currentId = chats[0]?.id || "";
+              renderThread();
+            }
+            void saveStore();
+            renderHistory();
+            if (!chats.length) { menu.remove(); return; }
+            paint();
+          })();
+        });
+        row.append(title, pin, del);
+        menu.appendChild(row);
+      }
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "wb-session-empty";
+        empty.textContent = "No sessions yet.";
+        menu.appendChild(empty);
+      }
+    };
+    paint();
+    const r = anchor.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.visibility = "hidden";   // measure before showing
+    document.body.appendChild(menu);
+    // Clamp inside the viewport: right-align to the anchor, but never off
+    // either edge; below the anchor, but flip up if the bottom would clip.
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    const left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
+    const top = r.bottom + 6 + mh > window.innerHeight - 8
+      ? Math.max(8, r.top - mh - 6)
+      : r.bottom + 6;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.visibility = "";
+    const dismiss = (e: MouseEvent): void => {
+      if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
+    };
+    document.addEventListener("mousedown", dismiss, true);
+  });
   wireComposerAttachments();
   initGlyphhAgentEvents();
   initWorkdirGate();
@@ -2486,20 +2112,8 @@ export function initCode(): void {
     }
   });
   ta?.addEventListener("input", () => autoGrow(ta!));
-  el("code-rail-toggle")?.addEventListener("click", () => {
-    const collapsed = el("app-rail")!.classList.toggle("collapsed");
-    document.body.classList.toggle("rail-collapsed", collapsed);
-    void window.yo.setPreference?.("codeRailCollapsed", collapsed);
-  });
-  document.addEventListener("mousedown", (e) => {
-    if (menuEl && !menuEl.contains(e.target as Node)) closeMenu();
-  });
-  initRailSplitter();
-  // The rail is global (outside the section switcher) — populate Recents and
-  // apply collapse/width prefs at boot so it's live on every section.
-  // loadStore is ASYNC: render only after the sessions actually arrive, or
-  // boot paints an empty Recents that never refreshes until the Code tab
-  // re-runs loadCode().
+  // loadStore is ASYNC: sessions arrive before the first history paint (the
+  // Coding Agent panel's dropdown reads the same store).
   void (async () => {
     await loadStore();
     // Don't auto-select a session on load — a fresh open highlights no Recent
@@ -2514,7 +2128,7 @@ export function initCode(): void {
     if (c && dir) { c.workdir = dir; void saveStore(); }
   });
   // Another window (the ghost overlay) saved the shared store — adopt its
-  // list so a ghost-created session appears in this rail immediately. The
+  // list so a ghost-created session appears in the history dropdown immediately. The
   // CURRENT chat keeps its local object: it may be mid-stream, and the disk
   // copy of it is never newer than this window's memory.
   (window.yo as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => {
@@ -2530,7 +2144,6 @@ export function initCode(): void {
       } catch { /* stale repaint only — next save syncs */ }
     })();
   });
-  void applyPanelPrefs();
 }
 
 /**

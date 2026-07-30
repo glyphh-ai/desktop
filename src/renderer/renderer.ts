@@ -1,26 +1,17 @@
 /**
- * Renderer — titlebar + grid handles + boot gate.
- *
- * All user commands (yo/dip/drip) happen inside app panels
- * via the interceptor, or from the command bar. The renderer
- * manages window chrome and session state display.
+ * Renderer — the SHELL (index.html): splash, boot gate, onboarding, lockout,
+ * and the update overlay. The whole workspace lives in the home.html
+ * BrowserView layered above this page; the shell only shows through while
+ * that view is detached (splash/onboarding/lockout/update handoff).
  */
 
 // Section content (Apps/Layouts/Drips/Skills/Settings/About) lives in the
-// home.html panels (home.ts); this shell owns the tab bar + browser chrome.
+// home.html panel (home.ts).
 import { showOnboarding } from "./onboarding.js";
-import { formatMarkdown } from "./format-markdown.js";
 import { initBootGate } from "./boot-gate-ui.js";
-import { initDownloads } from "./downloads-ui.js";
 import { initDrip } from "./drip-ui.js";
-import { initTabBar } from "./tab-bar-ui.js";
-import { initGrid } from "./grid-ui.js";
-import { initSearchClears } from "./search-clear.js";
-import { yoConfirm } from "./yo-modal.js";
 import type { RoleView as LoopRoleView } from "./help/model-picker.js";
 import type { LibEnvelope } from "./help/library-types.js";
-
-type TabInfo = { id: string; name: string; favicon?: string; layoutFavicons?: string[]; pinned?: boolean; url?: string };
 
 // Mirrors preload.ts's SavedPanelApp — duplicated rather than imported so
 // the renderer program (ES2022 module tsconfig) never pulls preload.ts
@@ -136,24 +127,9 @@ declare global {
       windowMaximize: () => void;
       panelsHide: () => void;
       panelsShow: () => void;
-      capturePanels: () => Promise<Array<{ dataUrl: string; bounds: { x: number; y: number; width: number; height: number } }>>;
-      panelsRefresh: (id?: string) => void;
+      panelsRefresh: () => void;
       panelsZoom: (factor: number) => void;
       panelsGetZoom: () => Promise<number>;
-      // Apps
-      appsList: () => Promise<Array<{
-        id: string; name: string; url?: string; connected: boolean; connectedSlug?: string;
-        forceWeb?: boolean; doNotRecord?: boolean;
-        commands: Record<string, { selector: string; action: string; description: string }>;
-        meta?: { description: string; capabilities: string[] };
-        connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean };
-        mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string }; enabled: boolean };
-      }>>;
-      appsListMountable: () => Promise<Array<{
-        id: string; name: string; url?: string; connected: boolean;
-        kind?: "user" | "system"; internal?: boolean; requiresFolder?: boolean;
-      }>>;
-      appsAdd: (id: string, name: string, url?: string) => Promise<unknown>;
       // Dashboard shell (5a): server-authoritative Apps tab CRUD — see
       // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
       appFileIcon: (execPath: string) => Promise<string>;
@@ -211,15 +187,6 @@ declare global {
       appReleaseNotes: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
       appReleasePromote: (slug: string, releaseId: string) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
       appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
-      appsRemove: (id: string) => Promise<boolean>;
-      appsSetConnection: (id: string, pipedreamSlug: string) => Promise<boolean>;
-      appsRemoveConnection: (id: string) => Promise<boolean>;
-      appsUpdateId: (oldId: string, newId: string) => Promise<boolean>;
-      appsUpdateName: (id: string, name: string) => Promise<boolean>;
-      appsUpdateUrl: (id: string, url: string) => Promise<boolean>;
-      appsSetConnectedSlug: (id: string, slug: string | null) => Promise<boolean>;
-      appsSetCommand: (id: string, key: string, mapping: { selector: string; action: string; description: string }) => Promise<boolean>;
-      appsRemoveCommand: (id: string, key: string) => Promise<boolean>;
 
       // Layouts
       layoutsList: () => Promise<Array<{ name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> }>>;
@@ -227,12 +194,9 @@ declare global {
       layoutsSave: (name: string, panelIds: string[]) => Promise<boolean>;
       layoutsPickFolder: () => Promise<string | null>;
       layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null }) => Promise<boolean>;
-      layoutsFolderRequired?: (name: string) => Promise<boolean>;
       layoutsDelete: (name: string) => Promise<boolean>;
       pickDirectory: () => Promise<string | null>;
       pickExecutable: () => Promise<string | null>;
-      // Grid resize
-      gridDragEnd: (type: "col" | "row", index: number, fraction: number) => void;
       // Session
       sessionInfo: () => Promise<{ hasContent: boolean; label: string; fileName: string }>;
       sessionClear: () => Promise<boolean>;
@@ -264,13 +228,8 @@ declare global {
       onAccountLocked: (callback: (info: { status: string; upgradeUrl: string }) => void) => void;
       onAccountUnlocked: (callback: () => void) => void;
       recheckAccount: () => Promise<{ status: string }>;
-      onOpenSettings: (callback: () => void) => void;
       onFocusInput: (callback: () => void) => void;
-      onExecCommandFromPalette: (callback: (cmd: string) => void) => void;
-      createAppFromTab: (tabId: string, url: string, name: string) => void;
-      onOpenNewApp: (callback: (data: { url?: string; name?: string; tabId?: string }) => void) => void;
       onPanelAppsChanged: (callback: () => void) => void;
-      convertTabToApp: (tabId: string, appId: string) => void;
       openInEditor: (filePath: string) => void;
       getWorkingDir: () => Promise<string | null>;
       pickWorkingDir: (opts?: { asDefault?: boolean }) => Promise<string | null>;
@@ -278,21 +237,8 @@ declare global {
       gitInfo: (root: string) => Promise<{ isRepo: boolean; branch?: string; defaultBranch?: string }>;
       getWorkingDirRecents: () => Promise<string[]>;
       onWorkingDirChanged: (callback: (dir: string | null) => void) => void;
-      onSplitState: (callback: (info: {
-        panelIds: string[];
-        cols: number;
-        rows: number;
-        colWidths: number[];
-        rowHeights: number[];
-        cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }>;
-      } | null) => void) => void;
       // Command execution
       execCommand: (cmd: string) => Promise<string>;
-      // Downloads
-      onDownloadStart: (cb: (info: { filename: string; totalBytes: number; savePath: string }) => void) => void;
-      onDownloadProgress: (cb: (info: { filename: string; receivedBytes: number; totalBytes: number }) => void) => void;
-      onDownloadDone: (cb: (info: { filename: string; savePath: string; state: string }) => void) => void;
-      downloadShow: (filePath: string) => void;
       // Drip effects
       onDripEffect: (callback: (effect: string) => void) => void;
       // Drips CRUD
@@ -301,29 +247,6 @@ declare global {
       dripsDelete: (name: string) => Promise<string>;
       dripsPreview: (recipe: string) => Promise<string>;
       dripsBuiltinEffects: () => Promise<string[]>;
-      // Tabs
-      tabList: () => Promise<{ tabs: TabInfo[]; activeId: string; visible: boolean }>;
-      tabSwitch: (id: string) => void;
-      tabClose: (id: string) => void;
-      tabCloseAll: () => void;
-      tabReorder: (newOrder: string[]) => void;
-      tabNew: () => void;
-      tabNewApp: (appId: string) => void;
-      onTabState: (callback: (state: { tabs: TabInfo[]; activeId: string; visible: boolean }) => void) => void;
-      // URL bar
-      urlBarNavigate: (url: string) => void;
-      urlBarBack: () => void;
-      urlBarForward: () => void;
-      urlBarRefresh: () => void;
-      panelNavBack: (panelId: string) => void;
-      panelNavForward: (panelId: string) => void;
-      panelNavRefresh: (panelId: string) => void;
-      panelNavTo: (panelId: string, url: string) => void;
-      urlBarToggle: (show: boolean) => void;
-      onUrlUpdate: (cb: (info: { url: string; favicon: string; canGoBack?: boolean; canGoForward?: boolean }) => void) => void;
-      onUrlBarForce: (cb: (show: boolean) => void) => void;
-      onTabFavicon: (cb: (info: { id: string; favicon: string }) => void) => void;
-      onPanelUrlUpdate: (cb: (info: { id: string; url: string; favicon: string }) => void) => void;
       // Theme
       getTheme: () => Promise<string>;
       exportGlyphhSkill: (provider: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
@@ -340,11 +263,6 @@ declare global {
       openBilling: () => void;
       // Support
       submitSupportTicket: (ticket: { subject: string; description: string }) => Promise<{ ok: boolean; error?: string }>;
-      // Voice transcription
-      // Files left rail
-      filesRailResize: (width: number) => void;
-      filesRailWidthSave: (width: number) => void;
-      filesRailGetWidth: () => Promise<number>;
       // Recents (rich)
       glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }> }) => Promise<{ runId: string }>;
       glyphhPickAttachments: (mode?: "files" | "folder") => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
@@ -462,32 +380,8 @@ declare global {
       mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; connection?: unknown }>;
       mcpConnectionsDelete: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       mcpConnectionsTools: (slug: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;
-      onAppsChanged: (cb: () => void) => void;
     };
   }
-}
-
-const gridHandles = document.getElementById("grid-handles")!;
-const screenshotContainer = document.getElementById("panel-screenshots")!;
-
-// -- Panel screenshot helpers (freeze-frame when hiding panels) --
-
-async function showPanelScreenshots(): Promise<void> {
-  const captures = await window.yo.capturePanels();
-  for (const cap of captures) {
-    const div = document.createElement("div");
-    div.className = "panel-screenshot";
-    div.style.left = `${cap.bounds.x}px`;
-    div.style.top = `${cap.bounds.y}px`;
-    div.style.width = `${cap.bounds.width}px`;
-    div.style.height = `${cap.bounds.height}px`;
-    div.style.backgroundImage = `url(${cap.dataUrl})`;
-    screenshotContainer.appendChild(div);
-  }
-}
-
-function clearPanelScreenshots(): void {
-  screenshotContainer.innerHTML = "";
 }
 
 // -- Window controls --
@@ -506,94 +400,18 @@ document.getElementById("splash-close")?.addEventListener("click", () => window.
 // hook becomes a no-op for any caller that still touches it.
 (window as unknown as { refreshYosBadge?: () => void }).refreshYosBadge = () => {};
 
-
-// -- Yo agent panel removed (pivot-mcp) --
-// The in-app interactive chat agent panel was removed; these stubs keep
-// grid-ui.ts's layout math (right-inset calc) working with "no panel open".
-const isYoPanelOpen = (): boolean => false;
-const getYoPanelWidth = (): number => 0;
-
-// -- Tab bar (extracted to tab-bar-ui.ts) --
-const tabApi = initTabBar({
-  isYoControlsInited: () => false,  // yo panel manages this internally now
-  getCurrentMode: () => "standard",
-  setModeValue: () => {},
-  syncAgentMode: () => {},
-});
-
-// -- URL bar --
-
-const urlBar = document.getElementById("url-bar")!;
-const urlBarInput = document.getElementById("url-bar-input") as HTMLInputElement;
-const urlBarFavicon = document.getElementById("url-bar-favicon") as HTMLImageElement;
-
-function setUrlBarVisible(show: boolean) {
-  urlBar.classList.toggle("hidden", !show);
-  document.body.style.setProperty("--content-top", show ? "72px" : "38px");
-}
-
-// Load initial URL bar visibility
-window.yo.getPreference("showUrlBar", false).then((show) => {
-  setUrlBarVisible(show as boolean);
-});
-
-// Nav buttons
-const urlBarBack = document.getElementById("url-bar-back") as HTMLButtonElement;
-const urlBarForward = document.getElementById("url-bar-forward") as HTMLButtonElement;
-const urlBarRefresh = document.getElementById("url-bar-refresh") as HTMLButtonElement;
-
-urlBarBack.addEventListener("click", () => window.yo.urlBarBack());
-urlBarForward.addEventListener("click", () => window.yo.urlBarForward());
-urlBarRefresh.addEventListener("click", () => window.yo.urlBarRefresh());
-
-// Navigate on Enter
-urlBarInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    const url = urlBarInput.value.trim();
-    if (url) {
-      window.yo.urlBarNavigate(url);
-      urlBarInput.blur();
-    }
-  }
-  if (e.key === "Escape") {
-    urlBarInput.blur();
-  }
-});
-
-// Select all on focus for easy replacement
-urlBarInput.addEventListener("focus", () => {
-  urlBarInput.select();
-});
-
-// Receive URL updates from main (active panel navigated)
-window.yo.onUrlUpdate((info: { url: string; favicon: string; canGoBack?: boolean; canGoForward?: boolean }) => {
-  urlBarInput.value = info.url;
-  urlBarFavicon.src = info.favicon || "";
-  urlBarFavicon.onerror = () => { urlBarFavicon.src = ""; };
-  urlBarBack.disabled = !info.canGoBack;
-  urlBarForward.disabled = !info.canGoForward;
-});
-
-// Force URL bar visible for browser panels even when globally hidden
-window.yo.onUrlBarForce((show: boolean) => {
-  setUrlBarVisible(show);
-});
-
-
-// Commands submitted from the palette child window
-window.yo.onExecCommandFromPalette((cmd) => window.yo.execCommand(cmd));
-
 // -- Global keyboard shortcuts --
+// The home view holds focus almost always (it wires its own shortcuts in
+// main); these cover the rare moments the shell itself has focus.
 
 document.addEventListener("keydown", (e) => {
-  // Cmd+R / Ctrl+R to refresh panels
+  // Cmd+R / Ctrl+R to refresh the home view
   if (e.key === "r" && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
     window.yo.panelsRefresh();
   }
 
-  // Cmd+Plus / Cmd+Minus to zoom panels
+  // Cmd+Plus / Cmd+Minus to zoom the home view
   if ((e.key === "=" || e.key === "+") && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
     window.yo.panelsGetZoom().then((z) => window.yo.panelsZoom(z + 0.1));
@@ -607,32 +425,6 @@ document.addEventListener("keydown", (e) => {
     window.yo.panelsZoom(1.0);
   }
 });
-
-
-// Open a system/user app in the workspace as a tab. Keep every "app tray"
-// entry point (nav rail, header gear, settings signal) going through here.
-function openWorkspaceApp(slug: string): void {
-  window.yo.tabNewApp(slug);
-}
-
-// Open settings tab when main process signals (kept; welcome removed).
-window.yo.onOpenSettings(() => openWorkspaceApp("home"));
-
-
-// -- Grid (extracted to grid-ui.ts) --
-const gridApi = initGrid({
-  isYoPanelOpen,
-  getYoPanelWidth,
-  getLeftInset: () => parseFloat(getComputedStyle(document.body).getPropertyValue("--left-inset")) || 0,
-  isUrlBarHidden: () => urlBar.classList.contains("hidden"),
-  setUrlBarVisibility: (hidden) => { urlBar.style.visibility = hidden ? "hidden" : ""; },
-  showPanelScreenshots,
-  clearPanelScreenshots,
-});
-
-// -- Downloads dropdown (extracted to downloads-ui.ts) --
-initDownloads();
-initSearchClears();
 
 // -- Update bar --
 
@@ -689,31 +481,13 @@ updateDismiss.addEventListener("click", () => {
 initDrip();
 
 
-// -- Dashboard shell (5a) --
-//
-// Replaces the tab-bar + files-rail chrome shown after Splash -> Auth with a
-// simple two-tab Apps / Settings dashboard. Tabs open the existing yo://apps
-// and yo://dashboard-settings system-app panels through the same
-// panel-manager mechanism the old rail used (openWorkspaceApp) — a deliberate
-// stopgap; the real Panel Manager rewrite is sub-phase 5b.
-let dashboardChromeInited = false;
+// -- Home surface chrome --
+// The home view is the one full-bleed surface and owns its own chrome
+// (traffic lights, drag regions). Punch a permanent no-drag hole in this
+// page's titlebar drag claim — base-window drag regions bleed through
+// BrowserViews.
 function initDashboard(): void {
-  // The titlebar tab strip is gone — the Code-primary home panel carries its
-  // own app rail (Home|Code, sections, user area). Just hide legacy chrome;
-  // main opened + activated the "dashboard" panel at boot (openHomePanelOnly).
-  document.getElementById("files-rail")?.classList.add("dashboard-hidden");
-  document.getElementById("tab-bar")?.classList.add("dashboard-hidden");
-  if (dashboardChromeInited) return;
-  dashboardChromeInited = true;
-  // Full-bleed sync: while the unlocked home panel (it owns the chrome
-  // cluster) is active, punch a no-drag hole in THIS page's titlebar drag
-  // claim — base-window drag regions bleed through BrowserViews.
-  const syncFullbleed = (activeId: string) => {
-    const on = activeId === "dashboard" || /^dashboard-\d+$/.test(activeId);
-    document.body.classList.toggle("fullbleed-active", on);
-  };
-  syncFullbleed("dashboard");
-  window.yo.onTabState((state) => syncFullbleed(state.activeId));
+  document.body.classList.add("fullbleed-active");
 }
 
 // -- Boot gate --

@@ -5,7 +5,7 @@
  * window.yo API.
  */
 
-import { initHelp, openNewAppDeepLink, gotoSection } from "./help/index.js";
+import { initHelp, gotoSection } from "./help/index.js";
 import { openCommandCenter, seedNewSession } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
 
@@ -95,7 +95,7 @@ void (async () => {
       (window as unknown as { __ccOverlayHost?: boolean }).__ccOverlayHost = true;
       const style = document.createElement("style");
       style.textContent = `
-        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
         [data-home-scope="solo-cc"] .code-root { display: none !important; }
         :root[data-home-scope="solo-cc"], [data-home-scope="solo-cc"] body { background: transparent !important; }
         [data-home-scope="solo-cc"] .command-center { background: rgba(0,0,0,.45); }`;
@@ -123,11 +123,13 @@ void (async () => {
       document.documentElement.setAttribute("data-ghost-frost", params.get("gfrost") === "css" ? "css" : "os");
       const style = document.createElement("style");
       style.textContent = `
-        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
         [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
         [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
         [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
-        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }
+        /* NO forced rail flex here (unlike a single-tool window): the ghost
+           hosts MULTIPLE rails — width:auto!important overrode the computed
+           rail widths and let a fresh editor swallow the pane. */
         /* Ghost: the WINDOW itself is the card — a mostly-transparent frosted
            panel floating over the active app (no full-screen dim backdrop). */
         :root[data-ghost="1"], [data-ghost="1"] body { background: transparent !important; overflow: hidden !important; }
@@ -152,18 +154,39 @@ void (async () => {
             rgba(10, 8, 16, 0.72) !important;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
+        [data-ghost="1"] .code-workbench { margin-top: 38px; }
         [data-ghost="1"] .code-workbench, [data-ghost="1"] .ws-right-rails, [data-ghost="1"] .ws-right-rail,
         [data-ghost="1"] .ws-rail-slot, [data-ghost="1"] .ws-rail-slot-body, [data-ghost="1"] .code-agent { background: transparent !important; }
         @keyframes ghost-in { from { opacity: 0; transform: scale(0.99); } to { opacity: 1; transform: scale(1); } }
         /* thin top strip to drag the panel over the app, + a close button */
-        #ghost-drag { position: fixed; top: 0; left: 0; right: 40px; height: 16px; z-index: 4; -webkit-app-region: drag; }
-        #ghost-close { position: fixed; top: 8px; right: 10px; z-index: 6; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag; }
+        #ghost-drag { position: fixed; top: 0; left: 0; right: 40px; height: 16px; z-index: 140; -webkit-app-region: drag; }
+        #ghost-close { position: fixed; top: 8px; right: 10px; z-index: 150; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag; }
         #ghost-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+        #ghost-cc {
+          position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 150;
+          width: 26px; height: 26px; border-radius: 7px;
+          display: flex; align-items: center; justify-content: center; cursor: pointer;
+          color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag;
+        }
+        #ghost-cc:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+        #ghost-snap {
+          position: fixed; top: 8px; left: 10px; z-index: 150;
+          display: flex; gap: 4px; -webkit-app-region: no-drag;
+        }
+        #ghost-snap button {
+          width: 24px; height: 24px; border-radius: 6px; padding: 0;
+          display: flex; align-items: center; justify-content: center; cursor: pointer;
+          color: rgba(255, 255, 255, 0.62); background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        #ghost-snap button:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+        #ghost-snap button.on { color: #fff; border-color: rgba(255, 255, 255, 0.45); }
         /* Resize grips — a transparent frameless window gets no reliable
            native edge zones, so the overlay paints its own (right, bottom,
            corner) and drives the window size over IPC. */
-        .ghost-grip { position: fixed; z-index: 5; -webkit-app-region: no-drag; }
-        #ghost-grip-e { top: 16px; right: 0; bottom: 12px; width: 8px; cursor: ew-resize; }
+        .ghost-grip { position: fixed; z-index: 320; -webkit-app-region: no-drag; }
+        #ghost-grip-e { top: 16px; right: 0; bottom: 12px; width: 10px; cursor: ew-resize; }
         #ghost-grip-s { left: 12px; right: 12px; bottom: 0; height: 8px; cursor: ns-resize; }
         #ghost-grip-se { right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }`;
       document.head.appendChild(style);
@@ -177,6 +200,46 @@ void (async () => {
       closeBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
       closeBtn.addEventListener("click", close);
       document.body.appendChild(closeBtn);
+      // Command center from inside the ghost — centered over the pane's top.
+      const ccBtn = document.createElement("div");
+      ccBtn.id = "ghost-cc";
+      ccBtn.title = "Command center (⌘⇧Space)";
+      ccBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`;
+      ccBtn.addEventListener("click", () => openCommandCenter({ forceInline: true }));
+      document.body.appendChild(ccBtn);
+      // Snap the ghost over a HALF of the target app — or the whole thing.
+      // The pick persists (main re-applies it on the next summon).
+      const snapWrap = document.createElement("div");
+      snapWrap.id = "ghost-snap";
+      const R = (x: number, y: number, w: number, h: number, fill = false): string =>
+        `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.5"${fill ? ` fill="currentColor" stroke="none"` : ""}/>`;
+      const SNAPS: Array<{ half: string; title: string; inner: string }> = [
+        { half: "full", title: "Cover the whole app", inner: R(4, 5, 16, 14) },
+        { half: "left", title: "Left half", inner: R(4, 5, 16, 14) + R(4, 5, 8, 14, true) },
+        { half: "right", title: "Right half", inner: R(4, 5, 16, 14) + R(12, 5, 8, 14, true) },
+        { half: "top", title: "Top half", inner: R(4, 5, 16, 14) + R(4, 5, 16, 7, true) },
+        { half: "bottom", title: "Bottom half", inner: R(4, 5, 16, 14) + R(4, 12, 16, 7, true) },
+      ];
+      const ghostSnapApi = window.yo as unknown as { ghostSnap?: (h: string) => Promise<{ ok: boolean; half?: string }> };
+      for (const sn of SNAPS) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.title = sn.title;
+        b.dataset.half = sn.half;
+        b.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${sn.inner}</svg>`;
+        b.addEventListener("click", () => {
+          void ghostSnapApi.ghostSnap?.(sn.half).then((r) => {
+            if (!r?.ok) return;
+            snapWrap.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+          });
+        });
+        snapWrap.appendChild(b);
+      }
+      document.body.appendChild(snapWrap);
+      // Reflect the persisted snap as the active button on open.
+      void window.yo.getPreference?.("ghostSnapHalf", "full").then((h) => {
+        snapWrap.querySelectorAll<HTMLButtonElement>("button").forEach((x) => x.classList.toggle("on", x.dataset.half === h));
+      }).catch(() => { /* default: none highlighted */ });
       // Grip drag → window resize. Bounds are read once at pointerdown and the
       // target size is absolute (start + delta), so IPC latency can't compound
       // into drift; moves are throttled to one in-flight call.
@@ -284,7 +347,7 @@ void (async () => {
       // Coding Agent slot REPARENTS the live .code-agent into the workbench,
       // and it must stay visible there. The workbench takes the full window.
       style.textContent = `
-        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
         [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
         [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
         [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
@@ -320,24 +383,15 @@ void (async () => {
       const style = document.createElement("style");
       // Locked panels sit below the real titlebar — hide the full-bleed
       // chrome (rail, splitter, page-top strip, panel window controls).
-      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc { display: none !important; }`;
+      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }`;
       document.head.appendChild(style);
       gotoSection(urlSection);
       return;
     }
   } catch { /* fall through */ }
-  const def = ((await window.yo.getPreference?.("homeStartupSection", "")) as string) || "";
-  const lastSec = ((await window.yo.getPreference?.("homeLastSection", "")) as string) || "";
-  const lastSub = ((await window.yo.getPreference?.("homeLastSub", "")) as string) || "";
-  let sec = def || lastSec || "code";
-  // A remembered section may have been removed since (e.g. the old Skills
-  // page) — fall back rather than landing on a blank pane.
-  if (!document.querySelector(`.help-section[data-section="${sec}"]`)) sec = "code";
-  gotoSection(sec, sec === lastSec ? (lastSub || undefined) : undefined);
+  // 2.5.0: the app loads into the HOME screen at startup. Period.
+  gotoSection("dashboard");
 })();
-
-// "Create App" from a browser tab routes here — open the New App form prefilled.
-window.yo.onOpenNewApp?.((data) => openNewAppDeepLink(data));
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────
 // Shows once an update has downloaded; stays until the user restarts into it
