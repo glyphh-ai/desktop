@@ -448,63 +448,12 @@ export class CommandParser {
       }
     }
 
-    // WORKBENCH BUILTINS + NAV SECTIONS FIRST: these are workspace panels
-    // now, but the LEGACY registry still boot-registers same-named system
-    // panels ("browser", "apps", …) — switchTo matched those first and
-    // showed the old BrowserView chrome (the mystery band above .dip apps
-    // content came from its tab-strip reservation). Everything here opens
-    // through the modern resolver: builtins into the layout, nav slugs as
-    // section panels over home:goto-section.
-    const WORKBENCH_FIRST = new Set([
-      "browser", "terminal", "term",
-      "home", "connections", "apps", "layouts", "skills", "loops", "agents", "models", "settings",
-    ]);
-    if (WORKBENCH_FIRST.has(sub)) {
-      const opened = await openAppByRef(sub).catch(() => null);
-      if (opened) return `Opened ${opened.name}`;
-    }
-
-    // dip <panel-id> [cmd1 cmd2 ...] — switch + optional app commands. Dipping to
-    // anything that isn't a layout closes any open layout.
-    this.layouts.clearSplit();
-    const switched = this.panels.switchTo(sub, win);
-    if (!switched) {
-      // The panel registry only knows the internal system panels now — the
-      // APP LIBRARY opens as workbench panels via the same resolver the
-      // palette and the agent use. Without this, `.dip <app-slug>` answered
-      // "Unknown panel" for every server-library app.
-      const opened = await openAppByRef(sub).catch(() => null);
-      if (opened) return `Opened ${opened.name}`;
-      return `Unknown panel: ${sub}. Try: dip list`;
-    }
-    setPreference("lastView", { type: "panel", id: sub });
-
-    // No commands to run — just a switch
-    const commands = args.slice(1);
-    if (commands.length === 0) return `Switched to ${sub}`;
-
-    // Execute commands sequentially on this panel
-    const app = this.appConnector.get(sub);
-    if (!app) return `Switched to ${sub} (no commands mapped)`;
-
-    const wc = this.wcGetter?.(sub);
-    if (!wc || wc.isDestroyed()) return `Switched to ${sub} (panel not loaded)`;
-
-    const results: string[] = [`→ ${sub}`];
-    for (const cmd of commands) {
-      const key = cmd.toLowerCase();
-      const mapping = app.commands[key];
-      if (!mapping) {
-        const available = Object.keys(app.commands);
-        results.push(`Unknown command "${key}"${available.length > 0 ? `. Available: ${available.join(", ")}` : ""}`);
-        break;
-      }
-      // Small delay between commands to let UI settle
-      if (results.length > 1) await new Promise((r) => setTimeout(r, 300));
-      await executeCommand(wc, mapping);
-      results.push(mapping.description || key);
-    }
-    return results.join(" → ");
+    // ONE path — the modern resolver (app library, nav sections, workbench
+    // builtins). No legacy panel registry, no fallbacks: a ref either
+    // resolves here or it isn't a thing.
+    const opened = await openAppByRef(sub).catch(() => null);
+    if (opened) return `Opened ${opened.name}`;
+    return `Unknown app or layout: ${sub}. Try: dip list`;
   }
 
   // ── dip split ────────────────────────────────────────────────

@@ -517,6 +517,15 @@ async function init(): Promise<void> {
   }
 
   function placeSlot(slot: Slot): void {
+    // Internal section panels render FULL SCREEN, period — they never share
+    // the grid. Placing anything else first closes any hosted section
+    // (renderRails parks its DOM back to the pen).
+    if (slot.view !== "section") {
+      for (let i = rails.length - 1; i >= 0; i--) {
+        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "section");
+        if (!rails[i].slots.length) rails.splice(i, 1);
+      }
+    }
     for (const rail of rails) {
       // Never auto-stack under the hosted agent: a rail holding the coding
       // tile keeps its column to itself, so the first new item opens BESIDE
