@@ -9566,7 +9566,11 @@ select.settings-input {
 .ws-right-rail.ws-rail-banner { width: auto !important; min-height: 120px; }
 /* Drag handle between the column row and a band — resizes the band height. */
 .ws-band-hsep {
-  height: 5px;
+  /* 1px visible seam; padding+negative margin keep a 7px grab zone. */
+  height: 1px;
+  padding: 3px 0;
+  margin: -3px 0;
+  z-index: 3;
   flex-shrink: 0;
   background: transparent;
   border-top: 1px solid var(--ws-line);
@@ -10453,11 +10457,14 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
 /* Between-rail drop strip: a 6px-wide vertical column between rails.
    Highlights on drag-over so the user knows a NEW rail will be inserted. */
 .ws-rail-dropstrip {
-  width: 6px;
+  /* Invisible seam normally — panels sit flush. While a slot drag is live
+     (body.wb-mouse-drag) the strips open up as visible drop targets. */
+  width: 0;
   flex-shrink: 0;
   align-self: stretch;
   position: relative;
 }
+body.wb-mouse-drag .ws-rail-dropstrip { width: 8px; }
 .ws-rail-dropstrip.drag-over::before {
   content: "";
   position: absolute;

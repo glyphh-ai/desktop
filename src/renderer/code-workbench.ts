@@ -479,7 +479,7 @@ async function init(): Promise<void> {
     // Bands span the full width and stay out of the apportioning entirely;
     // only the column rails (and their drop strips) share the budget.
     const sized = rails.filter((r) => !r.banner);
-    const stripsW = (sized.length + 1) * 6;
+    const stripsW = 0;   // drop strips are zero-width until a drag opens them
     const available = Math.max(0, containerW - stripsW);
     const prefs = sized.map((r) => r.prefWidth ?? 320);
     const widths = prefs.slice();
