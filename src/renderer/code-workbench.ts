@@ -1652,8 +1652,7 @@ async function init(): Promise<void> {
     const GLYPHH_KEY = "app:glyphh";
     const DOCK_DEFAULTS = [
       GLYPHH_KEY, "app:home", "app:connections", "app:apps", "app:layouts",
-      "app:skills", "app:loops", "app:agents", "app:models", "app:drips",
-      "app:settings", "app:docs", "app:account",
+      "app:skills", "app:loops", "app:agents", "app:models", "app:settings",
     ];
     const DOCK_N = DOCK_DEFAULTS.length;
     let dockKeys: string[] = DOCK_DEFAULTS.slice();
