@@ -1173,12 +1173,43 @@ async function init(): Promise<void> {
       switch(id: string): void;
       startNew(): void;
     };
-    const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-    const titleEl = wrap.querySelector<HTMLElement>(".ws-rail-slot-header .title");
-    if (titleEl && sess) titleEl.textContent = sess.currentTitle();
+    // The sessions API lives in the help MODULE bundle, which loads after
+    // this classic script. At boot the shell places the coding panel before
+    // that module evaluates — wait for the bridge instead of silently
+    // rendering a header with no history/+ controls (2.5.0 regression).
+    const getSess = (): SessionsApi | undefined =>
+      (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+    const sessNow = getSess();
+    if (!sessNow) {
+      let tries = 0;
+      const wait = (): void => {
+        if (!wrap.isConnected) return;          // slot re-rendered/closed
+        if (getSess()) { renderCodingHeaderControls(wrap); return; }
+        if (tries++ < 200) requestAnimationFrame(wait);
+      };
+      requestAnimationFrame(wait);
+      return;
+    }
+    renderCodingHeaderControls(wrap);
+  }
 
-    if (!sess) return;
-    const maxBtn = wrap.querySelector(".slot-maximize")!;
+  /** The coding slot's header extras: session title, + new session, and the
+   *  history dropdown. Separate so a late-arriving sessions bridge (boot
+   *  race) can attach them after the fact. */
+  function renderCodingHeaderControls(wrap: HTMLElement): void {
+    type SessionsApi = {
+      list(): Array<{ id: string; title: string; createdAt: number }>;
+      currentId(): string | null;
+      currentTitle(): string;
+      switch(id: string): void;
+      startNew(): void;
+    };
+    const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+    if (!sess || wrap.querySelector(".slot-session-new")) return;   // gone or already wired
+    const titleEl = wrap.querySelector<HTMLElement>(".ws-rail-slot-header .title");
+    if (titleEl) titleEl.textContent = sess.currentTitle();
+    const maxBtn = wrap.querySelector(".slot-maximize");
+    if (!maxBtn) return;
 
     // + New session — keeps the arranged layout (see __codeWorkbenchNewSession).
     const plus = document.createElement("button");
@@ -1614,7 +1645,14 @@ async function init(): Promise<void> {
     let appRows: PanelAppRow[] = [];
     let layouts: LayoutRow[] = [];
     let entries: CcEntry[] = [];
+    let entryByKey = new Map<string, CcEntry>();
     let orderKeys: string[] = [];
+    // The DOCK — sticky slots above the search bar. Slot 0 is ALWAYS Glyphh;
+    // empty slots render as dotted outlines and accept dragged tiles.
+    const DOCK_N = 8;
+    const GLYPHH_KEY = "app:glyphh";
+    const DOCK_DEFAULTS = [GLYPHH_KEY, "app:home", "app:connections", "app:apps", "app:layouts", "app:drips", "app:settings", "app:docs"];
+    let dockKeys: string[] = DOCK_DEFAULTS.slice();
     let query = "";
     let page = 0;
     let editMode = false;
@@ -1648,6 +1686,7 @@ async function init(): Promise<void> {
     el.className = "command-center";
     el.innerHTML = `
       <div class="cc-inner">
+        <div class="cc-dock"></div>
         <div class="cc-header">
           <input id="cc-input" class="cc-input" type="text" autocomplete="off" autocorrect="off" spellcheck="false"
                  placeholder="Search apps and layouts — Enter opens the top match" />
@@ -1670,6 +1709,7 @@ async function init(): Promise<void> {
     switcherEl = el;
 
     const input = el.querySelector<HTMLInputElement>("#cc-input")!;
+    const dockEl = el.querySelector<HTMLElement>(".cc-dock")!;
     const gridEl = el.querySelector<HTMLElement>(".cc-apps")!;
     const pagerEl = el.querySelector<HTMLElement>(".cc-apps-pager")!;
     const emptyEl = el.querySelector<HTMLElement>(".cc-empty")!;
@@ -1753,6 +1793,99 @@ async function init(): Promise<void> {
       }
       for (const e of all) if (e !== self && !used.has(e.key)) { ordered.push(e); used.add(e.key); }
       entries = self ? [self, ...ordered] : ordered;
+      entryByKey = new Map(entries.map((e) => [e.key, e]));
+    }
+
+    /** The icon element for an entry — app icon, or a layout's mini stack. */
+    function entryIcon(e: CcEntry): HTMLElement {
+      const icon = document.createElement("div");
+      if (e.layout) {
+        icon.className = "tile-icon tile-layout";
+        const seen = new Set<string>();
+        const ids = e.layout.splits
+          .map((c) => c.panelId)
+          .filter((id) => id && !seen.has(id) && (seen.add(id), true))
+          .slice(0, 4);
+        icon.innerHTML = ids.length
+          ? ids.map((id) => {
+              const app = resolveCell(id);
+              if (app) return `<span class="mini">${appIconInner(iconApp(app), app.name, "tile-mini-initial")}</span>`;
+              const toolView = id.startsWith("tool:") ? id.slice(5) : "";
+              const label = toolView ? (VIEW_META[toolView]?.title ?? toolView) : id;
+              return `<span class="mini"><span class="tile-mini-initial">${esc(label.charAt(0).toUpperCase())}</span></span>`;
+            }).join("")
+          : `<span class="tile-initial">▦</span>`;
+      } else {
+        icon.className = "tile-icon";
+        icon.innerHTML = appIconInner(iconApp(e.app!), e.name, "tile-initial");
+      }
+      return icon;
+    }
+
+    function openEntry(e: CcEntry, alt: boolean): void {
+      if (e.layout) { openLayout(e.layout); closeSwitcher(); return; }
+      openRow(e.app!, { newPanel: alt, replaceWorkspace: !alt });
+      closeSwitcher();
+    }
+
+    function persistDock(): void {
+      dockKeys[0] = GLYPHH_KEY;   // Glyphh owns the top-left, always
+      void yo?.setPreference?.("ccDock", dockKeys);
+    }
+
+    /** The sticky dock: filled slots are normal tiles, empty ones dotted
+     *  outlines. Static across search/pagination. Drops assign; in edit
+     *  mode a × clears any slot but Glyphh's. */
+    function renderDock(): void {
+      dockKeys[0] = GLYPHH_KEY;
+      dockEl.innerHTML = "";
+      for (let i = 0; i < DOCK_N; i++) {
+        const e = dockKeys[i] ? entryByKey.get(dockKeys[i]) : undefined;
+        const slot = document.createElement("button");
+        slot.type = "button";
+        if (e) {
+          slot.className = "cc-tile cc-dock-tile";
+          slot.title = e.layout ? `${e.name} (layout)` : e.name;
+          const nm = document.createElement("span");
+          nm.className = "tile-name";
+          nm.textContent = e.name;
+          slot.append(entryIcon(e), nm);
+          slot.addEventListener("click", (ev) => { if (!editMode) openEntry(e, (ev as MouseEvent).altKey); });
+          if (editMode && i > 0) {
+            slot.classList.add("cc-jiggle");
+            const del = document.createElement("span");
+            del.className = "cc-del";
+            del.title = "Clear slot";
+            del.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+            del.addEventListener("mousedown", (ev) => ev.stopPropagation());
+            del.addEventListener("click", (ev) => { ev.stopPropagation(); dockKeys[i] = ""; persistDock(); renderDock(); });
+            slot.appendChild(del);
+          }
+        } else {
+          slot.className = "cc-dock-slot";
+          slot.title = "Drag an app here";
+        }
+        // Slot 0 is Glyphh's — never a drop target.
+        if (i > 0) {
+          slot.addEventListener("dragover", (ev) => {
+            if (!dragKey) return;
+            ev.preventDefault();
+            slot.classList.add("drag-over");
+          });
+          slot.addEventListener("dragleave", () => slot.classList.remove("drag-over"));
+          slot.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            slot.classList.remove("drag-over");
+            if (!dragKey || dragKey === GLYPHH_KEY) return;
+            const from = dockKeys.indexOf(dragKey);
+            if (from > 0) dockKeys[from] = "";   // moving within the dock
+            dockKeys[i] = dragKey;
+            persistDock();
+            renderDock();
+          });
+        }
+        dockEl.appendChild(slot);
+      }
     }
 
     function persistOrder(): void {
@@ -1798,6 +1931,7 @@ async function init(): Promise<void> {
       page = p;
       gridEl.innerHTML = "";
       gridEl.classList.toggle("cc-editing", editMode);
+      renderDock();
       const openSlugs = new Set(appSlots().map((sl) => sl.slug));
       items.forEach((e, i) => {
         const fixed = e.app?.appArchetype === "glyphh-self";   // Glyphh: no move, no delete
@@ -1807,37 +1941,30 @@ async function init(): Promise<void> {
         tile.className = "cc-tile" + (e.app && openSlugs.has(e.app.slug || e.app.id) ? " open" : "");
         tile.dataset.key = e.key;
         tile.title = e.layout ? `${e.name} (layout)` : e.name;
-        const icon = document.createElement("div");
-        if (e.layout) {
-          // Same mini icon stack the left rail's Layouts section renders.
-          icon.className = "tile-icon tile-layout";
-          const seen = new Set<string>();
-          const ids = e.layout.splits
-            .map((c) => c.panelId)
-            .filter((id) => id && !seen.has(id) && (seen.add(id), true))
-            .slice(0, 4);
-          icon.innerHTML = ids.length
-            ? ids.map((id) => {
-                const app = resolveCell(id);
-                if (app) return `<span class="mini">${appIconInner(iconApp(app), app.name, "tile-mini-initial")}</span>`;
-                const toolView = id.startsWith("tool:") ? id.slice(5) : "";
-                const label = toolView ? (VIEW_META[toolView]?.title ?? toolView) : id;
-                return `<span class="mini"><span class="tile-mini-initial">${esc(label.charAt(0).toUpperCase())}</span></span>`;
-              }).join("")
-            : `<span class="tile-initial">▦</span>`;
-        } else {
-          icon.className = "tile-icon";
-          icon.innerHTML = appIconInner(iconApp(e.app!), e.name, "tile-initial");
-        }
         const nm = document.createElement("span");
         nm.className = "tile-name";
         nm.textContent = e.name;
-        tile.append(icon, nm);
+        tile.append(entryIcon(e), nm);
+
+        // Always draggable — a tile can be dropped on a DOCK slot any time;
+        // grid REORDER stays an edit-mode behavior (dragover below).
+        if (!fixed) {
+          tile.draggable = true;
+          tile.addEventListener("dragstart", (ev) => {
+            dragKey = e.key;
+            ev.dataTransfer?.setData("text/plain", e.key);
+            tile.classList.add("dragging");
+          });
+          tile.addEventListener("dragend", () => {
+            tile.classList.remove("dragging");
+            dragKey = null;
+            if (editMode) { persistOrder(); renderAll(); }
+          });
+        }
 
         if (editMode && !fixed) {
           tile.classList.add("cc-jiggle");
           tile.style.animationDelay = `${(i % 5) * -0.07}s`;
-          tile.draggable = true;
           if (deletable) {
             const del = document.createElement("span");
             del.className = "cc-del";
@@ -1847,29 +1974,15 @@ async function init(): Promise<void> {
             del.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteEntry(e); });
             tile.appendChild(del);
           }
-          tile.addEventListener("dragstart", (ev) => {
-            dragKey = e.key;
-            ev.dataTransfer?.setData("text/plain", e.key);
-            tile.classList.add("dragging");
-          });
-          tile.addEventListener("dragend", () => {
-            tile.classList.remove("dragging");
-            dragKey = null;
-            persistOrder();
-            renderAll();
-          });
           tile.addEventListener("dragover", (ev) => {
             ev.preventDefault();
-            if (dragKey && dragKey !== e.key) moveEntry(dragKey, e.key);
+            if (editMode && dragKey && dragKey !== e.key) moveEntry(dragKey, e.key);
           });
         }
 
         tile.addEventListener("click", (ev) => {
           if (editMode) return;   // jiggle mode: taps rearrange, never launch
-          if (e.layout) { openLayout(e.layout); closeSwitcher(); return; }
-          const alt = (ev as MouseEvent).altKey;
-          openRow(e.app!, { newPanel: alt, replaceWorkspace: !alt });
-          closeSwitcher();
+          openEntry(e, (ev as MouseEvent).altKey);
         });
         // iOS-style: left-click and HOLD enters jiggle mode.
         tile.addEventListener("mousedown", (ev) => {
@@ -1991,6 +2104,13 @@ async function init(): Promise<void> {
         const saved = await yo?.getPreference?.("ccIconOrder", []);
         orderKeys = Array.isArray(saved) ? saved.map(String) : [];
       } catch { orderKeys = []; }
+      try {
+        const dock = await yo?.getPreference?.("ccDock", null);
+        if (Array.isArray(dock) && dock.length) {
+          dockKeys = Array.from({ length: DOCK_N }, (_, i) => String(dock[i] ?? ""));
+        }
+      } catch { /* defaults stand */ }
+      dockKeys[0] = GLYPHH_KEY;
       await reload();
     })();
   }
