@@ -12593,7 +12593,13 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   color: var(--text-3);
   white-space: normal;
 }
-#code-model-menu { min-width: 300px; max-width: 340px; }
+#code-model-menu {
+  min-width: 300px; max-width: 340px;
+  /* The model chip sits near the RIGHT edge — the menu grows LEFT from the
+     chip's right edge instead of pushing the page wider. */
+  left: auto; right: 0;
+}
+.code-bar-right .code-drop-up { left: auto; right: 0; }
 /* A multi-slot loop names every binding on the chip ("Planner: Fable 5 / …");
    cap it so a many-slot loop cannot blow up the composer row — the title
    attribute carries the full cast. */
