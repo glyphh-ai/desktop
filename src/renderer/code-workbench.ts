@@ -672,10 +672,14 @@ async function init(): Promise<void> {
       const r = rails[i];
       const idx = r.slots.findIndex((s) => s.id === slotId);
       if (idx >= 0) {
+        const wasSection = r.slots[idx].view === "section";
         r.slots.splice(idx, 1);
         if (r.slots.length === 0) rails.splice(i, 1);
         renderRails();
         saveLayout();
+        // Closing an internal app panel (a section) goes back to the
+        // launcher — pick the next destination from the command center.
+        if (wasSection && !switcherEl) toggleAppSwitcher();
         return;
       }
     }
@@ -1539,9 +1543,17 @@ async function init(): Promise<void> {
   // <body> (above the z-120 webview layer) that opens apps into workbench
   // panels and layouts into the workbench grid.
   let switcherEl: HTMLDivElement | null = null;
-  function closeSwitcher(): void { switcherEl?.remove(); switcherEl = null; }
+  function closeSwitcher(opts: { ensureSurface?: boolean } = {}): void {
+    switcherEl?.remove();
+    switcherEl = null;
+    // Explicit dismissal (×, Esc, backdrop, Cmd+.) over an empty workspace
+    // lands on HOME — never a blank surface. (Not in the solo overlay
+    // window, which has no workbench of its own.)
+    const solo = (window as unknown as { __ccOverlayHost?: boolean }).__ccOverlayHost;
+    if (opts.ensureSurface && !solo && rails.length === 0) openSectionInWorkbench("dashboard");
+  }
   function toggleAppSwitcher(): void {
-    if (switcherEl) { closeSwitcher(); return; }
+    if (switcherEl) { closeSwitcher({ ensureSurface: true }); return; }
 
     type CcYo = {
       panelAppsList?: () => Promise<PanelAppRow[]>;
@@ -1638,7 +1650,7 @@ async function init(): Promise<void> {
     input.focus();
 
     // Close: Esc, the × button, and clicking the darkened backdrop.
-    el.querySelector(".cc-close")?.addEventListener("click", () => closeSwitcher());
+    el.querySelector(".cc-close")?.addEventListener("click", () => closeSwitcher({ ensureSurface: true }));
 
     // Desktop-overlay toggle: when ON, the command center opens as a
     // transparent fullscreen window over the whole desktop (any monitor app).
@@ -1657,11 +1669,11 @@ async function init(): Promise<void> {
     });
     input.addEventListener("keydown", (ev) => {
       if (ev.key !== "Escape") return;
-      if (editMode) exitEdit(); else closeSwitcher();
+      if (editMode) exitEdit(); else closeSwitcher({ ensureSurface: true });
     });
     el.addEventListener("mousedown", (ev) => {
       const t = ev.target as HTMLElement;
-      if (t === el || t.classList.contains("cc-inner")) { if (editMode) exitEdit(); else closeSwitcher(); }
+      if (t === el || t.classList.contains("cc-inner")) { if (editMode) exitEdit(); else closeSwitcher({ ensureSurface: true }); }
       else if (!t.closest(".cc-drip-wrap")) dripMenu.classList.add("hidden");
     });
 

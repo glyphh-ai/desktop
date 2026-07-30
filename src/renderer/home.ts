@@ -326,16 +326,8 @@ void (async () => {
       return;
     }
   } catch { /* fall through */ }
-  const def = ((await window.yo.getPreference?.("homeStartupSection", "")) as string) || "";
-  if (def && document.querySelector(`.help-section[data-section="${def}"]`)) {
-    // A fixed startup page (Settings) still wins over the default landing.
-    gotoSection(def);
-    return;
-  }
-  // 2.5.0 landing: the agent surface with the COMMAND CENTER open — the app
-  // opens as a launcher (forceInline: boot never spawns the desktop overlay).
-  gotoSection("code");
-  openCommandCenter({ forceInline: true });
+  // 2.5.0: the app loads into the HOME screen at startup. Period.
+  gotoSection("dashboard");
 })();
 
 // "Create App" from a browser tab routes here — open the New App form prefilled.
