@@ -1523,7 +1523,8 @@ async function init(): Promise<void> {
      *  rows open as workbench panels here. */
     const openRow = (a: PanelAppRow, opts: { newPanel?: boolean } = {}): void => {
       const browser = typeof a.launchConfig?.browser === "string" && a.launchConfig.browser ? (a.launchConfig.browser as string) : "glyphh-panel";
-      const external = a.isBrowser === false || !!a.execPath || (browser !== "glyphh-panel" && a.appArchetype !== "glyphh-app");
+      // Nav apps route through main (goto-section), never into a panel.
+      const external = a.isBrowser === false || !!a.execPath || a.appArchetype === "glyphh-nav" || (browser !== "glyphh-panel" && a.appArchetype !== "glyphh-app");
       if (external) {
         void (window as unknown as { yo?: { appLaunch?: (s: unknown) => Promise<unknown> } }).yo?.appLaunch?.({
           slug: a.slug || a.id, name: a.name, url: a.url,
@@ -1534,7 +1535,7 @@ async function init(): Promise<void> {
       }
       openAppInWorkbench(toRef(a), opts);
     };
-    const iconApp = (a: PanelAppRow): { slug: string; url: string | null; execPath: string | null } => ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null });
+    const iconApp = (a: PanelAppRow): { slug: string; url: string | null; execPath: string | null; appArchetype: string | null } => ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null });
     const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
     const matches = (name: string): boolean => !query || name.toLowerCase().includes(query);
 
@@ -1780,10 +1781,11 @@ async function init(): Promise<void> {
 
     // Load apps + layouts, paint, then stream native-app icons in.
     void Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).then(([rows, ls]) => {
-      appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app" || a.appArchetype === "glyphh-self");
-      // Built-in Glyphh first, then installed glyphh-apps, then web apps.
+      appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app" || a.appArchetype === "glyphh-self" || a.appArchetype === "glyphh-nav");
+      // Built-in Glyphh first, then the nav apps, then installed glyphh-apps,
+      // then web apps. (sort is stable — nav apps keep their seeded order.)
       const weight = (a: PanelAppRow): number =>
-        a.appArchetype === "glyphh-self" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
+        a.appArchetype === "glyphh-self" ? 3 : a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
       appRows.sort((x, y) => weight(y) - weight(x));
       layouts = ls || [];
       renderAll();

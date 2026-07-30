@@ -90,9 +90,34 @@ function sendWbCmd(cmd: WbCmd): void {
 }
 
 /** The seeded "Glyphh" system app (archetype 'glyphh-self') — opening it
- *  focuses Glyphh's own window. */
+ *  focuses Glyphh's own window on the agent. */
 function isGlyphhSelfRow(app: ServerApp): boolean {
   return app.appArchetype === "glyphh-self" || app.slug === "glyphh";
+}
+
+/** A built-in NAV app (archetype 'glyphh-nav') — opening it navigates the home
+ *  panel to its section ("settings:account" carries a sub-panel). */
+function navTargetOf(app: ServerApp): string | null {
+  if (app.appArchetype !== "glyphh-nav") return null;
+  const nav = (app.launchConfig as { nav?: unknown } | null | undefined)?.nav;
+  return typeof nav === "string" && nav ? nav : null;
+}
+
+/** Steer the home panel(s) to a section — same channel home-ipc exposes. */
+function sendHomeGoto(section: string): void {
+  const homes = webContents.getAllWebContents().filter((wc) => {
+    try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
+  });
+  for (const wc of homes) wc.send("home:goto-section", section);
+}
+
+/** Restore + front the Glyphh window (nav + self opens land here). */
+function focusGlyphhWindow(): void {
+  const win = getMainWindowRef();
+  if (!win) throw new Error("Glyphh window unavailable");
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
 }
 
 /** Built-in apps that aren't in the server library. */
@@ -161,12 +186,17 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   const app = findLibraryApp(apps, ref);
   if (!app) throw new Error(`unknown app: ${ref} — not in the app library`);
 
+  // Built-in nav apps: no panel, no webview — the section IS the open.
+  const navTo = navTargetOf(app);
+  if (navTo) {
+    focusGlyphhWindow();
+    sendHomeGoto(navTo);
+    return { slug: app.slug, name: app.name };
+  }
   if (isGlyphhSelfRow(app)) {
-    const win = getMainWindowRef();
-    if (!win) throw new Error("Glyphh window unavailable");
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
+    // The Glyphh app = the agent: the default view, no workspace attached.
+    focusGlyphhWindow();
+    sendHomeGoto("code");
     return { slug: app.slug, name: app.name };
   }
 

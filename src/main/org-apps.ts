@@ -78,6 +78,36 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
   updatedAt: "1970-01-01T00:00:00.000Z",
 };
 
+/** The built-in NAVIGATION apps — Home, Connections, … Account. Like the
+ *  Glyphh row they are synthesized (never server records) and system:true
+ *  (hidden from the Apps management page), but they DO render on the command
+ *  bar. Opening one navigates the home panel to its section (app-resolver
+ *  routes archetype 'glyphh-nav' over home:goto-section) — no webview, no
+ *  panel. isBrowser stays true so no path mistakes them for native rows and
+ *  the rail's apps grid (url || !isBrowser) leaves them out. */
+const NAV_SECTIONS: Array<{ slug: string; name: string; nav: string }> = [
+  { slug: "home", name: "Home", nav: "dashboard" },
+  { slug: "connections", name: "Connections", nav: "connections" },
+  { slug: "apps", name: "Apps", nav: "apps" },
+  { slug: "layouts", name: "Layouts", nav: "layouts" },
+  { slug: "skills", name: "Skills", nav: "skills" },
+  { slug: "loops", name: "Loops", nav: "loops" },
+  { slug: "agents", name: "Agents", nav: "agents" },
+  { slug: "models", name: "Models", nav: "models" },
+  { slug: "settings", name: "Settings", nav: "settings" },
+  { slug: "docs", name: "Docs", nav: "docs" },
+  { slug: "account", name: "Account", nav: "settings:account" },
+];
+const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
+  ...GLYPHH_SELF_ROW,
+  id: `nav-${n.slug}`,
+  name: n.name,
+  slug: n.slug,
+  isBrowser: true,
+  appArchetype: "glyphh-nav",
+  launchConfig: { nav: n.nav },
+}));
+
 /** Native and glyphh apps launch from a local path; every other kind opens a
  *  URL. A glyphh row keeps the desktop's long-standing "glyphh-app" archetype
  *  tag (isGlyphhAppRow and friends match on it). */
@@ -119,9 +149,9 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
     const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
     if (selfIdx >= 0) {
       const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };
-      return [self, ...rows.filter((_, i) => i !== selfIdx)];
+      return [self, ...NAV_ROWS, ...rows.filter((_, i) => i !== selfIdx)];
     }
-    return [GLYPHH_SELF_ROW, ...rows];
+    return [GLYPHH_SELF_ROW, ...NAV_ROWS, ...rows];
   });
 }
 

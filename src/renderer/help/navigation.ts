@@ -333,5 +333,9 @@ export function initHelp() {
   initCode();
   wireGlobalDotCommands();
   // The shell steers sections too (the first-run walkthrough lands on Home).
-  window.yo.onGotoSection?.((section) => gotoSection(section));
+  window.yo.onGotoSection?.((section) => {
+    // "settings:account" → section + sub-panel (the nav apps use this).
+    const [sec, sub] = String(section).split(":");
+    gotoSection(sec, sub || undefined);
+  });
 }

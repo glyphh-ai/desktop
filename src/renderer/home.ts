@@ -327,13 +327,15 @@ void (async () => {
     }
   } catch { /* fall through */ }
   const def = ((await window.yo.getPreference?.("homeStartupSection", "")) as string) || "";
-  const lastSec = ((await window.yo.getPreference?.("homeLastSection", "")) as string) || "";
-  const lastSub = ((await window.yo.getPreference?.("homeLastSub", "")) as string) || "";
-  let sec = def || lastSec || "code";
-  // A remembered section may have been removed since (e.g. the old Skills
-  // page) — fall back rather than landing on a blank pane.
-  if (!document.querySelector(`.help-section[data-section="${sec}"]`)) sec = "code";
-  gotoSection(sec, sec === lastSec ? (lastSub || undefined) : undefined);
+  if (def && document.querySelector(`.help-section[data-section="${def}"]`)) {
+    // A fixed startup page (Settings) still wins over the default landing.
+    gotoSection(def);
+    return;
+  }
+  // 2.5.0 landing: the agent surface with the COMMAND CENTER open — the app
+  // opens as a launcher (forceInline: boot never spawns the desktop overlay).
+  gotoSection("code");
+  openCommandCenter({ forceInline: true });
 })();
 
 // "Create App" from a browser tab routes here — open the New App form prefilled.

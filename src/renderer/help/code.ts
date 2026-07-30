@@ -2253,8 +2253,14 @@ function initRailSplitter(): void {
   });
 }
 
+let railBootApplied = false;
 async function applyPanelPrefs(): Promise<void> {
-  const railCollapsed = ((await window.yo.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
+  // The rail BOOTS closed (2.5.0: the command center is the landing surface).
+  // Only the first paint forces it — the in-session toggle still works and
+  // still persists across section switches.
+  const saved = ((await window.yo.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
+  const railCollapsed = railBootApplied ? saved : true;
+  railBootApplied = true;
   el("app-rail")?.classList.toggle("collapsed", railCollapsed);
   document.body.classList.toggle("rail-collapsed", railCollapsed);
   const railW = Number(await window.yo.getPreference?.("codeRailWidth", 0)) || 0;
@@ -2332,16 +2338,17 @@ export async function resetWorkspace(): Promise<void> {
   await clear();
 }
 
-export function openCommandCenter(): void {
+export function openCommandCenter(opts: { forceInline?: boolean } = {}): void {
   void (async () => {
     // Desktop-overlay mode (toggle inside the command center): open the
     // fullscreen transparent overlay window instead of the inline switcher —
-    // unless THIS page already is that overlay.
+    // unless THIS page already is that overlay, or the caller wants the
+    // inline surface regardless (boot landing).
     const w = window as unknown as {
       __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __ccOverlayHost?: boolean;
       yo?: { getPreference?: (k: string, d: unknown) => Promise<unknown>; ccOverlayOpen?: () => Promise<unknown> };
     };
-    if (!w.__ccOverlayHost && w.yo?.ccOverlayOpen) {
+    if (!opts.forceInline && !w.__ccOverlayHost && w.yo?.ccOverlayOpen) {
       const overlay = await w.yo.getPreference?.("ccDesktopOverlay", false).catch(() => false);
       if (overlay) { void w.yo.ccOverlayOpen(); return; }
     }

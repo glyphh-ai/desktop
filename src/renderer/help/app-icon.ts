@@ -14,6 +14,7 @@ type IconApp = {
   slug?: string | null;
   url?: string | null;
   execPath?: string | null;
+  appArchetype?: string | null;
   connection?: { accountId?: string; pipedreamSlug: string } | null;
 };
 
@@ -41,8 +42,10 @@ const yoIcons = (): {
 /** Resolve the icon URL for an app ("" when only the initial fallback applies). */
 export function appIconUrl(app: IconApp): string {
   // The Glyphh system app always shows the brand mark (shipped next to every
-  // renderer page that uses this module).
+  // renderer page that uses this module); the built-in nav apps show the
+  // shipped amber line glyphs.
   if (app.slug === "glyphh") return "brand/glyphh-mark.png";
+  if (app.appArchetype === "glyphh-nav" && app.slug) return `brand/nav/${app.slug}.svg`;
   const isInternal = app.url?.startsWith("yo://");
   let favicon = "";
   if (app.url && !isInternal) {
