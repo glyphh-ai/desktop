@@ -448,6 +448,16 @@ export class CommandParser {
       }
     }
 
+    // WORKBENCH BUILTINS FIRST: "browser"/"terminal" are workspace panels
+    // now, but the LEGACY registry still holds a boot-registered "browser"
+    // (the old full-window BrowserView) — switchTo matched it first and the
+    // user landed outside the layout with no chrome to escape (only an app
+    // relaunch recovered). These open into the layout like every other app.
+    if (sub === "browser" || sub === "terminal" || sub === "term") {
+      const opened = await openAppByRef(sub).catch(() => null);
+      if (opened) return `Opened ${opened.name}`;
+    }
+
     // dip <panel-id> [cmd1 cmd2 ...] — switch + optional app commands. Dipping to
     // anything that isn't a layout closes any open layout.
     this.layouts.clearSplit();
