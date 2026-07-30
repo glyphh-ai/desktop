@@ -5,7 +5,7 @@
  * window.yo API.
  */
 
-import { initHelp, openNewAppDeepLink, gotoSection } from "./help/index.js";
+import { initHelp, gotoSection } from "./help/index.js";
 import { openCommandCenter, seedNewSession } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
 
@@ -392,9 +392,6 @@ void (async () => {
   // 2.5.0: the app loads into the HOME screen at startup. Period.
   gotoSection("dashboard");
 })();
-
-// "Create App" from a browser tab routes here — open the New App form prefilled.
-window.yo.onOpenNewApp?.((data) => openNewAppDeepLink(data));
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────
 // Shows once an update has downloaded; stays until the user restarts into it

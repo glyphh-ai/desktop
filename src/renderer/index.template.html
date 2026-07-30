@@ -106,65 +106,9 @@
       <button id="btn-maximize" class="wc wc-maximize"></button>
     </div>
     <div id="titlebar-label"><img class="glyphh-mark" src="brand/glyphh-mark.png" alt="Glyphh" /></div>
-    <div id="tab-bar">
-      <button id="tab-new-btn" class="tab-new-btn" title="New tab">+</button>
-    </div>
     <!-- The titlebar tab strip + logout are gone — navigation and the user
          menu live in the Code-primary home panel's app rail now. -->
   </div>
-
-  <!-- URL bar — shown below titlebar for all panels -->
-  <div id="url-bar" class="url-bar">
-    <button id="url-bar-back" class="url-bar-nav" title="Back" disabled>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-    </button>
-    <button id="url-bar-forward" class="url-bar-nav" title="Forward" disabled>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
-    </button>
-    <button id="url-bar-refresh" class="url-bar-nav" title="Refresh">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-    </button>
-    <img id="url-bar-favicon" class="url-bar-favicon" width="14" height="14" />
-    <input id="url-bar-input" class="url-bar-input" type="text" placeholder="Enter URL..." spellcheck="false" autocomplete="off" />
-    <div id="dl-btn-wrap" class="dl-btn-wrap">
-      <button id="dl-btn" class="dl-btn" title="Downloads">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span id="dl-badge-count" class="dl-badge-count hidden">0</span>
-      </button>
-      <div id="dl-dropdown" class="dl-dropdown hidden">
-        <div class="dl-dropdown-header">
-          <span>Downloads</span>
-          <button id="dl-clear-all" class="dl-clear-all" title="Clear all">Clear</button>
-        </div>
-        <div id="dl-list" class="dl-list">
-          <div class="dl-empty">No downloads yet</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Empty state — shown when no panels are open -->
-  <div id="empty-state" class="empty-state hidden">
-    <div class="empty-state-logo">
-      <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
-      <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
-    </div>
-    <div class="empty-state-hint">Press <kbd>&#8984;&#8679;Space</kbd> to open an app</div>
-  </div>
-
-  <!-- Panel screenshots (freeze-frame when panels are hidden) -->
-  <div id="panel-screenshots"></div>
-
-  <!-- Per-cell URL bars (grid mode) -->
-  <div id="cell-url-bars"></div>
-
-  <!-- Grid drag handles + overlay -->
-  <div id="grid-handles"></div>
-  <div id="drag-overlay" class="hidden"></div>
-
-
-
-  <!-- Download toast (legacy, replaced by titlebar dropdown) -->
 
   <!-- Update notification bar -->
   <div id="update-bar" class="update-bar hidden">

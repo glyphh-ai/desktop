@@ -17,7 +17,6 @@ import { EventEmitter } from "events";
 import { getAccountInfo, getHeartbeatInfo } from "./auth";
 import { getClient } from "./glyphh-client";
 import type { McpManager } from "./mcp-manager";
-import type { AppConnector } from "./app-connector";
 import { refreshConnectorCatalog, type ConnectorTool } from "./connector-tools-client";
 
 // ── Types ──────────────────────────────────────────────────
@@ -42,16 +41,11 @@ export interface ConnectedAccount {
 
 export class ConnectorManager extends EventEmitter {
   private mcpManager: McpManager | null = null;
-  private appConnector: AppConnector | null = null;
   private cachedAccounts: ConnectedAccount[] = [];
   private cachedApps: ConnectorApp[] = [];
 
   setMcpManager(mgr: McpManager): void {
     this.mcpManager = mgr;
-  }
-
-  setAppConnector(ac: AppConnector): void {
-    this.appConnector = ac;
   }
 
   // ── Available apps (browse catalog) ───────────────────
@@ -83,26 +77,11 @@ export class ConnectorManager extends EventEmitter {
         healthy: c.healthy,
       }));
       this.cachedAccounts = accounts;
-      this.syncAccountsToApps(accounts);
       // No server-side app-row sync: an app's connections come from its
       // manifest now, and the server resolves connected/required itself.
       return accounts;
     } catch {
       return this.cachedAccounts;
-    }
-  }
-
-  private syncAccountsToApps(accounts: ConnectedAccount[]): void {
-    if (!this.appConnector) return;
-    for (const account of accounts) {
-      const app = this.appConnector.findByPipedreamSlug(account.appSlug);
-      if (app) {
-        this.appConnector.setConnection(app.id, {
-          pipedreamSlug: account.appSlug,
-          accountId: account.id,
-          healthy: account.healthy,
-        });
-      }
     }
   }
 
@@ -119,15 +98,8 @@ export class ConnectorManager extends EventEmitter {
 
   async disconnectAccount(accountId: string): Promise<boolean> {
     try {
-      const removed = this.cachedAccounts.find((a) => a.id === accountId);
       await getClient().connections.personalDisconnect(accountId);
       this.cachedAccounts = this.cachedAccounts.filter((a) => a.id !== accountId);
-      if (removed && this.appConnector) {
-        const app = this.appConnector.findByPipedreamSlug(removed.appSlug);
-        if (app?.connection?.accountId === accountId) {
-          this.appConnector.setConnection(app.id, { pipedreamSlug: removed.appSlug });
-        }
-      }
       await this.refreshMcp();
       this.emit("changed");
       return true;

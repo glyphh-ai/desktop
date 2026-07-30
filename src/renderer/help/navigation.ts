@@ -5,7 +5,7 @@
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning } from "./shared.js";
 import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
-import { loadApps, initApps, openNewAppForm } from "./apps.js";
+import { loadApps, initApps } from "./apps.js";
 import { loadSettings, initSettings } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
@@ -39,12 +39,6 @@ export function openSettings(sub?: string) {
 
 export function isHelpOpen(): boolean {
   return !overlay.classList.contains("hidden");
-}
-
-/** Deep-link: open the Apps section and the New App form, prefilled. */
-export function openNewAppDeepLink(data: { url?: string; name?: string; tabId?: string }): void {
-  gotoSection("apps");
-  openNewAppForm(data.url || "", data.name || "", data.tabId ?? null);
 }
 
 // ── Navigation ───────────────────────────────────────────

@@ -1751,28 +1751,6 @@ function reloadPanelApps(apps: Array<PanelApp>) {
   panelApps = apps.filter((a) => !a.system && (a.url || a.isBrowser === false));
 }
 
-let pendingOriginTab: string | null = null;
-
-/**
- * Open the New App form, prefilled. Used by the browser-tab "Create App"
- * deep-link. Clicks the + New button to open the form, then fills the fields.
- */
-export function openNewAppForm(url = "", name = "", tabId: string | null = null): void {
-  pendingOriginTab = tabId;
-  document.getElementById("apps-add-btn")?.click(); // opens + clears the form
-  const nameInput = document.getElementById("app-add-name") as HTMLInputElement | null;
-  const slugInput = document.getElementById("app-add-slug") as HTMLInputElement | null;
-  const urlInput = document.getElementById("app-add-url") as HTMLInputElement | null;
-  if (!nameInput || !urlInput) return;
-  let host = "";
-  try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* noop */ }
-  const finalName = name || host || "";
-  nameInput.value = finalName;
-  if (slugInput) slugInput.value = finalName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  urlInput.value = url;
-  nameInput.focus();
-}
-
 // ── MCP tab wiring — approvals + guardrails for an installed app ───────────
 
 function initMcpTab(): void {
@@ -1972,8 +1950,6 @@ function initApps() {
     }
     // Force-web / do-not-record are set from the app's detail screen now; new
     // apps already default to capture-off.
-    // If this app was created from a browser tab, convert that tab into it.
-    if (pendingOriginTab) { window.yo.convertTabToApp(pendingOriginTab, id); pendingOriginTab = null; }
     appAddForm.classList.add("hidden");
     const apps = await window.yo.panelAppsList();
     reloadPanelApps(apps.map(toPanelApp));
@@ -1995,8 +1971,8 @@ function initApps() {
   });
 
   // App add form cancel
-  document.getElementById("app-add-cancel")!.addEventListener("click", () => { pendingOriginTab = null; loadApps(); });
-  document.getElementById("app-add-cancel-btn")!.addEventListener("click", () => { pendingOriginTab = null; loadApps(); });
+  document.getElementById("app-add-cancel")!.addEventListener("click", () => { loadApps(); });
+  document.getElementById("app-add-cancel-btn")!.addEventListener("click", () => { loadApps(); });
 
   // Tab buttons
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
@@ -2157,15 +2133,6 @@ function initApps() {
   });
 
   appSearchInput.addEventListener("input", () => { appsPage = 0; renderAppsList(); });
-
-  // Apps dir changed on disk (e.g. an app dropped into ~/.glyphh/apps) — refresh the
-  // registry list live when it's the visible view, so new apps appear without a
-  // restart. Skip while a detail/form is open to avoid yanking the user away.
-  window.yo.onAppsChanged(() => {
-    if (!appsList.classList.contains("hidden") && appDetail.classList.contains("hidden") && appAddForm.classList.contains("hidden")) {
-      loadApps();
-    }
-  });
 
   // Draggable split divider. Pointer CAPTURE, not document mouse listeners:
   // the preview pane is a webview, and a webview swallows mouse events — the

@@ -1,8 +1,9 @@
 /**
  * Yo — Electron main process.
  *
- * Boots the app, registers the global hotkey, creates the
- * overlay window, and wires up panels + commands.
+ * Boots the app, registers the global hotkey, creates the main window, and
+ * hosts the home surface (home-view.ts) — one persistent BrowserView; all
+ * workspace apps are renderer-owned webview panels inside its workbench.
  */
 
 import "dotenv/config";
@@ -19,12 +20,12 @@ try {
   process.chdir(os.homedir());
 }
 
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeTheme, net, protocol, session as electronSession, shell, systemPreferences, webContents } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, net, protocol, session as electronSession, shell, systemPreferences, webContents } from "electron";
 
 // Stop Chromium from encrypting its own internal cookie/session storage via
 // the OS keychain ("Chrome Safe Storage" on macOS). This is separate from
-// anything our own code does (app-secrets.ts, auth.ts, app-connector.ts
-// all avoid safeStorage already) — it's Chromium's automatic behavior for
+// anything our own code does (app-secrets.ts and auth.ts avoid safeStorage
+// already) — it's Chromium's automatic behavior for
 // ANY persistent session partition (e.g. `persist:yo`, used by webviews and
 // browser tabs), and it's what was still triggering a keychain prompt on
 // every launch. In an unsigned/dev build, macOS can't remember the "Always
@@ -36,24 +37,19 @@ import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
 import { glyphhPath } from "./app-paths.js";
-import { PanelManager } from "./panel-manager";
-import { TerminalManager, AgentSpawnConfig } from "./terminal";
+import { HomeView } from "./home-view";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
 import { registerGhostMode, destroyGhostMode } from "./ghost-mode";
-import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL, getAuthToken } from "./auth";
+import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL } from "./auth";
 import { LayoutManager } from "./layout-manager";
-import { AppConnector } from "./app-connector";
-import { canAddApp, canSaveLayout, canUseCustomMcp } from "./entitlements";
-import { executeCommand } from "./dom-bridge";
+import { canSaveLayout, canUseCustomMcp } from "./entitlements";
 import { getPreference, setPreference } from "./stores/preferences-db";
 import { initAdaStore } from "./ada/store";
 import { registerAdaSync } from "./ada/indexer";
 import { registerAdaIpc } from "./ada/ipc";
 import { getLocalDb } from "./local-db";
-import { PanelCommandInterceptor } from "./panel-commands";
 import { SessionCache } from "./session-cache";
-import { smartGrab } from "./smart-grab";
 import { resolveShellPath } from "./shell-path";
 import { autoUpdater } from "electron-updater";
 
@@ -79,38 +75,30 @@ import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { installAttachHandlers } from "./attach-handlers";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
-import { wireForceWebGuest } from "./force-web";
-import { registerWorkingDirectoryIpc, getWorkingDirectory, getWorkingDirRecents, setWorkingDirectory, addRecent } from "./working-directory";
+import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
-import { registerWbAppRegistry } from "./app-resolver";
-import { DripManager, BUILTIN_EFFECTS, setDripManagerInstance } from "./drip-manager";
+import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolver";
+import { DripManager, setDripManagerInstance } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerModelsIpc } from "./models-ipc";
 import { getClient } from "./glyphh-client";
-import { ApiError } from "@glyphh/client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
 import { registerLibraryIpc } from "./library-ipc";
 import { startAgentScheduler, stopAgentScheduler } from "./agent-scheduler";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
-import { registerTabIpc } from "./tab-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
 import { setUserScopeReloader, onUserChange } from "./user-scope";
-import { onServerReconnect } from "./auth";
 import { migrateFromFiles } from "./stores/migrate-from-files";
-import { getAgentMode } from "./action-gate";
 
 
 let mainWindow: BrowserWindow | null = null;
-let panelManager: PanelManager;
+let homeView: HomeView;
 let layoutManager: LayoutManager;
 let commandParser: CommandParser;
-let appConnector: AppConnector;
-
-let terminalManager: TerminalManager;
 
 let mcpManager: McpManager | null = null;
 let dripManager: DripManager | null = null;
@@ -283,9 +271,6 @@ async function boot() {
     },
   );
 
-  // Core services
-  appConnector = new AppConnector();
-
   // MCP Manager — the client-side catalog view; all MCP execution is
   // server-side (connector tools + custom MCP connections).
   mcpManager = new McpManager();
@@ -302,7 +287,6 @@ async function boot() {
   // (closures over the `let` bindings — all assigned long before any switch).
   onUserChange(() => {
     layoutManager?.resetForUserChange();
-    appConnector?.rescopeForUserChange();
     connectorManager?.clearUserState();
     mcpManager?.setConnectorCatalog([]);
   });
@@ -310,7 +294,6 @@ async function boot() {
   // Pipedream Connectors — managed OAuth connections (Advanced tier)
   connectorManager = new ConnectorManager();
   connectorManager.setMcpManager(mcpManager);
-  connectorManager.setAppConnector(appConnector);
   connectorManager.on("changed", () => {
     mainWindow?.webContents.send("connectors-changed");
   });
@@ -320,30 +303,13 @@ async function boot() {
     mainWindow?.webContents.send("connectors-connect-progress", p);
   });
 
-  // Terminal manager — pty processes for terminal panels
-  terminalManager = new TerminalManager();
-  terminalManager.init();
-
   // Session cache — in-memory yo/sup content store
   const session = new SessionCache();
   session.setOnCapture(() => {});
 
-  // yo/dip/drip interceptor — injected into ALL app panels
-  const panelCommands = new PanelCommandInterceptor(appConnector, session);
-  {
-    // `agentMode` holds the permission (default/plan/acceptEdits/bypassPermissions).
-    // Previously also set on yoAgent (the now-removed chat agent); the panel's
-    // permission dropdown is gone too, so this just feeds the interceptor's
-    // (currently-unread) mode field for now.
-    const savedPerm = getAgentMode();
-    panelCommands.setAgentMode(savedPerm);
-  }
-  // Fetch active models from server and populate the interceptor + presets cache
   const initialTheme = getPreference<string>("theme", "dark");
   // Map themed ids (purple/aurora/prism/…) to a base mode nativeTheme accepts.
   nativeTheme.themeSource = initialTheme === "system" ? "system" : LIGHT_THEMES.has(initialTheme) ? "light" : "dark";
-  const resolvedTheme = initialTheme === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : initialTheme;
-  panelCommands.setTheme(resolvedTheme);
 
   nativeTheme.on("updated", () => {
     if (getPreference<string>("theme", "dark") !== "system") return;
@@ -351,130 +317,24 @@ async function boot() {
     broadcastTheme(resolved);
   });
 
-  // Helper: send theme to main window + all panel webContents (home, etc.)
+  // Helper: send theme to every webContents — the shell, the home view, its
+  // workbench webviews, and any ghost/solo windows.
   function broadcastTheme(resolved: string) {
-    panelCommands.setTheme(resolved);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("theme-changed", resolved);
-    }
-    for (const wc of panelManager.getAllWebContents()) {
-      wc.send("theme-changed", resolved);
+    for (const wc of webContents.getAllWebContents()) {
+      try { if (!wc.isDestroyed()) wc.send("theme-changed", resolved); } catch { /* window gone */ }
     }
   }
 
-  // Live apps reload — watch ~/.glyphh/apps so an app dropped on disk (e.g. a
-  // packaged app's <id>.json) shows up in the registry + `+` picker without a
-  // restart. Fans the refresh to the main window and every panel webContents
-  // (the Apps registry runs inside the yo://apps panel, not the main window).
-  appConnector.setOnChange(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("apps-changed");
-    }
-    for (const wc of panelManager.getAllWebContents()) {
-      wc.send("apps-changed");
-    }
-  });
-  appConnector.startWatching();
-
-  // Track code-terminal panels (Phase 2): panel id → spawn config used when
-  // the panel's webContents finishes loading.
-  const panelIdToAgentConfig = new Map<string, AgentSpawnConfig>();
-
-  panelManager = new PanelManager((id, wc) => {
-    const baseAppId = resolveAppId(id);
-    console.log(`[onCreated] panel="${id}" baseApp="${baseAppId}" wcId=${wc.id}`);
-    if (baseAppId === "term") {
-      wc.on("did-finish-load", () => {
-        console.log(`[terminal] did-finish-load panel="${id}" wcId=${wc.id} — spawning pty`);
-        terminalManager.spawn(wc);
-      });
-    } else if (baseAppId === "code") {
-      // Code-terminal: spawn the named agent CLI (claude) with role env vars
-      const cfg = panelIdToAgentConfig.get(id);
-      if (cfg) {
-        wc.on("did-finish-load", () => terminalManager.spawnAgent(wc, cfg));
-      } else {
-        console.warn(`[code-terminal] no agent config for panel "${id}" — falling back to plain terminal`);
-        wc.on("did-finish-load", () => terminalManager.spawn(wc));
-      }
-    } else {
-      // Activate interceptor so yo/dip/sup work on app panels
-      panelCommands.activate(wc, id);
-      // Track URL changes in browser tabs for persistence
-      if (baseAppId === "browser") trackBrowserUrl(id, wc);
-    }
-
-    // Force-web guard: any workbench webview whose app opted in stays in
-    // its panel when the page bounces to a native client (slack:// etc.).
-    (wc as any).on("did-attach-webview", (_event: unknown, guestWc: Electron.WebContents) => wireForceWebGuest(guestWc));
-
-    // Track URL + favicon for URL bar and tab favicons
-    const isBrowserPanel = baseAppId === "browser";
-    if (isBrowserPanel) {
-      // Browser panels use <webview> — track the guest's URL/favicon
-      (wc as any).on("did-attach-webview", (_event: unknown, childWc: Electron.WebContents) => {
-        panelNavWc[id] = childWc;
-        const trackChild = (url: string) => {
-          if (url && url !== "about:blank") {
-            panelUrls[id] = url;
-            if (panelManager.activePanelId === id) sendUrlUpdate();
-            sendPanelUrl(id);
-            sendTabState();
-          }
-        };
-        childWc.on("did-navigate", (_e: unknown, url: string) => {
-          trackChild(url);
-        });
-        childWc.on("did-navigate-in-page", (_e: unknown, url: string, isMainFrame: boolean) => {
-          if (isMainFrame) trackChild(url);
-        });
-        childWc.on("page-favicon-updated" as any, (_e: unknown, favicons: string[]) => {
-          if (favicons?.length) {
-            panelFavicons[id] = favicons[0];
-            setPreference("panelFavicons", { ...panelFavicons });
-            if (panelManager.activePanelId === id) sendUrlUpdate();
-            sendPanelUrl(id);
-            sendTabState();
-          }
-        });
-      });
-    } else {
-      // Direct BrowserView — track its own URL/favicon
-      panelNavWc[id] = wc;
-      const trackDirect = (url: string) => {
-        if (url && !url.startsWith("file://")) {
-          panelUrls[id] = url;
-          if (panelManager.activePanelId === id) sendUrlUpdate();
-          sendPanelUrl(id);
-          sendTabState();
-        }
-      };
-      wc.on("did-navigate", (_e: unknown, url: string) => {
-        trackDirect(url);
-      });
-      wc.on("did-navigate-in-page", (_e: unknown, url: string, isMainFrame: boolean) => {
-        if (isMainFrame) trackDirect(url);
-      });
-      wc.on("page-favicon-updated" as any, (_e: unknown, favicons: string[]) => {
-        if (favicons?.length) {
-          panelFavicons[id] = favicons[0];
-          setPreference("panelFavicons", { ...panelFavicons });
-          if (panelManager.activePanelId === id) sendUrlUpdate();
-          sendPanelUrl(id);
-          sendTabState();
-        }
-      });
-    }
-  });
-
-  // Persist zoom when changed via keyboard shortcut in panels
-  panelManager.setOnZoomChange((factor) => {
+  // The home surface — one persistent BrowserView owned here; workspace apps
+  // are renderer-owned <webview> panels inside its workbench.
+  homeView = new HomeView();
+  // Persist zoom when changed via keyboard shortcut in the home view
+  homeView.setOnZoomChange((factor) => {
     setPreference("zoom", factor);
   });
 
-  // Relay panel + RPA handlers — register once panelManager exists. The
-  // WebSocket itself was started earlier; handlers are looked up at request
-  // time, so registering them here is fine.
+  // Relay panel + RPA handlers. The WebSocket itself was started earlier;
+  // handlers are looked up at request time, so registering them here is fine.
   installRelayHandlers({
     getMcpManager: () => mcpManager,
   });
@@ -487,85 +347,8 @@ async function boot() {
   ipcMain.on("wb:rpa-register", (_e, slug: string, wcId: number) => registerRpaTarget(String(slug), Number(wcId)));
   ipcMain.on("wb:rpa-unregister", (_e, slug: string) => unregisterRpaTarget(String(slug)));
 
-  // Browser panel helpers (must be before app connector loop)
-  const BROWSER_HOMES: Record<string, string> = {
-    google: "https://www.google.com",
-    claude: "https://claude.ai",
-    chatgpt: "https://chatgpt.com",
-    gemini: "https://gemini.google.com",
-  };
-
-  function resolveBrowserHome(): string {
-    // Default matches the Appearance tab's select (claude) — was "google",
-    // which isn't even an option there, so the setting read as broken.
-    const pref = getPreference<string>("browserHomepage", "claude");
-    if (pref === "custom") return getPreference<string>("browserHomepageUrl", "") || BROWSER_HOMES.claude;
-    return BROWSER_HOMES[pref] || BROWSER_HOMES.claude;
-  }
-
-  function browserHtmlUrl(initialUrl?: string): string {
-    const base = `file://${path.join(__dirname, "..", "renderer", "browser.html")}`;
-    if (initialUrl) return `${base}?url=${encodeURIComponent(initialUrl)}`;
-    return base;
-  }
-
-  function trackBrowserUrl(panelId: string, wc: Electron.WebContents): void {
-    (wc as any).on("did-attach-webview", (_event: unknown, childWc: Electron.WebContents) => {
-      const saveUrl = (url: string) => {
-        if (url && url !== "about:blank") {
-          const saved = getPreference<Record<string, string>>("browserTabUrls", {});
-          saved[panelId] = url;
-          setPreference("browserTabUrls", saved);
-        }
-      };
-      childWc.on("did-navigate", (_e: unknown, url: string) => saveUrl(url));
-      childWc.on("did-navigate-in-page", (_e: unknown, url: string, isMainFrame: boolean) => {
-        if (isMainFrame) saveUrl(url);
-      });
-    });
-  }
-
-  // Seed PanelManager configs from apps (apps are the source of truth)
-  const terminalHtml = `file://${path.join(__dirname, "..", "renderer", "terminal.html")}`;
-  const terminalPreload = path.join(__dirname, "terminal-preload.js");
-  const homeHtml = `file://${path.join(__dirname, "..", "renderer", "home.html")}`;
-  // Slugs that map to home.html with ?section=<slug>. Each system-app tab
-  // (Apps / Layouts / Drips / Skills / Settings / About) opens its section.
-  // "" = unlocked multi-section home (the Code-primary surface with the app
-  // rail); non-empty locks the panel to that one section (rail hidden).
-  const HOME_SECTION_SLUGS: Record<string, string> = {
-    "yo://dashboard": "",
-    "yo://apps": "apps",
-    "yo://connections": "connections",
-    "yo://layouts": "layouts",
-    "yo://drips": "drips",
-    "yo://dashboard-settings": "settings",
-  };
-  for (const app of appConnector.list()) {
-    if (app.url && HOME_SECTION_SLUGS[app.url] !== undefined) {
-      const section = HOME_SECTION_SLUGS[app.url];
-      const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(app.id, `${homeHtml}${section ? `?section=${section}` : ""}`, homePreload, undefined, true);
-      // The unlocked home (Code-primary surface) owns its chrome — cover the
-      // titlebar strip entirely.
-      if (!section) panelManager.setFullBleed(app.id);
-    } else if (app.url === "yo://terminal") {
-      panelManager.addPanel(app.id, terminalHtml, terminalPreload);
-    } else if (app.url === "yo://browser") {
-      // Always open at the configured homepage (Appearance tab) — restoring
-      // the last-visited URL here made the homepage setting a no-op.
-      panelManager.addPanel(app.id, browserHtmlUrl(resolveBrowserHome()), undefined, undefined, true);
-    } else {
-      panelManager.addPanel(app.id, app.url!, undefined, app.forceWeb);
-    }
-  }
-
-  // Note store + memory store (flat files with keyword search)
-
-
-  layoutManager = new LayoutManager(panelManager);
-  commandParser = new CommandParser(panelManager, layoutManager, appConnector, session);
-  let restoring = false;
+  layoutManager = new LayoutManager();
+  commandParser = new CommandParser();
 
 
   // OS windows, the command palette, and the keytap overlay are retired —
@@ -573,131 +356,20 @@ async function boot() {
   // back by the renderer for panels_list / Glyphh's list tools.
   registerWbAppRegistry();
 
-  // Give interceptor access to visible panel IDs (for multi-panel grab)
-  panelCommands.setVisiblePanelsGetter(() => {
-    const gridInfo = layoutManager.getGridInfo();
-    if (gridInfo) return gridInfo.panelIds;
-    return panelManager.activePanelId ? [panelManager.activePanelId] : [];
-  });
-
-  // Give command parser a way to grab panel content for yo/sup from the command bar
-  commandParser.setGrabber(async (activeOnly?: boolean) => {
-    let panelIds: string[];
-    if (activeOnly) {
-      panelIds = panelManager.activePanelId ? [panelManager.activePanelId] : [];
-    } else {
-      panelIds = (layoutManager.getGridInfo()?.panelIds
-        ?? (panelManager.activePanelId ? [panelManager.activePanelId] : []))
-        .filter((id) => id !== "term");
-    }
-    const sections: string[] = [];
-    for (const id of panelIds) {
-      const wc = panelManager.getWebContents(id);
-      if (!wc) continue;
-      const app = appConnector.get(id);
-      let content = "";
-      if (app?.commands.grab) {
-        try { content = await executeCommand(wc, app.commands.grab); } catch {}
-      }
-      if (!content || content.startsWith("[Element not found")) {
-        try { content = await smartGrab(wc) || ""; } catch {}
-      }
-      if (content && !content.startsWith("[Element not found")) {
-        sections.push(panelIds.length > 1 ? `## ${app?.name || id}\n\n${content}` : content);
-      }
-      // Raw body text → capture store for search indexing
-      try {
-        const raw = await wc.executeJavaScript("document.body.innerText.slice(0, 30000)");
-        if (raw) session.rawCapture(id, `PAGE: ${await wc.executeJavaScript("document.title")}\nURL: ${wc.getURL()}\n\n${raw}`);
-      } catch {}
-    }
-    return sections.length > 0 ? sections.join("\n\n---\n\n") : null;
-  });
-
-  // Give command parser access to panel WebContents for app commands
-  commandParser.setWebContentsGetter((id) => panelManager.getGuestOrWebContents(id));
-
   // Push session state to renderer
   const sendSessionState = () => {
     mainWindow?.webContents.send("session-changed", session.getInfo());
   };
 
-  const execCommand = async (cmd: string, sourcePanelId?: string) => {
-    const result = await commandParser.execute(cmd, sourcePanelId);
-
-    const gridInfo = layoutManager.getGridInfo();
-    mainWindow?.webContents.send("split-state", gridInfo);
+  const execCommand = async (cmd: string) => {
+    const result = await commandParser.execute(cmd);
     sendSessionState();
-    // Track every panel in the layout — a layout can open apps that weren't
-    // previously open.
-    if (gridInfo) {
-      for (const id of gridInfo.panelIds) ensureTab(id);
-    }
-    // Sync tab state (dip commands change active panel / open grids)
-    if (gridInfo) {
-      setPreference("suspendedLayout", null);
-      // Show the per-cell URL bar whenever the grid has a browser, regardless
-      // of which cell is focused. Set once on entry so the browser cell is
-      // editable from paint.
-      const showBar = layoutManager.gridHasBrowser();
-      panelManager.setTopInset(showBar ? URL_BAR_HEIGHT : 0);
-      mainWindow?.webContents.send("url-bar-force", showBar);
-    } else if (panelManager.activePanelId) {
-      ensureTab(panelManager.activePanelId);
-    }
-    // Persist suspended grid if command suspended it
-    const suspended = layoutManager.getSuspendedGridInfo();
-    if (suspended) {
-      setPreference("suspendedLayout", {
-        version: 2, name: suspended.name, cols: suspended.cols, rows: suspended.rows,
-        colWidths: suspended.colWidths, rowHeights: suspended.rowHeights, cells: suspended.cells,
-      });
-    }
-    sendTabState();
     return result;
   };
-  panelCommands.setCommandHandler(execCommand);
-  panelCommands.setSessionNotifier(sendSessionState);
-  panelCommands.setYoClearer(() => { commandParser.clearYoHistory(); });
-
-  // Reminder registry
-  const activeReminders = new Map<string, { message: string; fireAt: number; timer: ReturnType<typeof setTimeout> }>();
-
-  // Wire .yo conversational agent — slide-out panel
-  const yoPanelWidth = () => getPreference<number>("yoPanelWidth", 380);
-
-  // When inset changes (panel open/close), re-apply current layout
-  panelManager.setOnInsetChange(() => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (panelManager.isHidden) return; // don't re-show during splash/overlay
-    if (layoutManager.hasSplit) {
-      layoutManager.restoreSplit(mainWindow);
-    } else {
-      panelManager.resizeViews(mainWindow);
-    }
-  });
-
-  // Panel opener / .waz spawner / mode changer removed with the interactive
-  // chat agent (YoAgent) and its popup variant (.waz) — see yo-agent.ts /
-  // waz-manager.ts deletion notes. `.yo`, `set-mode`, and `.waz` command
-  // dispatches in panel-commands.ts now no-op gracefully (their callback
-  // hooks are simply never wired).
-  panelCommands.setFaviconsGetter(() => panelFavicons);
-  panelCommands.setLayoutsGetter(() => layoutManager.listLayouts());
-
-  // Terminal yo/sup/dip — route through command parser, show result in terminal
-  terminalManager.setCommandHandler(async (cmd, wc) => {
-    const result = await execCommand(cmd);
-    if (!result || wc.isDestroyed()) return;
-
-    // Write result to terminal in grey
-    const lines = result.replace(/\r/g, "").split("\n").join("\r\n");
-    wc.send("terminal:data", `\x1b[90m${lines}\x1b[0m\r\n`);
-  });
 
   // EVERY renderer-facing handler registers BEFORE the first window loads —
-  // the home panel's boot modules invoke get-preference/tab-list immediately,
-  // and a handler registered after createWindow loses that race ("No handler
+  // the home panel's boot modules invoke get-preference immediately, and a
+  // handler registered after createWindow loses that race ("No handler
   // registered for …" at every launch).
   // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
   if (!ipcMain.listenerCount("wb-term:spawn")) {
@@ -714,11 +386,6 @@ async function boot() {
   if (!ipcMain.listenerCount("get-preference")) {
     ipcMain.handle("get-preference", (_e, key: string, defaultVal: unknown) => {
       return getPreference(key, defaultVal);
-    });
-  }
-  if (!ipcMain.listenerCount("tab-list")) {
-    ipcMain.handle("tab-list", () => {
-      return buildTabState();
     });
   }
 
@@ -744,511 +411,33 @@ async function boot() {
   // current setting (tray + launch-at-login) now.
   setReopenHandler(() => { void createWindow(); });
   syncBackgroundMode();
-  if (mainWindow) commandParser.setMainWindow(mainWindow);
 
   // Drip effects
   dripManager = new DripManager();
   setDripManagerInstance(dripManager);
   if (mainWindow) dripManager.setMainWindow(mainWindow);
   commandParser.setDripManager(dripManager);
-  panelCommands.setDripCustomsGetter(() => dripManager!.listCustoms());
-
-  function deduplicateRestorePanels(ids: string[]): string[] {
-    const seen = new Set<string>();
-    return ids.map((id) => {
-      if (!seen.has(id)) { seen.add(id); return id; }
-      const app = appConnector.get(resolveAppId(id));
-      if (!app?.url) return id;
-      panelInstanceCounter++;
-      const instanceId = `${id}-${panelInstanceCounter}`;
-      createPanelForApp(instanceId, app);
-      ensureTab(instanceId);
-      seen.add(instanceId);
-      return instanceId;
-    });
-  }
-
-  // Dashboard shell (5a): boot lands directly on the Apps panel instead of
-  // restoring the previous session's grid/split/tabs. restorePanels() below
-  // used to recreate every panel from the last session before the renderer's
-  // initDashboard() swapped over to the Apps tab — each restored BrowserView
-  // paints/loads independently, which looked like every screen flashing on
-  // launch. Kept restorePanels() defined (unused) rather than deleted, in
-  // case per-app windows (5b) want to resurrect a "reopen last session" option.
-  function openHomePanelOnly() {
-    const homeApp = appConnector.get("dashboard");
-    if (homeApp?.url && mainWindow) {
-      createPanelForApp("dashboard", homeApp);
-      panelManager.switchTo("dashboard", mainWindow);
-    }
-  }
-
-  // Restore panels from last view (or default to claude)
-  function restorePanels() {
-    let lastView = getPreference<{ type: string; id?: string; panels?: string[]; name?: string; rows?: string[][]; grid?: import("./layout-manager").GridLayout }>("lastView", null!);
-    // Cypher tabs are live sessions, not apps — they never survive a restart.
-    // Drop them from the restored tab strip, and if the persisted view itself
-    // involved a cypher, land the user on The Drop instead.
-    const savedTabs = getPreference<string[]>("openTabs", []).filter(
-      (id) => resolveAppId(id) !== "cypher",
-    );
-    if (lastView) {
-      const viewPanelIds: string[] = [];
-      if (lastView.id) viewPanelIds.push(lastView.id);
-      if (lastView.panels) viewPanelIds.push(...lastView.panels);
-      if (lastView.rows) lastView.rows.forEach((r) => viewPanelIds.push(...r));
-      if (lastView.grid?.cells) viewPanelIds.push(...lastView.grid.cells.map((c) => c.panelId));
-      if (viewPanelIds.some((id) => resolveAppId(id) === "cypher")) {
-        lastView = { type: "panel", id: "apps" };
-      }
-    }
-
-    // Re-register instance panels from saved tabs/view so they exist for restore
-    const allPanelIds: string[] = [...savedTabs];
-    if (lastView) {
-      if (lastView.grid?.cells) allPanelIds.push(...lastView.grid.cells.map(c => c.panelId));
-      if (lastView.panels) allPanelIds.push(...lastView.panels);
-      if (lastView.rows) lastView.rows.forEach(row => allPanelIds.push(...row));
-      if (lastView.id) allPanelIds.push(lastView.id);
-    }
-    console.log(`[restorePanels] allPanelIds:`, allPanelIds);
-    for (const id of allPanelIds) {
-      if (!id) continue;
-      if (panelManager.hasPanel(id)) { console.log(`[restorePanels] skip "${id}" — already registered`); continue; }
-      const baseId = resolveAppId(id);
-      if (baseId === id) { console.log(`[restorePanels] skip "${id}" — is base app, already registered at boot`); continue; }
-      // Code-terminal panels need special handling — re-create via codeTerminalLauncher
-      if (baseId === "code") {
-        console.log(`[restorePanels] skip code panel "${id}" — will restore via layout`);
-        continue;
-      }
-      const app = appConnector.get(baseId);
-      if (!app?.url) continue;
-      // Track counters so new instances don't collide
-      const dash = id.lastIndexOf("-");
-      const num = dash > 0 ? parseInt(id.slice(dash + 1), 10) : 0;
-      if (num > panelInstanceCounter) panelInstanceCounter = num;
-      if (baseId === "browser" && num > tabBrowserCounter) tabBrowserCounter = num;
-      createPanelForApp(id, app);
-    }
-
-    // Welcome app removed — boot directly into lastView or the first
-    // user app. No splash-style landing screen anymore.
-    if (lastView && mainWindow) {
-      if (lastView.type === "grid-full" && lastView.grid) {
-        const allCellIds = lastView.grid.cells.map(c => c.panelId);
-        const dedupedCellIds = deduplicateRestorePanels(allCellIds);
-        const dedupedGrid = { ...lastView.grid, cells: lastView.grid.cells.map((c, i) => ({ ...c, panelId: dedupedCellIds[i] })) };
-        layoutManager.applyGridLayout(dedupedGrid, mainWindow);
-        if (dedupedGrid.cells.length > 0) {
-          panelManager.setInitialActive(dedupedGrid.cells[0].panelId);
-        }
-      } else if (lastView.type === "grid" && lastView.rows) {
-        const flatIds = lastView.rows.flat();
-        const dedupedFlat = deduplicateRestorePanels(flatIds);
-        let idx = 0;
-        const dedupedRows = lastView.rows.map(row => row.map(() => dedupedFlat[idx++]));
-        layoutManager.splitGrid(dedupedRows, mainWindow);
-        if (dedupedRows.length > 0 && dedupedRows[0].length > 0) {
-          panelManager.setInitialActive(dedupedRows[0][0]);
-        }
-      } else if (lastView.type === "split" && lastView.panels) {
-        const deduped = deduplicateRestorePanels(lastView.panels);
-        if (deduped.length === 2) {
-          layoutManager.splitTwo(deduped[0], deduped[1], mainWindow);
-        } else if (deduped.length > 2) {
-          layoutManager.splitN(deduped, mainWindow);
-        }
-        panelManager.setInitialActive(deduped[0]);
-      } else if (lastView.type === "layout" && lastView.name) {
-        layoutManager.apply(lastView.name, mainWindow);
-        const grid = layoutManager.getGridInfo();
-        if (grid && grid.panelIds.length > 0) {
-          panelManager.setInitialActive(grid.panelIds[0]);
-        }
-      } else if (lastView.type === "panel" && lastView.id) {
-        panelManager.switchTo(lastView.id, mainWindow);
-      }
-    } else if (mainWindow) {
-      // No persisted view — land on the first user app, else the Apps panel.
-      const firstApp = appConnector.list().find(a => a.url && !a.url.startsWith("yo://"));
-      panelManager.switchTo(firstApp?.id || "apps", mainWindow);
-    }
-
-    // Restore all saved tabs (not just those in the current view).
-    // Skip code panels — they're managed by the layout restore above, not as standalone tabs.
-    for (const id of savedTabs) {
-      if (!id) continue;
-      if (!openTabs.includes(id) && resolveAppId(id) !== "code") {
-        openTabs.push(id);
-      }
-    }
-    // Restore suspended layout from previous session
-    const savedSuspended = getPreference<import("./layout-manager").GridLayout | null>("suspendedLayout", null);
-    if (savedSuspended && !layoutManager.hasSplit) {
-      layoutManager.setSuspendedGrid(savedSuspended);
-    }
-
-    // Also ensure panels from the active/suspended layout are in tabs
-    const gridInfo = layoutManager.getGridInfo();
-    const suspendedInfo = layoutManager.getSuspendedGridInfo();
-    if (gridInfo) {
-      for (const id of gridInfo.panelIds) ensureTab(id);
-      // Restoring a saved split that includes a browser → show its URL bar.
-      const showBar = layoutManager.gridHasBrowser();
-      panelManager.setTopInset(showBar ? URL_BAR_HEIGHT : 0);
-      mainWindow?.webContents.send("url-bar-force", showBar);
-    } else if (suspendedInfo) {
-      for (const id of suspendedInfo.panelIds) ensureTab(id);
-    }
-    if (panelManager.activePanelId) {
-      ensureTab(panelManager.activePanelId);
-    }
-    sendTabState();
-  }
-
-  // Helper: push grid state to renderer (for drag handles + panel chips)
-  function sendSplitState() {
-    const gridInfo = layoutManager.getGridInfo();
-    mainWindow?.webContents.send("split-state", gridInfo);
-  }
-
-  // ── Tab management ─────────���───────────────────────────────
-  const openTabs: string[] = [];
-  let tabBrowserCounter = 0;
-  let panelInstanceCounter = 0;
-
-  function resolveAppId(panelId: string | null | undefined): string {
-    if (!panelId) return "";
-    if (appConnector.hasDirect(panelId)) return panelId;
-    if (panelId.startsWith("browse-")) return "browser";
-    if (panelId.startsWith("code-")) return "code";
-    const dash = panelId.lastIndexOf("-");
-    if (dash > 0) {
-      const base = panelId.slice(0, dash);
-      const suffix = panelId.slice(dash + 1);
-      if (/^\d+$/.test(suffix) && appConnector.hasDirect(base)) return base;
-    }
-    return panelId;
-  }
-
-  function createPanelForApp(instanceId: string, app: { id: string; url?: string; forceWeb?: boolean }): void {
-    if (!app.url) return;
-    if (app.url && HOME_SECTION_SLUGS[app.url] !== undefined) {
-      // System-app wrappers (yo://apps, yo://layouts, …) reuse home.html
-      // with ?section=<slug>; yo://dashboard opens it unlocked (Code-primary
-      // surface with the app rail). home.ts reads the query on boot.
-      const section = HOME_SECTION_SLUGS[app.url];
-      const homePreload = path.join(__dirname, "..", "renderer", "preload.js");
-      panelManager.addPanel(instanceId, `${homeHtml}${section ? `?section=${section}` : ""}`, homePreload, undefined, true);
-      if (!section) panelManager.setFullBleed(instanceId);
-    } else if (app.url === "yo://terminal") {
-      panelManager.addPanel(instanceId, terminalHtml, terminalPreload);
-    } else if (app.url === "yo://browser") {
-      // New browser panels start at the configured homepage (Appearance tab).
-      panelManager.addPanel(instanceId, browserHtmlUrl(resolveBrowserHome()), undefined, undefined, true);
-    } else {
-      panelManager.addPanel(instanceId, app.url!, undefined, app.forceWeb);
-    }
-  }
-
-  // Per-panel URL + favicon tracking
-  const panelUrls: Record<string, string> = {};
-  const panelFavicons: Record<string, string> = getPreference<Record<string, string>>("panelFavicons", {});
-  const panelNavWc: Record<string, Electron.WebContents> = {}; // navigable webContents per panel
-
-  function getTabName(id: string | null | undefined): string {
-    if (!id) return "";
-    const app = appConnector.get(id) || appConnector.get(resolveAppId(id));
-    return app?.name || id;
-  }
-
-  /** The agent registry (and agent-<slug> panels) were removed, so there is no
-   *  longer an agent-panel favicon to resolve. Kept as a no-op for callers. */
-  function agentPanelFavicon(_id: string): string | null {
-    return null;
-  }
-
-  function buildTabState() {
-    // Tabs are always shown now — the "Show Tabs" option was removed (closing
-    // the last tab used to strand chrome like the URL bar). Kept as a const so
-    // the rest of buildTabState reads unchanged.
-    const visible = true;
-    const gridInfo = layoutManager.getGridInfo();
-    const suspendedInfo = layoutManager.getSuspendedGridInfo();
-    const layoutInfo = gridInfo || suspendedInfo;
-    if (layoutInfo) layoutInfo.panelIds = layoutInfo.panelIds.filter(Boolean);
-    const hasLayout = layoutInfo && layoutInfo.panelIds.length > 1;
-    const isActiveLayout = gridInfo && gridInfo.panelIds.length > 1;
-
-    // Filter stale null entries and deduplicate
-    for (let i = openTabs.length - 1; i >= 0; i--) {
-      if (!openTabs[i] || openTabs.indexOf(openTabs[i]) !== i) openTabs.splice(i, 1);
-    }
-
-    // "home" (Settings) is an on-demand, closable tab — opened only when the
-    // user picks a section from the left-rail Settings menu. Not forced here.
-
-    const urlForTab = (id: string): string | undefined => {
-      const isBrowser = resolveAppId(id) === "browser";
-      return isBrowser ? (panelUrls[id] || undefined) : undefined;
-    };
-
-    let tabs: Array<{ id: string; name: string; favicon?: string; layoutFavicons?: string[]; pinned?: boolean; url?: string; kind?: string }>;
-    if (hasLayout) {
-      // Show the saved layout's NAME — falling back to the panel-id join only
-      // for unnamed grids (ad-hoc splits created on the fly). The tab-bar
-      // renderer keys off `kind: "layout"` to draw a single layout glyph
-      // instead of stacked panel favicons.
-      const savedName = (layoutInfo.name || "").trim();
-      const layoutName = savedName || layoutInfo.panelIds.map((id) => getTabName(id)).join(" + ");
-      const layoutTabId = "__layout__";
-      const gridSet = new Set(layoutInfo.panelIds);
-      tabs = [
-        { id: layoutTabId, name: layoutName, kind: "layout" },
-        ...openTabs.filter((id) => !gridSet.has(id)).map((id) => ({
-          id,
-          name: getTabName(id),
-          favicon: panelFavicons[id] || agentPanelFavicon(id) || "",
-          url: urlForTab(id),
-        })),
-      ];
-    } else {
-      tabs = openTabs.map((id) => ({
-        id,
-        name: getTabName(id),
-        favicon: panelFavicons[id] || agentPanelFavicon(id) || "",
-        url: urlForTab(id),
-      }));
-    }
-
-    return {
-      tabs,
-      activeId: isActiveLayout ? "__layout__" : (panelManager.activePanelId || ""),
-      visible,
-    };
-  }
-
-  function sendTabState() {
-    const state = buildTabState();
-    mainWindow?.webContents.send("tab-state", state);
-  }
-
-  // 36px url-bar (28 input + 4 top + 4 bottom padding). No gap below —
-  // panel content starts immediately at url-bar's bottom edge.
-  const URL_BAR_HEIGHT = 36;
-
-  /** Push the active panel's URL + favicon + nav state to the renderer URL bar */
-  function sendUrlUpdate() {
-    const id = panelManager.activePanelId;
-    if (!id || !mainWindow || mainWindow.isDestroyed()) return;
-    const nwc = panelNavWc[id];
-    const canGoBack = nwc && !nwc.isDestroyed() ? nwc.navigationHistory.canGoBack() : false;
-    const canGoForward = nwc && !nwc.isDestroyed() ? nwc.navigationHistory.canGoForward() : false;
-    mainWindow.webContents.send("url-update", {
-      url: panelUrls[id] || "",
-      favicon: panelFavicons[id] || "",
-      canGoBack,
-      canGoForward,
-    });
-    // In grid mode, per-cell URL bars are handled by the layout manager — don't
-    // change the global topInset or it will trigger restoreSplit and re-apply the grid,
-    // stealing focus in a loop.
-    if (!layoutManager.hasSplit) {
-      // Only the browser panel shows a URL bar. Internal yo:// apps
-      // (Agent / Plan / Workbench / …) don't have URLs.
-      const isBrowser = resolveAppId(id) === "browser";
-      if (isBrowser) {
-        panelManager.setTopInset(URL_BAR_HEIGHT);
-        mainWindow.webContents.send("url-bar-force", true);
-      } else {
-        panelManager.setTopInset(0);
-        mainWindow.webContents.send("url-bar-force", false);
-      }
-    }
-  }
-
-  /** Notify renderer of a specific panel's URL (for cell URL bars in grid mode) */
-  function sendPanelUrl(panelId: string) {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.webContents.send("panel-url-update", {
-      id: panelId,
-      url: panelUrls[panelId] || "",
-      favicon: panelFavicons[panelId] || "",
-    });
-  }
-
-  function ensureTab(id: string | null | undefined) {
-    if (!id) return;
-    if (!openTabs.includes(id)) {
-      openTabs.push(id);
-      persistTabs();
-    }
-  }
-
-  function persistTabs() {
-    setPreference("openTabs", [...new Set(openTabs)]);
-  }
-
-  // NOTE: The Workbench Preview slot used to render as a native BrowserView
-  // overlay managed here (wb-preview:mount/bounds/navigate/reload/close). That
-  // approach was replaced by an in-DOM <iframe> inside the workbench renderer,
-  // so the BrowserView manager + its IPC handlers were removed as dead code.
-  // The surviving wb-preview:set-url / wb-preview:accepted channels (further
-  // below) belong to the separate `preview_url` tool consent flow.
-
-  // Hook into panel focus events — add tab when panel becomes active
-  let lastFocusedPanel: string | null = null;
-  panelManager.setOnPanelFocused((id: string) => {
-    lastFocusedPanel = id;
-
-    ensureTab(id);
-    // Persist lastView (only for single-panel mode — grids are saved by the layout system)
-    const gridInfo = layoutManager.getGridInfo();
-    if (!gridInfo || gridInfo.panelIds.length <= 1) {
-      setPreference("lastView", { type: "panel", id });
-    }
-    // Recents: any app focused (open / switch / dip / reopen / tab click)
-    // bubbles to the top of the left-rail Recents grid. Resolves multi-
-    // instance panel ids (e.g. workbench-2) back to the base app id.
-    const appId = resolveAppId(id);
-    if (appId) {
-      const app = appConnector.get(appId);
-      if (app) {
-        const folder = instanceBindings.get(id)?.folder || "";
-        addRecent({ kind: "app", id: appId, name: app.name, folder });
-      }
-    }
-    sendTabState();
-    sendUrlUpdate();
-  });
-
-  // When a browser panel's webview guest attaches, focus it so clicks pass through
-  panelManager.setOnPanelReady((id, wc) => {
-    if (resolveAppId(id) === "browser") {
-      const focusWebview = () => {
-        if (wc.isDestroyed()) return;
-        wc.executeJavaScript(`(function(){
-          var wv = document.getElementById("webview");
-          if (wv) { wv.focus(); }
-        })()`).catch(() => {});
-      };
-      // Focus immediately (for already-attached guests) and again after a delay
-      // to handle the case where the guest process attaches after the host loads
-      focusWebview();
-      setTimeout(focusWebview, 500);
-      setTimeout(focusWebview, 1500);
-    }
-  });
-
-  // Activate interceptor on browser panel guest webviews and ensure they're focusable
-  panelManager.setOnWebviewAttach((childWc, panelId) => {
-    panelCommands.activate(childWc, panelId);
-    if (resolveAppId(panelId) === "browser") {
-      childWc.on("did-finish-load", () => {
-        if (!childWc.isDestroyed()) childWc.focus();
-      });
-    }
-  });
-
-  // Give command parser tab close/list for .dip close
-  commandParser.setTabManager(
-    (id) => {
-      if (!mainWindow) return;
-      const idx = openTabs.indexOf(id);
-      if (idx >= 0) openTabs.splice(idx, 1);
-      const nextId = openTabs[Math.min(idx, openTabs.length - 1)];
-      panelManager.closePanel(id, mainWindow, nextId);
-      persistTabs();
-      sendSplitState();
-      sendTabState();
-    },
-    () => [...openTabs],
-    (url: string) => {
-      tabBrowserCounter++;
-      const id = `browse-${tabBrowserCounter}`;
-      panelManager.addPanel(id, browserHtmlUrl(url), undefined, undefined, true);
-      if (mainWindow) panelManager.switchTo(id, mainWindow);
-      ensureTab(id);
-      sendSplitState();
-      sendTabState();
-      return id;
-    },
-  );
-
-  commandParser.setInstanceCreator((appId: string) => {
-    const app = appConnector.get(appId);
-    if (!app?.url) return null;
-    panelInstanceCounter++;
-    const instanceId = `${appId}-${panelInstanceCounter}`;
-    createPanelForApp(instanceId, app);
-    ensureTab(instanceId);
-    return instanceId;
-  });
 
   // Account gate — the heartbeat reports the account status. When it reports
   // the account disabled (an admin action) we lock the user out of the
-  // workspace: hide the panels and raise the lockout overlay in the renderer.
+  // workspace: hide the home view and raise the lockout overlay in the renderer.
   // Registered BEFORE initAuth so the first heartbeat (fired fire-and-forget
   // inside initAuth) can never slip past us.
-  // Legacy local custom MCP configs → server-side custom MCP connections.
-  // Remote URLs migrate up (name + url + headers); stdio/localhost configs
-  // can't execute server-side and are dropped. Headless MCP-only local apps
-  // existed solely to carry the config, so they're removed once lifted.
-  const migrateLocalCustomMcp = async (): Promise<void> => {
-    if (getPreference("customMcpMigratedV1", false)) return;
-    for (const app of appConnector?.list() ?? []) {
-      const mcp = app.mcp;
-      if (!mcp) continue;
-      const url = mcp.url || "";
-      const localOnly = mcp.transport === "stdio" || !url ||
-        /^https?:\/\/(localhost|127\.|0\.0\.0\.0)/i.test(url);
-      if (localOnly) {
-        console.log(`[mcp-migrate] dropping local-only MCP config "${app.id}" — custom MCP runs server-side now`);
-      } else {
-        try {
-          const slug = app.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
-          await getClient().connections.personalMcpCreate({ slug, name: app.name, url, headers: mcp.headers ?? {} });
-          console.log(`[mcp-migrate] lifted "${app.id}" to a server-side custom MCP connection`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (/already exists|already in use/i.test(msg)) {
-            // Lifted on an earlier pass — fall through and drop the carrier.
-          } else if (err instanceof ApiError) {
-            // The server rejected the CONFIG (bad url, reserved slug…) — it
-            // will never succeed; drop it instead of retrying every heartbeat.
-            console.warn(`[mcp-migrate] dropping unmigratable config "${app.id}": ${msg}`);
-          } else {
-            // Network/server hiccup — leave everything for the next beat.
-            console.error(`[mcp-migrate] failed for "${app.id}" (will retry next heartbeat):`, msg);
-            return;
-          }
-        }
-      }
-      if (!app.url) appConnector?.remove(app.id);
-    }
-    setPreference("customMcpMigratedV1", true);
-  };
-
   let accountLocked = false;
   setHeartbeatObserver((hb) => {
     // The rail's identity chip repaints from this — without it, logging out
     // and back in as a DIFFERENT account kept showing the previous user's
     // name for the whole app run (the renderer filled it once at boot).
     mainWindow?.webContents.send("account-updated", getAccountInfo());
-    // One-shot: lift legacy LOCAL custom MCP servers (the old client-side
-    // path) up to the server as custom MCP connections. Runs on heartbeat
-    // because it needs an authenticated session; retries next beat on error.
-    void migrateLocalCustomMcp();
     const locked = hb.status === "disabled";
     if (locked === accountLocked) return;
     accountLocked = locked;
-    // Set the lock on the panel manager FIRST and unconditionally (independent of
-    // mainWindow timing). While locked it refuses every view attach — single panel
-    // or grid layout — so nothing can paint over the lockout overlay.
-    panelManager.setLocked(locked);
+    // Set the lock FIRST and unconditionally (independent of mainWindow
+    // timing). While locked the home view refuses to attach, so nothing can
+    // paint over the lockout overlay.
+    homeView.setLocked(locked);
     if (locked) {
-      if (mainWindow) panelManager.hideActive(mainWindow);
+      if (mainWindow) homeView.hide(mainWindow);
       mainWindow?.webContents.send("account-locked", {
         status: hb.status,
         upgradeUrl: `${PLATFORM_URL}/billing`,
@@ -1272,7 +461,7 @@ async function boot() {
   // rides the token (connector catalog, heartbeat, cloud-sync) recovers.
   setReauthHandler(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      panelManager.hideActive(mainWindow);
+      homeView.hide(mainWindow);
       mainWindow.webContents.send("show-onboarding");
     }
   });
@@ -1291,8 +480,9 @@ async function boot() {
     registerWorkingDirectoryIpc({
       getMainWindow: () => mainWindow,
       broadcastToPanels: (ch, ...args) => {
-        for (const wc of panelManager.getAllWebContents()) {
-          try { wc.send(ch, ...args); } catch { /* ignore */ }
+        const home = homeView.webContents;
+        if (home) {
+          try { home.send(ch, ...args); } catch { /* ignore */ }
         }
       },
       onWorkingDirChange: () => {
@@ -1300,46 +490,32 @@ async function boot() {
       },
       // Re-open a recent entry. Folder-bound entries restore the captured
       // workdir first; non-folder apps leave the current workdir alone.
-      // openFreshInternalApp now reuses the existing panel for non-folder
-      // apps and only spawns a fresh instance when one doesn't exist (or
-      // when a folder-bound app is opened with a different folder).
+      // Apps open through the modern resolver (workbench panels / nav
+      // sections); a layout recent lands on the Layouts section.
       openRecent: (entry) => {
         if (!mainWindow) return;
         if (entry.folder) setWorkingDirectory(entry.folder);
-        if (entry.kind === "app") {
-          openFreshInternalApp(entry.id);
-        } else if (entry.kind === "layout") {
-          openFreshInternalApp("layouts");
-        }
+        const ref = entry.kind === "layout" ? "layouts" : entry.id;
+        void openAppByRef(ref).catch(() => { /* app no longer resolvable */ });
       },
     });
   }
 
-  // Check if onboarding is needed BEFORE restoring panels
-  // (BrowserViews render above HTML, so they'd cover the onboarding overlay)
+  // Check if onboarding is needed BEFORE loading the home view
+  // (a BrowserView renders above HTML, so it'd cover the onboarding overlay)
   const authenticated = isAuthenticated();
   const needsOnboarding = !authenticated;
   let panelsReady = false;
 
   // Restore zoom level
   const savedZoom = getPreference<number>("zoom", 1.0);
-  if (savedZoom !== 1.0) panelManager.setZoom(savedZoom);
+  if (savedZoom !== 1.0) homeView.setZoom(savedZoom);
 
-  // Screen layout — apply the cached dock (full/left/right/top/bottom),
-  // reconcile with the server profile, and track edge drags.
-  // When Glyphh's footprint changes (rail collapse/expand, dock change) the
-  // open workspace apps slide to fit: re-run the last placement (single app
-  // full-workspace, or a layout's grid re-tiled into the new region).
-  // Only restore panels if not gated by onboarding
+  // Start loading home.html behind the splash — the renderer reveals it via
+  // panels-show once the splash dismisses. Skipped while onboarding gates.
   if (!needsOnboarding) {
-    restoring = true;
-    openHomePanelOnly();
-    restoring = false;
+    if (mainWindow) homeView.ensureCreated(mainWindow);
     panelsReady = true;
-    // Hide panels during splash — renderer will show them after splash dismisses
-    if (mainWindow) panelManager.hideActive(mainWindow);
-
-    // Cyphers are always closed on exit — no restore needed.
   }
 
   // Start cloud sync if authenticated and tier allows it
@@ -1383,11 +559,11 @@ async function boot() {
     }
   };
 
-  // Reveal the shell splash (panels are BrowserViews layered over index.html)
-  // with an "Updating…" status, then quit + install + relaunch.
+  // Reveal the shell splash (the home view is a BrowserView layered over
+  // index.html) with an "Updating…" status, then quit + install + relaunch.
   const doUpdateInstall = () => {
     broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
-    if (mainWindow) panelManager.hideActive(mainWindow);
+    if (mainWindow) homeView.hide(mainWindow);
     setTimeout(() => {
       upLog("INFO", "install: begin teardown");
       // Tear down BEFORE the installer runs: children (ptys, the agent
@@ -1420,7 +596,7 @@ async function boot() {
     if (pendingUpdate?.ready) { doUpdateInstall(); return; }
     installWhenReady = true;
     broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
-    if (mainWindow) panelManager.hideActive(mainWindow);
+    if (mainWindow) homeView.hide(mainWindow);
     autoUpdater.checkForUpdates().catch(() => {});
   };
 
@@ -1495,7 +671,7 @@ async function boot() {
           {
             label: "Toggle Panel DevTools",
             accelerator: "CmdOrCtrl+Alt+I",
-            click: () => panelManager.toggleDevTools(),
+            click: () => homeView.toggleDevTools(),
           },
           {
             label: "Toggle App DevTools",
@@ -1554,58 +730,31 @@ async function boot() {
     else mainWindow?.maximize();
   });
 
-  // IPC: refresh panels
-  ipcMain.on("panels-refresh", (_e, id?: string) => {
-    panelManager.refresh(id);
+  // IPC: refresh the home view
+  ipcMain.on("panels-refresh", () => {
+    homeView.reload();
   });
 
   // IPC: zoom
   ipcMain.on("panels-zoom", (_e, factor: number) => {
-    panelManager.setZoom(factor);
+    homeView.setZoom(factor);
     setPreference("zoom", factor);
   });
-  ipcMain.handle("panels-get-zoom", () => panelManager.getZoom());
+  ipcMain.handle("panels-get-zoom", () => homeView.getZoom());
 
-  // IPC: capture panel screenshots (freeze-frame before hiding)
-  ipcMain.handle("capture-panels", async () => {
-    if (!mainWindow) return [];
-    return panelManager.captureScreenshots(mainWindow);
-  });
-
-  // IPC: force ambient context capture
   // IPC: reveal downloaded file in Finder/Explorer
   ipcMain.on("download:show", (_e, filePath: string) => {
     shell.showItemInFolder(filePath);
   });
 
-  // IPC: panel visibility (for help overlay)
+  // IPC: home view visibility — hidden while a shell overlay (splash,
+  // onboarding, tutorial, lockout) must be visible above it.
   ipcMain.on("panels-hide", () => {
-    if (mainWindow) panelManager.hideActive(mainWindow);
+    if (mainWindow) homeView.hide(mainWindow);
   });
-  let firstPanelReveal = true;
   ipcMain.on("panels-show", () => {
     if (!mainWindow || !panelsReady) return;
-    panelManager.hidden = false;
-    if (layoutManager.hasSplit) {
-      layoutManager.restoreSplit(mainWindow);
-    } else {
-      panelManager.showActive(mainWindow);
-    }
-    sendSplitState();
-    sendTabState();
-    // First reveal — post-splash and post-onboarding — one-time setup.
-    if (firstPanelReveal) {
-      firstPanelReveal = false;
-      // Reload the active panel — sites like Gmail don't render CSS
-      // properly when first loaded at zero size.
-      if (panelManager.activePanelId) {
-        const view = panelManager.getView(panelManager.activePanelId);
-        if (view && !view.webContents.isDestroyed()) {
-          view.webContents.reload();
-        }
-      }
-    }
-
+    homeView.show(mainWindow);
   });
 
   // yo-panel-send/-stop/cmd-palette-open removed with the interactive chat
@@ -1618,8 +767,10 @@ async function boot() {
     void shell.openPath(resolved);
   });
 
-  // File-open router — media open in an internal browser tab; everything else
-  // hands off to the OS default app via shell.openPath.
+  // File-open router — media open in the workbench Browser panel (the
+  // glyphh-preview:// scheme streams local files, since the panel's webview
+  // can't navigate to file:// itself); everything else hands off to the OS
+  // default app via shell.openPath.
   const BROWSER_EXTS = new Set([
     "pdf", "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico",
     "mp4", "webm", "mov", "mp3", "wav", "htm", "html",
@@ -1632,13 +783,11 @@ async function boot() {
     const ext = path.extname(resolved).slice(1).toLowerCase();
 
     if (BROWSER_EXTS.has(ext)) {
-      tabBrowserCounter++;
-      const id = `browse-${tabBrowserCounter}`;
-      panelManager.addPanel(id, browserHtmlUrl(`file://${resolved}`), undefined, undefined, true);
-      panelManager.switchTo(id, mainWindow);
-      ensureTab(id);
-      sendSplitState();
-      sendTabState();
+      const posix = resolved.split(path.sep).join("/");
+      const previewUrl = "glyphh-preview://local" +
+        (posix.startsWith("/") ? "" : "/") +
+        posix.split("/").map(encodeURIComponent).join("/");
+      openBrowserAt(previewUrl);
       return;
     }
 
@@ -1651,82 +800,6 @@ async function boot() {
   // (src/renderer/help/schedules.ts) since there's no surface left to open a
   // run's transcript INTO. No handler is registered for that channel anymore.
 
-  // IPC: Files left rail resize + width persistence
-  ipcMain.on("files-rail-resize", (_e, width: number) => {
-    panelManager.setLeftInset(width);
-  });
-  ipcMain.on("files-rail-width-save", (_e, width: number) => {
-    setPreference("filesRailWidth", width);
-  });
-  ipcMain.handle("files-rail-get-width", () => {
-    return getPreference<number>("filesRailWidth", 240);
-  });
-
-  // get-agent-mode/set-agent-mode removed — they only fed the (now removed)
-  // chat panel's permission dropdown (default/plan/acceptEdits/bypassPermissions).
-
-  /** Per-instance (app, folder) bindings. Lets recents:open reuse an
-   *  already-open Vibe/Spec/etc panel that's bound to the same folder
-   *  instead of spawning a duplicate. Pruned lazily on lookup so a
-   *  closed tab's binding drops out. */
-  const instanceBindings = new Map<string, { appId: string; folder: string }>();
-
-  /** Find an existing panel bound to (appId, folder). Prunes dead
-   *  bindings as it goes. */
-  function findInstanceFor(appId: string, folder: string): string | null {
-    for (const [pid, b] of instanceBindings) {
-      if (!panelManager.hasPanel(pid)) {
-        instanceBindings.delete(pid);
-        continue;
-      }
-      if (b.appId === appId && b.folder === folder) return pid;
-    }
-    return null;
-  }
-
-  /** Open the named internal app — reuses an existing instance bound to
-   *  the same folder when one exists, otherwise spawns a fresh panel +
-   *  tab. Vibe and Spec are folder-bound; clicking Welcome's card with
-   *  no folder still spawns a stub. */
-  function openFreshInternalApp(baseId: string): void {
-    if (!mainWindow) return;
-    const app = appConnector.get(baseId);
-    if (!app?.url) return;
-    const folder = app.requiresFolder ? (getWorkingDirectory() || "") : "";
-
-    // Reuse-on-match. Folder-bound: same (app, folder) → slide to that
-    // instance. Non-folder: if the base panel exists, switch to it instead
-    // of spawning a duplicate (Dashboard, Apps, Settings, etc. are
-    // single-instance from the user's perspective).
-    const existing = folder
-      ? findInstanceFor(baseId, folder)
-      : (panelManager.hasPanel(baseId) ? baseId : null);
-    if (existing) {
-      panelManager.switchTo(existing, mainWindow);
-      ensureTab(existing);
-      sendSplitState();
-      sendTabState();
-      return;
-    }
-
-    let instanceId = baseId;
-    if (panelManager.hasPanel(baseId)) {
-      panelInstanceCounter++;
-      instanceId = `${baseId}-${panelInstanceCounter}`;
-    }
-    createPanelForApp(instanceId, app);
-    ensureTab(instanceId);
-    panelManager.switchTo(instanceId, mainWindow);
-    sendSplitState();
-    sendTabState();
-    // Folder-bound apps (Workbench, Vibe, Spec) record the instance->folder
-    // binding so a subsequent re-open from Recents restores the same folder.
-    // The Recents entry itself is added by the panel-focused hook (covers
-    // every open path — spawn, dip, tab click, reopen).
-    if (app.requiresFolder && folder) {
-      instanceBindings.set(instanceId, { appId: baseId, folder });
-    }
-  }
   // Approval system, ask_user_question, and preview_url (wb-preview:*)
   // callback wiring removed — they only served the interactive chat agent's
   // (YoAgent) SDK MCP tools, which no longer exist. mcp-expose.ts's own
@@ -1741,68 +814,22 @@ async function boot() {
     getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
     session, sendSessionState,
     execCommand,
-    getMainWindow: () => mainWindow, panelManager,
+    getMainWindow: () => mainWindow,
+    hidePanels: () => { if (mainWindow) homeView.hide(mainWindow); },
   });
 
   registerAppsIpc({
-    appConnector, layoutManager, dripManager, panelManager,
-    canAddApp, canSaveLayout,
+    layoutManager, dripManager,
+    canSaveLayout,
     getMainWindow: () => mainWindow,
   });
 
   // Installable Glyphh apps (marketplace unit) — capability-scoped windows.
   registerGlyphhAppHost();
 
-  // IPC: grid resize (drag dividers)
-  ipcMain.on("grid-drag-end", (_e, type: "col" | "row", index: number, fraction: number) => {
-    if (!mainWindow) return;
-    // Panels were hidden during drag (panelsHide); mark visible again so
-    // window-resize keeps updating bounds via bindResize.
-    panelManager.hidden = false;
-    if (type === "col") {
-      layoutManager.updateColWidth(index, fraction, mainWindow);
-    } else {
-      layoutManager.updateRowHeight(index, fraction, mainWindow);
-    }
-    sendSplitState();
-    // Persist updated proportions so they survive restart
-    const gridInfo = layoutManager.getGridInfo();
-    if (gridInfo) {
-      setPreference("lastView", {
-        type: "grid-full",
-        grid: {
-          name: "",
-          version: 2,
-          cols: gridInfo.cols,
-          rows: gridInfo.rows,
-          colWidths: gridInfo.colWidths,
-          rowHeights: gridInfo.rowHeights,
-          cells: gridInfo.cells,
-        },
-      });
-    }
-  });
-
-
   // Settings / home panel IPC — dashboard, MCP servers (relay), connectors, prompts.
   registerHomeIpc({
     mcpManager, connectorManager, canUseCustomMcp,
-  });
-
-  // IPC: tabs + URL bar (extracted to tab-ipc.ts)
-  registerTabIpc({
-    panelManager, layoutManager, appConnector,
-    panelCommands,
-    getMainWindow: () => mainWindow,
-    openTabs,
-    tabBrowserCounter: { get value() { return tabBrowserCounter; }, set value(v) { tabBrowserCounter = v; } },
-    panelInstanceCounter: { get value() { return panelInstanceCounter; }, set value(v) { panelInstanceCounter = v; } },
-    panelNavWc,
-    resolveAppId, resolveBrowserHome, browserHtmlUrl,
-    ensureTab, persistTabs, sendSplitState, sendTabState,
-    createPanelForApp,
-    setPreference, getPreference,
-    URL_BAR_HEIGHT,
   });
 
   ipcMain.on("open-external", (_e, url: string) => {
@@ -1845,7 +872,7 @@ async function boot() {
       try { wc.send("preference-changed", key, value); } catch { /* ignore */ }
     }
   });
-  // (get-preference IPC registered earlier, before restorePanels)
+  // (get-preference IPC registered earlier, before the first window loads)
 
   // IPC: relaunch app (for settings that require restart)
   ipcMain.on("relaunch", () => {
@@ -1853,14 +880,13 @@ async function boot() {
     app.exit(0);
   });
 
-  // IPC: onboarding complete — land on the Apps panel after activation
+  // IPC: onboarding complete — start loading Home behind the tutorial
   ipcMain.handle("onboarding-complete", () => {
-    openHomePanelOnly();
+    if (mainWindow) homeView.ensureCreated(mainWindow);
     panelsReady = true;
-    // Hide panels immediately — the tutorial will show next and it's HTML
-    // that gets painted under BrowserViews. panelsShow fires when tutorial closes.
-    if (mainWindow) panelManager.hideActive(mainWindow);
-    sendSplitState();
+    // Keep the view detached — the tutorial shows next and it's HTML that
+    // gets painted under BrowserViews. panelsShow fires when tutorial closes.
+    if (mainWindow) homeView.hide(mainWindow);
   });
 
   // The app-preview <webview> (Apps page) previews installed glyphh-apps, whose
@@ -1905,13 +931,8 @@ async function boot() {
       theme: (() => { const t = getPreference<string>("theme", "dark"); return t === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : t; })(),
     });
     if (!currentNeedsOnboarding && !panelsReady) {
-      restoring = true;
-      openHomePanelOnly();
-      restoring = false;
+      if (mainWindow) homeView.ensureCreated(mainWindow);
       panelsReady = true;
-      sendSplitState();
-    } else if (!currentNeedsOnboarding) {
-      sendSplitState();
     }
   }
 
@@ -2073,7 +1094,6 @@ function cleanupAll(backstopMs = 4000) {
     ["authTimers", () => cleanupAuthTimers()],
     ["glyphh", () => shutdownGlyphh()],
     ["agentScheduler", () => stopAgentScheduler()],
-    ["terminals", () => terminalManager?.killAll()],
     ["connectors", () => connectorManager?.cleanup()],
     ["drips", () => dripManager?.cleanup()],
     ["localMcpServer", () => stopLocalMcpServer()],

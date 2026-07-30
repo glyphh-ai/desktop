@@ -183,11 +183,10 @@ contextBridge.exposeInMainWorld("yo", {
   railCollapseToggle: () => ipcRenderer.invoke("rail-collapse-toggle") as Promise<boolean>,
   railCollapseSet: (on: boolean) => ipcRenderer.invoke("rail-collapse-set", on) as Promise<boolean>,
 
-  // Panel visibility + refresh
+  // Home view visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),
   panelsShow: () => ipcRenderer.send("panels-show"),
-  capturePanels: () => ipcRenderer.invoke("capture-panels") as Promise<Array<{ dataUrl: string; bounds: { x: number; y: number; width: number; height: number } }>>,
-  panelsRefresh: (id?: string) => ipcRenderer.send("panels-refresh", id),
+  panelsRefresh: () => ipcRenderer.send("panels-refresh"),
   panelsZoom: (factor: number) => ipcRenderer.send("panels-zoom", factor),
   panelsGetZoom: () => ipcRenderer.invoke("panels-get-zoom") as Promise<number>,
 
@@ -197,7 +196,6 @@ contextBridge.exposeInMainWorld("yo", {
   // layout manager, not the legacy in-window one.
   layoutsOpen: (name: string) => ipcRenderer.invoke("layouts-open", name) as Promise<{ ok: boolean; error?: string }>,
   layoutsSave: (name: string, panelIds: string[]) => ipcRenderer.invoke("layouts-save", name, panelIds) as Promise<boolean>,
-  layoutsFolderRequired: (name: string) => ipcRenderer.invoke("layouts-folder-required", name) as Promise<boolean>,
   layoutsPickFolder: () => ipcRenderer.invoke("layouts-pick-folder") as Promise<string | null>,
   layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null }) =>
     ipcRenderer.invoke("layouts-save-grid", grid) as Promise<boolean>,
@@ -211,11 +209,6 @@ contextBridge.exposeInMainWorld("yo", {
   dripsDelete: (name: string) => ipcRenderer.invoke("drips-delete", name) as Promise<string>,
   dripsPreview: (recipe: string) => ipcRenderer.invoke("drips-preview", recipe) as Promise<string>,
   dripsBuiltinEffects: () => ipcRenderer.invoke("drips-builtin-effects") as Promise<string[]>,
-
-
-  // Grid resize
-  gridDragEnd: (type: "col" | "row", index: number, fraction: number) =>
-    ipcRenderer.send("grid-drag-end", type, index, fraction),
 
   // Session
   sessionInfo: () => ipcRenderer.invoke("session-info") as Promise<{ hasContent: boolean; label: string; fileName: string }>,
@@ -235,29 +228,15 @@ contextBridge.exposeInMainWorld("yo", {
   onPreferenceChanged: (cb: (key: string, value: unknown) => void) => {
     ipcRenderer.on("preference-changed", (_e, key, value) => cb(key, value));
   },
-  onOpenSettings: (callback: () => void) => {
-    ipcRenderer.on("open-settings", () => callback());
-  },
   onFocusInput: (callback: () => void) => {
     ipcRenderer.on("focus-command-input", () => callback());
   },
-  onExecCommandFromPalette: (callback: (cmd: string) => void) => {
-    ipcRenderer.on("exec-command-from-palette", (_e, cmd: string) => callback(cmd));
-  },
 
-  // "Create App" from a browser tab → opens Home → Apps → New App prefilled.
-  createAppFromTab: (tabId: string, url: string, name: string) =>
-    ipcRenderer.send("create-app-from-tab", tabId, url, name),
-  onOpenNewApp: (callback: (data: { url?: string; name?: string; tabId?: string }) => void) => {
-    ipcRenderer.on("open-new-app", (_e, data) => callback(data));
-  },
   // Fired by main whenever the saved-app library changes server-side (e.g. an
   // app was installed over the MCP relay) — the Apps page re-fetches.
   onPanelAppsChanged: (callback: () => void) => {
     ipcRenderer.on("panel-apps-changed", () => callback());
   },
-  convertTabToApp: (tabId: string, appId: string) =>
-    ipcRenderer.send("convert-tab-to-app", tabId, appId),
   // Open a file from a yo-panel file link — main hands it to the OS default app.
   openInEditor: (filePath: string) => ipcRenderer.send("open-in-editor", filePath),
 
@@ -287,36 +266,6 @@ contextBridge.exposeInMainWorld("yo", {
   marketplaceInstall: (id: string) =>
     ipcRenderer.invoke("marketplace-install", id) as Promise<{ ok: boolean; slug?: string; error?: string }>,
 
-  // Apps CRUD
-  appsList: () => ipcRenderer.invoke("apps-list") as Promise<Array<{
-    id: string; name: string; url?: string; connected: boolean; connectedSlug?: string;
-    commands: Record<string, { selector: string; action: string; description: string }>;
-    meta?: { description: string; capabilities: string[] };
-    forceWeb?: boolean; doNotRecord?: boolean;
-    kind?: "user" | "system"; requiresFolder?: boolean;
-    connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean };
-    mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string }; enabled: boolean };
-  }>>,
-  /** Includes system-kind apps (Dashboard, Apps, Agents, …). Used by the
-   *  panel `+` picker so users can mount any internal surface ad-hoc. */
-  appsListAll: () => ipcRenderer.invoke("apps-list-all") as Promise<Array<{
-    id: string; name: string; url?: string; connected: boolean; connectedSlug?: string;
-    commands: Record<string, { selector: string; action: string; description: string }>;
-    meta?: { description: string; capabilities: string[] };
-    forceWeb?: boolean; doNotRecord?: boolean;
-    kind?: "user" | "system"; requiresFolder?: boolean;
-    connection?: { pipedreamSlug: string; accountId?: string; healthy?: boolean };
-    mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; tokenUrl: string; scope?: string }; enabled: boolean };
-  }>>,
-  /** Mountable in Layouts: user apps + non-system internal apps (Agent,
-   *  Vibe, Spec, Council, Terminal, Browser). System rail surfaces excluded. */
-  appsListMountable: () => ipcRenderer.invoke("apps-list-mountable") as Promise<Array<{
-    id: string; name: string; url?: string; connected: boolean;
-    kind?: "user" | "system"; internal?: boolean; requiresFolder?: boolean;
-  }>>,
-  // Only for the still-local system-app registry (nav/.dip apps) — NOT the
-  // Apps tab, which is fully server-authoritative via panelApps* below.
-  appsAdd: (id: string, name: string, url?: string) => ipcRenderer.invoke("apps-add", id, name, url),
   // Dashboard shell (5a): the Apps tab's data source. Every call here is a
   // main-process-mediated, JWT-authed request to yo-server's /api/panel-apps
   // (see panel-apps-* handlers in apps-ipc.ts) — no local mirror.
@@ -416,13 +365,6 @@ contextBridge.exposeInMainWorld("yo", {
   appReleasePromote: (slug: string, releaseId: string) =>
     ipcRenderer.invoke("app-release-promote", slug, releaseId) as Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>,
   appGraduate: (slug: string) => ipcRenderer.invoke("app-graduate", slug) as Promise<{ ok: boolean; path?: string; error?: string }>,
-  appsRemove: (id: string) => ipcRenderer.invoke("apps-remove", id) as Promise<boolean>,
-  appsSetConnection: (id: string, pipedreamSlug: string) => ipcRenderer.invoke("apps-set-connection", id, pipedreamSlug) as Promise<boolean>,
-  appsRemoveConnection: (id: string) => ipcRenderer.invoke("apps-remove-connection", id) as Promise<boolean>,
-  appsUpdateId: (oldId: string, newId: string) => ipcRenderer.invoke("apps-update-id", oldId, newId) as Promise<boolean>,
-  appsUpdateName: (id: string, name: string) => ipcRenderer.invoke("apps-update-name", id, name) as Promise<boolean>,
-  appsUpdateUrl: (id: string, url: string) => ipcRenderer.invoke("apps-update-url", id, url) as Promise<boolean>,
-  appsSetConnectedSlug: (id: string, slug: string | null) => ipcRenderer.invoke("apps-set-connected-slug", id, slug) as Promise<boolean>,
 
   // Onboarding complete — triggers panel restore
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
@@ -561,50 +503,13 @@ contextBridge.exposeInMainWorld("yo", {
   onSplashStatus: (callback: (msg: string) => void) => {
     ipcRenderer.on("splash-status", (_event, msg) => callback(msg));
   },
-  onSplitState: (callback: (info: {
-    panelIds: string[];
-    cols: number;
-    rows: number;
-    colWidths: number[];
-    rowHeights: number[];
-    cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number }>;
-  } | null) => void) => {
-    ipcRenderer.on("split-state", (_event, info) => callback(info));
-  },
 
-  // Command execution (used internally by interceptor routing)
+  // Command execution (the command center routes through this)
   execCommand: (cmd: string) => ipcRenderer.invoke("exec-command", cmd) as Promise<string>,
-
-  // Downloads
-  onDownloadStart: (cb: (info: { filename: string; totalBytes: number; savePath: string }) => void) => {
-    ipcRenderer.on("download:start", (_e, info) => cb(info));
-  },
-  onDownloadProgress: (cb: (info: { filename: string; receivedBytes: number; totalBytes: number }) => void) => {
-    ipcRenderer.on("download:progress", (_e, info) => cb(info));
-  },
-  onDownloadDone: (cb: (info: { filename: string; savePath: string; state: string }) => void) => {
-    ipcRenderer.on("download:done", (_e, info) => cb(info));
-  },
-  downloadShow: (filePath: string) => ipcRenderer.send("download:show", filePath),
 
   // Drip effects
   onDripEffect: (callback: (effect: string) => void) => {
     ipcRenderer.on("drip-effect", (_event, effect) => callback(effect));
-  },
-
-  // LLM config
-
-  // Tabs
-  tabList: () => ipcRenderer.invoke("tab-list") as Promise<{ tabs: Array<{ id: string; name: string; favicon?: string; layoutFavicons?: string[] }>; activeId: string; visible: boolean }>,
-  tabSwitch: (id: string) => ipcRenderer.send("tab-switch", id),
-  tabClose: (id: string) => ipcRenderer.send("tab-close", id),
-  tabCloseAll: () => ipcRenderer.send("tab-close-all"),
-  tabReorder: (newOrder: string[]) => ipcRenderer.send("tab-reorder", newOrder),
-  tabNew: () => ipcRenderer.send("tab-new"),
-  tabNewApp: (appId: string) => ipcRenderer.send("tab-new-app", appId),
-  tabNewWindow: (id: string) => ipcRenderer.send("tab-new-window", id),
-  onTabState: (callback: (state: { tabs: Array<{ id: string; name: string; favicon?: string; layoutFavicons?: string[] }>; activeId: string; visible: boolean }) => void) => {
-    ipcRenderer.on("tab-state", (_event, state) => callback(state));
   },
 
   // Theme
@@ -625,35 +530,6 @@ contextBridge.exposeInMainWorld("yo", {
   // Support
   submitSupportTicket: (ticket: { subject: string; description: string }) =>
     ipcRenderer.invoke("submit-support-ticket", ticket) as Promise<{ ok: boolean; error?: string }>,
-
-
-  // URL bar
-  urlBarNavigate: (url: string) => ipcRenderer.send("url-bar-navigate", url),
-  urlBarBack: () => ipcRenderer.send("url-bar-back"),
-  urlBarForward: () => ipcRenderer.send("url-bar-forward"),
-  urlBarRefresh: () => ipcRenderer.send("url-bar-refresh"),
-  panelNavBack: (panelId: string) => ipcRenderer.send("panel-nav-back", panelId),
-  panelNavForward: (panelId: string) => ipcRenderer.send("panel-nav-forward", panelId),
-  panelNavRefresh: (panelId: string) => ipcRenderer.send("panel-nav-refresh", panelId),
-  panelNavTo: (panelId: string, url: string) => ipcRenderer.send("panel-nav-to", panelId, url),
-  urlBarToggle: (show: boolean) => ipcRenderer.send("url-bar-toggle", show),
-  onUrlUpdate: (cb: (info: { url: string; favicon: string }) => void) => {
-    ipcRenderer.on("url-update", (_e, info) => cb(info));
-  },
-  onUrlBarForce: (cb: (show: boolean) => void) => {
-    ipcRenderer.on("url-bar-force", (_e, show) => cb(show));
-  },
-  onTabFavicon: (cb: (info: { id: string; favicon: string }) => void) => {
-    ipcRenderer.on("tab-favicon", (_e, info) => cb(info));
-  },
-  onPanelUrlUpdate: (cb: (info: { id: string; url: string; favicon: string }) => void) => {
-    ipcRenderer.on("panel-url-update", (_e, info) => cb(info));
-  },
-
-  // Files left rail — explorer scoped to the working directory
-  filesRailResize: (width: number) => ipcRenderer.send("files-rail-resize", width),
-  filesRailWidthSave: (width: number) => ipcRenderer.send("files-rail-width-save", width),
-  filesRailGetWidth: () => ipcRenderer.invoke("files-rail-get-width") as Promise<number>,
 
   // Recents (rich: app/layout + folder pairs)
   // Command-palette parity for the rail search — same global channels the
@@ -697,7 +573,6 @@ contextBridge.exposeInMainWorld("yo", {
 
   // Apps registry live-reload — fired when ~/.glyphh/apps changes on disk so the
   // registry + picker refresh without a restart.
-  onAppsChanged: (cb: () => void) => { ipcRenderer.on("apps-changed", () => cb()); },
 
   // Auto-update
   onUpdateStatus: (cb: (info: { status: string; version?: string; percent?: number; error?: string }) => void) => {

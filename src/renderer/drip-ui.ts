@@ -82,8 +82,8 @@ function makeDripTile(name: string, recipe: string, emoji: string, closePicker: 
 
 export function initDrip(): { openDripPicker: () => void; closeDripPicker: () => void } {
   // Register drip effect handler — this must stay wired unconditionally: it's
-  // how .drip/.dip commands (typed into any app panel, see panel-commands.ts)
-  // render their in-app effect, independent of the manual picker UI below.
+  // how .drip commands (from the command center) render their in-app effect,
+  // independent of the manual picker UI below.
   window.yo.onDripEffect(playDrip);
 
   // DOM elements for the manual picker — these lived inside the now-removed
