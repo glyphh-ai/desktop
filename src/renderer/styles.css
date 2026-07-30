@@ -12143,8 +12143,8 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   padding: 0 4px;
 }
 .code-chipwrap { position: relative; min-width: 0; }
-.code-bar-left { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; row-gap: 6px; min-width: 0; }
-.code-bar-right { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; row-gap: 6px; min-width: 0; }
+.code-bar-left { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; }
+.code-bar-right { display: flex; align-items: center; flex-wrap: nowrap; gap: 10px; min-width: 0; }
 
 /* Compaction meter — fills toward the fold tick (compaction point). */
 .code-ctx-meter {
@@ -13441,3 +13441,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
+
+/* LAST WORD on the model chip: its 320px ID rule above ties the container
+   tiers on specificity and wins on source order — so the clamps repeat here,
+   after it, where source order works for us. */
+@container agent (max-width: 560px) { #code-model-chip { max-width: 92px; } }
+@container agent (max-width: 460px) { #code-model-chip { max-width: 64px; } }
+@container agent (max-width: 380px) { #code-model-chip { max-width: 40px; } }
