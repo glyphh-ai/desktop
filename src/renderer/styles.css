@@ -10129,7 +10129,7 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
 .cc-del svg { width: 9px; height: 9px; }
 /* The DOCK — sticky slots above the search bar. Empty = dotted outline. */
 .cc-dock {
-  display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px 4px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px 4px;
   margin-bottom: 14px; padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
 }

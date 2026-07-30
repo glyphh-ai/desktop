@@ -1649,9 +1649,13 @@ async function init(): Promise<void> {
     let orderKeys: string[] = [];
     // The DOCK — sticky slots above the search bar. Slot 0 is ALWAYS Glyphh;
     // empty slots render as dotted outlines and accept dragged tiles.
-    const DOCK_N = 8;
     const GLYPHH_KEY = "app:glyphh";
-    const DOCK_DEFAULTS = [GLYPHH_KEY, "app:home", "app:connections", "app:apps", "app:layouts", "app:drips", "app:settings", "app:docs"];
+    const DOCK_DEFAULTS = [
+      GLYPHH_KEY, "app:home", "app:connections", "app:apps", "app:layouts",
+      "app:skills", "app:loops", "app:agents", "app:models", "app:drips",
+      "app:settings", "app:docs", "app:account",
+    ];
+    const DOCK_N = DOCK_DEFAULTS.length;
     let dockKeys: string[] = DOCK_DEFAULTS.slice();
     let query = "";
     let page = 0;
@@ -1851,6 +1855,15 @@ async function init(): Promise<void> {
           nm.textContent = e.name;
           slot.append(entryIcon(e), nm);
           slot.addEventListener("click", (ev) => { if (!editMode) openEntry(e, (ev as MouseEvent).altKey); });
+          if (i > 0) {
+            slot.draggable = true;
+            slot.addEventListener("dragstart", (ev) => {
+              dragKey = e.key;
+              ev.dataTransfer?.setData("text/plain", e.key);
+              slot.classList.add("dragging");
+            });
+            slot.addEventListener("dragend", () => { slot.classList.remove("dragging"); dragKey = null; });
+          }
           if (editMode && i > 0) {
             slot.classList.add("cc-jiggle");
             const del = document.createElement("span");
@@ -1926,7 +1939,9 @@ async function init(): Promise<void> {
     }
 
     function renderAll(): void {
-      const all = entries.filter((e) => matches(e.name) || matches(e.app?.slug || ""));
+      // A docked app lives in the dock ONLY — the grid below drops it.
+      const docked = new Set(dockKeys.filter(Boolean));
+      const all = entries.filter((e) => !docked.has(e.key) && (matches(e.name) || matches(e.app?.slug || "")));
       const { items, page: p, totalPages } = paginate(all, page, PER_PAGE);
       page = p;
       gridEl.innerHTML = "";
@@ -2108,6 +2123,13 @@ async function init(): Promise<void> {
         const dock = await yo?.getPreference?.("ccDock", null);
         if (Array.isArray(dock) && dock.length) {
           dockKeys = Array.from({ length: DOCK_N }, (_, i) => String(dock[i] ?? ""));
+          // Backfill empty slots with defaults the user isn't already showing —
+          // newly added built-ins land instead of permanent holes.
+          const have = new Set(dockKeys.filter(Boolean));
+          const spare = DOCK_DEFAULTS.filter((k) => !have.has(k));
+          for (let i = 0; i < DOCK_N && spare.length; i++) {
+            if (!dockKeys[i]) dockKeys[i] = spare.shift()!;
+          }
         }
       } catch { /* defaults stand */ }
       dockKeys[0] = GLYPHH_KEY;
