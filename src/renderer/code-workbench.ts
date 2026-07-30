@@ -69,8 +69,8 @@ interface MonacoTab {
   mode?: "preview" | "code";
   dirty?: boolean;
 }
-interface MonacoSlot { id: number; view: "monaco"; tabs: MonacoTab[]; activeIdx: number }
-interface FilesSlot { id: number; view: "files"; root?: TreeNode | null }
+interface MonacoSlot { id: number; view: "monaco"; tabs: MonacoTab[]; activeIdx: number; sticky?: boolean }
+interface FilesSlot { id: number; view: "files"; root?: TreeNode | null; sticky?: boolean }
 interface WbTerminal {
   /** Stable id used as the IPC channel suffix (`wb-term:data:<id>`). */
   ptyId: string;
@@ -90,20 +90,22 @@ interface TermSlot {
   id: number; view: "terminal";
   terminals: WbTerminal[];
   activeIdx: number;
+  sticky?: boolean;
 }
 /** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
-interface DiffSlot { id: number; view: "diff"; expanded?: Set<string> }
+interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: boolean }
 /** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
  *  composer); nothing of its own beyond the header's session controls. */
-interface CodingSlot { id: number; view: "coding" }
+interface CodingSlot { id: number; view: "coding"; sticky?: boolean }
 interface PreviewSlot {
-  id: number; view: "preview"; url?: string; viewKey?: string;
+  id: number; view: "preview"; url?: string; viewKey?: string; sticky?: boolean;
   /** Inline document (Glyphh build previews) — runtime-only, never persisted. */
   html?: string; htmlLabel?: string;
 }
 
 interface PlanSlot {
   id: number; view: "plan";
+  sticky?: boolean;
   /** "preview" renders the markdown (default; Plan is markdown-first),
    *  "code" shows the raw Monaco editor for direct editing. */
   mode: "preview" | "code";
@@ -1423,11 +1425,28 @@ async function init(): Promise<void> {
     // Opening an individual app means the workbench is no longer "the named
     // layout" — stop writing geometry into that layout's memory.
     activeLayoutName = null;
-    // A pinned (sticky) section always wins as the swap target. Absent a pin,
+    // A pinned (sticky) section always wins as the swap target — on ANY slot
+    // kind: a pinned Browser band means "apps land here". Absent a pin,
     // switch the active panel ONLY when asked (.dip .); otherwise stack.
-    const pinned = appSlots().find((s) => s.sticky);
+    const pinned = rails.flatMap((r) => r.slots).find((s) => s.sticky);
     const target = opts.newPanel ? undefined : (pinned ?? (opts.replaceActive ? appSlots()[0] : undefined));
-    if (target) {
+    if (target && target.view !== "app") {
+      // A pinned TOOL panel is REPLACED by the app at the same spot, pin
+      // carried over so the NEXT open lands here too.
+      for (const rail of rails) {
+        const idx = rail.slots.indexOf(target);
+        if (idx < 0) continue;
+        rail.slots[idx] = {
+          id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url,
+          glyphh: app.glyphh, sticky: true, urlBarHidden: urlBarHiddenDefault(),
+        };
+        renderRails();
+        saveLayout();
+        scheduleAppSync();
+        return;
+      }
+    }
+    if (target && target.view === "app") {
       const view = appViews.get(target.id);
       const apply = (): void => {
         target.slug = app.slug;
@@ -3226,8 +3245,15 @@ async function init(): Promise<void> {
         .map((c) => { const id = c.panelId.trim().toLowerCase(); return id.startsWith("tool:") ? id.slice(5) : id; });
       if (defSticky.length) {
         const stickyKeys = new Set(defSticky);
+        const claimed = new Set<string>();
         rails.flatMap((r) => r.slots).forEach((sl) => {
-          if (sl.view === "app") sl.sticky = stickyKeys.has(sl.slug.toLowerCase());
+          // App slots match by slug; TOOL slots by their view name (the
+          // tool: tail — "preview" is the Browser). First match claims the
+          // key so twin tools can't both go sticky.
+          const key = sl.view === "app" ? sl.slug.toLowerCase() : sl.view;
+          const want = stickyKeys.has(key) && !claimed.has(key);
+          sl.sticky = want;
+          if (want) claimed.add(key);
         });
       }
       // No saveLayout() here: nothing changed — the memory stays as the user
@@ -3266,6 +3292,7 @@ async function init(): Promise<void> {
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
+        slot.sticky = c.sticky;   // a TOOL cell can be the pin (Browser band)
         // Layout-slotted app setup: the Browser opens AT the layout's URL,
         // the Terminal runs the layout's first command once its shell is up.
         if (slot.view === "preview" && c.config?.url) slot.url = c.config.url;
