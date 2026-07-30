@@ -1047,7 +1047,7 @@ async function init(): Promise<void> {
     const title = slot.view === "app" ? slot.name
       : slot.view === "section" ? (SECTION_TITLES[slot.section] || slot.section)
       : meta.title;
-    const icon = meta.icon;
+    const icon = slot.view === "coding" ? "" : meta.icon;
     const wrap = document.createElement("div");
     wrap.className = "ws-rail-slot";
     wrap.dataset.slotId = String(slot.id);
@@ -3791,6 +3791,10 @@ async function init(): Promise<void> {
     const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
     const titleEl = document.querySelector<HTMLElement>('.ws-rail-slot[data-view="coding"] .ws-rail-slot-header .title');
     if (titleEl && sess) titleEl.textContent = sess.currentTitle();
+    // If the history/+ controls ever missed their attach (boot ordering),
+    // the next session event heals the header. Idempotent.
+    const codingWrap = document.querySelector<HTMLElement>('.ws-rail-slot[data-view="coding"]');
+    if (codingWrap) renderCodingHeaderControls(codingWrap);
     // Remember which session rode this layout — "last" sessionMode resumes it.
     const cur = sess?.currentId?.();
     if (activeLayoutName && cur) {
