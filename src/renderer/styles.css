@@ -10212,8 +10212,11 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
    DOM fills the slot and scrolls itself; padding matches the old #page-body. */
 .ws-section-body { display: flex; flex-direction: column; overflow: hidden; }
 .ws-section-body > .help-section {
-  flex: 1; min-height: 0; overflow-y: auto; padding: 24px 32px;
+  /* The slot header already titles the panel — content starts tight. */
+  flex: 1; min-height: 0; overflow-y: auto; padding: 10px 32px 24px;
 }
+/* Hosted Apps page: its own big "Apps" heading duplicates the slot header. */
+.wb-hosted .apps-page-heading { display: none; }
 .ws-section-body > .help-section[data-section="docs"],
 .ws-section-body > .help-section[data-section="settings"],
 .ws-section-body > .help-section[data-section="dashboard"],
