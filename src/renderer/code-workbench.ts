@@ -355,7 +355,7 @@ async function init(): Promise<void> {
   // runtime state and would feel surprising to restore.
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
-  type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; launchConfig?: Record<string, unknown> | null };
+  type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
   type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
@@ -1419,7 +1419,7 @@ async function init(): Promise<void> {
    *  when a layout PINNED a section (a sticky slot — that section is the
    *  designated swap target) or the caller asks to switch the active panel
    *  (`replaceActive`, e.g. `.dip .`). newPanel forces a fresh slot even past a pin. */
-  function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean } = {}): void {
+  function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean; replaceWorkspace?: boolean } = {}): void {
     const existing = appSlots().find((s) => s.slug === app.slug);
     if (existing) { focusAppSlot(existing.id); return; }
     // Opening an individual app means the workbench is no longer "the named
@@ -1429,6 +1429,17 @@ async function init(): Promise<void> {
     // kind: a pinned Browser band means "apps land here". Absent a pin,
     // switch the active panel ONLY when asked (.dip .); otherwise stack.
     const pinned = rails.flatMap((r) => r.slots).find((s) => s.sticky);
+    // Command-bar semantics: the app REPLACES the workspace — unless a layout
+    // pinned a landing section (the pin wins, below) or the caller stacks.
+    if (opts.replaceWorkspace && !opts.newPanel && !pinned) {
+      void clearAllPanels().then((cleared) => {
+        if (!cleared) return;   // the user kept unsaved work — abort the open
+        const slot: AppSlot = { id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url, glyphh: app.glyphh, urlBarHidden: urlBarHiddenDefault() };
+        placeSlot(slot);
+        scheduleAppSync();
+      });
+      return;
+    }
     const target = opts.newPanel ? undefined : (pinned ?? (opts.replaceActive ? appSlots()[0] : undefined));
     if (target && target.view !== "app") {
       // A pinned TOOL panel is REPLACED by the app at the same spot, pin
@@ -1501,6 +1512,10 @@ async function init(): Promise<void> {
     type CcYo = {
       panelAppsList?: () => Promise<PanelAppRow[]>;
       layoutsList?: () => Promise<LayoutRow[]>;
+      panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      layoutsDelete?: (name: string) => Promise<boolean>;
+      getPreference?: (k: string, d: unknown) => Promise<unknown>;
+      setPreference?: (k: string, v: unknown) => Promise<unknown>;
       dripsList?: () => Promise<Array<{ name: string; recipe: string }>>;
       dripsBuiltinEffects?: () => Promise<string[]>;
       dripsPreview?: (recipe: string) => Promise<string>;
@@ -1508,20 +1523,25 @@ async function init(): Promise<void> {
     };
     const yo = (window as unknown as { yo?: CcYo }).yo;
 
-    const APPS_PER_PAGE = 14;
-    const LAYOUTS_PER_PAGE = 8;
+    // ONE grid: apps and layouts together, iOS-launcher style. Glyphh is
+    // always first; a saved order (long-press → drag) covers everything else.
+    const PER_PAGE = 30;
+    interface CcEntry { key: string; name: string; app?: PanelAppRow; layout?: LayoutRow }
     let appRows: PanelAppRow[] = [];
     let layouts: LayoutRow[] = [];
+    let entries: CcEntry[] = [];
+    let orderKeys: string[] = [];
     let query = "";
-    let appsPage = 0;
-    let layoutsPage = 0;
+    let page = 0;
+    let editMode = false;
+    let dragKey: string | null = null;
 
     const toRef = (a: PanelAppRow): WbAppRef => ({ slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app" });
     /** Open a library row RESPECTING its declared type: native rows and rows
      *  whose browser choice isn't the Glyphh Panel route through app-launch
      *  (main decides: native launch / external browser); only Glyphh Panel
      *  rows open as workbench panels here. */
-    const openRow = (a: PanelAppRow, opts: { newPanel?: boolean } = {}): void => {
+    const openRow = (a: PanelAppRow, opts: { newPanel?: boolean; replaceWorkspace?: boolean } = {}): void => {
       const browser = typeof a.launchConfig?.browser === "string" && a.launchConfig.browser ? (a.launchConfig.browser as string) : "glyphh-panel";
       // Nav apps route through main (goto-section), never into a panel.
       const external = a.isBrowser === false || !!a.execPath || a.appArchetype === "glyphh-nav" || (browser !== "glyphh-panel" && a.appArchetype !== "glyphh-app");
@@ -1560,22 +1580,14 @@ async function init(): Promise<void> {
         </div>
         <div class="cc-apps"></div>
         <div class="cc-apps-pager cc-pager"></div>
-        <div class="cc-layouts-wrap hidden">
-          <div class="cc-section-label">Layouts</div>
-          <div class="cc-layouts"></div>
-          <div class="cc-layouts-pager cc-pager"></div>
-        </div>
         <div class="cc-empty hidden">No apps yet — add one from the Apps tab.</div>
       </div>`;
     document.body.appendChild(el);
     switcherEl = el;
 
     const input = el.querySelector<HTMLInputElement>("#cc-input")!;
-    const appsEl = el.querySelector<HTMLElement>(".cc-apps")!;
-    const appsPagerEl = el.querySelector<HTMLElement>(".cc-apps-pager")!;
-    const layoutsWrapEl = el.querySelector<HTMLElement>(".cc-layouts-wrap")!;
-    const layoutsEl = el.querySelector<HTMLElement>(".cc-layouts")!;
-    const layoutsPagerEl = el.querySelector<HTMLElement>(".cc-layouts-pager")!;
+    const gridEl = el.querySelector<HTMLElement>(".cc-apps")!;
+    const pagerEl = el.querySelector<HTMLElement>(".cc-apps-pager")!;
     const emptyEl = el.querySelector<HTMLElement>(".cc-empty")!;
     input.focus();
 
@@ -1597,10 +1609,13 @@ async function init(): Promise<void> {
       if (on && !ccWin.__ccOverlayHost) { closeSwitcher(); void ccWin.yo?.ccOverlayOpen?.(); }
       else if (!on && ccWin.__ccOverlayHost) window.close();
     });
-    input.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeSwitcher(); });
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      if (editMode) exitEdit(); else closeSwitcher();
+    });
     el.addEventListener("mousedown", (ev) => {
       const t = ev.target as HTMLElement;
-      if (t === el || t.classList.contains("cc-inner")) closeSwitcher();
+      if (t === el || t.classList.contains("cc-inner")) { if (editMode) exitEdit(); else closeSwitcher(); }
       else if (!t.closest(".cc-drip-wrap")) dripMenu.classList.add("hidden");
     });
 
@@ -1639,67 +1654,159 @@ async function init(): Promise<void> {
     };
     const openLayout = (layout: LayoutRow): void => openLayoutRow(layout, appRows);
 
-    function renderApps(): void {
-      const all = appRows.filter((a) => matches(a.name) || matches(a.slug || ""));
-      const { items, page, totalPages } = paginate(all, appsPage, APPS_PER_PAGE);
-      appsPage = page;
-      appsEl.innerHTML = "";
-      const openSlugs = new Set(appSlots().map((s) => s.slug));
-      for (const a of items) {
-        const ref = toRef(a);
-        const card = document.createElement("button");
-        card.className = "cc-card" + (openSlugs.has(ref.slug) ? " open" : "");
-        card.innerHTML = `
-          <div class="cc-card-shot">
-            ${appIconInner(iconApp(a), a.name, "cc-card-initial")}
-            ${a.slug ? `<span class="cc-card-slug">${esc(a.slug)}</span>` : ""}
-          </div>
-          <span class="cc-card-name">${esc(a.name)}</span>`;
-        card.addEventListener("click", (ev) => { openRow(a, { newPanel: (ev as MouseEvent).altKey }); closeSwitcher(); });
-        appsEl.appendChild(card);
+    // ── The unified grid: Glyphh first, then the saved order, new items after.
+    function buildEntries(): void {
+      const apps: CcEntry[] = appRows.map((a) => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a }));
+      const ls: CcEntry[] = layouts.map((l) => ({ key: `layout:${(l.name || "").toLowerCase()}`, name: l.name, layout: l }));
+      const all = [...apps, ...ls];
+      const self = all.find((e) => e.app?.appArchetype === "glyphh-self");
+      const byKey = new Map(all.map((e) => [e.key, e]));
+      const ordered: CcEntry[] = [];
+      const used = new Set<string>();
+      for (const k of orderKeys) {
+        const e = byKey.get(k);
+        if (e && e !== self && !used.has(k)) { ordered.push(e); used.add(k); }
       }
-      appsPagerEl.innerHTML = "";
-      if (totalPages > 1) appsPagerEl.appendChild(pager(page, totalPages, (p) => { appsPage = p; renderApps(); }));
-      emptyEl.classList.toggle("hidden", all.length > 0 || layouts.length > 0);
-      renderAda();
+      for (const e of all) if (e !== self && !used.has(e.key)) { ordered.push(e); used.add(e.key); }
+      entries = self ? [self, ...ordered] : ordered;
     }
 
-    function renderLayouts(): void {
-      const all = layouts.filter((l) => matches(l.name));
-      layoutsEl.innerHTML = "";
-      layoutsPagerEl.innerHTML = "";
-      if (!all.length) { layoutsWrapEl.classList.add("hidden"); return; }
-      layoutsWrapEl.classList.remove("hidden");
-      const { items, page, totalPages } = paginate(all, layoutsPage, LAYOUTS_PER_PAGE);
-      layoutsPage = page;
-      for (const layout of items) {
-        const cols = layout.cols || 1, rows = layout.rows || 1;
-        const cells = layout.splits.map((c) => {
-          const left = (c.col / cols) * 100, top = (c.row / rows) * 100;
-          const w = (c.colSpan / cols) * 100, h = (c.rowSpan / rows) * 100;
-          const app = resolveCell(c.panelId);
-          // A built-in workspace panel (tool:files/terminal/…) has no app to
-          // resolve. It used to render VIEW_META's line-art glyph, which read as
-          // a different KIND of thing next to the branded app icons beside it —
-          // a lone outline among filled marks. It gets the same lettered tile the
-          // unbranded apps already fall back to, so a layout preview is one
-          // visual language: real icons where they exist, letters where they do not.
-          const toolView = c.panelId?.startsWith("tool:") ? c.panelId.slice(5) : "";
-          const toolTitle = toolView ? (VIEW_META[toolView]?.title ?? toolView) : "";
-          const ico = app
-            ? `<span class="cc-mini-ico">${appIconInner(iconApp(app), app.name, "cc-mini-initial")}</span>`
-            : toolTitle
-              ? `<span class="cc-mini-ico cc-mini-tool"><span class="cc-mini-initial">${esc(toolTitle.charAt(0).toUpperCase())}</span></span>`
-              : "";
-          return `<div class="cc-mini-cell" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%">${ico}</div>`;
-        }).join("");
-        const card = document.createElement("button");
-        card.className = "cc-layout-card";
-        card.innerHTML = `<div class="cc-mini">${cells}</div><span class="cc-card-name">${esc(layout.name)}</span>`;
-        card.addEventListener("click", () => { openLayout(layout); closeSwitcher(); });
-        layoutsEl.appendChild(card);
-      }
-      if (totalPages > 1) layoutsPagerEl.appendChild(pager(page, totalPages, (p) => { layoutsPage = p; renderLayouts(); }));
+    function persistOrder(): void {
+      orderKeys = entries.filter((e) => e.app?.appArchetype !== "glyphh-self").map((e) => e.key);
+      void yo?.setPreference?.("ccIconOrder", orderKeys);
+    }
+
+    const enterEdit = (): void => { if (!editMode) { editMode = true; renderAll(); } };
+    const exitEdit = (): void => { if (editMode) { editMode = false; persistOrder(); renderAll(); } };
+
+    /** Live-reorder during a drag: mutate `entries` AND move the DOM node —
+     *  a full re-render mid-drag would cancel the native drag session. */
+    function moveEntry(fromKey: string, toKey: string): void {
+      const fi = entries.findIndex((e) => e.key === fromKey);
+      const ti = entries.findIndex((e) => e.key === toKey);
+      if (fi < 0 || ti < 0 || fi === ti) return;
+      const [m] = entries.splice(fi, 1);
+      entries.splice(ti, 0, m);
+      const fromEl = gridEl.querySelector(`[data-key="${CSS.escape(fromKey)}"]`);
+      const toEl = gridEl.querySelector(`[data-key="${CSS.escape(toKey)}"]`);
+      if (fromEl && toEl) { if (fi < ti) toEl.after(fromEl); else toEl.before(fromEl); }
+    }
+
+    async function deleteEntry(e: CcEntry): Promise<void> {
+      const ok = await appConfirm({
+        title: `Delete "${e.name}"?`,
+        body: e.layout ? "The layout is removed from your library." : "The app is uninstalled from your library.",
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        if (e.layout) await yo?.layoutsDelete?.(e.layout.name);
+        else if (e.app) await yo?.panelAppsDelete?.(e.app.id);
+      } catch { /* reload below re-syncs to server truth either way */ }
+      await reload();
+      document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+    }
+
+    function renderAll(): void {
+      const all = entries.filter((e) => matches(e.name) || matches(e.app?.slug || ""));
+      const { items, page: p, totalPages } = paginate(all, page, PER_PAGE);
+      page = p;
+      gridEl.innerHTML = "";
+      gridEl.classList.toggle("cc-editing", editMode);
+      const openSlugs = new Set(appSlots().map((sl) => sl.slug));
+      items.forEach((e, i) => {
+        const fixed = e.app?.appArchetype === "glyphh-self";   // Glyphh: no move, no delete
+        const deletable = !!e.layout || !!(e.app && !e.app.system && e.app.appArchetype !== "glyphh-nav");
+        const tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = "cc-tile" + (e.app && openSlugs.has(e.app.slug || e.app.id) ? " open" : "");
+        tile.dataset.key = e.key;
+        tile.title = e.layout ? `${e.name} (layout)` : e.name;
+        const icon = document.createElement("div");
+        if (e.layout) {
+          // Same mini icon stack the left rail's Layouts section renders.
+          icon.className = "tile-icon tile-layout";
+          const seen = new Set<string>();
+          const ids = e.layout.splits
+            .map((c) => c.panelId)
+            .filter((id) => id && !seen.has(id) && (seen.add(id), true))
+            .slice(0, 4);
+          icon.innerHTML = ids.length
+            ? ids.map((id) => {
+                const app = resolveCell(id);
+                if (app) return `<span class="mini">${appIconInner(iconApp(app), app.name, "tile-mini-initial")}</span>`;
+                const toolView = id.startsWith("tool:") ? id.slice(5) : "";
+                const label = toolView ? (VIEW_META[toolView]?.title ?? toolView) : id;
+                return `<span class="mini"><span class="tile-mini-initial">${esc(label.charAt(0).toUpperCase())}</span></span>`;
+              }).join("")
+            : `<span class="tile-initial">▦</span>`;
+        } else {
+          icon.className = "tile-icon";
+          icon.innerHTML = appIconInner(iconApp(e.app!), e.name, "tile-initial");
+        }
+        const nm = document.createElement("span");
+        nm.className = "tile-name";
+        nm.textContent = e.name;
+        tile.append(icon, nm);
+
+        if (editMode && !fixed) {
+          tile.classList.add("cc-jiggle");
+          tile.style.animationDelay = `${(i % 5) * -0.07}s`;
+          tile.draggable = true;
+          if (deletable) {
+            const del = document.createElement("span");
+            del.className = "cc-del";
+            del.title = `Delete ${e.name}`;
+            del.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+            del.addEventListener("mousedown", (ev) => ev.stopPropagation());
+            del.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteEntry(e); });
+            tile.appendChild(del);
+          }
+          tile.addEventListener("dragstart", (ev) => {
+            dragKey = e.key;
+            ev.dataTransfer?.setData("text/plain", e.key);
+            tile.classList.add("dragging");
+          });
+          tile.addEventListener("dragend", () => {
+            tile.classList.remove("dragging");
+            dragKey = null;
+            persistOrder();
+            renderAll();
+          });
+          tile.addEventListener("dragover", (ev) => {
+            ev.preventDefault();
+            if (dragKey && dragKey !== e.key) moveEntry(dragKey, e.key);
+          });
+        }
+
+        tile.addEventListener("click", (ev) => {
+          if (editMode) return;   // jiggle mode: taps rearrange, never launch
+          if (e.layout) { openLayout(e.layout); closeSwitcher(); return; }
+          const alt = (ev as MouseEvent).altKey;
+          openRow(e.app!, { newPanel: alt, replaceWorkspace: !alt });
+          closeSwitcher();
+        });
+        // iOS-style: left-click and HOLD enters jiggle mode.
+        tile.addEventListener("mousedown", (ev) => {
+          if (ev.button !== 0 || editMode) return;
+          const x0 = ev.clientX, y0 = ev.clientY;
+          const timer = window.setTimeout(() => { cleanup(); enterEdit(); }, 550);
+          const onMove = (m: MouseEvent): void => { if (Math.hypot(m.clientX - x0, m.clientY - y0) > 6) cleanup(); };
+          const cleanup = (): void => {
+            window.clearTimeout(timer);
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", cleanup);
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", cleanup);
+        });
+        gridEl.appendChild(tile);
+      });
+      pagerEl.innerHTML = "";
+      if (totalPages > 1) pagerEl.appendChild(pager(page, totalPages, (pp) => { page = pp; renderAll(); }));
+      emptyEl.classList.toggle("hidden", all.length > 0);
+      renderAda();
     }
 
     // Ada fallback — nothing matched by name → surface fact-memory hits; a hit
@@ -1707,7 +1814,7 @@ async function init(): Promise<void> {
     let adaSeq = 0;
     function renderAda(): void {
       el.querySelector(".cc-ada")?.remove();
-      const shown = appsEl.children.length > 0 || layoutsEl.children.length > 0;
+      const shown = gridEl.children.length > 0;
       if (!query || shown || !yo?.adaRecall) return;
       const seq = ++adaSeq;
       void yo.adaRecall(query, 4).then((hits) => {
@@ -1723,29 +1830,28 @@ async function init(): Promise<void> {
           const ref = m?.[1];
           const app = ref ? resolveCell(ref) : undefined;
           const layout = ref ? layouts.find((l) => l.name.toLowerCase() === ref.toLowerCase()) : undefined;
-          if (app) row.addEventListener("click", () => { openRow(app, {}); closeSwitcher(); });
+          if (app) row.addEventListener("click", () => { openRow(app, { replaceWorkspace: true }); closeSwitcher(); });
           else if (layout) row.addEventListener("click", () => { openLayout(layout); closeSwitcher(); });
           else row.disabled = true;
           wrap.appendChild(row);
         }
-        appsEl.after(wrap);
+        gridEl.after(wrap);
       }).catch(() => { /* quiet */ });
     }
 
-    function renderAll(): void { renderApps(); renderLayouts(); }
-
-    // Filter as you type; Enter opens the top match.
+    // Filter as you type; Enter opens the top match (app or layout).
     input.addEventListener("input", () => {
       query = input.value.trim().toLowerCase();
-      appsPage = 0; layoutsPage = 0;
+      page = 0;
       renderAll();
     });
     input.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter") return;
-      const a = appRows.find((x) => matches(x.name) || matches(x.slug || ""));
-      if (a) { openRow(a, {}); closeSwitcher(); return; }
-      const l = layouts.find((x) => matches(x.name));
-      if (l) { openLayout(l); closeSwitcher(); }
+      const e = entries.find((x) => matches(x.name) || matches(x.app?.slug || ""));
+      if (!e) return;
+      if (e.layout) openLayout(e.layout);
+      else openRow(e.app!, { replaceWorkspace: true });
+      closeSwitcher();
     });
 
     // Drip control — the built-in effects + the user's saved presets, played
@@ -1779,18 +1885,30 @@ async function init(): Promise<void> {
     }
     dripBtn.addEventListener("click", (e) => { e.stopPropagation(); void populateDrips(); dripMenu.classList.toggle("hidden"); });
 
-    // Load apps + layouts, paint, then stream native-app icons in.
-    void Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).then(([rows, ls]) => {
-      appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app" || a.appArchetype === "glyphh-self" || a.appArchetype === "glyphh-nav");
-      // Built-in Glyphh first, then the nav apps, then installed glyphh-apps,
-      // then web apps. (sort is stable — nav apps keep their seeded order.)
-      const weight = (a: PanelAppRow): number =>
-        a.appArchetype === "glyphh-self" ? 3 : a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
-      appRows.sort((x, y) => weight(y) - weight(x));
-      layouts = ls || [];
+    // Load apps + layouts into the ONE grid, paint, then stream icons in.
+    async function reload(): Promise<void> {
+      try {
+        const [rows, ls] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]);
+        appRows = (rows || []).filter((a) => a.url || a.appArchetype === "glyphh-app" || a.appArchetype === "glyphh-self" || a.appArchetype === "glyphh-nav");
+        // Default order (before any saved drag order): built-in Glyphh, the
+        // nav apps, installed glyphh-apps, web apps, then layouts. (sort is
+        // stable — nav apps keep their seeded order.)
+        const weight = (a: PanelAppRow): number =>
+          a.appArchetype === "glyphh-self" ? 3 : a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
+        appRows.sort((x, y) => weight(y) - weight(x));
+        layouts = ls || [];
+      } catch { appRows = []; layouts = []; }
+      buildEntries();
       renderAll();
       void primeNativeIcons(appRows.map((a) => ({ execPath: a.execPath || null })), renderAll);
-    }).catch(() => { appRows = []; layouts = []; renderAll(); });
+    }
+    void (async () => {
+      try {
+        const saved = await yo?.getPreference?.("ccIconOrder", []);
+        orderKeys = Array.isArray(saved) ? saved.map(String) : [];
+      } catch { orderKeys = []; }
+      await reload();
+    })();
   }
 
   // ── Files view ──

@@ -18,20 +18,22 @@ type IconApp = {
   connection?: { accountId?: string; pipedreamSlug: string } | null;
 };
 
-// The built-in nav apps' square line glyphs, inlined so stroke:currentColor
-// follows the theme (white in dark, black in light — an <img> can't inherit).
+// The built-in nav apps' glyphs, inlined so currentColor follows the theme
+// (white in dark, black in light — an <img> can't inherit). Drawn in the
+// MASCOT's language: bold solid ink-stamp fills with negative-space cutouts,
+// not thin line art.
 const NAV_GLYPH_PATHS: Record<string, string> = {
-  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-6h4v6"/>',
-  connections: '<circle cx="6" cy="6" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="12" cy="18" r="2.6"/><path d="M7 8.3l3.6 7.2"/><path d="M17 8.3l-3.6 7.2"/><path d="M8.6 6h6.8"/>',
-  apps: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/>',
-  layouts: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="12"/><line x1="3.5" y1="12" x2="20.5" y2="12"/>',
-  skills: '<path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/>',
-  loops: '<path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/>',
-  agents: '<rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/>',
-  models: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
-  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
-  docs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
-  account: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  home: '<path fill-rule="evenodd" clip-rule="evenodd" d="M11.3 2.3a1.1 1.1 0 0 1 1.4 0l8.9 7.5a1.1 1.1 0 0 1-1.4 1.68l-.4-.34V20a2 2 0 0 1-2 2H6.2a2 2 0 0 1-2-2v-8.86l-.4.34A1.1 1.1 0 0 1 2.4 9.8l8.9-7.5zM10 22v-5.4c0-.6.5-1.1 1.1-1.1h1.8c.6 0 1.1.5 1.1 1.1V22h-4z"/>',
+  connections: '<circle cx="6" cy="5.8" r="3"/><circle cx="18" cy="5.8" r="3"/><circle cx="12" cy="18.2" r="3"/><path d="M7.3 8.2 10.7 15M16.7 8.2 13.3 15M8.8 5.8h6.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
+  apps: '<rect x="3" y="3" width="8.2" height="8.2" rx="2.3"/><rect x="12.8" y="3" width="8.2" height="8.2" rx="2.3"/><rect x="3" y="12.8" width="8.2" height="8.2" rx="2.3"/><rect x="12.8" y="12.8" width="8.2" height="8.2" rx="2.3"/>',
+  layouts: '<rect x="3" y="3.4" width="8.6" height="7.8" rx="2"/><rect x="12.4" y="3.4" width="8.6" height="7.8" rx="2"/><rect x="3" y="12.9" width="18" height="7.8" rx="2"/>',
+  skills: '<path d="M12 1.7l2.9 5.9 6.5 1-4.7 4.6 1.1 6.5-5.8-3.1-5.8 3.1 1.1-6.5L2.6 8.6l6.5-1z"/>',
+  loops: '<path d="M17 2.5l4 4-4 4M3 12.5v-2a4 4 0 0 1 4-4h13M7 21.5l-4-4 4-4M21 11.5v2a4 4 0 0 1-4 4H4" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  agents: '<path fill-rule="evenodd" clip-rule="evenodd" d="M13.1 4.3a2 2 0 1 0-2.2 0V6H7a4 4 0 0 0-4 4v6a4 4 0 0 0 4 4h10a4 4 0 0 0 4-4v-6a4 4 0 0 0-4-4h-3.9V4.3zM9 11.2a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4zm6 0a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4z"/>',
+  models: '<path d="M12 1.6 20.8 6.3 12 11 3.2 6.3z"/><path d="M2.6 8.1l8.3 4.4v9.4l-8.3-4.7z"/><path d="M21.4 8.1l-8.3 4.4v9.4l8.3-4.7z"/>',
+  settings: '<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>',
+  docs: '<path fill-rule="evenodd" clip-rule="evenodd" d="M6 1.8h7.2L20.2 8.8V20a2.2 2.2 0 0 1-2.2 2.2H6A2.2 2.2 0 0 1 3.8 20V4A2.2 2.2 0 0 1 6 1.8zm7 1.9v5.4h5.4L13 3.7zM7.4 12.9h9.2v1.9H7.4v-1.9zm0 4h9.2v1.9H7.4v-1.9z"/>',
+  account: '<circle cx="12" cy="7.2" r="4.7"/><path d="M12 13.7c4.6 0 8.4 2.6 8.4 6.3v.9c0 .6-.5 1.1-1.1 1.1H4.7c-.6 0-1.1-.5-1.1-1.1v-.9c0-3.7 3.8-6.3 8.4-6.3z"/>',
 };
 
 /** Inline nav-glyph markup ("" when the app isn't a nav row). */
@@ -39,7 +41,7 @@ function navGlyph(app: IconApp): string {
   if (app.appArchetype !== "glyphh-nav") return "";
   const paths = NAV_GLYPH_PATHS[app.slug || ""];
   return paths
-    ? `<span class="nav-glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${paths}</svg></span>`
+    ? `<span class="nav-glyph"><svg viewBox="0 0 24 24" fill="currentColor">${paths}</svg></span>`
     : "";
 }
 
