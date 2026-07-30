@@ -18,6 +18,31 @@ type IconApp = {
   connection?: { accountId?: string; pipedreamSlug: string } | null;
 };
 
+// The built-in nav apps' square line glyphs, inlined so stroke:currentColor
+// follows the theme (white in dark, black in light — an <img> can't inherit).
+const NAV_GLYPH_PATHS: Record<string, string> = {
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-6h4v6"/>',
+  connections: '<circle cx="6" cy="6" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="12" cy="18" r="2.6"/><path d="M7 8.3l3.6 7.2"/><path d="M17 8.3l-3.6 7.2"/><path d="M8.6 6h6.8"/>',
+  apps: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/>',
+  layouts: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="12"/><line x1="3.5" y1="12" x2="20.5" y2="12"/>',
+  skills: '<path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/>',
+  loops: '<path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/>',
+  agents: '<rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/>',
+  models: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  docs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  account: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+};
+
+/** Inline nav-glyph markup ("" when the app isn't a nav row). */
+function navGlyph(app: IconApp): string {
+  if (app.appArchetype !== "glyphh-nav") return "";
+  const paths = NAV_GLYPH_PATHS[app.slug || ""];
+  return paths
+    ? `<span class="nav-glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${paths}</svg></span>`
+    : "";
+}
+
 // Pipedream's catalog icon per connected app's pipedreamSlug — the saved-app
 // row doesn't carry an icon itself, so it's looked up from the connector
 // catalog once per unique slug and cached for the session.
@@ -42,10 +67,9 @@ const yoIcons = (): {
 /** Resolve the icon URL for an app ("" when only the initial fallback applies). */
 export function appIconUrl(app: IconApp): string {
   // The Glyphh system app always shows the brand mark (shipped next to every
-  // renderer page that uses this module); the built-in nav apps show the
-  // shipped amber line glyphs.
+  // renderer page that uses this module). Nav apps never resolve a URL —
+  // appIconInner inlines their glyph so it can follow the theme.
   if (app.slug === "glyphh") return "brand/glyphh-mark.png";
-  if (app.appArchetype === "glyphh-nav" && app.slug) return `brand/nav/${app.slug}.svg`;
   const isInternal = app.url?.startsWith("yo://");
   let favicon = "";
   if (app.url && !isInternal) {
@@ -63,6 +87,8 @@ export function appIconUrl(app: IconApp): string {
  *  icon. The caller supplies the wrapper element + its initial class so each
  *  page keeps its own sizing. */
 export function appIconInner(app: IconApp, name: string, initialClass: string): string {
+  const glyph = navGlyph(app);
+  if (glyph) return glyph;
   const iconUrl = appIconUrl(app);
   const initial = (name || "?").charAt(0).toUpperCase();
   return iconUrl

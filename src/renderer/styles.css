@@ -13143,6 +13143,14 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 .lib-identity-form { display: flex; flex-direction: column; gap: 8px; margin: 0 0 24px; max-width: 560px; }
 .lib-identity-form textarea { resize: vertical; min-height: 64px; }
 
+/* Built-in nav-app glyphs — inline SVG on currentColor so they render white
+   on dark themes and black on light ones, wherever the tile lives. */
+.nav-glyph {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; color: var(--text);
+}
+.nav-glyph svg { width: 62%; height: 62%; }
+
 /* Schedule editor + run feed on agent task rows. */
 .lib-task-wrap { margin-bottom: 6px; }
 .lib-task-sched {
