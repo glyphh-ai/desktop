@@ -10215,6 +10215,11 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
   /* The slot header already titles the panel — content starts tight. */
   flex: 1; min-height: 0; overflow-y: auto; padding: 10px 32px 24px;
 }
+/* The rails CONTAINER always fills the workbench — it was flex 0 1 auto
+   (content-sized), so any state where rail widths went content-driven
+   (solo mode) collapsed the whole surface to its content width. */
+#code-wb-rails { flex: 1 1 auto; min-width: 0; }
+
 /* SOLO panel — the one open panel fills the page as if expanded: no drop
    strips, no width handle, flush to every edge. */
 .ws-right-rails.solo-slot .ws-rail-dropstrip { display: none; }
