@@ -12831,7 +12831,14 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* The coding panel's header row is REMOVED — the agent head is its header. */
 .ws-rail-slot[data-view="coding"] .ws-rail-slot-header.hidden-header { display: none; }
 /* History dropdown rows: title | pin | delete. */
-.wb-session-menu { min-width: 260px; }
+.wb-session-menu {
+  min-width: 260px; max-width: 340px; max-height: 60vh; overflow-y: auto;
+  z-index: 400; padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
 .wb-session-row { display: flex; align-items: center; gap: 2px; border-radius: 6px; }
 .wb-session-row:hover { background: var(--hover); }
 .wb-session-row.selected .wb-session-title { color: var(--accent); }

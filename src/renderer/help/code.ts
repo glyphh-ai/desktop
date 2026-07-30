@@ -2043,9 +2043,19 @@ export function initCode(): void {
     paint();
     const r = anchor.getBoundingClientRect();
     menu.style.position = "fixed";
-    menu.style.top = `${r.bottom + 6}px`;
-    menu.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+    menu.style.visibility = "hidden";   // measure before showing
     document.body.appendChild(menu);
+    // Clamp inside the viewport: right-align to the anchor, but never off
+    // either edge; below the anchor, but flip up if the bottom would clip.
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    const left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
+    const top = r.bottom + 6 + mh > window.innerHeight - 8
+      ? Math.max(8, r.top - mh - 6)
+      : r.bottom + 6;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.visibility = "";
     const dismiss = (e: MouseEvent): void => {
       if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
     };
