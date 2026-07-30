@@ -11587,12 +11587,26 @@ select:focus {
 .code-agent-head {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;          /* ONE row, always */
+  overflow: hidden;           /* text shrinks below; nothing spills */
   gap: 8px;
   min-height: 38px;
   padding: 4px 12px;
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
 }
+/* Icons and button clusters never shrink — the labels do. */
+.code-agent-head .code-icon-btn,
+.code-agent-head .code-view-toggles { flex-shrink: 0; }
+.code-agent-head .code-wd-btn { flex-shrink: 1; min-width: 44px; overflow: hidden; }
+.code-agent-head .code-wd-btn span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.code-agent-head .code-wd-branch { flex-shrink: 1; min-width: 0; overflow: hidden; }
+.code-agent-head .code-wd-branch span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#code-session-title { flex-shrink: 1; }
 .code-agent-head button,
 .code-agent-head .code-wd-btn { -webkit-app-region: no-drag; }
 .code-spacer { flex: 1; }
@@ -12858,7 +12872,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 #code-session-title {
   font-size: 12.5px; font-weight: 600; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 220px; flex-shrink: 0; margin-right: 4px;
+  max-width: 220px; min-width: 32px; margin-right: 4px;
 }
 
 /* Built-in nav-app glyphs — inline SVG on currentColor so they render white
