@@ -156,11 +156,11 @@ void (async () => {
         [data-ghost="1"] .ws-rail-slot, [data-ghost="1"] .ws-rail-slot-body, [data-ghost="1"] .code-agent { background: transparent !important; }
         @keyframes ghost-in { from { opacity: 0; transform: scale(0.99); } to { opacity: 1; transform: scale(1); } }
         /* thin top strip to drag the panel over the app, + a close button */
-        #ghost-drag { position: fixed; top: 0; left: 0; right: 40px; height: 16px; z-index: 4; -webkit-app-region: drag; }
-        #ghost-close { position: fixed; top: 8px; right: 10px; z-index: 6; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag; }
+        #ghost-drag { position: fixed; top: 0; left: 0; right: 40px; height: 16px; z-index: 140; -webkit-app-region: drag; }
+        #ghost-close { position: fixed; top: 8px; right: 10px; z-index: 150; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag; }
         #ghost-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
         #ghost-cc {
-          position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 6;
+          position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 150;
           width: 26px; height: 26px; border-radius: 7px;
           display: flex; align-items: center; justify-content: center; cursor: pointer;
           color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08);
@@ -168,7 +168,7 @@ void (async () => {
         }
         #ghost-cc:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
         #ghost-snap {
-          position: fixed; top: 8px; left: 10px; z-index: 6;
+          position: fixed; top: 8px; left: 10px; z-index: 150;
           display: flex; gap: 4px; -webkit-app-region: no-drag;
         }
         #ghost-snap button {

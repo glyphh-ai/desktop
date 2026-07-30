@@ -499,8 +499,13 @@ async function init(): Promise<void> {
     // With the agent visible beside the workbench the aside sizes to the
     // rails, so stretching here forced the workbench to max width and
     // snapped every edge drag right back.
-    // Full-width surface: the last rail always absorbs the surplus.
-    if (total < available && widths.length) widths[widths.length - 1] += available - total;
+    // Full-width surface: surplus spreads across ALL rails proportionally —
+    // dumping it on the last rail made every freshly opened panel swallow
+    // the pane (and instantly overrode that rail's own width drags).
+    if (total < available && widths.length && total > 0) {
+      const scale = available / total;
+      for (let i = 0; i < widths.length; i++) widths[i] = Math.round(widths[i] * scale);
+    }
     const railEls = container.querySelectorAll<HTMLElement>(".ws-right-rail");
     let si = 0;
     rails.forEach((r, idx) => {
