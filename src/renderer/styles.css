@@ -12900,9 +12900,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   font-weight: 600;
 }
 .wb-session-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; }
-.wb-session-row .ws-icon-btn { flex: 0 0 auto; width: 24px; height: 24px; color: var(--text-3); border-radius: 6px; }
-.wb-session-row .ws-icon-btn:hover { background: var(--surface-3); color: var(--text); }
-.wb-session-row .ws-icon-btn svg { width: 14px; height: 14px; }
+/* Same chrome as the header icons (.code-icon-btn) — just sized to the row. */
+.wb-session-row .code-icon-btn { flex: 0 0 auto; width: 24px; height: 24px; }
+.wb-session-row .code-icon-btn svg { width: 14px; height: 14px; }
 .wb-session-row .wb-session-pin.on { color: var(--accent); }
 /* Delete is ALWAYS the red icon. */
 .wb-session-row .wb-session-del { color: var(--danger, #e5484d); }

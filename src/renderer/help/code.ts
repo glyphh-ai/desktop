@@ -1994,7 +1994,7 @@ export function initCode(): void {
         title.addEventListener("click", () => { menu.remove(); sessApi()?.switch(c.id); });
         const pin = document.createElement("button");
         pin.type = "button";
-        pin.className = "ws-icon-btn wb-session-pin" + (c.pinned ? " on" : "");
+        pin.className = "code-icon-btn wb-session-pin" + (c.pinned ? " on" : "");
         pin.title = c.pinned ? "Unpin" : "Pin to top";
         pin.innerHTML = PIN_SVG;
         pin.addEventListener("click", (e) => {
@@ -2006,7 +2006,7 @@ export function initCode(): void {
         });
         const del = document.createElement("button");
         del.type = "button";
-        del.className = "ws-icon-btn wb-session-del";
+        del.className = "code-icon-btn wb-session-del";
         del.title = "Delete session";
         del.innerHTML = TRASH_SVG;
         del.addEventListener("click", (e) => {
