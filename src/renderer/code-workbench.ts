@@ -168,7 +168,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
 const SECTION_TITLES: Record<string, string> = {
   dashboard: "Home", connections: "Connections", apps: "Apps", layouts: "Layouts",
   skills: "Skills", loops: "Loops", agents: "Agents", models: "Models",
-  settings: "Settings", docs: "Docs", drips: "Drips",
+  settings: "Settings", docs: "Docs",
 };
 
 // ── Monaco loader (AMD path: window.require + monaco/ assets in dist) ──
@@ -1688,6 +1688,7 @@ async function init(): Promise<void> {
     el.id = "command-center";
     el.className = "command-center";
     el.innerHTML = `
+      <button class="cc-close" title="Close (Esc)">&times;</button>
       <div class="cc-inner">
         <div class="cc-dock"></div>
         <div class="cc-header">
@@ -1702,7 +1703,6 @@ async function init(): Promise<void> {
           <button class="cc-overlay-btn" title="Overlay the whole desktop">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </button>
-          <button class="cc-close" title="Close (Esc)">&times;</button>
         </div>
         <div class="cc-apps"></div>
         <div class="cc-apps-pager cc-pager"></div>

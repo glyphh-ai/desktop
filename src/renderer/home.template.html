@@ -13,7 +13,8 @@
     html, body { margin:0; padding:0; height:100%; overflow:hidden; background: var(--bg); }
     #home-root { position: absolute; inset: 0; overflow: hidden; }
     /* Force overlay to fill the page and override any .hidden from help.ts */
-    #help-overlay { position: absolute !important; inset: 0 !important; display: block !important; background: var(--bg); }
+    /* Below the 38px app header — inset-top must match #shell-drag-strip. */
+    #help-overlay { position: absolute !important; inset: 38px 0 0 !important; display: block !important; background: var(--bg); }
     #help-layout { position: absolute; inset: 0; display: flex; }
     /* The nav lives in the app's left rail now — keep it in the DOM (its
        buttons still drive section switching) but hide the sidebar. */
@@ -79,9 +80,6 @@
 
         <!-- Layouts -->
         <!--#include sections/layouts.html -->
-
-        <!-- Drips -->
-        <!--#include sections/drips.html -->
 
         <!-- Code — the William agent surface (chats | agent | workbench) -->
         <!--#include sections/code.html -->

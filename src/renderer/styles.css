@@ -10061,11 +10061,13 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
 .cc-inner { width: min(1200px, 92vw); padding: 64px 28px 48px; }
 .cc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
 .cc-close {
-  margin-left: 12px; width: 30px; height: 30px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
-  font-size: 20px; line-height: 1; cursor: pointer; flex-shrink: 0;
+  position: absolute; top: 14px; right: 18px; z-index: 5;
+  width: 34px; height: 34px; border-radius: 9px; border: none;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--text-3);
+  font-size: 22px; line-height: 1; cursor: pointer;
 }
-.cc-close:hover { color: var(--text); border-color: var(--accent); }
+.cc-close:hover { color: var(--text); background: var(--hover); }
 .cc-input {
   flex: 1; height: 42px; padding: 0 16px; font-size: 15px; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; outline: none;

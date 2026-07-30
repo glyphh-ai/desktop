@@ -93,7 +93,6 @@ function activeSection(): string {
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
-  else if (sec === "drips") loadDrips();
   else if (sec === "loops") void loadLoops();
   else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "agents") void loadAgents();
@@ -115,7 +114,7 @@ export function loadActiveSection(explicit?: string) {
 export function gotoSection(section: string, sub?: string): void {
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
-  if (["apps", "connections", "layouts", "drips", "settings"].includes(section)) {
+  if (["apps", "connections", "layouts", "settings"].includes(section)) {
     void window.yo.railCollapseSet?.(false);
   }
   void window.yo.setPreference?.("homeLastSection", section);
@@ -188,9 +187,10 @@ export function initHelp() {
       btn.classList.add("active");
       const target = document.querySelector(`.help-section[data-section='settings'] .settings-panel[data-sub="${sub}"]`);
       if (target) target.classList.add("active");
-      // Support & About live inside Settings now — populate their dynamic bits.
+      // Support / About / Drips live inside Settings — populate on show.
       if (sub === "support") loadSupport();
       else if (sub === "about") loadAbout();
+      else if (sub === "drips") loadDrips();
     });
   });
 
@@ -198,10 +198,9 @@ export function initHelp() {
     btn.addEventListener("click", () => { showDocPanel(btn.dataset.doc!); });
   });
 
-  // Docs has its own topics nav — the breadcrumb CLOSES the section (back to
-  // the agent), it does not open the Settings menu.
+  // Docs is reached FROM Settings — the breadcrumb goes back there.
   document.getElementById("docs-back-settings")?.addEventListener("click", () => {
-    gotoSection("code");
+    gotoSection("settings");
   });
 
   // (2.5.0) The left rail is gone: nav lives on the command bar (nav apps),
