@@ -159,11 +159,19 @@ void (async () => {
         #ghost-drag { position: fixed; top: 0; left: 0; right: 40px; height: 16px; z-index: 4; -webkit-app-region: drag; }
         #ghost-close { position: fixed; top: 8px; right: 10px; z-index: 6; width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag; }
         #ghost-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+        #ghost-cc {
+          position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 6;
+          width: 26px; height: 26px; border-radius: 7px;
+          display: flex; align-items: center; justify-content: center; cursor: pointer;
+          color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag;
+        }
+        #ghost-cc:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
         /* Resize grips — a transparent frameless window gets no reliable
            native edge zones, so the overlay paints its own (right, bottom,
            corner) and drives the window size over IPC. */
-        .ghost-grip { position: fixed; z-index: 5; -webkit-app-region: no-drag; }
-        #ghost-grip-e { top: 16px; right: 0; bottom: 12px; width: 8px; cursor: ew-resize; }
+        .ghost-grip { position: fixed; z-index: 320; -webkit-app-region: no-drag; }
+        #ghost-grip-e { top: 16px; right: 0; bottom: 12px; width: 10px; cursor: ew-resize; }
         #ghost-grip-s { left: 12px; right: 12px; bottom: 0; height: 8px; cursor: ns-resize; }
         #ghost-grip-se { right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }`;
       document.head.appendChild(style);
@@ -177,6 +185,13 @@ void (async () => {
       closeBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
       closeBtn.addEventListener("click", close);
       document.body.appendChild(closeBtn);
+      // Command center from inside the ghost — centered over the pane's top.
+      const ccBtn = document.createElement("div");
+      ccBtn.id = "ghost-cc";
+      ccBtn.title = "Command center (⌘⇧Space)";
+      ccBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`;
+      ccBtn.addEventListener("click", () => openCommandCenter({ forceInline: true }));
+      document.body.appendChild(ccBtn);
       // Grip drag → window resize. Bounds are read once at pointerdown and the
       // target size is absolute (start + delta), so IPC latency can't compound
       // into drift; moves are throttled to one in-flight call.
