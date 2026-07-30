@@ -1900,7 +1900,11 @@ export function initCode(): void {
   // renderer.ts (the index shell — different webContents, no overlay reach).
   document.addEventListener("keydown", (e) => {
     if (e.key === "." && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
+    // ⌘⇧Space — same launcher (mirrors the OS-wide global shortcut).
+    if (e.code === "Space" && e.shiftKey && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
   });
+  // The OS-wide ⌘⇧Space lands here from main once the window is fronted.
+  (window.yo as unknown as { onOpenCommandCenter?: (cb: () => void) => void }).onOpenCommandCenter?.(() => openCommandCenter());
   // Header launcher button — bound here (home-panel startup) through the
   // cold-safe path, so it works even before the Code workbench first mounts.
   el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());

@@ -722,6 +722,22 @@ async function boot() {
     });
   }
 
+  // ⌘⇧Space anywhere on the system: front Glyphh and open the command
+  // center (the renderer's opener applies the desktop-overlay preference).
+  globalShortcut.register("CommandOrControl+Shift+Space", () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
+      const homes = webContents.getAllWebContents().filter((wc) => {
+        try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
+      });
+      for (const wc of homes) wc.send("home:open-cc");
+    } catch { /* window mid-teardown */ }
+  });
+
   // Create window
   await createWindow();
   // Background mode: rebuild the window when the tray asks, and reflect the

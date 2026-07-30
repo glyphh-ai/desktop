@@ -352,6 +352,9 @@ contextBridge.exposeInMainWorld("yo", {
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
   dashboardRuns: () => ipcRenderer.invoke("dashboard-runs") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   homeGotoSection: (section: string) => ipcRenderer.invoke("home-goto-section", section) as Promise<{ ok: boolean }>,
+  onOpenCommandCenter: (cb: () => void) => {
+    ipcRenderer.on("home:open-cc", () => cb());
+  },
   onGotoSection: (cb: (section: string) => void) => {
     ipcRenderer.on("home:goto-section", (_e, section: string) => cb(section));
   },
