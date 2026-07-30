@@ -12830,6 +12830,18 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 
 /* The coding panel's header row is REMOVED — the agent head is its header. */
 .ws-rail-slot[data-view="coding"] .ws-rail-slot-header.hidden-header { display: none; }
+/* History dropdown rows: title | pin | delete. */
+.wb-session-menu { min-width: 260px; }
+.wb-session-row { display: flex; align-items: center; gap: 2px; border-radius: 6px; }
+.wb-session-row:hover { background: var(--hover); }
+.wb-session-row.selected .wb-session-title { color: var(--accent); }
+.wb-session-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; }
+.wb-session-row .ws-icon-btn { flex: 0 0 auto; width: 24px; height: 24px; color: var(--text-3); }
+.wb-session-row .ws-icon-btn svg { width: 13px; height: 13px; }
+.wb-session-row .wb-session-pin.on { color: var(--accent); }
+.wb-session-row .wb-session-del:hover { color: var(--danger, #e5484d); }
+.wb-session-empty { padding: 10px 12px; font-size: 12px; color: var(--text-3); }
+
 #code-session-title {
   font-size: 12.5px; font-weight: 600; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

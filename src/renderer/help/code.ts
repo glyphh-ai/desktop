@@ -25,6 +25,8 @@ interface CodeChat {
   /** The folder THIS session works in — stamped by its layout or by the pick
    *  made while it was current. Absent → the global workspace folder. */
   workdir?: string;
+  /** Pinned sessions float to the top of the history dropdown. */
+  pinned?: boolean;
 }
 
 const STORE_KEY = "codeChats";
@@ -1975,19 +1977,74 @@ export function initCode(): void {
     if (!sess) return;
     const menu = document.createElement("div");
     menu.className = "code-drop wb-session-menu";
-    const cur = sess.currentId();
-    for (const c of sess.list().slice(0, 20)) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "code-drop-item" + (c.id === cur ? " selected" : "");
-      item.textContent = c.title;
-      item.addEventListener("click", () => { menu.remove(); sess.switch(c.id); });
-      menu.appendChild(item);
-    }
+    const PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 3h6l-1 7 3 2v2H7v-2l3-2z"/></svg>`;
+    const TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
+    const paint = (): void => {
+      menu.innerHTML = "";
+      const cur = currentId;
+      // Pinned first (stable — recency holds within each group).
+      const rows = [...chats].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 20);
+      for (const c of rows) {
+        const row = document.createElement("div");
+        row.className = "wb-session-row" + (c.id === cur ? " selected" : "");
+        const title = document.createElement("button");
+        title.type = "button";
+        title.className = "code-drop-item wb-session-title";
+        title.textContent = c.title;
+        title.addEventListener("click", () => { menu.remove(); sessApi()?.switch(c.id); });
+        const pin = document.createElement("button");
+        pin.type = "button";
+        pin.className = "ws-icon-btn wb-session-pin" + (c.pinned ? " on" : "");
+        pin.title = c.pinned ? "Unpin" : "Pin to top";
+        pin.innerHTML = PIN_SVG;
+        pin.addEventListener("click", (e) => {
+          e.stopPropagation();
+          c.pinned = !c.pinned;
+          void saveStore();
+          renderHistory();
+          paint();
+        });
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "ws-icon-btn wb-session-del";
+        del.title = "Delete session";
+        del.innerHTML = TRASH_SVG;
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          void (async () => {
+            const sure = await confirmAction({
+              title: `Delete "${c.title}"?`,
+              body: "This session's history is gone for good.",
+              confirmLabel: "Delete",
+              danger: true,
+            });
+            if (!sure) return;
+            chats = chats.filter((x) => x.id !== c.id);
+            if (currentId === c.id) {
+              currentId = chats[0]?.id || "";
+              renderThread();
+            }
+            void saveStore();
+            renderHistory();
+            if (!chats.length) { menu.remove(); return; }
+            paint();
+          })();
+        });
+        row.append(title, pin, del);
+        menu.appendChild(row);
+      }
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "wb-session-empty";
+        empty.textContent = "No sessions yet.";
+        menu.appendChild(empty);
+      }
+    };
+    paint();
     const r = anchor.getBoundingClientRect();
     menu.style.position = "fixed";
     menu.style.top = `${r.bottom + 6}px`;
-    menu.style.left = `${r.left}px`;
+    menu.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
     document.body.appendChild(menu);
     const dismiss = (e: MouseEvent): void => {
       if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
