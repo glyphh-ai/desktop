@@ -233,6 +233,10 @@ void (async () => {
         snapWrap.appendChild(b);
       }
       document.body.appendChild(snapWrap);
+      // Reflect the persisted snap as the active button on open.
+      void window.yo.getPreference?.("ghostSnapHalf", "full").then((h) => {
+        snapWrap.querySelectorAll<HTMLButtonElement>("button").forEach((x) => x.classList.toggle("on", x.dataset.half === h));
+      }).catch(() => { /* default: none highlighted */ });
       // Grip drag → window resize. Bounds are read once at pointerdown and the
       // target size is absolute (start + delta), so IPC latency can't compound
       // into drift; moves are throttled to one in-flight call.
