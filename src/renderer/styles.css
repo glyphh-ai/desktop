@@ -13133,6 +13133,15 @@ body.code-dragging .ws-app-holder { pointer-events: none !important; }
 
 /* Detail-page actions: bottom-LEFT of the form column, with the content. */
 .lib-detail-actions { margin-top: 28px; justify-content: flex-start !important; }
+.lib-identity-edit {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; margin-left: 8px; vertical-align: middle;
+  border: none; border-radius: 6px; background: transparent;
+  color: var(--text-3); cursor: pointer; padding: 0;
+}
+.lib-identity-edit:hover { background: var(--surface-3); color: var(--text); }
+.lib-identity-form { display: flex; flex-direction: column; gap: 8px; margin: 0 0 24px; max-width: 560px; }
+.lib-identity-form textarea { resize: vertical; min-height: 64px; }
 
 /* Schedule editor + run feed on agent task rows. */
 .lib-task-wrap { margin-bottom: 6px; }

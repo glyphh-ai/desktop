@@ -14,7 +14,7 @@ import { $a, escapeHtml, paginate, renderPaginationBar, confirmAction } from "./
 import type { Loop, LoopSummary } from "./library-types.js";
 import { loopGraph, renderFlow } from "./lib-flow.js";
 import { seedComposer } from "./code.js";
-import { wireSplitDivider, kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { wireSplitDivider, kebabCell, ROW_MENU_ICONS, wireIdentityEdit } from "./lib-editor.js";
 
 let all: LoopSummary[] = [];
 let page = 0;
@@ -145,6 +145,16 @@ async function openDetail(ref: string): Promise<void> {
     </div>`}`;
 
   detailEl.querySelector("#loop-delete-btn")?.addEventListener("click", () => void deleteCurrent());
+  if (!current.builtIn) {
+    wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
+      const res = await window.yo.libraryLoopUpdate(current!.slug, patch);
+      if (!res.ok) return res.error || "Couldn't save.";
+      const row = all.find((l) => l.id === current!.id);
+      if (row) { row.name = patch.name; row.description = patch.description; }
+      await openDetail(current!.slug);
+      return null;
+    });
+  }
   wireDefaultModelPickers();
   builtinBadge.classList.toggle("hidden", !current.builtIn);
 

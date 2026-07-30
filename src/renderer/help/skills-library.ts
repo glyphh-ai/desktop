@@ -15,7 +15,7 @@ import { unwrap, type Skill, type SkillSummary } from "./library-types.js";
 import { skillGraph, renderFlow } from "./lib-flow.js";
 import { seedComposer } from "./code.js";
 import { formatMarkdown } from "../format-markdown.js";
-import { wireSplitDivider, kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { wireSplitDivider, kebabCell, ROW_MENU_ICONS, wireIdentityEdit } from "./lib-editor.js";
 
 let all: SkillSummary[] = [];
 let page = 0;
@@ -156,6 +156,14 @@ async function openDetail(ref: string): Promise<void> {
     </div>`;
 
   detailEl.querySelector("#skill-delete-btn")!.addEventListener("click", () => void deleteCurrent());
+  wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
+    const res = await window.yo.librarySkillUpdate(current!.slug, patch);
+    if (!res.ok) return res.error || "Couldn't save.";
+    const row = all.find((s) => s.id === current!.id);
+    if (row) { row.name = patch.name; row.description = patch.description; }
+    await openDetail(current!.slug);
+    return null;
+  });
 
   toolbar.classList.add("hidden");
   listEl.classList.add("hidden");

@@ -39,6 +39,74 @@ export function wireSplitDivider(divider: HTMLElement, left: HTMLElement): void 
   divider.addEventListener("pointercancel", release);
 }
 
+// ── Inline identity edit — name + description on a detail view ──────────────
+
+/**
+ * Add a pencil beside a detail view's title that swaps the title/description
+ * block into a small inline form. `onSave` persists the patch and returns
+ * null on success (the caller re-renders the detail) or an error to show.
+ */
+export function wireIdentityEdit(
+  host: HTMLElement,
+  identity: { name: string; description: string },
+  onSave: (patch: { name: string; description: string }) => Promise<string | null>,
+): void {
+  const title = host.querySelector<HTMLElement>(".lib-read-title");
+  const desc = host.querySelector<HTMLElement>(".lib-read-desc");
+  if (!title || !desc) return;
+
+  const pencil = document.createElement("button");
+  pencil.type = "button";
+  pencil.className = "lib-identity-edit";
+  pencil.title = "Edit name & description";
+  pencil.innerHTML = ROW_MENU_ICONS.edit;
+  title.appendChild(pencil);
+
+  pencil.addEventListener("click", () => {
+    if (host.querySelector(".lib-identity-form")) return;
+    const form = document.createElement("div");
+    form.className = "lib-identity-form";
+    form.innerHTML = `
+      <input type="text" class="settings-input lib-identity-name" maxlength="120" placeholder="Name" spellcheck="false" />
+      <textarea class="settings-input lib-identity-desc" rows="3" placeholder="What is it for?"></textarea>
+      <div class="settings-actions" style="margin:0;">
+        <button type="button" class="action-btn primary lib-identity-save">Save</button>
+        <button type="button" class="action-btn lib-identity-cancel">Cancel</button>
+      </div>
+      <div class="settings-hint danger hidden lib-identity-err"></div>`;
+    const nameEl = form.querySelector<HTMLInputElement>(".lib-identity-name")!;
+    const descEl = form.querySelector<HTMLTextAreaElement>(".lib-identity-desc")!;
+    const errEl = form.querySelector<HTMLElement>(".lib-identity-err")!;
+    nameEl.value = identity.name;
+    descEl.value = identity.description;
+    title.classList.add("hidden");
+    desc.classList.add("hidden");
+    desc.insertAdjacentElement("afterend", form);
+    nameEl.focus();
+    nameEl.select();
+
+    const closeForm = (): void => {
+      form.remove();
+      title.classList.remove("hidden");
+      desc.classList.remove("hidden");
+    };
+    form.querySelector(".lib-identity-cancel")!.addEventListener("click", closeForm);
+    form.querySelector(".lib-identity-save")!.addEventListener("click", () => {
+      void (async () => {
+        const name = nameEl.value.trim();
+        if (!name) { errEl.textContent = "A name is required."; errEl.classList.remove("hidden"); return; }
+        errEl.classList.add("hidden");
+        form.querySelectorAll("button, input, textarea").forEach((el) => ((el as HTMLButtonElement).disabled = true));
+        const err = await onSave({ name, description: descEl.value.trim() });
+        if (err === null) return;   // caller re-rendered the detail — form is gone
+        form.querySelectorAll("button, input, textarea").forEach((el) => ((el as HTMLButtonElement).disabled = false));
+        errEl.textContent = err;
+        errEl.classList.remove("hidden");
+      })();
+    });
+  });
+}
+
 // ── Table row ⋯ menu — shared by the library tables ──────────────────────────
 
 const EDIT_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`;
