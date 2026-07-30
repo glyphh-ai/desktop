@@ -767,6 +767,15 @@ async function saveLayout() {
   // Only keep model picks for slots the chosen loop still declares — a stale
   // pick from a loop the user switched away from must not ride along.
   const selections = builderLoop ? builderModelSelections : {};
+  // An EDITED layout invalidates its remembered arrangement — the workbench's
+  // named-layout snapshot recalls the OLD geometry whenever the panel set is
+  // unchanged, which is exactly the common edit (resize rows/cols, re-place
+  // the same panels). Definition wins after a save. (Rename drops both keys.)
+  for (const n of new Set([name, editingLayoutName].filter(Boolean) as string[])) {
+    try {
+      localStorage.removeItem(`workbench:namedlayout:${n.trim().toLowerCase()}`);
+    } catch { /* storage unavailable — recall just goes stale */ }
+  }
   await window.yo.layoutsSaveGrid({
     name,
     cols: builderCols,
@@ -799,6 +808,10 @@ async function deleteLayout() {
     danger: true,
   });
   if (!confirmed) return;
+  try {
+    localStorage.removeItem(`workbench:namedlayout:${editingLayoutName.trim().toLowerCase()}`);
+    localStorage.removeItem(`workbench:layoutsession:${editingLayoutName.trim().toLowerCase()}`);
+  } catch { /* best effort */ }
   await window.yo.layoutsDelete(editingLayoutName);
   cancelLayout();
   setTimeout(() => { if (layoutEditor.classList.contains("hidden")) void loadLayouts(); }, 1200);
