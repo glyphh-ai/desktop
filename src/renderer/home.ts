@@ -127,7 +127,9 @@ void (async () => {
         [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
         [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
         [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
-        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }
+        /* NO forced rail flex here (unlike a single-tool window): the ghost
+           hosts MULTIPLE rails — width:auto!important overrode the computed
+           rail widths and let a fresh editor swallow the pane. */
         /* Ghost: the WINDOW itself is the card — a mostly-transparent frosted
            panel floating over the active app (no full-screen dim backdrop). */
         :root[data-ghost="1"], [data-ghost="1"] body { background: transparent !important; overflow: hidden !important; }
@@ -152,6 +154,7 @@ void (async () => {
             rgba(10, 8, 16, 0.72) !important;
         }
         /* let the frosted glass show through the agent's own opaque surfaces */
+        [data-ghost="1"] .code-workbench { margin-top: 38px; }
         [data-ghost="1"] .code-workbench, [data-ghost="1"] .ws-right-rails, [data-ghost="1"] .ws-right-rail,
         [data-ghost="1"] .ws-rail-slot, [data-ghost="1"] .ws-rail-slot-body, [data-ghost="1"] .code-agent { background: transparent !important; }
         @keyframes ghost-in { from { opacity: 0; transform: scale(0.99); } to { opacity: 1; transform: scale(1); } }
