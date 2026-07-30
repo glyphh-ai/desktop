@@ -448,12 +448,18 @@ export class CommandParser {
       }
     }
 
-    // WORKBENCH BUILTINS FIRST: "browser"/"terminal" are workspace panels
-    // now, but the LEGACY registry still holds a boot-registered "browser"
-    // (the old full-window BrowserView) — switchTo matched it first and the
-    // user landed outside the layout with no chrome to escape (only an app
-    // relaunch recovered). These open into the layout like every other app.
-    if (sub === "browser" || sub === "terminal" || sub === "term") {
+    // WORKBENCH BUILTINS + NAV SECTIONS FIRST: these are workspace panels
+    // now, but the LEGACY registry still boot-registers same-named system
+    // panels ("browser", "apps", …) — switchTo matched those first and
+    // showed the old BrowserView chrome (the mystery band above .dip apps
+    // content came from its tab-strip reservation). Everything here opens
+    // through the modern resolver: builtins into the layout, nav slugs as
+    // section panels over home:goto-section.
+    const WORKBENCH_FIRST = new Set([
+      "browser", "terminal", "term",
+      "home", "connections", "apps", "layouts", "skills", "loops", "agents", "models", "settings",
+    ]);
+    if (WORKBENCH_FIRST.has(sub)) {
       const opened = await openAppByRef(sub).catch(() => null);
       if (opened) return `Opened ${opened.name}`;
     }

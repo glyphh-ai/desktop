@@ -837,6 +837,11 @@ async function init(): Promise<void> {
     document.querySelector(".code-root")?.classList.remove("agent-hosted");
   }
 
+  /** Exactly one non-band rail holding exactly one slot — the solo panel. */
+  function soloPanel(): boolean {
+    return rails.length === 1 && rails[0]!.slots.length === 1 && !rails[0]!.banner;
+  }
+
   function codingHosted(): boolean {
     return rails.some((r) => r.slots.some((s) => s.view === "coding"));
   }
@@ -985,6 +990,9 @@ async function init(): Promise<void> {
       const kept = slotEl.dataset.slotId && savedFlex.get(slotEl.dataset.slotId);
       if (kept) slotEl.style.flex = kept;
     });
+    // A LONE panel fills the page as if maximized — no drop strips, no width
+    // handle, edge to edge (its expand button renders toggled-on too).
+    container.classList.toggle("solo-slot", soloPanel());
     paintSectionToggles();
     // Re-apportion displayed widths after every (re)render — handles slot
     // adds/closes/DnD that change the rail count and the drop-strip total.
@@ -1061,8 +1069,8 @@ async function init(): Promise<void> {
     wrap.className = "ws-rail-slot";
     wrap.dataset.slotId = String(slot.id);
     wrap.dataset.view = slot.view;
-    const isMax = (slot.id === maximizedSlotId);
-    if (isMax) wrap.classList.add("fullscreen");
+    const isMax = (slot.id === maximizedSlotId) || soloPanel();
+    if (slot.id === maximizedSlotId) wrap.classList.add("fullscreen");
     const urlToggle = slot.view === "app"
       ? `<button class="ws-icon-btn slot-urltoggle${(slot as AppSlot).urlBarHidden ? "" : " active"}" title="Address bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>`
       : "";

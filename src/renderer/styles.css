@@ -10215,6 +10215,12 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
   /* The slot header already titles the panel — content starts tight. */
   flex: 1; min-height: 0; overflow-y: auto; padding: 10px 32px 24px;
 }
+/* SOLO panel — the one open panel fills the page as if expanded: no drop
+   strips, no width handle, flush to every edge. */
+.ws-right-rails.solo-slot .ws-rail-dropstrip { display: none; }
+.ws-right-rails.solo-slot .ws-resize-v { display: none; }
+.ws-right-rails.solo-slot .ws-right-rail { width: auto !important; flex: 1 1 auto !important; }
+
 /* Hosted Apps page: its own big "Apps" heading duplicates the slot header. */
 .wb-hosted .apps-page-heading { display: none; }
 .ws-section-body > .help-section[data-section="docs"],
