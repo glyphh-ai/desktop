@@ -162,6 +162,7 @@ contextBridge.exposeInMainWorld("yo", {
   // Ghost Mode overlay drives its own resize grips (no native edge zones on a
   // transparent frameless window).
   ghostBounds: () => ipcRenderer.invoke("ghost-bounds") as Promise<{ x: number; y: number; width: number; height: number } | null>,
+  ghostSnap: (half: string) => ipcRenderer.invoke("ghost-snap", half) as Promise<{ ok: boolean; half?: string }>,
   ghostResize: (size: { width?: number; height?: number }) => ipcRenderer.invoke("ghost-resize", size) as Promise<{ ok: boolean }>,
   // Org-admin Models page (mirrors the platform's Configure → Models).
   orgModelsList: () => ipcRenderer.invoke("org-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,

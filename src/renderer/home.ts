@@ -167,6 +167,18 @@ void (async () => {
           border: 1px solid rgba(255, 255, 255, 0.14); -webkit-app-region: no-drag;
         }
         #ghost-cc:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+        #ghost-snap {
+          position: fixed; top: 8px; left: 10px; z-index: 6;
+          display: flex; gap: 4px; -webkit-app-region: no-drag;
+        }
+        #ghost-snap button {
+          width: 24px; height: 24px; border-radius: 6px; padding: 0;
+          display: flex; align-items: center; justify-content: center; cursor: pointer;
+          color: rgba(255, 255, 255, 0.62); background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        #ghost-snap button:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+        #ghost-snap button.on { color: #fff; border-color: rgba(255, 255, 255, 0.45); }
         /* Resize grips — a transparent frameless window gets no reliable
            native edge zones, so the overlay paints its own (right, bottom,
            corner) and drives the window size over IPC. */
@@ -192,6 +204,35 @@ void (async () => {
       ccBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`;
       ccBtn.addEventListener("click", () => openCommandCenter({ forceInline: true }));
       document.body.appendChild(ccBtn);
+      // Snap the ghost over a HALF of the target app — or the whole thing.
+      // The pick persists (main re-applies it on the next summon).
+      const snapWrap = document.createElement("div");
+      snapWrap.id = "ghost-snap";
+      const R = (x: number, y: number, w: number, h: number, fill = false): string =>
+        `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.5"${fill ? ` fill="currentColor" stroke="none"` : ""}/>`;
+      const SNAPS: Array<{ half: string; title: string; inner: string }> = [
+        { half: "full", title: "Cover the whole app", inner: R(4, 5, 16, 14) },
+        { half: "left", title: "Left half", inner: R(4, 5, 16, 14) + R(4, 5, 8, 14, true) },
+        { half: "right", title: "Right half", inner: R(4, 5, 16, 14) + R(12, 5, 8, 14, true) },
+        { half: "top", title: "Top half", inner: R(4, 5, 16, 14) + R(4, 5, 16, 7, true) },
+        { half: "bottom", title: "Bottom half", inner: R(4, 5, 16, 14) + R(4, 12, 16, 7, true) },
+      ];
+      const ghostSnapApi = window.yo as unknown as { ghostSnap?: (h: string) => Promise<{ ok: boolean; half?: string }> };
+      for (const sn of SNAPS) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.title = sn.title;
+        b.dataset.half = sn.half;
+        b.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${sn.inner}</svg>`;
+        b.addEventListener("click", () => {
+          void ghostSnapApi.ghostSnap?.(sn.half).then((r) => {
+            if (!r?.ok) return;
+            snapWrap.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+          });
+        });
+        snapWrap.appendChild(b);
+      }
+      document.body.appendChild(snapWrap);
       // Grip drag → window resize. Bounds are read once at pointerdown and the
       // target size is absolute (start + delta), so IPC latency can't compound
       // into drift; moves are throttled to one in-flight call.

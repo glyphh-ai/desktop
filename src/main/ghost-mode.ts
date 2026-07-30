@@ -17,8 +17,27 @@ import { BrowserWindow, globalShortcut, ipcMain, nativeTheme, screen } from "ele
 import { execFile } from "child_process";
 import path from "path";
 import { getClient } from "./glyphh-client";
+import { getPreference, setPreference } from "./stores/preferences-db";
 
 let ghostWin: BrowserWindow | null = null;
+/** The summon-time TARGET app bounds — snap halves are computed against
+ *  these, not the ghost's own (possibly already-snapped) bounds. */
+let targetBounds: Bounds | null = null;
+
+export type GhostHalf = "full" | "left" | "right" | "top" | "bottom";
+
+/** A half (or all) of the target bounds, clamped to the window minimums. */
+function snapBounds(t: Bounds, half: GhostHalf): Bounds {
+  const w2 = Math.max(320, Math.round(t.width / 2));
+  const h2 = Math.max(240, Math.round(t.height / 2));
+  switch (half) {
+    case "left": return { x: t.x, y: t.y, width: w2, height: t.height };
+    case "right": return { x: t.x + t.width - w2, y: t.y, width: w2, height: t.height };
+    case "top": return { x: t.x, y: t.y, width: t.width, height: h2 };
+    case "bottom": return { x: t.x, y: t.y + t.height - h2, width: t.width, height: h2 };
+    default: return t;
+  }
+}
 
 /** What a summon opens with: the model to select + the first prompt. */
 interface GhostOpts { model?: string; prompt?: string }
@@ -87,7 +106,10 @@ async function openGhost(opts?: GhostOpts): Promise<void> {
     closeGhost();
   }
   // Size + position the overlay to EXACTLY match the target app's window.
-  const bounds = (await frontmostWindowBounds()) ?? centeredFallback();
+  targetBounds = (await frontmostWindowBounds()) ?? centeredFallback();
+  // The remembered snap (full / a half of the target app) applies on summon.
+  const savedHalf = getPreference<GhostHalf>("ghostSnapHalf", "full");
+  const bounds = snapBounds(targetBounds, savedHalf);
   ghostWin = new BrowserWindow({
     ...bounds,
     minWidth: 320,
@@ -170,6 +192,15 @@ export function registerGhostMode(): void {
   ipcMain.handle("ghost-bounds", () => {
     if (!ghostWin || ghostWin.isDestroyed()) return null;
     return ghostWin.getBounds();
+  });
+  // Snap the ghost over a HALF of the target app (left/right/top/bottom) or
+  // back to full. The choice persists and re-applies on the next summon.
+  ipcMain.handle("ghost-snap", (_e, half: GhostHalf) => {
+    if (!ghostWin || ghostWin.isDestroyed() || !targetBounds) return { ok: false };
+    const which: GhostHalf = ["full", "left", "right", "top", "bottom"].includes(half) ? half : "full";
+    ghostWin.setBounds(snapBounds(targetBounds, which));
+    setPreference("ghostSnapHalf", which);
+    return { ok: true, half: which };
   });
   ipcMain.handle("ghost-resize", (_e, size: { width?: number; height?: number }) => {
     if (!ghostWin || ghostWin.isDestroyed()) return { ok: false };
