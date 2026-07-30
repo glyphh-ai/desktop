@@ -11657,7 +11657,9 @@ select:focus {
 .code-thread {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 44px;
+  /* Right gets +4 over left: the scrollbar rides in the right gutter and
+     visually tightens it. */
+  padding: 20px 52px 24px 48px;
 }
 .code-thread-inner {
   width: 100%;
@@ -11871,9 +11873,9 @@ select:focus {
   /* Mirror the thread EXACTLY: 780px content + 44px gutters = 868px. The
      gutters never collapse (so the input keeps its padding when the pane is
      narrow), and the 780px content lines up with the thread above. */
-  max-width: 868px;
+  max-width: 880px;   /* 780px content + 48/52px gutters — matches the thread */
   margin: 0 auto;
-  padding: 4px 44px 18px;
+  padding: 4px 52px 26px 48px;
   box-sizing: border-box;
 }
 .code-input-wrap { position: relative; display: flex; }
