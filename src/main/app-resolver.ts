@@ -194,9 +194,9 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     return { slug: app.slug, name: app.name };
   }
   if (isGlyphhSelfRow(app)) {
-    // The Glyphh app = the agent: the default view, no workspace attached.
+    // The Glyphh app = the coding agent, full screen (workspace clears).
     focusGlyphhWindow();
-    sendHomeGoto("code");
+    sendHomeGoto("agent");
     return { slug: app.slug, name: app.name };
   }
 

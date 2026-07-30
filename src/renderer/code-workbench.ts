@@ -861,6 +861,16 @@ async function init(): Promise<void> {
    */
   function openSectionInWorkbench(section: string): void {
     const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
+    if (section === "agent") {
+      // The Glyphh mark / Glyphh app: the coding agent, FULL SCREEN — the
+      // workspace clears (unsaved-work confirm included) and the agent panel
+      // is the only thing left.
+      void clearAllPanels().then((cleared) => {
+        if (!cleared) return;
+        placeSlot(makeSlot("coding"));
+      });
+      return;
+    }
     if (section === "code" || section === "workspace") {
       // Back to the working surface: section panels close, the workspace
       // stays. "code" additionally guarantees the agent panel exists;

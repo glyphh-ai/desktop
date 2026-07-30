@@ -166,6 +166,8 @@ export function initHelp() {
   // after mounting a section panel so the section's data actually loads.
   (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad =
     (section: string) => loadActiveSection(section);
+  // The header's Glyphh mark opens the coding agent full screen.
+  document.querySelector<HTMLElement>("#panel-wc .app-rail-mark")?.addEventListener("click", () => gotoSection("agent"));
   // The code section is the permanent shell now — always active.
   document.querySelector(`.help-section[data-section="code"]`)?.classList.add("active");
   document.body.dataset.railSection ||= "code";

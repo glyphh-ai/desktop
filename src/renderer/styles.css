@@ -10224,6 +10224,13 @@ body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
   position: fixed; top: 0; left: 0; right: 0; height: 38px; z-index: 200;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
+}
+/* The DRAG surface is a child that starts past the chrome cluster — a drag
+   region overlapping the buttons eats their clicks (the original rail bug).
+   syncDragStripOffset() measures the cluster and overrides the fallback. */
+#shell-drag-strip .shell-drag-area {
+  height: 100%;
+  margin-left: 218px;
   -webkit-app-region: drag;
 }
 /* Layouts PAGE reuses the command-center card + mini-preview, laid out as a
@@ -12199,7 +12206,7 @@ body.wb-max .ws-right-rails { width: 100%; }
 }
 #panel-wc,
 #panel-wc * { -webkit-app-region: no-drag; }
-#panel-wc .app-rail-mark { width: 20px; height: 20px; margin-left: 14px; }
+#panel-wc .app-rail-mark { width: 20px; height: 20px; margin-left: 14px; cursor: pointer; }
 #panel-wc .code-icon-btn { width: 26px; height: 26px; }
 .app-rail-top {
   flex: 0 0 38px;
