@@ -39,7 +39,7 @@ import { refreshWorkspaceIndex, relevantFilesHint } from "./workspace-index";
 import { stopEmbedServer } from "./glyphh-agent-embeddings";
 import { GLYPHH_APP_SPEC } from "@glyphh/client";
 import { fetchOrgApps } from "./org-apps";
-import { assemblePrompt, compactIfNeeded, compactNow, registerGlyphhContextIpc } from "./glyphh-agent-context";
+import { assemblePrompt, compactIfNeeded, compactNow, loadSessions, registerGlyphhContextIpc } from "./glyphh-agent-context";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { getClient } from "./glyphh-client";
 import { startInterceptor, type Interceptor } from "@glyphh/client/runtime";
@@ -192,7 +192,12 @@ export function registerGlyphhIpc(): void {
     // launch cwd. The SESSION's own folder (stamped by its layout or the
     // pick made while it was current) wins over the global pick, so
     // concurrent sessions can work different projects at once.
-    const mode = payload?.mode ?? (payload?.chat ? "chat" : "code");
+    // The SESSION RECORD is the source of truth for the run's mode — a
+    // renderer bug or version skew must never run a chat session with code
+    // tools (or vice versa). The payload's mode is only the fallback for a
+    // record the store hasn't caught up on.
+    const stored = loadSessions().chats.find((c) => c.id === chatId);
+    const mode = stored?.mode ?? (stored?.chat ? "chat" : undefined) ?? payload?.mode ?? (payload?.chat ? "chat" : "code");
     const runWorkdir = (typeof payload?.workdir === "string" && payload.workdir) || getExplicitWorkingDirectory();
     // A CHAT run executes no tools — it has no use for a folder, so it never
     // demands one. Tool-bearing modes still require the user's explicit pick.

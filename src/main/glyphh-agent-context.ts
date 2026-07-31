@@ -32,6 +32,11 @@ export interface StoredChat {
   id: string;
   title: string;
   createdAt: number;
+  /** The session's SPACE — stamped at birth by the renderer and treated as
+   *  the SINGLE SOURCE OF TRUTH for which tool pack a run gets. */
+  mode?: "chat" | "cowork" | "code";
+  /** Legacy pre-mode flag (chat sessions only) — read, never written. */
+  chat?: boolean;
   /** Per-chat LWW stamp, main-owned: set on every content change and used
    *  by the server upsert so an old machine can't clobber a newer one. */
   updatedAt?: number;
