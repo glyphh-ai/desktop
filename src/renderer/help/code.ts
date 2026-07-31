@@ -1166,7 +1166,27 @@ function paintComposerGate(): void {
     ? "Describe the app to build…"
     : "Pick a working folder to start — click here to choose";
   el("code-send")?.toggleAttribute("disabled", !workdirReady);
-  document.querySelector(".code-input-wrap")?.classList.toggle("gated", !workdirReady);
+  const wrap = document.querySelector(".code-input-wrap");
+  wrap?.classList.toggle("gated", !workdirReady);
+  // With TEXT in the composer (a seeded prompt) the placeholder is
+  // invisible — the gate needs its own voice, or the chat just looks dead.
+  let note = wrap?.querySelector<HTMLElement>(".code-gate-note") ?? null;
+  if (!workdirReady) {
+    if (!note && wrap) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      note = btn;
+      btn.className = "code-gate-note";
+      btn.textContent = "Pick a working folder to start →";
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
+      });
+      wrap.prepend(btn);
+    }
+  } else {
+    note?.remove();
+  }
 }
 
 async function checkWorkdirGate(): Promise<void> {
@@ -1439,9 +1459,24 @@ function syncDragStripOffset(): void {
 
 // ── Composer ─────────────────────────────────────────────────────────────
 function autoGrow(ta: HTMLTextAreaElement): void {
-  // Grow with input up to ~10 lines, then scroll internally.
+  // Grow with input up to ~10 lines, then scroll internally. Skip while the
+  // textarea has no real width (the agent card mid-entrance): scrollHeight
+  // wraps into a tower and the height sticks tall after the card widens.
+  if (ta.clientWidth < 60) return;
   ta.style.height = "auto";
   ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
+}
+/** Recompute the composer height whenever its WIDTH changes — card
+ *  entrances, adoptions, and layout switches all resize it after the last
+ *  input event, and a height measured at the wrong width must not stick. */
+let composerRO: ResizeObserver | null = null;
+function watchComposerWidth(ta: HTMLTextAreaElement): void {
+  if (composerRO) return;
+  let lastW = ta.clientWidth;
+  composerRO = new ResizeObserver(() => {
+    if (ta.clientWidth !== lastW) { lastW = ta.clientWidth; autoGrow(ta); }
+  });
+  composerRO.observe(ta);
 }
 
 function setThinking(on: boolean): void {
@@ -2387,7 +2422,7 @@ export function initCode(): void {
   inited = true;
   // "/" in the composer pops the installed-skill menu at the caret.
   const composerTa = input();
-  if (composerTa) attachSlashMenu(composerTa);
+  if (composerTa) { attachSlashMenu(composerTa); watchComposerWidth(composerTa); }
   // Cmd+. / Ctrl+. opens the command center from any section. Registered in
   // the home-panel document (owns gotoSection + the switcher overlay), NOT
   // renderer.ts (the index shell — different webContents, no overlay reach).
@@ -2739,4 +2774,9 @@ export function seedComposer(text: string): void {
   ta.dispatchEvent(new Event("input", { bubbles: true }));
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
+  // Clicking a prompt IS the intent to start — if no working folder is set
+  // yet, ask for it right now instead of leaving a dead composer.
+  if (!workdirReady) {
+    void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
+  }
 }
