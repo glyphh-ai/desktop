@@ -1244,7 +1244,7 @@ async function init(): Promise<void> {
         <button class="ws-icon-btn echo-shadow-btn" title="Show the wall (hold ⌘⇧)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button class="ws-icon-btn echo-z-in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-        <button class="ws-icon-btn echo-z-reset" title="Reset view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg></button>
+        <button class="ws-icon-btn echo-z-reset" title="Close all panels + reset the view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg></button>
       </div>`;
     const stage = body.querySelector<HTMLElement>(".echo-stage")!;
     wrap.dataset.view = "echo";
@@ -1700,7 +1700,7 @@ async function init(): Promise<void> {
     };
     const layoutCards = (): void => {
       const n = openList.length;
-      if (!n) return;
+      if (!n) { paintDividers(false); return; }   // no panels ⇒ no seams
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const grid = gridRects();
       const flowIdx = openList.filter((e) => !(grid && grid.has(e)));
@@ -1825,7 +1825,7 @@ async function init(): Promise<void> {
       left: (stage.clientWidth || 300) / 2 - 60, top: (stage.clientHeight || 200) / 2 - 40, width: 120, height: 80,
     });
     const openShell = (e: TileEntry): HTMLElement | null => {
-      if (e.card) { e.card.classList.add("flash"); window.setTimeout(() => e.card?.classList.remove("flash"), 600); return null; }
+      if (e.card) { flash(e.card); return null; }
       const card = document.createElement("div");
       card.className = "echo-card";
       card.innerHTML = `<div class="echo-card-head"><span></span>
@@ -2140,6 +2140,7 @@ async function init(): Promise<void> {
     const retargetCard = (pinned: TileEntry, t: EchoTile): void => {
       const card = pinned.card;
       if (!card) return;
+      setShadow(false, false);   // the pick lands VISIBLE, not behind the veil
       clearCardContent(pinned, card);
       pinned.tile = { ...t, sticky: true };
       card.querySelector(".echo-card-head span")!.textContent = t.name;
@@ -2209,8 +2210,13 @@ async function init(): Promise<void> {
       const tex = new THREE.CanvasTexture(canvas);
       return { tile, canvas, tex, img: null };
     };
+    /** "Here it is" — surface a card the user just aimed at. Landing in an
+     *  EXISTING card (a pinned slot, an already-open app) has to leave
+     *  shadow mode just like opening a new one does, or the app they picked
+     *  fills the slot behind a veil that never lifts. */
     const flash = (card: HTMLElement | undefined): void => {
       if (!card) return;
+      setShadow(false, false);
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
@@ -2238,7 +2244,7 @@ async function init(): Promise<void> {
         if (existing?.card) {
           // already open — a URL open (open_browser) navigates it
           if (app.url) existing.card.querySelector("webview")?.setAttribute("src", app.url);
-          flash(existing.card);
+          flash(existing.card);   // flash() lifts shadow too
           return;
         }
         const tile: EchoTile | undefined = findTile(key)?.tile
@@ -2375,7 +2381,16 @@ async function init(): Promise<void> {
     });
     body.querySelector(".echo-z-in")!.addEventListener("click", () => { userMoved = true; dist -= 280; applyCamera(); });
     body.querySelector(".echo-z-out")!.addEventListener("click", () => { userMoved = true; dist += 280; applyCamera(); });
-    body.querySelector(".echo-z-reset")!.addEventListener("click", () => { userMoved = false; refit?.(); });
+    // RESET = back to the bare wall: every panel closes (the layout lets go
+    // too), shadow clears, and the camera re-fits.
+    body.querySelector(".echo-z-reset")!.addEventListener("click", () => {
+      for (const x of [...openList]) closeCard(x);
+      echoGrid = null;
+      echoLayoutName = null;
+      setShadow(false, false);
+      userMoved = false;
+      refit?.();
+    });
 
     // Teardown: free the GL context and every tile's geometry/texture.
     const obs = new MutationObserver(() => {
