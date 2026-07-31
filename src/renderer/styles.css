@@ -10100,145 +10100,9 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
 .ws-app-holder.leaving { transform: translateX(-40px); opacity: 0; }
 .ws-rail-slot.flash { outline: 2px solid var(--accent); outline-offset: -2px; transition: outline-color 0.6s ease; }
 
-/* The switch — app switcher overlay docked over the rails side. */
-/* ── Command center — full-screen apps/layouts launcher (rebuilt in-renderer;
-   z-index clears the z-120 workbench webview layer). ── */
-.command-center {
-  position: fixed;
-  inset: 0;
-  z-index: 9000;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  backdrop-filter: blur(18px) saturate(140%);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  overflow: auto;
-  animation: ccIn 0.14s ease;
-}
-@keyframes ccIn { from { opacity: 0; } to { opacity: 1; } }
-.cc-inner { width: min(1200px, 92vw); padding: 64px 28px 48px; }
-.cc-header {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 22px;
-  /* ONE row, always: the search input is the only shrinkable item — the
-     buttons beside it are icons and never give way. */
-  flex-wrap: nowrap; overflow: hidden;
-}
-.cc-header .cc-input { flex: 1 1 auto; min-width: 60px; }
-.cc-header .cc-drip-wrap,
-.cc-header .cc-overlay-btn { flex-shrink: 0; }
-.cc-close {
-  position: absolute; top: 14px; right: 18px; z-index: 5;
-  width: 34px; height: 34px; border-radius: 9px; border: none;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent; color: var(--text-3);
-  font-size: 22px; line-height: 1; cursor: pointer;
-}
-.cc-close:hover { color: var(--text); background: var(--hover); }
-.cc-input {
-  flex: 1; height: 42px; padding: 0 16px; font-size: 15px; color: var(--text);
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; outline: none;
-}
-.cc-input:focus { border-color: var(--accent); }
-.cc-input::placeholder { color: var(--text-3); }
-.cc-apps {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px 4px;
-  margin-bottom: 24px;
-}
-/* Command-bar tiles — the SAME look as the left rail's Apps/Layouts sections:
-   bare rounded-square icon + name, no card around the card. */
-.cc-tile {
-  position: relative; display: flex; flex-direction: column; align-items: center;
-  gap: 6px; padding: 10px 4px 8px; border: none; border-radius: 10px;
-  background: none; color: var(--text-2); cursor: pointer;
-}
-.cc-tile:hover { background: var(--hover); color: var(--text); }
-.cc-tile .tile-icon {
-  width: 56px; height: 56px; border-radius: 14px; overflow: hidden;
-  display: flex; align-items: center; justify-content: center; background: var(--surface-3);
-}
-/* Every icon renders at the SAME visual size: contain inside a fixed inset,
-   instead of cover (which let each logo's own padding/crop set its size). */
-.cc-tile .tile-icon img {
-  width: 100%; height: 100%; object-fit: contain;
-  padding: 9px; box-sizing: border-box;
-}
-.cc-tile .nav-glyph svg { width: 64%; height: 64%; }
-.cc-tile .tile-initial {
-  display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 100%; font-size: 16px; font-weight: 600; color: var(--text-2);
-}
-.cc-tile .tile-name {
-  max-width: 100%; font-size: 11px; line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.cc-tile.open .tile-icon { box-shadow: 0 0 0 1.5px var(--accent); }
-.cc-tile .tile-icon.tile-layout {
-  display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr;
-  gap: 1px; padding: 3px; box-sizing: border-box;
-}
-/* iOS-style edit (jiggle) mode: long-press a tile to enter; drag reorders,
-   the red badge uninstalls, Esc / backdrop click exits. */
-@keyframes cc-jiggle {
-  0% { transform: rotate(-1.7deg); }
-  50% { transform: rotate(1.7deg); }
-  100% { transform: rotate(-1.7deg); }
-}
-.cc-tile.cc-jiggle { animation: cc-jiggle .3s ease-in-out infinite; }
-.cc-apps.cc-editing .cc-tile { cursor: grab; }
-.cc-tile.dragging { opacity: .35; }
-.cc-del {
-  position: absolute; top: 2px; left: 8px; z-index: 2;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #e5484d; color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.35);
-}
-.cc-del:hover { background: #f2555a; }
-.cc-del svg { width: 9px; height: 9px; }
-/* The DOCK — sticky slots above the search bar. Empty = dotted outline. */
-.cc-dock {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px 4px;
-  margin-bottom: 14px; padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-.cc-dock-slot {
-  display: flex; align-items: center; justify-content: center;
-  min-height: 92px; border-radius: 14px; cursor: default;
-  background: none; border: 2px dashed var(--border-2);
-}
-.cc-dock-slot.drag-over,
-.cc-dock-tile.drag-over { border-color: var(--accent); background: var(--hover); }
-.cc-dock-tile { border: 2px solid transparent; border-radius: 14px; }
-
-/* Kept for the Layouts page cards (it shares the cc- card language). */
+/* (command-center CSS removed — Echo is the launcher. The Layouts page
+   still speaks the cc- card language for its cards + mini previews.) */
 .cc-card-name { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Drip control: droplet button + effects dropdown */
-.cc-drip-wrap { position: relative; flex-shrink: 0; }
-.cc-drip-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 9px; cursor: pointer;
-  background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text-2); transition: color .12s, border-color .12s;
-}
-.cc-drip-btn:hover { color: var(--accent); border-color: var(--border-2); }
-.cc-drip-menu {
-  position: absolute; top: 40px; right: 0; z-index: 30;
-  min-width: 180px; max-height: 320px; overflow-y: auto;
-  background: var(--surface); border: 1px solid var(--border-2);
-  border-radius: 10px; padding: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.4);
-}
-.cc-drip-label {
-  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--text-3); padding: 6px 8px 4px;
-}
-.cc-drip-item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 6px 8px; border: none; border-radius: 6px; cursor: pointer;
-  background: transparent; color: var(--text); font-size: 12.5px; text-align: left;
-}
-.cc-drip-item:hover { background: var(--hover); }
-.cc-drip-emoji { width: 18px; text-align: center; }
 .cc-layouts { display: flex; flex-wrap: wrap; gap: 16px; }
 .cc-layout-card {
   display: flex; flex-direction: column; gap: 8px; cursor: pointer;
@@ -10254,18 +10118,6 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
   position: absolute; background: var(--hover); border: 1px solid var(--border-2); border-radius: 3px;
   display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
-.cc-mini-ico { display: flex; align-items: center; justify-content: center; width: 60%; height: 60%; max-width: 24px; max-height: 24px; }
-.cc-mini-ico img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
-/* Built-in tool panels in a command-view layout preview: the VIEW_META glyph,
-   currentColor = var(--text) (WHITE in dark mode), filling the mini cell. */
-.cc-mini-tool .cc-mini-initial {
-  background: var(--surface-2); color: var(--text-2); font-weight: 650;
-}
-.cc-mini-initial {
-  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
-  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px;
-}
-.cc-empty { color: var(--text-3); font-size: 13px; padding: 8px 0; }
 
 /* A SECTION hosted as a workbench panel (2.5.0 shell): the section's own
    DOM fills the slot and scrolls itself; padding matches the old #page-body. */
@@ -10335,23 +10187,7 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
 .mkt-cs-inner svg { width: 46px; height: 46px; color: var(--text-3); margin-bottom: 16px; }
 .mkt-cs-inner h2 { margin: 0 0 8px; font-size: 19px; color: var(--text); }
 .mkt-cs-inner p { margin: 0; font-size: 13.5px; line-height: 1.6; }
-.cc-overlay-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border: none; border-radius: 8px;
-  background: transparent; color: var(--text-3); cursor: pointer;
-}
-.cc-overlay-btn:hover { background: var(--hover); color: var(--text); }
-.cc-overlay-btn.on { color: var(--accent); }
-.cc-pager { display: flex; justify-content: center; margin: 6px 0 30px; }
-.cc-pager:empty { display: none; }
 /* Ada fallback — semantic memory hits when nothing matches by name. */
-.cc-ada { display: flex; flex-direction: column; gap: 6px; margin: -18px 0 32px; }
-.cc-ada-hit {
-  text-align: left; border: 1px solid var(--border); background: rgba(255,255,255,0.04);
-  color: var(--text-2); font-size: 12px; padding: 8px 11px; border-radius: 8px; cursor: pointer;
-}
-.cc-ada-hit:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); }
-.cc-ada-hit:disabled { opacity: 0.55; cursor: default; }
 
 .ws-preview-stub { text-align: center; color: var(--ws-text-faint); }
 .ws-preview-stub-title { font-size: 14px; color: var(--ws-text-muted); margin-bottom: 4px; }

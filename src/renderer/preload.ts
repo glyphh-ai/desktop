@@ -279,8 +279,6 @@ contextBridge.exposeInMainWorld("yo", {
     launchConfig?: Record<string, unknown> | null;
   }) => ipcRenderer.invoke("app-launch", spec) as Promise<{ ok: boolean; error?: string }>,
   // Command center as a fullscreen transparent overlay over the whole desktop
-  // (the cc's monitor toggle) — see cc-overlay-open in apps-ipc.ts.
-  ccOverlayOpen: () => ipcRenderer.invoke("cc-overlay-open") as Promise<{ ok: boolean }>,
   // Live preview of an installed glyphh-app on the Apps page: grants the preview
   // <webview> (id passed by webContents id) the app's caps and returns the
   // file:// entry URL to load. Clear drops the grant when switching away.

@@ -2111,6 +2111,7 @@ function renderRailApps(): void {
     tile.append(icon, nm);
     tile.addEventListener("click", () => {
       // Same open the Apps page's "Open app" uses (per-config launch).
+      openCommandCenter();   // rail clicks land in Echo — the layout manager
       void window.yo.appLaunch?.({
         slug: a.slug || a.id, name: a.name, url: a.url,
         isBrowser: a.isBrowser, execPath: a.execPath,
@@ -2167,7 +2168,7 @@ function renderRailLayouts(): void {
     nm.className = "tile-name";
     nm.textContent = l.name;
     tile.append(icon, nm);
-    tile.addEventListener("click", () => { void openLayoutInWorkbench(l.name); });
+    tile.addEventListener("click", () => { openCommandCenter(); void openLayoutInWorkbench(l.name); });
     list.appendChild(tile);
   }
   if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRailLayouts(); }));
@@ -2332,31 +2333,18 @@ export function openUrlInWorkbench(name: string, url: string): void {
  *  the Code workbench has ever mounted. Flips to the agent surface, boots the
  *  workbench (idempotent async init), then retries the toggle over rAF because
  *  __wbToggleAppSwitcher isn't assigned until that init() resolves. */
-export function openCommandCenter(opts: { forceInline?: boolean } = {}): void {
-  void (async () => {
-    // Desktop-overlay mode (toggle inside the command center): open the
-    // fullscreen transparent overlay window instead of the inline switcher —
-    // unless THIS page already is that overlay, or the caller wants the
-    // inline surface regardless (boot landing).
-    const w = window as unknown as {
-      __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __ccOverlayHost?: boolean;
-      yo?: { getPreference?: (k: string, d: unknown) => Promise<unknown>; ccOverlayOpen?: () => Promise<unknown> };
-    };
-    if (!opts.forceInline && !w.__ccOverlayHost && w.yo?.ccOverlayOpen) {
-      const overlay = await w.yo.getPreference?.("ccDesktopOverlay", false).catch(() => false);
-      if (overlay) { void w.yo.ccOverlayOpen(); return; }
-    }
-    // 2.5.0: the workbench IS the surface — the launcher overlays whatever is
-    // open. No gotoSection("code") here: opening the launcher must not touch
-    // the workspace (that call now ensures/clears panels).
-    w.__initCodeWorkbench?.();
-    let tries = 0;
-    const go = (): void => {
-      if (w.__wbToggleAppSwitcher) w.__wbToggleAppSwitcher();
-      else if (tries++ < 20) requestAnimationFrame(go);
-    };
-    go();
-  })();
+/** Every launcher entry point (⌘⇧Space, ⌘., the Glyphh rail, boot) opens
+ *  ECHO — the command center is gone; Echo is the launcher AND the layout
+ *  manager. (opts kept for caller compatibility; there is no overlay mode.) */
+export function openCommandCenter(_opts: { forceInline?: boolean } = {}): void {
+  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void };
+  w.__initCodeWorkbench?.();
+  let tries = 0;
+  const go = (): void => {
+    if (w.__wbToggleAppSwitcher) w.__wbToggleAppSwitcher();   // → openEchoSurface
+    else if (tries++ < 40) requestAnimationFrame(go);
+  };
+  go();
 }
 
 export function initCode(): void {
@@ -2377,7 +2365,6 @@ export function initCode(): void {
   (window.yo as unknown as { onOpenCommandCenter?: (cb: () => void) => void }).onOpenCommandCenter?.(() => openCommandCenter());
   // Header launcher button — bound here (home-panel startup) through the
   // cold-safe path, so it works even before the Code workbench first mounts.
-  el("code-apps-btn")?.addEventListener("click", () => openCommandCenter());
   syncDragStripOffset();
   // Apps open as workbench panels beside the agent (the OS-window
   // replacement). Every main-side opener — Glyphh's open_app, the relay's

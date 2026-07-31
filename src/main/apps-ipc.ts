@@ -48,39 +48,6 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   // in the terminal (its own console lives in the window's DevTools).
   ipcMain.on("wb-log", (_e, msg: unknown) => console.log(String(msg)));
 
-  // Command center as a DESKTOP OVERLAY: a transparent fullscreen always-on-top
-  // window on the display under the cursor, hosting only the command center
-  // (home.html?solo=cc). Closes on blur/Esc/pick — the page closes itself when
-  // the switcher leaves the DOM.
-  let ccOverlayWin: BrowserWindow | null = null;
-  ipcMain.handle("cc-overlay-open", () => {
-    if (ccOverlayWin && !ccOverlayWin.isDestroyed()) { ccOverlayWin.focus(); return { ok: true }; }
-    const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    ccOverlayWin = new BrowserWindow({
-      ...d.bounds,
-      frame: false,
-      transparent: true,
-      resizable: false,
-      movable: false,
-      alwaysOnTop: true,
-      hasShadow: false,
-      skipTaskbar: true,
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "..", "renderer", "preload.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        webviewTag: true,
-      },
-    });
-    ccOverlayWin.setAlwaysOnTop(true, "screen-saver");
-    ccOverlayWin.on("blur", () => { try { ccOverlayWin?.close(); } catch { /* already closing */ } });
-    ccOverlayWin.on("closed", () => { ccOverlayWin = null; });
-    void ccOverlayWin.loadFile(path.join(__dirname, "..", "renderer", "home.html"), { query: { solo: "cc" } });
-    ccOverlayWin.once("ready-to-show", () => ccOverlayWin?.show());
-    return { ok: true };
-  });
-
   // Native-app icon as a data URL (Apps page, Layouts cards, command overlay),
   // session-cached per path and SERIALIZED through a promise chain.
   //

@@ -88,30 +88,6 @@ void (async () => {
         void window.yo.ghostSummon?.(modelId, (m[3] || "").trim());
       }, true);
     }
-    // Command-center DESKTOP OVERLAY host (?solo=cc): a transparent
-    // fullscreen window whose only content is the command center.
-    if (solo === "cc") {
-      document.documentElement.setAttribute("data-home-scope", "solo-cc");
-      (window as unknown as { __ccOverlayHost?: boolean }).__ccOverlayHost = true;
-      const style = document.createElement("style");
-      style.textContent = `
-        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
-        [data-home-scope="solo-cc"] .code-root { display: none !important; }
-        :root[data-home-scope="solo-cc"], [data-home-scope="solo-cc"] body { background: transparent !important; }
-        [data-home-scope="solo-cc"] .command-center { background: rgba(0,0,0,.45); }`;
-      document.head.appendChild(style);
-      openCommandCenter();
-      // The overlay lives exactly as long as the switcher: Esc or picking an
-      // item removes #command-center from the DOM — close the window with it.
-      document.addEventListener("keydown", (e) => { if (e.key === "Escape") window.close(); });
-      let seen = false;
-      const mo = new MutationObserver(() => {
-        if (document.getElementById("command-center")) seen = true;
-        else if (seen) { mo.disconnect(); window.close(); }
-      });
-      mo.observe(document.body, { childList: true });
-      return;
-    }
     // GHOST MODE (?solo=ghost): the coding agent as a translucent overlay over
     // whatever app is in front — a floating glass card on a dim, blurred backdrop
     // that lets the app behind show through. A global hotkey toggles the window;
@@ -203,7 +179,7 @@ void (async () => {
       // Command center from inside the ghost — centered over the pane's top.
       const ccBtn = document.createElement("div");
       ccBtn.id = "ghost-cc";
-      ccBtn.title = "Command center (⌘⇧Space)";
+      ccBtn.title = "Echo (⌘⇧Space)";
       ccBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`;
       ccBtn.addEventListener("click", () => openCommandCenter({ forceInline: true }));
       document.body.appendChild(ccBtn);
@@ -389,8 +365,8 @@ void (async () => {
       return;
     }
   } catch { /* fall through */ }
-  // 2.5.0: the app loads into the HOME screen at startup. Period.
-  gotoSection("dashboard");
+  // The app loads into ECHO at startup — Echo is the home surface now.
+  openCommandCenter();
 })();
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────
