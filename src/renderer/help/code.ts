@@ -779,7 +779,7 @@ function ensureCodeSection(): void {
     } catch { return false; }
   };
 
-function newChat(): void {
+function newChat(opts?: { stay?: boolean }): void {
   const mode: CodeChat["mode"] = railTab === "code" ? "code" : (chatOnly ? "chat" : "cowork");
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
   chats.unshift(c);
@@ -787,7 +787,7 @@ function newChat(): void {
   threadPinned = true;
   void saveStore();
   syncThinking();   // fresh session — no run of its own yet
-  ensureCodeSection();
+  if (!opts?.stay) ensureCodeSection();
   // Fresh sessions start clean: all workbench rails closed, folder reset.
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession?.();
   renderHistory();
@@ -2543,9 +2543,9 @@ export function initCode(): void {
   });
   initRailApps();
   el("code-new-chat")?.addEventListener("click", () => {
-    // + New session behaves like the Glyphh icon: fresh chat, agent ALONE.
-    newChat();
-    gotoSection("agent");
+    // NEW IS HOME: a fresh session lands on the Home page, composer ready.
+    newChat({ stay: true });
+    gotoSection("dashboard");
   });
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
@@ -2566,8 +2566,9 @@ export function initCode(): void {
   const paintCw = (): void => {
     const cur = current();
     const curMode = cur ? modeOf(cur) : null;
-    // the toggle belongs to the CHAT space — code sessions don't show it
-    cwToggle?.classList.toggle("hidden", curMode === "code");
+    // The toggle lives in EXACTLY one place: the Home composer, Chat tab.
+    const onHome = document.body.classList.contains("composer-on-home");
+    cwToggle?.classList.toggle("hidden", !onHome || railTab !== "chat" || curMode === "code");
     const shownChat = cur && curMode !== "code" ? curMode === "chat" : chatOnly;
     cwToggle?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", (b.dataset.cw === "chat") === shownChat));
     // chat → co-work upgrades anytime (a chat history carries no tool
@@ -2880,6 +2881,7 @@ export function adoptComposer(host: HTMLElement | null): void {
     if (composerHome && comp.parentElement !== composerHome.parent) composerHome.parent.insertBefore(comp, composerHome.next);
     document.body.classList.remove("composer-on-home");
   }
+  cwPaint?.();   // the Chat/Co-work toggle exists only on the Home composer
 }
 
 // The workbench bundle can't import this module — openAgentCard calls the
