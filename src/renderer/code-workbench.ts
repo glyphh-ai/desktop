@@ -1482,8 +1482,9 @@ async function init(): Promise<void> {
     };
     /** The wall reads top to bottom: the DOCK (always the same row), then
      *  the apps, then the layouts, and the WORKSPACE panels on the bottom
-     *  row. Each band wraps at 10 and starts on a fresh row, and every row
-     *  is centred on the arc. */
+     *  row. Each band wraps at 10 and starts on a fresh row, LEFT-JUSTIFIED
+     *  against a common edge — a short row (or a wrapped tail) lines up with
+     *  the rows above it instead of floating centred. */
     const WALL_WIDTH = 10;
     const banded = (bands: EchoTile[][]): EchoTile[][] => {
       const rows: EchoTile[][] = [];
@@ -1497,10 +1498,11 @@ async function init(): Promise<void> {
       wallCols = Math.max(1, ...rows.map((r) => r.length));
       wallRows = rows.length;
       maxYaw = (wallCols * COL_ARC) / 2 + 0.35;
-      const placed: Array<{ t: EchoTile; col: number; row: number; rowLen: number }> = [];
-      rows.forEach((cells, row) => cells.forEach((t, col) => placed.push({ t, col, row, rowLen: cells.length })));
-      placed.forEach(({ t, col, row, rowLen }) => {
-        const theta = (col - (rowLen - 1) / 2) * COL_ARC;
+      const placed: Array<{ t: EchoTile; col: number; row: number }> = [];
+      rows.forEach((cells, row) => cells.forEach((t, col) => placed.push({ t, col, row })));
+      placed.forEach(({ t, col, row }) => {
+        // every row starts at the SAME left edge (the widest row sets it)
+        const theta = (col - (wallCols - 1) / 2) * COL_ARC;
         const y = ((wallRows - 1) / 2 - row) * ROW_H;
         const canvas = document.createElement("canvas");
         const tex = new THREE.CanvasTexture(canvas);
