@@ -779,7 +779,7 @@ function ensureCodeSection(): void {
     } catch { return false; }
   };
 
-function newChat(opts?: { stay?: boolean }): void {
+function newChat(): void {
   const mode: CodeChat["mode"] = railTab === "code" ? "code" : (chatOnly ? "chat" : "cowork");
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
   chats.unshift(c);
@@ -789,7 +789,7 @@ function newChat(opts?: { stay?: boolean }): void {
   threadPinned = true;
   void saveStore();
   syncThinking();   // fresh session — no run of its own yet
-  if (!opts?.stay) ensureCodeSection();
+  ensureCodeSection();
   // Fresh sessions start clean: all workbench rails closed, folder reset.
   (window as unknown as { __codeWorkbenchNewSession?: () => void }).__codeWorkbenchNewSession?.();
   renderHistory();
