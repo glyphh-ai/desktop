@@ -370,7 +370,19 @@ async function chatRun(
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
   };
   try {
-    const text = await glyphhComplete(messages, { maxTokens, signal: ctrl.signal });
+    // SKILLS work in chat — a skill is INSTRUCTIONS, not a tool. A leading
+    // /slug resolves to the skill's prompt body and rides as a system turn;
+    // unknown slugs pass through (the text may just be a path).
+    const ask = String(messages[messages.length - 1]?.content ?? "");
+    const slashRef = /^\/([a-z0-9_-]+)\b/.exec(ask.trim());
+    let toSend = messages;
+    if (slashRef) {
+      try {
+        const skill = await getClient().skills.get(slashRef[1]!);
+        toSend = [{ role: "system", content: `## Skill: ${skill.name}\n${skill.prompt}` }, ...messages];
+      } catch { /* not a skill — send as typed */ }
+    }
+    const text = await glyphhComplete(toSend, { maxTokens, signal: ctrl.signal });
     if (ctrl.signal.aborted) { emit("glyphh-agent:done", { stopped: true }); return; }
     emit("glyphh-agent:delta", { delta: text });
     emit("glyphh-agent:done", { stopped: false });
