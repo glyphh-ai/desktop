@@ -58,6 +58,17 @@ interface ToolDef {
 
 const cap = (s: string, n = OUTPUT_CAP) => (s.length > n ? `${s.slice(0, n)}\n…(truncated, ${s.length} chars total)` : s);
 
+/** Attachment content types by extension — the handful that matter for
+ *  "email me the file"; anything else ships as octet-stream. */
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+  gif: "image/gif", webp: "image/webp", txt: "text/plain", md: "text/plain",
+  csv: "text/csv", json: "application/json", zip: "application/zip",
+  doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
 // ── Per-run working directory ────────────────────────────────────────────────
 // Sessions are independent processes; each run executes its tools inside ITS
 // OWN folder. The run's folder rides an AsyncLocalStorage context set by
@@ -208,7 +219,7 @@ export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
     // call returns. Say so in the description, or the model downloads a
     // file three times and then hunts the local /tmp for it.
     const sandboxNote = /download|export/i.test(t.name)
-      ? " NOTE: runs in a remote sandbox — the file is NOT saved to this machine and does not persist past this call. To get the file onto this machine use fetch_connector_file; to share it, pass its URL (e.g. the Drive link)."
+      ? " NOTE: runs in a remote sandbox — the file is NOT saved to this machine and does not persist past this call. To get the file onto this machine use fetch_connector_file; to email a file as a real attachment use send_email_with_attachment (never link-share a private file to work around this)."
       : "";
     defs.push({
       name: wire,
@@ -389,6 +400,68 @@ const TOOLS: ToolDef[] = [
         const dest = join(dir, fileName);
         writeFileSync(dest, Buffer.from(out.dataBase64, "base64"));
         return `saved ${out.bytes} bytes (${out.contentType || "unknown type"}) to ${dest}`;
+      } catch (err) {
+        return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+  },
+  {
+    name: "send_email_with_attachment",
+    doc: "send_email_with_attachment(to, subject, body, file, cc?) — send an email from the user's connected Gmail with a LOCAL file as a REAL attachment (no link-sharing needed). 'file' is a path inside the working folder (e.g. one saved by fetch_connector_file). Use this instead of gmail-send-email whenever a local file must be attached — the connector's send runs in a remote sandbox and cannot see local files.",
+    action: (a) => ({
+      kind: "network",
+      title: `Email ${String(a.to ?? "")} with ${String(a.file ?? "")}`,
+      detail: `subject: ${String(a.subject ?? "").slice(0, 120)}`,
+    }),
+    run: async (a) => {
+      const to = String(a.to ?? "").trim();
+      const cc = String(a.cc ?? "").trim();
+      const subject = String(a.subject ?? "").trim();
+      const bodyText = String(a.body ?? "");
+      const file = String(a.file ?? "").trim();
+      if (!to || !subject || !file) return "ERROR: to, subject, and file are required";
+      const abs = resolve(workdir(), file);
+      // contained to the working folder, like every workspace file tool
+      if (!abs.startsWith(workdir() + sep) && abs !== workdir()) return `ERROR: file must be inside the working folder (${workdir()})`;
+      if (!existsSync(abs)) return `ERROR: no such file: ${abs}`;
+      const bytes = readFileSync(abs);
+      if (bytes.length > 20 * 1024 * 1024) return `ERROR: attachment is ${bytes.length} bytes — over the 20MB cap`;
+      const name = basename(abs);
+      const ctype = MIME_BY_EXT[name.slice(name.lastIndexOf(".") + 1).toLowerCase()] ?? "application/octet-stream";
+      // RFC822 multipart, fully ASCII (headers + base64 lines) — text-safe for
+      // the proxy-send body contract.
+      const boundary = `glyphh_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      const b64 = bytes.toString("base64").replace(/(.{76})/g, "$1\r\n");
+      const mime = [
+        `To: ${to}`,
+        ...(cc ? [`Cc: ${cc}`] : []),
+        `Subject: ${subject.replace(/[\r\n]/g, " ")}`,
+        "MIME-Version: 1.0",
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+        "",
+        `--${boundary}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        "",
+        bodyText,
+        "",
+        `--${boundary}`,
+        `Content-Type: ${ctype}; name="${name}"`,
+        `Content-Disposition: attachment; filename="${name}"`,
+        "Content-Transfer-Encoding: base64",
+        "",
+        b64,
+        `--${boundary}--`,
+        "",
+      ].join("\r\n");
+      try {
+        const out = await getClient().connections.proxySend({
+          slug: "gmail",
+          url: "https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media",
+          contentType: "message/rfc822",
+          bodyBase64: Buffer.from(mime, "utf8").toString("base64"),
+        });
+        if (out.status >= 300) return `ERROR: Gmail send failed (${out.status}): ${Buffer.from(out.dataBase64, "base64").toString("utf8").slice(0, 400)}`;
+        return `sent to ${to} with ${name} attached (${bytes.length} bytes)`;
       } catch (err) {
         return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
       }
