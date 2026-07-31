@@ -673,8 +673,12 @@ function saveStore(): Promise<void> {
 }
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
 
+/** The rail's session interactions (New session, clicking a message row)
+ *  land on the AGENT PANEL — the same move as the header's Glyphh mark:
+ *  workspace clears (unsaved-work confirm included), the agent renders full
+ *  screen, showing whatever session is now current. */
 function ensureCodeSection(): void {
-  if (!document.querySelector('.help-section[data-section="code"].active')) gotoSection("code");
+  gotoSection("agent");
 }
 
 /** The session surface the Coding Agent workspace panel drives — same
