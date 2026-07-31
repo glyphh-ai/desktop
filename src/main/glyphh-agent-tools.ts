@@ -23,7 +23,7 @@
 import { exec } from "child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
@@ -208,7 +208,7 @@ export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
     // call returns. Say so in the description, or the model downloads a
     // file three times and then hunts the local /tmp for it.
     const sandboxNote = /download|export/i.test(t.name)
-      ? " NOTE: runs in a remote sandbox — the file is NOT saved to this machine and does not persist past this call. To attach or share the file, pass its URL (e.g. the Drive link) to the target tool instead of downloading."
+      ? " NOTE: runs in a remote sandbox — the file is NOT saved to this machine and does not persist past this call. To get the file onto this machine use fetch_connector_file; to share it, pass its URL (e.g. the Drive link)."
       : "";
     defs.push({
       name: wire,
@@ -368,6 +368,30 @@ const TOOLS: ToolDef[] = [
       const hits = (await rankConnectorTools(query, lastWireDefs)).filter((r) => r.score > 0).slice(0, k);
       if (!hits.length) return "(no connected-account tools match — the account may not be connected)";
       return cap(hits.map((r) => `${r.def.name} — ${r.def.description}`).join("\n"));
+    },
+  },
+  {
+    name: "fetch_connector_file",
+    doc: "fetch_connector_file(app, url, filename) — download a FILE from a connected account onto THIS machine (saved under downloads/ in the working folder; returns the local path). 'app' is the connection slug (e.g. google_drive), 'url' the provider API url for the bytes — for Drive: https://www.googleapis.com/drive/v3/files/<id>?alt=media (add &supportsAllDrives=true for shared drives); for Docs/Sheets export use the /export endpoints. This is the ONLY way connector files reach local disk — connector download actions run in a remote sandbox and their files never land here.",
+    action: (a) => ({ kind: "read", title: `Fetch file from ${String(a.app ?? "")}`, detail: String(a.url ?? "").slice(0, 300) }),
+    run: async (a) => {
+      const slug = String(a.app ?? "").trim().toLowerCase();
+      const url = String(a.url ?? "").trim();
+      const rawName = String(a.filename ?? "").trim();
+      if (!slug || !url) return "ERROR: app and url are required";
+      if (!rawName) return "ERROR: filename is required (what to save the file as)";
+      // basename only — the tool decides the directory, not the model
+      const fileName = basename(rawName).replace(/[^\w.\- ()]/g, "_");
+      try {
+        const out = await getClient().connections.fetchFile({ slug, url });
+        const dir = join(workdir(), "downloads");
+        mkdirSync(dir, { recursive: true });
+        const dest = join(dir, fileName);
+        writeFileSync(dest, Buffer.from(out.dataBase64, "base64"));
+        return `saved ${out.bytes} bytes (${out.contentType || "unknown type"}) to ${dest}`;
+      } catch (err) {
+        return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+      }
     },
   },
   {
@@ -1022,7 +1046,7 @@ async function runRolePacket(
   const PACKET_TOOLS = new Set([
     "list_dir", "read_file", "write_file", "search_files", "run_command",
     "semantic_search", "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
-    "update_app", "deploy_app", "open_browser", "find_tools", "call_tool",
+    "update_app", "deploy_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
   ]);
   const tools = TOOLS.filter((t) => PACKET_TOOLS.has(t.name) && !ROLE_RUN_EXCLUDED.has(t.name)).map((t) => ({
     name: t.name,
