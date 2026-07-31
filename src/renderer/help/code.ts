@@ -28,6 +28,10 @@ interface CodeChat {
   workdir?: string;
   /** Pinned sessions float to the top of the history dropdown. */
   pinned?: boolean;
+  /** A CHAT session: every turn is a tool-less completion — far fewer
+   *  tokens, and the history never carries a tool transcript. Stamped at
+   *  birth from the Chat/Work toggle; locked once the session has turns. */
+  chat?: boolean;
 }
 
 const STORE_KEY = "codeChats";
@@ -768,7 +772,7 @@ function ensureCodeSection(): void {
   };
 
 function newChat(): void {
-  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [] };
+  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], ...(chatOnly ? { chat: true } : {}) };
   chats.unshift(c);
   currentId = c.id;
   threadPinned = true;
@@ -865,13 +869,21 @@ function renderHistory(): void {
   const list = el<HTMLDivElement>("code-history");
   if (!list) return;
   list.textContent = "";
+  cwPaint?.();
   for (const c of chats) {
     const row = document.createElement("div");
     row.className = "code-history-item" + (c.id === currentId ? " active" : "");
     const label = document.createElement("span");
     label.className = "code-history-title";
     label.textContent = c.title;
-    label.title = c.title;
+    label.title = c.chat ? `${c.title} — Chat session (no tools)` : c.title;
+    if (c.chat) {
+      const badge = document.createElement("span");
+      badge.className = "code-chat-badge";
+      badge.textContent = "💬";
+      badge.title = "Chat session — tool-less, low-token";
+      label.prepend(badge);
+    }
     // Rename is a menu action (⋯ → Rename), not a click on the title — a
     // selection-gated title click fought the row's own select handler and
     // never reliably fired. The label is now just a label.
@@ -1159,8 +1171,11 @@ const wb = () => (window as unknown as { wb?: WbBridge }).wb;
 // once one exists it persists as last-used and sessions start ready (the
 // picker, when opened, defaults to that folder so switching is one click).
 let workdirReady = true; // painted by checkWorkdirGate
-/** Chat mode: turns run as plain completions — no tools, no harness. */
+/** Default mode for NEW sessions: chat (tool-less) or work (full agent). */
 let chatOnly = false;
+/** Repaints the Chat/Work toggle — set by initComposerControls, called on
+ *  session switches so the control always shows the CURRENT session's mode. */
+let cwPaint: (() => void) | null = null;
 
 function paintComposerGate(): void {
   const ta = input();
@@ -1691,7 +1706,7 @@ function send(): void {
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
   const launch = (retried: boolean): Promise<void> =>
-    window.yo.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), ...(chatOnly ? { chat: true } : {}) })
+    window.yo.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), ...(c.chat ? { chat: true } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -2535,11 +2550,23 @@ export function initCode(): void {
   // tokens) and hides the cowork content under the Home composer. ──
   const cwToggle = el("code-cw-toggle");
   const paintCw = (): void => {
-    cwToggle?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", (b.dataset.cw === "chat") === chatOnly));
-    document.body.classList.toggle("chat-only", chatOnly);
+    // a session with turns shows ITS mode, locked; otherwise the default
+    const cur = current();
+    const locked = !!cur && cur.messages.length > 0;
+    const shown = locked ? !!cur.chat : chatOnly;
+    cwToggle?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", (b.dataset.cw === "chat") === shown));
+    cwToggle?.classList.toggle("locked", locked);
+    if (cwToggle) cwToggle.title = locked
+      ? `This is a ${shown ? "Chat" : "Work"} session — the mode is fixed at birth. Start a new session to switch.`
+      : "Chat = plain conversation, no tools (far fewer tokens). Work = the full agent. Sets what NEW sessions become.";
+    document.body.classList.toggle("chat-only", shown);
   };
+  cwPaint = paintCw;
   cwToggle?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    const cur = current();
+    if (cur && cur.messages.length > 0) { paintCw(); return; }   // locked — mode is a birth property
     chatOnly = b.dataset.cw === "chat";
+    if (cur) { cur.chat = chatOnly || undefined; void saveStore(); }   // an EMPTY session can still flip
     paintCw();
     void window.yo.setPreference?.("agentChatMode", chatOnly);
   }));

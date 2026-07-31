@@ -3026,6 +3026,9 @@ body.chat-only .dash-two-col { visibility: hidden; }
   font-size: 11.5px; font-weight: 600; padding: 4px 10px; cursor: pointer;
 }
 .code-cw-toggle button.active { background: var(--active-bg); color: var(--text); }
+/* a session with turns can't flip — the control shows its birth mode */
+.code-cw-toggle.locked button:not(.active) { opacity: 0.4; cursor: default; }
+.code-chat-badge { margin-right: 5px; font-size: 11px; }
 
 /* Settings › Usage: the Add credits action above the metric cards */
 .dash-usage-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
