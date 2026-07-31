@@ -1674,13 +1674,25 @@ async function init(): Promise<void> {
       // TOP: the command center's dock, always the same row. (No agent
       // tile — the Glyphh mark in the header IS the universal chat icon.)
       const dockBand: EchoTile[] = docked.map((e) => ({ ...toTile(e), orderKey: e.key }));
+      // The BROWSER rides the dock, left of Settings — it's a tool tile
+      // (tabbed preview), not an app row, so it joins after the mapping.
+      const browserTile: EchoTile = {
+        name: VIEW_META.preview.title,
+        slug: "preview",
+        glyphSvg: VIEW_META.preview.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
+        kind: "tool",
+        toolView: "preview",
+      };
+      const settingsIdx = dockBand.findIndex((t) => t.slug === "settings");
+      dockBand.splice(settingsIdx >= 0 ? settingsIdx : dockBand.length, 0, browserTile);
       // MIDDLE: one band — the apps, then the layouts, wrapping together.
       const rest = ordered.filter((e) => !dockedSet.has(e.key));
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
       const midBand = [...rest.filter((x) => !x.layout).map(keyed), ...rest.filter((x) => x.layout).map(keyed)];
       // BOTTOM: the workspace panels (no Coding Agent tile — GLYPHH is the
       // coding agent, and it opens the dock row).
-      const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "preview", "plan"];
+      // no "preview" here — the Browser lives in the dock now
+      const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "plan"];
       const toolBand: EchoTile[] = TOOLS.map((v) => ({
         name: VIEW_META[v].title,
         slug: v,
