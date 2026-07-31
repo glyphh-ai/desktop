@@ -1556,14 +1556,27 @@ async function init(): Promise<void> {
      *  tile mutates these and re-runs positionWall(); nothing is rebuilt, so
      *  open cards keep pointing at their tile. */
     let wallBands: TileEntry[][] = [];
+    /** Space scoping, same mapping as the rail menu: the CHAT space hides
+     *  the build/governance tiles (layouts + Layouts/Loops/Agents/Models
+     *  pages); the CODE space hides Connections. Everything else is both. */
+    const spaceHidden = (t: EchoTile): boolean => {
+      const space = document.body.dataset.railSpace === "code" ? "code" : "chat";
+      const slug = (t.slug || "").toLowerCase();
+      if (space === "chat") return t.kind === "layout" || ["layouts", "loops", "agents", "models"].includes(slug);
+      return slug === "connections";
+    };
     const bandRows = (): TileEntry[][] => {
       const rows: TileEntry[][] = [];
       for (const band of wallBands) {
-        for (let i = 0; i < band.length; i += WALL_WIDTH) rows.push(band.slice(i, i + WALL_WIDTH));
+        const visible = band.filter((e) => !spaceHidden(e.tile));
+        for (let i = 0; i < visible.length; i += WALL_WIDTH) rows.push(visible.slice(i, i + WALL_WIDTH));
       }
       return rows.length ? rows : [[]];
     };
     const positionWall = (): void => {
+      for (const band of wallBands) for (const e of band) {
+        if (e.mesh) e.mesh.visible = !spaceHidden(e.tile);
+      }
       const rows = bandRows();
       wallCols = Math.max(1, ...rows.map((r) => r.length));
       wallRows = rows.length;
@@ -1926,7 +1939,7 @@ async function init(): Promise<void> {
     {
       const searchEl = body.querySelector<HTMLInputElement>(".echo-search")!;
       const matchesOf = (q: string): TileEntry[] =>
-        entries.filter((x) => x.mesh && ((x.tile.name || "").toLowerCase().includes(q) || (x.tile.slug || "").toLowerCase().includes(q)));
+        entries.filter((x) => x.mesh?.visible && ((x.tile.name || "").toLowerCase().includes(q) || (x.tile.slug || "").toLowerCase().includes(q)));
       const paintFilter = (): void => {
         const q = searchEl.value.trim().toLowerCase();
         for (const x of entries) {
@@ -2759,7 +2772,7 @@ async function init(): Promise<void> {
       const r = stage.getBoundingClientRect();
       const nd = new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -(((ev.clientY - r.top) / r.height) * 2 - 1));
       ray.setFromCamera(nd, camera);
-      const hit = ray.intersectObjects(group.children, false)[0]?.object;
+      const hit = ray.intersectObjects(group.children, false).find((h) => h.object.visible)?.object;
       return hit ? entries.find((e) => e.mesh === hit) ?? null : null;
     };
     const onKey = (e: KeyboardEvent): void => {
@@ -2802,6 +2815,12 @@ async function init(): Promise<void> {
       if ((e.key === "Control" || e.key === "Alt") && !shadowPinned) { cardsLayer.classList.remove("echo-shadow"); syncWallVisibility(); }
     };
     document.addEventListener("keyup", onKeyUp, true);
+    // the rail's space tabs re-scope the wall live
+    const onSpaceChange = (): void => {
+      if (!body.isConnected) { window.removeEventListener("rail-space-changed", onSpaceChange); return; }
+      positionWall();
+    };
+    window.addEventListener("rail-space-changed", onSpaceChange);
 
     // ── Pan (drag) + zoom (wheel / buttons); a still click opens the tile ──
     const overUi = (t: EventTarget | null): boolean =>

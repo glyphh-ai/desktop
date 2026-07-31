@@ -2555,7 +2555,13 @@ export function initCode(): void {
   });
   initRailApps();
   el("code-new-chat")?.addEventListener("click", () => {
-    // NEW IS HOME: a fresh session lands on the Home page, composer ready.
+    if (railTab === "code") {
+      // CODE space: a new session IS the full glyphh agent, alone.
+      newChat({ stay: true });
+      gotoSection("agent");
+      return;
+    }
+    // CHAT space: new is home — the landing with the composer + toggle.
     newChat({ stay: true });
     gotoSection("dashboard");
   });
@@ -2617,6 +2623,8 @@ export function initCode(): void {
     railTabs?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === railTab));
     // the nav below scopes to the space (data-space items + the More menu)
     document.body.dataset.railSpace = railTab;
+    // the command-center wall re-scopes too
+    window.dispatchEvent(new CustomEvent("rail-space-changed"));
   };
   railTabs?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
     railTab = b.dataset.tab === "code" ? "code" : "chat";

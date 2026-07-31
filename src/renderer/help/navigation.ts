@@ -208,7 +208,6 @@ export function initHelp() {
   //    short, tidy three-item column. ──
   // space: which rail tab shows the item — "chat", "code", or absent = both
   const MORE_ITEMS: Array<{ section: string; label: string; icon: string; space?: "chat" | "code" }> = [
-    { section: "drips", label: "Drips", space: "chat", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>` },
     { section: "loops", label: "Loops", space: "code", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg>` },
     { section: "skills", label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg>` },
     { section: "agents", label: "Agents", space: "code", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>` },
@@ -237,9 +236,7 @@ export function initHelp() {
       b.innerHTML = `${it.icon}<span>${it.label}</span>`;
       b.addEventListener("click", () => {
         closeMore();
-        // Drips lives inside Settings since 2.5.0 — route the sub through.
-        if (it.section === "drips") gotoSection("settings", "drips");
-        else gotoSection(it.section);
+        gotoSection(it.section);
       });
       menu.appendChild(b);
     }
