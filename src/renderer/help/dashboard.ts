@@ -158,7 +158,8 @@ function renderChart(series: SeriesData, only: string): void {
 }
 
 /** Fetch the series per the three dropdowns and repaint the chart + totals. */
-async function loadUsageChart(): Promise<void> {
+/** The chart lives in Settings › Usage now — Settings' loader calls this. */
+export async function loadUsageChart(): Promise<void> {
   const daysSel = document.getElementById("dash-usage-days") as HTMLSelectElement | null;
   const groupSel = document.getElementById("dash-usage-group") as HTMLSelectElement | null;
   const filterSel = document.getElementById("dash-usage-filter") as HTMLSelectElement | null;
@@ -229,7 +230,6 @@ export async function loadDashboard(): Promise<void> {
 
     $a("dash-apps-value").textContent = fmtInt(data.appsCount);
 
-    void loadUsageChart();
     renderRecommendations();
     void loadRuns();
   } catch (err) {
@@ -345,11 +345,25 @@ export function initDashboardEvents(): void {
   document.getElementById("dash-get-key")?.addEventListener("click", () => {
     gotoSection("settings", "mcp");
   });
+  // the refresh button rides the chart card in Settings › Usage
   document.getElementById("dash-refresh")?.addEventListener("click", () => {
-    void loadDashboard();
+    void loadUsageChart();
   });
   for (const id of ["dash-usage-days", "dash-usage-group", "dash-usage-filter"]) {
     document.getElementById(id)?.addEventListener("change", () => { void loadUsageChart(); });
   }
   document.getElementById("dash-tasks-search")?.addEventListener("input", () => { runsPage = 0; renderRuns(); });
+  // The centre CHAT INPUT — the glyphh agent's front door: Enter (or Start)
+  // opens a fresh session with the text seeded, exactly like a seed prompt.
+  const chatTa = document.getElementById("dash-chat-input") as HTMLTextAreaElement | null;
+  const fire = (): void => {
+    const text = (chatTa?.value || "").trim();
+    if (!text) return;
+    if (chatTa) chatTa.value = "";
+    seedNewSession(text);
+  };
+  chatTa?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fire(); }
+  });
+  document.getElementById("dash-chat-send")?.addEventListener("click", fire);
 }

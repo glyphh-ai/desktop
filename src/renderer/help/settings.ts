@@ -3,6 +3,7 @@
  */
 
 import { confirmAction } from "./shared.js";
+import { loadUsageChart } from "./dashboard.js";
 import { openUrlInWorkbench } from "./code.js";
 
 // ── Settings ─────────────────────────────────────────────
@@ -296,6 +297,8 @@ function initSettings() {
 
 
 async function loadSettings() {
+  // Settings › Usage owns the usage chart now.
+  void loadUsageChart();
   // Glyphh: standing compaction guidance + training capture
   const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
   if (wcp) wcp.value = String((await window.yo.getPreference?.("glyphhCompactionPrompt", "")) || "");
