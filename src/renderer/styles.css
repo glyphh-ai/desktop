@@ -13608,7 +13608,6 @@ body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { o
 
 /* Rail collapsed → the fixed chrome cluster floats over the page; shove the
    header content right so they don't overlap. */
-body.rail-collapsed .code-agent-head { margin-left: 200px; }
 
 
 /* Drag splitters between the rails and the agent column. */
