@@ -2300,7 +2300,6 @@ async function init(): Promise<void> {
      *  how a truly empty panel appeared. */
     type Sessions = {
       list?: () => Array<{ id: string; createdAt: number }>;
-      counts?: () => Record<string, number>;
       currentId?: () => string | null;
       switch?: (id: string) => void;
       startNew?: () => void;
@@ -2312,13 +2311,11 @@ async function init(): Promise<void> {
         if (tries < 60 && body.isConnected) requestAnimationFrame(() => ensureAgentSession(tries + 1));
         return;
       }
-      if (sess.currentId?.()) { sess.repaint?.(); return; }   // a session is up
-      const counts = sess.counts?.() ?? {};
-      const byNewest = [...(sess.list() ?? [])].sort((a, b) => b.createdAt - a.createdAt);
-      const withText = byNewest.find((c) => (counts[c.id] ?? 0) > 0);
-      const pick = withText ?? byNewest[0];
-      if (pick) sess.switch?.(pick.id);
-      else sess.startNew?.();
+      // With LAZY session creation an EMPTY current is a deliberate state —
+      // the "new" landing; nothing exists until the user types. The card
+      // only repaints. (It used to adopt the newest session with content,
+      // which hijacked a pending new and cross-bred the spaces: a Work send
+      // landed inside the last Chat thread.)
       sess.repaint?.();
     };
     /** A LAYOUT opened inside Echo: every cell becomes an Echo card, in the
