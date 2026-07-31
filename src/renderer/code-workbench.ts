@@ -1310,7 +1310,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; url?: string; glyphh?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
@@ -1604,6 +1604,10 @@ async function init(): Promise<void> {
     // (and pannable) beneath; close zooms it back to its spot. ──
     const cardsLayer = body.querySelector<HTMLElement>(".echo-cards")!;
     const openList: TileEntry[] = [];
+    // A layout opened in Echo pins its GRID: cards sit at the layout's own
+    // col/row geometry until a card outside the grid appears (then the flow
+    // layout takes back over).
+    let echoGrid: { colWidths: number[]; rowHeights: number[]; cells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> } | null = null;
     // Shadow can be HELD (⌘⇧) or PINNED (the eye button) — a pin survives
     // modifier keyups; opening/closing the last card or Esc clears both.
     const shadowBtn = body.querySelector<HTMLElement>(".echo-shadow-btn")!;
@@ -1658,18 +1662,45 @@ async function init(): Promise<void> {
         left: x0 + (i % 3) * (cw + gap), top: y0 + Math.floor(i / 3) * (ch + gap), width: cw, height: ch,
       }));
     };
+    /** The layout-grid rects (or null when no grid / a stray card broke it). */
+    const gridRects = (): Map<TileEntry, { left: number; top: number; width: number; height: number }> | null => {
+      if (!echoGrid) return null;
+      const inGrid = new Set(echoGrid.cells.map((c) => c.entry));
+      if (openList.some((e) => !inGrid.has(e))) { echoGrid = null; return null; }
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+      const x0 = 12, y0 = Math.max(12, h * 0.03), W = w - 24, H = h - y0 - 12, gap = 10;
+      const norm = (a: number[]): number[] => {
+        const sum = a.reduce((x, y) => x + y, 0) || 1;
+        return a.map((v) => v / sum);
+      };
+      const cw = norm(echoGrid.colWidths);
+      const rh = norm(echoGrid.rowHeights);
+      const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
+      const out = new Map<TileEntry, { left: number; top: number; width: number; height: number }>();
+      for (const c of echoGrid.cells) {
+        const left = x0 + pre(cw, c.col) * W + gap / 2;
+        const width = cw.slice(c.col, c.col + c.colSpan).reduce((x, y) => x + y, 0) * W - gap;
+        const top = y0 + pre(rh, c.row) * H + gap / 2;
+        const height = rh.slice(c.row, c.row + c.rowSpan).reduce((x, y) => x + y, 0) * H - gap;
+        out.set(c.entry, { left, top, width: Math.max(120, width), height: Math.max(90, height) });
+      }
+      return out;
+    };
     const layoutCards = (): void => {
       const n = openList.length;
       if (!n) return;
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      const rects = slotRects(n);
+      const grid = gridRects();
+      const rects = grid ? null : slotRects(n);
       openList.forEach((e, i) => {
         if (!e.card) return;
+        e.card.classList.toggle("echo-pinned", !!e.tile.sticky);
         if (e.card.classList.contains("expanded")) {
           setRect(e.card, { left: 12, top: 12, width: w - 24, height: h - 24 });
           return;
         }
-        setRect(e.card, rects[i]);
+        const r = grid ? grid.get(e) : rects![i];
+        if (r) setRect(e.card, r);
       });
     };
     relayout = layoutCards;
@@ -1681,6 +1712,10 @@ async function init(): Promise<void> {
       drawTile(e);
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
+      if (echoGrid) {
+        echoGrid.cells = echoGrid.cells.filter((c) => c.entry !== e);
+        if (!echoGrid.cells.length) echoGrid = null;
+      }
       if (e.tile.slug && card.querySelector("webview")) rpaYo().rpaUnregister?.(e.tile.slug);
       notifyOpenApps();
       // zoom BACK to the tile's spot (wherever the camera has it now)
@@ -1732,6 +1767,42 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      card.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();   // the slot menu would close the ECHO PANEL
+        document.querySelector(".ws-tab-ctx-menu")?.remove();
+        const menu = document.createElement("div");
+        menu.className = "ws-tab-ctx-menu";
+        const dismiss = (): void => {
+          menu.remove();
+          document.removeEventListener("mousedown", onAway, true);
+          document.removeEventListener("keydown", onEsc, true);
+        };
+        const onAway = (me: MouseEvent): void => { if (!menu.contains(me.target as Node)) dismiss(); };
+        const onEsc = (ke: KeyboardEvent): void => { if (ke.key === "Escape") dismiss(); };
+        const mkItem = (label: string, onPick: () => void): void => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ws-tab-ctx-item";
+          btn.textContent = label;
+          btn.addEventListener("click", () => { dismiss(); onPick(); });
+          menu.appendChild(btn);
+        };
+        mkItem(e.tile.sticky ? "Unpin panel" : "Pin panel (apps land here)", () => {
+          e.tile.sticky = !e.tile.sticky;
+          layoutCards();
+        });
+        mkItem("Close panel", () => closeCard(e));
+        mkItem("Close all panels", () => { for (const x of [...openList]) closeCard(x); });
+        menu.style.left = `${ev.clientX}px`;
+        menu.style.top = `${ev.clientY}px`;
+        document.body.appendChild(menu);
+        const mr = menu.getBoundingClientRect();
+        if (mr.right > window.innerWidth - 8) menu.style.left = `${window.innerWidth - mr.width - 8}px`;
+        if (mr.bottom > window.innerHeight - 8) menu.style.top = `${window.innerHeight - mr.height - 8}px`;
+        document.addEventListener("mousedown", onAway, true);
+        document.addEventListener("keydown", onEsc, true);
+      });
       // DRAG the card by its head into another slot — the list reorders and
       // every card animates to its new rect (the transitions do the motion).
       const head = card.querySelector<HTMLElement>(".echo-card-head")!;
@@ -1756,9 +1827,30 @@ async function init(): Promise<void> {
           document.removeEventListener("mouseup", onUp);
           if (!dragMoved) return;
           card.classList.remove("dragging");
+          const px = mv.clientX - stageR.left, py = mv.clientY - stageR.top;
+          const grid = gridRects();
+          if (grid && echoGrid) {
+            // grid mode: dropping on another cell SWAPS the two cells' spots
+            let target: TileEntry | null = null;
+            let best = Infinity;
+            for (const [entry, rc] of grid) {
+              if (entry === e) continue;
+              const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
+              if (d < best) { best = d; target = entry; }
+            }
+            const a = echoGrid.cells.find((c) => c.entry === e);
+            const b = target ? echoGrid.cells.find((c) => c.entry === target) : null;
+            if (a && b) {
+              [a.col, b.col] = [b.col, a.col];
+              [a.row, b.row] = [b.row, a.row];
+              [a.colSpan, b.colSpan] = [b.colSpan, a.colSpan];
+              [a.rowSpan, b.rowSpan] = [b.rowSpan, a.rowSpan];
+            }
+            layoutCards();
+            return;
+          }
           const from = openList.indexOf(e);
           const rects = slotRects(openList.length);
-          const px = mv.clientX - stageR.left, py = mv.clientY - stageR.top;
           let to = from, best = Infinity;
           rects.forEach((rc, i) => {
             const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
@@ -1784,52 +1876,81 @@ async function init(): Promise<void> {
     /** The ONE agent, adopted into an Echo card — the same singleton/park
      *  contract as coding slots. If the agent is already visible (a coding
      *  panel beside Echo), this is a no-op: there is never a second agent. */
-    const openAgentCard = (): void => {
-      if (codingHosted()) return;
+    const openAgentCard = (): TileEntry | null => {
+      if (codingHosted()) return null;
       const existing = openList.find((x) => x.tile.kind === "agent");
-      if (existing?.card) { flash(existing.card); return; }
+      if (existing?.card) { flash(existing.card); return existing; }
       const entry = adHoc({ name: "Glyphh", slug: "glyphh-agent", kind: "agent" });
       const card = openShell(entry);
-      if (!card) return;
+      if (!card) return null;
       card.classList.add("echo-agent-card");
       const agent = document.querySelector<HTMLElement>(".code-agent");
       if (agent) {
         card.querySelector<HTMLElement>(".echo-card-body")!.appendChild(agent);
         document.querySelector(".code-root")?.classList.add("agent-hosted");
       }
+      return entry;
     };
     /** A LAYOUT opened inside Echo: every cell becomes an Echo card, in the
      *  layout's reading order. The agent cell adopts the singleton (or is
      *  skipped when the agent is already on screen). */
     const openLayoutInEcho = (layout: LayoutRow): void => {
-      const cells = [...layout.splits].sort((a, b) => (a.col - b.col) || (a.row - b.row));
-      for (const cell of cells) {
-        const id = (cell.panelId || "").trim().toLowerCase();
-        if (!id) continue;
-        if (id.startsWith("tool:")) {
-          const v = id.slice(5) === "editor" ? "monaco" : id.slice(5);
-          if (v === "coding") { openAgentCard(); continue; }
-          if (v === "echo") continue;
-          if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan") getOrOpenTool(v);
-          continue;
+      // The layout REPLACES the echo arrangement — cards sit at the layout's
+      // own grid (colWidths/rowHeights/spans), pins carried through.
+      openingLayout = true;
+      try {
+        for (const x of [...openList]) closeCard(x);
+        const cells = [...layout.splits].sort((a, b) => (a.row - b.row) || (a.col - b.col));
+        const gridCells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> = [];
+        for (const cell of cells) {
+          const id = (cell.panelId || "").trim().toLowerCase();
+          if (!id) continue;
+          let entry: TileEntry | null = null;
+          if (id.startsWith("tool:")) {
+            const v = id.slice(5) === "editor" ? "monaco" : id.slice(5);
+            if (v === "coding") entry = openAgentCard();
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan") {
+              entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
+              activateTile(entry);
+            }
+          } else {
+            const wallTile = findTile(id)?.tile;
+            const row = wallTile ? null : echoRows.find((a) => a.id.toLowerCase() === id || (a.slug || "").toLowerCase() === id);
+            const base: EchoTile | null = wallTile
+              ? { ...wallTile, sticky: cell.sticky }
+              : row && (row.url || row.appArchetype === "glyphh-app")
+                ? { name: row.name, slug: (row.slug || row.id).toLowerCase(), url: row.url || undefined, glyphh: row.appArchetype === "glyphh-app" || undefined, sticky: cell.sticky, kind: "app" }
+                : null;
+            if (base) {
+              entry = adHoc(base);
+              activateTile(entry);
+            }
+          }
+          if (entry?.card) {
+            gridCells.push({ entry, col: cell.col ?? 0, row: cell.row ?? 0, colSpan: Math.max(1, cell.colSpan ?? 1), rowSpan: Math.max(1, cell.rowSpan ?? 1) });
+          }
         }
-        const entry = findTile(id);
-        if (entry) { activateTile(entry); continue; }
-        const row = echoRows.find((a) => a.id.toLowerCase() === id || (a.slug || "").toLowerCase() === id);
-        if (row && (row.url || row.appArchetype === "glyphh-app")) {
-          activateTile(adHoc({ name: row.name, slug: (row.slug || row.id).toLowerCase(), url: row.url || undefined, glyphh: row.appArchetype === "glyphh-app" || undefined, kind: "app" }));
+        if (gridCells.length) {
+          const nCols = Math.max(layout.cols || 0, ...gridCells.map((c) => c.col + c.colSpan));
+          const nRows = Math.max(layout.rows || 0, ...gridCells.map((c) => c.row + c.rowSpan));
+          echoGrid = {
+            colWidths: layout.colWidths?.length === nCols ? layout.colWidths.slice() : Array.from({ length: nCols }, () => 1),
+            rowHeights: layout.rowHeights?.length === nRows ? layout.rowHeights.slice() : Array.from({ length: nRows }, () => 1),
+            cells: gridCells,
+          };
+          layoutCards();
         }
+      } finally {
+        openingLayout = false;
       }
     };
     /** Every tile opens IN ECHO: web apps as live webviews with the browser
      *  bar; tool panels as the REAL panel renderers; nav pages by adopting
      *  their section singleton (parked back on close). */
-    const activateTile = (e: TileEntry): void => {
+    /** Build an app's live content (webview + browser bar) into a card. */
+    const mountAppIntoCard = (e: TileEntry, card: HTMLElement): void => {
       const t = e.tile;
-      if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
-      if (t.url || t.glyphh) {
-        const card = openShell(e);
-        if (!card) return;
+      {
         const wv = document.createElement("webview");
         wv.setAttribute("partition", "persist:yo");
         wv.setAttribute("allowpopups", "true");
@@ -1865,6 +1986,46 @@ async function init(): Promise<void> {
         const { chrome, urlbar } = buildAppChrome(wv as unknown as WebviewEl, () => t.url || "");
         urlbar.value = t.url || "";
         card.querySelector(".echo-card-head")!.after(chrome);
+      }
+    };
+    /** Tear a card's content down (agent/sections park, PTYs die, RPA
+     *  unhooks) WITHOUT closing the card — the pin retarget reuses it. */
+    const clearCardContent = (e: TileEntry, card: HTMLElement): void => {
+      if (card.querySelector(".code-agent")) parkAgent();
+      const pen = document.getElementById("page-body");
+      card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
+        sec.classList.remove("active", "wb-hosted");
+        pen?.appendChild(sec);
+      });
+      if (e.toolSlot?.view === "terminal") for (const t of e.toolSlot.terminals) { try { killTerminal(t); } catch { /* gone */ } }
+      e.toolSlot = undefined;
+      if (e.tile.slug && card.querySelector("webview")) rpaYo().rpaUnregister?.(e.tile.slug);
+      card.querySelector(".ws-app-chrome")?.remove();
+      card.querySelector<HTMLElement>(".echo-card-body")!.replaceChildren();
+    };
+    /** The PIN: a sticky card is where app opens LAND — replace its content
+     *  in place (same slot, same grid cell), exactly the workbench pin rule. */
+    const retargetCard = (pinned: TileEntry, t: EchoTile): void => {
+      const card = pinned.card;
+      if (!card) return;
+      clearCardContent(pinned, card);
+      pinned.tile = { ...t, sticky: true };
+      card.querySelector(".echo-card-head span")!.textContent = t.name;
+      mountAppIntoCard(pinned, card);
+      flash(card);
+    };
+    let openingLayout = false;
+    const activateTile = (e: TileEntry): void => {
+      const t = e.tile;
+      if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
+      if (t.url || t.glyphh) {
+        // pinned card wins as the landing target (never while a layout is
+        // fanning out its own cells, and a pin never retargets itself)
+        const pinned = openList.find((x) => x.tile.sticky && x.card && x !== e);
+        if (pinned && !openingLayout) { retargetCard(pinned, t); return; }
+        const card = openShell(e);
+        if (!card) return;
+        mountAppIntoCard(e, card);
         return;
       }
       if (t.toolView && t.toolView !== "coding" && t.toolView !== "echo") {
@@ -1939,9 +2100,12 @@ async function init(): Promise<void> {
           flash(existing.card);
           return;
         }
-        const entry = findTile(key)
-          ?? ((app.url || app.glyphh) ? adHoc({ name: app.name || app.slug, slug: key, url: app.url || undefined, glyphh: app.glyphh, kind: "app" }) : undefined);
-        if (entry) activateTile(entry);
+        const tile: EchoTile | undefined = findTile(key)?.tile
+          ?? ((app.url || app.glyphh) ? { name: app.name || app.slug, slug: key, url: app.url || undefined, glyphh: app.glyphh, kind: "app" } : undefined);
+        if (!tile) return;
+        const pinned = openList.find((x) => x.tile.sticky && x.card);
+        if (pinned) { retargetCard(pinned, tile); return; }
+        activateTile(adHoc(tile));
       },
       openTool: (view) => { void getOrOpenTool(view); },
       openPreviewHtml: (html, label) => {
