@@ -1787,6 +1787,7 @@ async function init(): Promise<void> {
       shadowPinned = on && pin;
       cardsLayer.classList.toggle("echo-shadow", on);
       shadowBtn.classList.toggle("active", shadowPinned);
+      syncWallVisibility();
     };
     shadowBtn.addEventListener("click", () => {
       if (!openList.length) return;
@@ -1856,9 +1857,9 @@ async function init(): Promise<void> {
       if (!echoGrid) return null;
       if (!echoGrid.cells.length) { echoGrid = null; return null; }
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      // tighter seams between LAYOUT panels than loose cards — the grid is
-      // one composed surface, not a scatter
-      const x0 = 12, y0 = 12, W = w - 24, H = h - 24, gap = 7;
+      // tighter seams between LAYOUT panels than loose cards, and a slimmer
+      // outer margin — the grid is one composed surface, not a scatter
+      const x0 = 8, y0 = 8, W = w - 16, H = h - 16, gap = 7;
       const norm = (a: number[]): number[] => {
         const sum = a.reduce((x, y) => x + y, 0) || 1;
         return a.map((v) => v / sum);
@@ -1877,9 +1878,18 @@ async function init(): Promise<void> {
       }
       return out;
     };
+    /** With a LAYOUT on stage the wall is fully invisible behind it — the
+     *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
+    const syncWallVisibility = (): void => {
+      const canvas = stage.querySelector<HTMLElement>("canvas");
+      if (!canvas) return;
+      const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
+      const shadowOn = cardsLayer.classList.contains("echo-shadow");
+      canvas.style.visibility = layoutUp && !shadowOn ? "hidden" : "";
+    };
     const layoutCards = (): void => {
       const n = openList.length;
-      if (!n) { paintDividers(false); return; }   // no panels ⇒ no seams
+      if (!n) { paintDividers(false); syncWallVisibility(); return; }   // no panels ⇒ no seams
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const grid = gridRects();
       const flow = flowRects(openList.filter((e) => !(grid && grid.has(e))));
@@ -1894,6 +1904,7 @@ async function init(): Promise<void> {
         if (r) setRect(e.card, r);
       });
       paintDividers(grid ? true : false);
+      syncWallVisibility();
       paintSectionToggles();   // an echo card IS the tool's open state
     };
     relayout = layoutCards;
@@ -1907,7 +1918,8 @@ async function init(): Promise<void> {
       dividerLayer.innerHTML = "";
       if (!on || !echoGrid) return;
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      const x0 = 12, y0 = 12, W = w - 24, H = h - 24;
+      // MUST match gridRects' outer margin
+      const x0 = 8, y0 = 8, W = w - 16, H = h - 16;
       const norm = (a: number[]): number[] => { const t = a.reduce((x, y) => x + y, 0) || 1; return a.map((v) => v / t); };
       const cw = norm(echoGrid.colWidths);
       const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
@@ -2648,6 +2660,7 @@ async function init(): Promise<void> {
       // prefixes half the app's shortcuts, so ⌘⇧P etc. flashed the veil.)
       if ((e.key === "Control" || e.key === "Alt") && e.ctrlKey && e.altKey) {
         cardsLayer.classList.add("echo-shadow");
+        syncWallVisibility();
         return;
       }
       if (e.key !== "Escape") return;
@@ -2661,7 +2674,7 @@ async function init(): Promise<void> {
     document.addEventListener("keydown", onKey, true);
     const onKeyUp = (e: KeyboardEvent): void => {
       if (!body.isConnected) { document.removeEventListener("keyup", onKeyUp, true); return; }
-      if ((e.key === "Control" || e.key === "Alt") && !shadowPinned) cardsLayer.classList.remove("echo-shadow");
+      if ((e.key === "Control" || e.key === "Alt") && !shadowPinned) { cardsLayer.classList.remove("echo-shadow"); syncWallVisibility(); }
     };
     document.addEventListener("keyup", onKeyUp, true);
 
