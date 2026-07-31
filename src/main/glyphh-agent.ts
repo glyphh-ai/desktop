@@ -357,8 +357,9 @@ async function workspaceExtras(): Promise<string> {
   ].filter(Boolean).join("\n\n");
 }
 
-/** A CHAT turn: one tool-less completion through the gateway, spoken in the
- *  run lifecycle the renderer already understands. */
+/** A CHAT turn: one tool-less STREAMING turn on the gateway's Messages
+ *  edge — the same wire the agent loop rides, minus the tools. Deltas land
+ *  in the thread token by token, exactly like Work/Code. */
 async function chatRun(
   wc: WebContents,
   runId: string,
@@ -371,28 +372,68 @@ async function chatRun(
   };
   try {
     // SKILLS work in chat — a skill is INSTRUCTIONS, not a tool. A leading
-    // /slug resolves to the skill's prompt body and rides as a system turn;
+    // /slug resolves to the skill's prompt body and rides the system prompt;
     // unknown slugs pass through (the text may just be a path).
     const ask = String(messages[messages.length - 1]?.content ?? "");
     const slashRef = /^\/([a-z0-9_-]+)\b/.exec(ask.trim());
-    let toSend = messages;
+    let skillSeed = "";
     if (slashRef) {
       try {
         const skill = await getClient().skills.get(slashRef[1]!);
-        toSend = [{ role: "system", content: `## Skill: ${skill.name}\n${skill.prompt}` }, ...messages];
+        skillSeed = `## Skill: ${skill.name}\n${skill.prompt}`;
       } catch { /* not a skill — send as typed */ }
     }
-    // NON-STREAMING cap: Anthropic 400s a plain completion that asks for a
-    // huge max_tokens (large outputs require streaming). The model's full
-    // declared budget is for the streaming SDK loop — chat replies cap at a
-    // safe ceiling.
-    const text = await glyphhComplete(toSend, { maxTokens: Math.min(maxTokens, 8192), signal: ctrl.signal });
+    const model = await effectiveModel();
+    if (!model) throw new Error("no model available — your workspace allows none, or you're signed out");
+    // Anthropic shape: system is a TOP-LEVEL param, the messages array is
+    // user/assistant only.
+    const system = [skillSeed, ...messages.filter((m) => m.role === "system").map((m) => m.content)].filter(Boolean).join("\n\n");
+    const convo = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content }));
+    const res = await getClient().gateway.messages(
+      { model, ...(system ? { system } : {}), messages: convo, max_tokens: maxTokens, stream: true },
+      { signal: ctrl.signal },
+    );
+    if (!res.ok || !res.body) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`model turn failed (${res.status}): ${body.slice(0, 300)}`);
+    }
+    // Relay the SSE: text deltas stream straight into the thread.
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let sawText = false;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const ev = JSON.parse(payload) as { type?: string; delta?: { type?: string; text?: string }; error?: { message?: string } };
+          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
+            sawText = true;
+            emit("glyphh-agent:delta", { delta: ev.delta.text });
+          } else if (ev.type === "error") {
+            throw new Error(ev.error?.message || "stream error");
+          }
+        } catch (err) {
+          if (err instanceof SyntaxError) continue;   // partial frame — next read completes it
+          throw err;
+        }
+      }
+    }
     if (ctrl.signal.aborted) { emit("glyphh-agent:done", { stopped: true }); return; }
-    emit("glyphh-agent:delta", { delta: text });
+    if (!sawText) emit("glyphh-agent:delta", { delta: "" });
     emit("glyphh-agent:done", { stopped: false });
   } catch (err) {
     if (ctrl.signal.aborted) { emit("glyphh-agent:done", { stopped: true }); return; }
-    emit("glyphh-agent:error", { error: err instanceof Error ? err.message : String(err) });
+    emit("glyphh-agent:error", { error: brandError(err instanceof Error ? err.message : String(err)) });
   }
 }
 
