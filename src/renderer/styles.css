@@ -14066,10 +14066,6 @@ body.code-dragging iframe { pointer-events: none !important; }
   position: relative; overflow: hidden;
   background: var(--bg);   /* the command center's own surface, theme-aware */
 }
-/* Echo TAKEOVER: while an echo slot exists it IS the workspace view. */
-.ws-right-rails.echo-takeover .ws-right-rail:not(.rail-has-echo) { display: none; }
-.ws-right-rails.echo-takeover .ws-right-rail.rail-has-echo { width: auto !important; flex: 1 1 auto !important; }
-
 .echo-stage { position: absolute; inset: 0; z-index: 1; overflow: hidden; cursor: grab; }
 .echo-stage:active { cursor: grabbing; }
 .echo-stage canvas { display: block; }

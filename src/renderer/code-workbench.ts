@@ -1020,13 +1020,6 @@ async function init(): Promise<void> {
     // A LONE panel fills the page as if maximized — no drop strips, no width
     // handle, edge to edge (its expand button renders toggled-on too).
     container.classList.toggle("solo-slot", soloPanel());
-    // Echo takeover: while an echo slot exists, IT is the workspace view —
-    // the other rails hide (their webviews auto-hide with them; docked ones
-    // re-target Echo's own placeholders in syncAppViews).
-    container.classList.toggle("echo-takeover", echoActive());
-    container.querySelectorAll<HTMLElement>(".ws-right-rail").forEach((el, i) => {
-      el.classList.toggle("rail-has-echo", !!rails[i]?.slots.some((sl) => sl.view === "echo"));
-    });
     paintSectionToggles();
     // Re-apportion displayed widths after every (re)render — handles slot
     // adds/closes/DnD that change the rail count and the drop-strip total.
@@ -1288,9 +1281,8 @@ async function init(): Promise<void> {
     // app icons. Drawn at 4× and colored from the LIVE theme variables,
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
-    interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; url?: string; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; kind: "app" | "layout" | "tool" }
-    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean }
+    interface EchoTile { name: string; url?: string; iconUrl?: string; glyphSvg?: string; kind: "app" | "tool"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot }
     const entries: TileEntry[] = [];
     const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; font: string } => {
       const css = getComputedStyle(document.documentElement);
@@ -1331,41 +1323,7 @@ async function init(): Promise<void> {
         c.lineWidth = 1.5;
         c.stroke();
       }
-      if (e.tile.kind === "layout") {
-        const cells = e.tile.cells || [];
-        if (!cells.length) {
-          // empty layout — the CC's ▦ placeholder
-          c.fillStyle = theme.text2;
-          c.font = `600 16px ${theme.font}`;
-          c.textAlign = "center"; c.textBaseline = "middle";
-          c.fillText("▦", TILE_PX_W / 2, iy + 28);
-        } else {
-          // .tile-icon.tile-layout — 3px inset, 1px gap, 2 columns,
-          // each .mini a --surface-2 rounded cell with the app's icon
-          const cellW = (56 - 6 - 1) / 2;
-          const rowsN = Math.ceil(cells.length / 2);
-          const cellH = (50 - (rowsN - 1)) / rowsN;
-          cells.forEach((cell, i) => {
-            const cx = ix + 3 + (i % 2) * (cellW + 1);
-            const cy = iy + 3 + Math.floor(i / 2) * (cellH + 1);
-            rr(c, cx, cy, cellW, cellH, 3);
-            c.fillStyle = theme.surface2;
-            c.fill();
-            if (cell.img && cell.glyphSvg) {
-              const g = Math.min(cellW, cellH) * 0.64;
-              c.drawImage(cell.img, cx + (cellW - g) / 2, cy + (cellH - g) / 2, g, g);
-            } else if (cell.img) {
-              drawContain(c, cell.img, cx + (cellW - Math.min(cellW, cellH)) / 2, cy, Math.min(cellW, cellH), 2);
-            } else {
-              // .tile-mini-initial — 8px/600, --text-3
-              c.fillStyle = theme.text3;
-              c.font = `600 8px ${theme.font}`;
-              c.textAlign = "center"; c.textBaseline = "middle";
-              c.fillText(cell.initial, cx + cellW / 2, cy + cellH / 2);
-            }
-          });
-        }
-      } else if (e.img && e.tile.glyphSvg) {
+      if (e.img && e.tile.glyphSvg) {
         // .nav-glyph svg — 64% of the box, centered, --text-2 ink
         const g = 56 * 0.64;
         c.drawImage(e.img, ix + (56 - g) / 2, iy + (56 - g) / 2, g, g);
@@ -1418,12 +1376,6 @@ async function init(): Promise<void> {
       });
     };
     const loadEntryIcon = (e: TileEntry): void => {
-      if (e.tile.cells) {
-        for (const cell of e.tile.cells) {
-          loadOne(cell.glyphSvg ? svgToDataUrl(cell.glyphSvg, theme.text2) : cell.iconUrl || "", (img) => { cell.img = img; }, e);
-        }
-        return;
-      }
       loadOne(e.tile.glyphSvg ? svgToDataUrl(e.tile.glyphSvg, theme.text2) : e.tile.iconUrl || "", (img) => { e.img = img; }, e);
     };
     // Theme switches re-ink every tile (glyphs re-rasterize in the new ink).
@@ -1433,7 +1385,7 @@ async function init(): Promise<void> {
       theme = next;
       for (const e of entries) {
         drawTile(e);
-        if (e.tile.glyphSvg || e.tile.cells?.some((cl) => cl.glyphSvg)) loadEntryIcon(e);
+        if (e.tile.glyphSvg) loadEntryIcon(e);
       }
     });
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -1488,39 +1440,33 @@ async function init(): Promise<void> {
       fitExtents();   // open on the whole wall
     };
 
-    // ── The wall's content: the command center, whole and IN ITS ORDER —
-    // dock first (same 10, Glyphh locked first, backfilled defaults), then
-    // the saved grid order, new items after — then the panel types. ──
+    // ── The wall's content: the command center's APPS, in its order —
+    // dock first (same 10, backfilled defaults), then the saved grid
+    // order, new items after — then the panel types. No Glyphh tile (the
+    // agent is a workspace panel) and no layout tiles. ──
     type PanelRowLite = { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null };
     type Yo = {
       panelAppsList?: () => Promise<PanelRowLite[]>;
-      layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
     };
     const yoApi = (window as unknown as { yo?: Yo }).yo;
     void Promise.all([
       yoApi?.panelAppsList?.() ?? [],
-      yoApi?.layoutsList?.() ?? [],
       yoApi?.getPreference?.("ccDock", null) ?? null,
       yoApi?.getPreference?.("ccIconOrder", []) ?? [],
-    ]).then(([rows, layouts, dockPref, orderPref]) => {
+    ]).then(([rows, dockPref, orderPref]) => {
       if (!body.isConnected) return;
-      const appsAll = (rows || []).filter((a) => a.url || ["glyphh-app", "glyphh-self", "glyphh-nav"].includes(a.appArchetype || ""));
+      const appsAll = (rows || []).filter((a) => a.appArchetype !== "glyphh-self" && (a.url || ["glyphh-app", "glyphh-nav"].includes(a.appArchetype || "")));
       const weight = (a: { appArchetype?: string | null }): number =>
-        a.appArchetype === "glyphh-self" ? 3 : a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
+        a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
       appsAll.sort((x, y) => weight(y) - weight(x));
-      interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
-      const all: Entry[] = [
-        ...appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a })),
-        ...(layouts || []).map((l): Entry => ({ key: `layout:${(l.name || "").toLowerCase()}`, name: l.name, layout: l })),
-      ];
+      interface Entry { key: string; name: string; app: PanelRowLite }
+      const all: Entry[] = appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a }));
       const byKey = new Map(all.map((e) => [e.key, e]));
-      const self = all.find((e) => e.app?.appArchetype === "glyphh-self");
       const orderKeys = Array.isArray(orderPref) ? orderPref.map(String) : [];
-      const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e && e !== self);
+      const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
       const seen = new Set(inOrder.map((e) => e.key));
-      if (self) seen.add(self.key);
-      const ordered = [...(self ? [self] : []), ...inOrder, ...all.filter((e) => !seen.has(e.key))];
+      const ordered = [...inOrder, ...all.filter((e) => !seen.has(e.key))];
       // the dock, exactly as the command center resolves it
       const DOCK_DEFAULTS = ["app:glyphh", "app:home", "app:connections", "app:apps", "app:layouts", "app:skills", "app:loops", "app:agents", "app:models", "app:settings"];
       let dockKeys = DOCK_DEFAULTS.slice();
@@ -1542,29 +1488,9 @@ async function init(): Promise<void> {
       const glyphOf = (a: PanelRowLite): string | undefined =>
         appIconInner(iconOf(a), a.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined;
       const toTile = (e: Entry): EchoTile => {
-        if (e.layout) {
-          // the CC layout tile: up to 4 unique panels, app icon or tool initial
-          const seenIds = new Set<string>();
-          const ids = e.layout.splits
-            .map((cell) => cell.panelId)
-            .filter((id) => id && !seenIds.has(id) && (seenIds.add(id), true))
-            .slice(0, 4);
-          const cells: EchoCell[] = ids.map((id) => {
-            const key = id.trim().toLowerCase();
-            const app = appsAll.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
-            if (app) {
-              if (app.appArchetype === "glyphh-nav") return { glyphSvg: glyphOf(app), initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
-              return { iconUrl: appIconUrl(iconOf(app)) || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
-            }
-            const toolView = id.startsWith("tool:") ? id.slice(5) : "";
-            const label = toolView ? (VIEW_META[toolView as ViewKind]?.title ?? toolView) : id;
-            return { initial: (label || "?").charAt(0).toUpperCase(), img: null };
-          });
-          return { name: e.name, cells, kind: "layout" };
-        }
-        const a = e.app!;
-        if (a.appArchetype === "glyphh-nav") return { name: a.name, glyphSvg: glyphOf(a), kind: "app" };
-        return { name: a.name, url: (a.appArchetype !== "glyphh-self" && a.url) || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
+        const a = e.app;
+        if (a.appArchetype === "glyphh-nav") return { name: a.name, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
+        return { name: a.name, url: a.url || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
       };
       const tiles = wallEntries.map(toTile);
       // every workspace panel type (no Coding Agent tile — GLYPHH is the
@@ -1572,7 +1498,7 @@ async function init(): Promise<void> {
       const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "preview", "plan"];
       for (const v of TOOLS) {
         const svg = VIEW_META[v].icon.match(/<svg[\s\S]*<\/svg>/)?.[0];
-        tiles.push({ name: VIEW_META[v].title, glyphSvg: svg || undefined, kind: "tool" });
+        tiles.push({ name: VIEW_META[v].title, glyphSvg: svg || undefined, kind: "tool", toolView: v });
       }
       buildWall(tiles);
     }).catch(() => buildWall([]));
@@ -1644,13 +1570,28 @@ async function init(): Promise<void> {
       if (e.mesh) setRect(card, projectRect(e.mesh));
       card.classList.remove("placed");
       card.style.pointerEvents = "none";
-      window.setTimeout(() => card.remove(), 380);
+      const toolSlot = e.toolSlot;
+      e.toolSlot = undefined;
+      window.setTimeout(() => {
+        // sections are SINGLETONS — park the page back to its pen before
+        // the card's DOM goes away (same contract as parkSections)
+        const pen = document.getElementById("page-body");
+        card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
+          sec.classList.remove("active", "wb-hosted");
+          pen?.appendChild(sec);
+        });
+        if (toolSlot?.view === "terminal") for (const t of toolSlot.terminals) killTerminal(t);
+        card.remove();
+      }, 380);
       if (!openList.length) cardsLayer.classList.remove("echo-shadow");
       layoutCards();
     };
-    const openCard = (e: TileEntry): void => {
-      if (!e.tile.url || !e.mesh) return;
-      if (e.card) { e.card.classList.add("flash"); window.setTimeout(() => e.card?.classList.remove("flash"), 600); return; }
+    /** The card shell every open shares: head (name / expand / close), a
+     *  body, the zoom-up-from-the-tile entrance. Echo is a BINARY mode —
+     *  nothing opened here ever lands in the standard layout. */
+    const openShell = (e: TileEntry): HTMLElement | null => {
+      if (!e.mesh) return null;
+      if (e.card) { e.card.classList.add("flash"); window.setTimeout(() => e.card?.classList.remove("flash"), 600); return null; }
       const card = document.createElement("div");
       card.className = "echo-card";
       card.innerHTML = `<div class="echo-card-head"><span></span>
@@ -1667,15 +1608,6 @@ async function init(): Promise<void> {
         expandBtn.title = "Collapse";
         layoutCards();
       });
-      const wv = document.createElement("webview");
-      wv.setAttribute("partition", "persist:yo");
-      wv.setAttribute("allowpopups", "true");
-      wv.setAttribute("src", e.tile.url);
-      wv.addEventListener("did-fail-load", (ev) => {
-        const err = ev as unknown as { errorCode?: number; errorDescription?: string };
-        if (err.errorCode && err.errorCode !== -3) console.warn(`[echo] "${e.tile.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
-      });
-      card.querySelector(".echo-card-body")!.appendChild(wv);
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
       cardsLayer.classList.remove("echo-shadow");
       setRect(card, projectRect(e.mesh));   // start AT the tile
@@ -1685,6 +1617,57 @@ async function init(): Promise<void> {
       drawTile(e);
       openList.push(e);
       requestAnimationFrame(() => { card.classList.add("placed"); layoutCards(); });
+      return card;
+    };
+    /** Every tile opens IN ECHO: web apps as live webviews with the browser
+     *  bar; tool panels as the REAL panel renderers; nav pages by adopting
+     *  their section singleton (parked back on close). */
+    const activateTile = (e: TileEntry): void => {
+      const t = e.tile;
+      if (t.url) {
+        const card = openShell(e);
+        if (!card) return;
+        const wv = document.createElement("webview");
+        wv.setAttribute("partition", "persist:yo");
+        wv.setAttribute("allowpopups", "true");
+        wv.setAttribute("src", t.url);
+        wv.addEventListener("did-fail-load", (ev) => {
+          const err = ev as unknown as { errorCode?: number; errorDescription?: string };
+          if (err.errorCode && err.errorCode !== -3) console.warn(`[echo] "${t.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
+        });
+        card.querySelector(".echo-card-body")!.appendChild(wv);
+        const { chrome, urlbar } = buildAppChrome(wv as unknown as WebviewEl, () => t.url || "");
+        urlbar.value = t.url;
+        card.querySelector(".echo-card-head")!.after(chrome);
+        return;
+      }
+      if (t.toolView && t.toolView !== "coding" && t.toolView !== "echo") {
+        const card = openShell(e);
+        if (!card) return;
+        const body = card.querySelector<HTMLElement>(".echo-card-body")!;
+        body.classList.add("ws-rail-slot-body");   // the panels' own CSS scope
+        const slot = makeSlot(t.toolView);
+        e.toolSlot = slot;
+        if (slot.view === "files") void renderFilesIntoSlot(body, slot);
+        else if (slot.view === "terminal") renderTerminalIntoSlot(body, slot);
+        else if (slot.view === "monaco") void renderMonacoIntoSlot(body, slot);
+        else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
+        else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
+        else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
+        return;
+      }
+      if (t.navApp) {
+        const section = t.navApp.slug === "home" ? "dashboard" : t.navApp.slug;
+        const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${section}"]`);
+        if (!sec) return;
+        const card = openShell(e);
+        if (!card) return;
+        const body = card.querySelector<HTMLElement>(".echo-card-body")!;
+        body.classList.add("ws-section-body");
+        sec.classList.add("active", "wb-hosted");
+        body.appendChild(sec);
+        (window as unknown as { __wbSectionLoad?: (sn: string) => void }).__wbSectionLoad?.(section);
+      }
     };
     const ray = new THREE.Raycaster();
     const pick = (ev: MouseEvent): TileEntry | null => {
@@ -1697,13 +1680,12 @@ async function init(): Promise<void> {
     const onKey = (e: KeyboardEvent): void => {
       if (!body.isConnected) { document.removeEventListener("keydown", onKey, true); return; }
       if (!openList.length) return;
-      // SHADOW MODE (⌘⇧E / Ctrl⇧E): the open apps fade to ghosts and stop
-      // taking input so the wall behind is visible and clickable — click
-      // another tile to open it (which exits shadow), or toggle again.
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "e" || e.key === "E")) {
-        e.stopPropagation();
-        e.preventDefault();
-        cardsLayer.classList.toggle("echo-shadow");
+      // SHADOW MODE — HOLD ⌘⇧ (Ctrl⇧): the open apps fade to ghosts and
+      // stop taking input so the wall behind is visible and clickable;
+      // release the keys (or Esc) and the cards come back. Clicking a
+      // tile while holding opens it.
+      if ((e.key === "Shift" || e.key === "Meta" || e.key === "Control") && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        cardsLayer.classList.add("echo-shadow");
         return;
       }
       if (e.key !== "Escape") return;
@@ -1715,6 +1697,11 @@ async function init(): Promise<void> {
       closeCard(openList[openList.length - 1]);
     };
     document.addEventListener("keydown", onKey, true);
+    const onKeyUp = (e: KeyboardEvent): void => {
+      if (!body.isConnected) { document.removeEventListener("keyup", onKeyUp, true); return; }
+      if (e.key === "Shift" || e.key === "Meta" || e.key === "Control") cardsLayer.classList.remove("echo-shadow");
+    };
+    document.addEventListener("keyup", onKeyUp, true);
 
     // ── Pan (drag) + zoom (wheel / buttons); a still click opens the tile ──
     const overUi = (t: EventTarget | null): boolean =>
@@ -1743,7 +1730,7 @@ async function init(): Promise<void> {
         document.removeEventListener("mouseup", onUp);
         if (moved) return;
         const entry = pick(ev);
-        if (entry) openCard(entry);
+        if (entry) activateTile(entry);
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
@@ -1805,12 +1792,6 @@ async function init(): Promise<void> {
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
   // ── Echo mode — while an echo slot exists it IS the workspace view. Apps
-  //    live INSIDE Echo (its own webviews, never layout slots); the agent
-  //    rides front-center. openAppInWorkbench routes here so the agent's
-  //    open_app docks into the scene. ──
-  function echoActive(): boolean {
-    return rails.some((r) => r.slots.some((sl) => sl.view === "echo"));
-  }
   // The RPA registration bridge on window.yo (slug ↔ panel webContents id).
   const rpaYo = (): { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } =>
     (window as unknown as { yo?: { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } }).yo ?? {};
@@ -1845,6 +1826,59 @@ async function init(): Promise<void> {
     reload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
     download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
   };
+
+  /** Browser chrome — back / fwd / reload / address bar / download — wired
+   *  to a webview. One builder for the app panels AND Echo's open cards. */
+  function buildAppChrome(webview: WebviewEl, fallbackUrl: () => string): { chrome: HTMLElement; urlbar: HTMLInputElement } {
+    const chrome = document.createElement("div");
+    chrome.className = "ws-app-chrome";
+    const navBtn = (svg: string, title: string, extra = ""): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ws-app-nav" + (extra ? ` ${extra}` : "");
+      b.title = title;
+      b.innerHTML = svg;
+      return b;
+    };
+    const backBtn = navBtn(NAV_SVG.back, "Back");
+    const fwdBtn = navBtn(NAV_SVG.forward, "Forward");
+    const reloadBtn = navBtn(NAV_SVG.reload, "Reload");
+    const urlbar = document.createElement("input");
+    urlbar.className = "ws-app-urlbar";
+    urlbar.spellcheck = false;
+    urlbar.placeholder = "Enter a URL or search";
+    const downloadBtn = navBtn(NAV_SVG.download, "Download this page", "ws-app-download");
+    chrome.append(backBtn, fwdBtn, reloadBtn, urlbar, downloadBtn);
+
+    const updateNav = (): void => {
+      backBtn.toggleAttribute("disabled", !webview.canGoBack?.());
+      fwdBtn.toggleAttribute("disabled", !webview.canGoForward?.());
+    };
+    const setUrl = (u?: string): void => {
+      if (u && u !== "about:blank" && document.activeElement !== urlbar) urlbar.value = u;
+    };
+    webview.addEventListener("did-navigate", (e) => { setUrl((e as unknown as { url?: string }).url); updateNav(); });
+    webview.addEventListener("did-navigate-in-page", (e) => {
+      const ev = e as unknown as { url?: string; isMainFrame?: boolean };
+      if (ev.isMainFrame) setUrl(ev.url);
+      updateNav();
+    });
+    webview.addEventListener("did-stop-loading", updateNav);
+    backBtn.addEventListener("click", () => webview.goBack?.());
+    fwdBtn.addEventListener("click", () => webview.goForward?.());
+    reloadBtn.addEventListener("click", () => webview.reload?.());
+    urlbar.addEventListener("focus", () => urlbar.select());
+    urlbar.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key !== "Enter") return;
+      const target = normalizeAppUrl(urlbar.value);
+      if (target) { webview.loadURL?.(target); urlbar.blur(); }
+    });
+    downloadBtn.addEventListener("click", () => {
+      const u = webview.getURL?.() || fallbackUrl();
+      if (u) webview.downloadURL?.(u);
+    });
+    return { chrome, urlbar };
+  }
 
   function mountAppView(slot: AppSlot): AppView {
     const holder = document.createElement("div");
@@ -1923,56 +1957,10 @@ async function init(): Promise<void> {
       } catch { /* malformed — ignore */ }
     });
 
-    // Browser chrome: back / fwd / reload + address bar + hide toggle. It lives
-    // inside the holder (which persists across renderRails) so it stays wired to
-    // the webview it drives.
-    const chrome = document.createElement("div");
-    chrome.className = "ws-app-chrome";
-    const navBtn = (svg: string, title: string, extra = ""): HTMLButtonElement => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "ws-app-nav" + (extra ? ` ${extra}` : "");
-      b.title = title;
-      b.innerHTML = svg;
-      return b;
-    };
-    const backBtn = navBtn(NAV_SVG.back, "Back");
-    const fwdBtn = navBtn(NAV_SVG.forward, "Forward");
-    const reloadBtn = navBtn(NAV_SVG.reload, "Reload");
-    const urlbar = document.createElement("input");
-    urlbar.className = "ws-app-urlbar";
-    urlbar.spellcheck = false;
-    urlbar.placeholder = "Enter a URL or search";
-    const downloadBtn = navBtn(NAV_SVG.download, "Download this page", "ws-app-download");
-    chrome.append(backBtn, fwdBtn, reloadBtn, urlbar, downloadBtn);
-
-    const updateNav = (): void => {
-      backBtn.toggleAttribute("disabled", !webview.canGoBack?.());
-      fwdBtn.toggleAttribute("disabled", !webview.canGoForward?.());
-    };
-    const setUrl = (u?: string): void => {
-      if (u && u !== "about:blank" && document.activeElement !== urlbar) urlbar.value = u;
-    };
-    webview.addEventListener("did-navigate", (e) => { setUrl((e as unknown as { url?: string }).url); updateNav(); });
-    webview.addEventListener("did-navigate-in-page", (e) => {
-      const ev = e as unknown as { url?: string; isMainFrame?: boolean };
-      if (ev.isMainFrame) setUrl(ev.url);
-      updateNav();
-    });
-    webview.addEventListener("did-stop-loading", updateNav);
-    backBtn.addEventListener("click", () => webview.goBack?.());
-    fwdBtn.addEventListener("click", () => webview.goForward?.());
-    reloadBtn.addEventListener("click", () => webview.reload?.());
-    urlbar.addEventListener("focus", () => urlbar.select());
-    urlbar.addEventListener("keydown", (e) => {
-      if ((e as KeyboardEvent).key !== "Enter") return;
-      const target = normalizeAppUrl(urlbar.value);
-      if (target) { webview.loadURL?.(target); urlbar.blur(); }
-    });
-    downloadBtn.addEventListener("click", () => {
-      const u = webview.getURL?.() || slot.url;
-      if (u) webview.downloadURL?.(u);
-    });
+    // Browser chrome: back / fwd / reload + address bar. It lives inside the
+    // holder (which persists across renderRails) so it stays wired to the
+    // webview it drives.
+    const { chrome, urlbar } = buildAppChrome(webview, () => slot.url);
 
     if (slot.glyphh) {
       // Installed Glyphh app: attach first (about:blank), then grant its caps
