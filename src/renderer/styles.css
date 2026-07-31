@@ -12751,7 +12751,25 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-md-render blockquote { margin: 0 0 12px; padding: 4px 14px; border-left: 3px solid var(--accent); color: var(--text-2); }
 
 /* ── Library tables (Loops / Skills / Drips lists) ── */
-.lib-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* Skills / Loops / Agents tables NEVER scroll sideways: fixed layout so the
+   columns divide whatever width the panel has (an Echo card can be narrow),
+   every cell ellipsizes, and the secondary columns drop out as it tightens.
+   All three share the same 5-column shape: Name · Description · <facet> ·
+   <state> · ⋯ */
+#skills-list, #loops-list, #agents-list { container-type: inline-size; }
+.lib-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.lib-table th, .lib-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-table th:nth-child(1), .lib-table td:nth-child(1) { width: 26%; }
+.lib-table th:nth-child(3), .lib-table td:nth-child(3) { width: 18%; }
+.lib-table th:nth-child(4), .lib-table td:nth-child(4) { width: 15%; }
+@container (max-width: 620px) {
+  .lib-table th:nth-child(3), .lib-table td:nth-child(3) { display: none; }
+  .lib-table th:nth-child(1), .lib-table td:nth-child(1) { width: 34%; }
+}
+@container (max-width: 430px) {
+  .lib-table th:nth-child(4), .lib-table td:nth-child(4) { display: none; }
+  .lib-table th:nth-child(1), .lib-table td:nth-child(1) { width: 44%; }
+}
 .lib-table th {
   text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3);
@@ -12760,8 +12778,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); vertical-align: middle; }
 .lib-table tbody tr { cursor: pointer; }
 .lib-table tbody tr:hover td { background: var(--hover); }
-.lib-table .lib-table-name { font-weight: 600; color: var(--text); white-space: nowrap; }
-.lib-table .lib-table-desc { max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-table .lib-table-name { font-weight: 600; color: var(--text); }
+/* the description takes whatever is left (no fixed 480px column — that is
+   what forced the horizontal scrollbar) */
+.lib-table .lib-table-desc { max-width: none; }
 .lib-table .lib-table-dim { color: var(--text-3); font-size: 12px; white-space: nowrap; }
 
 /* Table row ⋯ menu (Edit / Delete). */
