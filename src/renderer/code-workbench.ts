@@ -390,7 +390,18 @@ async function init(): Promise<void> {
   let echoActiveLayout: { name: string; mode: "keep" | "new" | "last" } | null = null;
   function namedLayoutKey(name: string): string { return `workbench:namedlayout:${name.trim().toLowerCase()}`; }
   /** The chat session last used while this named layout was active. */
-  function layoutSessionKey(name: string): string { return `workbench:layoutsession:${name.trim().toLowerCase()}`; }
+  /** The layout↔session binding is PER SPACE — a layout remembers the
+   *  session it rode in EACH space, so opening it from Work never resumes
+   *  (or steals) its Code session. The un-suffixed legacy key is read as a
+   *  fallback, validated against the space before use. */
+  function activeSpace(): "chat" | "cowork" | "code" {
+    const v = document.body.dataset.railSpace;
+    return v === "code" ? "code" : v === "chat" ? "chat" : "cowork";
+  }
+  function layoutSessionKey(name: string, space: string = activeSpace()): string {
+    return `workbench:layoutsession:${name.trim().toLowerCase()}:${space}`;
+  }
+  function layoutSessionKeyLegacy(name: string): string { return `workbench:layoutsession:${name.trim().toLowerCase()}`; }
   function saveLayout(): void {
     try {
       const railEls = document.querySelectorAll<HTMLElement>(".ws-right-rail");
@@ -2439,10 +2450,21 @@ async function init(): Promise<void> {
           if (sess && mode === "new") {
             sess.startNew();
           } else if (sess && mode === "last" && layout.name) {
+            const space = activeSpace();
             let last: string | null = null;
-            try { last = localStorage.getItem(layoutSessionKey(layout.name)); } catch { last = null; }
-            if (last && sess.list().some((c) => c.id === last)) { if (sess.currentId() !== last) sess.switch(last); }
-            else sess.startNew();
+            try {
+              last = localStorage.getItem(layoutSessionKey(layout.name, space))
+                ?? localStorage.getItem(layoutSessionKeyLegacy(layout.name));
+            } catch { last = null; }
+            // resume ONLY a session that belongs to THIS space — the same
+            // layout opened from another tab rode a different conversation
+            const target = last ? sess.list().find((c) => c.id === last) : undefined;
+            const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
+            if (target && spaceOfMode((target as { mode?: string }).mode) === space) {
+              if (sess.currentId() !== target.id) sess.switch(target.id);
+            } else {
+              sess.startNew();
+            }
           }
           // the layout's folder rides the session, same as standard mode
           if (sess && layout.folder) sess.stampWorkdir?.(layout.folder);
@@ -5006,9 +5028,15 @@ async function init(): Promise<void> {
         const stamp = (): void => { if (layout.folder) sess?.stampWorkdir(layout.folder); };
         if (!sess || mode === "keep") { stamp(); return; }
         if (mode === "new") { sess.startNew(); stamp(); return; }
+        const space = activeSpace();
         let last: string | null = null;
-        try { last = localStorage.getItem(layoutSessionKey(layout.name)); } catch { /* no memory */ }
-        if (last && sess.list().some((c) => c.id === last)) sess.switch(last);
+        try {
+          last = localStorage.getItem(layoutSessionKey(layout.name, space))
+            ?? localStorage.getItem(layoutSessionKeyLegacy(layout.name));
+        } catch { /* no memory */ }
+        const target = last ? (sess.list() as Array<{ id: string; mode?: string }>).find((c) => c.id === last) : undefined;
+        const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
+        if (target && spaceOfMode(target.mode) === space) sess.switch(target.id);
         else sess.startNew();
         stamp();
       })();
@@ -5273,11 +5301,16 @@ async function init(): Promise<void> {
   window.addEventListener("agent-sessions-changed", () => {
     type SessionsApi = { currentTitle(): string; currentId(): string | null };
     const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-    // Remember which session rode this layout — "last" sessionMode resumes it.
+    // Remember which session rode this layout — "last" sessionMode resumes
+    // it PER SPACE (the session's own space, so a Code conversation can
+    // never become the Work binding).
     const cur = sess?.currentId?.();
     const riding = echoActiveLayout?.name ?? activeLayoutName;
     if (riding && cur) {
-      try { localStorage.setItem(layoutSessionKey(riding), cur); } catch { /* best effort */ }
+      type Listed = { id: string; mode?: string };
+      const listed = ((sess as unknown as { list?: () => Listed[] }).list?.() ?? []).find((c) => c.id === cur);
+      const space = listed?.mode === "code" ? "code" : listed?.mode === "chat" ? "chat" : "cowork";
+      try { localStorage.setItem(layoutSessionKey(riding, space), cur); } catch { /* best effort */ }
     }
   });
 

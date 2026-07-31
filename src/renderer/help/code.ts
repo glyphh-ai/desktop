@@ -734,8 +734,8 @@ function ensureCodeSection(): void {
 (window as unknown as { __appConfirm?: unknown }).__appConfirm = confirmAction;
 
 (window as unknown as { __agentSessions?: unknown }).__agentSessions = {
-  list: (): Array<{ id: string; title: string; createdAt: number }> =>
-    chats.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt })),
+  list: (): Array<{ id: string; title: string; createdAt: number; mode: "chat" | "cowork" | "code" }> =>
+    chats.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt, mode: modeOf(c) })),
   currentId: (): string | null => currentId,
   currentTitle: (): string => current()?.title ?? "New session",
   switch: (id: string): void => {
