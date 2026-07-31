@@ -592,7 +592,23 @@ async function init(): Promise<void> {
     return "glyphh-preview://local" + s.split("/").map(encodeURIComponent).join("/");
   }
   /** Route a URL into the Browser panel — reuses the open one or places one. */
+  /** While an Echo panel is mounted, every agent/panel tool routes into
+   *  Echo's own slots — set by renderEchoIntoSlot, cleared on teardown. */
+  interface EchoCtlType {
+    openApp(app: { slug: string; name: string; url: string; glyphh?: boolean }): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"): void;
+    openPreviewHtml(html: string, label?: string): void;
+    openPreviewUrl(url: string): void;
+    openFileTab(node: { name: string; path: string }, content: string, mode?: "preview" | "code"): void;
+    list(): Array<{ slug: string; name: string }>;
+    close(slug: string): boolean;
+    focus(slug: string): boolean;
+    closeAll(): void;
+  }
+  let echoCtl: EchoCtlType | null = null;
+
   function openPreviewUrl(url: string): void {
+    if (echoCtl) { echoCtl.openPreviewUrl(url); return; }
     const slot = rails.flatMap((r) => r.slots).find((s): s is PreviewSlot => s.view === "preview");
     if (slot) {
       slot.html = undefined;
@@ -641,6 +657,7 @@ async function init(): Promise<void> {
     // .md files default to rendered markdown; the user can flip to source
     // via the </> button in the tab header.
     const mode: "preview" | "code" | undefined = isMarkdown(node.name) ? "preview" : undefined;
+    if (echoCtl) { echoCtl.openFileTab(node, content, mode); return; }
     const existing = findMonacoSlot();
     if (existing) {
       const idx = existing.tabs.findIndex((t) => t.path === node.path);
@@ -1282,7 +1299,7 @@ async function init(): Promise<void> {
     // app icons. Drawn at 4× and colored from the LIVE theme variables,
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
-    interface EchoTile { name: string; url?: string; iconUrl?: string; glyphSvg?: string; kind: "app" | "tool"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; url?: string; iconUrl?: string; glyphSvg?: string; kind: "app" | "tool"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot }
     const entries: TileEntry[] = [];
     const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; font: string } => {
@@ -1490,8 +1507,9 @@ async function init(): Promise<void> {
         appIconInner(iconOf(a), a.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined;
       const toTile = (e: Entry): EchoTile => {
         const a = e.app;
-        if (a.appArchetype === "glyphh-nav") return { name: a.name, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
-        return { name: a.name, url: a.url || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
+        const slug = (a.slug || a.id).toLowerCase();
+        if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
+        return { name: a.name, slug, url: a.url || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
       };
       const tiles = wallEntries.map(toTile);
       // every workspace panel type (no Coding Agent tile — GLYPHH is the
@@ -1499,7 +1517,7 @@ async function init(): Promise<void> {
       const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "preview", "plan"];
       for (const v of TOOLS) {
         const svg = VIEW_META[v].icon.match(/<svg[\s\S]*<\/svg>/)?.[0];
-        tiles.push({ name: VIEW_META[v].title, glyphSvg: svg || undefined, kind: "tool", toolView: v });
+        tiles.push({ name: VIEW_META[v].title, slug: v, glyphSvg: svg || undefined, kind: "tool", toolView: v });
       }
       buildWall(tiles);
     }).catch(() => buildWall([]));
@@ -1580,8 +1598,10 @@ async function init(): Promise<void> {
       drawTile(e);
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
+      if (e.tile.slug && card.querySelector("webview")) rpaYo().rpaUnregister?.(e.tile.slug);
+      notifyOpenApps();
       // zoom BACK to the tile's spot (wherever the camera has it now)
-      if (e.mesh) setRect(card, projectRect(e.mesh));
+      setRect(card, e.mesh ? projectRect(e.mesh) : centerRect());
       card.classList.remove("placed");
       card.style.pointerEvents = "none";
       const toolSlot = e.toolSlot;
@@ -1589,13 +1609,16 @@ async function init(): Promise<void> {
       window.setTimeout(() => {
         // sections are SINGLETONS — park the page back to its pen before
         // the card's DOM goes away (same contract as parkSections)
-        const pen = document.getElementById("page-body");
-        card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
-          sec.classList.remove("active", "wb-hosted");
-          pen?.appendChild(sec);
-        });
-        if (toolSlot?.view === "terminal") for (const t of toolSlot.terminals) killTerminal(t);
-        card.remove();
+        try {
+          const pen = document.getElementById("page-body");
+          card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
+            sec.classList.remove("active", "wb-hosted");
+            pen?.appendChild(sec);
+          });
+          if (toolSlot?.view === "terminal") for (const t of toolSlot.terminals) { try { killTerminal(t); } catch { /* pty already gone */ } }
+        } finally {
+          card.remove();   // NEVER leave a zombie card
+        }
       }, 380);
       if (!openList.length) setShadow(false, false);
       layoutCards();
@@ -1603,8 +1626,10 @@ async function init(): Promise<void> {
     /** The card shell every open shares: head (name / expand / close), a
      *  body, the zoom-up-from-the-tile entrance. Echo is a BINARY mode —
      *  nothing opened here ever lands in the standard layout. */
+    const centerRect = (): { left: number; top: number; width: number; height: number } => ({
+      left: (stage.clientWidth || 300) / 2 - 60, top: (stage.clientHeight || 200) / 2 - 40, width: 120, height: 80,
+    });
     const openShell = (e: TileEntry): HTMLElement | null => {
-      if (!e.mesh) return null;
       if (e.card) { e.card.classList.add("flash"); window.setTimeout(() => e.card?.classList.remove("flash"), 600); return null; }
       const card = document.createElement("div");
       card.className = "echo-card";
@@ -1624,12 +1649,13 @@ async function init(): Promise<void> {
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
       setShadow(false, false);
-      setRect(card, projectRect(e.mesh));   // start AT the tile
+      setRect(card, e.mesh ? projectRect(e.mesh) : centerRect());   // start AT the tile
       cardsLayer.appendChild(card);
       e.card = card;
       e.open = true;
       drawTile(e);
       openList.push(e);
+      notifyOpenApps();
       requestAnimationFrame(() => { card.classList.add("placed"); layoutCards(); });
       return card;
     };
@@ -1648,6 +1674,10 @@ async function init(): Promise<void> {
         wv.addEventListener("did-fail-load", (ev) => {
           const err = ev as unknown as { errorCode?: number; errorDescription?: string };
           if (err.errorCode && err.errorCode !== -3) console.warn(`[echo] "${t.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
+        });
+        wv.addEventListener("dom-ready", () => {
+          const wcId = (wv as unknown as WebviewEl).getWebContentsId?.();
+          if (wcId !== undefined && t.slug) rpaYo().rpaRegister?.(t.slug, wcId);
         });
         card.querySelector(".echo-card-body")!.appendChild(wv);
         const { chrome, urlbar } = buildAppChrome(wv as unknown as WebviewEl, () => t.url || "");
@@ -1683,6 +1713,104 @@ async function init(): Promise<void> {
         (window as unknown as { __wbSectionLoad?: (sn: string) => void }).__wbSectionLoad?.(section);
       }
     };
+    // ── The agent drives Echo too: while Echo is mounted, EVERY panel tool
+    // (open / list / close / focus / clear / terminal / browser / files)
+    // lands in Echo's slots — pervasive, not just clicks. ──
+    const findTile = (slug: string): TileEntry | undefined => {
+      const key = slug.trim().toLowerCase();
+      return openList.find((x) => (x.tile.slug || "") === key) ?? entries.find((x) => (x.tile.slug || "") === key);
+    };
+    const adHoc = (tile: EchoTile): TileEntry => {
+      const canvas = document.createElement("canvas");
+      const tex = new THREE.CanvasTexture(canvas);
+      return { tile, canvas, tex, img: null };
+    };
+    const flash = (card: HTMLElement | undefined): void => {
+      if (!card) return;
+      card.classList.add("flash");
+      window.setTimeout(() => card.classList.remove("flash"), 600);
+    };
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"): TileEntry => {
+      let entry = openList.find((x) => x.tile.toolView === view);
+      if (!entry) {
+        entry = entries.find((x) => x.tile.toolView === view)
+          ?? adHoc({ name: VIEW_META[view].title, slug: view, kind: "tool", toolView: view });
+        activateTile(entry);
+      }
+      return entry;
+    };
+    const rerenderToolBody = (entry: TileEntry): void => {
+      const b = entry.card?.querySelector<HTMLElement>(".echo-card-body");
+      const slot = entry.toolSlot;
+      if (!b || !slot) return;
+      b.innerHTML = "";
+      if (slot.view === "preview") void renderPreviewIntoSlot(b, slot);
+      else if (slot.view === "monaco") void renderMonacoIntoSlot(b, slot);
+    };
+    echoCtl = {
+      openApp: (app) => {
+        const key = (app.slug || "").trim().toLowerCase();
+        const existing = openList.find((x) => (x.tile.slug || "") === key);
+        if (existing?.card) {
+          // already open — a URL open (open_browser) navigates it
+          if (app.url) existing.card.querySelector("webview")?.setAttribute("src", app.url);
+          flash(existing.card);
+          return;
+        }
+        const entry = findTile(key)
+          ?? (app.url ? adHoc({ name: app.name || app.slug, slug: key, url: app.url, kind: "app" }) : undefined);
+        if (entry) activateTile(entry);
+      },
+      openTool: (view) => { void getOrOpenTool(view); },
+      openPreviewHtml: (html, label) => {
+        const entry = getOrOpenTool("preview");
+        const slot = entry.toolSlot as PreviewSlot | undefined;
+        if (!slot) return;
+        slot.html = html;
+        slot.htmlLabel = label;
+        slot.url = undefined;
+        rerenderToolBody(entry);
+      },
+      openPreviewUrl: (url) => {
+        const entry = getOrOpenTool("preview");
+        const slot = entry.toolSlot as PreviewSlot | undefined;
+        if (!slot) return;
+        slot.html = undefined;
+        slot.htmlLabel = undefined;
+        slot.url = url;
+        rerenderToolBody(entry);
+        flash(entry.card);
+      },
+      openFileTab: (node, content, mode) => {
+        const entry = getOrOpenTool("monaco");
+        const slot = entry.toolSlot as MonacoSlot | undefined;
+        if (!slot) return;
+        const idx = slot.tabs.findIndex((tb) => tb.path === node.path);
+        if (idx >= 0) slot.activeIdx = idx;
+        else {
+          slot.tabs.push({ name: node.name, path: node.path, content, mode });
+          slot.activeIdx = slot.tabs.length - 1;
+        }
+        rerenderToolBody(entry);
+        flash(entry.card);
+      },
+      list: () => openList.map((x) => ({ slug: x.tile.slug || x.tile.name.toLowerCase(), name: x.tile.name })),
+      close: (slug) => {
+        const x = openList.find((c) => (c.tile.slug || "") === slug.trim().toLowerCase());
+        if (!x) return false;
+        closeCard(x);
+        return true;
+      },
+      focus: (slug) => {
+        const x = openList.find((c) => (c.tile.slug || "") === slug.trim().toLowerCase());
+        if (!x?.card) return false;
+        flash(x.card);
+        return true;
+      },
+      closeAll: () => { for (const x of [...openList]) closeCard(x); },
+    };
+    notifyOpenApps();
+
     const ray = new THREE.Raycaster();
     const pick = (ev: MouseEvent): TileEntry | null => {
       const r = stage.getBoundingClientRect();
@@ -1759,6 +1887,8 @@ async function init(): Promise<void> {
       obs.disconnect();
       ro.disconnect();
       themeObs.disconnect();
+      echoCtl = null;
+      notifyOpenApps();
       group.traverse((o) => {
         if (o instanceof THREE.Mesh) {
           o.geometry.dispose();
@@ -2058,7 +2188,7 @@ async function init(): Promise<void> {
 
   let lastAppsJson = "";
   function notifyOpenApps(): void {
-    const open = appSlots().map((s) => ({ slug: s.slug, name: s.name }));
+    const open = [...appSlots().map((s) => ({ slug: s.slug, name: s.name })), ...(echoCtl?.list() ?? [])];
     const json = JSON.stringify(open);
     if (json === lastAppsJson) return;
     lastAppsJson = json;
@@ -3996,6 +4126,7 @@ async function init(): Promise<void> {
   // Glyphh build previews: show generated HTML in a Preview slot (opens
   // one if none), live across repair attempts. Runtime-only content.
   (window as unknown as { __wbPreviewHtml?: (html: string, label?: string) => void }).__wbPreviewHtml = (html, label) => {
+    if (echoCtl) { echoCtl.openPreviewHtml(html, label); return; }
     let slot = rails.flatMap((r) => r.slots).find((s) => s.view === "preview") as PreviewSlot | undefined;
     if (!slot) {
       slot = makeSlot("preview") as PreviewSlot;
@@ -4016,6 +4147,7 @@ async function init(): Promise<void> {
     void openFileSmart({ name, path });
   };
   (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal = () => {
+    if (echoCtl) { echoCtl.openTool("terminal"); return; }
     const existing = rails.flatMap((r) => r.slots).find((s) => s.view === "terminal");
     if (existing) { renderRails(); return; }
     placeSlot(makeSlot("terminal"));
@@ -4264,7 +4396,10 @@ async function init(): Promise<void> {
     __wbToggleAppSwitcher?: () => void;
     __wbOpenSection?: (section: string) => void;
   };
-  wbApp.__wbOpenApp = (app, newPanel) => openAppInWorkbench(app, { newPanel });
+  wbApp.__wbOpenApp = (app, newPanel) => {
+    if (echoCtl) { echoCtl.openApp(app); return; }
+    openAppInWorkbench(app, { newPanel });
+  };
   wbApp.__wbOpenApps = (apps, layoutName?: string) => {
     // A NAMED layout comes up through the grid path — its definition plus the
     // user's remembered geometry — never as a flat stack. The old fallback
@@ -4275,18 +4410,21 @@ async function init(): Promise<void> {
         if (ok) return;
         // Unknown name (deleted layout?) — flat open, but write no named memory.
         activeLayoutName = null;
-        for (const a of apps) openAppInWorkbench(a, { newPanel: true });
+        for (const a of apps) { if (echoCtl) echoCtl.openApp(a); else openAppInWorkbench(a, { newPanel: true }); }
       });
       return;
     }
-    for (const a of apps) openAppInWorkbench(a, { newPanel: true });
+    for (const a of apps) { if (echoCtl) echoCtl.openApp(a); else openAppInWorkbench(a, { newPanel: true }); }
   };
   // An anonymous grid (no name) must not write into whatever named layout was
   // active before — openLayoutInWorkbench ends in saveLayout().
   wbApp.__wbOpenLayout = (layout) => { activeLayoutName = null; openLayoutInWorkbench(layout); };
   // `.dip clear` — close all workspace panels. JUST the panels: sessions,
   // history, everything else stays untouched.
-  wbApp.__wbClearPanels = () => clearAllPanels();
+  wbApp.__wbClearPanels = () => {
+    if (echoCtl) { echoCtl.closeAll(); return Promise.resolve(true); }
+    return clearAllPanels();
+  };
   // `.dip grid` — re-flow every open panel into an even grid: rails of two
   // stacked slots, equal widths, equal heights.
   wbApp.__wbGridPanels = (): boolean => {
@@ -4321,9 +4459,10 @@ async function init(): Promise<void> {
     openLayoutRow(layout, rows);
     return true;
   };
-  wbApp.__wbListApps = () => appSlots().map((s) => ({ slug: s.slug, name: s.name }));
-  wbApp.__wbCloseApp = (slug) => closeWbApp(slug);
+  wbApp.__wbListApps = () => [...appSlots().map((s) => ({ slug: s.slug, name: s.name })), ...(echoCtl?.list() ?? [])];
+  wbApp.__wbCloseApp = (slug) => (echoCtl?.close(slug) || closeWbApp(slug));
   wbApp.__wbFocusApp = (slug) => {
+    if (echoCtl?.focus(slug)) return true;
     const slot = appSlots().find((s) => s.slug === slug);
     if (!slot) return false;
     focusAppSlot(slot.id);
