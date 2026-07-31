@@ -14058,8 +14058,8 @@ body.code-dragging iframe { pointer-events: none !important; }
   min-height: 0;
 }
 
-/* Internal app panels (hosted sections) show NO expand/close chrome — they
-   are always the whole surface; nav/dock/rail is how you leave. The agent,
-   workspace tools, and app panels keep their controls. */
-.ws-rail-slot[data-view="section"] .slot-maximize,
-.ws-rail-slot[data-view="section"] .slot-close { display: none; }
+/* Internal app panels (hosted sections: Home, Apps, Settings, Layouts, …)
+   have NO header row at all — like the agent panel, the page IS the surface
+   and carries its own headings; nav/dock/rail is how you leave. Workspace
+   tools and app webview panels keep their headers and controls. */
+.ws-rail-slot[data-view="section"] > .ws-rail-slot-header { display: none; }
