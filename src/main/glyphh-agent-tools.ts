@@ -1075,8 +1075,30 @@ const TOOLS: ToolDef[] = [
 
 /** Name + doc line per tool — the agent loop declares these over MCP (args
  *  ride as free-form objects described by the doc; the executor validates). */
-export function glyphhToolDefs(): Array<{ name: string; doc: string }> {
-  return TOOLS.map((t) => ({ name: t.name, doc: t.doc }));
+export type AgentMode = "cowork" | "code";
+
+/** Tools each MODE carries — the defs are un-squeezable per-turn prompt
+ *  prefix, so a session only pays for its own space's pack:
+ *  - CO-WORK: the connected-life set — connectors, browsing, apps/RPA,
+ *    memory, documents. No dev toolchain.
+ *  - CODE: the dev set — workspace files, terminal, git, deploy, preview.
+ *    No RPA, no email/drip/layout extras — and NO pre-wired connector defs
+ *    (find_tools/call_tool reach any connector lazily at two small defs). */
+const CODE_EXCLUDED = new Set([
+  "rpa_read", "rpa_click", "rpa_type", "rpa_goto", "scrape_page",
+  "send_email_with_attachment",
+  "list_layouts", "open_layout", "save_layout",
+  "list_drips", "run_drip",
+  "app_list_tools", "app_call_tool",
+]);
+const COWORK_EXCLUDED = new Set([
+  "run_command", "update_app", "deploy_app",
+  "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
+]);
+
+export function glyphhToolDefs(mode: AgentMode = "cowork"): Array<{ name: string; doc: string }> {
+  const excluded = mode === "code" ? CODE_EXCLUDED : COWORK_EXCLUDED;
+  return TOOLS.filter((t) => !excluded.has(t.name)).map((t) => ({ name: t.name, doc: t.doc }));
 }
 
 export interface ToolOutcome { result: string; denied: boolean; title: string }

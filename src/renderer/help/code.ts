@@ -28,10 +28,18 @@ interface CodeChat {
   workdir?: string;
   /** Pinned sessions float to the top of the history dropdown. */
   pinned?: boolean;
-  /** A CHAT session: every turn is a tool-less completion — far fewer
-   *  tokens, and the history never carries a tool transcript. Stamped at
-   *  birth from the Chat/Work toggle; locked once the session has turns. */
+  /** LEGACY flag (pre-mode) — read once by modeOf, never written. */
   chat?: boolean;
+  /** The session's SPACE + toolbelt: "chat" (tool-less), "cowork"
+   *  (connections/browsing/apps — the most tools), "code" (the dev pack).
+   *  Chat→co-work is a safe upgrade anytime (a chat history carries no tool
+   *  transcripts); the reverse only before the first turn. */
+  mode?: "chat" | "cowork" | "code";
+}
+
+/** The session's effective mode (legacy chat flag folds in; default code). */
+function modeOf(c: CodeChat): "chat" | "cowork" | "code" {
+  return c.mode ?? (c.chat ? "chat" : "code");
 }
 
 const STORE_KEY = "codeChats";
@@ -772,7 +780,8 @@ function ensureCodeSection(): void {
   };
 
 function newChat(): void {
-  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], ...(chatOnly ? { chat: true } : {}) };
+  const mode: CodeChat["mode"] = railTab === "code" ? "code" : (chatOnly ? "chat" : "cowork");
+  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
   chats.unshift(c);
   currentId = c.id;
   threadPinned = true;
@@ -870,14 +879,16 @@ function renderHistory(): void {
   if (!list) return;
   list.textContent = "";
   cwPaint?.();
-  for (const c of chats) {
+  const visible = chats.filter((c) => (railTab === "code") === (modeOf(c) === "code"));
+  for (const c of visible) {
     const row = document.createElement("div");
     row.className = "code-history-item" + (c.id === currentId ? " active" : "");
     const label = document.createElement("span");
     label.className = "code-history-title";
     label.textContent = c.title;
-    label.title = c.chat ? `${c.title} — Chat session (no tools)` : c.title;
-    if (c.chat) {
+    const cMode = modeOf(c);
+    label.title = cMode === "chat" ? `${c.title} — Chat (no tools)` : cMode === "cowork" ? `${c.title} — Co-work` : c.title;
+    if (cMode === "chat") {
       const badge = document.createElement("span");
       badge.className = "code-chat-badge";
       badge.textContent = "💬";
@@ -1171,8 +1182,11 @@ const wb = () => (window as unknown as { wb?: WbBridge }).wb;
 // once one exists it persists as last-used and sessions start ready (the
 // picker, when opened, defaults to that folder so switching is one click).
 let workdirReady = true; // painted by checkWorkdirGate
-/** Default mode for NEW sessions: chat (tool-less) or work (full agent). */
+/** Chat-space default for NEW sessions: plain chat (true) or co-work. */
 let chatOnly = false;
+/** The rail's active SPACE tab — scopes the session list and what + New
+ *  session creates. */
+let railTab: "chat" | "code" = "chat";
 /** Repaints the Chat/Work toggle — set by initComposerControls, called on
  *  session switches so the control always shows the CURRENT session's mode. */
 let cwPaint: (() => void) | null = null;
@@ -1706,7 +1720,7 @@ function send(): void {
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
   const launch = (retried: boolean): Promise<void> =>
-    window.yo.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), ...(c.chat ? { chat: true } : {}) })
+    window.yo.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -2550,27 +2564,53 @@ export function initCode(): void {
   // tokens) and hides the cowork content under the Home composer. ──
   const cwToggle = el("code-cw-toggle");
   const paintCw = (): void => {
-    // a session with turns shows ITS mode, locked; otherwise the default
     const cur = current();
-    const locked = !!cur && cur.messages.length > 0;
-    const shown = locked ? !!cur.chat : chatOnly;
-    cwToggle?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", (b.dataset.cw === "chat") === shown));
-    cwToggle?.classList.toggle("locked", locked);
-    if (cwToggle) cwToggle.title = locked
-      ? `This is a ${shown ? "Chat" : "Work"} session — the mode is fixed at birth. Start a new session to switch.`
-      : "Chat = plain conversation, no tools (far fewer tokens). Work = the full agent. Sets what NEW sessions become.";
-    document.body.classList.toggle("chat-only", shown);
+    const curMode = cur ? modeOf(cur) : null;
+    // the toggle belongs to the CHAT space — code sessions don't show it
+    cwToggle?.classList.toggle("hidden", curMode === "code");
+    const shownChat = cur && curMode !== "code" ? curMode === "chat" : chatOnly;
+    cwToggle?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", (b.dataset.cw === "chat") === shownChat));
+    // chat → co-work upgrades anytime (a chat history carries no tool
+    // transcripts); co-work → chat only before the first turn
+    const downLocked = !!cur && curMode === "cowork" && cur.messages.length > 0;
+    cwToggle?.classList.toggle("locked", downLocked);
+    if (cwToggle) cwToggle.title = downLocked
+      ? "A co-work session stays co-work — its history may carry tool results. Start a new session for plain Chat."
+      : "Chat = plain conversation, no tools (far fewer tokens). Co-work = connections, browsing, apps.";
+    document.body.classList.toggle("chat-only", !!shownChat);
   };
   cwPaint = paintCw;
   cwToggle?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    const wantChat = b.dataset.cw === "chat";
     const cur = current();
-    if (cur && cur.messages.length > 0) { paintCw(); return; }   // locked — mode is a birth property
-    chatOnly = b.dataset.cw === "chat";
-    if (cur) { cur.chat = chatOnly || undefined; void saveStore(); }   // an EMPTY session can still flip
+    const curMode = cur ? modeOf(cur) : null;
+    if (cur && curMode !== "code") {
+      if (wantChat && curMode === "cowork" && cur.messages.length > 0) { paintCw(); return; }   // no downgrades
+      cur.mode = wantChat ? "chat" : "cowork";
+      void saveStore();
+    }
+    chatOnly = wantChat;
     paintCw();
     void window.yo.setPreference?.("agentChatMode", chatOnly);
   }));
   void window.yo.getPreference?.("agentChatMode", false).then((v) => { chatOnly = v === true; paintCw(); });
+  // ── The rail's SPACE tabs: Chat | Code — the list + "+ New session" scope
+  // to the active one. ──
+  const railTabs = el("rail-mode-tabs");
+  const paintRailTabs = (): void => {
+    railTabs?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === railTab));
+  };
+  railTabs?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    railTab = b.dataset.tab === "code" ? "code" : "chat";
+    paintRailTabs();
+    renderHistory();
+    void window.yo.setPreference?.("railModeTab", railTab);
+  }));
+  void window.yo.getPreference?.("railModeTab", "chat").then((v) => {
+    railTab = v === "code" ? "code" : "chat";
+    paintRailTabs();
+    renderHistory();
+  });
   el("code-rail-toggle")?.addEventListener("click", () => {
     const collapsed = el("app-rail")!.classList.toggle("collapsed");
     document.body.classList.toggle("rail-collapsed", collapsed);
@@ -2800,6 +2840,7 @@ export function openRunSession(run: {
   const c: CodeChat = {
     id,
     title: `▶ ${run.taskName} · ${when}`,
+    mode: "code",   // agent runs live in the CODE space
     createdAt: Date.parse(run.startedAt) || Date.now(),
     messages: [
       { role: "user", text: `▶ ${run.taskName} — ${run.agentName} ran \`${run.target}\` (${when}${dur})`, at: Date.parse(run.startedAt) || Date.now() },

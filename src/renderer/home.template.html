@@ -65,6 +65,13 @@
            Home|Code switcher, sessions, section nav, and the user area.
            Hidden when the panel is locked to a single section (?section=). -->
       <aside id="app-rail">
+        <!-- The two SPACES: Chat (conversations — plain or co-work) and
+             Code (dev sessions + agent runs). The list below scopes to the
+             active tab; + New session creates in it. -->
+        <div id="rail-mode-tabs" class="rail-mode-tabs">
+          <button type="button" data-tab="chat" class="active">Chat</button>
+          <button type="button" data-tab="code">Code</button>
+        </div>
         <button id="code-new-chat" class="code-new-session code-new-session-link" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>New session</span>

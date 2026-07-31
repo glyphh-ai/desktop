@@ -183,7 +183,7 @@ export function assertGlyphhExternalAllowed(via: "relay" | "local-mcp"): void {
 export function registerGlyphhIpc(): void {
   registerGlyphhPermissionIpc();
   registerGlyphhContextIpc();
-  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code" }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
@@ -209,9 +209,10 @@ export function registerGlyphhIpc(): void {
     // CHAT mode: a plain completion — the same lifecycle events the renderer
     // already speaks, but NO tools, no agent harness, no packet — a fraction
     // of the tokens of a Work turn.
-    const runner = payload?.chat
+    const mode = payload?.mode ?? (payload?.chat ? "chat" : "code");
+    const runner = mode === "chat"
       ? chatRun(e.sender, id, messages, ctrl, replyBudget)
-      : sdkRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir);
+      : sdkRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir, mode);
     void runner.finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
       if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);
@@ -385,6 +386,7 @@ async function sdkRun(
   attachments: AttachRef[] = [],
   chatId = "",
   runWorkdir?: string,
+  mode: "cowork" | "code" = "code",
 ): Promise<void> {
   const emit = (channel: string, data: Record<string, unknown>) => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
@@ -399,7 +401,7 @@ async function sdkRun(
     emit("glyphh-agent:credits", { creditsMicro: runCreditsMicro });
   });
 
-  const defs = glyphhToolDefs();
+  const defs = glyphhToolDefs(mode);
   // Connected accounts ride as FIRST-CLASS tools with their real input
   // schemas (governed catalog; refreshes when stale) — no guessed slugs.
   // Offline/signed-out just means an empty set. The FULL catalog would blow
@@ -421,7 +423,9 @@ async function sdkRun(
       skillSeed = `## Skill: ${skill.name}\n${skill.prompt}`;
     } catch { /* not a skill — send as typed */ }
   }
-  const connDefs = await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
+  const connDefs = mode === "code"
+    ? []   // code pays for TWO connector defs (find_tools/call_tool), not a catalog subset
+    : await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
 
   // The Glyphh surface as an in-process MCP server. Builtins ride as open
   // objects described by each tool's doc line (the executor validates);
