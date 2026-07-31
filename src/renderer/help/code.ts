@@ -2632,16 +2632,15 @@ export function initCode(): void {
   };
   railTabs?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
     railTab = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
-    void window.yo.setPreference?.("railModeTab", railTab);
     enterSpace(true);
   }));
   void Promise.all([
-    window.yo.getPreference?.("railModeTab", "chat"),
     window.yo.getPreference?.("lastSessionChat", ""),
     window.yo.getPreference?.("lastSessionCowork", ""),
     window.yo.getPreference?.("lastSessionCode", ""),
-  ]).then(([v, lc, lw, lco]) => {
-    railTab = v === "code" ? "code" : v === "cowork" ? "cowork" : "chat";
+  ]).then(([lc, lw, lco]) => {
+    // STARTUP ALWAYS LANDS ON WORK — the space the day starts in.
+    railTab = "cowork";
     lastBySpace.chat = String(lc || "");
     lastBySpace.cowork = String(lw || "");
     lastBySpace.code = String(lco || "");
