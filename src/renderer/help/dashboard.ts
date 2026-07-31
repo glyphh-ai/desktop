@@ -192,26 +192,41 @@ export async function loadUsageChart(): Promise<void> {
   renderChart(series, only);
 }
 
-// ── The site hero's particle field, ported (web HeroParticles.js): ~1px
-// dots, slow upward drift, twinkle, a minority in the accent color. Skips
-// under prefers-reduced-motion; the loop self-stops when the landing
-// leaves the screen and restarts on the next load. ──
+// ── The glyphh.ai desktop page's HERO MOVEMENT, ported whole: corner
+// halftone RAY SPRAYS (pulsing bokeh glow, slow outward flow, twinkle,
+// pointer parallax — web HeroRays.js) layered over the faint drifting dot
+// field (HeroParticles.js), tinted from the app's accent. Skips motion
+// under prefers-reduced-motion; self-stops when the landing leaves the
+// screen and restarts on the next load. ──
 let particlesRaf = 0;
 function startDashParticles(): void {
   const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
   if (!canvas || particlesRaf) return;
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  let w = 0, h = 0;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // accent → rgb, plus a lighter tint for the spray variety
+  const hex = (getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#f59e0b").replace("#", "");
+  const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+  const r0 = parseInt(full.slice(0, 2), 16), g0 = parseInt(full.slice(2, 4), 16), b0 = parseInt(full.slice(4, 6), 16);
+  const mix = (v: number, t: number): number => Math.round(v + (255 - v) * t);
+  const ACCENT = `${r0}, ${g0}, ${b0}`;
+  const LIGHT = `${mix(r0, 0.45)}, ${mix(g0, 0.45)}, ${mix(b0, 0.45)}`;
+  const WHITE = "255, 255, 255";
+  const CORNERS = [
+    { x: 0, y: 0, a0: 0.12, a1: 1.45, tint: LIGHT },
+    { x: 1, y: 0, a0: 1.69, a1: 3.02, tint: ACCENT },
+  ];
+  const RAYS = 18, DOTS = 34, CURL = 0.22;
+
+  let w = 0, h = 0, reach = 0;
   interface Dot { x: number; y: number; r: number; vy: number; vx: number; a: number; tw: number; ph: number; accent: boolean }
   let parts: Dot[] = [];
-  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#f59e0b";
   const seed = (): void => {
     const count = Math.round(Math.min(70, Math.max(36, w / 22)));
     parts = Array.from({ length: count }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
+      x: Math.random() * w, y: Math.random() * h,
       r: 0.6 + Math.random() * 1.1,
       vy: 0.06 + Math.random() * 0.16,
       vx: (Math.random() - 0.5) * 0.05,
@@ -226,6 +241,7 @@ function startDashParticles(): void {
     if (!rect) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     w = rect.width; h = rect.height;
+    reach = Math.hypot(w, h) * 0.6;
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -234,30 +250,84 @@ function startDashParticles(): void {
   const ro = new ResizeObserver(resize);
   if (canvas.parentElement) ro.observe(canvas.parentElement);
   resize();
+
+  let px = 0, py = 0, cx = 0, cy = 0;
+  const onPointer = (e: PointerEvent): void => {
+    px = e.clientX / window.innerWidth - 0.5;
+    py = e.clientY / window.innerHeight - 0.5;
+  };
+  window.addEventListener("pointermove", onPointer);
+
   let t = 0;
-  const tick = (): void => {
-    // parked/hidden landing ⇒ stop cleanly; the next load restarts
+  const tick = (now: number): void => {
     if (!canvas.isConnected || canvas.offsetParent === null) {
       particlesRaf = 0;
       ro.disconnect();
+      window.removeEventListener("pointermove", onPointer);
       return;
     }
     t += 0.016;
+    cx += (px - cx) * 0.05;
+    cy += (py - cy) * 0.05;
     ctx.clearRect(0, 0, w, h);
-    for (const pt of parts) {
-      pt.y -= pt.vy;
-      pt.x += pt.vx;
-      if (pt.y < -4) { pt.y = h + 4; pt.x = Math.random() * w; }
-      if (pt.x < -4) pt.x = w + 4;
-      if (pt.x > w + 4) pt.x = -4;
-      const alpha = pt.a * (0.6 + 0.4 * Math.sin(t * pt.tw + pt.ph));
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
-      ctx.fillStyle = pt.accent
-        ? `color-mix(in srgb, ${accent} ${Math.round(alpha * 100)}%, transparent)`
-        : `rgba(255, 255, 255, ${alpha})`;
-      ctx.fill();
+
+    // — the drift field (HeroParticles) —
+    if (!reduced) {
+      for (const pt of parts) {
+        pt.y -= pt.vy;
+        pt.x += pt.vx;
+        if (pt.y < -4) { pt.y = h + 4; pt.x = Math.random() * w; }
+        if (pt.x < -4) pt.x = w + 4;
+        if (pt.x > w + 4) pt.x = -4;
+        const alpha = pt.a * (0.6 + 0.4 * Math.sin(t * pt.tw + pt.ph));
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+        ctx.fillStyle = pt.accent ? `rgba(${ACCENT}, ${alpha})` : `rgba(${WHITE}, ${alpha})`;
+        ctx.fill();
+      }
     }
+
+    // — the corner ray sprays (HeroRays) —
+    ctx.globalCompositeOperation = "lighter";
+    const flow = reduced ? 0 : now * 0.000018;
+    for (let ci = 0; ci < CORNERS.length; ci++) {
+      const C = CORNERS[ci]!;
+      const ox = C.x * w, oy = C.y * h;
+      const par = 26;
+      const pulse = 0.75 + 0.25 * Math.sin(now * 0.0009 + ci * 1.7);
+      const gx = ox + (C.x === 0 ? 60 : -60);
+      const gy = oy + 60;
+      const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, 220);
+      grad.addColorStop(0, `rgba(${C.tint}, ${0.28 * pulse})`);
+      grad.addColorStop(0.5, `rgba(${C.tint}, ${0.09 * pulse})`);
+      grad.addColorStop(1, `rgba(${C.tint}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(ox - 300, oy - 300, 600, 600);
+      for (let k = 0; k < RAYS; k++) {
+        const a = C.a0 + (C.a1 - C.a0) * (k / (RAYS - 1));
+        const jitter = Math.sin(k * 12.9 + ci * 4.1) * 0.03;
+        for (let j = 0; j < DOTS; j++) {
+          const baseT = j / DOTS;
+          const tt = flow ? (baseT + flow) % 1 : baseT;
+          const ang = a + CURL * tt + jitter;
+          const rr = reach * tt;
+          const x = ox + Math.cos(ang) * rr + cx * par * tt;
+          const y = oy + Math.sin(ang) * rr + cy * par * tt;
+          const env = Math.min(1, tt / 0.05) * Math.min(1, (1 - tt) / 0.4);
+          const tw = reduced ? 0.85 : 0.55 + 0.45 * Math.sin(now * 0.002 + j * 0.5 + k * 1.3 + ci);
+          const spark = (j + k) % 8 === 0;
+          const col = spark ? WHITE : C.tint;
+          const alpha = env * tw * (spark ? 1 : 0.8);
+          if (alpha <= 0.01) continue;
+          const size = (2.7 * (1 - tt) + 0.7 * tt) * (spark ? 1.5 : 1);
+          ctx.fillStyle = `rgba(${col}, ${alpha})`;
+          ctx.beginPath();
+          ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
     particlesRaf = requestAnimationFrame(tick);
   };
   particlesRaf = requestAnimationFrame(tick);
