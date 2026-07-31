@@ -1268,6 +1268,7 @@ async function init(): Promise<void> {
     renderer.setClearColor(0x000000, 0);
     stage.appendChild(renderer.domElement);
 
+    let dragEntry: TileEntry | null = null;
     const HOME = { yaw: 0, yOff: 0, dist: -200 };
     let yaw = HOME.yaw, yOff = HOME.yOff, dist = HOME.dist;
     let maxYaw = 1.2;
@@ -1298,8 +1299,18 @@ async function init(): Promise<void> {
     ro.observe(stage);
     resize();
     applyCamera();
+    let jiggleT = 0;
     const tick = (): void => {
       if (!body.isConnected) return;   // teardown observer handles disposal
+      if (editMode) {
+        // every tile shakes on its own phase — the wall reads as "editable"
+        jiggleT += 0.16;
+        entries.forEach((e, i) => {
+          if (!e.mesh || e === dragEntry) return;
+          e.mesh.rotation.z = Math.sin(jiggleT + i * 1.7) * 0.028;
+        });
+        dirty = true;
+      }
       if (dirty) { renderer.render(scene, camera); dirty = false; }
       requestAnimationFrame(tick);
     };
@@ -1312,7 +1323,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
@@ -1329,6 +1340,11 @@ async function init(): Promise<void> {
       };
     };
     let theme = themeColors();
+    // iOS-style edit mode: hold a tile and the wall starts jiggling, each
+    // removable tile wearing a red ✕ in its upper-left corner.
+    let editMode = false;
+    const BADGE_R = 9;
+    const removable = (t: EchoTile): boolean => (t.kind === "app" && !!t.appId && !t.navApp) || (t.kind === "layout" && !!t.layoutName);
     const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void => {
       c.beginPath();
       c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
@@ -1400,6 +1416,21 @@ async function init(): Promise<void> {
         c.font = `600 16px ${theme.font}`;
         c.textAlign = "center"; c.textBaseline = "middle";
         c.fillText((e.tile.name || "?").charAt(0).toUpperCase(), TILE_PX_W / 2, iy + 28);
+      }
+      if (editMode && removable(e.tile)) {
+        // the delete badge — red disc + white ✕, upper-left of the icon
+        const bx = ix + 1, by = iy + 1;
+        c.beginPath();
+        c.arc(bx, by, BADGE_R, 0, Math.PI * 2);
+        c.fillStyle = "#e5484d";
+        c.fill();
+        c.strokeStyle = "#fff";
+        c.lineWidth = 2;
+        c.lineCap = "round";
+        c.beginPath();
+        c.moveTo(bx - 3.6, by - 3.6); c.lineTo(bx + 3.6, by + 3.6);
+        c.moveTo(bx + 3.6, by - 3.6); c.lineTo(bx - 3.6, by + 3.6);
+        c.stroke();
       }
       // .tile-name — 11px, --text-2, ellipsized to the tile width
       c.fillStyle = theme.text2;
@@ -1614,12 +1645,12 @@ async function init(): Promise<void> {
             const label = toolView ? (VIEW_META[toolView as ViewKind]?.title ?? toolView) : id;
             return { initial: (label || "?").charAt(0).toUpperCase(), img: null };
           });
-          return { name: e.name, slug: `layout:${(e.name || "").toLowerCase()}`, cells, layoutRow, kind: "layout" };
+          return { name: e.name, slug: `layout:${(e.name || "").toLowerCase()}`, layoutName: layoutRow.name, cells, layoutRow, kind: "layout" };
         }
         const a = e.app!;
         const slug = (a.slug || a.id).toLowerCase();
         if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
-        return { name: a.name, slug, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
+        return { name: a.name, slug, appId: a.id, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
       };
       // TOP: Glyphh + the command center's dock, always the same row.
       const dockBand: EchoTile[] = [
@@ -2398,6 +2429,19 @@ async function init(): Promise<void> {
     };
     const onKey = (e: KeyboardEvent): void => {
       if (!body.isConnected) { document.removeEventListener("keydown", onKey, true); return; }
+      // Esc leaves edit mode first — the wall stops jiggling.
+      if (e.key === "Escape" && editMode) {
+        e.stopPropagation();
+        e.preventDefault();
+        setEditMode(false);
+        return;
+      }
+      if (e.key === "Escape" && editMode) {
+        e.stopPropagation();
+        e.preventDefault();
+        setEditMode(false);
+        return;
+      }
       if (!openList.length) return;
       // SHADOW MODE — HOLD ⌘⇧ (Ctrl⇧): the open apps fade to ghosts and
       // stop taking input so the wall behind is visible and clickable;
@@ -2443,6 +2487,68 @@ async function init(): Promise<void> {
     /** Glyphh owns the first slot — it never moves and nothing lands on it
      *  (the command center locked it the same way). */
     const movable = (e: TileEntry): boolean => e.tile.kind !== "agent" && draggableBand(bandOf(e));
+    const setEditMode = (on: boolean): void => {
+      if (editMode === on) return;
+      editMode = on;
+      for (const e of entries) {
+        drawTile(e);                       // paints (or clears) the ✕ badge
+        if (!on && e.mesh) e.mesh.rotation.z = 0;
+      }
+      dirty = true;
+    };
+    /** Delete what a tile stands for — the app or the layout — after the
+     *  standard confirm, then drop it off the wall. */
+    const deleteTile = (e: TileEntry): void => {
+      const t = e.tile;
+      if (!removable(t)) return;
+      void (async () => {
+        const ok = await appConfirm({
+          title: `Delete "${t.name}"?`,
+          body: t.kind === "layout"
+            ? "The layout is removed from your library."
+            : "The app is removed from your library on every device.",
+          confirmLabel: "Delete",
+          danger: true,
+        });
+        if (!ok) return;
+        const yo = (window as unknown as { yo?: { panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; layoutsDelete?: (n: string) => Promise<boolean> } }).yo;
+        try {
+          if (t.kind === "layout" && t.layoutName) await yo?.layoutsDelete?.(t.layoutName);
+          else if (t.appId) {
+            const res = await yo?.panelAppsDelete?.(t.appId);
+            if (res && res.ok === false) { console.warn(`[echo] delete "${t.name}" failed: ${res.error || "unknown error"}`); return; }
+          }
+        } catch (err) {
+          console.warn(`[echo] delete "${t.name}" failed:`, err);
+          return;
+        }
+        const band = bandOf(e);
+        if (band >= 0) {
+          wallBands[band] = wallBands[band].filter((x) => x !== e);
+          persistOrder(band);
+        }
+        const gi = entries.indexOf(e);
+        if (gi >= 0) entries.splice(gi, 1);
+        if (e.mesh) {
+          group.remove(e.mesh);
+          e.mesh.geometry.dispose();
+          const m = e.mesh.material as THREE.MeshBasicMaterial;
+          m.map?.dispose();
+          m.dispose();
+          e.mesh = undefined;
+        }
+        positionWall();
+      })();
+    };
+    /** Did this click land on a tile's ✕ badge? (world hit → tile canvas) */
+    const hitBadge = (e: TileEntry, point: THREE.Vector3): boolean => {
+      if (!editMode || !e.mesh || !removable(e.tile)) return false;
+      const local = e.mesh.worldToLocal(point.clone());
+      const u = ((local.x + TILE_W / 2) / TILE_W) * TILE_PX_W;
+      const v = ((TILE_H / 2 - local.y) / TILE_H) * TILE_PX_H;
+      const bx = (TILE_PX_W - 56) / 2 + 1, by = 11;
+      return Math.hypot(u - bx, v - by) <= BADGE_R + 5;
+    };
     const persistOrder = (band: number): void => {
       const yo = (window as unknown as { yo?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).yo;
       const keys = (wallBands[band] ?? []).map((x) => x.tile.orderKey).filter((k): k is string => !!k);
@@ -2460,8 +2566,9 @@ async function init(): Promise<void> {
       ray.setFromCamera(new THREE.Vector2(((ev.clientX - rc.left) / rc.width) * 2 - 1, -(((ev.clientY - rc.top) / rc.height) * 2 - 1)), camera);
       return ray.intersectObject(dragSurface, false)[0]?.point ?? null;
     };
-    let dragEntry: TileEntry | null = null;
     let dropTarget: TileEntry | null = null;
+    let dwellTimer = 0;
+    let reordered = false;   // a dwell already moved it — the drop is a no-op
     const markDrop = (next: TileEntry | null): void => {
       if (dropTarget === next) return;
       if (dropTarget?.mesh) dropTarget.mesh.scale.set(1, 1, 1);
@@ -2471,9 +2578,12 @@ async function init(): Promise<void> {
     };
     const endWallDrag = (): void => {
       if (!dragEntry) return;
+      window.clearTimeout(dwellTimer);
       const from = bandOf(dragEntry);
       const to = dropTarget ? bandOf(dropTarget) : -1;
-      if (dropTarget && dropTarget !== dragEntry && movable(dragEntry) && movable(dropTarget)) {
+      if (reordered && !dropTarget) {
+        persistOrder(from);
+      } else if (dropTarget && dropTarget !== dragEntry && movable(dragEntry) && movable(dropTarget)) {
         const fromIdx = wallBands[from].indexOf(dragEntry);
         wallBands[from].splice(fromIdx, 1);
         const at = wallBands[to].indexOf(dropTarget);
@@ -2484,6 +2594,7 @@ async function init(): Promise<void> {
       markDrop(null);
       dragEntry.mesh?.scale.set(1, 1, 1);
       dragEntry = null;
+      reordered = false;
       positionWall();
     };
 
@@ -2497,7 +2608,9 @@ async function init(): Promise<void> {
       const holdTimer = window.setTimeout(() => {
         if (moved || !held || !movable(held)) return;
         holdArmed = true;
+        setEditMode(true);          // the whole wall starts jiggling
         dragEntry = held;
+        held.mesh!.rotation.z = 0;
         held.mesh?.scale.set(1.14, 1.14, 1);
         dirty = true;
       }, 220);
@@ -2515,7 +2628,27 @@ async function init(): Promise<void> {
               const d = other.mesh.position.distanceTo(dragEntry.mesh.position);
               if (d < bestD) { bestD = d; best = other; }
             }
-            markDrop(bestD < TILE_W * 1.6 ? best : null);
+            const next = bestD < TILE_W * 1.6 ? best : null;
+            if (next !== dropTarget) {
+              markDrop(next);
+              // linger over a neighbour and the wall reflows around you
+              window.clearTimeout(dwellTimer);
+              if (next) {
+                dwellTimer = window.setTimeout(() => {
+                  if (!dragEntry || !dropTarget) return;
+                  const from = bandOf(dragEntry), to = bandOf(dropTarget);
+                  if (!movable(dragEntry) || !movable(dropTarget) || from < 0 || to < 0) return;
+                  wallBands[from].splice(wallBands[from].indexOf(dragEntry), 1);
+                  const at = wallBands[to].indexOf(dropTarget);
+                  wallBands[to].splice(at < 0 ? wallBands[to].length : at, 0, dragEntry);
+                  const carried = dragEntry;
+                  positionWall();                    // the others slide over
+                  carried.mesh?.scale.set(1.14, 1.14, 1);
+                  markDrop(null);
+                  reordered = true;
+                }, 600);
+              }
+            }
             dirty = true;
           }
           return;
@@ -2533,6 +2666,16 @@ async function init(): Promise<void> {
         document.removeEventListener("mouseup", onUp);
         if (dragEntry) { endWallDrag(); return; }
         if (moved) return;
+        // in edit mode the ✕ deletes, and a click anywhere else leaves it
+        if (editMode) {
+          const rcp = stage.getBoundingClientRect();
+          ray.setFromCamera(new THREE.Vector2(((ev.clientX - rcp.left) / rcp.width) * 2 - 1, -(((ev.clientY - rcp.top) / rcp.height) * 2 - 1)), camera);
+          const hit = ray.intersectObjects(group.children, false)[0];
+          const hitEntry = hit ? entries.find((x) => x.mesh === hit.object) : null;
+          if (hitEntry && hitBadge(hitEntry, hit!.point)) { deleteTile(hitEntry); return; }
+          setEditMode(false);
+          return;
+        }
         let entry = pick(ev);
         if (!entry) return;
         // Terminal and Browser are MULTI-INSTANCE: every click mints a new
