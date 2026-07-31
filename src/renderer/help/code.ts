@@ -1159,6 +1159,8 @@ const wb = () => (window as unknown as { wb?: WbBridge }).wb;
 // once one exists it persists as last-used and sessions start ready (the
 // picker, when opened, defaults to that folder so switching is one click).
 let workdirReady = true; // painted by checkWorkdirGate
+/** Chat mode: turns run as plain completions — no tools, no harness. */
+let chatOnly = false;
 
 function paintComposerGate(): void {
   const ta = input();
@@ -1589,6 +1591,12 @@ function send(): void {
   if (!ta) return;
   const text = ta.value.trim();
   if (!text && !pendingAttach.length) return;
+  // Sending from the HOME-adopted composer: the footer goes back to the
+  // agent and the chat opens alone — the stream lands where the user is.
+  if (document.body.classList.contains("composer-on-home")) {
+    adoptComposer(null);
+    gotoSection("agent");
+  }
   // Dot-commands (.dip slack, .drip rain, …) run through the command parser —
   // the composer doubles as the command input.
   // `.compact [focus]` → fold the session's older turns now, optionally
@@ -1683,7 +1691,7 @@ function send(): void {
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
   const launch = (retried: boolean): Promise<void> =>
-    window.yo.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}) })
+    window.yo.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), ...(chatOnly ? { chat: true } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -2523,6 +2531,19 @@ export function initCode(): void {
     };
     go();
   }));
+  // ── Chat / Work — Chat sends TOOL-LESS completions (a fraction of the
+  // tokens) and hides the cowork content under the Home composer. ──
+  const cwToggle = el("code-cw-toggle");
+  const paintCw = (): void => {
+    cwToggle?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", (b.dataset.cw === "chat") === chatOnly));
+    document.body.classList.toggle("chat-only", chatOnly);
+  };
+  cwToggle?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    chatOnly = b.dataset.cw === "chat";
+    paintCw();
+    void window.yo.setPreference?.("agentChatMode", chatOnly);
+  }));
+  void window.yo.getPreference?.("agentChatMode", false).then((v) => { chatOnly = v === true; paintCw(); });
   el("code-rail-toggle")?.addEventListener("click", () => {
     const collapsed = el("app-rail")!.classList.toggle("collapsed");
     document.body.classList.toggle("rail-collapsed", collapsed);
@@ -2773,6 +2794,29 @@ export function seedNewSession(text: string): void {
   newChat();
   seedComposer(text);
 }
+
+/** The composer's ORIGINAL home (inside .code-agent) — remembered on the
+ *  first adoption so it can always return. */
+let composerHome: { parent: HTMLElement; next: Node | null } | null = null;
+/** Move the ENTIRE agent footer (input + chips row) into a host (the Home
+ *  page's slot), or back home with null. The elements travel with their
+ *  bindings — sends, chips, menus all keep working wherever it sits. */
+export function adoptComposer(host: HTMLElement | null): void {
+  const comp = document.querySelector<HTMLElement>(".code-composer");
+  if (!comp) return;
+  if (host) {
+    if (!composerHome && comp.parentElement) composerHome = { parent: comp.parentElement, next: comp.nextSibling };
+    if (comp.parentElement !== host) host.appendChild(comp);
+    document.body.classList.add("composer-on-home");
+  } else {
+    if (composerHome && comp.parentElement !== composerHome.parent) composerHome.parent.insertBefore(comp, composerHome.next);
+    document.body.classList.remove("composer-on-home");
+  }
+}
+
+// The workbench bundle can't import this module — openAgentCard calls the
+// bridge so an agent adoption NEVER runs while the footer sits on Home.
+(window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome = () => adoptComposer(null);
 
 export function seedComposer(text: string): void {
   gotoSection("code");

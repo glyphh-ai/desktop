@@ -8,21 +8,15 @@
       <img class="dash-mark" src="brand/glyphh-mark.png" alt="" />
       <div class="dash-header-text">
         <h1 class="dash-greeting" id="dash-greeting">Welcome back</h1>
-        <p class="dash-subtitle">Your workspace at a glance.</p>
       </div>
     </div>
 
     <!-- App notifications — hidden until an app posts one. -->
     <div id="dash-notifications" class="dash-notifications hidden"></div>
 
-    <!-- The GLYPHH AGENT input, front and center — the agent composer's own
-         look (same classes); Enter starts a fresh seeded session. -->
-    <div class="code-input-wrap dash-chat-wrap">
-      <textarea id="dash-chat-input" class="code-input" rows="1" placeholder="Ask Glyphh — describe what to build or do…" spellcheck="false"></textarea>
-      <button id="dash-chat-send" class="code-send" title="Send">
-        <svg class="icon-return" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
-      </button>
-    </div>
+    <!-- The FULL glyphh agent footer adopts into this slot while Home is
+         up — input, chips, the entire second row (adoptComposer). -->
+    <div id="dash-composer-slot" class="dash-composer-slot"></div>
 
     <!-- Under the chart: prompt starters LEFT, the cross-agent schedule RIGHT. -->
     <div class="dash-two-col">

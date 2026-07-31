@@ -7,7 +7,7 @@
  */
 
 import { $a, cssVar, escapeHtml, paginate, renderPaginationBar } from "./shared.js";
-import { openUrlInWorkbench, seedNewSession, openRunSession } from "./code.js";
+import { openUrlInWorkbench, seedNewSession, openRunSession, adoptComposer } from "./code.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: any;
@@ -201,6 +201,9 @@ export async function loadDashboard(): Promise<void> {
 
     $a("dash-greeting").textContent = greeting(data.name);
 
+    // the FULL agent footer moves into the Home slot while Home is up
+    adoptComposer(document.getElementById("dash-composer-slot"));
+
     renderRecommendations();
     void loadRuns();
   } catch (err) {
@@ -355,17 +358,4 @@ export function initDashboardEvents(): void {
     document.getElementById(id)?.addEventListener("change", () => { void loadUsageChart(); });
   }
   document.getElementById("dash-tasks-search")?.addEventListener("input", () => { runsPage = 0; renderRuns(); });
-  // The centre CHAT INPUT — the glyphh agent's front door: Enter (or Start)
-  // opens a fresh session with the text seeded, exactly like a seed prompt.
-  const chatTa = document.getElementById("dash-chat-input") as HTMLTextAreaElement | null;
-  const fire = (): void => {
-    const text = (chatTa?.value || "").trim();
-    if (!text) return;
-    if (chatTa) chatTa.value = "";
-    seedNewSession(text);
-  };
-  chatTa?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fire(); }
-  });
-  document.getElementById("dash-chat-send")?.addEventListener("click", fire);
 }

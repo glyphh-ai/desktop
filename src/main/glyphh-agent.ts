@@ -183,7 +183,7 @@ export function assertGlyphhExternalAllowed(via: "relay" | "local-mcp"): void {
 export function registerGlyphhIpc(): void {
   registerGlyphhPermissionIpc();
   registerGlyphhContextIpc();
-  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
@@ -206,7 +206,13 @@ export function registerGlyphhIpc(): void {
     const ctrl = new AbortController();
     activeRuns.set(chatId, { id, ctrl });
     activeAgentRuns.set(chatId, { runId: id, workdir: runWorkdir, startedAt: Date.now() });
-    void sdkRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir).finally(() => {
+    // CHAT mode: a plain completion — the same lifecycle events the renderer
+    // already speaks, but NO tools, no agent harness, no packet — a fraction
+    // of the tokens of a Work turn.
+    const runner = payload?.chat
+      ? chatRun(e.sender, id, messages, ctrl, replyBudget)
+      : sdkRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir);
+    void runner.finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
       if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);
       clearRunAttachments(id);
@@ -346,6 +352,29 @@ async function workspaceExtras(): Promise<string> {
     "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
     "MEMORY: you have layers — Ada (long-term facts), the rolling summary (mid-term), and <relevant_earlier_context> blocks (short-term recall of this session's own turns). On unfamiliar code, semantic_search(query) FIRST — it finds the right spans by meaning; read_file the spans it names instead of whole files.",
   ].filter(Boolean).join("\n\n");
+}
+
+/** A CHAT turn: one tool-less completion through the gateway, spoken in the
+ *  run lifecycle the renderer already understands. */
+async function chatRun(
+  wc: WebContents,
+  runId: string,
+  messages: ChatMessage[],
+  ctrl: AbortController,
+  maxTokens: number,
+): Promise<void> {
+  const emit = (channel: string, data: Record<string, unknown>) => {
+    try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
+  };
+  try {
+    const text = await glyphhComplete(messages, { maxTokens, signal: ctrl.signal });
+    if (ctrl.signal.aborted) { emit("glyphh-agent:done", { stopped: true }); return; }
+    emit("glyphh-agent:delta", { delta: text });
+    emit("glyphh-agent:done", { stopped: false });
+  } catch (err) {
+    if (ctrl.signal.aborted) { emit("glyphh-agent:done", { stopped: true }); return; }
+    emit("glyphh-agent:error", { error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 async function sdkRun(

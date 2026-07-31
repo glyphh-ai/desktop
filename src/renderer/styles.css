@@ -2980,6 +2980,11 @@ body.account-locked #dl-btn-wrap {
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
+  /* vertically centred landing — the column floats mid-page */
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 @container dash (max-width: 720px) { .dash-scroll { padding: 18px 16px 32px; } }
 .dash-header {
@@ -2990,7 +2995,7 @@ body.account-locked #dl-btn-wrap {
   margin-bottom: 18px;
   text-align: center;
 }
-.dash-mark { width: 44px; height: 44px; flex: none; }
+.dash-mark { width: 56px; height: 56px; flex: none; }
 .dash-header-text { text-align: left; }
 
 /* App notifications — a quiet slot under the welcome; apps fill it later. */
@@ -3000,14 +3005,30 @@ body.account-locked #dl-btn-wrap {
 }
 .dash-notifications.hidden { display: none; }
 
-/* the agent composer, verbatim look, centred */
-.dash-chat-wrap { max-width: 640px; margin: 0 auto 26px; }
+/* the FULL agent footer, adopted — centred, comfy width */
+.dash-composer-slot { max-width: 720px; width: 100%; margin: 0 auto 26px; }
+.dash-composer-slot .code-composer { width: 100%; }
+
+/* Chat mode hides the cowork content under the Home composer */
+body.chat-only .dash-two-col { display: none; }
+
+/* Chat / Work — the segmented toggle leading the composer bar */
+.code-cw-toggle {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; flex: none;
+}
+.code-cw-toggle button {
+  border: none; background: none; color: var(--text-3);
+  font-size: 11.5px; font-weight: 600; padding: 4px 10px; cursor: pointer;
+}
+.code-cw-toggle button.active { background: var(--active-bg); color: var(--text); }
 
 /* Settings › Usage: the Add credits action above the metric cards */
 .dash-usage-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .dash-greeting {
   font-family: var(--font-sans);
-  font-size: 24px;
+  font-size: 34px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text);

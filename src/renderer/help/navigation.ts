@@ -8,6 +8,7 @@ import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadSettings, initSettings } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
+import { adoptComposer } from "./code.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
@@ -117,6 +118,9 @@ export function gotoSection(section: string, sub?: string): void {
   // the workspace with just that panel; "code" is the agent surface. The
   // loader runs via __wbSectionLoad once the panel's DOM mounts.
   resetEditors();
+  // the Home page may hold the agent's footer — it returns home before any
+  // section switch (the dashboard loader re-adopts when Home renders)
+  adoptComposer(null);
   document.body.dataset.railSection = section;
   const w = window as unknown as { __initCodeWorkbench?: () => void; __wbOpenSection?: (s: string) => void };
   w.__initCodeWorkbench?.();

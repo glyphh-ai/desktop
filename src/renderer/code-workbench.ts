@@ -2284,7 +2284,14 @@ async function init(): Promise<void> {
     /** The ONE agent, adopted into an Echo card — the same singleton/park
      *  contract as coding slots. If the agent is already visible (a coding
      *  panel beside Echo), this is a no-op: there is never a second agent. */
+    /** Every agent adoption first sends the composer HOME — the Home page
+     *  may be holding the footer (adoptComposer), and adopting the agent
+     *  without it would show a chat with no input. */
     const openAgentCard = (): TileEntry | null => {
+      (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
+      return openAgentCard0();
+    };
+    const openAgentCard0 = (): TileEntry | null => {
       // Already on screen (a coding panel, or its card): make sure it has a
       // session and surface it — never a dead-end click.
       if (codingHosted()) { ensureAgentSession(); return null; }
