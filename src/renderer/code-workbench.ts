@@ -1480,15 +1480,27 @@ async function init(): Promise<void> {
       ({ yaw, yOff, dist } = { ...HOME });
       applyCamera();
     };
-    /** ROW-MAJOR, 10 wide — the top row IS the command center's dock. */
-    const buildWall = (tiles: EchoTile[]): void => {
-      const n = tiles.length || 1;
-      wallCols = 10;
-      wallRows = Math.ceil(n / wallCols);
+    /** The wall reads top to bottom: the DOCK (always the same row), then
+     *  the apps, then the layouts, and the WORKSPACE panels on the bottom
+     *  row. Each band wraps at 10 and starts on a fresh row, and every row
+     *  is centred on the arc. */
+    const WALL_WIDTH = 10;
+    const banded = (bands: EchoTile[][]): EchoTile[][] => {
+      const rows: EchoTile[][] = [];
+      for (const band of bands) {
+        for (let i = 0; i < band.length; i += WALL_WIDTH) rows.push(band.slice(i, i + WALL_WIDTH));
+      }
+      return rows.length ? rows : [[]];
+    };
+    const buildWall = (bands: EchoTile[][]): void => {
+      const rows = banded(bands);
+      wallCols = Math.max(1, ...rows.map((r) => r.length));
+      wallRows = rows.length;
       maxYaw = (wallCols * COL_ARC) / 2 + 0.35;
-      tiles.forEach((t, i) => {
-        const col = i % wallCols, row = Math.floor(i / wallCols);
-        const theta = (col - (wallCols - 1) / 2) * COL_ARC;
+      const placed: Array<{ t: EchoTile; col: number; row: number; rowLen: number }> = [];
+      rows.forEach((cells, row) => cells.forEach((t, col) => placed.push({ t, col, row, rowLen: cells.length })));
+      placed.forEach(({ t, col, row, rowLen }) => {
+        const theta = (col - (rowLen - 1) / 2) * COL_ARC;
         const y = ((wallRows - 1) / 2 - row) * ROW_H;
         const canvas = document.createElement("canvas");
         const tex = new THREE.CanvasTexture(canvas);
@@ -1557,7 +1569,6 @@ async function init(): Promise<void> {
       dockKeys[0] = "app:glyphh";
       const docked = dockKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
       const dockedSet = new Set(docked.map((e) => e.key));
-      const wallEntries = [...docked, ...ordered.filter((e) => !dockedSet.has(e.key))];
 
       const iconOf = (a: PanelRowLite): { slug: string; url: string | null; execPath: string | null; appArchetype: string | null; connection: { accountId?: string; pipedreamSlug: string } | null } =>
         ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null });
@@ -1590,18 +1601,26 @@ async function init(): Promise<void> {
         if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
         return { name: a.name, slug, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
       };
-      const tiles = wallEntries.map(toTile);
-      // GLYPHH first, top-left: the agent's own tile (its card adopts the
-      // singleton — see openAgentCard).
-      tiles.unshift({ name: "Glyphh", slug: "glyphh-agent", iconUrl: "brand/glyphh-mark.png", kind: "agent" });
-      // every workspace panel type (no Coding Agent tile — GLYPHH is the
-      // coding agent, and it's already first in the dock)
+      // TOP: Glyphh + the command center's dock, always the same row.
+      const dockBand: EchoTile[] = [
+        { name: "Glyphh", slug: "glyphh-agent", iconUrl: "brand/glyphh-mark.png", kind: "agent" },
+        ...docked.map(toTile),
+      ];
+      // MIDDLE: the apps, then the layouts.
+      const rest = ordered.filter((e) => !dockedSet.has(e.key));
+      const appBand = rest.filter((e) => !e.layout).map(toTile);
+      const layoutBand = rest.filter((e) => e.layout).map(toTile);
+      // BOTTOM: the workspace panels (no Coding Agent tile — GLYPHH is the
+      // coding agent, and it opens the dock row).
       const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "preview", "plan"];
-      for (const v of TOOLS) {
-        const svg = VIEW_META[v].icon.match(/<svg[\s\S]*<\/svg>/)?.[0];
-        tiles.push({ name: VIEW_META[v].title, slug: v, glyphSvg: svg || undefined, kind: "tool", toolView: v });
-      }
-      buildWall(tiles);
+      const toolBand: EchoTile[] = TOOLS.map((v) => ({
+        name: VIEW_META[v].title,
+        slug: v,
+        glyphSvg: VIEW_META[v].icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
+        kind: "tool",
+        toolView: v,
+      }));
+      buildWall([dockBand, appBand, layoutBand, toolBand].filter((b) => b.length));
     }).catch(() => buildWall([]));
 
     // ── Open panels: click a tile and its LIVE webview zooms up from the
