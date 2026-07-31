@@ -993,6 +993,10 @@ function pinThreadToBottom(): void {
 }
 
 function renderThread(): void {
+  // The composer's working state belongs to the SESSION ON SCREEN — every
+  // switch lands here, so recompute (a background session keeps running;
+  // this one's send must not wear its stop state).
+  syncThinking();
   const thread = el<HTMLDivElement>("code-thread");
   if (!thread) return;
   wireThreadScroll(thread);
