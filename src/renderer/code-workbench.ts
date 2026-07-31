@@ -1628,15 +1628,13 @@ async function init(): Promise<void> {
     void Promise.all([
       yoApi?.panelAppsList?.() ?? [],
       yoApi?.layoutsList?.().catch(() => []) ?? [],
-      yoApi?.getPreference?.("ccDock", null) ?? null,
       yoApi?.getPreference?.("ccIconOrder", []) ?? [],
-    ]).then(([rows, layouts, dockPref, orderPref]) => {
+    ]).then(([rows, layouts, orderPref]) => {
       if (!body.isConnected) return;
-      const appsAll = (rows || []).filter((a) => a.appArchetype !== "glyphh-self" && (a.url || ["glyphh-app", "glyphh-nav"].includes(a.appArchetype || "")));
+      // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
+      const appsAll = (rows || []).filter((a) => a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (a.url || a.appArchetype === "glyphh-app"));
       echoRows = (rows || []);
-      const weight = (a: { appArchetype?: string | null }): number =>
-        a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
-      appsAll.sort((x, y) => weight(y) - weight(x));
+      appsAll.sort((x, y) => (y.appArchetype === "glyphh-app" ? 1 : 0) - (x.appArchetype === "glyphh-app" ? 1 : 0));
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
       const all: Entry[] = [
         ...appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a })),
@@ -1647,23 +1645,6 @@ async function init(): Promise<void> {
       const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
       const seen = new Set(inOrder.map((e) => e.key));
       const ordered = [...inOrder, ...all.filter((e) => !seen.has(e.key))];
-      // the dock, exactly as the command center resolves it
-      const DOCK_DEFAULTS = ["app:home", "app:connections", "app:apps", "app:layouts", "app:skills", "app:loops", "app:agents", "app:models", "app:settings"];
-      let dockKeys = DOCK_DEFAULTS.slice();
-      if (Array.isArray(dockPref) && dockPref.length) {
-        // The SAVED ORDER wins, verbatim — no padding to a fixed length and
-        // no writing over slot 0 (that clobbered the user's first icon and
-        // shunted it to the end, which read as "the order didn't save").
-        dockKeys = dockPref.map(String).filter(Boolean);
-        const have = new Set(dockKeys);
-        // newly shipped built-ins the user has never seen join the end
-        for (const k of DOCK_DEFAULTS) if (!have.has(k)) dockKeys.push(k);
-      }
-      // Legacy saves carry "app:glyphh" (the retired agent tile) — it simply
-      // resolves to nothing below.
-      const docked = dockKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
-      const dockedSet = new Set(docked.map((e) => e.key));
-
       const iconOf = (a: PanelRowLite): { slug: string; url: string | null; execPath: string | null; appArchetype: string | null; connection: { accountId?: string; pipedreamSlug: string } | null } =>
         ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null });
       const glyphOf = (a: PanelRowLite): string | undefined =>
@@ -1695,11 +1676,8 @@ async function init(): Promise<void> {
         if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
         return { name: a.name, slug, appId: a.id, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
       };
-      // TOP: the command center's dock, always the same row. (No agent
-      // tile — the Glyphh mark in the header IS the universal chat icon.)
-      const dockBand: EchoTile[] = docked.map((e) => ({ ...toTile(e), orderKey: e.key }));
-      // The BROWSER rides the dock, left of Settings — it's a tool tile
-      // (tabbed preview), not an app row, so it joins after the mapping.
+      // ONE band: Browser, then the apps, then the layouts — nothing else.
+      // Navigation pages and workspace tools live in the LEFT RAIL now.
       const browserTile: EchoTile = {
         name: VIEW_META.preview.title,
         slug: "preview",
@@ -1707,24 +1685,9 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "preview",
       };
-      const settingsIdx = dockBand.findIndex((t) => t.slug === "settings");
-      dockBand.splice(settingsIdx >= 0 ? settingsIdx : dockBand.length, 0, browserTile);
-      // MIDDLE: one band — the apps, then the layouts, wrapping together.
-      const rest = ordered.filter((e) => !dockedSet.has(e.key));
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
-      const midBand = [...rest.filter((x) => !x.layout).map(keyed), ...rest.filter((x) => x.layout).map(keyed)];
-      // BOTTOM: the workspace panels (no Coding Agent tile — GLYPHH is the
-      // coding agent, and it opens the dock row).
-      // no "preview" here — the Browser lives in the dock now
-      const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "plan"];
-      const toolBand: EchoTile[] = TOOLS.map((v) => ({
-        name: VIEW_META[v].title,
-        slug: v,
-        glyphSvg: VIEW_META[v].icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: v,
-      }));
-      buildWall([dockBand, midBand, toolBand].filter((b) => b.length));
+      const midBand = [browserTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      buildWall([midBand]);
     }).catch(() => buildWall([]));
 
     // ── Open panels: click a tile and its LIVE webview zooms up from the
@@ -2837,9 +2800,11 @@ async function init(): Promise<void> {
      *  the same gesture (and the same prefs) as the old command center.
      *  The dock row and the apps/layouts band reorder; the workspace band
      *  at the bottom is fixed. */
-    const DOCK_BAND = 0, MID_BAND = 1;
+    // ONE draggable band now (apps + layouts) — the old dock/tools bands are
+    // gone, and ccDock with them.
+    const MID_BAND = 0;
     const bandOf = (e: TileEntry): number => wallBands.findIndex((b) => b.includes(e));
-    const draggableBand = (i: number): boolean => i === DOCK_BAND || i === MID_BAND;
+    const draggableBand = (i: number): boolean => i === MID_BAND;
     /** Glyphh owns the first slot — it never moves and nothing lands on it
      *  (the command center locked it the same way). */
     const movable = (e: TileEntry): boolean => e.tile.kind !== "agent" && draggableBand(bandOf(e));
@@ -2908,8 +2873,7 @@ async function init(): Promise<void> {
     const persistOrder = (band: number): void => {
       const yo = (window as unknown as { yo?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).yo;
       const keys = (wallBands[band] ?? []).map((x) => x.tile.orderKey).filter((k): k is string => !!k);
-      if (band === DOCK_BAND) void yo?.setPreference?.("ccDock", keys);
-      else if (band === MID_BAND) void yo?.setPreference?.("ccIconOrder", keys);
+      if (band === MID_BAND) void yo?.setPreference?.("ccIconOrder", keys);
     };
     // an invisible cylinder at the wall's radius — the drag rides its surface
     const dragSurface = new THREE.Mesh(
