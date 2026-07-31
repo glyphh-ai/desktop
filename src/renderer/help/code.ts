@@ -2589,6 +2589,10 @@ export function initCode(): void {
     }
   });
   ta?.addEventListener("input", () => autoGrow(ta!));
+  // Session-row ⋯ menu dismisses on any click away from it.
+  document.addEventListener("mousedown", (e) => {
+    if (menuEl && !menuEl.contains(e.target as Node)) closeMenu();
+  });
   initRailSplitter();
   // loadStore is ASYNC: sessions arrive before the first history paint — the
   // rail's Recents AND the agent head's dropdown read the same store.
