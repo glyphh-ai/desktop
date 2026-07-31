@@ -1610,14 +1610,16 @@ async function init(): Promise<void> {
       const DOCK_DEFAULTS = ["app:glyphh", "app:home", "app:connections", "app:apps", "app:layouts", "app:skills", "app:loops", "app:agents", "app:models", "app:settings"];
       let dockKeys = DOCK_DEFAULTS.slice();
       if (Array.isArray(dockPref) && dockPref.length) {
-        dockKeys = Array.from({ length: DOCK_DEFAULTS.length }, (_, i) => String(dockPref[i] ?? ""));
-        const have = new Set(dockKeys.filter(Boolean));
-        const spare = DOCK_DEFAULTS.filter((k) => !have.has(k));
-        for (let i = 0; i < dockKeys.length && spare.length; i++) {
-          if (!dockKeys[i]) dockKeys[i] = spare.shift()!;
-        }
+        // The SAVED ORDER wins, verbatim — no padding to a fixed length and
+        // no writing over slot 0 (that clobbered the user's first icon and
+        // shunted it to the end, which read as "the order didn't save").
+        dockKeys = dockPref.map(String).filter(Boolean);
+        const have = new Set(dockKeys);
+        // newly shipped built-ins the user has never seen join the end
+        for (const k of DOCK_DEFAULTS) if (!have.has(k)) dockKeys.push(k);
       }
-      dockKeys[0] = "app:glyphh";
+      // Glyphh leads the dock, always — move it, never overwrite.
+      dockKeys = ["app:glyphh", ...dockKeys.filter((k) => k !== "app:glyphh")];
       const docked = dockKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
       const dockedSet = new Set(docked.map((e) => e.key));
 
@@ -2552,8 +2554,15 @@ async function init(): Promise<void> {
     const persistOrder = (band: number): void => {
       const yo = (window as unknown as { yo?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).yo;
       const keys = (wallBands[band] ?? []).map((x) => x.tile.orderKey).filter((k): k is string => !!k);
-      if (band === DOCK_BAND) void yo?.setPreference?.("ccDock", keys);
-      else if (band === MID_BAND) void yo?.setPreference?.("ccIconOrder", keys);
+      if (band === DOCK_BAND) {
+        // Glyphh's tile is synthetic (no order key), but its LOCKED FIRST
+        // SLOT is part of the stored dock — write it back at the head, or
+        // the reader's "slot 0 is Glyphh" rule would overwrite (and lose)
+        // whatever the user actually put first.
+        void yo?.setPreference?.("ccDock", ["app:glyphh", ...keys.filter((k) => k !== "app:glyphh")]);
+      } else if (band === MID_BAND) {
+        void yo?.setPreference?.("ccIconOrder", keys);
+      }
     };
     // an invisible cylinder at the wall's radius — the drag rides its surface
     const dragSurface = new THREE.Mesh(
