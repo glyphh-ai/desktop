@@ -1675,9 +1675,10 @@ async function openPanelAppDetail(app: PanelApp) {
     const marketplaceGated = MARKETPLACE_COMING_SOON && el.getAttribute("data-tab") === "marketplace";
     el.classList.toggle("hidden", marketplaceGated || !(isBuilt && owned));
   });
-  // A built app's type is its bundle's, not a dropdown choice — the server refuses
-  // to retype it, so offering the control would only produce a failed save.
-  document.getElementById("app-detail-type-row")?.classList.toggle("hidden", isBuilt);
+  // The type control is retired: every NEW app is a web panel, and a built
+  // app's type comes from its bundle either way.
+  void isBuilt;
+  document.getElementById("app-detail-type-row")?.classList.add("hidden");
 
   // Populate dashboard fields
   appDetailId.value = app.slug;
@@ -1826,7 +1827,8 @@ function initApps() {
   // + New — opens the simple App add form (name → auto-slug → URL).
   // The old "Add App | Add MCP Server" dropdown is gone; the form
   // already lets the user wire MCP in the detail view after creating.
-  const addTypeSelect = document.getElementById("app-add-type") as HTMLSelectElement;
+  // Apps are WEB PANELS now — the add form has no type control at all.
+  const addTypeSelect = document.getElementById("app-add-type") as HTMLSelectElement | null;
   const addArchetypeSelect = document.getElementById("app-add-archetype") as HTMLSelectElement;
   const addExecPath = document.getElementById("app-add-exec-path") as HTMLInputElement;
 
@@ -1870,8 +1872,7 @@ function initApps() {
     addSlugInput.value = "";
     slugTouched = false;
     addUrlInput.value = "";
-    // Reset Browser ↔ Native fields to defaults (browser / webview / terminal).
-    addTypeSelect.value = "browser";
+    // Every new app is a WEB PANEL.
     addExecPath.value = "";
     addArchetypeSelect.value = "generic";
     writeLaunchConfig("app-add", "generic", null);
@@ -1884,8 +1885,7 @@ function initApps() {
     addNameInput.focus();
   });
 
-  // Add-form Browser / Native / LLM + archetype toggles + Browse… button.
-  addTypeSelect.addEventListener("change", () => toggleTypeFields("app-add", addTypeSelect.value as AppType));
+  // Add-form archetype toggle + Browse… button (the type control is gone).
   addArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
   document.getElementById("app-add-exec-browse")!.addEventListener("click", async () => {
     const picked = await window.yo.pickExecutable();
@@ -1898,8 +1898,8 @@ function initApps() {
     const name = addNameInput.value.trim();
     const url = addUrlInput.value.trim();
     const slugInput = addSlugInput.value.trim();
-    const addType = addTypeSelect.value as AppType;
-    const isBrowser = addType === "browser";
+    const addType = "browser" as AppType;   // apps ARE web panels
+    const isBrowser = true;
     const execPath = addExecPath.value.trim();
     if (!name) { addNameInput.classList.add("invalid"); clearInvalid(addNameInput); valid = false; }
     if (addType === "browser" && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }

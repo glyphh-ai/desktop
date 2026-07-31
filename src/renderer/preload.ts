@@ -157,13 +157,6 @@ contextBridge.exposeInMainWorld("yo", {
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },
   windowClose: () => ipcRenderer.send("window-close"),
   windowMinimize: () => ipcRenderer.send("window-minimize"),
-  // Ghost Mode overlay dismisses itself (Esc / backdrop click).
-  ghostClose: () => ipcRenderer.invoke("ghost-close"),
-  // Ghost Mode overlay drives its own resize grips (no native edge zones on a
-  // transparent frameless window).
-  ghostBounds: () => ipcRenderer.invoke("ghost-bounds") as Promise<{ x: number; y: number; width: number; height: number } | null>,
-  ghostSnap: (half: string) => ipcRenderer.invoke("ghost-snap", half) as Promise<{ ok: boolean; half?: string }>,
-  ghostResize: (size: { width?: number; height?: number }) => ipcRenderer.invoke("ghost-resize", size) as Promise<{ ok: boolean }>,
   // Org-admin Models page (mirrors the platform's Configure → Models).
   orgModelsList: () => ipcRenderer.invoke("org-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
   orgModelsSetSupported: (id: string, supported: boolean) => ipcRenderer.invoke("org-models-set-supported", id, supported) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
@@ -174,9 +167,6 @@ contextBridge.exposeInMainWorld("yo", {
   orgProviderEnable: (slug: string, key?: string) => ipcRenderer.invoke("org-provider-enable", slug, key) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   orgProviderDisable: (slug: string) => ipcRenderer.invoke("org-provider-disable", slug) as Promise<{ ok: boolean; error?: string }>,
   orgProviderClearKey: (slug: string) => ipcRenderer.invoke("org-provider-clear-key", slug) as Promise<{ ok: boolean; error?: string }>,
-  // @-mention summon: the alias lookup table + the summon itself.
-  mentionCatalog: () => ipcRenderer.invoke("mention-catalog") as Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>,
-  ghostSummon: (model: string, prompt: string) => ipcRenderer.invoke("ghost-summon", model, prompt) as Promise<{ ok: boolean }>,
   windowMaximize: () => ipcRenderer.send("window-maximize"),
   // Screen layout (Settings → Appearance): dock mode + draggable fraction.
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,

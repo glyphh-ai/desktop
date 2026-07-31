@@ -306,8 +306,6 @@ declare global {
       orgProviderDisable: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       orgProviderClearKey: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       // @-mention summon (ghost overlay): alias lookup + summon.
-      mentionCatalog: () => Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>;
-      ghostSummon: (model: string, prompt: string) => Promise<{ ok: boolean }>;
       loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) => Promise<{ ok: boolean; loop: string }>;
       loopSetRoleDefault: (loopId: string, role: string, modelId: string | null) => Promise<{ ok: boolean; error?: string }>;
       adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;

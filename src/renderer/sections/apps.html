@@ -36,11 +36,6 @@
             <input id="app-add-name" type="text" class="settings-input" placeholder="e.g. Gmail" spellcheck="false" autocomplete="off" />
             <label class="settings-label">Slug <span class="settings-hint">— how you'll dip to it (.dip &lt;slug&gt;)</span></label>
             <input id="app-add-slug" type="text" class="settings-input" placeholder="auto" spellcheck="false" autocomplete="off" pattern="[a-z0-9-]+" />
-            <label class="settings-label">Type</label>
-            <select id="app-add-type" class="settings-input">
-              <option value="browser">Browser app (web URL)</option>
-              <option value="native">Native app (desktop executable)</option>
-            </select>
             <!-- Browser fields -->
             <div id="app-add-browser-fields">
               <label class="settings-label">URL</label>
@@ -140,9 +135,10 @@
                   <input id="app-detail-name" class="settings-input" spellcheck="false" />
                   <label class="settings-label">Slug <span style="color:var(--text-3);font-weight:400;font-size:11px;">— how you'll dip to it (.dip &lt;slug&gt;)</span></label>
                   <input id="app-detail-id" class="settings-input" spellcheck="false" style="font-family:var(--font-mono);font-size:12px;" />
-                  <!-- Hidden for a BUILT app: its type comes from its bundle. -->
-                  <div id="app-detail-type-row">
-                    <label class="settings-label">Type</label>
+                  <!-- Apps are WEB PANELS. (Legacy native rows keep their
+                       config and still launch; the agent finds local apps
+                       itself.) The type control is gone. -->
+                  <div id="app-detail-type-row" class="hidden">
                     <select id="app-detail-type" class="settings-input">
                       <option value="browser">Browser app (web URL)</option>
                       <option value="native">Native app (desktop executable)</option>
