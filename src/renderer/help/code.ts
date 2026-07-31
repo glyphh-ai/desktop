@@ -444,7 +444,15 @@ function refreshCtxMeter(): void {
   meterTimer = setTimeout(() => {
     meterTimer = null;
     const meter = el("code-ctx-meter");
-    if (!meter || !currentId) return;
+    if (!meter) return;
+    if (!currentId) {
+      // a LANDING (lazy new): nothing to measure — show an explicitly
+      // empty meter, not the previous session's frozen fill
+      const fill = meter.querySelector<HTMLElement>(".ctx-fill");
+      if (fill) { fill.style.width = "0%"; fill.classList.remove("hot"); }
+      meter.title = "Context — empty (new session)";
+      return;
+    }
     void window.yo.glyphhContextUsage?.(currentId).then((u) => {
       const fill = meter.querySelector<HTMLElement>(".ctx-fill");
       const tick = meter.querySelector<HTMLElement>(".ctx-tick");
