@@ -628,11 +628,11 @@ async function init(): Promise<void> {
     if (echoCtl) { echoCtl.openPreviewUrl(url); return; }
     const slot = rails.flatMap((r) => r.slots).find((s): s is PreviewSlot => s.view === "preview");
     if (slot) {
-      setPreviewTarget(slot, { url });
+      addPreviewUrlTab(slot, url);
       renderRails();
     } else {
       const s = makeSlot("preview") as PreviewSlot;
-      setPreviewTarget(s, { url });
+      addPreviewUrlTab(s, url);
       placeSlot(s);
     }
     saveLayout();
@@ -2378,9 +2378,17 @@ async function init(): Promise<void> {
     const ctl: EchoCtlType = {
       openApp: (app) => {
         const key = (app.slug || "").trim().toLowerCase();
+        // The Browser builtin IS the tabbed Browser card — a URL open adds a
+        // TAB there (it used to open a plain one-webview card and overwrite
+        // its src on every open, so "open 5 sites" left one page and no tabs).
+        if (key === "browser") {
+          if (app.url) ctl.openPreviewUrl(app.url);
+          else void getOrOpenTool("preview");
+          return;
+        }
         const existing = openList.find((x) => (x.tile.slug || "") === key);
         if (existing?.card) {
-          // already open — a URL open (open_browser) navigates it
+          // already open — a URL open navigates it
           if (app.url) existing.card.querySelector("webview")?.setAttribute("src", app.url);
           flash(existing.card);   // flash() lifts shadow too
           return;
@@ -2424,7 +2432,7 @@ async function init(): Promise<void> {
         const entry = getOrOpenTool("preview");
         const slot = entry.toolSlot as PreviewSlot | undefined;
         if (!slot) return;
-        setPreviewTarget(slot, { url });
+        addPreviewUrlTab(slot, url);
         rerenderToolBody(entry);
         flash(entry.card);
       },
@@ -3993,6 +4001,26 @@ async function init(): Promise<void> {
   }
   /** Point the ACTIVE tab at a url or inline html (agent opens, build
    *  previews) and keep the legacy mirror fields in step. */
+  /** Open a URL as a BROWSER TAB: reuse the tab already on it, fill an
+   *  empty active tab, else ADD a tab beside the others. Programmatic opens
+   *  (the agent's open_browser, file opens) used to overwrite the active
+   *  tab — five opens left ONE tab showing the last URL. */
+  function addPreviewUrlTab(slot: PreviewSlot, url: string): void {
+    const tabs = previewTabs(slot);
+    const existing = tabs.findIndex((t) => t.url === url);
+    if (existing >= 0) {
+      slot.activeTab = existing;
+    } else {
+      const a = tabs[slot.activeTab ?? 0];
+      if (a && !a.url && !a.html) { a.url = url; a.title = undefined; }
+      else { tabs.push({ id: nextPreviewTabId++, url }); slot.activeTab = tabs.length - 1; }
+    }
+    const act = tabs[slot.activeTab ?? 0];
+    slot.url = act.url;
+    slot.html = act.html;
+    slot.htmlLabel = act.htmlLabel;
+  }
+
   function setPreviewTarget(slot: PreviewSlot, target: { url?: string; html?: string; htmlLabel?: string }): void {
     const tabs = previewTabs(slot);
     const tab = tabs[slot.activeTab ?? 0];
