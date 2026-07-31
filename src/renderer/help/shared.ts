@@ -46,6 +46,49 @@ export function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// ── Drop-up detail pane ────────────────────────────────────
+
+/**
+ * The ⓘ on a chip's row opens its detail IN PLACE: the list slides out, the
+ * detail slides in with a back arrow at the top. One popup, one surface —
+ * never a tooltip stacked on a menu.
+ *
+ * `listPane` is whatever the menu normally shows (search + rows); it is
+ * hidden while the detail is up and restored by the back arrow.
+ */
+export function showDropDetail(
+  menu: HTMLElement,
+  listPane: HTMLElement,
+  detail: { title: string; body: string },
+): void {
+  menu.querySelector(".drop-detail")?.remove();
+  const pane = document.createElement("div");
+  pane.className = "drop-detail";
+  const head = document.createElement("div");
+  head.className = "drop-detail-head";
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "drop-detail-back";
+  back.title = "Back";
+  back.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+  const title = document.createElement("span");
+  title.className = "drop-detail-title";
+  title.textContent = detail.title;
+  head.append(back, title);
+  const body = document.createElement("div");
+  body.className = "drop-detail-body";
+  body.textContent = detail.body;
+  pane.append(head, body);
+  back.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    pane.remove();
+    listPane.classList.remove("hidden");
+  });
+  pane.addEventListener("click", (ev) => ev.stopPropagation());
+  listPane.classList.add("hidden");
+  menu.appendChild(pane);
+}
+
 // ── Confirm modal ──────────────────────────────────────────
 
 /** <webview> composites ABOVE all page content regardless of z-index, so any

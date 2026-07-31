@@ -12166,7 +12166,31 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   z-index: 60;
 }
 .code-drop-up.hidden { display: none; }
-#code-effort-wrap .code-drop-up { left: auto; right: 0; }
+/* (the drop-ups are centred over the chat input at open time — see
+   centerDropOverInput; no side-anchored defaults to fight it) */
+
+/* A chip's ⓘ opens its detail IN THIS POPUP: the list hides, the detail
+   takes its place behind a back arrow. */
+.drop-pane.hidden { display: none; }
+.drop-detail { padding: 2px 4px 6px; max-width: 420px; }
+.drop-detail-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 2px 8px; border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.drop-detail-back {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: none; padding: 0;
+  border: none; border-radius: 6px; background: none;
+  color: var(--text-2); cursor: pointer;
+}
+.drop-detail-back:hover { background: var(--hover); color: var(--text); }
+.drop-detail-back svg { width: 14px; height: 14px; }
+.drop-detail-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.drop-detail-body {
+  font-size: 12.5px; line-height: 1.5; color: var(--text-2);
+  white-space: pre-wrap; padding: 0 2px;
+}
 .code-drop-item {
   display: flex;
   align-items: center;
@@ -12514,7 +12538,8 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
      chip's right edge instead of pushing the page wider. */
   left: auto; right: 0;
 }
-.code-bar-right .code-drop-up { left: auto; right: 0; }
+/* (right-anchoring retired — every chip's drop-up is centred over the chat
+   input at open time; see centerDropOverInput) */
 /* A multi-slot loop names every binding on the chip ("Planner: Fable 5 / …");
    cap it so a many-slot loop cannot blow up the composer row — the title
    attribute carries the full cast. */
@@ -13028,7 +13053,8 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .loop-drop-search:focus { border-color: var(--border-2); }
 .loop-drop-list { max-height: 300px; overflow-y: auto; }
 /* The entry is exactly two lines: the name row + ONE clamped description line. */
-.loop-drop-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+/* Name on line one, ONE sentence on line two — the row is never taller. */
+.loop-drop-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%; }
 .loop-drop-item { position: relative; }
 
 /* ── Monaco landing: the website hero's gradient, the ghost mark overlaid ── */

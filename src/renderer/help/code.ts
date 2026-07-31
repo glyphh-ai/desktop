@@ -10,7 +10,7 @@
  * center header carries its workdir controls and view toggles.
  */
 
-import { confirmAction } from "./shared.js";
+import { showDropDetail, confirmAction } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
@@ -246,14 +246,23 @@ function renderLoopMenu(): void {
   search.spellcheck = false;
   search.autocomplete = "off";
   search.addEventListener("mousedown", (ev) => ev.stopPropagation());
-  pop.appendChild(search);
 
+  const pane = document.createElement("div");
+  pane.className = "drop-pane";
+  pop.appendChild(pane);
+  pane.appendChild(search);
   const list = document.createElement("div");
   list.className = "loop-drop-list";
-  pop.appendChild(list);
+  pane.appendChild(list);
 
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const closeTips = (): void => pop.querySelectorAll(".model-info-tip").forEach((tip) => tip.classList.add("hidden"));
+  const closeTips = (): void => { pop.querySelector(".drop-detail")?.remove(); pane.classList.remove("hidden"); };
+  /** The row shows ONE sentence — the rest lives behind the ⓘ. */
+  const firstSentence = (text: string): string => {
+    const t = text.trim();
+    const m = /^[\s\S]*?[.!?](?=\s|$)/.exec(t);
+    return (m ? m[0] : t).trim();
+  };
 
   const paint = (): void => {
     list.textContent = "";
@@ -279,32 +288,25 @@ function renderLoopMenu(): void {
       main.appendChild(span);
       if (l.id === glyphhLoop) main.insertAdjacentHTML("beforeend", check);
 
-      // ⓘ — two lines stay two lines; the whole story lives in the tip.
+      // ⓘ — the whole description opens IN THIS POPUP, behind a back arrow.
       if (l.description) {
         const infoBtn = document.createElement("button");
         infoBtn.className = "model-info-btn";
         infoBtn.type = "button";
         infoBtn.title = "About this loop";
         infoBtn.textContent = "i";
-        const tip = document.createElement("div");
-        tip.className = "model-info-tip hidden";
-        tip.textContent = `${l.name} — ${l.description}`;
-        tip.addEventListener("click", (ev) => ev.stopPropagation());
         infoBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          const wasHidden = tip.classList.contains("hidden");
-          closeTips();
-          if (wasHidden) tip.classList.remove("hidden");
+          showDropDetail(pop, pane, { title: l.name, body: l.description ?? "" });
         });
         main.appendChild(infoBtn);
-        item.appendChild(tip);
       }
       item.appendChild(main);
       if (l.description) {
-        // ONE clamped line — the entry is name + description, never taller.
+        // NAME + ONE SENTENCE, clamped to a single line — two lines, never more.
         const sub = document.createElement("span");
         sub.className = "drop-sub loop-drop-sub";
-        sub.textContent = l.description;
+        sub.textContent = firstSentence(l.description);
         item.appendChild(sub);
       }
       item.addEventListener("click", () => {
@@ -365,11 +367,11 @@ async function renderCtxPop(): Promise<void> {
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n));
   pop.innerHTML = `
+    <div class="drop-pane">
     <div class="effort-head">
       <span class="effort-title">Compaction</span>
       <button id="ctx-info-btn" class="model-info-btn" type="button" title="How compaction works">i</button>
     </div>
-    <div id="ctx-info-tip" class="model-info-tip hidden"></div>
     <div class="effort-desc">How close each model is to folding.</div>
     ${lanes.map((l) => {
       const pct = Math.round(l.ratio * 100);
@@ -390,22 +392,25 @@ async function renderCtxPop(): Promise<void> {
     <div class="ctx-compact-row">
       <input id="ctx-compact-focus" type="text" placeholder="what the summary must keep (optional)" spellcheck="false" />
       <button id="ctx-compact-btn" type="button" class="ctx-compact-btn"${thinking ? " disabled" : ""}>Compact now</button>
+    </div>
     </div>`;
-  const ctxTip = pop.querySelector<HTMLElement>("#ctx-info-tip");
-  if (ctxTip) {
-    ctxTip.textContent = [
-      "One shared history, measured against every model that can serve it.",
-      "",
-      "The local lane is the binding one — declined escalations fall back to the local model, so the history must always fit it. When it crosses the tick, older turns fold into a summary and every lane shrinks together.",
-      "",
-      "Compact now folds immediately; the optional focus tells the summary what it must keep.",
-    ].join("\n");
-    ctxTip.addEventListener("click", (ev) => ev.stopPropagation());
-    pop.querySelector<HTMLButtonElement>("#ctx-info-btn")?.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      ctxTip.classList.toggle("hidden");
+  // ⓘ — the explanation opens IN THIS POPUP behind a back arrow, like every
+  // other chip.
+  const ctxPane = pop.querySelector<HTMLElement>(".drop-pane");
+  pop.querySelector<HTMLButtonElement>("#ctx-info-btn")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (!ctxPane) return;
+    showDropDetail(pop, ctxPane, {
+      title: "Compaction",
+      body: [
+        "One shared history, measured against every model that can serve it.",
+        "",
+        "The local lane is the binding one — declined escalations fall back to the local model, so the history must always fit it. When it crosses the tick, older turns fold into a summary and every lane shrinks together.",
+        "",
+        "Compact now folds immediately; the optional focus tells the summary what it must keep.",
+      ].join("\n"),
     });
-  }
+  });
   const focusEl = pop.querySelector<HTMLInputElement>("#ctx-compact-focus");
   focusEl?.addEventListener("click", (ev) => ev.stopPropagation());
   const go = () => {
@@ -444,6 +449,24 @@ function refreshCtxMeter(): void {
   }, 350);
 }
 
+/** A chip's drop-up opens CENTRED OVER THE CHAT INPUT, not hard against the
+ *  chip that spawned it — the menus are wider than the chips, and a
+ *  right-hand chip used to throw its list off to one side. Clamped to the
+ *  composer so it never spills past the panel edge. */
+function centerDropOverInput(menu: HTMLElement): void {
+  const wrap = menu.parentElement;
+  const input = el("code-input") ?? document.querySelector<HTMLElement>(".code-input-wrap");
+  if (!wrap || !input) return;
+  menu.style.left = "0px";
+  menu.style.right = "auto";
+  const wrapBox = wrap.getBoundingClientRect();
+  const inputBox = input.getBoundingClientRect();
+  const menuBox = menu.getBoundingClientRect();
+  const centred = inputBox.left + inputBox.width / 2 - menuBox.width / 2;
+  const clamped = Math.max(inputBox.left, Math.min(centred, inputBox.right - menuBox.width));
+  menu.style.left = `${Math.round(clamped - wrapBox.left)}px`;
+}
+
 function initComposerControls(): void {
   const modeWrap = el("code-mode-wrap");
   const effortWrap = el("code-effort-wrap");
@@ -463,6 +486,7 @@ function initComposerControls(): void {
       const opening = mmenu.classList.contains("hidden");
       mmenu.classList.toggle("hidden");
       if (opening) {
+        centerDropOverInput(mmenu);
         picker.focusSearch(mmenu);
         // Re-resolve behind the open menu, FORCING past the cache — so a model
         // an admin just added/removed on the platform shows on the next open,
@@ -489,15 +513,19 @@ function initComposerControls(): void {
     el("code-effort-pop")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
     renderModeMenu();
-    el("code-mode-menu")?.classList.toggle("hidden");
+    const mm = el("code-mode-menu");
+    mm?.classList.toggle("hidden");
+    if (mm && !mm.classList.contains("hidden")) centerDropOverInput(mm);
   });
   el("code-effort-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
     el("code-mode-menu")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
-    void refreshLoops().then(() => renderLoopMenu());
+    void refreshLoops().then(() => { renderLoopMenu(); const p2 = el("code-effort-pop"); if (p2 && !p2.classList.contains("hidden")) centerDropOverInput(p2); });
     renderLoopMenu();
-    el("code-effort-pop")?.classList.toggle("hidden");
+    const lp = el("code-effort-pop");
+    lp?.classList.toggle("hidden");
+    if (lp && !lp.classList.contains("hidden")) centerDropOverInput(lp);
   });
   // Context panel — per-lane distance to compaction, anchored to the meter.
   const ctxWrap = el("code-ctx-wrap");
@@ -517,7 +545,7 @@ function initComposerControls(): void {
     if (!cpop) return;
     const opening = cpop.classList.contains("hidden");
     cpop.classList.toggle("hidden");
-    if (opening) void renderCtxPop();
+    if (opening) { centerDropOverInput(cpop); void renderCtxPop(); }
   });
   document.addEventListener("click", (e) => {
     const t = e.target as Node;

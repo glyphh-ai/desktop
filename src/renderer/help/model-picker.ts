@@ -14,6 +14,8 @@
  * Split out of code.ts, which had accumulated the whole chat surface.
  */
 
+import { showDropDetail } from "./shared.js";
+
 /** One model slot, resolved for this caller. Mirrors the preload bridge. */
 export interface RoleView {
   name: string;
@@ -134,13 +136,16 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
   // Typing must not reach the composer's key handling behind the menu.
   search.addEventListener("keydown", (ev) => ev.stopPropagation());
   searchWrap.appendChild(search);
-  menu.appendChild(searchWrap);
+  const pane = document.createElement("div");
+  pane.className = "drop-pane";
+  menu.appendChild(pane);
+  pane.appendChild(searchWrap);
 
   const list = document.createElement("div");
   list.className = "drop-scroll";
-  menu.appendChild(list);
+  pane.appendChild(list);
 
-  const closeTips = () => list.querySelectorAll(".model-info-tip").forEach((t) => t.classList.add("hidden"));
+  const closeTips = (): void => { menu.querySelector(".drop-detail")?.remove(); pane.classList.remove("hidden"); };
 
   const paint = (query: string): void => {
     list.textContent = "";
@@ -201,18 +206,11 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
         infoBtn.type = "button";
         infoBtn.title = "About this model";
         infoBtn.textContent = "i";
-        const tip = document.createElement("div");
-        tip.className = "model-info-tip hidden";
-        tip.textContent = info;
-        tip.addEventListener("click", (ev) => ev.stopPropagation());
         infoBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          const wasHidden = tip.classList.contains("hidden");
-          closeTips();
-          if (wasHidden) tip.classList.remove("hidden");
+          showDropDetail(menu, pane, { title: choice.name || choice.id, body: info });
         });
         main.appendChild(infoBtn);
-        item.appendChild(tip);
         item.appendChild(main);
 
         const sub = document.createElement("span");
