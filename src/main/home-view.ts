@@ -276,6 +276,13 @@ export class HomeView {
       } else if (input.key === "i" && (input.alt || input.shift)) {
         e.preventDefault();
         this.toggleDevTools();
+      } else if (input.key === ".") {
+        // ⌘. opens the command center from ANYWHERE — including when focus
+        // is inside a guest webview, where the home document's keydown
+        // listener never fires. Same channel as the OS-wide ⌘⇧Space.
+        e.preventDefault();
+        const home = this.view?.webContents;
+        if (home && !home.isDestroyed()) home.send("home:open-cc");
       }
     });
   }
