@@ -888,20 +888,25 @@ function renderHistory(): void {
     label.textContent = c.title;
     const cMode = modeOf(c);
     label.title = cMode === "chat" ? `${c.title} — Chat (no tools)` : cMode === "cowork" ? `${c.title} — Co-work` : c.title;
-    if (cMode === "chat") {
-      const badge = document.createElement("span");
-      badge.className = "code-chat-badge";
-      badge.textContent = "💬";
-      badge.title = "Chat session — tool-less, low-token";
-      label.prepend(badge);
-    }
     // Rename is a menu action (⋯ → Rename), not a click on the title — a
     // selection-gated title click fought the row's own select handler and
     // never reliably fired. The label is now just a label.
-    const dot = document.createElement("span");
+    // Leading slot: the RUNNING pulse while live, the session TYPE's icon
+    // when idle (no emojis).
     const working = liveRuns.has(c.id);
-    dot.className = "code-chat-dot" + (working ? " working" : "");
-    dot.title = working ? "Working" : "Idle";
+    const dot = document.createElement("span");
+    if (working) {
+      dot.className = "code-chat-dot working";
+      dot.title = "Working";
+    } else {
+      dot.className = "code-sess-ic";
+      dot.title = cMode === "chat" ? "Chat" : cMode === "cowork" ? "Co-work" : "Code";
+      dot.innerHTML = cMode === "chat"
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
+        : cMode === "cowork"
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`
+          : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+    }
     const menuBtn = document.createElement("button");
     menuBtn.className = "code-chat-menu-btn";
     menuBtn.title = "More";

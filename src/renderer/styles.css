@@ -3038,7 +3038,9 @@ body.chat-session .code-view-toggles { display: none !important; }
 /* co-work never downgrades once it has turns */
 .code-cw-toggle.locked button:not(.active) { opacity: 0.4; cursor: default; }
 .code-cw-toggle.hidden { display: none; }
-.code-chat-badge { margin-right: 5px; font-size: 11px; }
+/* session rows: the TYPE's icon when idle (the working pulse replaces it) */
+.code-sess-ic { display: inline-flex; flex-shrink: 0; margin-left: 2px; color: var(--text-3); }
+.code-sess-ic svg { width: 13px; height: 13px; }
 
 /* The rail's SPACE tabs — Chat | Code, above + New session. The active
    space should be unmissable: filled accent pill, icon + label. */
