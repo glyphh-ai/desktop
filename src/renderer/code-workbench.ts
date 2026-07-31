@@ -4124,6 +4124,14 @@ async function init(): Promise<void> {
         const title = (e as unknown as { title?: string }).title;
         if (title) { t.title = title; paintTabs(); }
       });
+      // RPA target: the panel is addressable as "preview" (its list_windows
+      // slug) and always resolves to the ACTIVE tab — "save the data from
+      // that page" reads the tab the user is looking at.
+      wv.addEventListener("dom-ready", () => {
+        if (t.id !== active().id) return;
+        const wcId = (wv as WebviewEl).getWebContentsId?.();
+        if (wcId !== undefined) rpaYo().rpaRegister?.("preview", wcId);
+      });
       frames.appendChild(wv);
       views.set(t.id, wv);
       if (t.html) wv.setAttribute("src", "data:text/html;charset=utf-8," + encodeURIComponent(t.html));
@@ -4134,7 +4142,14 @@ async function init(): Promise<void> {
       const a = active();
       const hasContent = !!(a.url || a.html);
       stub.hidden = hasContent;
-      if (hasContent) ensureView(a);
+      if (hasContent) {
+        const wv = ensureView(a);
+        // tab switches retarget RPA at the newly active tab (register overwrites)
+        try {
+          const wcId = (wv as WebviewEl).getWebContentsId?.();
+          if (wcId !== undefined) rpaYo().rpaRegister?.("preview", wcId);
+        } catch { /* guest not attached yet — the dom-ready hook registers it */ }
+      }
       for (const [id, wv] of views) wv.style.visibility = id === a.id && hasContent ? "" : "hidden";
       if (document.activeElement !== urlInput) {
         urlInput.value = a.html ? a.htmlLabel || "Glyphh build" : a.url || "";
