@@ -6,7 +6,7 @@
  */
 
 import { initHelp, gotoSection } from "./help/index.js";
-import { openCommandCenter, seedNewSession } from "./help/code.js";
+import { seedNewSession } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
 
 // Theme: the inline script in home.html applied localStorage theme synchronously.
@@ -103,8 +103,9 @@ void (async () => {
       return;
     }
   } catch { /* fall through */ }
-  // The app loads into ECHO at startup — Echo is the home surface now.
-  openCommandCenter();
+  // Every restart lands on the HOME page — no matter what was open before.
+  // (?section / ?solo panels above are system windows, not normal boots.)
+  gotoSection("dashboard");
 })();
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────
