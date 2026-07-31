@@ -1312,7 +1312,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
@@ -1493,17 +1493,35 @@ async function init(): Promise<void> {
       }
       return rows.length ? rows : [[]];
     };
-    const buildWall = (bands: EchoTile[][]): void => {
-      const rows = banded(bands);
+    /** The wall's live bands — dock / apps+layouts / workspace. Dragging a
+     *  tile mutates these and re-runs positionWall(); nothing is rebuilt, so
+     *  open cards keep pointing at their tile. */
+    let wallBands: TileEntry[][] = [];
+    const bandRows = (): TileEntry[][] => {
+      const rows: TileEntry[][] = [];
+      for (const band of wallBands) {
+        for (let i = 0; i < band.length; i += WALL_WIDTH) rows.push(band.slice(i, i + WALL_WIDTH));
+      }
+      return rows.length ? rows : [[]];
+    };
+    const positionWall = (): void => {
+      const rows = bandRows();
       wallCols = Math.max(1, ...rows.map((r) => r.length));
       wallRows = rows.length;
       maxYaw = (wallCols * COL_ARC) / 2 + 0.35;
-      const placed: Array<{ t: EchoTile; col: number; row: number }> = [];
-      rows.forEach((cells, row) => cells.forEach((t, col) => placed.push({ t, col, row })));
-      placed.forEach(({ t, col, row }) => {
+      rows.forEach((cells, row) => cells.forEach((e, col) => {
+        if (!e.mesh) return;
         // every row starts at the SAME left edge (the widest row sets it)
         const theta = (col - (wallCols - 1) / 2) * COL_ARC;
         const y = ((wallRows - 1) / 2 - row) * ROW_H;
+        e.mesh.position.set(R * Math.sin(theta), y, -R * Math.cos(theta));
+        e.mesh.rotation.set(0, -theta, 0);
+        e.mesh.scale.set(1, 1, 1);
+      }));
+      dirty = true;
+    };
+    const buildWall = (bands: EchoTile[][]): void => {
+      wallBands = bands.map((band) => band.map((t) => {
         const canvas = document.createElement("canvas");
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
@@ -1514,12 +1532,12 @@ async function init(): Promise<void> {
           new THREE.PlaneGeometry(TILE_W, TILE_H),
           new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
         );
-        mesh.position.set(R * Math.sin(theta), y, -R * Math.cos(theta));
-        mesh.rotation.y = -theta;
         group.add(mesh);
         entry.mesh = mesh;
         loadEntryIcon(entry);
-      });
+        return entry;
+      }));
+      positionWall();
       refit = fitExtents;
       fitExtents();   // open on the whole wall
     };
@@ -1606,12 +1624,12 @@ async function init(): Promise<void> {
       // TOP: Glyphh + the command center's dock, always the same row.
       const dockBand: EchoTile[] = [
         { name: "Glyphh", slug: "glyphh-agent", iconUrl: "brand/glyphh-mark.png", kind: "agent" },
-        ...docked.map(toTile),
+        ...docked.map((e) => ({ ...toTile(e), orderKey: e.key })),
       ];
-      // MIDDLE: the apps, then the layouts.
+      // MIDDLE: one band — the apps, then the layouts, wrapping together.
       const rest = ordered.filter((e) => !dockedSet.has(e.key));
-      const appBand = rest.filter((e) => !e.layout).map(toTile);
-      const layoutBand = rest.filter((e) => e.layout).map(toTile);
+      const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
+      const midBand = [...rest.filter((x) => !x.layout).map(keyed), ...rest.filter((x) => x.layout).map(keyed)];
       // BOTTOM: the workspace panels (no Coding Agent tile — GLYPHH is the
       // coding agent, and it opens the dock row).
       const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "preview", "plan"];
@@ -1622,7 +1640,7 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: v,
       }));
-      buildWall([dockBand, appBand, layoutBand, toolBand].filter((b) => b.length));
+      buildWall([dockBand, midBand, toolBand].filter((b) => b.length));
     }).catch(() => buildWall([]));
 
     // ── Open panels: click a tile and its LIVE webview zooms up from the
@@ -2414,21 +2432,106 @@ async function init(): Promise<void> {
       dist += e.deltaY * 1.6;
       applyCamera();
     }, { passive: false });
+    /** Hold a tile and drag it: the icon follows the cursor along the wall,
+     *  the nearest tile marks the drop, and the new order is REMEMBERED —
+     *  the same gesture (and the same prefs) as the old command center.
+     *  The dock row and the apps/layouts band reorder; the workspace band
+     *  at the bottom is fixed. */
+    const DOCK_BAND = 0, MID_BAND = 1;
+    const bandOf = (e: TileEntry): number => wallBands.findIndex((b) => b.includes(e));
+    const draggableBand = (i: number): boolean => i === DOCK_BAND || i === MID_BAND;
+    /** Glyphh owns the first slot — it never moves and nothing lands on it
+     *  (the command center locked it the same way). */
+    const movable = (e: TileEntry): boolean => e.tile.kind !== "agent" && draggableBand(bandOf(e));
+    const persistOrder = (band: number): void => {
+      const yo = (window as unknown as { yo?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).yo;
+      const keys = (wallBands[band] ?? []).map((x) => x.tile.orderKey).filter((k): k is string => !!k);
+      if (band === DOCK_BAND) void yo?.setPreference?.("ccDock", keys);
+      else if (band === MID_BAND) void yo?.setPreference?.("ccIconOrder", keys);
+    };
+    // an invisible cylinder at the wall's radius — the drag rides its surface
+    const dragSurface = new THREE.Mesh(
+      new THREE.CylinderGeometry(R, R, 20000, 48, 1, true),
+      new THREE.MeshBasicMaterial({ visible: false, side: THREE.BackSide }),
+    );
+    scene.add(dragSurface);
+    const wallPoint = (ev: MouseEvent): THREE.Vector3 | null => {
+      const rc = stage.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((ev.clientX - rc.left) / rc.width) * 2 - 1, -(((ev.clientY - rc.top) / rc.height) * 2 - 1)), camera);
+      return ray.intersectObject(dragSurface, false)[0]?.point ?? null;
+    };
+    let dragEntry: TileEntry | null = null;
+    let dropTarget: TileEntry | null = null;
+    const markDrop = (next: TileEntry | null): void => {
+      if (dropTarget === next) return;
+      if (dropTarget?.mesh) dropTarget.mesh.scale.set(1, 1, 1);
+      dropTarget = next;
+      if (dropTarget?.mesh) dropTarget.mesh.scale.set(0.86, 0.86, 1);
+      dirty = true;
+    };
+    const endWallDrag = (): void => {
+      if (!dragEntry) return;
+      const from = bandOf(dragEntry);
+      const to = dropTarget ? bandOf(dropTarget) : -1;
+      if (dropTarget && dropTarget !== dragEntry && movable(dragEntry) && movable(dropTarget)) {
+        const fromIdx = wallBands[from].indexOf(dragEntry);
+        wallBands[from].splice(fromIdx, 1);
+        const at = wallBands[to].indexOf(dropTarget);
+        wallBands[to].splice(at < 0 ? wallBands[to].length : at, 0, dragEntry);
+        persistOrder(from);
+        if (to !== from) persistOrder(to);
+      }
+      markDrop(null);
+      dragEntry.mesh?.scale.set(1, 1, 1);
+      dragEntry = null;
+      positionWall();
+    };
+
     stage.addEventListener("mousedown", (e) => {
       if (e.button !== 0 || overUi(e.target)) return;
       const sx = e.clientX, sy = e.clientY, syaw = yaw, syOff = yOff;
       let moved = false;
+      // press-and-hold a tile arms the reorder drag (a plain drag still pans)
+      const held = pick(e);
+      let holdArmed = false;
+      const holdTimer = window.setTimeout(() => {
+        if (moved || !held || !movable(held)) return;
+        holdArmed = true;
+        dragEntry = held;
+        held.mesh?.scale.set(1.14, 1.14, 1);
+        dirty = true;
+      }, 220);
       const onMove = (ev: MouseEvent): void => {
+        if (dragEntry) {
+          // carry the tile along the wall + mark the nearest neighbour
+          const p = wallPoint(ev);
+          if (p && dragEntry.mesh) {
+            const theta = Math.atan2(p.x, -p.z);
+            dragEntry.mesh.position.set((R - 90) * Math.sin(theta), p.y, -(R - 90) * Math.cos(theta));
+            dragEntry.mesh.rotation.set(0, -theta, 0);
+            let best: TileEntry | null = null, bestD = Infinity;
+            for (const other of entries) {
+              if (other === dragEntry || !other.mesh || !movable(other)) continue;
+              const d = other.mesh.position.distanceTo(dragEntry.mesh.position);
+              if (d < bestD) { bestD = d; best = other; }
+            }
+            markDrop(bestD < TILE_W * 1.6 ? best : null);
+            dirty = true;
+          }
+          return;
+        }
         if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4) moved = true;
-        if (!moved) return;
+        if (!moved || holdArmed) return;
         userMoved = true;
         yaw = syaw + (ev.clientX - sx) * 0.0022;
         yOff = syOff + (ev.clientY - sy) * 1.4;
         applyCamera();
       };
       const onUp = (ev: MouseEvent): void => {
+        window.clearTimeout(holdTimer);
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
+        if (dragEntry) { endWallDrag(); return; }
         if (moved) return;
         let entry = pick(ev);
         if (!entry) return;
@@ -2472,14 +2575,16 @@ async function init(): Promise<void> {
         echoCtl = null;
         notifyOpenApps();
       }
-      group.traverse((o) => {
-        if (o instanceof THREE.Mesh) {
-          o.geometry.dispose();
-          const m = o.material as THREE.MeshBasicMaterial;
-          m.map?.dispose();
-          m.dispose();
-        }
-      });
+      for (const root of [group, dragSurface]) {
+        root.traverse((o) => {
+          if (o instanceof THREE.Mesh) {
+            o.geometry.dispose();
+            const m = o.material as THREE.MeshBasicMaterial;
+            m.map?.dispose();
+            m.dispose();
+          }
+        });
+      }
       renderer.dispose();
     });
     obs.observe(document.getElementById("code-wb-rails") ?? document.body, { childList: true, subtree: true });
