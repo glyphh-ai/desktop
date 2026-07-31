@@ -192,12 +192,14 @@ export async function loadUsageChart(): Promise<void> {
   renderChart(series, only);
 }
 
-// ── The glyphh.ai desktop page's HERO MOVEMENT, ported whole: corner
-// halftone RAY SPRAYS (pulsing bokeh glow, slow outward flow, twinkle,
-// pointer parallax — web HeroRays.js) layered over the faint drifting dot
-// field (HeroParticles.js), tinted from the app's accent. Skips motion
-// under prefers-reduced-motion; self-stops when the landing leaves the
-// screen and restarts on the next load. ──
+// ── The glyphh.ai desktop page's hero backdrop, ported VERBATIM from the
+// web repo's HeroFlow.js (home-refactor branch): flowing data streams —
+// animated dashed bezier strokes converging on the center from both edges,
+// bright pulses riding some of them, twinkling scatter clusters at the
+// stream ends, and a center vignette. Desktop page config exactly:
+// mode "converge", purple/amber/pink colors, seed 2025. The background is
+// untouched — this draws over whatever is behind it. Self-stops when the
+// landing leaves the screen; restarts on the next load. ──
 let particlesRaf = 0;
 function startDashParticles(): void {
   const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
@@ -206,131 +208,139 @@ function startDashParticles(): void {
   if (!ctx) return;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // accent → rgb, plus a lighter tint for the spray variety
-  const hex = (getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#f59e0b").replace("#", "");
-  const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
-  const r0 = parseInt(full.slice(0, 2), 16), g0 = parseInt(full.slice(2, 4), 16), b0 = parseInt(full.slice(4, 6), 16);
-  const mix = (v: number, t: number): number => Math.round(v + (255 - v) * t);
-  const ACCENT = `${r0}, ${g0}, ${b0}`;
-  const LIGHT = `${mix(r0, 0.45)}, ${mix(g0, 0.45)}, ${mix(b0, 0.45)}`;
+  const COLORS = ["179, 107, 251", "245, 158, 11", "236, 72, 153"];   // DESKTOP_FLOW: purple / amber / pink
+  const PULSE = "255, 236, 180";
   const WHITE = "255, 255, 255";
-  const CORNERS = [
-    { x: 0, y: 0, a0: 0.12, a1: 1.45, tint: LIGHT },
-    { x: 1, y: 0, a0: 1.69, a1: 3.02, tint: ACCENT },
-  ];
-  const RAYS = 18, DOTS = 34, CURL = 0.22;
+  const N = 28;
+  const SEED = 2025;
 
-  let w = 0, h = 0, reach = 0;
-  interface Dot { x: number; y: number; r: number; vy: number; vx: number; a: number; tw: number; ph: number; accent: boolean }
-  let parts: Dot[] = [];
-  const seed = (): void => {
-    const count = Math.round(Math.min(70, Math.max(36, w / 22)));
-    parts = Array.from({ length: count }, () => ({
-      x: Math.random() * w, y: Math.random() * h,
-      r: 0.6 + Math.random() * 1.1,
-      vy: 0.06 + Math.random() * 0.16,
-      vx: (Math.random() - 0.5) * 0.05,
-      a: 0.05 + Math.random() * 0.16,
-      tw: 0.4 + Math.random() * 1.2,
-      ph: Math.random() * Math.PI * 2,
-      accent: Math.random() < 0.35,
-    }));
+  const mulberry = (seed: number): (() => number) => () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  const rand = mulberry(SEED);
+  interface Scatter { dx: number; dy: number; s: number; a: number; tw: number; tr: number; tint: number }
+  interface Stream { y0: number; endX: number; y1: number; mirror: boolean; alpha: number; tint: number; dashSpeed: number; dashPhase: number; pulse: boolean; pSpeed: number; pPhase: number; scatter: Scatter[] }
+  const streams: Stream[] = Array.from({ length: N }, (_, i) => {
+    const y0 = 0.5 + (rand() - 0.5) * 0.14;
+    const endRaw = rand();
+    const endX = 0.34 + endRaw * 0.28;   // converge: endpoints cluster mid-canvas
+    const y1 = 0.5 + (rand() - 0.5) * 0.95;
+    return {
+      y0, endX, y1,
+      mirror: i % 2 === 1,   // converge: odd streams enter from the far edge
+      alpha: 0.12 + rand() * 0.24,
+      tint: rand() < 0.72 ? 0 : rand() < 0.6 ? 1 : 2,
+      dashSpeed: 0.02 + rand() * 0.05,
+      dashPhase: rand() * 40,
+      pulse: rand() < 0.5,
+      pSpeed: 0.00010 + rand() * 0.00014,
+      pPhase: rand(),
+      scatter: Array.from({ length: 4 + Math.floor(rand() * 7) }, () => ({
+        dx: rand() * 46, dy: (rand() - 0.5) * 26,
+        s: 1 + rand() * 2, a: 0.3 + rand() * 0.6,
+        tw: rand() * Math.PI * 2, tr: 0.5 + rand() * 1.5,
+        tint: rand() < 0.5 ? 0 : rand() < 0.5 ? 2 : 3,
+      })),
+    };
+  });
+
+  let w = 0, h = 0;
   const resize = (): void => {
     const rect = canvas.parentElement?.getBoundingClientRect();
     if (!rect) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     w = rect.width; h = rect.height;
-    reach = Math.hypot(w, h) * 0.6;
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (!parts.length) seed();
   };
   const ro = new ResizeObserver(resize);
   if (canvas.parentElement) ro.observe(canvas.parentElement);
   resize();
 
-  let px = 0, py = 0, cx = 0, cy = 0;
-  const onPointer = (e: PointerEvent): void => {
-    px = e.clientX / window.innerWidth - 0.5;
-    py = e.clientY / window.innerHeight - 0.5;
+  type Pt = [number, number];
+  const mapPt = (S: Stream, run: number, fan: number): Pt => [S.mirror ? (1 - run) * w : run * w, fan * h];
+  const ctrl = (S: Stream): [Pt, Pt, Pt, Pt] => [
+    mapPt(S, 0, S.y0),
+    mapPt(S, S.endX * 0.42, S.y0),
+    mapPt(S, S.endX * 0.72, S.y1),
+    mapPt(S, S.endX, S.y1),
+  ];
+  const pointAt = (P: [Pt, Pt, Pt, Pt], t: number): Pt => {
+    const u = 1 - t;
+    return [
+      u * u * u * P[0][0] + 3 * u * u * t * P[1][0] + 3 * u * t * t * P[2][0] + t * t * t * P[3][0],
+      u * u * u * P[0][1] + 3 * u * u * t * P[1][1] + 3 * u * t * t * P[2][1] + t * t * t * P[3][1],
+    ];
   };
-  window.addEventListener("pointermove", onPointer);
 
-  let t = 0;
-  const tick = (now: number): void => {
+  const frame = (now: number): void => {
     if (!canvas.isConnected || canvas.offsetParent === null) {
       particlesRaf = 0;
       ro.disconnect();
-      window.removeEventListener("pointermove", onPointer);
       return;
     }
-    t += 0.016;
-    cx += (px - cx) * 0.05;
-    cy += (py - cy) * 0.05;
     ctx.clearRect(0, 0, w, h);
 
-    // — the drift field (HeroParticles) —
-    if (!reduced) {
-      for (const pt of parts) {
-        pt.y -= pt.vy;
-        pt.x += pt.vx;
-        if (pt.y < -4) { pt.y = h + 4; pt.x = Math.random() * w; }
-        if (pt.x < -4) pt.x = w + 4;
-        if (pt.x > w + 4) pt.x = -4;
-        const alpha = pt.a * (0.6 + 0.4 * Math.sin(t * pt.tw + pt.ph));
+    // streams (animated dashes)
+    ctx.lineWidth = 1;
+    ctx.lineCap = "round";
+    for (const S of streams) {
+      const P = ctrl(S);
+      ctx.setLineDash([2, 5]);
+      ctx.lineDashOffset = reduced ? 0 : -(now * S.dashSpeed) - S.dashPhase;
+      ctx.strokeStyle = `rgba(${COLORS[S.tint]}, ${S.alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(P[0][0], P[0][1]);
+      ctx.bezierCurveTo(P[1][0], P[1][1], P[2][0], P[2][1], P[3][0], P[3][1]);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // end scatter clusters + pulses (additive glow)
+    ctx.globalCompositeOperation = "lighter";
+    for (const S of streams) {
+      const P = ctrl(S);
+      const ex = P[3][0], ey = P[3][1];
+      for (const d of S.scatter) {
+        const tw = reduced ? 0.8 : 0.45 + 0.55 * Math.sin(now * 0.0018 * d.tr + d.tw);
+        const col = d.tint === 3 ? WHITE : COLORS[d.tint];
+        const sx = S.mirror ? -d.dx : d.dx;
+        ctx.fillStyle = `rgba(${col}, ${d.a * tw})`;
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
-        ctx.fillStyle = pt.accent ? `rgba(${ACCENT}, ${alpha})` : `rgba(${WHITE}, ${alpha})`;
+        ctx.arc(ex + sx, ey + d.dy, d.s / 2, 0, Math.PI * 2);
         ctx.fill();
       }
-    }
-
-    // — the corner ray sprays (HeroRays) —
-    ctx.globalCompositeOperation = "lighter";
-    const flow = reduced ? 0 : now * 0.000018;
-    for (let ci = 0; ci < CORNERS.length; ci++) {
-      const C = CORNERS[ci]!;
-      const ox = C.x * w, oy = C.y * h;
-      const par = 26;
-      const pulse = 0.75 + 0.25 * Math.sin(now * 0.0009 + ci * 1.7);
-      const gx = ox + (C.x === 0 ? 60 : -60);
-      const gy = oy + 60;
-      const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, 220);
-      grad.addColorStop(0, `rgba(${C.tint}, ${0.28 * pulse})`);
-      grad.addColorStop(0.5, `rgba(${C.tint}, ${0.09 * pulse})`);
-      grad.addColorStop(1, `rgba(${C.tint}, 0)`);
-      ctx.fillStyle = grad;
-      ctx.fillRect(ox - 300, oy - 300, 600, 600);
-      for (let k = 0; k < RAYS; k++) {
-        const a = C.a0 + (C.a1 - C.a0) * (k / (RAYS - 1));
-        const jitter = Math.sin(k * 12.9 + ci * 4.1) * 0.03;
-        for (let j = 0; j < DOTS; j++) {
-          const baseT = j / DOTS;
-          const tt = flow ? (baseT + flow) % 1 : baseT;
-          const ang = a + CURL * tt + jitter;
-          const rr = reach * tt;
-          const x = ox + Math.cos(ang) * rr + cx * par * tt;
-          const y = oy + Math.sin(ang) * rr + cy * par * tt;
-          const env = Math.min(1, tt / 0.05) * Math.min(1, (1 - tt) / 0.4);
-          const tw = reduced ? 0.85 : 0.55 + 0.45 * Math.sin(now * 0.002 + j * 0.5 + k * 1.3 + ci);
-          const spark = (j + k) % 8 === 0;
-          const col = spark ? WHITE : C.tint;
-          const alpha = env * tw * (spark ? 1 : 0.8);
-          if (alpha <= 0.01) continue;
-          const size = (2.7 * (1 - tt) + 0.7 * tt) * (spark ? 1.5 : 1);
-          ctx.fillStyle = `rgba(${col}, ${alpha})`;
-          ctx.beginPath();
-          ctx.arc(x, y, size / 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      if (S.pulse && !reduced) {
+        const t = (now * S.pSpeed + S.pPhase) % 1;
+        const [x, y] = pointAt(P, t);
+        const g = Math.sin(t * Math.PI);
+        ctx.fillStyle = `rgba(${PULSE}, ${0.9 * g})`;
+        ctx.shadowColor = `rgba(${COLORS[S.tint]}, 0.9)`;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(x, y, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
       }
     }
     ctx.globalCompositeOperation = "source-over";
-    particlesRaf = requestAnimationFrame(tick);
+
+    // center vignette so the copy stays legible
+    const vg = ctx.createRadialGradient(w / 2, h * 0.46, 0, w / 2, h * 0.46, h * 0.62);
+    vg.addColorStop(0, "rgba(8, 6, 12, 0.6)");
+    vg.addColorStop(0.55, "rgba(8, 6, 12, 0.12)");
+    vg.addColorStop(1, "rgba(8, 6, 12, 0)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+
+    if (reduced) { particlesRaf = 0; return; }
+    particlesRaf = requestAnimationFrame(frame);
   };
-  particlesRaf = requestAnimationFrame(tick);
+  particlesRaf = requestAnimationFrame(frame);
 }
 
 export async function loadDashboard(): Promise<void> {
