@@ -394,8 +394,20 @@ async function chatRun(
     // user/assistant only.
     const system = [skillSeed, ...messages.filter((m) => m.role === "system").map((m) => m.content)].filter(Boolean).join("\n\n");
     const convo = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content }));
+    // Chat's BASIC toolkit: Anthropic's SERVER-executed web search — real
+    // lookups with zero client tool loop (the API runs the searches inline
+    // and streams the researched answer). Claude models only; other
+    // providers stay pure completion.
+    const isClaude = /anthropic|claude/i.test(model);
     const res = await getClient().gateway.messages(
-      { model, ...(system ? { system } : {}), messages: convo, max_tokens: maxTokens, stream: true },
+      {
+        model,
+        ...(system ? { system } : {}),
+        messages: convo,
+        max_tokens: maxTokens,
+        stream: true,
+        ...(isClaude ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }] } : {}),
+      },
       { signal: ctrl.signal },
     );
     if (!res.ok || !res.body) {
@@ -420,10 +432,13 @@ async function chatRun(
         const payload = line.slice(5).trim();
         if (!payload || payload === "[DONE]") continue;
         try {
-          const ev = JSON.parse(payload) as { type?: string; delta?: { type?: string; text?: string }; error?: { message?: string } };
+          const ev = JSON.parse(payload) as { type?: string; delta?: { type?: string; text?: string }; content_block?: { type?: string }; error?: { message?: string } };
           if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
             sawText = true;
             emit("glyphh-agent:delta", { delta: ev.delta.text });
+          } else if (ev.type === "content_block_start" && ev.content_block?.type === "server_tool_use") {
+            // the API is running a web search — say so in the stream
+            emit("glyphh-agent:tool", { phase: "start", name: "web_search" });
           } else if (ev.type === "error") {
             throw new Error(ev.error?.message || "stream error");
           }
