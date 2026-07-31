@@ -14060,53 +14060,21 @@ body.code-dragging iframe { pointer-events: none !important; }
    tools and app webview panels keep their headers and controls. */
 .ws-rail-slot[data-view="section"] > .ws-rail-slot-header { display: none; }
 
-/* ── Echo — the command center in 3D: the SAME cc-tiles (dock row up top,
-   the whole library on two angled walls flanking the agent), the agent
-   front and center with nothing behind it. Apps live IN Echo as its own
-   webview cards docked beside the agent. ────────────────────────────── */
+/* ── Echo, phase 1 — everything (command center + panel types) on one
+   three.js WebGL wall; drag pans, wheel/± zooms. ─────────────────────── */
 .ws-echo-body {
-  position: relative; overflow: hidden; display: flex; flex-direction: column;
+  position: relative; overflow: hidden;
   background: radial-gradient(120% 100% at 50% 0%, #14121d 0%, #0b0a12 68%);
 }
 /* Echo TAKEOVER: while an echo slot exists it IS the workspace view. */
 .ws-right-rails.echo-takeover .ws-right-rail:not(.rail-has-echo) { display: none; }
 .ws-right-rails.echo-takeover .ws-right-rail.rail-has-echo { width: auto !important; flex: 1 1 auto !important; }
 
-/* Top: the command center's dock row + search, verbatim tiles. */
-.echo-top {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
-  padding: 12px 16px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  z-index: 3;
-}
-.echo-top .echo-dock { display: flex; gap: 4px; min-width: 0; overflow-x: auto; }
-.echo-top .cc-tile { flex: 0 0 auto; width: 84px; }
-.echo-top .cc-tile .tile-icon { width: 44px; height: 44px; border-radius: 11px; }
-.echo-top .echo-search {
-  margin-left: auto; flex: 0 1 220px; min-width: 120px;
-  padding: 7px 12px; border-radius: 9px; font-size: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: color-mix(in srgb, var(--bg) 70%, transparent); color: var(--text);
-}
-.echo-top .echo-search:focus { outline: none; border-color: var(--accent); }
-
-/* The three.js stage (CSS3DRenderer — the wall panels are live DOM). */
-.echo-stage { position: absolute; inset: 78px 0 0; z-index: 1; overflow: hidden; cursor: grab; }
+.echo-stage { position: absolute; inset: 0; z-index: 1; overflow: hidden; cursor: grab; }
 .echo-stage:active { cursor: grabbing; }
-.echo-stage .echo-3d, .echo-stage .echo-3d > div { pointer-events: auto; }
-.echo-stage .cc-tile { width: 112px; cursor: pointer; }
-.echo-stage .cc-tile:hover { background: var(--hover); }
+.echo-stage canvas { display: block; }
 
-/* The agent panel, embedded IN the wall (a CSS3DObject — fixed size). */
-.echo-agent-dock {
-  display: flex; width: 780px; height: 560px;
-  border-radius: 14px; overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
-}
-.echo-agent-dock .code-agent { display: flex; flex: 1; min-width: 0; background: transparent; }
-
-/* Zoom/pan controls, bottom-right over the scene. */
+/* Zoom controls, bottom-right over the scene. */
 .echo-zoom {
   position: absolute; right: 14px; bottom: 14px; z-index: 5;
   display: flex; flex-direction: column; gap: 6px;
@@ -14118,46 +14086,4 @@ body.code-dragging iframe { pointer-events: none !important; }
 }
 .echo-zoom .ws-icon-btn:hover { color: var(--text); background: var(--hover); }
 .echo-zoom svg { width: 15px; height: 15px; }
-
-/* Docked LIVE app cards float flat over the scene (webviews ignore
-   ancestor 3D transforms, so open apps can't live in the wall itself). */
-.echo-front {
-  position: absolute; right: 2%; bottom: 3.5%; z-index: 2;
-  height: 74%; max-width: 60%;
-  display: flex; align-items: stretch; justify-content: flex-end; gap: 14px;
-  pointer-events: none;
-}
-.echo-front .echo-dock-tray { pointer-events: auto; }
-.echo-dock-tray { display: flex; gap: 14px; min-width: 0; }
-.echo-docked-panel {
-  display: flex; flex-direction: column; width: clamp(300px, 30vw, 520px);
-  flex-shrink: 0; min-width: 280px;
-  border-radius: 14px; overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
-}
-/* Expand: the card takes over the whole echo body (under the top bar).
-   The card can't be reparented (webviews reload on DOM moves), so the
-   FRONT ROW grows to fill the body and the card overlays it; the agent
-   card and other docked webviews hide (visibility — the modal-guard-safe
-   way to hide a webview). */
-.echo-front:has(.echo-docked-panel.expanded) {
-  left: 12px; right: 12px; top: 90px; bottom: 12px;
-  width: auto; height: auto; max-width: none;
-}
-.echo-docked-panel.expanded { position: absolute; inset: 0; z-index: 4; width: auto; min-width: 0; }
-.echo-front:has(.echo-docked-panel.expanded) .echo-docked-panel:not(.expanded) webview { visibility: hidden; }
-.echo-docked-panel.flash { box-shadow: 0 0 0 2px var(--accent), 0 30px 80px rgba(0, 0, 0, 0.55); }
-.echo-docked-head {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 8px 6px 12px; font-size: 12px; font-weight: 600; color: var(--text-2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-.echo-docked-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.echo-docked-head .ws-icon-btn { width: 22px; height: 22px; color: var(--text-3); }
-.echo-docked-head .ws-icon-btn:hover { color: var(--text); }
-.echo-docked-head svg { width: 13px; height: 13px; }
-.echo-webview-holder { flex: 1; min-height: 0; display: flex; }
-.echo-webview-holder webview { flex: 1; min-width: 0; min-height: 0; }
 

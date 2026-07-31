@@ -298,6 +298,8 @@ contextBridge.exposeInMainWorld("yo", {
   // Installed real browsers — the app editor's Browser dropdown.
   // OS icon for a native app's executable / .app bundle (data URL, "" if none).
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath) as Promise<string>,
+  // Favicon bytes as a data URL (main-process fetch — CORS-free) for WebGL.
+  webIconFetch: (url: string) => ipcRenderer.invoke("web-icon-fetch", url) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
   dashboardRuns: () => ipcRenderer.invoke("dashboard-runs") as Promise<{ ok: boolean; data?: unknown; error?: string }>,

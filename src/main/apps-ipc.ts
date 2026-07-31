@@ -1,4 +1,4 @@
-import { app, ipcMain, dialog, BrowserWindow, screen } from "electron";
+import { app, ipcMain, dialog, BrowserWindow, screen, net } from "electron";
 import { refreshForceWebSlugs } from "./force-web";
 import fs from "fs";
 import path from "path";
@@ -116,6 +116,29 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     });
     fileIconChain = next.catch(() => "");
     return next;
+  });
+
+  // Web icon (favicon) as a data URL — Echo's WebGL wall can't upload
+  // cross-origin <img> pixels into a texture (canvas taint), so the byte
+  // fetch rides the main process where CORS doesn't apply. https-only,
+  // image/* only, small, session-cached.
+  const webIconCache = new Map<string, string>();
+  ipcMain.handle("web-icon-fetch", async (_e, rawUrl: string) => {
+    const u = String(rawUrl || "").trim();
+    if (!/^https:\/\//i.test(u)) return "";
+    const hit = webIconCache.get(u);
+    if (hit !== undefined) return hit;
+    let out = "";
+    try {
+      const res = await net.fetch(u);
+      const type = (res.headers.get("content-type") || "").split(";")[0].trim();
+      if (res.ok && type.startsWith("image/")) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 0 && buf.length <= 512 * 1024) out = `data:${type};base64,${buf.toString("base64")}`;
+      }
+    } catch { out = ""; }
+    webIconCache.set(u, out);
+    return out;
   });
 
   ipcMain.handle("panel-apps-list", async () => {

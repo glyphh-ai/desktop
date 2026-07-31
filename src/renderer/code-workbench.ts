@@ -17,11 +17,10 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
-import { appIconInner, primeNativeIcons } from "./help/app-icon.js";
+import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import * as THREE from "three";
-import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -545,14 +544,6 @@ async function init(): Promise<void> {
     saveLayout();
   }
   function placeView(view: Exclude<ViewKind, "app">): void {
-    // Echo IS the agent view — a coding slot alongside it would fight over
-    // the one agent DOM, so opening Echo absorbs it.
-    if (view === "echo") {
-      for (let i = rails.length - 1; i >= 0; i--) {
-        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "coding");
-        if (!rails[i].slots.length) rails.splice(i, 1);
-      }
-    }
     placeSlot(makeSlot(view));
   }
   function findMonacoSlot(): MonacoSlot | null {
@@ -1221,55 +1212,46 @@ async function init(): Promise<void> {
   // — one runtime, shared sessions). The header gains the session controls:
   // title on the left, history dropdown + new-session on the right.
   /**
-   * Echo — the command center as a real three.js 3D wall the agent LIVES in.
+   * Echo, phase 1 — EVERYTHING, on one three.js wall.
    *
-   * One curved wall (CSS3DRenderer, so every tile is live DOM): the agent
-   * panel is embedded center-wall, the whole app library surrounds it as the
-   * SAME cc-tiles the command center renders (real icons, no textures — and
-   * no capturePage). The camera pans (drag / arrows) and zooms (wheel / ± )
-   * across the wall. The top bar is the command center's dock row + search.
-   * Clicking a tile docks the app LIVE beside the wall — an Echo-owned
-   * webview card (webviews ignore ancestor 3D transforms, so open apps
-   * render flat over the scene), with expand-to-fullscreen; Esc re-walls.
+   * A WebGL curved wall of tiles: every command-center entry (all apps —
+   * Glyphh, nav, installed, web — and every layout) plus every workspace
+   * panel type (Files, Terminal, Editor, Diff, Browser, Plan, Coding
+   * agent). Tiles are canvas-drawn cards using the SAME icon sources the
+   * command center uses (appIconUrl favicons/brand/native, nav glyphs),
+   * streamed in as they load. View controls: drag pans, wheel + ± zooms,
+   * ⟲ resets. That's it — ordering via layouts comes later.
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
-      <div class="echo-top">
-        <div class="echo-dock"></div>
-        <input class="echo-search" type="text" placeholder="Search apps" spellcheck="false" autocomplete="off" />
-      </div>
       <div class="echo-stage"></div>
-      <div class="echo-front"><div class="echo-dock-tray"></div></div>
       <div class="echo-zoom">
         <button class="ws-icon-btn echo-z-in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-reset" title="Reset view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg></button>
       </div>`;
-    const dockRow = body.querySelector<HTMLElement>(".echo-dock")!;
-    const search = body.querySelector<HTMLInputElement>(".echo-search")!;
     const stage = body.querySelector<HTMLElement>(".echo-stage")!;
-    const front = body.querySelector<HTMLElement>(".echo-front")!;
-    const tray = body.querySelector<HTMLElement>(".echo-dock-tray")!;
     wrap.dataset.view = "echo";
 
-    // ── The scene: a cylindrical wall, camera inside looking at it ──
-    const R = 1500;                       // wall radius (px world units)
+    // ── Scene: a cylindrical wall of tile planes, camera inside ──
+    const R = 1600;
+    const TILE_W = 230, TILE_H = 272, COL_ARC = (TILE_W + 28) / R, ROW_H = 306;
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, 1, 1, 8000);
-    const renderer = new CSS3DRenderer();
-    renderer.domElement.classList.add("echo-3d");
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);
     stage.appendChild(renderer.domElement);
 
-    // Camera state — yaw pans across the wall's arc, yOff pans vertically,
-    // dist dollies toward/away from the wall. All clamped.
-    const HOME = { yaw: 0, yOff: 0, dist: -300 };
+    const HOME = { yaw: 0, yOff: 0, dist: -200 };
     let yaw = HOME.yaw, yOff = HOME.yOff, dist = HOME.dist;
+    let maxYaw = 1.2;
     let dirty = true;
     const applyCamera = (): void => {
-      yaw = Math.max(-1.1, Math.min(1.1, yaw));
-      yOff = Math.max(-420, Math.min(420, yOff));
-      dist = Math.max(-(R - 700), Math.min(420, dist));
+      yaw = Math.max(-maxYaw, Math.min(maxYaw, yaw));
+      yOff = Math.max(-560, Math.min(560, yOff));
+      dist = Math.max(-(R - 520), Math.min(480, dist));
       camera.position.set(0, yOff, dist);
       camera.rotation.set(0, yaw, 0);
       dirty = true;
@@ -1286,196 +1268,184 @@ async function init(): Promise<void> {
     resize();
     applyCamera();
     const tick = (): void => {
-      if (!body.isConnected) { ro.disconnect(); return; }
+      if (!body.isConnected) return;   // teardown observer handles disposal
       if (dirty) { renderer.render(scene, camera); dirty = false; }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
 
-    // ── The agent, IN the wall (center, slightly proud of the tile arc) ──
-    const agentEl = document.createElement("div");
-    agentEl.className = "echo-agent-dock";
-    const agentObj = new CSS3DObject(agentEl);
-    agentObj.position.set(0, 0, -(R - 60));
-    scene.add(agentObj);
-    const agent = document.querySelector<HTMLElement>(".code-agent");
-    if (agent) {
-      agentEl.appendChild(agent);
-      document.querySelector(".code-root")?.classList.add("agent-hosted");
-    }
-
-    interface WallApp { slug: string; name: string; url: string; glyphh?: boolean; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null; archetype?: string | null }
-    let apps: WallApp[] = [];
-    const openCards = new Map<string, HTMLElement>();   // slug → docked card
-
-    const ccTile = (a: WallApp): HTMLButtonElement => {
-      const tile = document.createElement("button");
-      tile.type = "button";
-      tile.className = "cc-tile echo-tile" + (openCards.has(a.slug) ? " open" : "");
-      tile.title = a.name;
-      const icon = document.createElement("div");
-      icon.className = "tile-icon";
-      icon.innerHTML = appIconInner({ slug: a.slug, url: a.url || null, execPath: a.execPath || null, appArchetype: a.archetype || null, connection: a.connection || null }, a.name, "tile-initial");
-      const nm = document.createElement("span");
-      nm.className = "tile-name";
-      nm.textContent = a.name;
-      tile.append(icon, nm);
-      return tile;
+    // ── Tile cards: canvas-drawn (icon square + name), CC's icon sources ──
+    interface EchoTile { name: string; iconUrl?: string; svg?: string; kind: "app" | "layout" | "tool" }
+    const CVS_W = 256, CVS_H = 304;
+    const drawTile = (canvas: HTMLCanvasElement, t: EchoTile, img: HTMLImageElement | null): void => {
+      canvas.width = CVS_W * 2; canvas.height = CVS_H * 2;
+      const c = canvas.getContext("2d")!;
+      c.scale(2, 2);
+      c.clearRect(0, 0, CVS_W, CVS_H);
+      // the icon square — same rounded-tile look as the command center
+      c.beginPath();
+      const rr = (x: number, y: number, w: number, h: number, r: number): void => {
+        c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+        c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+      };
+      rr(24, 10, 208, 208, 46);
+      c.fillStyle = "#f4f4f6";
+      c.fill();
+      if (t.kind === "layout") {
+        // the CC layout tile's 2×2 mini-grid, in ink
+        c.fillStyle = "#1a1a1f";
+        for (let i = 0; i < 4; i++) {
+          const gx = 24 + 48 + (i % 2) * 62, gy = 10 + 48 + Math.floor(i / 2) * 62;
+          c.beginPath(); rr(gx, gy, 50, 50, 12); c.fill();
+        }
+      } else if (img) {
+        const pad = 32, box = 208 - pad * 2;
+        const s = Math.min(box / (img.naturalWidth || box), box / (img.naturalHeight || box));
+        const w = (img.naturalWidth || box) * s, h = (img.naturalHeight || box) * s;
+        c.drawImage(img, 24 + (208 - w) / 2, 10 + (208 - h) / 2, w, h);
+      } else {
+        c.fillStyle = "#55555c";
+        c.font = "600 96px -apple-system, system-ui, sans-serif";
+        c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText((t.name || "?").charAt(0).toUpperCase(), 128, 118);
+      }
+      // the name label
+      c.fillStyle = "#e2e5ec";
+      c.font = "500 24px -apple-system, system-ui, sans-serif";
+      c.textAlign = "center"; c.textBaseline = "middle";
+      let label = t.name;
+      while (label.length > 2 && c.measureText(label).width > 236) label = label.slice(0, -1);
+      c.fillText(label === t.name ? label : label + "…", 128, 276);
     };
+    const loadImage = (src: string): Promise<HTMLImageElement | null> =>
+      new Promise((res) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";   // tainted images can't feed WebGL
+        img.onload = () => res(img);
+        img.onerror = () => res(null);
+        img.src = src;
+      });
+    const svgToDataUrl = (svg: string): string => {
+      // rasterizable: xmlns (inline SVG omits it, images REQUIRE it),
+      // explicit size, ink color instead of currentColor
+      const sized = svg.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" ')
+        .replace(/currentColor/g, "#1a1a1f");
+      return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(sized)));
+    };
+    // Cross-origin icons (favicons) arrive as data URLs via the main process —
+    // a tainted <img> can't feed a WebGL texture.
+    const iconYo = (window as unknown as { yo?: { webIconFetch?: (u: string) => Promise<string> } }).yo;
+    const resolveIconSrc = (src: string): Promise<string> =>
+      /^https?:/i.test(src) ? (iconYo?.webIconFetch?.(src) ?? Promise.resolve("")) : Promise.resolve(src);
 
-    // ── Wall tiles around the agent: columns march outward from the agent's
-    // edges along the arc, ROWS-high, filled nearest-first. ──
-    const tileGroup = new THREE.Group();
-    scene.add(tileGroup);
-    const ROWS = 4, ROW_H = 156, COL_ARC = 130 / R, EDGE = 480 / R;
-    const renderWall = (): void => {
-      tileGroup.clear();
-      const q = search.value.trim().toLowerCase();
-      const list = apps.filter((a) => !q || a.name.toLowerCase().includes(q) || a.slug.includes(q));
-      list.forEach((a, i) => {
-        const col = Math.floor(i / (ROWS * 2));            // distance from agent
-        const side = Math.floor(i / ROWS) % 2 === 0 ? 1 : -1;
-        const row = i % ROWS;
-        const theta = side * (EDGE + COL_ARC * (col + 0.5));
-        const y = (row - (ROWS - 1) / 2) * ROW_H;
-        const tile = ccTile(a);
-        tile.addEventListener("click", () => { if (!wasPan) dockApp(a); });
-        const obj = new CSS3DObject(tile);
-        obj.position.set(R * Math.sin(theta), y, -R * Math.cos(theta));
-        obj.rotation.y = -theta;
-        tileGroup.add(obj);
+    const group = new THREE.Group();
+    scene.add(group);
+    const buildWall = (tiles: EchoTile[]): void => {
+      const n = tiles.length || 1;
+      const rows = Math.max(2, Math.min(5, Math.round(Math.sqrt(n / 2.4))));
+      const cols = Math.ceil(n / rows);
+      maxYaw = (cols * COL_ARC) / 2 + 0.35;
+      tiles.forEach((t, i) => {
+        const col = Math.floor(i / rows), row = i % rows;
+        const theta = (col - (cols - 1) / 2) * COL_ARC;
+        const y = ((rows - 1) / 2 - row) * ROW_H;
+        const canvas = document.createElement("canvas");
+        drawTile(canvas, t, null);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(TILE_W, TILE_H),
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
+        );
+        mesh.position.set(R * Math.sin(theta), y, -R * Math.cos(theta));
+        mesh.rotation.y = -theta;
+        group.add(mesh);
+        // stream the real icon in when it lands
+        const src = t.svg ? svgToDataUrl(t.svg) : t.iconUrl || "";
+        if (src) {
+          void resolveIconSrc(src).then((u) => (u ? loadImage(u) : null)).then((img) => {
+            if (!img || !body.isConnected) return;
+            drawTile(canvas, t, img);
+            tex.needsUpdate = true;
+            dirty = true;
+          });
+        }
       });
       dirty = true;
     };
-    search.addEventListener("input", renderWall);
 
-    // ── Pan + zoom: drag the background, wheel to dolly, buttons too.
-    // Wheel/drag over the agent or a docked card stays native (chat scroll). ──
-    const overUi = (t: EventTarget | null): boolean =>
-      t instanceof Element && !!t.closest(".echo-agent-dock, .echo-docked-panel, .echo-top, .echo-zoom");
-    let wasPan = false;
+    // ── The wall's content: the command center, whole, + panel types ──
+    type Yo = {
+      panelAppsList?: () => Promise<Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null }>>;
+      layoutsList?: () => Promise<Array<{ name: string }>>;
+    };
+    const yoApi = (window as unknown as { yo?: Yo }).yo;
+    void Promise.all([yoApi?.panelAppsList?.() ?? [], yoApi?.layoutsList?.() ?? []]).then(([rows, layouts]) => {
+      if (!body.isConnected) return;
+      const apps = (rows || []).filter((a) => a.url || ["glyphh-app", "glyphh-self", "glyphh-nav"].includes(a.appArchetype || ""));
+      // the command center's default order: Glyphh, nav, installed, web
+      const weight = (a: { appArchetype?: string | null }): number =>
+        a.appArchetype === "glyphh-self" ? 3 : a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
+      apps.sort((x, y) => weight(y) - weight(x));
+      const tiles: EchoTile[] = apps.map((a) => {
+        const icon = { slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null };
+        if (a.appArchetype === "glyphh-nav") {
+          const svg = appIconInner(icon, a.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0];
+          return { name: a.name, svg: svg || undefined, kind: "app" };
+        }
+        return { name: a.name, iconUrl: appIconUrl(icon) || undefined, kind: "app" };
+      });
+      for (const l of layouts || []) tiles.push({ name: l.name, kind: "layout" });
+      // every workspace panel type, tool icons from the same VIEW_META set
+      const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["coding", "files", "terminal", "monaco", "diff", "preview", "plan"];
+      for (const v of TOOLS) {
+        const svg = VIEW_META[v].icon.match(/<svg[\s\S]*<\/svg>/)?.[0];
+        tiles.push({ name: VIEW_META[v].title, svg: svg || undefined, kind: "tool" });
+      }
+      buildWall(tiles);
+    }).catch(() => buildWall([]));
+
+    // ── Pan (drag) + zoom (wheel / buttons) ──
     stage.addEventListener("wheel", (e) => {
-      if (overUi(e.target)) return;
+      if (e.target instanceof Element && e.target.closest(".echo-zoom")) return;
       e.preventDefault();
       dist += e.deltaY * 1.6;
       applyCamera();
     }, { passive: false });
     stage.addEventListener("mousedown", (e) => {
-      if (e.button !== 0 || overUi(e.target)) return;
+      if (e.button !== 0) return;
+      if (e.target instanceof Element && e.target.closest(".echo-zoom")) return;
       const sx = e.clientX, sy = e.clientY, syaw = yaw, syOff = yOff;
-      wasPan = false;
       const onMove = (ev: MouseEvent): void => {
-        const dx = ev.clientX - sx, dy = ev.clientY - sy;
-        if (Math.abs(dx) + Math.abs(dy) > 4) wasPan = true;
-        yaw = syaw + dx * 0.0022;         // drag right → wall slides right
-        yOff = syOff + dy * 1.4;          // drag down → wall slides down
+        yaw = syaw + (ev.clientX - sx) * 0.0022;
+        yOff = syOff + (ev.clientY - sy) * 1.4;
         applyCamera();
       };
       const onUp = (): void => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
-        setTimeout(() => { wasPan = false; }, 0);   // let the click land first
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     });
-    body.querySelector(".echo-z-in")!.addEventListener("click", () => { dist -= 260; applyCamera(); });
-    body.querySelector(".echo-z-out")!.addEventListener("click", () => { dist += 260; applyCamera(); });
+    body.querySelector(".echo-z-in")!.addEventListener("click", () => { dist -= 280; applyCamera(); });
+    body.querySelector(".echo-z-out")!.addEventListener("click", () => { dist += 280; applyCamera(); });
     body.querySelector(".echo-z-reset")!.addEventListener("click", () => { ({ yaw, yOff, dist } = { ...HOME }); applyCamera(); });
 
-    // ── Docked app cards: Echo-owned LIVE webviews, flat over the scene. ──
-    const dockApp = (a: WallApp): void => {
-      if (!a.url) return;
-      if (openCards.has(a.slug)) { openCards.get(a.slug)!.classList.add("flash"); setTimeout(() => openCards.get(a.slug)?.classList.remove("flash"), 600); return; }
-      const card = document.createElement("div");
-      card.className = "echo-docked-panel";
-      card.innerHTML = `<div class="echo-docked-head"><span></span>
-          <button class="ws-icon-btn echo-expand" title="Full screen in Echo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
-          <button class="ws-icon-btn echo-rewall" title="Back to the wall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
-        </div><div class="echo-webview-holder"></div>`;
-      card.querySelector("span")!.textContent = a.name;
-      const wv = document.createElement("webview");
-      wv.setAttribute("partition", "persist:yo");
-      wv.setAttribute("allowpopups", "true");
-      wv.setAttribute("src", a.url);
-      wv.addEventListener("did-fail-load", (e) => {
-        const err = e as unknown as { errorCode?: number; errorDescription?: string };
-        if (err.errorCode && err.errorCode !== -3) console.warn(`[echo] "${a.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
-      });
-      card.querySelector(".echo-webview-holder")!.appendChild(wv);
-      card.querySelector(".echo-expand")!.addEventListener("click", () => card.classList.toggle("expanded"));
-      card.querySelector(".echo-rewall")!.addEventListener("click", () => rewall(a.slug));
-      tray.appendChild(card);
-      openCards.set(a.slug, card);
-      front.classList.add("has-docked");
-      renderWall();
-    };
-    echoOpenApp = (ref) => {
-      const a = apps.find((x) => x.slug === ref.slug) ?? { slug: ref.slug, name: ref.name, url: ref.url, glyphh: ref.glyphh };
-      dockApp(a);
-    };
-
-    const rewall = (only?: string): void => {
-      for (const [slug, card] of [...openCards]) {
-        if (only && slug !== only) continue;
-        card.remove();
-        openCards.delete(slug);
-      }
-      front.classList.toggle("has-docked", openCards.size > 0);
-      renderWall();
-    };
-    const onKey = (e: KeyboardEvent): void => {
-      if (!body.isConnected) { document.removeEventListener("keydown", onKey, true); return; }
-      if (e.key !== "Escape") return;
-      const expanded = tray.querySelector(".echo-docked-panel.expanded");
-      if (expanded) { e.stopPropagation(); e.preventDefault(); expanded.classList.remove("expanded"); return; }
-      if (openCards.size) { e.stopPropagation(); e.preventDefault(); rewall(); }
-    };
-    document.addEventListener("keydown", onKey, true);
-
-    /** The command center's dock row, verbatim (same pref, same tiles). */
-    const renderDockRow = (rows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null }>): void => {
-      type PrefYo = { getPreference?: (k: string, d: unknown) => Promise<unknown> };
-      void ((window as unknown as { yo?: PrefYo }).yo?.getPreference?.("ccDock", null) ?? Promise.resolve(null)).then((saved) => {
-        if (!body.isConnected) return;
-        const keys = Array.isArray(saved) && saved.length ? saved.map(String) : ["app:glyphh", "app:home", "app:connections", "app:apps", "app:layouts", "app:skills", "app:loops", "app:agents", "app:models", "app:settings"];
-        dockRow.innerHTML = "";
-        for (const key of keys) {
-          const slug = key.startsWith("app:") ? key.slice(4) : key;
-          const row = rows.find((r) => (r.slug || r.id) === slug);
-          if (!row) continue;
-          const t = ccTile({ slug: row.slug || row.id, name: row.name, url: row.url || "", archetype: row.appArchetype || null });
-          t.classList.add("echo-dock-tile");
-          t.addEventListener("click", () => {
-            if (row.appArchetype === "glyphh-self") return;   // the agent is already in the wall
-            if (row.url && row.appArchetype !== "glyphh-nav") { dockApp({ slug: row.slug || row.id, name: row.name, url: row.url }); return; }
-            // nav tiles navigate (leaves Echo) — same as the command center
-            void (window as unknown as { yo?: { appLaunch?: (s: unknown) => Promise<unknown> } }).yo?.appLaunch?.({ slug: row.slug || row.id, name: row.name, url: row.url, appArchetype: row.appArchetype });
-          });
-          dockRow.appendChild(t);
-        }
-      });
-    };
-
-    // The SAME list the command center loads.
-    type EchoYo = { panelAppsList?: () => Promise<Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; system?: boolean; execPath?: string | null }>> };
-    void ((window as unknown as { yo?: EchoYo }).yo?.panelAppsList?.() ?? Promise.resolve([])).then((rows) => {
-      if (!body.isConnected) return;
-      apps = (rows || [])
-        .filter((a) => a.url && a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav")
-        .map((a) => ({ slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app", execPath: a.execPath || null, archetype: a.appArchetype || null }));
-      renderWall();
-      renderDockRow(rows || []);
-    }).catch(() => { /* offline — the agent still lives in the wall */ });
-
-    // Teardown: unhook the open router + Esc, drop the cards.
+    // Teardown: free the GL context and every tile's geometry/texture.
     const obs = new MutationObserver(() => {
       if (body.isConnected) return;
       obs.disconnect();
       ro.disconnect();
-      document.removeEventListener("keydown", onKey, true);
-      if (echoOpenApp) echoOpenApp = null;
-      openCards.clear();
+      group.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          o.geometry.dispose();
+          const m = o.material as THREE.MeshBasicMaterial;
+          m.map?.dispose();
+          m.dispose();
+        }
+      });
+      renderer.dispose();
     });
     obs.observe(document.getElementById("code-wb-rails") ?? document.body, { childList: true, subtree: true });
   }
@@ -1520,7 +1490,6 @@ async function init(): Promise<void> {
   function echoActive(): boolean {
     return rails.some((r) => r.slots.some((sl) => sl.view === "echo"));
   }
-  let echoOpenApp: ((app: WbAppRef) => void) | null = null;
   // The RPA registration bridge on window.yo (slug ↔ panel webContents id).
   const rpaYo = (): { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } =>
     (window as unknown as { yo?: { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } }).yo ?? {};
@@ -1784,7 +1753,6 @@ async function init(): Promise<void> {
    *  (`replaceActive`, e.g. `.dip .`). newPanel forces a fresh slot even past a pin. */
   function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean; replaceWorkspace?: boolean } = {}): void {
     // Echo mode: the app opens INSIDE the scene, never as a layout panel.
-    if (echoActive() && echoOpenApp) { echoOpenApp(app); return; }
     const existing = appSlots().find((s) => s.slug === app.slug);
     if (existing) { focusAppSlot(existing.id); return; }
     // Opening an individual app means the workbench is no longer "the named
