@@ -9600,7 +9600,7 @@ select.settings-input {
 .ws-right-rails.has-fullscreen .ws-band-hsep { display: none; }
 /* Modals vs <webview>: the webview compositing layer beats every z-index, so
    while a modal is open the workspace panels' webviews go invisible. */
-body.wb-modal-open #code-wb-rails webview { visibility: hidden; }
+body.wb-modal-open webview { visibility: hidden !important; }
 .ws-right-rail {
   background: var(--ws-bg-rail);
   /* Right border on every rail so the column's right edge is visible
@@ -13935,3 +13935,27 @@ body.code-dragging iframe { pointer-events: none !important; }
 .rail-more-menu { display: flex; flex-direction: column; gap: 2px; min-width: 152px; }
 
 .rail-more-menu .app-rail-nav-item { width: 100%; }
+
+
+/* .code-menu family — the shared dropdown chrome the rail menus ride
+   (session-row ⋯, More fly-out, user menu). Missed by the rail restore. */
+
+
+
+/* Session row menu (⋯ → Delete) */
+.code-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 120px;
+  padding: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.code-menu-item:hover { background: var(--hover); }
+
+.code-menu-item.danger { color: #e5484d; }
+
+.code-menu-item.danger:hover { background: rgba(229, 72, 77, 0.1); }
