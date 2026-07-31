@@ -14141,6 +14141,10 @@ body.code-dragging iframe { pointer-events: none !important; }
   padding: 5px 6px 5px 10px; font-size: 12px; font-weight: 600; color: var(--text-2);
   border-bottom: 1px solid var(--border);
 }
+.echo-card-head { cursor: grab; }
+.echo-card.dragging { transition: none; z-index: 5; opacity: 0.92; }
+.echo-card.dragging .echo-card-head { cursor: grabbing; }
+.echo-card-body .code-agent { display: flex; flex: 1; min-width: 0; background: transparent; }
 .echo-card-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* bare glyph buttons — no UA button chrome (the gray box) */
 .echo-card-head .ws-icon-btn {

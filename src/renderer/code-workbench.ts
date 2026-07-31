@@ -1309,9 +1309,11 @@ async function init(): Promise<void> {
     // app icons. Drawn at 4× and colored from the LIVE theme variables,
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
-    interface EchoTile { name: string; slug?: string; url?: string; glyphh?: boolean; iconUrl?: string; glyphSvg?: string; kind: "app" | "tool"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
+    interface EchoTile { name: string; slug?: string; url?: string; glyphh?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot }
     const entries: TileEntry[] = [];
+    let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
     const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; font: string } => {
       const css = getComputedStyle(document.documentElement);
       const v = (name: string, fb: string): string => css.getPropertyValue(name).trim() || fb;
@@ -1351,7 +1353,39 @@ async function init(): Promise<void> {
         c.lineWidth = 1.5;
         c.stroke();
       }
-      if (e.img && e.tile.glyphSvg) {
+      if (e.tile.kind === "layout") {
+        const cells = e.tile.cells || [];
+        if (!cells.length) {
+          c.fillStyle = theme.text2;
+          c.font = `600 16px ${theme.font}`;
+          c.textAlign = "center"; c.textBaseline = "middle";
+          c.fillText("▦", TILE_PX_W / 2, iy + 28);
+        } else {
+          // .tile-icon.tile-layout — 3px inset, 1px gap, 2 columns,
+          // each .mini a --surface-2 rounded cell with the app's icon
+          const cellW = (56 - 6 - 1) / 2;
+          const rowsN = Math.ceil(cells.length / 2);
+          const cellH = (50 - (rowsN - 1)) / rowsN;
+          cells.forEach((cell, i) => {
+            const cx = ix + 3 + (i % 2) * (cellW + 1);
+            const cy = iy + 3 + Math.floor(i / 2) * (cellH + 1);
+            rr(c, cx, cy, cellW, cellH, 3);
+            c.fillStyle = theme.surface2;
+            c.fill();
+            if (cell.img && cell.glyphSvg) {
+              const g = Math.min(cellW, cellH) * 0.64;
+              c.drawImage(cell.img, cx + (cellW - g) / 2, cy + (cellH - g) / 2, g, g);
+            } else if (cell.img) {
+              drawContain(c, cell.img, cx + (cellW - Math.min(cellW, cellH)) / 2, cy, Math.min(cellW, cellH), 2);
+            } else {
+              c.fillStyle = theme.text3;
+              c.font = `600 8px ${theme.font}`;
+              c.textAlign = "center"; c.textBaseline = "middle";
+              c.fillText(cell.initial, cx + cellW / 2, cy + cellH / 2);
+            }
+          });
+        }
+      } else if (e.img && e.tile.glyphSvg) {
         // .nav-glyph svg — 64% of the box, centered, --text-2 ink
         const g = 56 * 0.64;
         c.drawImage(e.img, ix + (56 - g) / 2, iy + (56 - g) / 2, g, g);
@@ -1404,6 +1438,12 @@ async function init(): Promise<void> {
       });
     };
     const loadEntryIcon = (e: TileEntry): void => {
+      if (e.tile.cells) {
+        for (const cell of e.tile.cells) {
+          loadOne(cell.glyphSvg ? svgToDataUrl(cell.glyphSvg, theme.text2) : cell.iconUrl || "", (img) => { cell.img = img; }, e);
+        }
+        return;
+      }
       loadOne(e.tile.glyphSvg ? svgToDataUrl(e.tile.glyphSvg, theme.text2) : e.tile.iconUrl || "", (img) => { e.img = img; }, e);
     };
     // Theme switches re-ink every tile (glyphs re-rasterize in the new ink).
@@ -1413,7 +1453,7 @@ async function init(): Promise<void> {
       theme = next;
       for (const e of entries) {
         drawTile(e);
-        if (e.tile.glyphSvg) loadEntryIcon(e);
+        if (e.tile.glyphSvg || e.tile.cells?.some((cl) => cl.glyphSvg)) loadEntryIcon(e);
       }
     });
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -1475,21 +1515,27 @@ async function init(): Promise<void> {
     type PanelRowLite = { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null };
     type Yo = {
       panelAppsList?: () => Promise<PanelRowLite[]>;
+      layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
     };
     const yoApi = (window as unknown as { yo?: Yo }).yo;
     void Promise.all([
       yoApi?.panelAppsList?.() ?? [],
+      yoApi?.layoutsList?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccDock", null) ?? null,
       yoApi?.getPreference?.("ccIconOrder", []) ?? [],
-    ]).then(([rows, dockPref, orderPref]) => {
+    ]).then(([rows, layouts, dockPref, orderPref]) => {
       if (!body.isConnected) return;
       const appsAll = (rows || []).filter((a) => a.appArchetype !== "glyphh-self" && (a.url || ["glyphh-app", "glyphh-nav"].includes(a.appArchetype || "")));
+      echoRows = (rows || []);
       const weight = (a: { appArchetype?: string | null }): number =>
         a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
       appsAll.sort((x, y) => weight(y) - weight(x));
-      interface Entry { key: string; name: string; app: PanelRowLite }
-      const all: Entry[] = appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a }));
+      interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
+      const all: Entry[] = [
+        ...appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a })),
+        ...(layouts || []).map((l): Entry => ({ key: `layout:${(l.name || "").toLowerCase()}`, name: l.name, layout: l })),
+      ];
       const byKey = new Map(all.map((e) => [e.key, e]));
       const orderKeys = Array.isArray(orderPref) ? orderPref.map(String) : [];
       const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
@@ -1516,7 +1562,28 @@ async function init(): Promise<void> {
       const glyphOf = (a: PanelRowLite): string | undefined =>
         appIconInner(iconOf(a), a.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined;
       const toTile = (e: Entry): EchoTile => {
-        const a = e.app;
+        if (e.layout) {
+          // the CC layout tile: up to 4 unique panels, app icon or tool initial
+          const layoutRow = e.layout;
+          const seenIds = new Set<string>();
+          const ids = layoutRow.splits
+            .map((cell) => cell.panelId)
+            .filter((id) => id && !seenIds.has(id) && (seenIds.add(id), true))
+            .slice(0, 4);
+          const cells: EchoCell[] = ids.map((id) => {
+            const key = id.trim().toLowerCase();
+            const app = appsAll.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
+            if (app) {
+              if (app.appArchetype === "glyphh-nav") return { glyphSvg: glyphOf(app), initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
+              return { iconUrl: appIconUrl(iconOf(app)) || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
+            }
+            const toolView = id.startsWith("tool:") ? id.slice(5) : "";
+            const label = toolView ? (VIEW_META[toolView as ViewKind]?.title ?? toolView) : id;
+            return { initial: (label || "?").charAt(0).toUpperCase(), img: null };
+          });
+          return { name: e.name, slug: `layout:${(e.name || "").toLowerCase()}`, cells, layoutRow, kind: "layout" };
+        }
+        const a = e.app!;
         const slug = (a.slug || a.id).toLowerCase();
         if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
         return { name: a.name, slug, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
@@ -1579,9 +1646,7 @@ async function init(): Promise<void> {
     };
     /** Slot rects: up to 3 across, wrapping, anchored near the top — the
      *  wall's lower rows peek out beneath. */
-    const layoutCards = (): void => {
-      const n = openList.length;
-      if (!n) return;
+    const slotRects = (n: number): Array<{ left: number; top: number; width: number; height: number }> => {
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 14;
       const cols = Math.min(n, 3), rows = Math.ceil(n / 3);
       let cw = Math.min((w * 0.92 - gap * (cols - 1)) / cols, w * 0.46);
@@ -1589,14 +1654,22 @@ async function init(): Promise<void> {
       const ch = Math.min((h * 0.82 - gap * (rows - 1)) / rows, h * 0.7);
       const x0 = (w - (cw * cols + gap * (cols - 1))) / 2;
       const y0 = h * 0.05;
+      return Array.from({ length: n }, (_, i) => ({
+        left: x0 + (i % 3) * (cw + gap), top: y0 + Math.floor(i / 3) * (ch + gap), width: cw, height: ch,
+      }));
+    };
+    const layoutCards = (): void => {
+      const n = openList.length;
+      if (!n) return;
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+      const rects = slotRects(n);
       openList.forEach((e, i) => {
         if (!e.card) return;
         if (e.card.classList.contains("expanded")) {
           setRect(e.card, { left: 12, top: 12, width: w - 24, height: h - 24 });
           return;
         }
-        const col = i % 3, row = Math.floor(i / 3);
-        setRect(e.card, { left: x0 + col * (cw + gap), top: y0 + row * (ch + gap), width: cw, height: ch });
+        setRect(e.card, rects[i]);
       });
     };
     relayout = layoutCards;
@@ -1620,6 +1693,7 @@ async function init(): Promise<void> {
         // sections are SINGLETONS — park the page back to its pen before
         // the card's DOM goes away (same contract as parkSections)
         try {
+          if (card.querySelector(".code-agent")) parkAgent();   // the singleton goes home
           const pen = document.getElementById("page-body");
           card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
             sec.classList.remove("active", "wb-hosted");
@@ -1658,6 +1732,44 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      // DRAG the card by its head into another slot — the list reorders and
+      // every card animates to its new rect (the transitions do the motion).
+      const head = card.querySelector<HTMLElement>(".echo-card-head")!;
+      head.addEventListener("mousedown", (ev) => {
+        if (ev.button !== 0) return;
+        if ((ev.target as HTMLElement).closest("button")) return;
+        if (card.classList.contains("expanded")) return;
+        ev.preventDefault();
+        const r0 = card.getBoundingClientRect();
+        const stageR = stage.getBoundingClientRect();
+        const offX = ev.clientX - r0.left, offY = ev.clientY - r0.top;
+        let dragMoved = false;
+        const onMove = (mv: MouseEvent): void => {
+          if (!dragMoved && Math.abs(mv.clientX - ev.clientX) + Math.abs(mv.clientY - ev.clientY) < 5) return;
+          dragMoved = true;
+          card.classList.add("dragging");
+          card.style.left = `${mv.clientX - stageR.left - offX}px`;
+          card.style.top = `${mv.clientY - stageR.top - offY}px`;
+        };
+        const onUp = (mv: MouseEvent): void => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          if (!dragMoved) return;
+          card.classList.remove("dragging");
+          const from = openList.indexOf(e);
+          const rects = slotRects(openList.length);
+          const px = mv.clientX - stageR.left, py = mv.clientY - stageR.top;
+          let to = from, best = Infinity;
+          rects.forEach((rc, i) => {
+            const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
+            if (d < best) { best = d; to = i; }
+          });
+          if (from >= 0 && to !== from) openList.splice(to, 0, ...openList.splice(from, 1));
+          layoutCards();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
       setShadow(false, false);
       setRect(card, e.mesh ? projectRect(e.mesh) : centerRect());   // start AT the tile
       cardsLayer.appendChild(card);
@@ -1669,11 +1781,52 @@ async function init(): Promise<void> {
       requestAnimationFrame(() => { card.classList.add("placed"); layoutCards(); });
       return card;
     };
+    /** The ONE agent, adopted into an Echo card — the same singleton/park
+     *  contract as coding slots. If the agent is already visible (a coding
+     *  panel beside Echo), this is a no-op: there is never a second agent. */
+    const openAgentCard = (): void => {
+      if (codingHosted()) return;
+      const existing = openList.find((x) => x.tile.kind === "agent");
+      if (existing?.card) { flash(existing.card); return; }
+      const entry = adHoc({ name: "Glyphh", slug: "glyphh-agent", kind: "agent" });
+      const card = openShell(entry);
+      if (!card) return;
+      card.classList.add("echo-agent-card");
+      const agent = document.querySelector<HTMLElement>(".code-agent");
+      if (agent) {
+        card.querySelector<HTMLElement>(".echo-card-body")!.appendChild(agent);
+        document.querySelector(".code-root")?.classList.add("agent-hosted");
+      }
+    };
+    /** A LAYOUT opened inside Echo: every cell becomes an Echo card, in the
+     *  layout's reading order. The agent cell adopts the singleton (or is
+     *  skipped when the agent is already on screen). */
+    const openLayoutInEcho = (layout: LayoutRow): void => {
+      const cells = [...layout.splits].sort((a, b) => (a.col - b.col) || (a.row - b.row));
+      for (const cell of cells) {
+        const id = (cell.panelId || "").trim().toLowerCase();
+        if (!id) continue;
+        if (id.startsWith("tool:")) {
+          const v = id.slice(5) === "editor" ? "monaco" : id.slice(5);
+          if (v === "coding") { openAgentCard(); continue; }
+          if (v === "echo") continue;
+          if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan") getOrOpenTool(v);
+          continue;
+        }
+        const entry = findTile(id);
+        if (entry) { activateTile(entry); continue; }
+        const row = echoRows.find((a) => a.id.toLowerCase() === id || (a.slug || "").toLowerCase() === id);
+        if (row && (row.url || row.appArchetype === "glyphh-app")) {
+          activateTile(adHoc({ name: row.name, slug: (row.slug || row.id).toLowerCase(), url: row.url || undefined, glyphh: row.appArchetype === "glyphh-app" || undefined, kind: "app" }));
+        }
+      }
+    };
     /** Every tile opens IN ECHO: web apps as live webviews with the browser
      *  bar; tool panels as the REAL panel renderers; nav pages by adopting
      *  their section singleton (parked back on close). */
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
+      if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         const card = openShell(e);
         if (!card) return;
