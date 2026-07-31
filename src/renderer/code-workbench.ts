@@ -1221,6 +1221,7 @@ async function init(): Promise<void> {
       <div class="echo-stage"></div>
       <div class="echo-cards"></div>
       <div class="echo-zoom">
+        <button class="ws-icon-btn echo-shadow-btn" title="Show the wall (hold ⌘⇧)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button class="ws-icon-btn echo-z-in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-reset" title="Reset view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg></button>
@@ -1508,6 +1509,19 @@ async function init(): Promise<void> {
     // (and pannable) beneath; close zooms it back to its spot. ──
     const cardsLayer = body.querySelector<HTMLElement>(".echo-cards")!;
     const openList: TileEntry[] = [];
+    // Shadow can be HELD (⌘⇧) or PINNED (the eye button) — a pin survives
+    // modifier keyups; opening/closing the last card or Esc clears both.
+    const shadowBtn = body.querySelector<HTMLElement>(".echo-shadow-btn")!;
+    let shadowPinned = false;
+    const setShadow = (on: boolean, pin: boolean): void => {
+      shadowPinned = on && pin;
+      cardsLayer.classList.toggle("echo-shadow", on);
+      shadowBtn.classList.toggle("active", shadowPinned);
+    };
+    shadowBtn.addEventListener("click", () => {
+      if (!openList.length) return;
+      setShadow(!shadowPinned, !shadowPinned);
+    });
     const EXPAND_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const COLLAPSE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const collapseCard = (card: HTMLElement): void => {
@@ -1583,7 +1597,7 @@ async function init(): Promise<void> {
         if (toolSlot?.view === "terminal") for (const t of toolSlot.terminals) killTerminal(t);
         card.remove();
       }, 380);
-      if (!openList.length) cardsLayer.classList.remove("echo-shadow");
+      if (!openList.length) setShadow(false, false);
       layoutCards();
     };
     /** The card shell every open shares: head (name / expand / close), a
@@ -1609,7 +1623,7 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
-      cardsLayer.classList.remove("echo-shadow");
+      setShadow(false, false);
       setRect(card, projectRect(e.mesh));   // start AT the tile
       cardsLayer.appendChild(card);
       e.card = card;
@@ -1691,7 +1705,7 @@ async function init(): Promise<void> {
       if (e.key !== "Escape") return;
       e.stopPropagation();
       e.preventDefault();
-      if (cardsLayer.classList.contains("echo-shadow")) { cardsLayer.classList.remove("echo-shadow"); return; }
+      if (cardsLayer.classList.contains("echo-shadow")) { setShadow(false, false); return; }
       const expanded = openList.find((x) => x.card?.classList.contains("expanded"));
       if (expanded?.card) { collapseCard(expanded.card); layoutCards(); return; }
       closeCard(openList[openList.length - 1]);
@@ -1699,7 +1713,7 @@ async function init(): Promise<void> {
     document.addEventListener("keydown", onKey, true);
     const onKeyUp = (e: KeyboardEvent): void => {
       if (!body.isConnected) { document.removeEventListener("keyup", onKeyUp, true); return; }
-      if (e.key === "Shift" || e.key === "Meta" || e.key === "Control") cardsLayer.classList.remove("echo-shadow");
+      if ((e.key === "Shift" || e.key === "Meta" || e.key === "Control") && !shadowPinned) cardsLayer.classList.remove("echo-shadow");
     };
     document.addEventListener("keyup", onKeyUp, true);
 
