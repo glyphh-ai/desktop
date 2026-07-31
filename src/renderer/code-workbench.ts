@@ -17,6 +17,7 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
+import * as THREE from "three";
 import { appIconInner, primeNativeIcons } from "./help/app-icon.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -60,7 +61,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "section" | "app";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "section" | "app";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -101,6 +102,9 @@ interface CodingSlot { id: number; view: "coding"; sticky?: boolean }
  *  the section's singleton DOM is adopted into the slot body (the same
  *  reparenting trick the coding slot uses for the agent). */
 interface SectionSlot { id: number; view: "section"; section: string; sticky?: boolean }
+/** Echo — the open app panels as LIVE snapshots floating in a three.js
+ *  scene, with the real agent DOM docked front-center in the space. */
+interface EchoSlot { id: number; view: "echo"; sticky?: boolean }
 interface PreviewSlot {
   id: number; view: "preview"; url?: string; viewKey?: string; sticky?: boolean;
   /** Inline document (Glyphh build previews) — runtime-only, never persisted. */
@@ -133,7 +137,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | SectionSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | EchoSlot | SectionSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -159,6 +163,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   diff:     { title: "Diff",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
   preview:  { title: "Browser",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
   monaco:   { title: "Editor",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
+  echo:     { title: "Echo",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
   coding:   { title: "Coding Agent", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
@@ -428,7 +433,7 @@ async function init(): Promise<void> {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
         } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
           slots.push({ id: nextSlotId++, view: "section", section: v.section });
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "coding" || v === "monaco") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "coding" || v === "echo" || v === "monaco") {
           slots.push(makeSlot(v));
         }
       }
@@ -678,6 +683,7 @@ async function init(): Promise<void> {
     }
     if (view === "diff") return { id, view };
     if (view === "coding") return { id, view };
+    if (view === "echo") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1176,6 +1182,7 @@ async function init(): Promise<void> {
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
+    else if (slot.view === "echo") renderEchoIntoSlot(body, wrap);
     else if (slot.view === "section") renderSectionIntoSlot(body, slot);
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
@@ -1185,6 +1192,152 @@ async function init(): Promise<void> {
   // The slot hosts the live .code-agent element (thread, composer, everything
   // — one runtime, shared sessions). The header gains the session controls:
   // title on the left, history dropdown + new-session on the right.
+  /**
+   * Echo — the open app panels as LIVE snapshots (webview.capturePage)
+   * textured onto planes in a three.js scene, gently floating in an arc;
+   * the REAL agent DOM docks front-center in the space (same adoption
+   * contract as the coding slot, so parkAgent stays the single authority).
+   * Clicking an echoed plane focuses its real panel.
+   */
+  function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
+    body.classList.add("ws-echo-body");
+    body.innerHTML = `<div class="echo-stage"></div><div class="echo-agent-dock"></div><div class="echo-empty hidden">Open an app and it appears here, echoed in space.</div>`;
+    const stage = body.querySelector<HTMLElement>(".echo-stage")!;
+    const dock = body.querySelector<HTMLElement>(".echo-agent-dock")!;
+    const emptyEl = body.querySelector<HTMLElement>(".echo-empty")!;
+    wrap.dataset.view = "echo";
+
+    // The agent rides front-center unless the coding panel already hosts it.
+    const agent = document.querySelector<HTMLElement>(".code-agent");
+    if (agent && !codingHosted()) {
+      dock.appendChild(agent);
+      document.querySelector(".code-root")?.classList.add("agent-hosted");
+    } else {
+      dock.classList.add("hidden");
+    }
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    stage.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.set(0, 0.2, 6);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+
+    const planes = new Map<number, THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>>();
+    const loader = new THREE.TextureLoader();
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    const size = (): void => {
+      const r = stage.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) return;
+      renderer.setSize(r.width, r.height, false);
+      camera.aspect = r.width / r.height;
+      camera.updateProjectionMatrix();
+    };
+    size();
+    const ro = new ResizeObserver(size);
+    ro.observe(stage);
+
+    /** Arrange one plane per open APP panel in a shallow arc behind the dock. */
+    const layoutPlanes = (): void => {
+      const slots = appSlots();
+      emptyEl.classList.toggle("hidden", slots.length > 0);
+      // drop planes for closed panels
+      for (const [id, mesh] of planes) {
+        if (!slots.some((sl) => sl.id === id)) {
+          scene.remove(mesh);
+          mesh.material.map?.dispose();
+          mesh.material.dispose();
+          mesh.geometry.dispose();
+          planes.delete(id);
+        }
+      }
+      const n = Math.max(slots.length, 1);
+      slots.forEach((sl, i) => {
+        let mesh = planes.get(sl.id);
+        if (!mesh) {
+          const mat = new THREE.MeshBasicMaterial({ color: 0x1c1b26, transparent: true, opacity: 0.96 });
+          mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.5), mat);
+          mesh.userData.slotId = sl.id;
+          scene.add(mesh);
+          planes.set(sl.id, mesh);
+        }
+        // Arc: spread across ~120°, pushed back and slightly up.
+        const t = n === 1 ? 0.5 : i / (n - 1);
+        const ang = (t - 0.5) * Math.PI * 0.62;
+        const radius = 5.2;
+        mesh.position.set(Math.sin(ang) * radius, 0.9 + Math.sin(i * 1.7) * 0.18, -Math.cos(ang) * radius + 2.2);
+        mesh.lookAt(camera.position.x, mesh.position.y, camera.position.z);
+        mesh.userData.baseY = mesh.position.y;
+        mesh.userData.phase = i * 1.3;
+      });
+    };
+
+    /** Refresh one snapshot texture per app panel. */
+    const snapshot = (): void => {
+      for (const sl of appSlots()) {
+        const wv = appViews.get(sl.id)?.webview as unknown as { capturePage?: () => Promise<{ toDataURL(): string }> } | undefined;
+        const mesh = planes.get(sl.id);
+        if (!wv || !mesh || typeof wv.capturePage !== "function") continue;
+        wv.capturePage().then((img) => {
+          if (!body.isConnected) return;
+          const url = img.toDataURL();
+          if (!url || url.length < 128) return;   // blank/unpainted webview
+          loader.load(url, (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            mesh.material.map?.dispose();
+            mesh.material.map = tex;
+            mesh.material.color.set(0xffffff);
+            mesh.material.needsUpdate = true;
+          });
+        }).catch(() => { /* webview mid-navigation — next tick catches it */ });
+      }
+    };
+
+    // Click → focus the echoed panel's real slot.
+    renderer.domElement.addEventListener("click", (ev) => {
+      const r = renderer.domElement.getBoundingClientRect();
+      pointer.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects([...planes.values()])[0];
+      const slotId = hit?.object.userData.slotId as number | undefined;
+      if (typeof slotId === "number") focusAppSlot(slotId);
+    });
+
+    layoutPlanes();
+    snapshot();
+    let snapTimer = window.setInterval(() => {
+      if (!body.isConnected) return;
+      layoutPlanes();
+      snapshot();
+    }, 2500);
+
+    let raf = 0;
+    const tick = (now: number): void => {
+      if (!body.isConnected) {
+        // Slot re-rendered or closed — tear the scene down completely.
+        window.clearInterval(snapTimer);
+        ro.disconnect();
+        for (const mesh of planes.values()) {
+          mesh.material.map?.dispose();
+          mesh.material.dispose();
+          mesh.geometry.dispose();
+        }
+        renderer.dispose();
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+      for (const mesh of planes.values()) {
+        mesh.position.y = (mesh.userData.baseY as number) + Math.sin(now * 0.0006 + (mesh.userData.phase as number)) * 0.07;
+      }
+      renderer.render(scene, camera);
+    };
+    raf = requestAnimationFrame(tick);
+    void raf;
+  }
+
   function renderCodingIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     const agent = document.querySelector<HTMLElement>(".code-agent");
     if (!agent) { body.innerHTML = `<div class="ws-empty">The agent is unavailable.</div>`; return; }
@@ -3587,7 +3740,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "monaco"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);

@@ -14053,3 +14053,25 @@ body.code-dragging iframe { pointer-events: none !important; }
    and carries its own headings; nav/dock/rail is how you leave. Workspace
    tools and app webview panels keep their headers and controls. */
 .ws-rail-slot[data-view="section"] > .ws-rail-slot-header { display: none; }
+
+/* ── Echo — open panels echoed in 3D space, the agent docked in front ── */
+.ws-echo-body { position: relative; overflow: hidden; background: radial-gradient(120% 100% at 50% 0%, #14121d 0%, #0b0a12 68%); }
+.ws-echo-body .echo-stage { position: absolute; inset: 0; }
+.ws-echo-body .echo-stage canvas { display: block; width: 100%; height: 100%; }
+.echo-agent-dock {
+  position: absolute; left: 50%; bottom: 3.5%; transform: translateX(-50%);
+  width: min(760px, 88%); height: 60%; z-index: 2;
+  display: flex; border-radius: 14px; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+  backdrop-filter: blur(14px) saturate(130%);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+.echo-agent-dock .code-agent { display: flex; flex: 1; min-width: 0; background: transparent; }
+.echo-agent-dock.hidden { display: none; }
+.echo-empty {
+  position: absolute; left: 50%; top: 26%; transform: translateX(-50%); z-index: 1;
+  font-size: 13px; color: var(--text-3);
+}
+.echo-empty.hidden { display: none; }
