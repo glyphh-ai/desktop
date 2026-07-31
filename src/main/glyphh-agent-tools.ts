@@ -1047,7 +1047,16 @@ async function runRolePacket(
   };
   for (let round = 0; round < ROLE_RUN_ROUNDS; round++) {
     if (signal?.aborted) return "ERROR: aborted";
-    const turn = await turnWithBackoff();
+    let turn: Awaited<ReturnType<typeof client.gateway.turn>>;
+    try {
+      turn = await turnWithBackoff();
+    } catch (err) {
+      const full = err instanceof Error ? err.message : String(err);
+      // The FULL upstream error, in the main log and the tool result — a
+      // clipped "invalid_request_error" with no reason is undebuggable.
+      console.warn(`[run_role] ${role} (${packetModel}) round ${round} failed:`, full);
+      return `ERROR: ${role} turn on ${packetModel} failed: ${full.slice(0, 1200)}`;
+    }
     if (!turn.toolUses.length) return cap(`[${role} · ${slot.modelId}]\n${turn.text}`);
     messages = messages.concat([{ role: "assistant", content: turn.content }]);
     const results: Array<Record<string, unknown>> = [];

@@ -2396,6 +2396,7 @@ export function initCode(): void {
     };
     if (cmd.action === "open" && cmd.app) w.__wbOpenApp?.(cmd.app);
     else if (cmd.action === "terminal") (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
+    else if (cmd.action === "tool" && (cmd as { tool?: string }).tool) (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.((cmd as { tool?: string }).tool!);
     else if (cmd.action === "open-many" && cmd.apps) {
       // A NAMED layout goes through the one true layout-open (the switcher's
       // grid path); only anonymous multi-open falls back to flat panels.

@@ -4487,6 +4487,14 @@ async function init(): Promise<void> {
     return true;
   };
   wbApp.__wbToggleAppSwitcher = () => toggleAppSwitcher();
+  // Tool panels by name (.dip plan, open_app("files"), tool-only layouts) —
+  // in Echo they open as Echo cards like everything else.
+  (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
+    const v = view === "editor" ? "monaco" : view;
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"); return; }
+    if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
+  };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);
   // #code-apps-btn is bound in help/code.ts initCode() via openCommandCenter so
   // it works cold (before this async init runs) and Cmd+. shares the same path.

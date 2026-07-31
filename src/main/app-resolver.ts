@@ -66,6 +66,7 @@ type WbCmd =
   | { action: "open"; app: WbAppRef }
   | { action: "open-many"; apps: WbAppRef[]; layoutName?: string }
   | { action: "terminal" }
+  | { action: "tool"; tool: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
   | { action: "switcher" }
@@ -121,9 +122,14 @@ function focusGlyphhWindow(): void {
 }
 
 /** Built-in apps that aren't in the server library. */
-function builtinRef(key: string): WbAppRef | "terminal" | null {
+const TOOL_BUILTINS: Record<string, string> = {
+  plan: "plan", files: "files", editor: "monaco", monaco: "monaco",
+  diff: "diff", echo: "echo",
+};
+function builtinRef(key: string): WbAppRef | "terminal" | { tool: string } | null {
   if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
   if (key === "terminal" || key === "term") return "terminal";
+  if (TOOL_BUILTINS[key]) return { tool: TOOL_BUILTINS[key] };
   return null;
 }
 
@@ -176,6 +182,10 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   if (builtin === "terminal") {
     sendWbCmd({ action: "terminal" });
     return { slug: "terminal", name: "Terminal" };
+  }
+  if (builtin && "tool" in builtin) {
+    sendWbCmd({ action: "tool", tool: builtin.tool });
+    return { slug: builtin.tool, name: key.charAt(0).toUpperCase() + key.slice(1) };
   }
   if (builtin) {
     sendWbCmd({ action: "open", app: builtin });
@@ -285,6 +295,7 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
     const cellKey = cell.panelId.trim().toLowerCase();
     const builtin = builtinRef(cellKey);
     if (builtin === "terminal") continue;   // terminal opens as its own slot kind
+    if (builtin && "tool" in builtin) continue;   // tool cells render via the layoutName path
     if (builtin) { refs.push(builtin); opened.push(builtin.name); continue; }
     const app = findLibraryApp(apps, cell.panelId);
     if (!app || isGlyphhSelfRow(app)) continue;
@@ -293,7 +304,12 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
       opened.push(app.name);
     } catch { /* one bad cell must not stop the rest */ }
   }
-  if (!refs.length) throw new Error(`layout "${layout.name}" has no apps to open`);
+  const toolCells = layout.cells.filter((c) => c.panelId.trim().toLowerCase().startsWith("tool:")).length;
+  if (!refs.length && !toolCells) throw new Error(`layout "${layout.name}" has no panels to open`);
+  for (const cell of layout.cells) {
+    const cellKey = cell.panelId.trim().toLowerCase();
+    if (cellKey.startsWith("tool:")) opened.push(cellKey.slice(5));
+  }
   sendWbCmd({ action: "open-many", apps: refs, layoutName: layout.name });
   // A layout binds arrangement AND program+models: opening it also switches the
   // active loop and its slot models, so the composer lands in the layout's state.

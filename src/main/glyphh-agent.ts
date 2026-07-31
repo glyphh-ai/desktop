@@ -423,7 +423,9 @@ async function sdkRun(
       title: outcome.title,
       denied: outcome.denied,
       failed: outcome.result.startsWith("ERROR"),
-      preview: outcome.result.slice(0, 160),
+      // Errors keep enough of the message to actually diagnose — a 160-char
+      // preview ate API error bodies right where the reason starts.
+      preview: outcome.result.slice(0, outcome.result.startsWith("ERROR") ? 600 : 160),
     });
     return { content: [{ type: "text" as const, text: outcome.result }], isError: outcome.result.startsWith("ERROR") };
   });
