@@ -894,6 +894,8 @@ function renderHistory(): void {
       renderThread();
       refreshCtxMeter();
       void checkWorkdirGate();
+      // a rail session press behaves like the Glyphh icon: chat ALONE
+      gotoSection("agent");
     });
     list.appendChild(row);
   }
@@ -2127,8 +2129,10 @@ async function loadRecentApps(): Promise<void> {
       window.yo.layoutsList?.() ?? Promise.resolve([]),
       window.yo.recentsList?.() ?? Promise.resolve([]),
     ]);
-    // Palette parity: web apps (have a url) + native library apps.
-    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.url || a.isBrowser === false);
+    // Palette parity: web apps (have a url) + native library apps. The
+    // agent's own row (glyphh-self) stays OUT — the Glyphh mark in the
+    // header is the chat entry, not an app in the list.
+    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.appArchetype !== "glyphh-self" && (a.url || a.isBrowser === false));
     railLayouts = (layouts || []) as unknown as RailLayout[];
     railRecentTs = {};
     for (const r of recents || []) {
@@ -2501,7 +2505,11 @@ export function initCode(): void {
     setRecentsOpen(open, true);
   });
   initRailApps();
-  el("code-new-chat")?.addEventListener("click", newChat);
+  el("code-new-chat")?.addEventListener("click", () => {
+    // + New session behaves like the Glyphh icon: fresh chat, agent ALONE.
+    newChat();
+    gotoSection("agent");
+  });
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.

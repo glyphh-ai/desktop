@@ -1624,7 +1624,7 @@ async function init(): Promise<void> {
       const seen = new Set(inOrder.map((e) => e.key));
       const ordered = [...inOrder, ...all.filter((e) => !seen.has(e.key))];
       // the dock, exactly as the command center resolves it
-      const DOCK_DEFAULTS = ["app:glyphh", "app:home", "app:connections", "app:apps", "app:layouts", "app:skills", "app:loops", "app:agents", "app:models", "app:settings"];
+      const DOCK_DEFAULTS = ["app:home", "app:connections", "app:apps", "app:layouts", "app:skills", "app:loops", "app:agents", "app:models", "app:settings"];
       let dockKeys = DOCK_DEFAULTS.slice();
       if (Array.isArray(dockPref) && dockPref.length) {
         // The SAVED ORDER wins, verbatim — no padding to a fixed length and
@@ -1635,8 +1635,8 @@ async function init(): Promise<void> {
         // newly shipped built-ins the user has never seen join the end
         for (const k of DOCK_DEFAULTS) if (!have.has(k)) dockKeys.push(k);
       }
-      // Glyphh leads the dock, always — move it, never overwrite.
-      dockKeys = ["app:glyphh", ...dockKeys.filter((k) => k !== "app:glyphh")];
+      // Legacy saves carry "app:glyphh" (the retired agent tile) — it simply
+      // resolves to nothing below.
       const docked = dockKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
       const dockedSet = new Set(docked.map((e) => e.key));
 
@@ -1671,11 +1671,9 @@ async function init(): Promise<void> {
         if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
         return { name: a.name, slug, appId: a.id, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
       };
-      // TOP: Glyphh + the command center's dock, always the same row.
-      const dockBand: EchoTile[] = [
-        { name: "Glyphh", slug: "glyphh-agent", iconUrl: "brand/glyphh-mark.png", kind: "agent" },
-        ...docked.map((e) => ({ ...toTile(e), orderKey: e.key })),
-      ];
+      // TOP: the command center's dock, always the same row. (No agent
+      // tile — the Glyphh mark in the header IS the universal chat icon.)
+      const dockBand: EchoTile[] = docked.map((e) => ({ ...toTile(e), orderKey: e.key }));
       // MIDDLE: one band — the apps, then the layouts, wrapping together.
       const rest = ordered.filter((e) => !dockedSet.has(e.key));
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
@@ -2773,15 +2771,8 @@ async function init(): Promise<void> {
     const persistOrder = (band: number): void => {
       const yo = (window as unknown as { yo?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).yo;
       const keys = (wallBands[band] ?? []).map((x) => x.tile.orderKey).filter((k): k is string => !!k);
-      if (band === DOCK_BAND) {
-        // Glyphh's tile is synthetic (no order key), but its LOCKED FIRST
-        // SLOT is part of the stored dock — write it back at the head, or
-        // the reader's "slot 0 is Glyphh" rule would overwrite (and lose)
-        // whatever the user actually put first.
-        void yo?.setPreference?.("ccDock", ["app:glyphh", ...keys.filter((k) => k !== "app:glyphh")]);
-      } else if (band === MID_BAND) {
-        void yo?.setPreference?.("ccIconOrder", keys);
-      }
+      if (band === DOCK_BAND) void yo?.setPreference?.("ccDock", keys);
+      else if (band === MID_BAND) void yo?.setPreference?.("ccIconOrder", keys);
     };
     // an invisible cylinder at the wall's radius — the drag rides its surface
     const dragSurface = new THREE.Mesh(
