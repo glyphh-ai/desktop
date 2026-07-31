@@ -105,10 +105,14 @@ interface SectionSlot { id: number; view: "section"; section: string; sticky?: b
 /** Echo — the open app panels as LIVE snapshots floating in a three.js
  *  scene, with the real agent DOM docked front-center in the space. */
 interface EchoSlot { id: number; view: "echo"; sticky?: boolean }
+interface PreviewTab { id: number; url?: string; html?: string; htmlLabel?: string; title?: string }
 interface PreviewSlot {
   id: number; view: "preview"; url?: string; viewKey?: string; sticky?: boolean;
   /** Inline document (Glyphh build previews) — runtime-only, never persisted. */
   html?: string; htmlLabel?: string;
+  /** The BROWSER TABS — runtime model; the legacy url/html fields mirror the
+   *  active tab so persistence and status reads keep working. */
+  tabs?: PreviewTab[]; activeTab?: number;
 }
 
 interface PlanSlot {
@@ -611,13 +615,11 @@ async function init(): Promise<void> {
     if (echoCtl) { echoCtl.openPreviewUrl(url); return; }
     const slot = rails.flatMap((r) => r.slots).find((s): s is PreviewSlot => s.view === "preview");
     if (slot) {
-      slot.html = undefined;
-      slot.htmlLabel = undefined;
-      slot.url = url;
+      setPreviewTarget(slot, { url });
       renderRails();
     } else {
       const s = makeSlot("preview") as PreviewSlot;
-      s.url = url;
+      setPreviewTarget(s, { url });
       placeSlot(s);
     }
     saveLayout();
@@ -1307,7 +1309,7 @@ async function init(): Promise<void> {
     // app icons. Drawn at 4× and colored from the LIVE theme variables,
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
-    interface EchoTile { name: string; slug?: string; url?: string; iconUrl?: string; glyphSvg?: string; kind: "app" | "tool"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; url?: string; glyphh?: boolean; iconUrl?: string; glyphSvg?: string; kind: "app" | "tool"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot }
     const entries: TileEntry[] = [];
     const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; font: string } => {
@@ -1517,7 +1519,7 @@ async function init(): Promise<void> {
         const a = e.app;
         const slug = (a.slug || a.id).toLowerCase();
         if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
-        return { name: a.name, slug, url: a.url || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
+        return { name: a.name, slug, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
       };
       const tiles = wallEntries.map(toTile);
       // every workspace panel type (no Coding Agent tile — GLYPHH is the
@@ -1672,24 +1674,43 @@ async function init(): Promise<void> {
      *  their section singleton (parked back on close). */
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
-      if (t.url) {
+      if (t.url || t.glyphh) {
         const card = openShell(e);
         if (!card) return;
         const wv = document.createElement("webview");
         wv.setAttribute("partition", "persist:yo");
         wv.setAttribute("allowpopups", "true");
-        wv.setAttribute("src", t.url);
         wv.addEventListener("did-fail-load", (ev) => {
           const err = ev as unknown as { errorCode?: number; errorDescription?: string };
           if (err.errorCode && err.errorCode !== -3) console.warn(`[echo] "${t.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
         });
+        if (t.glyphh && t.slug) {
+          // Installed Glyphh app — the SAME preview-open flow as mountAppView:
+          // attach on about:blank, grant caps against the guest, load the
+          // on-disk entry. A failed open SAYS SO in the panel.
+          wv.setAttribute("src", "about:blank");
+          let previewOpened = false;
+          wv.addEventListener("dom-ready", () => {
+            if (previewOpened) return;
+            previewOpened = true;
+            const yoG = (window as unknown as { yo?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>; rpaRegister?: (slug: string, wcId: number) => void } }).yo;
+            const wcId = (wv as unknown as WebviewEl).getWebContentsId?.();
+            if (wcId !== undefined) yoG?.rpaRegister?.(t.slug!, wcId);
+            void yoG?.glyphhAppPreviewOpen?.(t.slug!, wcId).then((res) => {
+              if (res?.ok && res.fileUrl && wv.getAttribute("src") === "about:blank") wv.setAttribute("src", res.fileUrl);
+              else if (!res?.ok) wv.setAttribute("src", glyphhAppErrorPage(t.name, res?.error));
+            });
+          });
+        } else {
+          wv.setAttribute("src", t.url!);
+        }
         wv.addEventListener("dom-ready", () => {
           const wcId = (wv as unknown as WebviewEl).getWebContentsId?.();
           if (wcId !== undefined && t.slug) rpaYo().rpaRegister?.(t.slug, wcId);
         });
         card.querySelector(".echo-card-body")!.appendChild(wv);
         const { chrome, urlbar } = buildAppChrome(wv as unknown as WebviewEl, () => t.url || "");
-        urlbar.value = t.url;
+        urlbar.value = t.url || "";
         card.querySelector(".echo-card-head")!.after(chrome);
         return;
       }
@@ -1766,7 +1787,7 @@ async function init(): Promise<void> {
           return;
         }
         const entry = findTile(key)
-          ?? (app.url ? adHoc({ name: app.name || app.slug, slug: key, url: app.url, kind: "app" }) : undefined);
+          ?? ((app.url || app.glyphh) ? adHoc({ name: app.name || app.slug, slug: key, url: app.url || undefined, glyphh: app.glyphh, kind: "app" }) : undefined);
         if (entry) activateTile(entry);
       },
       openTool: (view) => { void getOrOpenTool(view); },
@@ -1774,18 +1795,14 @@ async function init(): Promise<void> {
         const entry = getOrOpenTool("preview");
         const slot = entry.toolSlot as PreviewSlot | undefined;
         if (!slot) return;
-        slot.html = html;
-        slot.htmlLabel = label;
-        slot.url = undefined;
+        setPreviewTarget(slot, { html, htmlLabel: label });
         rerenderToolBody(entry);
       },
       openPreviewUrl: (url) => {
         const entry = getOrOpenTool("preview");
         const slot = entry.toolSlot as PreviewSlot | undefined;
         if (!slot) return;
-        slot.html = undefined;
-        slot.htmlLabel = undefined;
-        slot.url = url;
+        setPreviewTarget(slot, { url });
         rerenderToolBody(entry);
         flash(entry.card);
       },
@@ -1880,8 +1897,17 @@ async function init(): Promise<void> {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         if (moved) return;
-        const entry = pick(ev);
-        if (entry) activateTile(entry);
+        let entry = pick(ev);
+        if (!entry) return;
+        // Terminal and Browser are MULTI-INSTANCE: every click mints a new
+        // card (a fresh entry keyed off the same wall tile, so the zoom
+        // still starts from the tile).
+        if (entry.tile.toolView === "terminal" || entry.tile.toolView === "preview") {
+          const canvas = document.createElement("canvas");
+          const tex = new THREE.CanvasTexture(canvas);
+          entry = { tile: { ...entry.tile }, canvas, tex, img: null, mesh: entry.mesh };
+        }
+        activateTile(entry);
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
@@ -1983,6 +2009,14 @@ async function init(): Promise<void> {
     reload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
     download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
   };
+
+  /** A readable in-panel failure page for an installed app that would not
+   *  open — a silent about:blank reads as "the app is broken with no clue". */
+  function glyphhAppErrorPage(name: string, error?: string): string {
+    const msg = `${name} failed to open${error ? `: ${error}` : ""}. Try Apps → the app's Releases tab, or reinstall it.`;
+    return "data:text/html;charset=utf-8," + encodeURIComponent(
+      `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#101014;color:#9aa0aa;font:13px -apple-system,system-ui,sans-serif;text-align:center;padding:24px">${msg.replace(/</g, "&lt;")}</body>`);
+  }
 
   /** Browser chrome — back / fwd / reload / address bar / download — wired
    *  to a webview. One builder for the app panels AND Echo's open cards. */
@@ -2131,6 +2165,8 @@ async function init(): Promise<void> {
         void yo?.glyphhAppPreviewOpen?.(slot.slug, wcId).then((res) => {
           if (res?.ok && res.fileUrl && webview.getAttribute("src") === "about:blank") {
             webview.setAttribute("src", res.fileUrl);
+          } else if (!res?.ok) {
+            webview.setAttribute("src", glyphhAppErrorPage(slot.name, res?.error));
           }
         });
       }, { once: true });
@@ -2219,7 +2255,8 @@ async function init(): Promise<void> {
    *  (`replaceActive`, e.g. `.dip .`). newPanel forces a fresh slot even past a pin. */
   function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean; replaceWorkspace?: boolean } = {}): void {
     const existing = appSlots().find((s) => s.slug === app.slug);
-    if (existing) { focusAppSlot(existing.id); return; }
+    // The Browser builtin is MULTI-INSTANCE — every open is a new window.
+    if (existing && app.slug !== "browser") { focusAppSlot(existing.id); return; }
     // Opening an individual app means the workbench is no longer "the named
     // layout" — stop writing geometry into that layout's memory.
     activeLayoutName = null;
@@ -3668,16 +3705,40 @@ async function init(): Promise<void> {
     return /^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? u : "http://" + u;
   }
 
+  let nextPreviewTabId = 1;
+  /** The slot's tab model, migrating the legacy single url/html into tab 0. */
+  function previewTabs(slot: PreviewSlot): PreviewTab[] {
+    if (!slot.tabs || !slot.tabs.length) {
+      slot.tabs = [{ id: nextPreviewTabId++, url: slot.url, html: slot.html, htmlLabel: slot.htmlLabel }];
+    }
+    for (const t of slot.tabs) if (!t.id) t.id = nextPreviewTabId++;
+    if (slot.activeTab == null || slot.activeTab < 0 || slot.activeTab >= slot.tabs.length) slot.activeTab = 0;
+    return slot.tabs;
+  }
+  /** Point the ACTIVE tab at a url or inline html (agent opens, build
+   *  previews) and keep the legacy mirror fields in step. */
+  function setPreviewTarget(slot: PreviewSlot, target: { url?: string; html?: string; htmlLabel?: string }): void {
+    const tabs = previewTabs(slot);
+    const tab = tabs[slot.activeTab ?? 0];
+    tab.url = target.url;
+    tab.html = target.html;
+    tab.htmlLabel = target.htmlLabel;
+    tab.title = undefined;
+    slot.url = target.url;
+    slot.html = target.html;
+    slot.htmlLabel = target.htmlLabel;
+  }
+
   async function renderPreviewIntoSlot(body: HTMLElement, slot: PreviewSlot): Promise<void> {
-    // A native <webview>, NOT an <iframe>. An iframe is refused by any site that
-    // sends X-Frame-Options / CSP frame-ancestors (most of the real web), so the
-    // Browser panel could only ever show localhost + local files — it stayed
-    // blank on actual web pages. A <webview> is a top-level guest that ignores
-    // those headers, renders PDFs/images/the glyphh-preview:// scheme natively,
-    // and (via the persist:yo session) routes downloads through will-download →
-    // the downloads dropdown. It still lays out in-flow, so it clips/scrolls
-    // with the workbench exactly as the iframe did.
+    // A native <webview> per TAB, NOT iframes (X-Frame-Options/CSP would blank
+    // most of the web). Tabs swap by visibility — a webview reloads if its DOM
+    // node moves, so every tab keeps its own guest and history.
+    previewTabs(slot);
     body.innerHTML = `
+      <div class="ws-preview-tabs">
+        <div class="wpt-list"></div>
+        <button class="ws-icon-btn wpt-new" title="New tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      </div>
       <div class="ws-preview-url">
         <input class="ws-preview-input" type="text" value="" spellcheck="false" placeholder="https:// or http://localhost:..." />
         <button class="ws-icon-btn ws-preview-openfile" title="Open a file from disk">
@@ -3691,101 +3752,207 @@ async function init(): Promise<void> {
         </button>
       </div>
       <div class="ws-preview-body">
-        <!-- DEFAULT session (no partition) on purpose: glyphh-preview:// (local
-             file/PDF/office previews) is registered there only; persist:yo is
-             deliberately walled off from local files. Same session the old
-             iframe used. "plugins" enables the native PDF viewer in a webview. -->
-        <webview class="ws-preview-frame" allowpopups plugins hidden></webview>
+        <div class="ws-preview-frames"></div>
         <div class="ws-preview-stub">
           <div class="ws-preview-stub-title">Nothing open</div>
           <div class="ws-preview-stub-sub">Enter a URL above — e.g. http://localhost:3000 — or open a file from disk.</div>
         </div>
       </div>
     `;
+    const list = body.querySelector(".wpt-list") as HTMLElement;
+    const newBtn = body.querySelector(".wpt-new") as HTMLButtonElement;
     const urlInput = body.querySelector(".ws-preview-input") as HTMLInputElement;
     const reloadBtn = body.querySelector(".ws-preview-reload") as HTMLButtonElement;
     const downloadBtn = body.querySelector(".ws-preview-download") as HTMLButtonElement;
-    const frame = body.querySelector(".ws-preview-frame") as WebviewEl & HTMLElement;
+    const openFileBtn = body.querySelector(".ws-preview-openfile") as HTMLButtonElement;
+    const frames = body.querySelector(".ws-preview-frames") as HTMLElement;
     const stub = body.querySelector(".ws-preview-stub") as HTMLElement;
-    urlInput.value = slot.url || "";
 
-    // loadURL once the guest is attached; else the src attribute, which the
-    // webview queues until it is. getWebContentsId THROWS before dom-ready
-    // (it doesn't return undefined), so the probe must be try/caught — an
-    // uncaught throw here left the panel permanently blank.
-    const setSrc = (u: string): void => {
-      try {
-        if (frame.isConnected && frame.getWebContentsId?.() !== undefined) { frame.loadURL?.(u); return; }
-      } catch { /* guest not attached yet — fall through to the attribute */ }
-      frame.setAttribute("src", u);
+    const views = new Map<number, WebviewEl & HTMLElement>();
+    const active = (): PreviewTab => previewTabs(slot)[slot.activeTab ?? 0];
+    const titleOf = (t: PreviewTab): string => {
+      if (t.title) return t.title;
+      if (t.html) return t.htmlLabel || "Glyphh build";
+      if (t.url) { try { return new URL(t.url).hostname || t.url; } catch { return t.url; } }
+      return "New tab";
     };
-
-    function loadHtml(html: string, label: string): void {
-      stub.hidden = true;
-      frame.hidden = false;
-      // A webview has no srcdoc — carry the inline build HTML as a data: URL.
-      setSrc("data:text/html;charset=utf-8," + encodeURIComponent(html));
-      urlInput.value = label;
-    }
-
-    function load(u: string): void {
-      if (!u) {
-        frame.hidden = true;
-        frame.removeAttribute("src");
-        stub.hidden = false;
-        return;
+    /** The legacy single-target mirror follows the active tab. */
+    const syncLegacy = (): void => {
+      const a = active();
+      slot.url = a.url;
+      slot.html = a.html;
+      slot.htmlLabel = a.htmlLabel;
+    };
+    // loadURL once the guest is attached; else the src attribute (queued until
+    // attach). getWebContentsId THROWS before dom-ready — probe in try/catch.
+    const setSrc = (wv: WebviewEl & HTMLElement, u: string): void => {
+      try {
+        if (wv.isConnected && wv.getWebContentsId?.() !== undefined) { wv.loadURL?.(u); return; }
+      } catch { /* guest not attached yet */ }
+      wv.setAttribute("src", u);
+    };
+    const ensureView = (t: PreviewTab): WebviewEl & HTMLElement => {
+      const existing = views.get(t.id);
+      if (existing) return existing;
+      const wv = document.createElement("webview") as WebviewEl & HTMLElement;
+      wv.className = "ws-preview-frame";
+      // DEFAULT session on purpose: glyphh-preview:// (local file/PDF/office
+      // previews) is registered there only. "plugins" = native PDF viewer.
+      wv.setAttribute("allowpopups", "");
+      wv.setAttribute("plugins", "");
+      wv.addEventListener("did-fail-load", (e) => {
+        const err = e as unknown as { errorCode?: number; errorDescription?: string };
+        if (err.errorCode && err.errorCode !== -3) {
+          (window as unknown as { yo?: { wbLog?: (m: string) => void } }).yo?.wbLog?.(
+            `[wb] Browser tab failed to load (${err.errorCode} ${err.errorDescription || ""}).`);
+        }
+      });
+      wv.addEventListener("did-navigate", (e) => {
+        const u = (e as unknown as { url?: string }).url;
+        if (!u || u === "about:blank" || u.startsWith("data:")) return;
+        t.url = u;
+        if (t.id === active().id) {
+          syncLegacy();
+          if (document.activeElement !== urlInput) urlInput.value = u;
+        }
+      });
+      wv.addEventListener("page-title-updated", (e) => {
+        const title = (e as unknown as { title?: string }).title;
+        if (title) { t.title = title; paintTabs(); }
+      });
+      frames.appendChild(wv);
+      views.set(t.id, wv);
+      if (t.html) wv.setAttribute("src", "data:text/html;charset=utf-8," + encodeURIComponent(t.html));
+      else if (t.url) wv.setAttribute("src", normalizePreviewUrl(t.url));
+      return wv;
+    };
+    const paintFrames = (): void => {
+      const a = active();
+      const hasContent = !!(a.url || a.html);
+      stub.hidden = hasContent;
+      if (hasContent) ensureView(a);
+      for (const [id, wv] of views) wv.style.visibility = id === a.id && hasContent ? "" : "hidden";
+      if (document.activeElement !== urlInput) {
+        urlInput.value = a.html ? a.htmlLabel || "Glyphh build" : a.url || "";
       }
-      stub.hidden = true;
-      frame.hidden = false;
-      setSrc(u);
+    };
+    const dropView = (t: PreviewTab): void => {
+      const wv = views.get(t.id);
+      if (wv) { wv.remove(); views.delete(t.id); }
+    };
+    const activate = (idx: number): void => {
+      slot.activeTab = idx;
+      syncLegacy();
+      paintTabs();
+      paintFrames();
+    };
+    const newTab = (): void => {
+      const tabs = previewTabs(slot);
+      tabs.push({ id: nextPreviewTabId++ });
+      activate(tabs.length - 1);
+      urlInput.focus();
+    };
+    const closeTab = (idx: number): void => {
+      const tabs = previewTabs(slot);
+      const [gone] = tabs.splice(idx, 1);
+      if (gone) dropView(gone);
+      if (!tabs.length) tabs.push({ id: nextPreviewTabId++ });
+      const act = slot.activeTab ?? 0;
+      activate(Math.min(idx < act ? act - 1 : act, tabs.length - 1));
+    };
+    const closeOthers = (idx: number): void => {
+      const tabs = previewTabs(slot);
+      for (const t of tabs.filter((_, i) => i !== idx)) dropView(t);
+      slot.tabs = [tabs[idx]];
+      activate(0);
+    };
+    const closeAll = (): void => {
+      for (const t of previewTabs(slot)) dropView(t);
+      slot.tabs = [{ id: nextPreviewTabId++ }];
+      activate(0);
+    };
+    const openTabMenu = (ev: MouseEvent, idx: number): void => {
+      document.querySelector(".ws-tab-ctx-menu")?.remove();
+      const menu = document.createElement("div");
+      menu.className = "ws-tab-ctx-menu";
+      const dismiss = (): void => {
+        menu.remove();
+        document.removeEventListener("mousedown", onAway, true);
+        document.removeEventListener("keydown", onKey, true);
+      };
+      const onAway = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) dismiss(); };
+      const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") dismiss(); };
+      const mkItem = (label: string, onPick: () => void): void => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ws-tab-ctx-item";
+        btn.textContent = label;
+        btn.addEventListener("click", () => { dismiss(); onPick(); });
+        menu.appendChild(btn);
+      };
+      mkItem("New tab", newTab);
+      mkItem("Close tab", () => closeTab(idx));
+      mkItem("Close other tabs", () => closeOthers(idx));
+      mkItem("Close all tabs", closeAll);
+      menu.style.left = `${ev.clientX}px`;
+      menu.style.top = `${ev.clientY}px`;
+      document.body.appendChild(menu);
+      const r = menu.getBoundingClientRect();
+      if (r.right > window.innerWidth - 8) menu.style.left = `${window.innerWidth - r.width - 8}px`;
+      if (r.bottom > window.innerHeight - 8) menu.style.top = `${window.innerHeight - r.height - 8}px`;
+      document.addEventListener("mousedown", onAway, true);
+      document.addEventListener("keydown", onKey, true);
+    };
+    function paintTabs(): void {
+      list.innerHTML = "";
+      previewTabs(slot).forEach((t, i) => {
+        const el = document.createElement("div");
+        el.className = "ws-preview-tab" + (i === (slot.activeTab ?? 0) ? " active" : "");
+        el.title = t.url || titleOf(t);
+        el.innerHTML = `<span class="nm"></span><button class="close" title="Close tab">×</button>`;
+        (el.querySelector(".nm") as HTMLElement).textContent = titleOf(t);
+        el.addEventListener("click", (ev) => {
+          if ((ev.target as HTMLElement).closest(".close")) { ev.stopPropagation(); closeTab(i); return; }
+          if (i !== (slot.activeTab ?? 0)) activate(i);
+        });
+        el.addEventListener("contextmenu", (ev) => { ev.preventDefault(); ev.stopPropagation(); openTabMenu(ev, i); });
+        list.appendChild(el);
+      });
     }
-
-    // A blocked/failed load looks identical to "blank" — surface it. -3 is the
-    // benign ABORTED that fires on a normal re-navigation.
-    frame.addEventListener("did-fail-load", (e) => {
-      const err = e as unknown as { errorCode?: number; errorDescription?: string };
-      if (err.errorCode && err.errorCode !== -3) {
-        (window as unknown as { yo?: { wbLog?: (s: string) => void } }).yo?.wbLog?.(
-          `[wb] Browser panel failed to load (${err.errorCode} ${err.errorDescription || ""}).`);
-      }
-    });
-    // Keep the address bar in step with real navigations (not the data: build
-    // previews, and never while the user is typing).
-    frame.addEventListener("did-navigate", (e) => {
-      const u = (e as unknown as { url?: string }).url;
-      if (u && u !== "about:blank" && !u.startsWith("data:") && document.activeElement !== urlInput) urlInput.value = u;
-    });
-
-    // Initial paint: inline build preview wins; else the persisted URL.
-    if (slot.html) loadHtml(slot.html, slot.htmlLabel || "Glyphh build");
-    else if (slot.url) load(normalizePreviewUrl(slot.url));
 
     function navigate(): void {
       const u = normalizePreviewUrl(urlInput.value);
       if (!u) return;
+      const a = active();
+      a.html = undefined;
+      a.htmlLabel = undefined;
+      a.title = undefined;
+      a.url = u;
       urlInput.value = u;
-      slot.url = u;
+      syncLegacy();
       saveLayout();
-      load(u);
+      setSrc(ensureView(a), u);
+      paintTabs();
+      paintFrames();
     }
-    urlInput.addEventListener("keydown", (e) => {
-      if (slot.html) { slot.html = undefined; slot.htmlLabel = undefined; } if (e.key === "Enter") navigate(); });
-    urlInput.addEventListener("blur", () => navigate());
-    const openFileBtn = body.querySelector(".ws-preview-openfile") as HTMLButtonElement;
+    urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") navigate(); });
+    urlInput.addEventListener("blur", () => { if (urlInput.value.trim() && urlInput.value !== (active().url || "")) navigate(); });
     openFileBtn.addEventListener("click", async () => {
       const picked = await window.wb.pickFile();
       if (!picked) return;
-      slot.html = undefined; slot.htmlLabel = undefined;
       urlInput.value = picked;
       navigate();
     });
-    reloadBtn.addEventListener("click", () => { frame.reload?.(); });
-    // Site-initiated downloads already flow through will-download; this button
-    // downloads the current page itself (e.g. a viewed PDF or file).
+    reloadBtn.addEventListener("click", () => { views.get(active().id)?.reload?.(); });
     downloadBtn.addEventListener("click", () => {
-      const u = frame.getURL?.() || slot.url;
-      if (u && !u.startsWith("data:")) frame.downloadURL?.(u);
+      const wv = views.get(active().id);
+      const u = wv?.getURL?.() || active().url;
+      if (u && !u.startsWith("data:")) wv?.downloadURL?.(u);
     });
+    newBtn.addEventListener("click", newTab);
+
+    paintTabs();
+    paintFrames();
   }
 
   // ── Terminal view (real xterm + pty over wb-term:* IPCs) ──
@@ -4148,13 +4315,11 @@ async function init(): Promise<void> {
     let slot = rails.flatMap((r) => r.slots).find((s) => s.view === "preview") as PreviewSlot | undefined;
     if (!slot) {
       slot = makeSlot("preview") as PreviewSlot;
-      slot.html = html;
-      slot.htmlLabel = label;
+      setPreviewTarget(slot, { html, htmlLabel: label });
       placeSlot(slot);
       return; // placeSlot renders
     }
-    slot.html = html;
-    slot.htmlLabel = label;
+    setPreviewTarget(slot, { html, htmlLabel: label });
     renderRails();
   };
 
@@ -4166,8 +4331,7 @@ async function init(): Promise<void> {
   };
   (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal = () => {
     if (echoCtl) { echoCtl.openTool("terminal"); return; }
-    const existing = rails.flatMap((r) => r.slots).find((s) => s.view === "terminal");
-    if (existing) { renderRails(); return; }
+    // MULTI-INSTANCE: every terminal command spawns its own panel.
     placeSlot(makeSlot("terminal"));
   };
 
