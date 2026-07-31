@@ -784,6 +784,8 @@ function newChat(opts?: { stay?: boolean }): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
   chats.unshift(c);
   currentId = c.id;
+  lastBySpace[spaceOf(c)] = c.id;
+  void window.yo.setPreference?.(spaceOf(c) === "code" ? "lastSessionCode" : "lastSessionChat", c.id);
   threadPinned = true;
   void saveStore();
   syncThinking();   // fresh session — no run of its own yet
@@ -915,6 +917,8 @@ function renderHistory(): void {
     row.append(dot, label, menuBtn);
     row.addEventListener("click", () => {
       currentId = c.id;
+      lastBySpace[spaceOf(c)] = c.id;
+      void window.yo.setPreference?.(spaceOf(c) === "code" ? "lastSessionCode" : "lastSessionChat", c.id);
       threadPinned = true;
       void saveStore();
       ensureCodeSection();
@@ -1190,8 +1194,13 @@ let workdirReady = true; // painted by checkWorkdirGate
 /** Chat-space default for NEW sessions: plain chat (true) or co-work. */
 let chatOnly = false;
 /** The rail's active SPACE tab — scopes the session list and what + New
- *  session creates. */
+ *  session creates. ("chat" is the HOME space — kept as "chat" internally
+ *  for pref compatibility.) */
 let railTab: "chat" | "code" = "chat";
+/** Each space remembers ITS last-selected session — switching tabs never
+ *  carries a session across (persisted per space). */
+const lastBySpace: Record<"chat" | "code", string> = { chat: "", code: "" };
+const spaceOf = (c: CodeChat): "chat" | "code" => (modeOf(c) === "code" ? "code" : "chat");
 /** Repaints the Chat/Work toggle — set by initComposerControls, called on
  *  session switches so the control always shows the CURRENT session's mode. */
 let cwPaint: (() => void) | null = null;
@@ -2555,15 +2564,14 @@ export function initCode(): void {
   });
   initRailApps();
   el("code-new-chat")?.addEventListener("click", () => {
-    if (railTab === "code") {
-      // CODE space: a new session IS the full glyphh agent, alone.
-      newChat({ stay: true });
-      gotoSection("agent");
-      return;
-    }
-    // CHAT space: new is home — the landing with the composer + toggle.
-    newChat({ stay: true });
-    gotoSection("dashboard");
+    // NEW creates NOTHING — the record is born on the first send. This just
+    // clears the current selection and shows the space's landing.
+    currentId = "";
+    void saveStore();
+    renderHistory();
+    renderThread();
+    void checkWorkdirGate();
+    gotoSection(railTab === "code" ? "agent" : "dashboard");
   });
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
@@ -2626,16 +2634,36 @@ export function initCode(): void {
     // the command-center wall re-scopes too
     window.dispatchEvent(new CustomEvent("rail-space-changed"));
   };
+  const enterSpace = (navigate: boolean): void => {
+    paintRailTabs();
+    // NEVER carry a session across spaces: resume THIS space's last
+    // selection, or land on the new (no record until the user types).
+    const last = chats.find((c) => c.id === lastBySpace[railTab] && spaceOf(c) === railTab);
+    currentId = last?.id || "";
+    void saveStore();
+    renderHistory();
+    renderThread();
+    refreshCtxMeter();
+    void checkWorkdirGate();
+    if (!navigate) return;
+    if (last) gotoSection("agent");
+    else gotoSection(railTab === "code" ? "agent" : "dashboard");
+  };
   railTabs?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
     railTab = b.dataset.tab === "code" ? "code" : "chat";
-    paintRailTabs();
-    renderHistory();
     void window.yo.setPreference?.("railModeTab", railTab);
+    enterSpace(true);
   }));
-  void window.yo.getPreference?.("railModeTab", "chat").then((v) => {
+  void Promise.all([
+    window.yo.getPreference?.("railModeTab", "chat"),
+    window.yo.getPreference?.("lastSessionChat", ""),
+    window.yo.getPreference?.("lastSessionCode", ""),
+  ]).then(([v, lc, lco]) => {
     railTab = v === "code" ? "code" : "chat";
-    paintRailTabs();
-    renderHistory();
+    lastBySpace.chat = String(lc || "");
+    lastBySpace.code = String(lco || "");
+    // boot: paint the space's state but DON'T navigate (boot lands on Home)
+    enterSpace(false);
   });
   el("code-rail-toggle")?.addEventListener("click", () => {
     const collapsed = el("app-rail")!.classList.toggle("collapsed");
@@ -2885,7 +2913,12 @@ export function openRunSession(run: {
 /** A NEW session with `text` ready in the composer — the dashboard's
  *  "Recommended for you" entries land here. */
 export function seedNewSession(text: string): void {
-  newChat();
+  // No record until the user actually SENDS — the seed just fills the
+  // composer on a cleared selection.
+  currentId = "";
+  void saveStore();
+  renderHistory();
+  renderThread();
   seedComposer(text);
 }
 
