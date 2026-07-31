@@ -3008,8 +3008,10 @@ body.account-locked #dl-btn-wrap {
 /* the FULL agent footer, adopted — full column width (same as the two
    cowork cards), taller input, and it never moves */
 .dash-composer-slot { width: 100%; margin: 0 0 26px; }
-.dash-composer-slot .code-composer { width: 100%; }
-.dash-composer-slot .code-input { min-height: 110px; }
+/* flush with the cowork columns: the composer's own thread-matching
+   max-width and gutters don't apply on Home */
+.dash-composer-slot .code-composer { width: 100%; max-width: none; padding: 0; margin: 0; }
+.dash-composer-slot .code-input { min-height: 76px; }
 
 /* Chat mode hides the cowork content but KEEPS its space — the composer
    stays fixed in the page; the toggle never makes the layout jump */
