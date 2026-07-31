@@ -3033,17 +3033,26 @@ body.chat-only .dash-two-col { visibility: hidden; }
 .code-cw-toggle.hidden { display: none; }
 .code-chat-badge { margin-right: 5px; font-size: 11px; }
 
-/* The rail's SPACE tabs — Chat | Code, above + New session */
+/* The rail's SPACE tabs — Chat | Code, above + New session. The active
+   space should be unmissable: filled accent pill, icon + label. */
 .rail-mode-tabs {
-  display: flex; margin: 10px 10px 0;
-  border: 1px solid var(--border); border-radius: 9px;
-  overflow: hidden;
+  display: flex; gap: 4px; margin: 10px 10px 2px;
+  padding: 4px;
+  border: 1px solid var(--border); border-radius: 11px;
+  background: var(--surface);
 }
 .rail-mode-tabs button {
-  flex: 1; border: none; background: none; color: var(--text-3);
-  font-size: 12px; font-weight: 600; padding: 6px 0; cursor: pointer;
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  border: none; border-radius: 8px; background: none; color: var(--text-3);
+  font-size: 13px; font-weight: 700; padding: 8px 0; cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
-.rail-mode-tabs button.active { background: var(--active-bg); color: var(--text); }
+.rail-mode-tabs button svg { width: 15px; height: 15px; }
+.rail-mode-tabs button:hover { color: var(--text); background: var(--hover); }
+.rail-mode-tabs button.active {
+  background: var(--accent);
+  color: #000;   /* the app's accent-on pairing (amber bg, ink text) */
+}
 
 /* Settings › Usage: the Add credits action above the metric cards */
 .dash-usage-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
