@@ -1865,15 +1865,15 @@ async function init(): Promise<void> {
       return cols;
     };
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 10;
-      const x0 = 12, y0 = 12, W = w - 24, H = h - 24;
+      // EDGE-TO-EDGE like the layout grid: seams only BETWEEN cards.
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 7;
       const cols = flowColumns(cards);
-      const cw = (W - gap * (cols.length - 1)) / Math.max(1, cols.length);
+      const cw = (w - gap * (cols.length - 1)) / Math.max(1, cols.length);
       const out = new Map<TileEntry, { left: number; top: number; width: number; height: number }>();
       cols.forEach((col, ci) => {
-        const ch = (H - gap * (col.length - 1)) / Math.max(1, col.length);
+        const ch = (h - gap * (col.length - 1)) / Math.max(1, col.length);
         col.forEach((e, ri) => {
-          out.set(e, { left: x0 + ci * (cw + gap), top: y0 + ri * (ch + gap), width: Math.max(160, cw), height: Math.max(110, ch) });
+          out.set(e, { left: ci * (cw + gap), top: ri * (ch + gap), width: Math.max(160, cw), height: Math.max(110, ch) });
         });
       });
       return out;
@@ -2003,7 +2003,7 @@ async function init(): Promise<void> {
         if (!e.card) return;
         e.card.classList.toggle("echo-pinned", !!e.tile.sticky);
         if (e.card.classList.contains("expanded")) {
-          setRect(e.card, { left: 12, top: 12, width: w - 24, height: h - 24 });
+          setRect(e.card, { left: 0, top: 0, width: w, height: h });
           return;
         }
         const r = grid?.get(e) ?? flow.get(e);

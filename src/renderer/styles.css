@@ -13474,7 +13474,10 @@ body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { o
   background: transparent;
 }
 
-.code-splitter:hover { background: var(--border-2); }
+.code-splitter:hover,
+body.code-dragging .code-splitter {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
 
 #app-rail.collapsed + .code-splitter { display: none; }
 
