@@ -1963,9 +1963,11 @@ async function init(): Promise<void> {
      *  contract as coding slots. If the agent is already visible (a coding
      *  panel beside Echo), this is a no-op: there is never a second agent. */
     const openAgentCard = (): TileEntry | null => {
-      if (codingHosted()) return null;
+      // Already on screen (a coding panel, or its card): make sure it has a
+      // session and surface it — never a dead-end click.
+      if (codingHosted()) { ensureAgentSession(); return null; }
       const existing = openList.find((x) => x.tile.kind === "agent");
-      if (existing?.card) { flash(existing.card); return existing; }
+      if (existing?.card) { ensureAgentSession(); flash(existing.card); return existing; }
       const entry = adHoc({ name: "Glyphh", slug: "glyphh-agent", kind: "agent" });
       const card = openShell(entry);
       if (!card) return null;
@@ -1975,7 +1977,28 @@ async function init(): Promise<void> {
         card.querySelector<HTMLElement>(".echo-card-body")!.appendChild(agent);
         document.querySelector(".code-root")?.classList.add("agent-hosted");
       }
+      // The agent NEVER lands on an empty state: use the session that's up,
+      // else the most recent one, else start a fresh session. (Adoption runs
+      // FIRST so newChat's ensureCodeSection sees the hosted agent and
+      // doesn't bounce the surface.)
+      ensureAgentSession();
       return entry;
+    };
+    /** No empty state, ever: current session wins, else the newest saved
+     *  session, else a brand-new one. */
+    const ensureAgentSession = (): void => {
+      type Sessions = {
+        list?: () => Array<{ id: string; createdAt: number }>;
+        currentId?: () => string | null;
+        switch?: (id: string) => void;
+        startNew?: () => void;
+      };
+      const sess = (window as unknown as { __agentSessions?: Sessions }).__agentSessions;
+      if (!sess) return;
+      if (sess.currentId?.()) return;                       // a session is up
+      const recent = [...(sess.list?.() ?? [])].sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (recent) sess.switch?.(recent.id);
+      else sess.startNew?.();
     };
     /** A LAYOUT opened inside Echo: every cell becomes an Echo card, in the
      *  layout's reading order. The agent cell adopts the singleton (or is
