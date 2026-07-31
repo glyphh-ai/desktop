@@ -13907,8 +13907,10 @@ body.code-dragging iframe { pointer-events: none !important; }
 #code-cc-btn.active { color: var(--accent); }
 
 /* TEMPORARILY HIDDEN (2026-07-31, per Chris): the rail's Apps and Layouts
-   sections — code and behavior intact, just not shown for now. */
-#rail-apps-toggle, #rail-apps-body, #rail-layouts-toggle, #rail-layouts-body { display: none !important; }
+   sections — code and behavior intact, just not shown for now. The whole
+   section: header row (toggle + reset + open-page buttons), body, and the
+   recents/apps drag splitter. */
+.app-rail-section-head, .app-rail-section-body, #recents-vsplit { display: none !important; }
 
 /* GATED composer — no working folder yet. A disabled textarea swallows
    clicks, so let them pass through to the wrap (whose click opens the
