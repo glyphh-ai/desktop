@@ -709,6 +709,13 @@ function ensureCodeSection(): void {
     broadcastTimeline(!!currentRun());
   },
   startNew: (): void => newChat(),
+  /** Repaint the thread + history from the store. The agent card calls this
+   *  after adoption so an empty session shows the BRANDED landing (mark +
+   *  slogan) instead of a blank panel — the thread may never have been
+   *  painted if the card opened before the store finished loading. */
+  repaint: (): void => { renderHistory(); renderThread(); },
+  /** Message counts, so a caller can prefer a session with real content. */
+  counts: (): Record<string, number> => Object.fromEntries(chats.map((c) => [c.id, c.messages.length])),
   /** Bind the CURRENT session to a folder (layout opens + folder picks). */
   stampWorkdir: (dir: string): void => {
     const c = current();

@@ -1985,21 +1985,36 @@ async function init(): Promise<void> {
       ensureAgentSession();
       return entry;
     };
-    /** No empty state, ever: current session wins, else the newest saved
-     *  session, else a brand-new one. */
-    const ensureAgentSession = (): void => {
-      type Sessions = {
-        list?: () => Array<{ id: string; createdAt: number }>;
-        currentId?: () => string | null;
-        switch?: (id: string) => void;
-        startNew?: () => void;
-      };
+    /** The agent NEVER lands on a blank panel. A session with real content
+     *  wins, else the newest one, else a fresh session — and the thread is
+     *  ALWAYS repainted, so an empty session shows the branded landing (the
+     *  mark + slogan) rather than nothing.
+     *
+     *  The store loads async: if the bridge isn't up yet (boot opens the card
+     *  first), retry instead of silently doing nothing — that race is exactly
+     *  how a truly empty panel appeared. */
+    type Sessions = {
+      list?: () => Array<{ id: string; createdAt: number }>;
+      counts?: () => Record<string, number>;
+      currentId?: () => string | null;
+      switch?: (id: string) => void;
+      startNew?: () => void;
+      repaint?: () => void;
+    };
+    const ensureAgentSession = (tries = 0): void => {
       const sess = (window as unknown as { __agentSessions?: Sessions }).__agentSessions;
-      if (!sess) return;
-      if (sess.currentId?.()) return;                       // a session is up
-      const recent = [...(sess.list?.() ?? [])].sort((a, b) => b.createdAt - a.createdAt)[0];
-      if (recent) sess.switch?.(recent.id);
+      if (!sess?.list) {
+        if (tries < 60 && body.isConnected) requestAnimationFrame(() => ensureAgentSession(tries + 1));
+        return;
+      }
+      if (sess.currentId?.()) { sess.repaint?.(); return; }   // a session is up
+      const counts = sess.counts?.() ?? {};
+      const byNewest = [...(sess.list() ?? [])].sort((a, b) => b.createdAt - a.createdAt);
+      const withText = byNewest.find((c) => (counts[c.id] ?? 0) > 0);
+      const pick = withText ?? byNewest[0];
+      if (pick) sess.switch?.(pick.id);
       else sess.startNew?.();
+      sess.repaint?.();
     };
     /** A LAYOUT opened inside Echo: every cell becomes an Echo card, in the
      *  layout's reading order. The agent cell adopts the singleton (or is
