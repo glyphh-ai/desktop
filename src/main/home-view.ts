@@ -109,6 +109,8 @@ let sessionsConfigured = false;
  * - a permission allowlist (only what web apps actually need)
  * - downloads on BOTH sessions auto-save to ~/Downloads
  */
+import { openPopupPanel } from "./app-resolver";
+
 export function setupPanelSessions(): void {
   if (sessionsConfigured) return;
   sessionsConfigured = true;
@@ -211,16 +213,12 @@ export class HomeView {
       wireForceWebGuest(guest);
       attachDialogHandler(guest);
       attachContextMenu(guest);
+      // A page's popup does NOT become a floating OS window — it opens as a
+      // panel in the workspace (an Echo card when Echo is up), so every
+      // surface the user opens lives in a slot.
       guest.setWindowOpenHandler(({ url }) => {
-        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("about:")) {
-          return { action: "deny" };
-        }
-        return {
-          action: "allow",
-          overrideBrowserWindowOptions: {
-            webPreferences: { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" },
-          },
-        };
+        if (url.startsWith("http://") || url.startsWith("https://")) openPopupPanel(url);
+        return { action: "deny" };
       });
       guest.on("did-finish-load", () => {
         if (!guest.isDestroyed()) {

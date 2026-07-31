@@ -1582,6 +1582,9 @@ async function init(): Promise<void> {
         return { name: a.name, slug, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
       };
       const tiles = wallEntries.map(toTile);
+      // GLYPHH first, top-left: the agent's own tile (its card adopts the
+      // singleton — see openAgentCard).
+      tiles.unshift({ name: "Glyphh", slug: "glyphh-agent", iconUrl: "brand/glyphh-mark.png", kind: "agent" });
       // every workspace panel type (no Coding Agent tile — GLYPHH is the
       // coding agent, and it's already first in the dock)
       const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "preview", "plan"];
@@ -1677,7 +1680,7 @@ async function init(): Promise<void> {
       if (!echoGrid) return null;
       if (!echoGrid.cells.length) { echoGrid = null; return null; }
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      const x0 = 12, y0 = Math.max(12, h * 0.03), W = w - 24, H = h - y0 - 12, gap = 10;
+      const x0 = 12, y0 = 12, W = w - 24, H = h - 24, gap = 10;
       const norm = (a: number[]): number[] => {
         const sum = a.reduce((x, y) => x + y, 0) || 1;
         return a.map((v) => v / sum);
@@ -1725,7 +1728,7 @@ async function init(): Promise<void> {
       dividerLayer.innerHTML = "";
       if (!on || !echoGrid) return;
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      const x0 = 12, y0 = Math.max(12, h * 0.03), W = w - 24, H = h - y0 - 12;
+      const x0 = 12, y0 = 12, W = w - 24, H = h - 24;
       const norm = (a: number[]): number[] => { const t = a.reduce((x, y) => x + y, 0) || 1; return a.map((v) => v / t); };
       const cw = norm(echoGrid.colWidths), rh = norm(echoGrid.rowHeights);
       const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
@@ -2123,6 +2126,7 @@ async function init(): Promise<void> {
     let openingLayout = false;
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
+      if (t.kind === "agent") { void openAgentCard(); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -4526,6 +4530,17 @@ async function init(): Promise<void> {
   wbApp.__wbToggleAppSwitcher = () => openEchoSurface();
   // Tool panels by name (.dip plan, open_app("files"), tool-only layouts) —
   // in Echo they open as Echo cards like everything else.
+  // A popup a page opened (target=_blank / window.open) — main denies the OS
+  // window and routes it here so it lands in a SLOT like everything else.
+  let popupSeq = 0;
+  (window as unknown as { __wbOpenPopup?: (url: string) => void }).__wbOpenPopup = (url: string) => {
+    if (!/^https?:/i.test(url)) return;
+    let name = "Popup";
+    try { name = new URL(url).hostname.replace(/^www\./, "") || "Popup"; } catch { /* keep */ }
+    const ref: WbAppRef = { slug: `popup-${++popupSeq}`, name, url };
+    if (echoCtl) { echoCtl.openApp(ref); return; }
+    openAppInWorkbench(ref, { newPanel: true });
+  };
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
     if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding"].includes(v)) return;

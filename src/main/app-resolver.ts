@@ -67,6 +67,7 @@ type WbCmd =
   | { action: "open-many"; apps: WbAppRef[]; layoutName?: string }
   | { action: "terminal" }
   | { action: "tool"; tool: string }
+  | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
   | { action: "switcher" }
@@ -231,6 +232,12 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
 export function openBrowserAt(url: string): { slug: string; name: string } {
   sendWbCmd({ action: "open", app: { slug: "browser", name: "Browser", url } });
   return { slug: "browser", name: "Browser" };
+}
+
+/** A popup a panel tried to open (target=_blank / window.open): it lands in
+ *  a SLOT beside the others instead of a floating OS window. */
+export function openPopupPanel(url: string): void {
+  sendWbCmd({ action: "popup", url });
 }
 
 /** Launch a NATIVE library row on this machine (path first, name fallback). */
