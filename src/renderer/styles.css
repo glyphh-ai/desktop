@@ -9597,8 +9597,12 @@ select.settings-input {
 .ws-band-hsep:hover, .ws-band-hsep.dragging { background: var(--accent, #8c3bf2); }
 .ws-right-rails.has-fullscreen .ws-band-hsep { display: none; }
 /* Modals vs <webview>: the webview compositing layer beats every z-index, so
-   while a modal is open the workspace panels' webviews go invisible. */
-body.wb-modal-open webview { visibility: hidden !important; }
+   while a modal is open the workspace panels' webviews go invisible. The
+   WHOLE app layer hides — the holders live at z-120 (above the overlay's
+   z-100 stacking context the modal renders in), so a holder's surface
+   background alone was enough to blank out a dialog. */
+body.wb-modal-open webview,
+body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
 .ws-right-rail {
   background: var(--ws-bg-rail);
   /* Right border on every rail so the column's right edge is visible
@@ -10400,6 +10404,7 @@ body.wb-modal-open webview { visibility: hidden !important; }
   padding: 0 4px;
 }
 .ws-monaco-tabs::-webkit-scrollbar { height: 0; }
+.ws-monaco-tabs-empty { align-self: center; padding: 4px 12px; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
 .ws-monaco-tab {
   display: inline-flex;
   align-items: center;

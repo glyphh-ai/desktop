@@ -626,6 +626,7 @@ async function init(): Promise<void> {
     // The working project's plan.md IS the Plan view's document — clicking it
     // opens (or focuses) that app rather than a Monaco tab.
     if (file.path === planFilePath()) {
+      if (echoCtl) { echoCtl.openTool("plan"); return; }
       if (!viewIsOpen("plan")) placeView("plan");
       else {
         const planSlot = rails.flatMap((r) => r.slots).find((sl) => sl.view === "plan");
@@ -934,13 +935,20 @@ async function init(): Promise<void> {
       // stays. "code" additionally guarantees the agent panel exists;
       // "workspace" is the neutral flip used before app/layout opens (the
       // incoming panels define the view — no uninvited agent).
+      let changed = false;
       for (let i = rails.length - 1; i >= 0; i--) {
-        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "section");
+        const kept = rails[i].slots.filter((sl) => sl.view !== "section");
+        if (kept.length !== rails[i].slots.length) { rails[i].slots = kept; changed = true; }
         if (!rails[i].slots.length) rails.splice(i, 1);
       }
       if (section === "code" && !codingHosted()) { placeSlot(makeSlot("coding")); return; }   // placeSlot renders+saves
-      renderRails();
-      saveLayout();
+      // NOTHING changed → NOTHING re-renders. Every agent panel command runs
+      // this flip first; an unconditional renderRails rebuilt Echo (and every
+      // panel body) per command — open two apps, keep only the last card.
+      if (changed) {
+        renderRails();
+        saveLayout();
+      }
       return;
     }
     const already = rails.flatMap((r) => r.slots).some((sl) => sl.view === "section" && sl.section === section);
@@ -1747,7 +1755,7 @@ async function init(): Promise<void> {
       if (slot.view === "preview") void renderPreviewIntoSlot(b, slot);
       else if (slot.view === "monaco") void renderMonacoIntoSlot(b, slot);
     };
-    echoCtl = {
+    const ctl: EchoCtlType = {
       openApp: (app) => {
         const key = (app.slug || "").trim().toLowerCase();
         const existing = openList.find((x) => (x.tile.slug || "") === key);
@@ -1809,6 +1817,7 @@ async function init(): Promise<void> {
       },
       closeAll: () => { for (const x of [...openList]) closeCard(x); },
     };
+    echoCtl = ctl;
     notifyOpenApps();
 
     const ray = new THREE.Raycaster();
@@ -1887,8 +1896,12 @@ async function init(): Promise<void> {
       obs.disconnect();
       ro.disconnect();
       themeObs.disconnect();
-      echoCtl = null;
-      notifyOpenApps();
+      // only OUR registration — a re-render's fresh controller must survive
+      // this stale observer firing after it
+      if (echoCtl === ctl) {
+        echoCtl = null;
+        notifyOpenApps();
+      }
       group.traverse((o) => {
         if (o instanceof THREE.Mesh) {
           o.geometry.dispose();
@@ -3203,6 +3216,10 @@ async function init(): Promise<void> {
 
     function paintTabs(): void {
       tabsEl.innerHTML = "";
+      if (!slot.tabs.length) {
+        // the strip otherwise reads as a bare gap
+        tabsEl.innerHTML = `<span class="ws-monaco-tabs-empty">No file open</span>`;
+      }
       slot.tabs.forEach((t, i) => {
         const tab = document.createElement("div");
         tab.className = "ws-monaco-tab" + (i === slot.activeIdx ? " active" : "");
@@ -3247,6 +3264,8 @@ async function init(): Promise<void> {
       // reverts unsaved work to the last-saved snapshot.
       flushEditorModel();
       const tab = slot.tabs[slot.activeIdx];
+      const pathRow = body.querySelector<HTMLElement>(".ws-monaco-path");
+      if (pathRow) pathRow.style.display = tab ? "" : "none";
       if (!tab) {
         pathText.textContent = "";
         // The landing: the website hero's gradient with the ghost mark

@@ -551,8 +551,8 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // IPC: layouts CRUD
   // Server-authoritative (yo-server /api/layouts) — refresh the local cache
   // from the server before listing so the Layouts tab shows server truth.
-  ipcMain.handle("layouts-list", async () =>
-    (await layoutManager.refreshAndList()).map((l) => ({
+  ipcMain.handle("layouts-list", async () => {
+    const rows = (await layoutManager.refreshAndList()).map((l) => ({
       name: l.name,
       cols: l.cols,
       rows: l.rows,
@@ -565,8 +565,31 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       sessionMode: (l as { sessionMode?: "keep" | "new" | "last" }).sessionMode ?? "keep",
       folder: (l as { folder?: string }).folder ?? null,
       splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, config: c.config })),
-    }))
-  );
+    }));
+    // The built-in "Echo" layout — the Glyphh agent on the left, the Echo
+    // panel on the right. Ships for EVERY user with no server row; a
+    // user-saved layout named "Echo" takes its place.
+    if (!rows.some((l) => l.name.trim().toLowerCase() === "echo")) {
+      rows.unshift({
+        name: "Echo",
+        cols: 2,
+        rows: 1,
+        colWidths: [40, 60],
+        rowHeights: [100],
+        target: "glyphh",
+        glyphh: null,
+        loop: null,
+        modelSelections: {},
+        sessionMode: "keep",
+        folder: null,
+        splits: [
+          { panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: undefined, config: undefined },
+          { panelId: "tool:echo", col: 1, row: 0, colSpan: 1, rowSpan: 1, sticky: undefined, config: undefined },
+        ],
+      });
+    }
+    return rows;
+  });
   ipcMain.handle("layouts-save", async (_e, name: string, panelIds: string[]) => {
     const existing = layoutManager.listLayouts().find(l => l.name === name);
     if (!existing) {
