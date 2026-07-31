@@ -1264,6 +1264,10 @@ async function init(): Promise<void> {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
       <div class="echo-stage"></div>
+      <div class="echo-topbar">
+        <input class="echo-search" type="text" placeholder="Search apps, layouts, tools…" spellcheck="false" autocomplete="off" />
+        <button class="ws-icon-btn echo-drip-btn" title="Drips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></button>
+      </div>
       <div class="echo-veil"></div>
       <div class="echo-cards"></div>
       <div class="echo-zoom">
@@ -1898,14 +1902,57 @@ async function init(): Promise<void> {
       return out;
     };
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
-     *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
+     *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. The
+     *  top bar (search + drips) is a WALL control and follows it. */
     const syncWallVisibility = (): void => {
       const canvas = stage.querySelector<HTMLElement>("canvas");
       if (!canvas) return;
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
       const shadowOn = cardsLayer.classList.contains("echo-shadow");
-      canvas.style.visibility = layoutUp && !shadowOn ? "hidden" : "";
+      const hidden = layoutUp && !shadowOn;
+      canvas.style.visibility = hidden ? "hidden" : "";
+      const bar = body.querySelector<HTMLElement>(".echo-topbar");
+      if (bar) bar.style.visibility = hidden ? "hidden" : "";
     };
+    // ── Top bar: search filters the WALL live (dim the rest, Enter opens
+    // the best match, Esc clears); the droplet opens the Drips panel. ──
+    {
+      const searchEl = body.querySelector<HTMLInputElement>(".echo-search")!;
+      const matchesOf = (q: string): TileEntry[] =>
+        entries.filter((x) => x.mesh && ((x.tile.name || "").toLowerCase().includes(q) || (x.tile.slug || "").toLowerCase().includes(q)));
+      const paintFilter = (): void => {
+        const q = searchEl.value.trim().toLowerCase();
+        for (const x of entries) {
+          if (!x.mesh) continue;
+          const m = x.mesh.material as THREE.MeshBasicMaterial;
+          const hit = !q || (x.tile.name || "").toLowerCase().includes(q) || (x.tile.slug || "").toLowerCase().includes(q);
+          m.transparent = true;
+          m.opacity = hit ? 1 : 0.12;
+        }
+      };
+      searchEl.addEventListener("input", paintFilter);
+      searchEl.addEventListener("keydown", (ev) => {
+        ev.stopPropagation();   // the wall's Esc/edit keys stay out of typing
+        const q = searchEl.value.trim().toLowerCase();
+        if (ev.key === "Escape") {
+          searchEl.value = "";
+          paintFilter();
+          searchEl.blur();
+        } else if (ev.key === "Enter" && q) {
+          const pool = matchesOf(q);
+          const best = pool.find((x) => (x.tile.name || "").toLowerCase().startsWith(q)) ?? pool[0];
+          if (best) {
+            searchEl.value = "";
+            paintFilter();
+            activateTile(best);
+          }
+        }
+      });
+      body.querySelector<HTMLElement>(".echo-drip-btn")!.addEventListener("click", () => {
+        // Drips live as a Settings sub-panel — same route the nav takes.
+        (window as unknown as { __gotoSection?: (s: string, sub?: string) => void }).__gotoSection?.("settings", "drips");
+      });
+    }
     const layoutCards = (): void => {
       const n = openList.length;
       if (!n) { paintDividers(false); syncWallVisibility(); return; }   // no panels ⇒ no seams

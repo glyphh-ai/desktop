@@ -13969,6 +13969,23 @@ body.code-dragging webview { pointer-events: none !important; }
 .echo-card.dragging { transition: none; z-index: 5; opacity: 0.92; }
 /* Dividers — the seams between layout slots (the old rail handles): drag
    to reshape the whole layout. */
+/* Echo top bar — wall controls: search + drips. Sits over the canvas,
+   under the cards. */
+.echo-topbar {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; z-index: 3;
+}
+.echo-search {
+  width: 320px; max-width: 60vw;
+  padding: 7px 12px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface-2); color: var(--text);
+  font-size: 12.5px; outline: none;
+}
+.echo-search:focus { border-color: var(--accent); }
+.echo-topbar .ws-icon-btn { border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); }
+.echo-topbar .ws-icon-btn svg { width: 15px; height: 15px; }
+
 .echo-dividers { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .echo-div { position: absolute; pointer-events: auto; border-radius: 4px; transition: background 0.12s ease; }
 .echo-div-v { width: 8px; cursor: col-resize; }

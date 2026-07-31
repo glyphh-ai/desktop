@@ -154,6 +154,9 @@ function showDocPanel(docId: string) {
 
 export function initHelp() {
   document.getElementById("help-close")?.addEventListener("click", closeHelp);
+  // The workbench bundle (echo's top bar) navigates through this bridge —
+  // it can't import help modules.
+  (window as unknown as { __gotoSection?: (s: string, sub?: string) => void }).__gotoSection = gotoSection;
 
   // The workbench bundle can't import help modules — it calls this bridge
   // after mounting a section panel so the section's data actually loads.
