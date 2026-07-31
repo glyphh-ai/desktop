@@ -475,7 +475,7 @@ body {
   display: flex;
   justify-content: center;
 }
-.splash-logo .glyphh-logo { height: 164px; }
+.splash-logo .glyphh-logo { height: 140px; }
 
 .splash-tagline {
   font-size: 18px;
@@ -485,26 +485,7 @@ body {
   margin-bottom: 8px;
 }
 
-.splash-subtitle {
-  /* The website hero's title treatment, verbatim (rhero-title). */
-  font-size: clamp(2.6rem, 5.4vw, 4.6rem);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 1.04;
-  color: var(--text);
-  margin-bottom: 32px;
-  text-shadow: 0 2px 40px rgba(5, 3, 8, 0.9);
-}
 
-/* "Agents. Models. Apps. / One workspace." — EXACTLY the web hero's
-   rhero-accent gradient (globals.css), not the app accent token. */
-.intro-accent {
-  background: linear-gradient(115deg, #b36bfb, #9333ea 48%, #ec4899);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
 
 .splash-status {
   font-size: 12px;
