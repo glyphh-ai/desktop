@@ -13498,3 +13498,440 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 @container agent (max-width: 560px) { #code-model-chip { max-width: 92px; } }
 @container agent (max-width: 460px) { #code-model-chip { max-width: 64px; } }
 @container agent (max-width: 380px) { #code-model-chip { max-width: 40px; } }
+
+
+/* ═══ App rail — RESTORED (was removed in the 2.5.0 shell cut; brought back
+   beside the full-width workbench: nav drives the section PANELS now). ═══ */
+
+
+
+/* ── Pending-update badge (bottom-right, all home pages) ─────────────── */
+/* The update prompt moved from a floating bottom-right badge to a rail button
+   (.app-rail-relaunch) — the old .update-badge* rules are gone with it. */
+
+/* The library page wrapper (added for the My apps | Marketplace tabs) must
+   pass the section's flex layout through — otherwise #app-detail's flex:1
+   sits in a plain block and the editor's split pane never fills the page
+   (right pane stops at its content instead of stretching). */
+.help-section[data-section="apps"].active > #apps-library-page:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+
+/* App rail — the persistent left rail (Home|Code, sessions, nav, user) */
+#app-rail {
+  width: 232px;
+  min-width: 232px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  overflow: hidden;
+  transition: width 0.16s ease, min-width 0.16s ease;
+}
+
+#app-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
+
+.code-new-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 10px 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.code-new-session:hover { border-color: var(--accent); color: var(--text-bright); }
+
+/* Link treatment: same row, no button chrome. Accent in light mode; plain
+   WHITE in dark — a purple link at the rail's top read as noise there. */
+.code-new-session.code-new-session-link {
+  border: none; background: none; padding: 8px 6px; border-radius: 6px;
+  color: var(--accent); font-weight: 500;
+}
+
+[data-theme="dark"] .code-new-session.code-new-session-link,
+[data-theme="purple"] .code-new-session.code-new-session-link,
+[data-theme="aurora"] .code-new-session.code-new-session-link {
+  color: #fff;
+}
+
+.code-new-session.code-new-session-link:hover { color: var(--text-bright); background: var(--hover); }
+
+.code-rail-label {
+  padding: 12px 14px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Recents shares the rail with the Apps grid below it, so it is capped rather
+   than flex:1 — the grid takes the remaining space. */
+.code-history { flex: 0 1 170px; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
+
+.code-history-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 3px 3px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+  min-height: 24px;
+}
+
+.code-history-item:hover { background: var(--hover); color: var(--text-2); }
+
+/* The Recent-session highlight only shows while the agent (code) is the
+   active section — so the rail never shows two highlights at once. */
+body[data-rail-section="code"] .code-history-item.active { background: var(--rail-active-bg); color: var(--white); }
+
+.code-history-title { flex: 1; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Inline rename field — swaps in for the title when the active row's title
+   is clicked; matches the row's type so nothing jumps. */
+.code-history-rename {
+  flex: 1; min-width: 0; margin-left: 6px;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: 5px;
+  font: inherit; padding: 1px 6px; outline: none;
+}
+
+.code-history-item:hover .code-chat-menu-btn,
+body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { opacity: 1; }
+
+/* Rail collapsed → the fixed chrome cluster floats over the page; shove the
+   header content right so they don't overlap. */
+body.rail-collapsed .code-agent-head { margin-left: 200px; }
+
+
+/* Drag splitters between the rails and the agent column. */
+.code-splitter {
+  flex: 0 0 4px;
+  width: 4px;
+  margin: 0 -2px;
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.code-splitter:hover { background: var(--border-2); }
+
+#app-rail.collapsed + .code-splitter { display: none; }
+
+body.code-dragging { cursor: col-resize; user-select: none; }
+
+body.code-dragging #app-rail { transition: none; }
+
+
+/* App rail — Home|Code switcher */
+/* App rail — section nav */
+.app-rail-nav { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 0; }
+
+.app-rail-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-rail-nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+.app-rail-nav-item:hover { background: var(--hover); color: var(--text); }
+
+.app-rail-nav-item.active { background: var(--rail-active-bg); color: var(--white); }
+
+
+/* App rail — user area (bottom) */
+.app-rail-user {
+  margin-top: auto;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* "Relaunch to update" — an accent CTA that sits just above the account button,
+   shown only when an update has downloaded (home.ts toggles .hidden). */
+.app-rail-relaunch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-rail-relaunch svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+.app-rail-relaunch:hover { background: var(--accent-hover, var(--accent)); }
+
+.app-rail-relaunch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.app-rail-relaunch.hidden { display: none; }
+
+.app-rail-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-rail-user-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+.app-rail-user-btn:hover { background: var(--hover); color: var(--text); }
+
+.app-rail-user-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+/* User dropdown (opens upward; reuses .code-menu) */
+.app-rail-user-menu { min-width: 168px; }
+
+.app-rail-user-menu .code-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.app-rail-user-menu .code-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+
+/* Recents vertical resize + Recent apps search */
+.recents-vsplit {
+  flex: 0 0 4px;
+  margin: 1px 8px;
+  border-radius: 2px;
+  cursor: row-resize;
+  background: var(--text-faint);
+  opacity: 0.7;
+}
+
+.recents-vsplit:hover { background: var(--accent); opacity: 1; }
+
+body.code-vdragging { cursor: row-resize; user-select: none; }
+
+.app-rail-search { padding: 0 10px 6px; }
+
+.app-rail-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.app-rail-search input:focus { border-color: var(--accent); }
+
+/* Apps grid (rail) — Apps-page icons in tiles */
+.app-rail-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 10px 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 6px;
+  align-content: start;
+}
+
+.app-rail-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 2px 6px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.app-rail-tile:hover { background: var(--hover); color: var(--text); }
+
+.app-rail-tile .tile-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+}
+
+.app-rail-tile .tile-icon img { width: 100%; height: 100%; object-fit: cover; }
+
+.app-rail-tile .tile-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.app-rail-tile .tile-name {
+  max-width: 100%;
+  font-size: 10.5px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* Layout tiles — mini 2x2 stack of the layout's app icons. */
+.app-rail-tile .tile-icon.tile-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  padding: 2px;
+  box-sizing: border-box;
+}
+
+/* Section labels + pagers inside the rail grid (palette parity) */
+.rail-grid-label {
+  grid-column: 1 / -1;
+  padding: 10px 2px 2px;
+}
+
+.rail-grid-pager { grid-column: 1 / -1; padding: 2px 0 4px; }
+
+.rail-grid-pager .pagination-nav { justify-content: center; }
+
+
+/* Apps label row — open icon on the far right */
+.app-rail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Collapsible rail section header — disclosure toggle (chevron + label) on the
+   left, the open-page icon on the right. */
+.app-rail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.app-rail-section-head .app-rail-section-toggle { flex: 1; min-width: 0; }
+
+.app-rail-section-head .rail-label-btn { flex: none; }
+
+/* Open section bodies SHARE the rail space below Recents (two open → split
+   evenly). A collapsed body is display:none, so its space flows to the other
+   open body — or, when both are closed, to Recents (see syncRailLayout). */
+.app-rail-section-body { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; }
+
+.rail-label-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+}
+
+.rail-label-btn svg { width: 12px; height: 12px; }
+
+.rail-label-btn:hover { background: var(--hover); color: var(--text); }
+
+.app-rail-tile--os { opacity: 0.78; }
+
+.app-rail-tile--os:hover { opacity: 1; }
+
+
+/* Recents disclosure */
+.code-rail-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Breathing room between the nav and the Recents header. */
+#recents-toggle { margin-top: 14px; }
+
+.code-rail-disclosure .disc-chevron {
+  width: 11px;
+  height: 11px;
+  transition: transform 0.15s ease;
+}
+
+.code-rail-disclosure.closed .disc-chevron { transform: rotate(-90deg); }
+
+body.code-dragging iframe { pointer-events: none !important; }
+
+
+
+
+
+/* ── Rail "More" disclosure — Loops/Skills/Agents fold under it ── */
+/* Quieter than the real destinations — it is a disclosure, not a page. Dark
+   mode dims it further; hover and open restore full presence. */
+.app-rail-more-toggle { opacity: 0.85; }
+
+[data-theme="dark"] .app-rail-more-toggle { opacity: 0.55; }
+
+.app-rail-more-toggle:hover, .app-rail-more-toggle.open, .app-rail-more-toggle.active { opacity: 1; }
+
+/* The More fly-out — a code-menu (fixed + shadowed) holding rail nav items,
+   opened to the right of the More button. */
+.rail-more-menu { display: flex; flex-direction: column; gap: 2px; min-width: 152px; }
+
+.rail-more-menu .app-rail-nav-item { width: 100%; }

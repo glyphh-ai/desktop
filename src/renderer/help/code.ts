@@ -11,6 +11,7 @@
  */
 
 import { confirmAction } from "./shared.js";
+import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
@@ -739,13 +740,120 @@ function newChat(): void {
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────
-/** (2.5.0) The rail's session list is gone — the Coding Agent panel's header
- *  dropdown is the only session UI, and it repaints off this event. */
+async function deleteChat(chat: CodeChat): Promise<void> {
+  if (!(await confirmAction({
+    title: `Delete “${chat.title}”?`,
+    body: "This session's history is gone for good.",
+    confirmLabel: "Delete session",
+    danger: true,
+  }))) return;
+  chats = chats.filter((x) => x.id !== chat.id);
+  if (currentId === chat.id) currentId = chats[0]?.id || "";
+  void saveStore();
+  renderHistory();
+  renderThread();
+}
+
+let menuEl: HTMLDivElement | null = null;
+
+function closeMenu(): void { menuEl?.remove(); menuEl = null; }
+
+function beginRename(chat: CodeChat, label: HTMLElement): void {
+  const field = document.createElement("input");
+  field.type = "text";
+  field.className = "code-history-rename";
+  field.value = chat.title;
+  field.addEventListener("click", (ev) => ev.stopPropagation());
+  let done = false;
+  const restore = (): void => { label.textContent = chat.title; label.title = chat.title; field.replaceWith(label); };
+  const commit = (): void => {
+    if (done) return;
+    done = true;
+    const t = field.value.trim();
+    if (t && t !== chat.title) {
+      chat.title = t;
+      void saveStore();
+      // The coding tile's header/dropdown follow this event.
+      window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+    }
+    restore();
+  };
+  field.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); done = true; restore(); }
+  });
+  field.addEventListener("blur", commit);
+  label.replaceWith(field);
+  field.focus();
+  field.select();
+}
+
+function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
+  closeMenu();
+  const m = document.createElement("div");
+  m.className = "code-menu";
+  const ren = document.createElement("button");
+  ren.className = "code-menu-item";
+  ren.textContent = "Rename";
+  ren.addEventListener("click", () => {
+    closeMenu();
+    const label = anchor.closest(".code-history-item")?.querySelector<HTMLElement>(".code-history-title");
+    if (label) beginRename(chat, label);
+  });
+  m.appendChild(ren);
+  const del = document.createElement("button");
+  del.className = "code-menu-item danger";
+  del.textContent = "Delete";
+  del.addEventListener("click", () => { closeMenu(); void deleteChat(chat); });
+  m.appendChild(del);
+  const r = anchor.getBoundingClientRect();
+  m.style.top = `${r.bottom + 4}px`;
+  m.style.left = `${Math.max(8, r.right - 120)}px`;
+  document.body.appendChild(m);
+  menuEl = m;
+}
+
 function renderHistory(): void {
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
-  // The agent head's session title (the slot header row is gone).
+  // The agent head's session title rides every history repaint.
   const sessTitleEl = el("code-session-title");
   if (sessTitleEl) sessTitleEl.textContent = current()?.title ?? "New session";
+  window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+  const list = el<HTMLDivElement>("code-history");
+  if (!list) return;
+  list.textContent = "";
+  for (const c of chats) {
+    const row = document.createElement("div");
+    row.className = "code-history-item" + (c.id === currentId ? " active" : "");
+    const label = document.createElement("span");
+    label.className = "code-history-title";
+    label.textContent = c.title;
+    label.title = c.title;
+    // Rename is a menu action (⋯ → Rename), not a click on the title — a
+    // selection-gated title click fought the row's own select handler and
+    // never reliably fired. The label is now just a label.
+    const dot = document.createElement("span");
+    const working = liveRuns.has(c.id);
+    dot.className = "code-chat-dot" + (working ? " working" : "");
+    dot.title = working ? "Working" : "Idle";
+    const menuBtn = document.createElement("button");
+    menuBtn.className = "code-chat-menu-btn";
+    menuBtn.title = "More";
+    menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
+    menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openChatMenu(menuBtn, c); });
+    row.append(dot, label, menuBtn);
+    row.addEventListener("click", () => {
+      currentId = c.id;
+      threadPinned = true;
+      void saveStore();
+      ensureCodeSection();
+      renderHistory();
+      renderThread();
+      refreshCtxMeter();
+      void checkWorkdirGate();
+    });
+    list.appendChild(row);
+  }
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
@@ -1818,12 +1926,364 @@ function initGlyphhAgentEvents(): void {
   });
 }
 
-// ── (2.5.0) The left rail is gone — its Recents/Apps/Layouts grids, section
-//    disclosures, splitter, and collapse/width prefs went with it. Sessions
-//    live in the Coding Agent panel; apps + layouts live on the command bar. ──
+// ── Recents disclosure ───────────────────────────────────────────────────
+function setRecentsOpen(open: boolean, persist: boolean): void {
+  el("recents-toggle")?.classList.toggle("closed", !open);
+  el("code-history")?.classList.toggle("hidden", !open);
+  if (persist) void window.yo.setPreference?.("codeRecentsOpen", open);
+  syncRailLayout();
+}
+
+// ── Rail sections (Apps, Layouts) — each collapsible, state remembered ───────
+interface RailSectionDef { toggle: string; body: string; pref: string }
+const RAIL_SECTIONS: RailSectionDef[] = [
+  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railAppsOpen" },
+  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railLayoutsOpen" },
+];
+/** The user's chosen Recents height — the splitter's flex-basis. Kept in a var
+ *  so syncRailLayout can restore it after a "both sections closed" fill. */
+let railRecentsH = 170;
+
+function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
+  el(def.toggle)?.classList.toggle("closed", !open);
+  el(def.body)?.classList.toggle("hidden", !open);
+  if (persist) void window.yo.setPreference?.(def.pref, open);
+  syncRailLayout();
+}
+
+/**
+ * One authority over how the rail's lower stack shares vertical space:
+ *
+ *   - Recents open + a section open → the splitter is live; Recents holds its
+ *     chosen height and the open section(s) take the rest.
+ *   - Recents open + BOTH sections closed → nothing below to resize, so Recents
+ *     fills all the way to the user area and the splitter hides.
+ *   - Recents closed → the sections own the whole stack; no splitter.
+ *
+ * Without this, collapsing both sections left Recents pinned at its dragged
+ * height with dead space beneath it — the "doesn't go past a certain point" bug.
+ */
+function syncRailLayout(): void {
+  const hist = el("code-history");
+  const vs = el("recents-vsplit");
+  const recentsOpen = !hist?.classList.contains("hidden");
+  const anySectionOpen = RAIL_SECTIONS.some((d) => !el(d.body)?.classList.contains("hidden"));
+  vs?.classList.toggle("hidden", !(recentsOpen && anySectionOpen));
+  if (hist && recentsOpen) hist.style.flex = anySectionOpen ? `0 1 ${railRecentsH}px` : "1 1 auto";
+}
+
+/** Bind each rail section's disclosure toggle + restore its remembered state. */
+function initRailSections(): void {
+  for (const def of RAIL_SECTIONS) {
+    el(def.toggle)?.addEventListener("click", () => {
+      const open = el(def.toggle)!.classList.contains("closed"); // was closed → open it
+      setRailSectionOpen(def, open, true);
+    });
+    void window.yo.getPreference?.(def.pref, true).then((v) => setRailSectionOpen(def, v !== false, false));
+  }
+}
+
+// ── Apps grid (rail, below Recents) — the same list + icons as the Apps page
+//    / command center, ordered by last-opened (recents), opened with the same
+//    launch the Apps page uses. All apps show; recents float to the top so the
+//    search still covers the long tail. ─────────────────────────────────────
+interface RailApp {
+  id: string;
+  slug?: string | null;
+  name: string;
+  url?: string | null;
+  execPath?: string | null;
+  isBrowser?: boolean;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
+  system?: boolean;
+  connection?: { accountId?: string; pipedreamSlug: string } | null;
+}
+interface RailLayout { name: string; splits: Array<{ panelId: string }> }
+let railApps: RailApp[] = [];
+let railLayouts: RailLayout[] = [];
+let railRecentTs: Record<string, number> = {};
+let railAppsPage = 0;
+let railLayoutsPage = 0;
+const RAIL_APPS_PER_PAGE = 9;
+const RAIL_LAYOUTS_PER_PAGE = 6;
+
+/** Slice items to a page, clamping in-range (palette parity). */
+function railPaginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; totalPages: number } {
+  const totalPages = Math.max(1, Math.ceil(items.length / size));
+  const pp = Math.max(0, Math.min(page, totalPages - 1));
+  return { items: items.slice(pp * size, (pp + 1) * size), page: pp, totalPages };
+}
+
+/** Prev / n / Next bar (reuses .pagination-* styling), spanning the grid. */
+function railPager(page: number, totalPages: number, onPage: (p: number) => void): HTMLElement {
+  const bar = document.createElement("div");
+  bar.className = "pagination-bar rail-grid-pager";
+  if (totalPages <= 1) return bar;
+  const nav = document.createElement("div");
+  nav.className = "pagination-nav";
+  const mk = (label: string, to: number, disabled: boolean) => {
+    const b = document.createElement("button");
+    b.className = "pagination-btn";
+    b.textContent = label;
+    b.disabled = disabled;
+    b.addEventListener("click", () => onPage(to));
+    return b;
+  };
+  nav.appendChild(mk("‹", page - 1, page === 0));
+  const info = document.createElement("span");
+  info.className = "pagination-info";
+  info.textContent = `${page + 1}/${totalPages}`;
+  nav.appendChild(info);
+  nav.appendChild(mk("›", page + 1, page >= totalPages - 1));
+  bar.appendChild(nav);
+  return bar;
+}
+
+async function loadRecentApps(): Promise<void> {
+  try {
+    const [apps, layouts, recents] = await Promise.all([
+      window.yo.panelAppsList?.() ?? Promise.resolve([]),
+      window.yo.layoutsList?.() ?? Promise.resolve([]),
+      window.yo.recentsList?.() ?? Promise.resolve([]),
+    ]);
+    // Palette parity: web apps (have a url) + native library apps.
+    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.url || a.isBrowser === false);
+    railLayouts = (layouts || []) as unknown as RailLayout[];
+    railRecentTs = {};
+    for (const r of recents || []) {
+      const key = `${r.kind}:${r.id}`;
+      railRecentTs[key] = Math.max(railRecentTs[key] || 0, r.ts || 0);
+    }
+  } catch { railApps = []; railLayouts = []; railRecentTs = {}; }
+  renderRecentApps();
+  // Icons land async (Pipedream catalog + OS file icons), then re-render —
+  // same as the palette / Apps page.
+  void primeConnectedIcons(railApps as never, renderRecentApps);
+  void primeNativeIcons(railApps as never, renderRecentApps);
+}
+
+/** Both rail sections. Apps and Layouts each own a search + pagination and live
+ *  under their own collapsible header (see initRailSections). */
+function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); }
+
+function renderRailApps(): void {
+  const list = el<HTMLDivElement>("recent-apps-list");
+  if (!list) return;
+  const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
+  list.textContent = "";
+
+  // Recency-first, name OR slug match — palette parity.
+  const apps = railApps
+    .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q))
+    .sort((a, b) => {
+      // The built-in Glyphh app is ALWAYS first, ahead of recency.
+      const ga = a.appArchetype === "glyphh-self" ? 1 : 0;
+      const gb = b.appArchetype === "glyphh-self" ? 1 : 0;
+      if (ga !== gb) return gb - ga;
+      const ta = railRecentTs[`app:${a.id}`] || 0;
+      const tb = railRecentTs[`app:${b.id}`] || 0;
+      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
+    });
+  const ap = railPaginate(apps, railAppsPage, RAIL_APPS_PER_PAGE);
+  railAppsPage = ap.page;
+  for (const a of ap.items) {
+    const tile = document.createElement("button");
+    tile.className = "app-rail-tile";
+    tile.type = "button";
+    tile.title = a.name;
+    const icon = document.createElement("div");
+    icon.className = "tile-icon";
+    icon.innerHTML = appIconInner(a, a.name, "tile-initial");
+    const nm = document.createElement("span");
+    nm.className = "tile-name";
+    nm.textContent = a.name;
+    tile.append(icon, nm);
+    tile.addEventListener("click", () => {
+      // Same open the Apps page's "Open app" uses (per-config launch).
+      void window.yo.appLaunch?.({
+        slug: a.slug || a.id, name: a.name, url: a.url,
+        isBrowser: a.isBrowser, execPath: a.execPath,
+        appArchetype: a.appArchetype, launchConfig: a.launchConfig,
+      });
+    });
+    list.appendChild(tile);
+  }
+  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { railAppsPage = pg; renderRailApps(); }));
+  if (!apps.length) {
+    const empty = document.createElement("div");
+    empty.className = "code-empty";
+    empty.style.margin = "10px auto";
+    empty.textContent = q ? "No matches." : "Your apps land here.";
+    list.appendChild(empty);
+  }
+}
+
+function renderRailLayouts(): void {
+  const list = el<HTMLDivElement>("recent-layouts-list");
+  if (!list) return;
+  const q = (el<HTMLInputElement>("recent-layouts-search")?.value || "").trim().toLowerCase();
+  list.textContent = "";
+
+  // Mini icon stacks; same open (into the workbench) as the Layouts page.
+  const layouts = railLayouts
+    .filter((l) => !q || (l.name || "").toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ta = railRecentTs[`layout:${a.name}`] || 0;
+      const tb = railRecentTs[`layout:${b.name}`] || 0;
+      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
+    });
+  const lp = railPaginate(layouts, railLayoutsPage, RAIL_LAYOUTS_PER_PAGE);
+  railLayoutsPage = lp.page;
+  for (const l of lp.items) {
+    const tile = document.createElement("button");
+    tile.className = "app-rail-tile";
+    tile.type = "button";
+    tile.title = `${l.name} (layout)`;
+    const icon = document.createElement("div");
+    icon.className = "tile-icon tile-layout";
+    const seen = new Set<string>();
+    const ids = l.splits
+      .map((s) => s.panelId)
+      .filter((id) => id && !seen.has(id) && (seen.add(id), true))
+      .slice(0, 4);
+    icon.innerHTML = ids.length
+      ? ids.map((id) => {
+          const app = railApps.find((a) => a.id === id || a.slug === id);
+          return `<span class="mini">${appIconInner(app || {}, app?.name || id, "tile-mini-initial")}</span>`;
+        }).join("")
+      : `<span class="tile-initial">▦</span>`;
+    const nm = document.createElement("span");
+    nm.className = "tile-name";
+    nm.textContent = l.name;
+    tile.append(icon, nm);
+    tile.addEventListener("click", () => { void openLayoutInWorkbench(l.name); });
+    list.appendChild(tile);
+  }
+  if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRailLayouts(); }));
+  if (!layouts.length) {
+    const empty = document.createElement("div");
+    empty.className = "code-empty";
+    empty.style.margin = "10px auto";
+    empty.textContent = q ? "No matches." : "Your layouts land here.";
+    list.appendChild(empty);
+  }
+}
+
+// ── Recents vertical resize ──────────────────────────────────────────────
+function initRecentsVsplit(): void {
+  const vs = el("recents-vsplit");
+  const hist = el("code-history");
+  if (!vs || !hist) return;
+  vs.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    document.body.classList.add("code-vdragging");
+    const startY = e.clientY;
+    const startTop = hist.getBoundingClientRect().top;
+    const startH = hist.getBoundingClientRect().height;
+    // The cap is computed against the WHOLE lower stack, not a snapshot of one
+    // grid: Recents may grow until the still-open section(s) hit a usable
+    // minimum. A collapsed section reserves nothing, so Recents reclaims its
+    // space. This is what makes the splitter reach far down when only one
+    // section is open (the old cap stopped at the apps grid's 96px).
+    const MIN_BODY = 110;
+    const userTop = el("app-rail-user")?.getBoundingClientRect().top ?? window.innerHeight;
+    const available = userTop - startTop;
+    const move = (ev: MouseEvent) => {
+      let reserve = vs.offsetHeight;
+      document.querySelectorAll<HTMLElement>(".app-rail-section-head").forEach((h) => { reserve += h.offsetHeight; });
+      const openBodies = RAIL_SECTIONS.filter((d) => !el(d.body)?.classList.contains("hidden")).length;
+      reserve += openBodies * MIN_BODY;
+      const maxH = Math.max(60, available - reserve);
+      const h = Math.max(60, Math.min(maxH, startH + (ev.clientY - startY)));
+      hist.style.flex = `0 1 ${h}px`;
+      railRecentsH = h;
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("code-vdragging");
+      if (railRecentsH > 0) void window.yo.setPreference?.("codeRecentsH", railRecentsH);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+}
+
+/** Wire the rail's Apps grid: restore its height, load, and bind search. */
+function initRailApps(): void {
+  void (async () => {
+    const recentsH = Number(await window.yo.getPreference?.("codeRecentsH", 0)) || 0;
+    if (recentsH > 0) railRecentsH = recentsH;
+    syncRailLayout();
+  })();
+  void loadRecentApps();
+  // The rail no longer has Apps/Layouts nav buttons (they moved to these
+  // sections), so the open icons go straight through gotoSection — the same
+  // switcher the nav's own click handler calls.
+  el("apps-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("apps"); });
+  el("layouts-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("layouts"); });
+  // Live updates: Apps/Layouts CRUD announces itself (same renderer).
+  document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
+  initRecentsVsplit();
+  initRailSections();
+
+  // Apps search — its own page; Enter runs the text as a command (palette parity).
+  el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", () => {
+    railAppsPage = 0; renderRailApps();
+  });
+  el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const text = (e.target as HTMLInputElement).value.trim();
+    if (text) void window.yo.execCommand(text.replace(/^\./, ""));
+  });
+  // Layouts search — its own page + list.
+  el<HTMLInputElement>("recent-layouts-search")?.addEventListener("input", () => {
+    railLayoutsPage = 0; renderRailLayouts();
+  });
+}
+
+
+// ── Left-rail splitter ───────────────────────────────────────────────────
+function initRailSplitter(): void {
+  const splitter = el("code-rail-splitter");
+  if (!splitter) return;
+  splitter.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const pane = el("app-rail");
+    if (!pane) return;
+    document.body.classList.add("code-dragging");
+    const move = (ev: MouseEvent) => {
+      const w = Math.min(420, Math.max(170, ev.clientX));
+      pane.style.width = `${w}px`;
+      pane.style.minWidth = `${w}px`;
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("code-dragging");
+      const w = parseInt(pane.style.width || "0", 10);
+      if (w > 0) void window.yo.setPreference?.("codeRailWidth", w);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+}
+
+async function applyPanelPrefs(): Promise<void> {
+  const railCollapsed = ((await window.yo.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
+  el("app-rail")?.classList.toggle("collapsed", railCollapsed);
+  document.body.classList.toggle("rail-collapsed", railCollapsed);
+  const railW = Number(await window.yo.getPreference?.("codeRailWidth", 0)) || 0;
+  const rail = el("app-rail");
+  if (rail && railW > 0) { rail.style.width = `${railW}px`; rail.style.minWidth = `${railW}px`; }
+  const recentsOpen = (await window.yo.getPreference?.("codeRecentsOpen", true)) as boolean;
+  setRecentsOpen(recentsOpen !== false, false);
+}
 
 // ── Entry points ─────────────────────────────────────────────────────────
 export function loadCode(): void {
+  void applyPanelPrefs();
   void (async () => {
     await loadStore();
     // Don't auto-select a session on load — a fresh open highlights no Recent
@@ -1966,6 +2426,19 @@ export function initCode(): void {
     if (t.closest(".code-run-card")) {
       (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
     }
+  });
+  el("recents-toggle")?.addEventListener("click", () => {
+    const open = el("recents-toggle")!.classList.contains("closed");
+    setRecentsOpen(open, true);
+  });
+  initRailApps();
+  el("code-new-chat")?.addEventListener("click", newChat);
+  // Reset (rail section headers): back to the agent, full screen.
+  document.querySelectorAll(".rail-reset-btn").forEach((b) => b.addEventListener("click", () => gotoSection("agent")));
+  el("code-rail-toggle")?.addEventListener("click", () => {
+    const collapsed = el("app-rail")!.classList.toggle("collapsed");
+    document.body.classList.toggle("rail-collapsed", collapsed);
+    void window.yo.setPreference?.("codeRailCollapsed", collapsed);
   });
   el("code-send")?.addEventListener("click", send);
   // Session controls in the agent head (the coding panel's own header row is
@@ -2112,8 +2585,9 @@ export function initCode(): void {
     }
   });
   ta?.addEventListener("input", () => autoGrow(ta!));
-  // loadStore is ASYNC: sessions arrive before the first history paint (the
-  // Coding Agent panel's dropdown reads the same store).
+  initRailSplitter();
+  // loadStore is ASYNC: sessions arrive before the first history paint — the
+  // rail's Recents AND the agent head's dropdown read the same store.
   void (async () => {
     await loadStore();
     // Don't auto-select a session on load — a fresh open highlights no Recent
