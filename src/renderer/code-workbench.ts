@@ -603,6 +603,7 @@ async function init(): Promise<void> {
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> }): void;
     openSection(section: string): void;
     openAgent(): void;
+    reset(): void;
     openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"): void;
     openPreviewHtml(html: string, label?: string): void;
     openPreviewUrl(url: string): void;
@@ -2257,6 +2258,7 @@ async function init(): Promise<void> {
       openLayout: (layout) => openLayoutInEcho(layout),
       openSection: (section) => openSectionCard(section),
       openAgent: () => { void openAgentCard(); },
+      reset: () => resetEcho(),
       openTool: (view) => { void getOrOpenTool(view); },
       openPreviewHtml: (html, label) => {
         const entry = getOrOpenTool("preview");
@@ -2382,15 +2384,17 @@ async function init(): Promise<void> {
     body.querySelector(".echo-z-in")!.addEventListener("click", () => { userMoved = true; dist -= 280; applyCamera(); });
     body.querySelector(".echo-z-out")!.addEventListener("click", () => { userMoved = true; dist += 280; applyCamera(); });
     // RESET = back to the bare wall: every panel closes (the layout lets go
-    // too), shadow clears, and the camera re-fits.
-    body.querySelector(".echo-z-reset")!.addEventListener("click", () => {
+    // too), shadow clears, and the camera re-fits. The rail's reset buttons
+    // call the same thing through echoCtl.reset.
+    const resetEcho = (): void => {
       for (const x of [...openList]) closeCard(x);
       echoGrid = null;
       echoLayoutName = null;
       setShadow(false, false);
       userMoved = false;
       refit?.();
-    });
+    };
+    body.querySelector(".echo-z-reset")!.addEventListener("click", resetEcho);
 
     // Teardown: free the GL context and every tile's geometry/texture.
     const obs = new MutationObserver(() => {
@@ -4578,6 +4582,12 @@ async function init(): Promise<void> {
     const ref: WbAppRef = { slug: `popup-${++popupSeq}`, name, url };
     if (echoCtl) { echoCtl.openApp(ref); return; }
     openAppInWorkbench(ref, { newPanel: true });
+  };
+  // The rail's reset buttons: same move as Echo's ⟲ — everything closes,
+  // the bare wall comes back.
+  (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset = () => {
+    openEchoSurface();
+    echoCtl?.reset();
   };
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;

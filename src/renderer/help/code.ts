@@ -2433,7 +2433,18 @@ export function initCode(): void {
   initRailApps();
   el("code-new-chat")?.addEventListener("click", newChat);
   // Reset (rail section headers): back to the agent, full screen.
-  document.querySelectorAll(".rail-reset-btn").forEach((b) => b.addEventListener("click", () => gotoSection("agent")));
+  // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
+  // panel and return to the bare wall.
+  document.querySelectorAll(".rail-reset-btn").forEach((b) => b.addEventListener("click", () => {
+    const w = window as unknown as { __initCodeWorkbench?: () => void; __wbEchoReset?: () => void };
+    w.__initCodeWorkbench?.();
+    let tries = 0;
+    const go = (): void => {
+      if (w.__wbEchoReset) w.__wbEchoReset();
+      else if (tries++ < 40) requestAnimationFrame(go);
+    };
+    go();
+  }));
   el("code-rail-toggle")?.addEventListener("click", () => {
     const collapsed = el("app-rail")!.classList.toggle("collapsed");
     document.body.classList.toggle("rail-collapsed", collapsed);
