@@ -14064,7 +14064,7 @@ body.code-dragging iframe { pointer-events: none !important; }
    three.js WebGL wall; drag pans, wheel/± zooms. ─────────────────────── */
 .ws-echo-body {
   position: relative; overflow: hidden;
-  background: radial-gradient(120% 100% at 50% 0%, #14121d 0%, #0b0a12 68%);
+  background: var(--bg);   /* the command center's own surface, theme-aware */
 }
 /* Echo TAKEOVER: while an echo slot exists it IS the workspace view. */
 .ws-right-rails.echo-takeover .ws-right-rail:not(.rail-has-echo) { display: none; }
@@ -14081,9 +14081,34 @@ body.code-dragging iframe { pointer-events: none !important; }
 }
 .echo-zoom .ws-icon-btn {
   width: 30px; height: 30px; border-radius: 8px; color: var(--text-2);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
 }
 .echo-zoom .ws-icon-btn:hover { color: var(--text); background: var(--hover); }
 .echo-zoom svg { width: 15px; height: 15px; }
+
+/* Open panels: LIVE webview cards that zoom up out of their tile and back.
+   The layer never blocks the wall — only the cards themselves take input. */
+.echo-cards { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.echo-card {
+  position: absolute; display: flex; flex-direction: column; pointer-events: auto;
+  border-radius: 10px; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border-2);
+  box-shadow: 0 18px 50px var(--shadow);
+  opacity: 0;
+  transition: left .35s cubic-bezier(.2, .8, .25, 1), top .35s cubic-bezier(.2, .8, .25, 1),
+    width .35s cubic-bezier(.2, .8, .25, 1), height .35s cubic-bezier(.2, .8, .25, 1), opacity .3s ease;
+}
+.echo-card.flash { box-shadow: 0 0 0 2px var(--accent), 0 18px 50px var(--shadow); }
+.echo-card-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 6px 5px 10px; font-size: 12px; font-weight: 600; color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+}
+.echo-card-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.echo-card-head .ws-icon-btn { width: 22px; height: 22px; color: var(--text-3); }
+.echo-card-head .ws-icon-btn:hover { color: var(--text); }
+.echo-card-head svg { width: 13px; height: 13px; }
+.echo-card-body { flex: 1; min-height: 0; display: flex; }
+.echo-card-body webview { flex: 1; min-width: 0; min-height: 0; }
 

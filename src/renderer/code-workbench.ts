@@ -1226,6 +1226,7 @@ async function init(): Promise<void> {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
       <div class="echo-stage"></div>
+      <div class="echo-cards"></div>
       <div class="echo-zoom">
         <button class="ws-icon-btn echo-z-in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
@@ -1236,7 +1237,7 @@ async function init(): Promise<void> {
 
     // ── Scene: a cylindrical wall of tile planes, camera inside ──
     const R = 1600;
-    const TILE_W = 230, TILE_H = 272, COL_ARC = (TILE_W + 28) / R, ROW_H = 306;
+    const TILE_W = 230, TILE_H = TILE_W * (94 / 104), COL_ARC = (TILE_W + 10) / R, ROW_H = TILE_H + 16;
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, 1, 1, 8000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -1256,11 +1257,18 @@ async function init(): Promise<void> {
       camera.rotation.set(0, yaw, 0);
       dirty = true;
     };
+    let userMoved = false;
+    // bound to fitExtents once the wall exists (the wall data can land
+    // before the first ResizeObserver tick, when aspect is still default)
+    let refit: (() => void) | null = null;
+    let relayout: (() => void) | null = null;
     const resize = (): void => {
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      if (refit && !userMoved) refit();
+      relayout?.();
       dirty = true;
     };
     const ro = new ResizeObserver(resize);
@@ -1274,48 +1282,112 @@ async function init(): Promise<void> {
     };
     requestAnimationFrame(tick);
 
-    // ── Tile cards: canvas-drawn (icon square + name), CC's icon sources ──
-    interface EchoTile { name: string; iconUrl?: string; svg?: string; kind: "app" | "layout" | "tool" }
-    const CVS_W = 256, CVS_H = 304;
-    const drawTile = (canvas: HTMLCanvasElement, t: EchoTile, img: HTMLImageElement | null): void => {
-      canvas.width = CVS_W * 2; canvas.height = CVS_H * 2;
-      const c = canvas.getContext("2d")!;
-      c.scale(2, 2);
-      c.clearRect(0, 0, CVS_W, CVS_H);
-      // the icon square — same rounded-tile look as the command center
-      c.beginPath();
-      const rr = (x: number, y: number, w: number, h: number, r: number): void => {
-        c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
-        c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+    // ── Tile cards: the command center's tiles, verbatim — 56px icon
+    // square (r14, --surface-3), 9px icon inset, 6px gap, 11px --text-2
+    // label; layout tiles are the CC 2×2 mini-stack of the layout's own
+    // app icons. Drawn at 4× and colored from the LIVE theme variables,
+    // redrawn whenever the theme changes. ──
+    const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
+    interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
+    interface EchoTile { name: string; url?: string; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; kind: "app" | "layout" | "tool" }
+    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean }
+    const entries: TileEntry[] = [];
+    const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; font: string } => {
+      const css = getComputedStyle(document.documentElement);
+      const v = (name: string, fb: string): string => css.getPropertyValue(name).trim() || fb;
+      return {
+        surface2: v("--surface-2", "#141414"),
+        surface3: v("--surface-3", "#1a1a1f"),
+        text2: v("--text-2", "#adbac7"),
+        text3: v("--text-3", "#7d8590"),
+        accent: v("--accent", "#f59e0b"),
+        font: v("--font-sans", "-apple-system, system-ui, sans-serif"),
       };
-      rr(24, 10, 208, 208, 46);
-      c.fillStyle = "#f4f4f6";
+    };
+    let theme = themeColors();
+    const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void => {
+      c.beginPath();
+      c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+      c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+    };
+    const drawContain = (c: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, box: number, pad: number): void => {
+      const inner = box - pad * 2;
+      const s = Math.min(inner / (img.naturalWidth || inner), inner / (img.naturalHeight || inner));
+      const w = (img.naturalWidth || inner) * s, h = (img.naturalHeight || inner) * s;
+      c.drawImage(img, x + (box - w) / 2, y + (box - h) / 2, w, h);
+    };
+    const drawTile = (e: TileEntry): void => {
+      e.canvas.width = TILE_PX_W * TILE_SCALE; e.canvas.height = TILE_PX_H * TILE_SCALE;
+      const c = e.canvas.getContext("2d")!;
+      c.scale(TILE_SCALE, TILE_SCALE);
+      c.clearRect(0, 0, TILE_PX_W, TILE_PX_H);
+      const ix = (TILE_PX_W - 56) / 2, iy = 10;
+      rr(c, ix, iy, 56, 56, 14);
+      c.fillStyle = theme.surface3;
       c.fill();
-      if (t.kind === "layout") {
-        // the CC layout tile's 2×2 mini-grid, in ink
-        c.fillStyle = "#1a1a1f";
-        for (let i = 0; i < 4; i++) {
-          const gx = 24 + 48 + (i % 2) * 62, gy = 10 + 48 + Math.floor(i / 2) * 62;
-          c.beginPath(); rr(gx, gy, 50, 50, 12); c.fill();
-        }
-      } else if (img) {
-        const pad = 32, box = 208 - pad * 2;
-        const s = Math.min(box / (img.naturalWidth || box), box / (img.naturalHeight || box));
-        const w = (img.naturalWidth || box) * s, h = (img.naturalHeight || box) * s;
-        c.drawImage(img, 24 + (208 - w) / 2, 10 + (208 - h) / 2, w, h);
-      } else {
-        c.fillStyle = "#55555c";
-        c.font = "600 96px -apple-system, system-ui, sans-serif";
-        c.textAlign = "center"; c.textBaseline = "middle";
-        c.fillText((t.name || "?").charAt(0).toUpperCase(), 128, 118);
+      if (e.open) {
+        rr(c, ix - 1.5, iy - 1.5, 59, 59, 15.5);
+        c.strokeStyle = theme.accent;
+        c.lineWidth = 1.5;
+        c.stroke();
       }
-      // the name label
-      c.fillStyle = "#e2e5ec";
-      c.font = "500 24px -apple-system, system-ui, sans-serif";
+      if (e.tile.kind === "layout") {
+        const cells = e.tile.cells || [];
+        if (!cells.length) {
+          // empty layout — the CC's ▦ placeholder
+          c.fillStyle = theme.text2;
+          c.font = `600 16px ${theme.font}`;
+          c.textAlign = "center"; c.textBaseline = "middle";
+          c.fillText("▦", TILE_PX_W / 2, iy + 28);
+        } else {
+          // .tile-icon.tile-layout — 3px inset, 1px gap, 2 columns,
+          // each .mini a --surface-2 rounded cell with the app's icon
+          const cellW = (56 - 6 - 1) / 2;
+          const rowsN = Math.ceil(cells.length / 2);
+          const cellH = (50 - (rowsN - 1)) / rowsN;
+          cells.forEach((cell, i) => {
+            const cx = ix + 3 + (i % 2) * (cellW + 1);
+            const cy = iy + 3 + Math.floor(i / 2) * (cellH + 1);
+            rr(c, cx, cy, cellW, cellH, 3);
+            c.fillStyle = theme.surface2;
+            c.fill();
+            if (cell.img && cell.glyphSvg) {
+              const g = Math.min(cellW, cellH) * 0.64;
+              c.drawImage(cell.img, cx + (cellW - g) / 2, cy + (cellH - g) / 2, g, g);
+            } else if (cell.img) {
+              drawContain(c, cell.img, cx + (cellW - Math.min(cellW, cellH)) / 2, cy, Math.min(cellW, cellH), 2);
+            } else {
+              // .tile-mini-initial — 8px/600, --text-3
+              c.fillStyle = theme.text3;
+              c.font = `600 8px ${theme.font}`;
+              c.textAlign = "center"; c.textBaseline = "middle";
+              c.fillText(cell.initial, cx + cellW / 2, cy + cellH / 2);
+            }
+          });
+        }
+      } else if (e.img && e.tile.glyphSvg) {
+        // .nav-glyph svg — 64% of the box, centered, --text-2 ink
+        const g = 56 * 0.64;
+        c.drawImage(e.img, ix + (56 - g) / 2, iy + (56 - g) / 2, g, g);
+      } else if (e.img) {
+        // img — object-fit: contain inside a 9px inset
+        drawContain(c, e.img, ix, iy, 56, 9);
+      } else {
+        // .tile-initial — 16px/600, --text-2
+        c.fillStyle = theme.text2;
+        c.font = `600 16px ${theme.font}`;
+        c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText((e.tile.name || "?").charAt(0).toUpperCase(), TILE_PX_W / 2, iy + 28);
+      }
+      // .tile-name — 11px, --text-2, ellipsized to the tile width
+      c.fillStyle = theme.text2;
+      c.font = `400 11px ${theme.font}`;
       c.textAlign = "center"; c.textBaseline = "middle";
-      let label = t.name;
-      while (label.length > 2 && c.measureText(label).width > 236) label = label.slice(0, -1);
-      c.fillText(label === t.name ? label : label + "…", 128, 276);
+      let label = e.tile.name;
+      while (label.length > 2 && c.measureText(label + "…").width > 96) label = label.slice(0, -1);
+      c.fillText(label === e.tile.name ? label : label + "…", TILE_PX_W / 2, iy + 56 + 6 + 7);
+      e.tex.needsUpdate = true;
+      dirty = true;
     };
     const loadImage = (src: string): Promise<HTMLImageElement | null> =>
       new Promise((res) => {
@@ -1325,11 +1397,11 @@ async function init(): Promise<void> {
         img.onerror = () => res(null);
         img.src = src;
       });
-    const svgToDataUrl = (svg: string): string => {
+    const svgToDataUrl = (svg: string, ink: string): string => {
       // rasterizable: xmlns (inline SVG omits it, images REQUIRE it),
-      // explicit size, ink color instead of currentColor
+      // explicit size, the theme's ink instead of currentColor
       const sized = svg.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" ')
-        .replace(/currentColor/g, "#1a1a1f");
+        .replace(/currentColor/g, ink);
       return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(sized)));
     };
     // Cross-origin icons (favicons) arrive as data URLs via the main process —
@@ -1337,22 +1409,71 @@ async function init(): Promise<void> {
     const iconYo = (window as unknown as { yo?: { webIconFetch?: (u: string) => Promise<string> } }).yo;
     const resolveIconSrc = (src: string): Promise<string> =>
       /^https?:/i.test(src) ? (iconYo?.webIconFetch?.(src) ?? Promise.resolve("")) : Promise.resolve(src);
+    const loadOne = (src: string, assign: (img: HTMLImageElement) => void, e: TileEntry): void => {
+      if (!src) return;
+      void resolveIconSrc(src).then((u) => (u ? loadImage(u) : null)).then((img) => {
+        if (!img || !body.isConnected) return;
+        assign(img);
+        drawTile(e);
+      });
+    };
+    const loadEntryIcon = (e: TileEntry): void => {
+      if (e.tile.cells) {
+        for (const cell of e.tile.cells) {
+          loadOne(cell.glyphSvg ? svgToDataUrl(cell.glyphSvg, theme.text2) : cell.iconUrl || "", (img) => { cell.img = img; }, e);
+        }
+        return;
+      }
+      loadOne(e.tile.glyphSvg ? svgToDataUrl(e.tile.glyphSvg, theme.text2) : e.tile.iconUrl || "", (img) => { e.img = img; }, e);
+    };
+    // Theme switches re-ink every tile (glyphs re-rasterize in the new ink).
+    const themeObs = new MutationObserver(() => {
+      const next = themeColors();
+      if (next.surface3 === theme.surface3 && next.text2 === theme.text2 && next.surface2 === theme.surface2) return;
+      theme = next;
+      for (const e of entries) {
+        drawTile(e);
+        if (e.tile.glyphSvg || e.tile.cells?.some((cl) => cl.glyphSvg)) loadEntryIcon(e);
+      }
+    });
+    themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     const group = new THREE.Group();
     scene.add(group);
+    let wallCols = 1, wallRows = 1;
+    /** Zoom to extents: the camera distance where the WHOLE wall fits.
+     *  The wall is CYLINDRICAL and the camera is inside the cylinder, so
+     *  the edge columns sit at R·sinθ across and only R·cosθ−(R−D) deep —
+     *  a flat-chord fit puts them outside the frustum. Solve the angular
+     *  constraint instead: D ≥ R·sinθ/tan(hFov) + R(1−cosθ). */
+    const fitExtents = (): void => {
+      const half = (wallCols * COL_ARC) / 2;
+      const wallH = wallRows * ROW_H;
+      const tanV = Math.tan((camera.fov * Math.PI) / 360);
+      const tanH = tanV * camera.aspect;
+      const Dh = (R * Math.sin(half)) / tanH + R * (1 - Math.cos(half));
+      const Dv = wallH / 2 / tanV;
+      const D = Math.max(Dv, Dh) * 1.08;
+      HOME.dist = D - R;
+      ({ yaw, yOff, dist } = { ...HOME });
+      applyCamera();
+    };
+    /** ROW-MAJOR, 10 wide — the top row IS the command center's dock. */
     const buildWall = (tiles: EchoTile[]): void => {
       const n = tiles.length || 1;
-      const rows = Math.max(2, Math.min(5, Math.round(Math.sqrt(n / 2.4))));
-      const cols = Math.ceil(n / rows);
-      maxYaw = (cols * COL_ARC) / 2 + 0.35;
+      wallCols = 10;
+      wallRows = Math.ceil(n / wallCols);
+      maxYaw = (wallCols * COL_ARC) / 2 + 0.35;
       tiles.forEach((t, i) => {
-        const col = Math.floor(i / rows), row = i % rows;
-        const theta = (col - (cols - 1) / 2) * COL_ARC;
-        const y = ((rows - 1) / 2 - row) * ROW_H;
+        const col = i % wallCols, row = Math.floor(i / wallCols);
+        const theta = (col - (wallCols - 1) / 2) * COL_ARC;
+        const y = ((wallRows - 1) / 2 - row) * ROW_H;
         const canvas = document.createElement("canvas");
-        drawTile(canvas, t, null);
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
+        const entry: TileEntry = { tile: t, canvas, tex, img: null };
+        entries.push(entry);
+        drawTile(entry);
         const mesh = new THREE.Mesh(
           new THREE.PlaneGeometry(TILE_W, TILE_H),
           new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
@@ -1360,83 +1481,246 @@ async function init(): Promise<void> {
         mesh.position.set(R * Math.sin(theta), y, -R * Math.cos(theta));
         mesh.rotation.y = -theta;
         group.add(mesh);
-        // stream the real icon in when it lands
-        const src = t.svg ? svgToDataUrl(t.svg) : t.iconUrl || "";
-        if (src) {
-          void resolveIconSrc(src).then((u) => (u ? loadImage(u) : null)).then((img) => {
-            if (!img || !body.isConnected) return;
-            drawTile(canvas, t, img);
-            tex.needsUpdate = true;
-            dirty = true;
-          });
-        }
+        entry.mesh = mesh;
+        loadEntryIcon(entry);
       });
-      dirty = true;
+      refit = fitExtents;
+      fitExtents();   // open on the whole wall
     };
 
-    // ── The wall's content: the command center, whole, + panel types ──
+    // ── The wall's content: the command center, whole and IN ITS ORDER —
+    // dock first (same 10, Glyphh locked first, backfilled defaults), then
+    // the saved grid order, new items after — then the panel types. ──
+    type PanelRowLite = { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null };
     type Yo = {
-      panelAppsList?: () => Promise<Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null }>>;
-      layoutsList?: () => Promise<Array<{ name: string }>>;
+      panelAppsList?: () => Promise<PanelRowLite[]>;
+      layoutsList?: () => Promise<LayoutRow[]>;
+      getPreference?: (k: string, d: unknown) => Promise<unknown>;
     };
     const yoApi = (window as unknown as { yo?: Yo }).yo;
-    void Promise.all([yoApi?.panelAppsList?.() ?? [], yoApi?.layoutsList?.() ?? []]).then(([rows, layouts]) => {
+    void Promise.all([
+      yoApi?.panelAppsList?.() ?? [],
+      yoApi?.layoutsList?.() ?? [],
+      yoApi?.getPreference?.("ccDock", null) ?? null,
+      yoApi?.getPreference?.("ccIconOrder", []) ?? [],
+    ]).then(([rows, layouts, dockPref, orderPref]) => {
       if (!body.isConnected) return;
-      const apps = (rows || []).filter((a) => a.url || ["glyphh-app", "glyphh-self", "glyphh-nav"].includes(a.appArchetype || ""));
-      // the command center's default order: Glyphh, nav, installed, web
+      const appsAll = (rows || []).filter((a) => a.url || ["glyphh-app", "glyphh-self", "glyphh-nav"].includes(a.appArchetype || ""));
       const weight = (a: { appArchetype?: string | null }): number =>
         a.appArchetype === "glyphh-self" ? 3 : a.appArchetype === "glyphh-nav" ? 2 : a.appArchetype === "glyphh-app" ? 1 : 0;
-      apps.sort((x, y) => weight(y) - weight(x));
-      const tiles: EchoTile[] = apps.map((a) => {
-        const icon = { slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null };
-        if (a.appArchetype === "glyphh-nav") {
-          const svg = appIconInner(icon, a.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0];
-          return { name: a.name, svg: svg || undefined, kind: "app" };
+      appsAll.sort((x, y) => weight(y) - weight(x));
+      interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
+      const all: Entry[] = [
+        ...appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a })),
+        ...(layouts || []).map((l): Entry => ({ key: `layout:${(l.name || "").toLowerCase()}`, name: l.name, layout: l })),
+      ];
+      const byKey = new Map(all.map((e) => [e.key, e]));
+      const self = all.find((e) => e.app?.appArchetype === "glyphh-self");
+      const orderKeys = Array.isArray(orderPref) ? orderPref.map(String) : [];
+      const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e && e !== self);
+      const seen = new Set(inOrder.map((e) => e.key));
+      if (self) seen.add(self.key);
+      const ordered = [...(self ? [self] : []), ...inOrder, ...all.filter((e) => !seen.has(e.key))];
+      // the dock, exactly as the command center resolves it
+      const DOCK_DEFAULTS = ["app:glyphh", "app:home", "app:connections", "app:apps", "app:layouts", "app:skills", "app:loops", "app:agents", "app:models", "app:settings"];
+      let dockKeys = DOCK_DEFAULTS.slice();
+      if (Array.isArray(dockPref) && dockPref.length) {
+        dockKeys = Array.from({ length: DOCK_DEFAULTS.length }, (_, i) => String(dockPref[i] ?? ""));
+        const have = new Set(dockKeys.filter(Boolean));
+        const spare = DOCK_DEFAULTS.filter((k) => !have.has(k));
+        for (let i = 0; i < dockKeys.length && spare.length; i++) {
+          if (!dockKeys[i]) dockKeys[i] = spare.shift()!;
         }
-        return { name: a.name, iconUrl: appIconUrl(icon) || undefined, kind: "app" };
-      });
-      for (const l of layouts || []) tiles.push({ name: l.name, kind: "layout" });
-      // every workspace panel type, tool icons from the same VIEW_META set
-      const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["coding", "files", "terminal", "monaco", "diff", "preview", "plan"];
+      }
+      dockKeys[0] = "app:glyphh";
+      const docked = dockKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
+      const dockedSet = new Set(docked.map((e) => e.key));
+      const wallEntries = [...docked, ...ordered.filter((e) => !dockedSet.has(e.key))];
+
+      const iconOf = (a: PanelRowLite): { slug: string; url: string | null; execPath: string | null; appArchetype: string | null; connection: { accountId?: string; pipedreamSlug: string } | null } =>
+        ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null });
+      const glyphOf = (a: PanelRowLite): string | undefined =>
+        appIconInner(iconOf(a), a.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined;
+      const toTile = (e: Entry): EchoTile => {
+        if (e.layout) {
+          // the CC layout tile: up to 4 unique panels, app icon or tool initial
+          const seenIds = new Set<string>();
+          const ids = e.layout.splits
+            .map((cell) => cell.panelId)
+            .filter((id) => id && !seenIds.has(id) && (seenIds.add(id), true))
+            .slice(0, 4);
+          const cells: EchoCell[] = ids.map((id) => {
+            const key = id.trim().toLowerCase();
+            const app = appsAll.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
+            if (app) {
+              if (app.appArchetype === "glyphh-nav") return { glyphSvg: glyphOf(app), initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
+              return { iconUrl: appIconUrl(iconOf(app)) || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
+            }
+            const toolView = id.startsWith("tool:") ? id.slice(5) : "";
+            const label = toolView ? (VIEW_META[toolView as ViewKind]?.title ?? toolView) : id;
+            return { initial: (label || "?").charAt(0).toUpperCase(), img: null };
+          });
+          return { name: e.name, cells, kind: "layout" };
+        }
+        const a = e.app!;
+        if (a.appArchetype === "glyphh-nav") return { name: a.name, glyphSvg: glyphOf(a), kind: "app" };
+        return { name: a.name, url: (a.appArchetype !== "glyphh-self" && a.url) || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
+      };
+      const tiles = wallEntries.map(toTile);
+      // every workspace panel type (no Coding Agent tile — GLYPHH is the
+      // coding agent, and it's already first in the dock)
+      const TOOLS: Array<Exclude<ViewKind, "app" | "section" | "echo">> = ["files", "terminal", "monaco", "diff", "preview", "plan"];
       for (const v of TOOLS) {
         const svg = VIEW_META[v].icon.match(/<svg[\s\S]*<\/svg>/)?.[0];
-        tiles.push({ name: VIEW_META[v].title, svg: svg || undefined, kind: "tool" });
+        tiles.push({ name: VIEW_META[v].title, glyphSvg: svg || undefined, kind: "tool" });
       }
       buildWall(tiles);
     }).catch(() => buildWall([]));
 
-    // ── Pan (drag) + zoom (wheel / buttons) ──
-    stage.addEventListener("wheel", (e) => {
-      if (e.target instanceof Element && e.target.closest(".echo-zoom")) return;
+    // ── Open panels: click a tile and its LIVE webview zooms up from the
+    // tile's spot into a slot row anchored high, so the wall stays visible
+    // (and pannable) beneath; close zooms it back to its spot. ──
+    const cardsLayer = body.querySelector<HTMLElement>(".echo-cards")!;
+    const openList: TileEntry[] = [];
+    const setRect = (el: HTMLElement, r: { left: number; top: number; width: number; height: number }): void => {
+      el.style.left = `${Math.round(r.left)}px`;
+      el.style.top = `${Math.round(r.top)}px`;
+      el.style.width = `${Math.round(r.width)}px`;
+      el.style.height = `${Math.round(r.height)}px`;
+    };
+    /** The tile's CURRENT on-screen rect (projected through the camera). */
+    const projectRect = (mesh: THREE.Mesh): { left: number; top: number; width: number; height: number } => {
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+      mesh.updateWorldMatrix(true, false);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const [cx, cy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as Array<[number, number]>) {
+        const v = new THREE.Vector3((cx * TILE_W) / 2, (cy * TILE_H) / 2, 0).applyMatrix4(mesh.matrixWorld).project(camera);
+        const px = ((v.x + 1) / 2) * w, py = ((1 - v.y) / 2) * h;
+        minX = Math.min(minX, px); minY = Math.min(minY, py);
+        maxX = Math.max(maxX, px); maxY = Math.max(maxY, py);
+      }
+      return { left: minX, top: minY, width: Math.max(24, maxX - minX), height: Math.max(24, maxY - minY) };
+    };
+    /** Slot rects: up to 3 across, wrapping, anchored near the top — the
+     *  wall's lower rows peek out beneath. */
+    const layoutCards = (): void => {
+      const n = openList.length;
+      if (!n) return;
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 14;
+      const cols = Math.min(n, 3), rows = Math.ceil(n / 3);
+      let cw = Math.min((w * 0.92 - gap * (cols - 1)) / cols, w * 0.46);
+      if (n === 1) cw = w * 0.56;
+      const ch = Math.min((h * 0.82 - gap * (rows - 1)) / rows, h * 0.7);
+      const x0 = (w - (cw * cols + gap * (cols - 1))) / 2;
+      const y0 = h * 0.05;
+      openList.forEach((e, i) => {
+        if (!e.card) return;
+        const col = i % 3, row = Math.floor(i / 3);
+        setRect(e.card, { left: x0 + col * (cw + gap), top: y0 + row * (ch + gap), width: cw, height: ch });
+      });
+    };
+    relayout = layoutCards;
+    const closeCard = (e: TileEntry): void => {
+      const card = e.card;
+      if (!card) return;
+      e.card = undefined;
+      e.open = false;
+      drawTile(e);
+      const idx = openList.indexOf(e);
+      if (idx >= 0) openList.splice(idx, 1);
+      // zoom BACK to the tile's spot (wherever the camera has it now)
+      if (e.mesh) setRect(card, projectRect(e.mesh));
+      card.style.opacity = "0";
+      card.style.pointerEvents = "none";
+      window.setTimeout(() => card.remove(), 380);
+      layoutCards();
+    };
+    const openCard = (e: TileEntry): void => {
+      if (!e.tile.url || !e.mesh) return;
+      if (e.card) { e.card.classList.add("flash"); window.setTimeout(() => e.card?.classList.remove("flash"), 600); return; }
+      const card = document.createElement("div");
+      card.className = "echo-card";
+      card.innerHTML = `<div class="echo-card-head"><span></span>
+          <button class="ws-icon-btn echo-card-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div><div class="echo-card-body"></div>`;
+      card.querySelector("span")!.textContent = e.tile.name;
+      const wv = document.createElement("webview");
+      wv.setAttribute("partition", "persist:yo");
+      wv.setAttribute("allowpopups", "true");
+      wv.setAttribute("src", e.tile.url);
+      wv.addEventListener("did-fail-load", (ev) => {
+        const err = ev as unknown as { errorCode?: number; errorDescription?: string };
+        if (err.errorCode && err.errorCode !== -3) console.warn(`[echo] "${e.tile.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
+      });
+      card.querySelector(".echo-card-body")!.appendChild(wv);
+      card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      setRect(card, projectRect(e.mesh));   // start AT the tile
+      cardsLayer.appendChild(card);
+      e.card = card;
+      e.open = true;
+      drawTile(e);
+      openList.push(e);
+      requestAnimationFrame(() => { card.style.opacity = "1"; layoutCards(); });
+    };
+    const ray = new THREE.Raycaster();
+    const pick = (ev: MouseEvent): TileEntry | null => {
+      const r = stage.getBoundingClientRect();
+      const nd = new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -(((ev.clientY - r.top) / r.height) * 2 - 1));
+      ray.setFromCamera(nd, camera);
+      const hit = ray.intersectObjects(group.children, false)[0]?.object;
+      return hit ? entries.find((e) => e.mesh === hit) ?? null : null;
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (!body.isConnected) { document.removeEventListener("keydown", onKey, true); return; }
+      if (e.key !== "Escape" || !openList.length) return;
+      e.stopPropagation();
       e.preventDefault();
+      closeCard(openList[openList.length - 1]);
+    };
+    document.addEventListener("keydown", onKey, true);
+
+    // ── Pan (drag) + zoom (wheel / buttons); a still click opens the tile ──
+    const overUi = (t: EventTarget | null): boolean =>
+      t instanceof Element && !!t.closest(".echo-zoom, .echo-card");
+    stage.addEventListener("wheel", (e) => {
+      if (overUi(e.target)) return;
+      e.preventDefault();
+      userMoved = true;
       dist += e.deltaY * 1.6;
       applyCamera();
     }, { passive: false });
     stage.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
-      if (e.target instanceof Element && e.target.closest(".echo-zoom")) return;
+      if (e.button !== 0 || overUi(e.target)) return;
       const sx = e.clientX, sy = e.clientY, syaw = yaw, syOff = yOff;
+      let moved = false;
       const onMove = (ev: MouseEvent): void => {
+        if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4) moved = true;
+        if (!moved) return;
+        userMoved = true;
         yaw = syaw + (ev.clientX - sx) * 0.0022;
         yOff = syOff + (ev.clientY - sy) * 1.4;
         applyCamera();
       };
-      const onUp = (): void => {
+      const onUp = (ev: MouseEvent): void => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
+        if (moved) return;
+        const entry = pick(ev);
+        if (entry) openCard(entry);
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     });
-    body.querySelector(".echo-z-in")!.addEventListener("click", () => { dist -= 280; applyCamera(); });
-    body.querySelector(".echo-z-out")!.addEventListener("click", () => { dist += 280; applyCamera(); });
-    body.querySelector(".echo-z-reset")!.addEventListener("click", () => { ({ yaw, yOff, dist } = { ...HOME }); applyCamera(); });
+    body.querySelector(".echo-z-in")!.addEventListener("click", () => { userMoved = true; dist -= 280; applyCamera(); });
+    body.querySelector(".echo-z-out")!.addEventListener("click", () => { userMoved = true; dist += 280; applyCamera(); });
+    body.querySelector(".echo-z-reset")!.addEventListener("click", () => { userMoved = false; refit?.(); });
 
     // Teardown: free the GL context and every tile's geometry/texture.
     const obs = new MutationObserver(() => {
       if (body.isConnected) return;
       obs.disconnect();
       ro.disconnect();
+      themeObs.disconnect();
       group.traverse((o) => {
         if (o instanceof THREE.Mesh) {
           o.geometry.dispose();
