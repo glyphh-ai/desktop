@@ -17,10 +17,11 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
-import * as THREE from "three";
 import { appIconInner, primeNativeIcons } from "./help/app-icon.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import * as THREE from "three";
+import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -537,19 +538,11 @@ async function init(): Promise<void> {
       // the agent, not squeezed beneath it. (Deliberate drag-drop placement
       // is a different path and can still stack anywhere.)
       if (rail.slots.some((s) => s.view === "coding")) continue;
-      if (rail.slots.length < 2) {
-        rail.slots.push(slot);
-        renderRails();
-        saveLayout();
-        if (slot.view === "app" && echoActive()) echoDock(slot.id);
-        return;
-      }
+      if (rail.slots.length < 2) { rail.slots.push(slot); renderRails(); saveLayout(); return; }
     }
     rails.push({ id: nextRailId++, slots: [slot] });
     renderRails();
     saveLayout();
-    // The agent opening an app while Echo is up docks it live, front row.
-    if (slot.view === "app" && echoActive()) echoDock(slot.id);
   }
   function placeView(view: Exclude<ViewKind, "app">): void {
     // Echo IS the agent view — a coding slot alongside it would fight over
@@ -679,6 +672,12 @@ async function init(): Promise<void> {
     for (let i = rails.length - 1; i >= 0; i--) {
       rails[i].slots = rails[i].slots.filter((s) => s.view !== view);
       if (rails[i].slots.length === 0) rails.splice(i, 1);
+    }
+    // Leaving Echo (it hosted the agent): the agent needs a home again —
+    // same restore closeSlot does for the × path.
+    if (view === "echo" && !codingHosted()) {
+      placeSlot(makeSlot("coding"));   // renders + saves
+      return;
     }
     renderRails();
     saveLayout();
@@ -1222,260 +1221,263 @@ async function init(): Promise<void> {
   // — one runtime, shared sessions). The header gains the session controls:
   // title on the left, history dropdown + new-session on the right.
   /**
-   * Echo — the whole APP LIBRARY as a curved 3D wall, the agent front and
-   * center. Wall planes are icon-cards (name + initial; open apps show their
-   * last live capture); clicking one OPENS the app and docks its REAL
-   * webview beside the agent — anywhere on the plane. Esc re-walls with a
-   * fresh capture. capturePage only ever runs on VISIBLE (docked) webviews,
-   * so the compositor never gets asked for frames it doesn't have.
+   * Echo — the command center as a real three.js 3D wall the agent LIVES in.
+   *
+   * One curved wall (CSS3DRenderer, so every tile is live DOM): the agent
+   * panel is embedded center-wall, the whole app library surrounds it as the
+   * SAME cc-tiles the command center renders (real icons, no textures — and
+   * no capturePage). The camera pans (drag / arrows) and zooms (wheel / ± )
+   * across the wall. The top bar is the command center's dock row + search.
+   * Clicking a tile docks the app LIVE beside the wall — an Echo-owned
+   * webview card (webviews ignore ancestor 3D transforms, so open apps
+   * render flat over the scene), with expand-to-fullscreen; Esc re-walls.
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
-    body.innerHTML = `<div class="echo-stage"></div>
-      <div class="echo-front">
-        <div class="echo-agent-dock"></div>
-        <div class="echo-dock-tray"></div>
+    body.innerHTML = `
+      <div class="echo-top">
+        <div class="echo-dock"></div>
+        <input class="echo-search" type="text" placeholder="Search apps" spellcheck="false" autocomplete="off" />
+      </div>
+      <div class="echo-stage"></div>
+      <div class="echo-front"><div class="echo-dock-tray"></div></div>
+      <div class="echo-zoom">
+        <button class="ws-icon-btn echo-z-in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button class="ws-icon-btn echo-z-out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button class="ws-icon-btn echo-z-reset" title="Reset view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg></button>
       </div>`;
+    const dockRow = body.querySelector<HTMLElement>(".echo-dock")!;
+    const search = body.querySelector<HTMLInputElement>(".echo-search")!;
     const stage = body.querySelector<HTMLElement>(".echo-stage")!;
     const front = body.querySelector<HTMLElement>(".echo-front")!;
-    const dock = body.querySelector<HTMLElement>(".echo-agent-dock")!;
     const tray = body.querySelector<HTMLElement>(".echo-dock-tray")!;
     wrap.dataset.view = "echo";
 
-    // Echo IS the agent view — it takes the agent unconditionally (any coding
-    // slot was stripped when Echo opened; closing Echo brings one back).
+    // ── The scene: a cylindrical wall, camera inside looking at it ──
+    const R = 1500;                       // wall radius (px world units)
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 1, 8000);
+    const renderer = new CSS3DRenderer();
+    renderer.domElement.classList.add("echo-3d");
+    stage.appendChild(renderer.domElement);
+
+    // Camera state — yaw pans across the wall's arc, yOff pans vertically,
+    // dist dollies toward/away from the wall. All clamped.
+    const HOME = { yaw: 0, yOff: 0, dist: -300 };
+    let yaw = HOME.yaw, yOff = HOME.yOff, dist = HOME.dist;
+    let dirty = true;
+    const applyCamera = (): void => {
+      yaw = Math.max(-1.1, Math.min(1.1, yaw));
+      yOff = Math.max(-420, Math.min(420, yOff));
+      dist = Math.max(-(R - 700), Math.min(420, dist));
+      camera.position.set(0, yOff, dist);
+      camera.rotation.set(0, yaw, 0);
+      dirty = true;
+    };
+    const resize = (): void => {
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      dirty = true;
+    };
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+    resize();
+    applyCamera();
+    const tick = (): void => {
+      if (!body.isConnected) { ro.disconnect(); return; }
+      if (dirty) { renderer.render(scene, camera); dirty = false; }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+
+    // ── The agent, IN the wall (center, slightly proud of the tile arc) ──
+    const agentEl = document.createElement("div");
+    agentEl.className = "echo-agent-dock";
+    const agentObj = new CSS3DObject(agentEl);
+    agentObj.position.set(0, 0, -(R - 60));
+    scene.add(agentObj);
     const agent = document.querySelector<HTMLElement>(".code-agent");
     if (agent) {
-      dock.appendChild(agent);
+      agentEl.appendChild(agent);
       document.querySelector(".code-root")?.classList.add("agent-hosted");
     }
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    stage.appendChild(renderer.domElement);
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+    interface WallApp { slug: string; name: string; url: string; glyphh?: boolean; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null; archetype?: string | null }
+    let apps: WallApp[] = [];
+    const openCards = new Map<string, HTMLElement>();   // slug → docked card
 
-    interface WallApp { slug: string; name: string; url: string; glyphh?: boolean }
-    let wallApps: WallApp[] = [];
-    const planes = new Map<string, THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>>();
-    const loader = new THREE.TextureLoader();
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-
-    const size = (): void => {
-      const r = stage.getBoundingClientRect();
-      if (r.width < 4 || r.height < 4) return;
-      renderer.setSize(r.width, r.height, false);
-      camera.aspect = r.width / r.height;
-      camera.updateProjectionMatrix();
-    };
-    size();
-    const ro = new ResizeObserver(size);
-    ro.observe(stage);
-
-    /** An icon-card texture: dark rounded card, big initial, the app name.
-     *  Canvas-drawn (no cross-origin favicons — a tainted canvas can't
-     *  upload to WebGL). */
-    const cardTexture = (name: string): THREE.CanvasTexture => {
-      const c = document.createElement("canvas");
-      c.width = 512; c.height = 320;
-      const g = c.getContext("2d")!;
-      g.fillStyle = "#1a1826";
-      g.beginPath();
-      g.roundRect(8, 8, 496, 304, 22);
-      g.fill();
-      g.strokeStyle = "rgba(255,255,255,0.14)";
-      g.lineWidth = 3;
-      g.stroke();
-      g.fillStyle = "#2a2740";
-      g.beginPath();
-      g.roundRect(196, 64, 120, 120, 28);
-      g.fill();
-      g.fillStyle = "#e9e6f7";
-      g.font = "700 64px -apple-system, system-ui, sans-serif";
-      g.textAlign = "center";
-      g.textBaseline = "middle";
-      g.fillText((name || "?").charAt(0).toUpperCase(), 256, 126);
-      g.font = "600 34px -apple-system, system-ui, sans-serif";
-      g.fillText(name.length > 22 ? name.slice(0, 21) + "…" : name, 256, 240);
-      const tex = new THREE.CanvasTexture(c);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      return tex;
+    const ccTile = (a: WallApp): HTMLButtonElement => {
+      const tile = document.createElement("button");
+      tile.type = "button";
+      tile.className = "cc-tile echo-tile" + (openCards.has(a.slug) ? " open" : "");
+      tile.title = a.name;
+      const icon = document.createElement("div");
+      icon.className = "tile-icon";
+      icon.innerHTML = appIconInner({ slug: a.slug, url: a.url || null, execPath: a.execPath || null, appArchetype: a.archetype || null, connection: a.connection || null }, a.name, "tile-initial");
+      const nm = document.createElement("span");
+      nm.className = "tile-name";
+      nm.textContent = a.name;
+      tile.append(icon, nm);
+      return tile;
     };
 
-    const dockedSlugs = (): Set<string> => {
-      const out = new Set<string>();
-      for (const id of echoDocked) {
-        const sl = appSlots().find((x) => x.id === id);
-        if (sl) out.add(sl.slug);
-      }
-      return out;
-    };
-
-    /** The WALL: one plane per library app, in a curved arc (two rows past
-     *  ten), camera pulled back far enough that the whole wall reads. */
-    const layoutPlanes = (): void => {
-      const hidden = dockedSlugs();
-      for (const [slug, mesh] of planes) {
-        if (!wallApps.some((a) => a.slug === slug)) {
-          scene.remove(mesh);
-          mesh.material.map?.dispose();
-          mesh.material.dispose();
-          mesh.geometry.dispose();
-          planes.delete(slug);
-        }
-      }
-      const n = Math.max(wallApps.length, 1);
-      const perRow = n > 10 ? Math.ceil(n / 2) : n;
-      const radius = Math.max(6, 4.2 + perRow * 0.55);
-      camera.position.set(0, 0.4, radius * 0.52 + 3.2);
-      wallApps.forEach((app, i) => {
-        let mesh = planes.get(app.slug);
-        if (!mesh) {
-          const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.97, map: cardTexture(app.name) });
-          mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.5), mat);
-          mesh.userData.slug = app.slug;
-          scene.add(mesh);
-          planes.set(app.slug, mesh);
-        }
-        const row = i >= perRow ? 1 : 0;
-        const col = row ? i - perRow : i;
-        const rowCount = row ? n - perRow : perRow;
-        const t = rowCount === 1 ? 0.5 : col / (rowCount - 1);
-        const ang = (t - 0.5) * Math.PI * 0.78;
-        mesh.position.set(Math.sin(ang) * radius, row ? -0.55 : 1.35, -Math.cos(ang) * radius + radius * 0.42);
-        mesh.lookAt(camera.position.x, mesh.position.y, camera.position.z);
-        mesh.userData.baseY = mesh.position.y;
-        mesh.userData.phase = i * 1.3;
-        mesh.visible = !hidden.has(app.slug);
+    // ── Wall tiles around the agent: columns march outward from the agent's
+    // edges along the arc, ROWS-high, filled nearest-first. ──
+    const tileGroup = new THREE.Group();
+    scene.add(tileGroup);
+    const ROWS = 4, ROW_H = 156, COL_ARC = 130 / R, EDGE = 480 / R;
+    const renderWall = (): void => {
+      tileGroup.clear();
+      const q = search.value.trim().toLowerCase();
+      const list = apps.filter((a) => !q || a.name.toLowerCase().includes(q) || a.slug.includes(q));
+      list.forEach((a, i) => {
+        const col = Math.floor(i / (ROWS * 2));            // distance from agent
+        const side = Math.floor(i / ROWS) % 2 === 0 ? 1 : -1;
+        const row = i % ROWS;
+        const theta = side * (EDGE + COL_ARC * (col + 0.5));
+        const y = (row - (ROWS - 1) / 2) * ROW_H;
+        const tile = ccTile(a);
+        tile.addEventListener("click", () => { if (!wasPan) dockApp(a); });
+        const obj = new CSS3DObject(tile);
+        obj.position.set(R * Math.sin(theta), y, -R * Math.cos(theta));
+        obj.rotation.y = -theta;
+        tileGroup.add(obj);
       });
+      dirty = true;
+    };
+    search.addEventListener("input", renderWall);
+
+    // ── Pan + zoom: drag the background, wheel to dolly, buttons too.
+    // Wheel/drag over the agent or a docked card stays native (chat scroll). ──
+    const overUi = (t: EventTarget | null): boolean =>
+      t instanceof Element && !!t.closest(".echo-agent-dock, .echo-docked-panel, .echo-top, .echo-zoom");
+    let wasPan = false;
+    stage.addEventListener("wheel", (e) => {
+      if (overUi(e.target)) return;
+      e.preventDefault();
+      dist += e.deltaY * 1.6;
+      applyCamera();
+    }, { passive: false });
+    stage.addEventListener("mousedown", (e) => {
+      if (e.button !== 0 || overUi(e.target)) return;
+      const sx = e.clientX, sy = e.clientY, syaw = yaw, syOff = yOff;
+      wasPan = false;
+      const onMove = (ev: MouseEvent): void => {
+        const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        if (Math.abs(dx) + Math.abs(dy) > 4) wasPan = true;
+        yaw = syaw + dx * 0.0022;         // drag right → wall slides right
+        yOff = syOff + dy * 1.4;          // drag down → wall slides down
+        applyCamera();
+      };
+      const onUp = (): void => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        setTimeout(() => { wasPan = false; }, 0);   // let the click land first
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+    body.querySelector(".echo-z-in")!.addEventListener("click", () => { dist -= 260; applyCamera(); });
+    body.querySelector(".echo-z-out")!.addEventListener("click", () => { dist += 260; applyCamera(); });
+    body.querySelector(".echo-z-reset")!.addEventListener("click", () => { ({ yaw, yOff, dist } = { ...HOME }); applyCamera(); });
+
+    // ── Docked app cards: Echo-owned LIVE webviews, flat over the scene. ──
+    const dockApp = (a: WallApp): void => {
+      if (!a.url) return;
+      if (openCards.has(a.slug)) { openCards.get(a.slug)!.classList.add("flash"); setTimeout(() => openCards.get(a.slug)?.classList.remove("flash"), 600); return; }
+      const card = document.createElement("div");
+      card.className = "echo-docked-panel";
+      card.innerHTML = `<div class="echo-docked-head"><span></span>
+          <button class="ws-icon-btn echo-expand" title="Full screen in Echo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+          <button class="ws-icon-btn echo-rewall" title="Back to the wall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div><div class="echo-webview-holder"></div>`;
+      card.querySelector("span")!.textContent = a.name;
+      const wv = document.createElement("webview");
+      wv.setAttribute("partition", "persist:yo");
+      wv.setAttribute("allowpopups", "true");
+      wv.setAttribute("src", a.url);
+      wv.addEventListener("did-fail-load", (e) => {
+        const err = e as unknown as { errorCode?: number; errorDescription?: string };
+        if (err.errorCode && err.errorCode !== -3) console.warn(`[echo] "${a.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
+      });
+      card.querySelector(".echo-webview-holder")!.appendChild(wv);
+      card.querySelector(".echo-expand")!.addEventListener("click", () => card.classList.toggle("expanded"));
+      card.querySelector(".echo-rewall")!.addEventListener("click", () => rewall(a.slug));
+      tray.appendChild(card);
+      openCards.set(a.slug, card);
+      front.classList.add("has-docked");
+      renderWall();
+    };
+    echoOpenApp = (ref) => {
+      const a = apps.find((x) => x.slug === ref.slug) ?? { slug: ref.slug, name: ref.name, url: ref.url, glyphh: ref.glyphh };
+      dockApp(a);
     };
 
-    /** Live captures — DOCKED (visible) webviews only. */
-    const captureDocked = (onto?: (slug: string) => void): void => {
-      for (const id of echoDocked) {
-        const sl = appSlots().find((x) => x.id === id);
-        const view = sl ? appViews.get(sl.id) : undefined;
-        const wv = view?.webview as unknown as { capturePage?: () => Promise<{ toDataURL(): string }> } | undefined;
-        if (!sl || !wv || typeof wv.capturePage !== "function") continue;
-        if (view!.holder.style.display === "none") continue;   // never a hidden guest
-        wv.capturePage().then((img) => {
-          const url = img.toDataURL();
-          if (!url || url.length < 128) return;
-          const mesh = planes.get(sl.slug);
-          if (!mesh) return;
-          loader.load(url, (tex) => {
-            tex.colorSpace = THREE.SRGBColorSpace;
-            mesh.material.map?.dispose();
-            mesh.material.map = tex;
-            mesh.material.needsUpdate = true;
-            onto?.(sl.slug);
-          });
-        }).catch(() => { /* guest mid-swap — next tick */ });
+    const rewall = (only?: string): void => {
+      for (const [slug, card] of [...openCards]) {
+        if (only && slug !== only) continue;
+        card.remove();
+        openCards.delete(slug);
       }
-    };
-
-    // ── The front row's DOCKED live panels ──
-    const renderFront = (): void => {
-      if (!body.isConnected) return;
-      const slots = appSlots();
-      for (const id of [...echoDocked]) if (!slots.some((sl) => sl.id === id)) echoDocked.delete(id);
-      tray.innerHTML = "";
-      for (const id of echoDocked) {
-        const sl = slots.find((x) => x.id === id)!;
-        const card = document.createElement("div");
-        card.className = "echo-docked-panel";
-        card.innerHTML = `<div class="echo-docked-head"><span></span><button class="ws-icon-btn echo-rewall" title="Back to the wall (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg></button></div><div class="ws-app-placeholder" data-app-slot="${id}"></div>`;
-        card.querySelector("span")!.textContent = sl.name;
-        card.querySelector(".echo-rewall")!.addEventListener("click", () => rewall(id));
-        tray.appendChild(card);
-      }
-      front.classList.toggle("has-docked", echoDocked.size > 0);
-      layoutPlanes();
-      scheduleAppSync();
-    };
-    echoRefreshFront = renderFront;
-
-    /** Back to the wall — fresh capture FIRST (still visible), then undock
-     *  and CLOSE the panel (the wall is the library; open slots only exist
-     *  while docked). */
-    const rewall = (only?: number): void => {
-      const ids = typeof only === "number" ? [only] : [...echoDocked];
-      captureDocked();
-      window.setTimeout(() => {
-        for (const id of ids) {
-          echoDocked.delete(id);
-          closeSlot(id);
-        }
-        renderFront();
-      }, 120);
+      front.classList.toggle("has-docked", openCards.size > 0);
+      renderWall();
     };
     const onKey = (e: KeyboardEvent): void => {
       if (!body.isConnected) { document.removeEventListener("keydown", onKey, true); return; }
-      if (e.key === "Escape" && echoDocked.size) { e.stopPropagation(); e.preventDefault(); rewall(); }
+      if (e.key !== "Escape") return;
+      const expanded = tray.querySelector(".echo-docked-panel.expanded");
+      if (expanded) { e.stopPropagation(); e.preventDefault(); expanded.classList.remove("expanded"); return; }
+      if (openCards.size) { e.stopPropagation(); e.preventDefault(); rewall(); }
     };
     document.addEventListener("keydown", onKey, true);
 
-    // Click ANYWHERE on a plane → open + dock that app live beside the agent.
-    renderer.domElement.addEventListener("click", (ev) => {
-      const r = renderer.domElement.getBoundingClientRect();
-      pointer.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects([...planes.values()].filter((m) => m.visible))[0];
-      const slug = hit?.object.userData.slug as string | undefined;
-      if (!slug) return;
-      const app = wallApps.find((a) => a.slug === slug);
-      if (!app) return;
-      const open = appSlots().find((sl) => sl.slug === slug);
-      if (open) { echoDock(open.id); return; }
-      openAppInWorkbench({ slug: app.slug, name: app.name, url: app.url, glyphh: app.glyphh }, { newPanel: true });
-      // placeSlot's echo hook docks it the moment the slot lands.
-    });
-
-    // ── The library becomes the wall ──
-    type EchoYo = { panelAppsList?: () => Promise<Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; system?: boolean }>> };
-    const yo = (window as unknown as { yo?: EchoYo }).yo;
-    void (yo?.panelAppsList?.() ?? Promise.resolve([])).then((rows) => {
-      if (!body.isConnected) return;
-      wallApps = (rows || [])
-        .filter((a) => (a.url || a.appArchetype === "glyphh-app") && a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav")
-        .map((a) => ({ slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app" }));
-      layoutPlanes();
-    }).catch(() => { /* offline — empty wall, agent still front */ });
-
-    renderFront();
-    let snapTimer = window.setInterval(() => {
-      if (!body.isConnected) return;
-      captureDocked();
-    }, 2500);
-
-    let raf = 0;
-    const tick = (now: number): void => {
-      if (!body.isConnected) {
-        window.clearInterval(snapTimer);
-        ro.disconnect();
-        document.removeEventListener("keydown", onKey, true);
-        if (echoRefreshFront === renderFront) echoRefreshFront = null;
-        echoDocked.clear();
-        scheduleAppSync();
-        for (const mesh of planes.values()) {
-          mesh.material.map?.dispose();
-          mesh.material.dispose();
-          mesh.geometry.dispose();
+    /** The command center's dock row, verbatim (same pref, same tiles). */
+    const renderDockRow = (rows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null }>): void => {
+      type PrefYo = { getPreference?: (k: string, d: unknown) => Promise<unknown> };
+      void ((window as unknown as { yo?: PrefYo }).yo?.getPreference?.("ccDock", null) ?? Promise.resolve(null)).then((saved) => {
+        if (!body.isConnected) return;
+        const keys = Array.isArray(saved) && saved.length ? saved.map(String) : ["app:glyphh", "app:home", "app:connections", "app:apps", "app:layouts", "app:skills", "app:loops", "app:agents", "app:models", "app:settings"];
+        dockRow.innerHTML = "";
+        for (const key of keys) {
+          const slug = key.startsWith("app:") ? key.slice(4) : key;
+          const row = rows.find((r) => (r.slug || r.id) === slug);
+          if (!row) continue;
+          const t = ccTile({ slug: row.slug || row.id, name: row.name, url: row.url || "", archetype: row.appArchetype || null });
+          t.classList.add("echo-dock-tile");
+          t.addEventListener("click", () => {
+            if (row.appArchetype === "glyphh-self") return;   // the agent is already in the wall
+            if (row.url && row.appArchetype !== "glyphh-nav") { dockApp({ slug: row.slug || row.id, name: row.name, url: row.url }); return; }
+            // nav tiles navigate (leaves Echo) — same as the command center
+            void (window as unknown as { yo?: { appLaunch?: (s: unknown) => Promise<unknown> } }).yo?.appLaunch?.({ slug: row.slug || row.id, name: row.name, url: row.url, appArchetype: row.appArchetype });
+          });
+          dockRow.appendChild(t);
         }
-        renderer.dispose();
-        return;
-      }
-      raf = requestAnimationFrame(tick);
-      for (const mesh of planes.values()) {
-        mesh.position.y = (mesh.userData.baseY as number) + Math.sin(now * 0.0006 + (mesh.userData.phase as number)) * 0.07;
-      }
-      renderer.render(scene, camera);
+      });
     };
-    raf = requestAnimationFrame(tick);
-    void raf;
+
+    // The SAME list the command center loads.
+    type EchoYo = { panelAppsList?: () => Promise<Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; system?: boolean; execPath?: string | null }>> };
+    void ((window as unknown as { yo?: EchoYo }).yo?.panelAppsList?.() ?? Promise.resolve([])).then((rows) => {
+      if (!body.isConnected) return;
+      apps = (rows || [])
+        .filter((a) => a.url && a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav")
+        .map((a) => ({ slug: a.slug || a.id, name: a.name, url: a.url || "", glyphh: a.appArchetype === "glyphh-app", execPath: a.execPath || null, archetype: a.appArchetype || null }));
+      renderWall();
+      renderDockRow(rows || []);
+    }).catch(() => { /* offline — the agent still lives in the wall */ });
+
+    // Teardown: unhook the open router + Esc, drop the cards.
+    const obs = new MutationObserver(() => {
+      if (body.isConnected) return;
+      obs.disconnect();
+      ro.disconnect();
+      document.removeEventListener("keydown", onKey, true);
+      if (echoOpenApp) echoOpenApp = null;
+      openCards.clear();
+    });
+    obs.observe(document.getElementById("code-wb-rails") ?? document.body, { childList: true, subtree: true });
   }
 
   function renderCodingIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
@@ -1511,21 +1513,14 @@ async function init(): Promise<void> {
   };
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
-  // ── Echo mode — the 3D wall owns the workspace view while an echo slot
-  //    exists. Docked app slots render as LIVE flat panels beside the agent;
-  //    everything else is walled (webview hidden, its plane shows the last
-  //    capture). Click a plane → dock; Esc → capture + re-wall. ──
-  const echoDocked = new Set<number>();
-  let echoRefreshFront: (() => void) | null = null;
+  // ── Echo mode — while an echo slot exists it IS the workspace view. Apps
+  //    live INSIDE Echo (its own webviews, never layout slots); the agent
+  //    rides front-center. openAppInWorkbench routes here so the agent's
+  //    open_app docks into the scene. ──
   function echoActive(): boolean {
     return rails.some((r) => r.slots.some((sl) => sl.view === "echo"));
   }
-  function echoDock(slotId: number): void {
-    if (!echoActive()) return;
-    echoDocked.add(slotId);
-    echoRefreshFront?.();
-    scheduleAppSync();
-  }
+  let echoOpenApp: ((app: WbAppRef) => void) | null = null;
   // The RPA registration bridge on window.yo (slug ↔ panel webContents id).
   const rpaYo = (): { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } =>
     (window as unknown as { yo?: { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } }).yo ?? {};
@@ -1743,12 +1738,7 @@ async function init(): Promise<void> {
         view = undefined;
       }
       if (!view) view = mountAppView(slot);
-      // Echo mode: a DOCKED slot's webview rides Echo's front-row placeholder;
-      // walled slots have only their hidden rail placeholder → auto-hidden.
-      const ph = (echoDocked.has(slot.id)
-          ? document.querySelector<HTMLElement>(`.ws-echo-body .ws-app-placeholder[data-app-slot="${slot.id}"]`)
-          : null)
-        ?? document.querySelector<HTMLElement>(`.ws-app-placeholder[data-app-slot="${slot.id}"]`);
+      const ph = document.querySelector<HTMLElement>(`.ws-app-placeholder[data-app-slot="${slot.id}"]`);
       const rect = ph?.getBoundingClientRect();
       const visible = !!rect && rect.width > 24 && rect.height > 24 && ph!.offsetParent !== null;
       view.holder.style.display = visible ? "" : "none";
@@ -1793,6 +1783,8 @@ async function init(): Promise<void> {
    *  designated swap target) or the caller asks to switch the active panel
    *  (`replaceActive`, e.g. `.dip .`). newPanel forces a fresh slot even past a pin. */
   function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean; replaceWorkspace?: boolean } = {}): void {
+    // Echo mode: the app opens INSIDE the scene, never as a layout panel.
+    if (echoActive() && echoOpenApp) { echoOpenApp(app); return; }
     const existing = appSlots().find((s) => s.slug === app.slug);
     if (existing) { focusAppSlot(existing.id); return; }
     // Opening an individual app means the workbench is no longer "the named
@@ -1853,8 +1845,6 @@ async function init(): Promise<void> {
   }
 
   function focusAppSlot(slotId: number): void {
-    // In Echo, "focus" means: pull the live panel forward next to the agent.
-    if (echoActive()) { echoDock(slotId); return; }
     if (maximizedSlotId !== null && maximizedSlotId !== slotId) {
       maximizedSlotId = null;
       paintFullscreenClasses();

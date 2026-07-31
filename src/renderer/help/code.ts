@@ -674,11 +674,15 @@ function saveStore(): Promise<void> {
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
 
 /** The rail's session interactions (New session, clicking a message row)
- *  land on the AGENT PANEL — the same move as the header's Glyphh mark:
- *  workspace clears (unsaved-work confirm included), the agent renders full
- *  screen, showing whatever session is now current. */
+ *  land on the AGENT PANEL — but they must not blow away an open layout.
+ *  Agent already visible → nothing to do (the session loads in place).
+ *  Workspace has panels (a layout or apps) → the agent JOINS it ("code"
+ *  guarantees a coding slot without clearing). Empty workspace → the full
+ *  Glyphh-mark move: agent full screen ("agent"). */
 function ensureCodeSection(): void {
-  gotoSection("agent");
+  if (document.querySelector(".code-root.agent-hosted")) return;
+  const hasPanels = !!document.querySelector("#code-wb-rails .ws-rail-slot");
+  gotoSection(hasPanels ? "code" : "agent");
 }
 
 /** The session surface the Coding Agent workspace panel drives — same
