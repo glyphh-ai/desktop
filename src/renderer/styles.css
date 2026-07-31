@@ -12590,6 +12590,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
    otherwise a rail-resize freezes the instant it crosses the Preview frame
    and the mouseup is never seen. */
 body.wb-mouse-drag iframe { pointer-events: none !important; }
+body.wb-mouse-drag webview { pointer-events: none !important; }
 /* App panels are <webview>s in the overlay layer, not iframes — they'd swallow
    the drag's mousemove the instant the cursor crossed a panel (e.g. resizing a
    rail rightward, over its own webview), freezing the resize. Disable the whole
@@ -13340,8 +13341,8 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 
 /* App rail — the persistent left rail (Home|Code, sessions, nav, user) */
 #app-rail {
-  width: 232px;
-  min-width: 232px;
+  width: 264px;
+  min-width: 264px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
@@ -13732,6 +13733,9 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 .code-rail-disclosure.closed .disc-chevron { transform: rotate(-90deg); }
 
 body.code-dragging iframe { pointer-events: none !important; }
+/* webviews swallow mousemove exactly like iframes — without this the rail
+   splitter drag dies the moment the cursor crosses an echo card */
+body.code-dragging webview { pointer-events: none !important; }
 
 
 
