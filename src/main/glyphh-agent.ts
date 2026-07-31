@@ -192,8 +192,11 @@ export function registerGlyphhIpc(): void {
     // launch cwd. The SESSION's own folder (stamped by its layout or the
     // pick made while it was current) wins over the global pick, so
     // concurrent sessions can work different projects at once.
+    const mode = payload?.mode ?? (payload?.chat ? "chat" : "code");
     const runWorkdir = (typeof payload?.workdir === "string" && payload.workdir) || getExplicitWorkingDirectory();
-    if (!runWorkdir) throw new Error("NO_WORKDIR: pick a working folder to start");
+    // A CHAT run executes no tools — it has no use for a folder, so it never
+    // demands one. Tool-bearing modes still require the user's explicit pick.
+    if (!runWorkdir && mode !== "chat") throw new Error("NO_WORKDIR: pick a working folder to start");
     // Composer attachments: validate paths, then whitelist them for reads
     // (attach = consent) for the duration of this run.
     const attachments = validAttachments(payload?.attachments);
@@ -205,14 +208,13 @@ export function registerGlyphhIpc(): void {
     setRunAttachments(id, attachments.map((a) => a.path));
     const ctrl = new AbortController();
     activeRuns.set(chatId, { id, ctrl });
-    activeAgentRuns.set(chatId, { runId: id, workdir: runWorkdir, startedAt: Date.now() });
+    activeAgentRuns.set(chatId, { runId: id, workdir: runWorkdir || "", startedAt: Date.now() });
     // CHAT mode: a plain completion — the same lifecycle events the renderer
     // already speaks, but NO tools, no agent harness, no packet — a fraction
     // of the tokens of a Work turn.
-    const mode = payload?.mode ?? (payload?.chat ? "chat" : "code");
     const runner = mode === "chat"
       ? chatRun(e.sender, id, messages, ctrl, replyBudget)
-      : sdkRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir, mode);
+      : sdkRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode);
     void runner.finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
       if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);

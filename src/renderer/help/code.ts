@@ -1223,6 +1223,13 @@ function paintComposerGate(): void {
 }
 
 async function checkWorkdirGate(): Promise<void> {
+  const cur = current();
+  if (cur && modeOf(cur) === "chat") {
+    // a CHAT session runs no tools — it needs no folder, so it never gates
+    workdirReady = true;
+    paintComposerGate();
+    return;
+  }
   try {
     workdirReady = !!(await wb()?.getCwdExplicit?.());
   } catch { workdirReady = true; /* bridge missing — never brick the composer */ }
@@ -2566,6 +2573,9 @@ export function initCode(): void {
   const paintCw = (): void => {
     const cur = current();
     const curMode = cur ? modeOf(cur) : null;
+    // A CHAT session is JUST the chat: no folder, no git, no work panels —
+    // the agent head keeps only the title (CSS keys off this class).
+    document.body.classList.toggle("chat-session", curMode === "chat");
     // The toggle lives in EXACTLY one place: the Home composer, Chat tab.
     const onHome = document.body.classList.contains("composer-on-home");
     cwToggle?.classList.toggle("hidden", !onHome || railTab !== "chat" || curMode === "code");
@@ -2897,8 +2907,10 @@ export function seedComposer(text: string): void {
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
   // Clicking a prompt IS the intent to start — if no working folder is set
-  // yet, ask for it right now instead of leaving a dead composer.
-  if (!workdirReady) {
+  // yet, ask for it right now instead of leaving a dead composer. (A CHAT
+  // session needs no folder — never ask.)
+  const curSeed = current();
+  if (!workdirReady && !(curSeed && modeOf(curSeed) === "chat")) {
     void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
   }
 }
