@@ -1,10 +1,10 @@
 /**
  * force-web — keep a web app IN ITS PANEL when it tries to bounce to a
- * native client (slack://, msteams://, zoommtg://, …). Restored from the
- * BrowserView era (c15176f) for the workbench's <webview> panels: the app
- * opts in via launchConfig.forceWeb (Apps form), popups stay allowed, and a
- * popup that redirects to a native protocol is mapped back to the web
- * client, loaded in the PARENT panel, and the popup closed.
+ * native client (slack://, msteams://, zoommtg://, …) — or out of the panel
+ * at all. The app opts in via launchConfig.forceWeb (Apps form, "Keep in
+ * panel"): navigations AND popups load in the SAME panel, with a native
+ * protocol mapped back to its web client first. Popups from apps that did
+ * NOT opt in get their own slot (see openPopupPanel).
  */
 
 import type { WebContents } from "electron";
@@ -54,12 +54,35 @@ function nativeToWebUrl(nativeUrl: string, parentUrl: string): string | null {
  * renderer registers slug → webContents id after attach, and the setting can
  * change while the panel is open).
  */
+/** Is this guest a "Keep in panel" app? Resolved LAZILY per event — the
+ *  renderer registers slug → webContents id after attach, and the setting
+ *  can change while the panel is open. */
+export function isForceWebGuest(guest: WebContents): boolean {
+  const slug = slugForWebContents(guest.id);
+  return !!slug && forceWebSlugs.has(slug.toLowerCase());
+}
+
+/**
+ * A popup this guest tried to open. For a "Keep in panel" app it never
+ * leaves the panel: the URL (native protocol mapped back to the web client)
+ * loads in the SAME guest. Returns true when it handled the popup.
+ */
+export function handleForceWebPopup(guest: WebContents, url: string): boolean {
+  if (!isForceWebGuest(guest)) return false;
+  // about:blank ("open a window, then set location") must NOT load — it would
+  // wipe the app out of its own panel. Swallow it: the popup is denied and the
+  // panel keeps what it has.
+  if (url.startsWith("about:")) return true;
+  const target = url.startsWith("http://") || url.startsWith("https://")
+    ? url
+    : nativeToWebUrl(url, guest.getURL());
+  if (target) void guest.loadURL(target);
+  return true;
+}
+
 export function wireForceWebGuest(guest: WebContents): void {
   void refreshForceWebSlugs();
-  const guarded = (): boolean => {
-    const slug = slugForWebContents(guest.id);
-    return !!slug && forceWebSlugs.has(slug.toLowerCase());
-  };
+  const guarded = (): boolean => isForceWebGuest(guest);
   // The panel itself must never leave the web — a native-protocol navigation
   // maps back to the web client in place.
   guest.on("will-navigate", (e, navUrl) => {
@@ -68,18 +91,6 @@ export function wireForceWebGuest(guest: WebContents): void {
     const web = nativeToWebUrl(navUrl, guest.getURL());
     if (web) void guest.loadURL(web);
   });
-  // Popups (sign-in flows) stay allowed — but one that redirects to a native
-  // protocol (Slack's "open the app" bounce) navigates the PARENT to the web
-  // client and closes itself.
-  guest.on("did-create-window", (child) => {
-    if (!guarded()) return;
-    child.webContents.on("will-navigate", (e, navUrl) => {
-      if (isWebUrl(navUrl)) return;
-      e.preventDefault();
-      const web = nativeToWebUrl(navUrl, guest.getURL());
-      if (web) void guest.loadURL(web);
-      setTimeout(() => { if (!child.isDestroyed()) child.close(); }, 300);
-    });
-    child.webContents.setWindowOpenHandler(({ url }) => (isWebUrl(url) ? { action: "allow" } : { action: "deny" }));
-  });
+  // Popups are handled at the window-open gate (handleForceWebPopup) — no
+  // child window is ever created, so there is nothing to police here.
 }

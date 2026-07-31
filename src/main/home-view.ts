@@ -13,7 +13,7 @@
 import { BrowserView, BrowserWindow, Menu, WebContents, session, webContents } from "electron";
 import * as path from "path";
 import * as os from "os";
-import { wireForceWebGuest } from "./force-web";
+import { wireForceWebGuest, handleForceWebPopup } from "./force-web";
 
 // Sites like Slack gate on a minimum Chrome version. Electron's bundled
 // Chromium can be older, so a guest reporting the real version gets the
@@ -213,11 +213,27 @@ export class HomeView {
       wireForceWebGuest(guest);
       attachDialogHandler(guest);
       attachContextMenu(guest);
-      // A page's popup does NOT become a floating OS window — it opens as a
-      // panel in the workspace (an Echo card when Echo is up), so every
-      // surface the user opens lives in a slot.
+      // A page's popup NEVER becomes a floating OS window. "Keep in panel"
+      // apps keep it in THEIR panel (in-place navigation); everything else
+      // opens as its own panel in the workspace (an Echo card when Echo is
+      // up), so every surface the user opens lives in a slot.
       guest.setWindowOpenHandler(({ url }) => {
-        if (url.startsWith("http://") || url.startsWith("https://")) openPopupPanel(url);
+        if (handleForceWebPopup(guest, url)) return { action: "deny" };   // stays put
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+          openPopupPanel(url);
+          return { action: "deny" };
+        }
+        // about:blank has no destination to slot yet (sign-in handoffs write
+        // into it), so it still opens as a real window; other schemes stay
+        // denied.
+        if (url.startsWith("about:")) {
+          return {
+            action: "allow",
+            overrideBrowserWindowOptions: {
+              webPreferences: { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" },
+            },
+          };
+        }
         return { action: "deny" };
       });
       guest.on("did-finish-load", () => {
