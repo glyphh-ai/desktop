@@ -203,9 +203,16 @@ export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
     const schema = t.inputSchema && typeof t.inputSchema === "object" && Object.keys(t.inputSchema).length
       ? t.inputSchema
       : { type: "object", additionalProperties: true };
+    // Download/export actions execute in the connector's REMOTE sandbox —
+    // their "saved" file never lands on this machine and is gone when the
+    // call returns. Say so in the description, or the model downloads a
+    // file three times and then hunts the local /tmp for it.
+    const sandboxNote = /download|export/i.test(t.name)
+      ? " NOTE: runs in a remote sandbox — the file is NOT saved to this machine and does not persist past this call. To attach or share the file, pass its URL (e.g. the Drive link) to the target tool instead of downloading."
+      : "";
     defs.push({
       name: wire,
-      description: `[${t.slug}] ${String(t.description || t.name).slice(0, 280)}`,
+      description: `[${t.slug}] ${String(t.description || t.name).slice(0, 280)}${sandboxNote}`,
       inputSchema: schema,
     });
     slugs.add(t.slug);
