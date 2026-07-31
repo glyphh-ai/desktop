@@ -3005,12 +3005,15 @@ body.account-locked #dl-btn-wrap {
 }
 .dash-notifications.hidden { display: none; }
 
-/* the FULL agent footer, adopted — centred, comfy width */
-.dash-composer-slot { max-width: 720px; width: 100%; margin: 0 auto 26px; }
+/* the FULL agent footer, adopted — full column width (same as the two
+   cowork cards), taller input, and it never moves */
+.dash-composer-slot { width: 100%; margin: 0 0 26px; }
 .dash-composer-slot .code-composer { width: 100%; }
+.dash-composer-slot .code-input { min-height: 110px; }
 
-/* Chat mode hides the cowork content under the Home composer */
-body.chat-only .dash-two-col { display: none; }
+/* Chat mode hides the cowork content but KEEPS its space — the composer
+   stays fixed in the page; the toggle never makes the layout jump */
+body.chat-only .dash-two-col { visibility: hidden; }
 
 /* Chat / Work — the segmented toggle leading the composer bar */
 .code-cw-toggle {
