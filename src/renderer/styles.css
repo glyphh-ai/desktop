@@ -2974,15 +2974,12 @@ body.account-locked #dl-btn-wrap {
    queries measure the window, so responsiveness keys off the SECTION's own
    width (container queries), like the lib tables. */
 .help-section[data-section="dashboard"] { container-type: inline-size; container-name: dash; }
-/* The glyphh.ai desktop page's hero backdrop, ported: layered accent glows
-   over the dark base — the landing reads like the site's splash. */
-.help-section[data-section="dashboard"].active {
-  background:
-    radial-gradient(1100px 520px at 50% -12%, color-mix(in srgb, var(--accent) 17%, transparent), transparent 62%),
-    radial-gradient(820px 420px at 88% 108%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 58%),
-    radial-gradient(700px 380px at 8% 96%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 55%),
-    var(--bg);
-}
+/* The glyphh.ai desktop page's MOVEMENT, ported: the faint drifting
+   particle field behind the hero (slow upward drift, twinkle, a minority
+   of accent dots). The canvas sits behind the landing content. */
+.help-section[data-section="dashboard"].active { position: relative; }
+.dash-particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.help-section[data-section="dashboard"] .dash-scroll { position: relative; z-index: 1; }
 .dash-scroll {
   padding: 44px 36px 48px;
   max-width: 900px;

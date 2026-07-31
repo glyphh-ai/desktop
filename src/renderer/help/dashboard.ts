@@ -192,7 +192,79 @@ export async function loadUsageChart(): Promise<void> {
   renderChart(series, only);
 }
 
+// ── The site hero's particle field, ported (web HeroParticles.js): ~1px
+// dots, slow upward drift, twinkle, a minority in the accent color. Skips
+// under prefers-reduced-motion; the loop self-stops when the landing
+// leaves the screen and restarts on the next load. ──
+let particlesRaf = 0;
+function startDashParticles(): void {
+  const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
+  if (!canvas || particlesRaf) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  let w = 0, h = 0;
+  interface Dot { x: number; y: number; r: number; vy: number; vx: number; a: number; tw: number; ph: number; accent: boolean }
+  let parts: Dot[] = [];
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#f59e0b";
+  const seed = (): void => {
+    const count = Math.round(Math.min(70, Math.max(36, w / 22)));
+    parts = Array.from({ length: count }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: 0.6 + Math.random() * 1.1,
+      vy: 0.06 + Math.random() * 0.16,
+      vx: (Math.random() - 0.5) * 0.05,
+      a: 0.05 + Math.random() * 0.16,
+      tw: 0.4 + Math.random() * 1.2,
+      ph: Math.random() * Math.PI * 2,
+      accent: Math.random() < 0.35,
+    }));
+  };
+  const resize = (): void => {
+    const rect = canvas.parentElement?.getBoundingClientRect();
+    if (!rect) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    w = rect.width; h = rect.height;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!parts.length) seed();
+  };
+  const ro = new ResizeObserver(resize);
+  if (canvas.parentElement) ro.observe(canvas.parentElement);
+  resize();
+  let t = 0;
+  const tick = (): void => {
+    // parked/hidden landing ⇒ stop cleanly; the next load restarts
+    if (!canvas.isConnected || canvas.offsetParent === null) {
+      particlesRaf = 0;
+      ro.disconnect();
+      return;
+    }
+    t += 0.016;
+    ctx.clearRect(0, 0, w, h);
+    for (const pt of parts) {
+      pt.y -= pt.vy;
+      pt.x += pt.vx;
+      if (pt.y < -4) { pt.y = h + 4; pt.x = Math.random() * w; }
+      if (pt.x < -4) pt.x = w + 4;
+      if (pt.x > w + 4) pt.x = -4;
+      const alpha = pt.a * (0.6 + 0.4 * Math.sin(t * pt.tw + pt.ph));
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+      ctx.fillStyle = pt.accent
+        ? `color-mix(in srgb, ${accent} ${Math.round(alpha * 100)}%, transparent)`
+        : `rgba(255, 255, 255, ${alpha})`;
+      ctx.fill();
+    }
+    particlesRaf = requestAnimationFrame(tick);
+  };
+  particlesRaf = requestAnimationFrame(tick);
+}
+
 export async function loadDashboard(): Promise<void> {
+  startDashParticles();
   // Paint the greeting immediately from cached account info if available; the
   // server call fills in the numbers.
   try {
