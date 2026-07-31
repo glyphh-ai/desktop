@@ -384,6 +384,10 @@ async function init(): Promise<void> {
   // under the layout's own key — so reopening the layout recalls how the user
   // left it, not the server's default placement.
   let activeLayoutName: string | null = null;
+  /** The ECHO layout on stage + its sessionMode — the mode is the contract:
+   *  "last" binds a session to the layout AND persists panel state; "new"
+   *  starts fresh every open and persists nothing; "keep" rides along. */
+  let echoActiveLayout: { name: string; mode: "keep" | "new" | "last" } | null = null;
   function namedLayoutKey(name: string): string { return `workbench:namedlayout:${name.trim().toLowerCase()}`; }
   /** The chat session last used while this named layout was active. */
   function layoutSessionKey(name: string): string { return `workbench:layoutsession:${name.trim().toLowerCase()}`; }
@@ -1693,16 +1697,73 @@ async function init(): Promise<void> {
     // remembered under its name and restored on the next open.
     let echoLayoutName: string | null = null;
     const echoMemKey = (name: string): string => `echo:layout:${name.trim().toLowerCase()}`;
+    /** What a layout cell was DOING, restored on the next open: the web
+     *  card's last navigated page, the editor's open files, the Browser's
+     *  tabs. Terminals restart (a pty can't be frozen). */
+    interface EchoCellState {
+      url?: string;
+      files?: Array<{ name: string; path: string; mode?: "preview" | "code" }>;
+      activeIdx?: number;
+      tabs?: Array<{ url: string; title?: string }>;
+      activeTab?: number;
+    }
+    const captureCellState = (e: TileEntry): EchoCellState | undefined => {
+      if (e.toolSlot?.view === "monaco") {
+        const m = e.toolSlot as MonacoSlot;
+        if (m.tabs.length) {
+          return {
+            files: m.tabs.map((t) => ({ name: t.name, path: t.path, ...(t.mode ? { mode: t.mode } : {}) })),
+            activeIdx: m.activeIdx,
+          };
+        }
+        return undefined;
+      }
+      if (e.toolSlot?.view === "preview") {
+        const pv = e.toolSlot as PreviewSlot;
+        const tabs = (pv.tabs ?? []).filter((t) => t.url).map((t) => ({ url: t.url!, ...(t.title ? { title: t.title } : {}) }));
+        return tabs.length ? { tabs, activeTab: pv.activeTab ?? 0 } : undefined;
+      }
+      if (e.tile.url && e.card) {
+        // where the user actually navigated — a NotebookLM card comes back on
+        // its notebook, not the app's front page (glyphh apps resolve their
+        // own entry and are skipped)
+        const wv = e.card.querySelector("webview") as (WebviewEl & HTMLElement) | null;
+        let u = "";
+        try { u = wv?.getURL?.() || ""; } catch { u = ""; }
+        return /^https?:/i.test(u) ? { url: u } : undefined;
+      }
+      return undefined;
+    };
     /** SLOT-model memory (the old layout manager's shape): the column/row
-     *  fractions the dividers set, plus which cell each panel occupies. */
+     *  fractions the dividers set, which cell each panel occupies, and what
+     *  each panel was doing. */
     const saveEchoLayoutMem = (): void => {
       if (!echoLayoutName || !echoGrid) return;
+      // Panel STATE persists only under the "last" contract — a "new"/"keep"
+      // layout keeps its geometry memory but starts panels from the
+      // definition every open. Geometry always saves.
+      const keepState = echoActiveLayout?.mode === "last";
+      // A degenerate save (webviews already torn down) must not WIPE state a
+      // healthier save remembered — carry the old cell state forward when
+      // this pass captured nothing.
+      let prior: Map<string, EchoCellState> | null = null;
+      if (keepState) {
+        try {
+          const raw = localStorage.getItem(echoMemKey(echoLayoutName));
+          const old = raw ? (JSON.parse(raw) as { cells?: Array<{ key: string; state?: EchoCellState }> }) : null;
+          prior = new Map((old?.cells ?? []).filter((c) => c.state).map((c) => [c.key, c.state!]));
+        } catch { prior = null; }
+      }
       const data = {
         colWidths: echoGrid.colWidths,
         rowFracs: echoGrid.rowFracs,
-        cells: echoGrid.cells.filter((c) => c.entry.memKey).map((c) => ({
-          key: c.entry.memKey!, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan,
-        })),
+        cells: echoGrid.cells.filter((c) => c.entry.memKey).map((c) => {
+          const state = keepState ? (captureCellState(c.entry) ?? prior?.get(c.entry.memKey!)) : undefined;
+          return {
+            key: c.entry.memKey!, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan,
+            ...(state ? { state } : {}),
+          };
+        }),
       };
       try { localStorage.setItem(echoMemKey(echoLayoutName), JSON.stringify(data)); } catch { /* full */ }
     };
@@ -1866,7 +1927,15 @@ async function init(): Promise<void> {
           document.addEventListener("mouseup", onUp);
         });
       };
+      // Seams draw from OCCUPANCY, not the grid's dimensions — after a
+      // layout panel closes, a divider with nothing on one side must go,
+      // not hang in the empty space.
+      const covers = (ci: number, ri: number): boolean =>
+        echoGrid!.cells.some((c) => c.col <= ci && ci < c.col + c.colSpan && c.row <= ri && ri < c.row + c.rowSpan);
+      const colOccupied = (ci: number): boolean =>
+        echoGrid!.cells.some((c) => c.col <= ci && ci < c.col + c.colSpan);
       for (let i = 1; i < cw.length; i++) {
+        if (!colOccupied(i - 1) || !colOccupied(i)) continue;
         const el = document.createElement("div");
         el.className = "echo-div echo-div-v";
         el.style.left = `${x0 + pre(cw, i) * W - 4}px`;
@@ -1877,7 +1946,8 @@ async function init(): Promise<void> {
       }
       // horizontal seams: one SEGMENT per column, spanning only that column —
       // a drag reshapes that column's stack and nothing else. A boundary
-      // inside a row-spanning cell has no seam.
+      // inside a row-spanning cell has no seam, and neither does one with an
+      // empty side.
       echoGrid.rowFracs.forEach((fracs, ci) => {
         const rh = norm(fracs);
         const segLeft = x0 + pre(cw, ci) * W;
@@ -1885,7 +1955,7 @@ async function init(): Promise<void> {
         for (let i = 1; i < rh.length; i++) {
           const crossed = echoGrid!.cells.some((c) =>
             c.col <= ci && ci < c.col + c.colSpan && c.row < i && i < c.row + c.rowSpan);
-          if (crossed) continue;
+          if (crossed || !covers(ci, i - 1) || !covers(ci, i)) continue;
           const el = document.createElement("div");
           el.className = "echo-div echo-div-h";
           el.style.top = `${y0 + pre(rh, i) * H - 4}px`;
@@ -2139,9 +2209,13 @@ async function init(): Promise<void> {
       // own grid (colWidths/rowHeights/spans), pins carried through.
       openingLayout = true;
       try {
+        // the OUTGOING layout remembers what its panels were doing (last
+        // page, open files, browser tabs) — capture before the teardown
+        saveEchoLayoutMem();   // the OUTGOING layout's save runs under ITS contract
         for (const x of [...openList]) closeCard(x);
         echoLayoutName = layout.name || null;
-        interface EchoLayoutMem { colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number }> }
+        echoActiveLayout = echoLayoutName ? { name: echoLayoutName, mode: layout.sessionMode ?? "keep" } : null;
+        interface EchoLayoutMem { colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number; state?: EchoCellState }> }
         let mem: EchoLayoutMem | null = null;
         try {
           const raw = echoLayoutName ? localStorage.getItem(echoMemKey(echoLayoutName)) : null;
@@ -2153,6 +2227,12 @@ async function init(): Promise<void> {
         for (const cell of cells) {
           const id = (cell.panelId || "").trim().toLowerCase();
           if (!id) continue;
+          // the memKey this cell WILL get — the remembered state must shape
+          // the card at creation (a web card mounts on its saved page)
+          const pendingKey = `${id}#${(seenKeys.get(id) ?? 0) + 1}`;
+          const saved = mem?.cells?.find((c) => c.key === pendingKey);
+          // state only comes back under the "last" contract
+          const st = (layout.sessionMode ?? "keep") === "last" ? saved?.state : undefined;
           let entry: TileEntry | null = null;
           if (id.startsWith("tool:")) {
             const v = id.slice(5) === "editor" ? "monaco" : id.slice(5);
@@ -2164,28 +2244,50 @@ async function init(): Promise<void> {
           } else {
             const wallTile = findTile(id)?.tile;
             const row = wallTile ? null : echoRows.find((a) => a.id.toLowerCase() === id || (a.slug || "").toLowerCase() === id);
-            const base: EchoTile | null = wallTile
+            let base: EchoTile | null = wallTile
               ? { ...wallTile, sticky: cell.sticky }
               : row && (row.url || row.appArchetype === "glyphh-app")
                 ? { name: row.name, slug: (row.slug || row.id).toLowerCase(), url: row.url || undefined, glyphh: row.appArchetype === "glyphh-app" || undefined, sticky: cell.sticky, kind: "app" }
                 : null;
+            // reopen on the page the user was on, not the app's front door
+            if (base?.url && st?.url) base = { ...base, url: st.url };
             if (base) {
               entry = adHoc(base);
               activateTile(entry);
             }
           }
           if (entry?.card) {
-            const n = (seenKeys.get(id) ?? 0) + 1;
-            seenKeys.set(id, n);
-            entry.memKey = `${id}#${n}`;
+            seenKeys.set(id, (seenKeys.get(id) ?? 0) + 1);
+            entry.memKey = pendingKey;
+            // the editor gets its files back (contents re-read from disk)
+            if (st?.files?.length && entry.toolSlot?.view === "monaco") {
+              const m = entry.toolSlot as MonacoSlot;
+              m.tabs = st.files.map((f) => ({ name: f.name, path: f.path, content: "", ...(f.mode ? { mode: f.mode } : {}) }));
+              m.activeIdx = Math.min(st.activeIdx ?? 0, m.tabs.length - 1);
+              const ent = entry;
+              void Promise.all(m.tabs.map(async (t) => {
+                try {
+                  const r = await window.wb.readFile(t.path);
+                  t.content = r.error ? `// error: ${r.error}` : r.content;
+                } catch { /* file gone — the tab shows empty */ }
+              })).then(() => rerenderToolBody(ent));
+            }
+            // the Browser gets its tabs back
+            if (st?.tabs?.length && entry.toolSlot?.view === "preview") {
+              const pv = entry.toolSlot as PreviewSlot;
+              pv.tabs = st.tabs.map((t) => ({ id: 0, url: t.url, ...(t.title ? { title: t.title } : {}) }));
+              pv.activeTab = Math.min(st.activeTab ?? 0, pv.tabs.length - 1);
+              pv.url = pv.tabs[pv.activeTab]?.url;
+              rerenderToolBody(entry);
+            }
             // remembered SLOT for this panel (swaps persist), layout default otherwise
-            const saved = mem?.cells?.find((c) => c.key === entry!.memKey && c.col != null);
+            const g = saved && saved.col != null ? saved : null;
             gridCells.push({
               entry,
-              col: saved?.col ?? cell.col ?? 0,
-              row: saved?.row ?? cell.row ?? 0,
-              colSpan: Math.max(1, saved?.colSpan ?? cell.colSpan ?? 1),
-              rowSpan: Math.max(1, saved?.rowSpan ?? cell.rowSpan ?? 1),
+              col: g?.col ?? cell.col ?? 0,
+              row: g?.row ?? cell.row ?? 0,
+              colSpan: Math.max(1, g?.colSpan ?? cell.colSpan ?? 1),
+              rowSpan: Math.max(1, g?.rowSpan ?? cell.rowSpan ?? 1),
             });
           }
         }
@@ -2209,6 +2311,24 @@ async function init(): Promise<void> {
             cells: gridCells,
           };
           layoutCards();
+        }
+        // The layout's SESSION contract: "new" starts fresh, "last" resumes
+        // the session that rode this layout (remembered on every session
+        // change below), "keep" rides whatever is current.
+        {
+          type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir?(dir: string): void };
+          const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+          const mode = layout.sessionMode ?? "keep";
+          if (sess && mode === "new") {
+            sess.startNew();
+          } else if (sess && mode === "last" && layout.name) {
+            let last: string | null = null;
+            try { last = localStorage.getItem(layoutSessionKey(layout.name)); } catch { last = null; }
+            if (last && sess.list().some((c) => c.id === last)) { if (sess.currentId() !== last) sess.switch(last); }
+            else sess.startNew();
+          }
+          // the layout's folder rides the session, same as standard mode
+          if (sess && layout.folder) sess.stampWorkdir?.(layout.folder);
         }
       } finally {
         openingLayout = false;
@@ -2753,9 +2873,11 @@ async function init(): Promise<void> {
     // too), shadow clears, and the camera re-fits. The rail's reset buttons
     // call the same thing through echoCtl.reset.
     const resetEcho = (): void => {
+      saveEchoLayoutMem();   // "last" layouts remember their panels through a reset
       for (const x of [...openList]) closeCard(x);
       echoGrid = null;
       echoLayoutName = null;
+      echoActiveLayout = null;
       setShadow(false, false);
       userMoved = false;
       refit?.();
@@ -2772,6 +2894,7 @@ async function init(): Promise<void> {
       // this stale observer firing after it
       if (echoCtl === ctl) {
         echoCtl = null;
+        echoActiveLayout = null;
         notifyOpenApps();
       }
       for (const root of [group, dragSurface]) {
@@ -5014,8 +5137,9 @@ async function init(): Promise<void> {
     const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
     // Remember which session rode this layout — "last" sessionMode resumes it.
     const cur = sess?.currentId?.();
-    if (activeLayoutName && cur) {
-      try { localStorage.setItem(layoutSessionKey(activeLayoutName), cur); } catch { /* best effort */ }
+    const riding = echoActiveLayout?.name ?? activeLayoutName;
+    if (riding && cur) {
+      try { localStorage.setItem(layoutSessionKey(riding), cur); } catch { /* best effort */ }
     }
   });
 
