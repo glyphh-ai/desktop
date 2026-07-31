@@ -611,6 +611,7 @@ async function init(): Promise<void> {
     openAgent(): void;
     hasTool(view: string): boolean;
     closeTool(view: string): void;
+    refreshForCwd(): void;
     reset(): void;
     openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"): void;
     openPreviewHtml(html: string, label?: string): void;
@@ -1250,7 +1251,7 @@ async function init(): Promise<void> {
       <div class="echo-veil"></div>
       <div class="echo-cards"></div>
       <div class="echo-zoom">
-        <button class="ws-icon-btn echo-shadow-btn" title="Show the wall (hold ⌘⇧)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="ws-icon-btn echo-shadow-btn" title="Show the wall (hold ⌃⌥)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button class="ws-icon-btn echo-z-in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-reset" title="Close all panels + reset the view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg></button>
@@ -1705,7 +1706,7 @@ async function init(): Promise<void> {
       };
       try { localStorage.setItem(echoMemKey(echoLayoutName), JSON.stringify(data)); } catch { /* full */ }
     };
-    // Shadow can be HELD (⌘⇧) or PINNED (the eye button) — a pin survives
+    // Shadow can be HELD (⌃⌥) or PINNED (the eye button) — a pin survives
     // modifier keyups; opening/closing the last card or Esc clears both.
     const shadowBtn = body.querySelector<HTMLElement>(".echo-shadow-btn")!;
     let shadowPinned = false;
@@ -2398,6 +2399,20 @@ async function init(): Promise<void> {
       openTool: (view) => { void getOrOpenTool(view); },
       hasTool: (view) => openList.some((x) => x.tile.toolView === view),
       closeTool: (view) => { for (const x of openList.filter((c) => c.tile.toolView === view)) closeCard(x); },
+      // A folder change re-roots the folder-backed cards IN PLACE — the echo
+      // arrangement (cards, layout, wall) is never torn down for it. Files
+      // re-lists from the new root; Diff and Plan re-fetch. Terminals keep
+      // their live shells and Monaco its absolute-path tabs.
+      refreshForCwd: () => {
+        for (const x of openList) {
+          const slot = x.toolSlot;
+          const b = x.card?.querySelector<HTMLElement>(".echo-card-body");
+          if (!slot || !b) continue;
+          if (slot.view === "files") { (slot as FilesSlot).root = null; b.innerHTML = ""; void renderFilesIntoSlot(b, slot as FilesSlot); }
+          else if (slot.view === "diff") { b.innerHTML = ""; void renderDiffIntoSlot(b, slot as DiffSlot); }
+          else if (slot.view === "plan") { b.innerHTML = ""; void renderPlanIntoSlot(b, slot as PlanSlot); }
+        }
+      },
       openPreviewHtml: (html, label) => {
         const entry = getOrOpenTool("preview");
         const slot = entry.toolSlot as PreviewSlot | undefined;
@@ -2468,11 +2483,12 @@ async function init(): Promise<void> {
         return;
       }
       if (!openList.length) return;
-      // SHADOW MODE — HOLD ⌘⇧ (Ctrl⇧): the open apps fade to ghosts and
-      // stop taking input so the wall behind is visible and clickable;
-      // release the keys (or Esc) and the cards come back. Clicking a
-      // tile while holding opens it.
-      if ((e.key === "Shift" || e.key === "Meta" || e.key === "Control") && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+      // SHADOW MODE — HOLD ⌃⌥ (Control+Option, one left hand): the open
+      // apps fade to ghosts and stop taking input so the wall behind is
+      // visible and clickable; release the keys (or Esc) and the cards come
+      // back. Clicking a tile while holding opens it. (⌘⇧ was retired: it
+      // prefixes half the app's shortcuts, so ⌘⇧P etc. flashed the veil.)
+      if ((e.key === "Control" || e.key === "Alt") && e.ctrlKey && e.altKey) {
         cardsLayer.classList.add("echo-shadow");
         return;
       }
@@ -2487,7 +2503,7 @@ async function init(): Promise<void> {
     document.addEventListener("keydown", onKey, true);
     const onKeyUp = (e: KeyboardEvent): void => {
       if (!body.isConnected) { document.removeEventListener("keyup", onKeyUp, true); return; }
-      if ((e.key === "Shift" || e.key === "Meta" || e.key === "Control") && !shadowPinned) cardsLayer.classList.remove("echo-shadow");
+      if ((e.key === "Control" || e.key === "Alt") && !shadowPinned) cardsLayer.classList.remove("echo-shadow");
     };
     document.addEventListener("keyup", onKeyUp, true);
 
@@ -4987,6 +5003,12 @@ async function init(): Promise<void> {
     // folder-backed views in place (Files re-lists, Diff re-fetches, Plan
     // reloads on render). Tearing the workbench down and rebuilding from the
     // new folder's snapshot reset panels the user had deliberately arranged.
+    if (echoCtl) {
+      // renderRails would DESTROY the mounted echo surface (fresh wall, no
+      // cards) — refresh its folder-backed cards in place instead.
+      echoCtl.refreshForCwd();
+      return;
+    }
     for (const rail of rails) {
       for (const slot of rail.slots) {
         if (slot.view === "files") (slot as FilesSlot).root = null;
