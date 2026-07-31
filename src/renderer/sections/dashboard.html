@@ -3,45 +3,25 @@
 <div class="help-section" data-section="dashboard">
   <div class="dash-scroll">
 
-    <!-- Header: greeting + primary actions -->
+    <!-- Header: the cat beside the greeting, centered. -->
     <div class="dash-header">
-      <div>
+      <img class="dash-mark" src="brand/glyphh-mark.png" alt="" />
+      <div class="dash-header-text">
         <h1 class="dash-greeting" id="dash-greeting">Welcome back</h1>
         <p class="dash-subtitle">Your workspace at a glance.</p>
       </div>
-      <div class="dash-header-actions">
-        <button class="action-btn" id="dash-get-key">Connect MCP</button>
-        <button class="action-btn primary" id="dash-add-funds">Add credits</button>
-      </div>
     </div>
 
-    <!-- Top row: three metric cards -->
-    <div class="dash-grid">
-      <div class="dash-card">
-        <div class="dash-card-label" id="dash-credits-label">Organization credits</div>
-        <div class="dash-card-value" id="dash-credits-value">—</div>
-        <div class="dash-card-sub" id="dash-credits-sub">available</div>
-      </div>
+    <!-- App notifications — hidden until an app posts one. -->
+    <div id="dash-notifications" class="dash-notifications hidden"></div>
 
-      <div class="dash-card">
-        <div class="dash-card-label">Spend this month</div>
-        <div class="dash-card-value" id="dash-spend-value">—</div>
-        <div class="dash-card-sub" id="dash-spend-sub">credits used</div>
-      </div>
-
-      <div class="dash-card">
-        <div class="dash-card-label">Apps deployed</div>
-        <div class="dash-card-value" id="dash-apps-value">—</div>
-        <div class="dash-card-sub" id="dash-apps-sub">hosted on this machine</div>
-      </div>
-    </div>
-
-    <!-- The GLYPHH AGENT input, front and center — typing here starts a
-         fresh session with the text seeded (the chart moved to
-         Settings › Usage). -->
-    <div class="dash-chat dash-card-wide">
-      <textarea id="dash-chat-input" class="dash-chat-input" rows="2" placeholder="Ask Glyphh — describe what to build or do…" spellcheck="false"></textarea>
-      <button id="dash-chat-send" class="action-btn primary dash-chat-send" type="button">Start</button>
+    <!-- The GLYPHH AGENT input, front and center — the agent composer's own
+         look (same classes); Enter starts a fresh seeded session. -->
+    <div class="code-input-wrap dash-chat-wrap">
+      <textarea id="dash-chat-input" class="code-input" rows="1" placeholder="Ask Glyphh — describe what to build or do…" spellcheck="false"></textarea>
+      <button id="dash-chat-send" class="code-send" title="Send">
+        <svg class="icon-return" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
+      </button>
     </div>
 
     <!-- Under the chart: prompt starters LEFT, the cross-agent schedule RIGHT. -->

@@ -8,7 +8,6 @@
 
 import { $a, cssVar, escapeHtml, paginate, renderPaginationBar } from "./shared.js";
 import { openUrlInWorkbench, seedNewSession, openRunSession } from "./code.js";
-import { gotoSection } from "./navigation.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: any;
@@ -202,6 +201,19 @@ export async function loadDashboard(): Promise<void> {
 
     $a("dash-greeting").textContent = greeting(data.name);
 
+    renderRecommendations();
+    void loadRuns();
+  } catch (err) {
+    console.error("[dashboard] load failed", err);
+  }
+}
+
+/** The three metric cards — they live in Settings › Usage now, alongside the
+ *  chart; Settings' loader calls this. */
+export async function loadUsageMetrics(): Promise<void> {
+  try {
+    const data = (await window.yo.dashboardData?.()) as DashboardData | undefined;
+    if (!data) return;
     const planName = data.plan ? data.plan.charAt(0).toUpperCase() + data.plan.slice(1) : "";
     if (data.orgCredits === false) {
       // Member view — the org pool is admin-only; show THEIR allocation
@@ -229,11 +241,8 @@ export async function loadDashboard(): Promise<void> {
     $a("dash-spend-sub").textContent = `credits used${data.requests ? ` · ${fmtInt(data.requests)} calls` : ""}`;
 
     $a("dash-apps-value").textContent = fmtInt(data.appsCount);
-
-    renderRecommendations();
-    void loadRuns();
   } catch (err) {
-    console.error("[dashboard] load failed", err);
+    console.error("[dashboard] usage metrics load failed", err);
   }
 }
 
@@ -337,13 +346,6 @@ export function initDashboardEvents(): void {
   // Settings → Manage Account uses — never the external browser.
   document.getElementById("dash-add-funds")?.addEventListener("click", () => {
     openUrlInWorkbench("Billing", `${window.yo.platformUrl}/billing`);
-  });
-  // "Configure MCP" → plain in-app navigation to Settings › MCP Server. The
-  // old path opened a scope-locked settings PANEL over the whole shell (rail
-  // and header buried — the only way out was quitting the app); that panel
-  // era is retired, and the dashboard lives in the normal rail'd shell now.
-  document.getElementById("dash-get-key")?.addEventListener("click", () => {
-    gotoSection("settings", "mcp");
   });
   // the refresh button rides the chart card in Settings › Usage
   document.getElementById("dash-refresh")?.addEventListener("click", () => {

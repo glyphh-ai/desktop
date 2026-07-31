@@ -3,7 +3,7 @@
  */
 
 import { confirmAction } from "./shared.js";
-import { loadUsageChart } from "./dashboard.js";
+import { loadUsageChart, loadUsageMetrics } from "./dashboard.js";
 import { openUrlInWorkbench } from "./code.js";
 
 // ── Settings ─────────────────────────────────────────────
@@ -297,8 +297,9 @@ function initSettings() {
 
 
 async function loadSettings() {
-  // Settings › Usage owns the usage chart now.
+  // Settings › Usage owns the usage chart + metric cards now.
   void loadUsageChart();
+  void loadUsageMetrics();
   // Glyphh: standing compaction guidance + training capture
   const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
   if (wcp) wcp.value = String((await window.yo.getPreference?.("glyphhCompactionPrompt", "")) || "");

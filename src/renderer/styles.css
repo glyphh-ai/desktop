@@ -2975,8 +2975,8 @@ body.account-locked #dl-btn-wrap {
    width (container queries), like the lib tables. */
 .help-section[data-section="dashboard"] { container-type: inline-size; container-name: dash; }
 .dash-scroll {
-  padding: 30px 36px 48px;
-  max-width: 1120px;
+  padding: 44px 36px 48px;
+  max-width: 900px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -2984,11 +2984,27 @@ body.account-locked #dl-btn-wrap {
 @container dash (max-width: 720px) { .dash-scroll { padding: 18px 16px 32px; } }
 .dash-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 18px;
+  text-align: center;
 }
+.dash-mark { width: 44px; height: 44px; flex: none; }
+.dash-header-text { text-align: left; }
+
+/* App notifications — a quiet slot under the welcome; apps fill it later. */
+.dash-notifications {
+  margin: 0 auto 16px;
+  max-width: 640px;
+}
+.dash-notifications.hidden { display: none; }
+
+/* the agent composer, verbatim look, centred */
+.dash-chat-wrap { max-width: 640px; margin: 0 auto 26px; }
+
+/* Settings › Usage: the Add credits action above the metric cards */
+.dash-usage-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .dash-greeting {
   font-family: var(--font-sans);
   font-size: 24px;
@@ -3013,23 +3029,6 @@ body.account-locked #dl-btn-wrap {
 }
 .dash-card-wide { margin-top: 14px; }
 
-/* The centre chat input — the agent's front door on the Home page. */
-.dash-chat {
-  display: flex; align-items: flex-end; gap: 10px;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 16px;
-}
-.dash-chat:focus-within { border-color: var(--accent); }
-.dash-chat-input {
-  flex: 1; min-width: 0; resize: none;
-  border: none; background: none; outline: none;
-  color: var(--text); font-size: 14px; line-height: 1.5;
-  font-family: inherit;
-}
-.dash-chat-input::placeholder { color: var(--text-faint); }
-.dash-chat-send { flex: none; }
 .dash-card-label { font-size: 12px; font-weight: 500; color: var(--text-3); margin-bottom: 10px; }
 .dash-card-value {
   font-family: var(--font-sans);
