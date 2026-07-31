@@ -548,6 +548,12 @@ async function init(): Promise<void> {
     saveLayout();
   }
   function placeView(view: Exclude<ViewKind, "app">): void {
+    // Echo owns the workspace while it's up — a tool opens as an ECHO CARD,
+    // never as a rail slot beside it. (echo/coding have their own paths.)
+    if (echoCtl && view !== "echo" && view !== "coding") {
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan");
+      return;
+    }
     placeSlot(makeSlot(view));
   }
   function findMonacoSlot(): MonacoSlot | null {
@@ -603,6 +609,8 @@ async function init(): Promise<void> {
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> }): void;
     openSection(section: string): void;
     openAgent(): void;
+    hasTool(view: string): boolean;
+    closeTool(view: string): void;
     reset(): void;
     openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"): void;
     openPreviewHtml(html: string, label?: string): void;
@@ -1071,7 +1079,7 @@ async function init(): Promise<void> {
   function paintSectionToggles(): void {
     document.querySelectorAll<HTMLButtonElement>(".code-view-btn[data-view]").forEach((btn) => {
       const v = btn.dataset.view as ViewKind;
-      btn.classList.toggle("active", viewIsOpen(v));
+      btn.classList.toggle("active", viewIsOpen(v) || !!echoCtl?.hasTool(v));
     });
     // 2.5.0: the workbench IS the surface — it never collapses.
     document.getElementById("code-workbench")?.classList.remove("collapsed");
@@ -1664,17 +1672,35 @@ async function init(): Promise<void> {
     };
     /** Slot rects: up to 3 across, wrapping, anchored near the top — the
      *  wall's lower rows peek out beneath. */
-    const slotRects = (n: number): Array<{ left: number; top: number; width: number; height: number }> => {
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 14;
-      const cols = Math.min(n, 3), rows = Math.ceil(n / 3);
-      let cw = Math.min((w * 0.92 - gap * (cols - 1)) / cols, w * 0.46);
-      if (n === 1) cw = w * 0.56;
-      const ch = Math.min((h * 0.82 - gap * (rows - 1)) / rows, h * 0.7);
-      const x0 = (w - (cw * cols + gap * (cols - 1))) / 2;
-      const y0 = h * 0.05;
-      return Array.from({ length: n }, (_, i) => ({
-        left: x0 + (i % 3) * (cw + gap), top: y0 + Math.floor(i / 3) * (ch + gap), width: cw, height: ch,
-      }));
+    /** Loose (non-layout) cards tile like the OLD LAYOUT MANAGER's rails:
+     *  a new panel STACKS under an existing one (two to a column), then
+     *  starts a new column to the side — and the agent keeps its column to
+     *  itself, so the first panel opens BESIDE it, never squeezed beneath. */
+    const flowColumns = (cards: TileEntry[]): TileEntry[][] => {
+      const cols: TileEntry[][] = [];
+      for (const e of cards) {
+        const isAgent = e.tile.kind === "agent";
+        const target = isAgent
+          ? undefined
+          : cols.find((col) => col.length < 2 && !col.some((c) => c.tile.kind === "agent"));
+        if (target) target.push(e);
+        else cols.push([e]);
+      }
+      return cols;
+    };
+    const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 10;
+      const x0 = 12, y0 = 12, W = w - 24, H = h - 24;
+      const cols = flowColumns(cards);
+      const cw = (W - gap * (cols.length - 1)) / Math.max(1, cols.length);
+      const out = new Map<TileEntry, { left: number; top: number; width: number; height: number }>();
+      cols.forEach((col, ci) => {
+        const ch = (H - gap * (col.length - 1)) / Math.max(1, col.length);
+        col.forEach((e, ri) => {
+          out.set(e, { left: x0 + ci * (cw + gap), top: y0 + ri * (ch + gap), width: Math.max(160, cw), height: Math.max(110, ch) });
+        });
+      });
+      return out;
     };
     /** The layout-grid rects (or null when no grid / a stray card broke it). */
     const gridRects = (): Map<TileEntry, { left: number; top: number; width: number; height: number }> | null => {
@@ -1704,8 +1730,7 @@ async function init(): Promise<void> {
       if (!n) { paintDividers(false); return; }   // no panels ⇒ no seams
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const grid = gridRects();
-      const flowIdx = openList.filter((e) => !(grid && grid.has(e)));
-      const rects = slotRects(Math.max(1, flowIdx.length));
+      const flow = flowRects(openList.filter((e) => !(grid && grid.has(e))));
       openList.forEach((e) => {
         if (!e.card) return;
         e.card.classList.toggle("echo-pinned", !!e.tile.sticky);
@@ -1713,10 +1738,11 @@ async function init(): Promise<void> {
           setRect(e.card, { left: 12, top: 12, width: w - 24, height: h - 24 });
           return;
         }
-        const r = grid?.get(e) ?? rects[Math.max(0, flowIdx.indexOf(e))];
+        const r = grid?.get(e) ?? flow.get(e);
         if (r) setRect(e.card, r);
       });
       paintDividers(grid ? true : false);
+      paintSectionToggles();   // an echo card IS the tool's open state
     };
     relayout = layoutCards;
     /** DIVIDERS — draggable seams between grid columns/rows (the old rail
@@ -1929,7 +1955,7 @@ async function init(): Promise<void> {
             return;
           }
           const from = openList.indexOf(e);
-          const rects = slotRects(openList.length);
+          const rects = [...flowRects(openList).values()];
           let to = from, best = Infinity;
           rects.forEach((rc, i) => {
             const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
@@ -2275,6 +2301,8 @@ async function init(): Promise<void> {
       openAgent: () => { void openAgentCard(); },
       reset: () => resetEcho(),
       openTool: (view) => { void getOrOpenTool(view); },
+      hasTool: (view) => openList.some((x) => x.tile.toolView === view),
+      closeTool: (view) => { for (const x of openList.filter((c) => c.tile.toolView === view)) closeCard(x); },
       openPreviewHtml: (html, label) => {
         const entry = getOrOpenTool("preview");
         const slot = entry.toolSlot as PreviewSlot | undefined;
@@ -4159,6 +4187,13 @@ async function init(): Promise<void> {
       // The header toggles cover every view except Monaco (spawned by the
       // Files tree, never toggled directly).
       const v = btn.dataset.view as Exclude<ViewKind, "app">;
+      // In Echo the toggle acts on the CARD, not on a rail slot.
+      if (echoCtl && v !== "echo" && v !== "coding") {
+        if (echoCtl.hasTool(v)) echoCtl.closeTool(v);
+        else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan");
+        moreMenu?.classList.add("hidden");
+        return;
+      }
       if (viewIsOpen(v)) closeAllOfView(v);
       else placeView(v);
       moreMenu?.classList.add("hidden");
