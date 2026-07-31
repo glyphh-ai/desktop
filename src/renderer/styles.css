@@ -3819,6 +3819,7 @@ ol.docs-list li::before {
 
 /* Dashboard split columns (Token Metrics + Store Metrics) */
 .dash-split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@container dash (max-width: 780px) { .dash-split-row { grid-template-columns: 1fr; } }
 .dash-split-col {
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
   min-height: 200px; min-width: 0; overflow: hidden;
@@ -5350,25 +5351,6 @@ ol.docs-list li::before {
   height: 1px;
   background: var(--border);
   margin: 8px 12px 8px 0;
-}
-
-.settings-nav-back {
-  background: none;
-  border: none;
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 12px;
-  margin-bottom: 4px;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-  transition: color 0.15s, background 0.15s;
-}
-
-.settings-nav-back:hover {
-  color: var(--white);
-  background: var(--active-bg);
 }
 
 .settings-panels {
@@ -12962,7 +12944,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
   align-items: start;
 }
-@media (max-width: 900px) { .dash-two-col { grid-template-columns: 1fr; } }
+@container dash (max-width: 780px) { .dash-two-col { grid-template-columns: 1fr; } }
 
 /* Recommended for you — prompt starters, icon on the right. */
 .dash-recs { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }

@@ -192,11 +192,6 @@ export function initHelp() {
     btn.addEventListener("click", () => { showDocPanel(btn.dataset.doc!); });
   });
 
-  // Docs is reached FROM Settings — the breadcrumb goes back there.
-  document.getElementById("docs-back-settings")?.addEventListener("click", () => {
-    gotoSection("settings");
-  });
-
   // ── App rail (Code-primary surface) ─────────────────────────────────────
   // The Home|Code switcher is gone: the agent (code) is the always-present
   // base, Home is a nav item like the rest, and clicking the ACTIVE section
