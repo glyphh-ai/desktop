@@ -1865,9 +1865,10 @@ async function init(): Promise<void> {
       if (!echoGrid) return null;
       if (!echoGrid.cells.length) { echoGrid = null; return null; }
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      // tighter seams between LAYOUT panels than loose cards, and a slimmer
-      // outer margin — the grid is one composed surface, not a scatter
-      const x0 = 8, y0 = 8, W = w - 16, H = h - 16, gap = 7;
+      // EDGE-TO-EDGE: the layout fills the stage completely — 7px seams
+      // live only BETWEEN panels; cells touching an edge touch the edge.
+      const gap = 7;
+      const W = w, H = h;
       const norm = (a: number[]): number[] => {
         const sum = a.reduce((x, y) => x + y, 0) || 1;
         return a.map((v) => v / sum);
@@ -1878,11 +1879,11 @@ async function init(): Promise<void> {
       for (const c of echoGrid.cells) {
         // vertical geometry from the ANCHOR column's own fractions
         const rh = norm(echoGrid.rowFracs[c.col] ?? echoGrid.rowFracs[0] ?? [1]);
-        const left = x0 + pre(cw, c.col) * W + gap / 2;
-        const width = cw.slice(c.col, c.col + c.colSpan).reduce((x, y) => x + y, 0) * W - gap;
-        const top = y0 + pre(rh, c.row) * H + gap / 2;
-        const height = rh.slice(c.row, c.row + c.rowSpan).reduce((x, y) => x + y, 0) * H - gap;
-        out.set(c.entry, { left, top, width: Math.max(120, width), height: Math.max(90, height) });
+        const left = pre(cw, c.col) * W + (c.col === 0 ? 0 : gap / 2);
+        const right = pre(cw, c.col + c.colSpan) * W - (c.col + c.colSpan >= cw.length ? 0 : gap / 2);
+        const top = pre(rh, c.row) * H + (c.row === 0 ? 0 : gap / 2);
+        const bottom = pre(rh, c.row + c.rowSpan) * H - (c.row + c.rowSpan >= rh.length ? 0 : gap / 2);
+        out.set(c.entry, { left, top, width: Math.max(120, right - left), height: Math.max(90, bottom - top) });
       }
       return out;
     };
@@ -1926,8 +1927,8 @@ async function init(): Promise<void> {
       dividerLayer.innerHTML = "";
       if (!on || !echoGrid) return;
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      // MUST match gridRects' outer margin
-      const x0 = 8, y0 = 8, W = w - 16, H = h - 16;
+      // MUST match gridRects: edge-to-edge, no outer margin
+      const x0 = 0, y0 = 0, W = w, H = h;
       const norm = (a: number[]): number[] => { const t = a.reduce((x, y) => x + y, 0) || 1; return a.map((v) => v / t); };
       const cw = norm(echoGrid.colWidths);
       const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
