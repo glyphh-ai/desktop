@@ -2218,7 +2218,6 @@ async function init(): Promise<void> {
    *  designated swap target) or the caller asks to switch the active panel
    *  (`replaceActive`, e.g. `.dip .`). newPanel forces a fresh slot even past a pin. */
   function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean; replaceWorkspace?: boolean } = {}): void {
-    // Echo mode: the app opens INSIDE the scene, never as a layout panel.
     const existing = appSlots().find((s) => s.slug === app.slug);
     if (existing) { focusAppSlot(existing.id); return; }
     // Opening an individual app means the workbench is no longer "the named
@@ -4467,7 +4466,7 @@ async function init(): Promise<void> {
   };
   wbApp.__wbOpenLayoutByName = async (name: string): Promise<boolean> => {
     const yo = (window as unknown as { yo?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).yo;
-    const [rows, layouts] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]);
+    const [rows, layouts] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).catch(() => [[], []] as [PanelAppRow[], LayoutRow[]]);
     const key = name.trim().toLowerCase();
     // Match like the switcher's search does — exact, then prefix, then
     // SUBSTRING — so anything findable in the switcher is .dip-able too.

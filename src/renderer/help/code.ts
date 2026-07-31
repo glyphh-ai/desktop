@@ -1467,7 +1467,9 @@ export function runDip(ref: string): void {
     const verb = ref.toLowerCase();
     if (verb === "clear") { w.__wbClearPanels?.(); return; }
     if (verb === "grid") { w.__wbGridPanels?.(); return; }
-    if (await w.__wbOpenLayoutByName?.(ref)) return;
+    // A layouts-list failure (offline, server hiccup) must not kill the
+    // whole .dip — fall through to the app path.
+    if (await w.__wbOpenLayoutByName?.(ref).catch(() => false)) return;
     const yo2 = window.yo as unknown as { appLaunch?: (s: { slug: string; name: string }) => Promise<{ ok: boolean; error?: string }> };
     const asApp = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }) as { ok: boolean; error?: string });
     if (asApp?.ok) return;
