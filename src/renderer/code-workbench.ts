@@ -1556,15 +1556,12 @@ async function init(): Promise<void> {
      *  tile mutates these and re-runs positionWall(); nothing is rebuilt, so
      *  open cards keep pointing at their tile. */
     let wallBands: TileEntry[][] = [];
-    /** Space scoping, same mapping as the rail menu: the CHAT space hides
-     *  the build/governance tiles (layouts + Layouts/Loops/Agents/Models
-     *  pages); the CODE space hides Connections. Everything else is both. */
-    const spaceHidden = (t: EchoTile): boolean => {
-      const space = document.body.dataset.railSpace === "code" ? "code" : "chat";
-      const slug = (t.slug || "").toLowerCase();
-      if (space === "chat") return t.kind === "layout" || ["layouts", "loops", "agents", "models"].includes(slug);
-      return slug === "connections";
-    };
+    /** Space scoping: WORK and CODE both get the full wall (apps +
+     *  layouts). The CHAT space hides its entry points entirely (CSS), and
+     *  if the wall is reached anyway (⌘.), layouts stay hidden — chat
+     *  doesn't navigate. */
+    const spaceHidden = (t: EchoTile): boolean =>
+      document.body.dataset.railSpace === "chat" && t.kind === "layout";
     const bandRows = (): TileEntry[][] => {
       const rows: TileEntry[][] = [];
       for (const band of wallBands) {

@@ -780,12 +780,12 @@ function ensureCodeSection(): void {
   };
 
 function newChat(): void {
-  const mode: CodeChat["mode"] = railTab === "code" ? "code" : (chatOnly ? "chat" : "cowork");
+  const mode: CodeChat["mode"] = railTab;
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
   chats.unshift(c);
   currentId = c.id;
   lastBySpace[spaceOf(c)] = c.id;
-  void window.yo.setPreference?.(spaceOf(c) === "code" ? "lastSessionCode" : "lastSessionChat", c.id);
+  void window.yo.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
   threadPinned = true;
   void saveStore();
   syncThinking();   // fresh session — no run of its own yet
@@ -881,7 +881,7 @@ function renderHistory(): void {
   if (!list) return;
   list.textContent = "";
   cwPaint?.();
-  const visible = chats.filter((c) => (railTab === "code") === (modeOf(c) === "code"));
+  const visible = chats.filter((c) => spaceOf(c) === railTab);
   for (const c of visible) {
     const row = document.createElement("div");
     row.className = "code-history-item" + (c.id === currentId ? " active" : "");
@@ -918,7 +918,7 @@ function renderHistory(): void {
     row.addEventListener("click", () => {
       currentId = c.id;
       lastBySpace[spaceOf(c)] = c.id;
-      void window.yo.setPreference?.(spaceOf(c) === "code" ? "lastSessionCode" : "lastSessionChat", c.id);
+      void window.yo.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
       threadPinned = true;
       void saveStore();
       ensureCodeSection();
@@ -1191,16 +1191,14 @@ const wb = () => (window as unknown as { wb?: WbBridge }).wb;
 // once one exists it persists as last-used and sessions start ready (the
 // picker, when opened, defaults to that folder so switching is one click).
 let workdirReady = true; // painted by checkWorkdirGate
-/** Chat-space default for NEW sessions: plain chat (true) or co-work. */
-let chatOnly = false;
-/** The rail's active SPACE tab — scopes the session list and what + New
- *  session creates. ("chat" is the HOME space — kept as "chat" internally
- *  for pref compatibility.) */
-let railTab: "chat" | "code" = "chat";
+/** The rail's active SPACE tab — Chat | Work | Code. The TAB IS THE MODE:
+ *  it scopes the session list, the menus, and what a new session becomes. */
+let railTab: "chat" | "cowork" | "code" = "chat";
 /** Each space remembers ITS last-selected session — switching tabs never
  *  carries a session across (persisted per space). */
-const lastBySpace: Record<"chat" | "code", string> = { chat: "", code: "" };
-const spaceOf = (c: CodeChat): "chat" | "code" => (modeOf(c) === "code" ? "code" : "chat");
+const lastBySpace: Record<"chat" | "cowork" | "code", string> = { chat: "", cowork: "", code: "" };
+const spaceOf = (c: CodeChat): "chat" | "cowork" | "code" => modeOf(c);
+const SPACE_PREF: Record<"chat" | "cowork" | "code", string> = { chat: "lastSessionChat", cowork: "lastSessionCowork", code: "lastSessionCode" };
 /** Repaints the Chat/Work toggle — set by initComposerControls, called on
  *  session switches so the control always shows the CURRENT session's mode. */
 let cwPaint: (() => void) | null = null;
@@ -2586,44 +2584,18 @@ export function initCode(): void {
     };
     go();
   }));
-  // ── Chat / Work — Chat sends TOOL-LESS completions (a fraction of the
-  // tokens) and hides the cowork content under the Home composer. ──
-  const cwToggle = el("code-cw-toggle");
+  // ── The TAB is the mode — no in-composer toggle. This painter keeps the
+  // session-scoped chrome honest (chat sessions strip the work chrome). ──
   const paintCw = (): void => {
     const cur = current();
     const curMode = cur ? modeOf(cur) : null;
     // A CHAT session is JUST the chat: no folder, no git, no work panels —
     // the agent head keeps only the title (CSS keys off this class).
-    document.body.classList.toggle("chat-session", curMode === "chat");
-    // The toggle lives in EXACTLY one place: the Home composer, Chat tab.
-    const onHome = document.body.classList.contains("composer-on-home");
-    cwToggle?.classList.toggle("hidden", !onHome || railTab !== "chat" || curMode === "code");
-    const shownChat = cur && curMode !== "code" ? curMode === "chat" : chatOnly;
-    cwToggle?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", (b.dataset.cw === "chat") === shownChat));
-    // chat → co-work upgrades anytime (a chat history carries no tool
-    // transcripts); co-work → chat only before the first turn
-    const downLocked = !!cur && curMode === "cowork" && cur.messages.length > 0;
-    cwToggle?.classList.toggle("locked", downLocked);
-    if (cwToggle) cwToggle.title = downLocked
-      ? "A co-work session stays co-work — its history may carry tool results. Start a new session for plain Chat."
-      : "Chat = plain conversation, no tools (far fewer tokens). Co-work = connections, browsing, apps.";
-    document.body.classList.toggle("chat-only", !!shownChat);
+    document.body.classList.toggle("chat-session", curMode ? curMode === "chat" : railTab === "chat");
+    // the Home landing hides the cowork content in the CHAT space
+    document.body.classList.toggle("chat-only", railTab === "chat");
   };
   cwPaint = paintCw;
-  cwToggle?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
-    const wantChat = b.dataset.cw === "chat";
-    const cur = current();
-    const curMode = cur ? modeOf(cur) : null;
-    if (cur && curMode !== "code") {
-      if (wantChat && curMode === "cowork" && cur.messages.length > 0) { paintCw(); return; }   // no downgrades
-      cur.mode = wantChat ? "chat" : "cowork";
-      void saveStore();
-    }
-    chatOnly = wantChat;
-    paintCw();
-    void window.yo.setPreference?.("agentChatMode", chatOnly);
-  }));
-  void window.yo.getPreference?.("agentChatMode", false).then((v) => { chatOnly = v === true; paintCw(); });
   // ── The rail's SPACE tabs: Chat | Code — the list + "+ New session" scope
   // to the active one. ──
   const railTabs = el("rail-mode-tabs");
@@ -2648,19 +2620,22 @@ export function initCode(): void {
     if (!navigate) return;
     if (last) gotoSection("agent");
     else gotoSection(railTab === "code" ? "agent" : "dashboard");
+    paintCw();
   };
   railTabs?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
-    railTab = b.dataset.tab === "code" ? "code" : "chat";
+    railTab = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
     void window.yo.setPreference?.("railModeTab", railTab);
     enterSpace(true);
   }));
   void Promise.all([
     window.yo.getPreference?.("railModeTab", "chat"),
     window.yo.getPreference?.("lastSessionChat", ""),
+    window.yo.getPreference?.("lastSessionCowork", ""),
     window.yo.getPreference?.("lastSessionCode", ""),
-  ]).then(([v, lc, lco]) => {
-    railTab = v === "code" ? "code" : "chat";
+  ]).then(([v, lc, lw, lco]) => {
+    railTab = v === "code" ? "code" : v === "cowork" ? "cowork" : "chat";
     lastBySpace.chat = String(lc || "");
+    lastBySpace.cowork = String(lw || "");
     lastBySpace.code = String(lco || "");
     // boot: paint the space's state but DON'T navigate (boot lands on Home)
     enterSpace(false);

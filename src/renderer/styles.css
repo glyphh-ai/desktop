@@ -3017,35 +3017,26 @@ body.account-locked #dl-btn-wrap {
    stays fixed in the page; the toggle never makes the layout jump */
 body.chat-only .dash-two-col { visibility: hidden; }
 
-/* Chat / Work — the segmented toggle leading the composer bar */
-.code-cw-toggle {
-  display: inline-flex; align-items: center;
-  border: 1px solid var(--border); border-radius: 8px;
-  overflow: hidden; flex: none;
-}
-.code-cw-toggle button {
-  border: none; background: none; color: var(--text-3);
-  font-size: 11.5px; font-weight: 600; padding: 4px 10px; cursor: pointer;
-}
-.code-cw-toggle button.active { background: var(--active-bg); color: var(--text); }
-/* A CHAT session is just the chat — the agent head keeps the title and
-   session controls; folder, git, and the work-panel toggles disappear. */
+/* A CHAT session (or the chat SPACE with no session) is just the chat —
+   folder, git, and the work-panel toggles disappear. */
 body.chat-session #code-workdir-btn,
 body.chat-session #code-workdir-add,
 body.chat-session #code-workdir-branch-wrap,
 body.chat-session .code-view-toggles { display: none !important; }
 
-/* co-work never downgrades once it has turns */
-.code-cw-toggle.locked button:not(.active) { opacity: 0.4; cursor: default; }
-.code-cw-toggle.hidden { display: none; }
 /* session rows: the TYPE's icon when idle (the working pulse replaces it) */
 .code-sess-ic { display: inline-flex; flex-shrink: 0; margin-left: 2px; color: var(--text-3); }
 .code-sess-ic svg { width: 13px; height: 13px; }
 
-/* The nav scopes to the active SPACE: chat-tagged items hide under Code
-   and vice versa (untagged items show in both). */
-body[data-rail-space="code"] .app-rail-nav-item[data-space="chat"] { display: none; }
-body[data-rail-space="chat"] .app-rail-nav-item[data-space="code"] { display: none; }
+/* The nav scopes to the active SPACE (data-space = word list of spaces
+   that show the item; untagged = all). CHAT can't navigate or do anything:
+   the whole nav, the command-center entry, and echo's controls hide. */
+body[data-rail-space="chat"] .app-rail-nav-item[data-space]:not([data-space~="chat"]) { display: none; }
+body[data-rail-space="cowork"] .app-rail-nav-item[data-space]:not([data-space~="cowork"]) { display: none; }
+body[data-rail-space="code"] .app-rail-nav-item[data-space]:not([data-space~="code"]) { display: none; }
+body[data-rail-space="chat"] .app-rail-nav,
+body[data-rail-space="chat"] #code-cc-btn,
+body[data-rail-space="chat"] .echo-zoom { display: none !important; }
 
 /* The rail's SPACE tabs — Chat | Code, above + New session. The active
    space should be unmissable: filled accent pill, icon + label. */
