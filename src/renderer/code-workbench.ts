@@ -956,6 +956,15 @@ async function init(): Promise<void> {
         if (kept.length !== rails[i].slots.length) { rails[i].slots = kept; changed = true; }
         if (!rails[i].slots.length) rails.splice(i, 1);
       }
+      if (section === "code" && echoCtl) {
+        // Parity with the standard-mode flip below (section slots close):
+        // PAGE cards give way — a dashboard seed prompt lands the user in
+        // the chat, the glyphh agent by itself, not behind the Home card.
+        for (const { slug } of echoCtl.list()) if (slug.startsWith("page:")) echoCtl.close(slug);
+        openEchoSurface();
+        echoCtl.openAgent();
+        return;
+      }
       if (section === "code" && !codingHosted()) { openEchoSurface(); echoCtl?.openAgent(); return; }
       // NOTHING changed → NOTHING re-renders. Every agent panel command runs
       // this flip first; an unconditional renderRails rebuilt Echo (and every
@@ -1844,7 +1853,9 @@ async function init(): Promise<void> {
       if (!echoGrid) return null;
       if (!echoGrid.cells.length) { echoGrid = null; return null; }
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      const x0 = 12, y0 = 12, W = w - 24, H = h - 24, gap = 10;
+      // tighter seams between LAYOUT panels than loose cards — the grid is
+      // one composed surface, not a scatter
+      const x0 = 12, y0 = 12, W = w - 24, H = h - 24, gap = 7;
       const norm = (a: number[]): number[] => {
         const sum = a.reduce((x, y) => x + y, 0) || 1;
         return a.map((v) => v / sum);
@@ -2012,6 +2023,10 @@ async function init(): Promise<void> {
     });
     const openShell = (e: TileEntry): HTMLElement | null => {
       if (e.card) { flash(e.card); return null; }
+      // An EXPANDED card is full-stage at z 2 — a new card would open
+      // invisibly behind it ("clicked and nothing happened"). Collapse it;
+      // the surface reflows to show both.
+      cardsLayer.querySelectorAll<HTMLElement>(".echo-card.expanded").forEach((c) => collapseCard(c));
       const card = document.createElement("div");
       card.className = "echo-card";
       card.innerHTML = `<div class="echo-card-head"><span></span>
