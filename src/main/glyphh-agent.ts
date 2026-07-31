@@ -382,7 +382,11 @@ async function chatRun(
         toSend = [{ role: "system", content: `## Skill: ${skill.name}\n${skill.prompt}` }, ...messages];
       } catch { /* not a skill — send as typed */ }
     }
-    const text = await glyphhComplete(toSend, { maxTokens, signal: ctrl.signal });
+    // NON-STREAMING cap: Anthropic 400s a plain completion that asks for a
+    // huge max_tokens (large outputs require streaming). The model's full
+    // declared budget is for the streaming SDK loop — chat replies cap at a
+    // safe ceiling.
+    const text = await glyphhComplete(toSend, { maxTokens: Math.min(maxTokens, 8192), signal: ctrl.signal });
     if (ctrl.signal.aborted) { emit("glyphh-agent:done", { stopped: true }); return; }
     emit("glyphh-agent:delta", { delta: text });
     emit("glyphh-agent:done", { stopped: false });
