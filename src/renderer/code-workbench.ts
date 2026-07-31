@@ -1582,6 +1582,14 @@ async function init(): Promise<void> {
     // (and pannable) beneath; close zooms it back to its spot. ──
     const cardsLayer = body.querySelector<HTMLElement>(".echo-cards")!;
     const openList: TileEntry[] = [];
+    const EXPAND_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+    const COLLAPSE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+    const collapseCard = (card: HTMLElement): void => {
+      card.classList.remove("expanded");
+      card.style.zIndex = "";
+      const b = card.querySelector<HTMLElement>(".echo-card-expand");
+      if (b) { b.innerHTML = EXPAND_SVG; b.title = "Expand"; }
+    };
     const setRect = (el: HTMLElement, r: { left: number; top: number; width: number; height: number }): void => {
       el.style.left = `${Math.round(r.left)}px`;
       el.style.top = `${Math.round(r.top)}px`;
@@ -1615,6 +1623,10 @@ async function init(): Promise<void> {
       const y0 = h * 0.05;
       openList.forEach((e, i) => {
         if (!e.card) return;
+        if (e.card.classList.contains("expanded")) {
+          setRect(e.card, { left: 12, top: 12, width: w - 24, height: h - 24 });
+          return;
+        }
         const col = i % 3, row = Math.floor(i / 3);
         setRect(e.card, { left: x0 + col * (cw + gap), top: y0 + row * (ch + gap), width: cw, height: ch });
       });
@@ -1630,9 +1642,10 @@ async function init(): Promise<void> {
       if (idx >= 0) openList.splice(idx, 1);
       // zoom BACK to the tile's spot (wherever the camera has it now)
       if (e.mesh) setRect(card, projectRect(e.mesh));
-      card.style.opacity = "0";
+      card.classList.remove("placed");
       card.style.pointerEvents = "none";
       window.setTimeout(() => card.remove(), 380);
+      if (!openList.length) cardsLayer.classList.remove("echo-shadow");
       layoutCards();
     };
     const openCard = (e: TileEntry): void => {
@@ -1641,9 +1654,19 @@ async function init(): Promise<void> {
       const card = document.createElement("div");
       card.className = "echo-card";
       card.innerHTML = `<div class="echo-card-head"><span></span>
+          <button class="ws-icon-btn echo-card-expand" title="Expand">${EXPAND_SVG}</button>
           <button class="ws-icon-btn echo-card-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
         </div><div class="echo-card-body"></div>`;
       card.querySelector("span")!.textContent = e.tile.name;
+      const expandBtn = card.querySelector<HTMLElement>(".echo-card-expand")!;
+      expandBtn.addEventListener("click", () => {
+        if (card.classList.contains("expanded")) { collapseCard(card); layoutCards(); return; }
+        card.classList.add("expanded");
+        card.style.zIndex = "2";
+        expandBtn.innerHTML = COLLAPSE_SVG;
+        expandBtn.title = "Collapse";
+        layoutCards();
+      });
       const wv = document.createElement("webview");
       wv.setAttribute("partition", "persist:yo");
       wv.setAttribute("allowpopups", "true");
@@ -1654,13 +1677,14 @@ async function init(): Promise<void> {
       });
       card.querySelector(".echo-card-body")!.appendChild(wv);
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      cardsLayer.classList.remove("echo-shadow");
       setRect(card, projectRect(e.mesh));   // start AT the tile
       cardsLayer.appendChild(card);
       e.card = card;
       e.open = true;
       drawTile(e);
       openList.push(e);
-      requestAnimationFrame(() => { card.style.opacity = "1"; layoutCards(); });
+      requestAnimationFrame(() => { card.classList.add("placed"); layoutCards(); });
     };
     const ray = new THREE.Raycaster();
     const pick = (ev: MouseEvent): TileEntry | null => {
@@ -1672,9 +1696,22 @@ async function init(): Promise<void> {
     };
     const onKey = (e: KeyboardEvent): void => {
       if (!body.isConnected) { document.removeEventListener("keydown", onKey, true); return; }
-      if (e.key !== "Escape" || !openList.length) return;
+      if (!openList.length) return;
+      // SHADOW MODE (⌘⇧E / Ctrl⇧E): the open apps fade to ghosts and stop
+      // taking input so the wall behind is visible and clickable — click
+      // another tile to open it (which exits shadow), or toggle again.
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "e" || e.key === "E")) {
+        e.stopPropagation();
+        e.preventDefault();
+        cardsLayer.classList.toggle("echo-shadow");
+        return;
+      }
+      if (e.key !== "Escape") return;
       e.stopPropagation();
       e.preventDefault();
+      if (cardsLayer.classList.contains("echo-shadow")) { cardsLayer.classList.remove("echo-shadow"); return; }
+      const expanded = openList.find((x) => x.card?.classList.contains("expanded"));
+      if (expanded?.card) { collapseCard(expanded.card); layoutCards(); return; }
       closeCard(openList[openList.length - 1]);
     };
     document.addEventListener("keydown", onKey, true);
