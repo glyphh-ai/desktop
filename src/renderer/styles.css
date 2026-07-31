@@ -487,6 +487,16 @@ body {
 
 
 
+/* The triad's gradient beat ("One workspace.") — used by the first-run
+   tour's tagline; EXACTLY the web hero's rhero-accent gradient. */
+.intro-accent {
+  background: linear-gradient(115deg, #b36bfb, #9333ea 48%, #ec4899);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
 .splash-status {
   font-size: 12px;
   color: var(--text-faint);
