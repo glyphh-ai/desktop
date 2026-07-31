@@ -2485,6 +2485,19 @@ export function initCode(): void {
     document.body.classList.toggle("rail-collapsed", collapsed);
     void window.yo.setPreference?.("codeRailCollapsed", collapsed);
   });
+  // The command-center eye beside the rail toggle — the same control as the
+  // echo panel's eye button: pin the shadow so the wall shows through the
+  // open cards. Cold-safe: mounts echo first, then toggles the pin.
+  el("code-cc-btn")?.addEventListener("click", () => {
+    openCommandCenter();
+    const w = window as unknown as { __wbEchoShadowPin?: () => void };
+    let tries = 0;
+    const go = (): void => {
+      if (w.__wbEchoShadowPin) w.__wbEchoShadowPin();
+      else if (tries++ < 40) requestAnimationFrame(go);
+    };
+    go();
+  });
   el("code-send")?.addEventListener("click", send);
   // Session controls in the agent head (the coding panel's own header row is
   // hidden): + starts a new session, the clock drops the history list.

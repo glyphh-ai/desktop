@@ -1787,12 +1787,20 @@ async function init(): Promise<void> {
       shadowPinned = on && pin;
       cardsLayer.classList.toggle("echo-shadow", on);
       shadowBtn.classList.toggle("active", shadowPinned);
+      // the header's command-center eye mirrors the pin state
+      document.getElementById("code-cc-btn")?.classList.toggle("active", shadowPinned);
       syncWallVisibility();
     };
     shadowBtn.addEventListener("click", () => {
       if (!openList.length) return;
       setShadow(!shadowPinned, !shadowPinned);
     });
+    // The HEADER's command-center button (beside the rail toggle) is the same
+    // eye: it pin-toggles the shadow so the wall shows over the open cards.
+    (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
+      if (!openList.length) return;
+      setShadow(!shadowPinned, !shadowPinned);
+    };
     const EXPAND_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const COLLAPSE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const collapseCard = (card: HTMLElement): void => {

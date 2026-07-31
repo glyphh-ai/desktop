@@ -13903,6 +13903,8 @@ body.code-dragging iframe { pointer-events: none !important; }
 }
 .echo-zoom .ws-icon-btn:hover { color: var(--text); background: var(--hover); }
 .echo-zoom .ws-icon-btn.active { color: var(--accent); border-color: var(--accent); }
+/* the header's command-center eye mirrors the echo eye's pinned state */
+#code-cc-btn.active { color: var(--accent); }
 .echo-zoom svg { width: 15px; height: 15px; }
 
 /* The VEIL — with cards open the wall fades back behind a slightly darker
@@ -13967,6 +13969,9 @@ body.code-dragging iframe { pointer-events: none !important; }
    the last one, toggling again, or Esc exits. */
 .echo-card.placed { opacity: 1; }
 .echo-cards.echo-shadow .echo-card.placed { opacity: 0.07; pointer-events: none; }
+/* shadow mode aims every click at the WALL — the layout's divider handles
+   behind the veil must not swallow drags */
+.echo-cards.echo-shadow .echo-div { pointer-events: none; }
 .echo-card-body { flex: 1; min-height: 0; display: flex; }
 .echo-card-body webview { flex: 1; min-width: 0; min-height: 0; }
 
