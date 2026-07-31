@@ -2615,6 +2615,8 @@ export function initCode(): void {
   const railTabs = el("rail-mode-tabs");
   const paintRailTabs = (): void => {
     railTabs?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === railTab));
+    // the nav below scopes to the space (data-space items + the More menu)
+    document.body.dataset.railSpace = railTab;
   };
   railTabs?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
     railTab = b.dataset.tab === "code" ? "code" : "chat";

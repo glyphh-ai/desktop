@@ -3042,6 +3042,11 @@ body.chat-session .code-view-toggles { display: none !important; }
 .code-sess-ic { display: inline-flex; flex-shrink: 0; margin-left: 2px; color: var(--text-3); }
 .code-sess-ic svg { width: 13px; height: 13px; }
 
+/* The nav scopes to the active SPACE: chat-tagged items hide under Code
+   and vice versa (untagged items show in both). */
+body[data-rail-space="code"] .app-rail-nav-item[data-space="chat"] { display: none; }
+body[data-rail-space="chat"] .app-rail-nav-item[data-space="code"] { display: none; }
+
 /* The rail's SPACE tabs — Chat | Code, above + New session. The active
    space should be unmissable: filled accent pill, icon + label. */
 .rail-mode-tabs {
