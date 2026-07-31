@@ -2990,10 +2990,10 @@ body.account-locked #dl-btn-wrap {
 .dash-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 14px;
   margin-bottom: 18px;
-  text-align: center;
+  text-align: left;
 }
 .dash-mark { width: 56px; height: 56px; flex: none; }
 .dash-header-text { text-align: left; }
