@@ -613,6 +613,8 @@ async function init(): Promise<void> {
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> }): void;
     openSection(section: string): void;
     openAgent(): void;
+    /** The universal chat icon: clear the surface, load the chat alone. */
+    openChat(): void;
     hasTool(view: string): boolean;
     closeTool(view: string): void;
     refreshForCwd(): void;
@@ -940,9 +942,10 @@ async function init(): Promise<void> {
   function openSectionInWorkbench(section: string): void {
     const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
     if (section === "agent") {
-      // The Glyphh mark / rail sessions: the agent, as an ECHO card.
+      // The Glyphh mark is the UNIVERSAL CHAT ICON: the current layout
+      // clears (memory saved) and the chat loads alone.
       openEchoSurface();
-      echoCtl?.openAgent();
+      echoCtl?.openChat();
       return;
     }
     if (section === "code" || section === "workspace") {
@@ -2423,7 +2426,12 @@ async function init(): Promise<void> {
     let openingLayout = false;
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
-      if (t.kind === "agent") { void openAgentCard(); return; }
+      if (t.kind === "agent") {
+        // the wall's Glyphh tile IS the universal chat icon too
+        if (!(openList.length === 1 && openList[0]!.tile.kind === "agent")) resetEcho();
+        void openAgentCard();
+        return;
+      }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -2538,6 +2546,13 @@ async function init(): Promise<void> {
       openLayout: (layout) => openLayoutInEcho(layout),
       openSection: (section) => openSectionCard(section),
       openAgent: () => { void openAgentCard(); },
+      openChat: () => {
+        // THE universal chat icon: whatever layout is up clears (its memory
+        // is saved by the reset) and the chat loads alone. Already alone →
+        // no reset, no flicker.
+        if (!(openList.length === 1 && openList[0]!.tile.kind === "agent")) resetEcho();
+        void openAgentCard();
+      },
       reset: () => resetEcho(),
       openTool: (view) => { void getOrOpenTool(view); },
       hasTool: (view) => openList.some((x) => x.tile.toolView === view),
