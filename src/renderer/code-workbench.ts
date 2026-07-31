@@ -916,6 +916,9 @@ async function init(): Promise<void> {
    *  (before any rails rebuild, and when a section panel closes). The same
    *  contract as parkAgent — adopt on render, park before wipe. */
   function parkSections(): void {
+    // The dashboard may hold the agent's footer — it must never ride a
+    // section into the hidden pen.
+    (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
     const pen = document.getElementById("page-body");
     document.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
       sec.classList.remove("active", "wb-hosted");
@@ -2123,6 +2126,7 @@ async function init(): Promise<void> {
         // the card's DOM goes away (same contract as parkSections)
         try {
           if (card.querySelector(".code-agent")) parkAgent();   // the singleton goes home
+          if (card.querySelector(".code-composer")) (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
           const pen = document.getElementById("page-body");
           card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
             sec.classList.remove("active", "wb-hosted");
