@@ -1236,8 +1236,10 @@ function paintComposerGate(): void {
 
 async function checkWorkdirGate(): Promise<void> {
   const cur = current();
-  if (cur && modeOf(cur) === "chat") {
-    // a CHAT session runs no tools — it needs no folder, so it never gates
+  const eff = cur ? modeOf(cur) : railTab;
+  if (eff === "chat") {
+    // a CHAT session (or a pending chat-space new) runs no tools — it needs
+    // no folder, so it never gates
     workdirReady = true;
     paintComposerGate();
     return;
@@ -2588,10 +2590,12 @@ export function initCode(): void {
   // session-scoped chrome honest (chat sessions strip the work chrome). ──
   const paintCw = (): void => {
     const cur = current();
-    const curMode = cur ? modeOf(cur) : null;
-    // A CHAT session is JUST the chat: no folder, no git, no work panels —
-    // the agent head keeps only the title (CSS keys off this class).
-    document.body.classList.toggle("chat-session", curMode ? curMode === "chat" : railTab === "chat");
+    // The agent orients by where its session CAME FROM: the session's own
+    // mode, or — before the first send creates one — the active tab. CSS
+    // keys the head chrome off this (chat = title only; work = folder but
+    // no dev toggles/git; code = everything).
+    const eff = cur ? modeOf(cur) : railTab;
+    document.body.dataset.sessionSpace = eff;
     // the Home landing hides the cowork content in the CHAT space
     document.body.classList.toggle("chat-only", railTab === "chat");
   };
@@ -2922,7 +2926,7 @@ export function adoptComposer(host: HTMLElement | null): void {
 (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome = () => adoptComposer(null);
 
 export function seedComposer(text: string): void {
-  gotoSection("code");
+  gotoSection("agent");
   const ta = input();
   if (!ta) return;
   ta.value = text;
@@ -2933,7 +2937,8 @@ export function seedComposer(text: string): void {
   // yet, ask for it right now instead of leaving a dead composer. (A CHAT
   // session needs no folder — never ask.)
   const curSeed = current();
-  if (!workdirReady && !(curSeed && modeOf(curSeed) === "chat")) {
+  const seedSpace = curSeed ? modeOf(curSeed) : railTab;
+  if (!workdirReady && seedSpace !== "chat") {
     void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
   }
 }

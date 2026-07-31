@@ -3017,12 +3017,18 @@ body.account-locked #dl-btn-wrap {
    stays fixed in the page; the toggle never makes the layout jump */
 body.chat-only .dash-two-col { visibility: hidden; }
 
-/* A CHAT session (or the chat SPACE with no session) is just the chat —
-   folder, git, and the work-panel toggles disappear. */
-body.chat-session #code-workdir-btn,
-body.chat-session #code-workdir-add,
-body.chat-session #code-workdir-branch-wrap,
-body.chat-session .code-view-toggles { display: none !important; }
+/* The agent's head chrome matches the session's SPACE (or the active tab
+   before the first send creates the session):
+   - CHAT: title only — no folder, no git, no panel toggles.
+   - WORK: folder (documents/downloads live there) but no git and no dev
+     panel toggles — those are Code's options.
+   - CODE: everything. */
+body[data-session-space="chat"] #code-workdir-btn,
+body[data-session-space="chat"] #code-workdir-add,
+body[data-session-space="chat"] #code-workdir-branch-wrap,
+body[data-session-space="chat"] .code-view-toggles,
+body[data-session-space="cowork"] #code-workdir-branch-wrap,
+body[data-session-space="cowork"] .code-view-toggles { display: none !important; }
 
 /* session rows: the TYPE's icon when idle (the working pulse replaces it) */
 .code-sess-ic { display: inline-flex; flex-shrink: 0; margin-left: 2px; color: var(--text-3); }
