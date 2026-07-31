@@ -14123,6 +14123,16 @@ body.code-dragging iframe { pointer-events: none !important; }
 .echo-zoom .ws-icon-btn.active { color: var(--accent); border-color: var(--accent); }
 .echo-zoom svg { width: 15px; height: 15px; }
 
+/* The VEIL — with cards open the wall fades back behind a slightly darker
+   wash (the old layout-manager feel); ⌘⇧ / the eye lifts it. */
+.echo-veil {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  opacity: 0; transition: opacity 0.25s ease;
+}
+.ws-echo-body:has(.echo-card) .echo-veil { opacity: 1; }
+.ws-echo-body:has(.echo-cards.echo-shadow) .echo-veil { opacity: 0; }
+
 /* Open panels: LIVE webview cards that zoom up out of their tile and back.
    The layer never blocks the wall — only the cards themselves take input. */
 .echo-cards { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
@@ -14149,6 +14159,11 @@ body.code-dragging iframe { pointer-events: none !important; }
   vertical-align: 1px;
 }
 .echo-card.dragging { transition: none; z-index: 5; opacity: 0.92; }
+/* resize grips — right edge, bottom edge, corner */
+.echo-resize { position: absolute; z-index: 3; }
+.echo-resize-r { top: 12px; right: -3px; bottom: 12px; width: 8px; cursor: ew-resize; }
+.echo-resize-b { left: 12px; bottom: -3px; right: 12px; height: 8px; cursor: ns-resize; }
+.echo-resize-rb { right: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nwse-resize; }
 .echo-card.dragging .echo-card-head { cursor: grabbing; }
 .echo-card-body .code-agent { display: flex; flex: 1; min-width: 0; background: transparent; }
 .echo-card-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -600,6 +600,7 @@ async function init(): Promise<void> {
    *  Echo's own slots — set by renderEchoIntoSlot, cleared on teardown. */
   interface EchoCtlType {
     openApp(app: { slug: string; name: string; url: string; glyphh?: boolean }): void;
+    openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> }): void;
     openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"): void;
     openPreviewHtml(html: string, label?: string): void;
     openPreviewUrl(url: string): void;
@@ -1246,6 +1247,7 @@ async function init(): Promise<void> {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
       <div class="echo-stage"></div>
+      <div class="echo-veil"></div>
       <div class="echo-cards"></div>
       <div class="echo-zoom">
         <button class="ws-icon-btn echo-shadow-btn" title="Show the wall (hold ⌘⇧)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
@@ -1311,7 +1313,7 @@ async function init(): Promise<void> {
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
     interface EchoTile { name: string; slug?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
-    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot }
+    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; freeRect?: { l: number; t: number; w: number; h: number }; memKey?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
     const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; font: string } => {
@@ -1608,6 +1610,30 @@ async function init(): Promise<void> {
     // col/row geometry until a card outside the grid appears (then the flow
     // layout takes back over).
     let echoGrid: { colWidths: number[]; rowHeights: number[]; cells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> } | null = null;
+    // The layout whose cards are on stage — dragged/resized card geometry is
+    // remembered under its name and restored on the next open.
+    let echoLayoutName: string | null = null;
+    const echoMemKey = (name: string): string => `echo:layout:${name.trim().toLowerCase()}`;
+    const rectFrac = (card: HTMLElement): { l: number; t: number; w: number; h: number } => {
+      const W = stage.clientWidth || 1, H = stage.clientHeight || 1;
+      return {
+        l: (parseFloat(card.style.left) || 0) / W,
+        t: (parseFloat(card.style.top) || 0) / H,
+        w: (parseFloat(card.style.width) || 1) / W,
+        h: (parseFloat(card.style.height) || 1) / H,
+      };
+    };
+    const fromFrac = (f: { l: number; t: number; w: number; h: number }): { left: number; top: number; width: number; height: number } => {
+      const W = stage.clientWidth || 1, H = stage.clientHeight || 1;
+      return { left: f.l * W, top: f.t * H, width: Math.max(160, f.w * W), height: Math.max(110, f.h * H) };
+    };
+    const saveEchoLayoutMem = (): void => {
+      if (!echoLayoutName) return;
+      const cells = openList
+        .filter((x) => x.memKey && x.card)
+        .map((x) => ({ key: x.memKey!, rect: x.freeRect ?? rectFrac(x.card!) }));
+      try { localStorage.setItem(echoMemKey(echoLayoutName), JSON.stringify({ cells })); } catch { /* full */ }
+    };
     // Shadow can be HELD (⌘⇧) or PINNED (the eye button) — a pin survives
     // modifier keyups; opening/closing the last card or Esc clears both.
     const shadowBtn = body.querySelector<HTMLElement>(".echo-shadow-btn")!;
@@ -1666,7 +1692,7 @@ async function init(): Promise<void> {
     const gridRects = (): Map<TileEntry, { left: number; top: number; width: number; height: number }> | null => {
       if (!echoGrid) return null;
       const inGrid = new Set(echoGrid.cells.map((c) => c.entry));
-      if (openList.some((e) => !inGrid.has(e))) { echoGrid = null; return null; }
+      if (openList.some((e) => !inGrid.has(e) && !e.freeRect)) { echoGrid = null; return null; }
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const x0 = 12, y0 = Math.max(12, h * 0.03), W = w - 24, H = h - y0 - 12, gap = 10;
       const norm = (a: number[]): number[] => {
@@ -1691,15 +1717,17 @@ async function init(): Promise<void> {
       if (!n) return;
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const grid = gridRects();
-      const rects = grid ? null : slotRects(n);
-      openList.forEach((e, i) => {
+      const flowIdx = openList.filter((e) => !e.freeRect && !(grid && grid.has(e)));
+      const rects = slotRects(Math.max(1, flowIdx.length));
+      openList.forEach((e) => {
         if (!e.card) return;
         e.card.classList.toggle("echo-pinned", !!e.tile.sticky);
         if (e.card.classList.contains("expanded")) {
           setRect(e.card, { left: 12, top: 12, width: w - 24, height: h - 24 });
           return;
         }
-        const r = grid ? grid.get(e) : rects![i];
+        const r = e.freeRect ? fromFrac(e.freeRect)
+          : grid?.get(e) ?? rects[Math.max(0, flowIdx.indexOf(e))];
         if (r) setRect(e.card, r);
       });
     };
@@ -1828,24 +1856,11 @@ async function init(): Promise<void> {
           if (!dragMoved) return;
           card.classList.remove("dragging");
           const px = mv.clientX - stageR.left, py = mv.clientY - stageR.top;
-          const grid = gridRects();
-          if (grid && echoGrid) {
-            // grid mode: dropping on another cell SWAPS the two cells' spots
-            let target: TileEntry | null = null;
-            let best = Infinity;
-            for (const [entry, rc] of grid) {
-              if (entry === e) continue;
-              const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
-              if (d < best) { best = d; target = entry; }
-            }
-            const a = echoGrid.cells.find((c) => c.entry === e);
-            const b = target ? echoGrid.cells.find((c) => c.entry === target) : null;
-            if (a && b) {
-              [a.col, b.col] = [b.col, a.col];
-              [a.row, b.row] = [b.row, a.row];
-              [a.colSpan, b.colSpan] = [b.colSpan, a.colSpan];
-              [a.rowSpan, b.rowSpan] = [b.rowSpan, a.rowSpan];
-            }
+          // Layout/free cards MOVE FREELY and the spot is remembered; only
+          // loose flow cards keep the slot-reorder gesture.
+          if (e.memKey || e.freeRect || echoGrid?.cells.some((c) => c.entry === e)) {
+            e.freeRect = rectFrac(card);
+            saveEchoLayoutMem();
             layoutCards();
             return;
           }
@@ -1862,6 +1877,34 @@ async function init(): Promise<void> {
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp);
       });
+      // RESIZE: right / bottom / corner grips — the new size is a free rect
+      // (and remembered when the card belongs to a layout).
+      for (const dir of ["r", "b", "rb"] as const) {
+        const grip = document.createElement("div");
+        grip.className = `echo-resize echo-resize-${dir}`;
+        grip.addEventListener("mousedown", (ev) => {
+          if (ev.button !== 0 || card.classList.contains("expanded")) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const r0 = card.getBoundingClientRect();
+          const sx = ev.clientX, sy = ev.clientY;
+          card.classList.add("dragging");
+          const onMove = (mv: MouseEvent): void => {
+            if (dir !== "b") card.style.width = `${Math.max(160, r0.width + (mv.clientX - sx))}px`;
+            if (dir !== "r") card.style.height = `${Math.max(110, r0.height + (mv.clientY - sy))}px`;
+          };
+          const onUp = (): void => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            card.classList.remove("dragging");
+            e.freeRect = rectFrac(card);
+            saveEchoLayoutMem();
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        });
+        card.appendChild(grip);
+      }
       setShadow(false, false);
       setRect(card, e.mesh ? projectRect(e.mesh) : centerRect());   // start AT the tile
       cardsLayer.appendChild(card);
@@ -1870,7 +1913,15 @@ async function init(): Promise<void> {
       drawTile(e);
       openList.push(e);
       notifyOpenApps();
-      requestAnimationFrame(() => { card.classList.add("placed"); layoutCards(); });
+      const place = (): void => {
+        if (card.classList.contains("placed")) return;
+        card.classList.add("placed");
+        layoutCards();
+      };
+      requestAnimationFrame(place);
+      // rAF starves in hidden/background-throttled windows — never leave a card
+      // stranded at its entrance rect
+      window.setTimeout(place, 150);
       return card;
     };
     /** The ONE agent, adopted into an Echo card — the same singleton/park
@@ -1900,6 +1951,14 @@ async function init(): Promise<void> {
       openingLayout = true;
       try {
         for (const x of [...openList]) closeCard(x);
+        echoLayoutName = layout.name || null;
+        interface EchoLayoutMem { cells?: Array<{ key: string; rect: { l: number; t: number; w: number; h: number } }> }
+        let mem: EchoLayoutMem | null = null;
+        try {
+          const raw = echoLayoutName ? localStorage.getItem(echoMemKey(echoLayoutName)) : null;
+          if (raw) mem = JSON.parse(raw) as EchoLayoutMem;
+        } catch { mem = null; }
+        const seenKeys = new Map<string, number>();
         const cells = [...layout.splits].sort((a, b) => (a.row - b.row) || (a.col - b.col));
         const gridCells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> = [];
         for (const cell of cells) {
@@ -1927,6 +1986,11 @@ async function init(): Promise<void> {
             }
           }
           if (entry?.card) {
+            const n = (seenKeys.get(id) ?? 0) + 1;
+            seenKeys.set(id, n);
+            entry.memKey = `${id}#${n}`;
+            const saved = mem?.cells?.find((c) => c.key === entry!.memKey);
+            if (saved) entry.freeRect = saved.rect;
             gridCells.push({ entry, col: cell.col ?? 0, row: cell.row ?? 0, colSpan: Math.max(1, cell.colSpan ?? 1), rowSpan: Math.max(1, cell.rowSpan ?? 1) });
           }
         }
@@ -2107,6 +2171,7 @@ async function init(): Promise<void> {
         if (pinned) { retargetCard(pinned, tile); return; }
         activateTile(adHoc(tile));
       },
+      openLayout: (layout) => openLayoutInEcho(layout),
       openTool: (view) => { void getOrOpenTool(view); },
       openPreviewHtml: (html, label) => {
         const entry = getOrOpenTool("preview");
@@ -4695,6 +4760,9 @@ async function init(): Promise<void> {
   }
 
   function openLayoutRowArranged(layout: LayoutRow, appRows: PanelAppRow[]): void {
+    // Echo IS the layout manager: while it is mounted, a layout open lands
+    // as Echo cards on the layout's grid (folder switching already ran).
+    if (echoCtl) { echoCtl.openLayout(layout); return; }
     const resolveCell = (panelId: string): PanelAppRow | undefined => {
       const key = panelId.trim().toLowerCase();
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
