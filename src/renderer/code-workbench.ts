@@ -537,11 +537,19 @@ async function init(): Promise<void> {
       // the agent, not squeezed beneath it. (Deliberate drag-drop placement
       // is a different path and can still stack anywhere.)
       if (rail.slots.some((s) => s.view === "coding")) continue;
-      if (rail.slots.length < 2) { rail.slots.push(slot); renderRails(); saveLayout(); return; }
+      if (rail.slots.length < 2) {
+        rail.slots.push(slot);
+        renderRails();
+        saveLayout();
+        if (slot.view === "app" && echoActive()) echoDock(slot.id);
+        return;
+      }
     }
     rails.push({ id: nextRailId++, slots: [slot] });
     renderRails();
     saveLayout();
+    // The agent opening an app while Echo is up docks it live, front row.
+    if (slot.view === "app" && echoActive()) echoDock(slot.id);
   }
   function placeView(view: Exclude<ViewKind, "app">): void {
     placeSlot(makeSlot(view));
@@ -1008,6 +1016,13 @@ async function init(): Promise<void> {
     // A LONE panel fills the page as if maximized — no drop strips, no width
     // handle, edge to edge (its expand button renders toggled-on too).
     container.classList.toggle("solo-slot", soloPanel());
+    // Echo takeover: while an echo slot exists, IT is the workspace view —
+    // the other rails hide (their webviews auto-hide with them; docked ones
+    // re-target Echo's own placeholders in syncAppViews).
+    container.classList.toggle("echo-takeover", echoActive());
+    container.querySelectorAll<HTMLElement>(".ws-right-rail").forEach((el, i) => {
+      el.classList.toggle("rail-has-echo", !!rails[i]?.slots.some((sl) => sl.view === "echo"));
+    });
     paintSectionToggles();
     // Re-apportion displayed widths after every (re)render — handles slot
     // adds/closes/DnD that change the rail count and the drop-strip total.
@@ -1201,9 +1216,16 @@ async function init(): Promise<void> {
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
-    body.innerHTML = `<div class="echo-stage"></div><div class="echo-agent-dock"></div><div class="echo-empty hidden">Open an app and it appears here, echoed in space.</div>`;
+    body.innerHTML = `<div class="echo-stage"></div>
+      <div class="echo-front">
+        <div class="echo-agent-dock"></div>
+        <div class="echo-dock-tray"></div>
+      </div>
+      <div class="echo-empty hidden">Open an app and it appears here, echoed in space.</div>`;
     const stage = body.querySelector<HTMLElement>(".echo-stage")!;
+    const front = body.querySelector<HTMLElement>(".echo-front")!;
     const dock = body.querySelector<HTMLElement>(".echo-agent-dock")!;
+    const tray = body.querySelector<HTMLElement>(".echo-dock-tray")!;
     const emptyEl = body.querySelector<HTMLElement>(".echo-empty")!;
     wrap.dataset.view = "echo";
 
@@ -1215,6 +1237,58 @@ async function init(): Promise<void> {
     } else {
       dock.classList.add("hidden");
     }
+
+    // ── The front row's DOCKED live panels — real webviews, re-targeted by
+    //    syncAppViews onto these placeholders. ──
+    const renderFront = (): void => {
+      if (!body.isConnected) return;
+      const slots = appSlots();
+      for (const id of [...echoDocked]) if (!slots.some((sl) => sl.id === id)) echoDocked.delete(id);
+      tray.innerHTML = "";
+      for (const id of echoDocked) {
+        const sl = slots.find((x) => x.id === id)!;
+        const card = document.createElement("div");
+        card.className = "echo-docked-panel";
+        card.innerHTML = `<div class="echo-docked-head"><span></span><button class="ws-icon-btn echo-rewall" title="Back to the wall (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg></button></div><div class="ws-app-placeholder" data-app-slot="${id}"></div>`;
+        card.querySelector("span")!.textContent = sl.name;
+        card.querySelector(".echo-rewall")!.addEventListener("click", () => rewall(id));
+        tray.appendChild(card);
+      }
+      front.classList.toggle("has-docked", echoDocked.size > 0);
+      for (const [id, mesh] of planes) mesh.visible = !echoDocked.has(id);
+      scheduleAppSync();
+    };
+    echoRefreshFront = renderFront;
+
+    /** Send one (or all) docked panels back to the wall — fresh capture
+     *  first, so the plane shows the moment it left. */
+    const rewall = (only?: number): void => {
+      const ids = typeof only === "number" ? [only] : [...echoDocked];
+      for (const id of ids) {
+        const wv = appViews.get(id)?.webview as unknown as { capturePage?: () => Promise<{ toDataURL(): string }> } | undefined;
+        const mesh = planes.get(id);
+        if (wv && mesh && typeof wv.capturePage === "function") {
+          wv.capturePage().then((img) => {
+            const url = img.toDataURL();
+            if (!url || url.length < 128) return;
+            loader.load(url, (tex) => {
+              tex.colorSpace = THREE.SRGBColorSpace;
+              mesh.material.map?.dispose();
+              mesh.material.map = tex;
+              mesh.material.color.set(0xffffff);
+              mesh.material.needsUpdate = true;
+            });
+          }).catch(() => { /* stale still stays */ });
+        }
+        echoDocked.delete(id);
+      }
+      renderFront();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (!body.isConnected) { document.removeEventListener("keydown", onKey, true); return; }
+      if (e.key === "Escape" && echoDocked.size) { e.stopPropagation(); e.preventDefault(); rewall(); }
+    };
+    document.addEventListener("keydown", onKey, true);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -1307,6 +1381,7 @@ async function init(): Promise<void> {
     });
 
     layoutPlanes();
+    renderFront();
     snapshot();
     let snapTimer = window.setInterval(() => {
       if (!body.isConnected) return;
@@ -1320,6 +1395,10 @@ async function init(): Promise<void> {
         // Slot re-rendered or closed — tear the scene down completely.
         window.clearInterval(snapTimer);
         ro.disconnect();
+        document.removeEventListener("keydown", onKey, true);
+        if (echoRefreshFront === renderFront) echoRefreshFront = null;
+        echoDocked.clear();
+        scheduleAppSync();   // webviews return to their normal slot rects
         for (const mesh of planes.values()) {
           mesh.material.map?.dispose();
           mesh.material.dispose();
@@ -1371,6 +1450,21 @@ async function init(): Promise<void> {
   };
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
+  // ── Echo mode — the 3D wall owns the workspace view while an echo slot
+  //    exists. Docked app slots render as LIVE flat panels beside the agent;
+  //    everything else is walled (webview hidden, its plane shows the last
+  //    capture). Click a plane → dock; Esc → capture + re-wall. ──
+  const echoDocked = new Set<number>();
+  let echoRefreshFront: (() => void) | null = null;
+  function echoActive(): boolean {
+    return rails.some((r) => r.slots.some((sl) => sl.view === "echo"));
+  }
+  function echoDock(slotId: number): void {
+    if (!echoActive()) return;
+    echoDocked.add(slotId);
+    echoRefreshFront?.();
+    scheduleAppSync();
+  }
   // The RPA registration bridge on window.yo (slug ↔ panel webContents id).
   const rpaYo = (): { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } =>
     (window as unknown as { yo?: { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } }).yo ?? {};
@@ -1588,7 +1682,12 @@ async function init(): Promise<void> {
         view = undefined;
       }
       if (!view) view = mountAppView(slot);
-      const ph = document.querySelector<HTMLElement>(`.ws-app-placeholder[data-app-slot="${slot.id}"]`);
+      // Echo mode: a DOCKED slot's webview rides Echo's front-row placeholder;
+      // walled slots have only their hidden rail placeholder → auto-hidden.
+      const ph = (echoDocked.has(slot.id)
+          ? document.querySelector<HTMLElement>(`.ws-echo-body .ws-app-placeholder[data-app-slot="${slot.id}"]`)
+          : null)
+        ?? document.querySelector<HTMLElement>(`.ws-app-placeholder[data-app-slot="${slot.id}"]`);
       const rect = ph?.getBoundingClientRect();
       const visible = !!rect && rect.width > 24 && rect.height > 24 && ph!.offsetParent !== null;
       view.holder.style.display = visible ? "" : "none";
@@ -1693,6 +1792,8 @@ async function init(): Promise<void> {
   }
 
   function focusAppSlot(slotId: number): void {
+    // In Echo, "focus" means: pull the live panel forward next to the agent.
+    if (echoActive()) { echoDock(slotId); return; }
     if (maximizedSlotId !== null && maximizedSlotId !== slotId) {
       maximizedSlotId = null;
       paintFullscreenClasses();

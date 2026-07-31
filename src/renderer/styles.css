@@ -14075,3 +14075,42 @@ body.code-dragging iframe { pointer-events: none !important; }
   font-size: 13px; color: var(--text-3);
 }
 .echo-empty.hidden { display: none; }
+
+/* Echo TAKEOVER: while an echo slot exists it IS the workspace view — the
+   other rails hide (their webviews hide with their placeholders; docked
+   panels re-target Echo's own placeholders). */
+.ws-right-rails.echo-takeover .ws-right-rail:not(.rail-has-echo) { display: none; }
+.ws-right-rails.echo-takeover .ws-right-rail.rail-has-echo { width: auto !important; flex: 1 1 auto !important; }
+
+/* The front row: agent card + docked LIVE panels, floating over the scene. */
+.echo-front {
+  position: absolute; left: 50%; bottom: 3.5%; transform: translateX(-50%);
+  width: min(1240px, 94%); height: 60%; z-index: 2;
+  display: flex; align-items: stretch; justify-content: center; gap: 14px;
+}
+.echo-front .echo-agent-dock {
+  position: static; transform: none; left: auto; bottom: auto;
+  flex: 0 1 640px; min-width: 320px; height: 100%;
+}
+.echo-front.has-docked .echo-agent-dock { flex: 0 1 480px; }
+.echo-dock-tray { display: flex; gap: 14px; min-width: 0; }
+.echo-docked-panel {
+  display: flex; flex-direction: column; width: clamp(300px, 30vw, 520px);
+  flex-shrink: 0; min-width: 280px;
+  border-radius: 14px; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+  backdrop-filter: blur(14px) saturate(130%);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+.echo-docked-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px 6px 12px; font-size: 12px; font-weight: 600; color: var(--text-2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.echo-docked-head .ws-icon-btn { width: 22px; height: 22px; color: var(--text-3); }
+.echo-docked-head .ws-icon-btn:hover { color: var(--text); }
+.echo-docked-head svg { width: 13px; height: 13px; }
+.echo-docked-panel .ws-app-placeholder { flex: 1; min-height: 0; }
+
