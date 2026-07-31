@@ -1684,7 +1684,10 @@ async function init(): Promise<void> {
     // A layout opened in Echo pins its GRID: cards sit at the layout's own
     // col/row geometry until a card outside the grid appears (then the flow
     // layout takes back over).
-    let echoGrid: { colWidths: number[]; rowHeights: number[]; cells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> } | null = null;
+    // rowFracs is PER COLUMN (indexed by column): each column splits its own
+    // height independently, like the old layout manager's rails — dragging
+    // the seam between two stacked panels never reshapes the neighbours.
+    let echoGrid: { colWidths: number[]; rowFracs: number[][]; cells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> } | null = null;
     // The layout whose cards are on stage — dragged/resized card geometry is
     // remembered under its name and restored on the next open.
     let echoLayoutName: string | null = null;
@@ -1695,7 +1698,7 @@ async function init(): Promise<void> {
       if (!echoLayoutName || !echoGrid) return;
       const data = {
         colWidths: echoGrid.colWidths,
-        rowHeights: echoGrid.rowHeights,
+        rowFracs: echoGrid.rowFracs,
         cells: echoGrid.cells.filter((c) => c.entry.memKey).map((c) => ({
           key: c.entry.memKey!, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan,
         })),
@@ -1785,10 +1788,11 @@ async function init(): Promise<void> {
         return a.map((v) => v / sum);
       };
       const cw = norm(echoGrid.colWidths);
-      const rh = norm(echoGrid.rowHeights);
       const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
       const out = new Map<TileEntry, { left: number; top: number; width: number; height: number }>();
       for (const c of echoGrid.cells) {
+        // vertical geometry from the ANCHOR column's own fractions
+        const rh = norm(echoGrid.rowFracs[c.col] ?? echoGrid.rowFracs[0] ?? [1]);
         const left = x0 + pre(cw, c.col) * W + gap / 2;
         const width = cw.slice(c.col, c.col + c.colSpan).reduce((x, y) => x + y, 0) * W - gap;
         const top = y0 + pre(rh, c.row) * H + gap / 2;
@@ -1829,14 +1833,15 @@ async function init(): Promise<void> {
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const x0 = 12, y0 = 12, W = w - 24, H = h - 24;
       const norm = (a: number[]): number[] => { const t = a.reduce((x, y) => x + y, 0) || 1; return a.map((v) => v / t); };
-      const cw = norm(echoGrid.colWidths), rh = norm(echoGrid.rowHeights);
+      const cw = norm(echoGrid.colWidths);
       const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
-      const wire = (el: HTMLElement, horiz: boolean, idx: number): void => {
+      const wire = (el: HTMLElement, horiz: boolean, idx: number, colIdx: number): void => {
         el.addEventListener("mousedown", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
           const startPos = horiz ? ev.clientY : ev.clientX;
-          const fr = horiz ? echoGrid!.rowHeights : echoGrid!.colWidths;
+          const fr = horiz ? echoGrid!.rowFracs[colIdx] : echoGrid!.colWidths;
+          if (!fr) return;
           const total = fr.reduce((x, y) => x + y, 0) || 1;
           const a0 = fr[idx - 1], b0 = fr[idx];
           const span = horiz ? H : W;
@@ -1866,18 +1871,29 @@ async function init(): Promise<void> {
         el.style.left = `${x0 + pre(cw, i) * W - 4}px`;
         el.style.top = `${y0}px`;
         el.style.height = `${H}px`;
-        wire(el, false, i);
+        wire(el, false, i, 0);
         dividerLayer.appendChild(el);
       }
-      for (let i = 1; i < rh.length; i++) {
-        const el = document.createElement("div");
-        el.className = "echo-div echo-div-h";
-        el.style.top = `${y0 + pre(rh, i) * H - 4}px`;
-        el.style.left = `${x0}px`;
-        el.style.width = `${W}px`;
-        wire(el, true, i);
-        dividerLayer.appendChild(el);
-      }
+      // horizontal seams: one SEGMENT per column, spanning only that column —
+      // a drag reshapes that column's stack and nothing else. A boundary
+      // inside a row-spanning cell has no seam.
+      echoGrid.rowFracs.forEach((fracs, ci) => {
+        const rh = norm(fracs);
+        const segLeft = x0 + pre(cw, ci) * W;
+        const segWidth = cw[ci] * W;
+        for (let i = 1; i < rh.length; i++) {
+          const crossed = echoGrid!.cells.some((c) =>
+            c.col <= ci && ci < c.col + c.colSpan && c.row < i && i < c.row + c.rowSpan);
+          if (crossed) continue;
+          const el = document.createElement("div");
+          el.className = "echo-div echo-div-h";
+          el.style.top = `${y0 + pre(rh, i) * H - 4}px`;
+          el.style.left = `${segLeft}px`;
+          el.style.width = `${segWidth}px`;
+          wire(el, true, i, ci);
+          dividerLayer.appendChild(el);
+        }
+      });
     };
     const closeCard = (e: TileEntry): void => {
       const card = e.card;
@@ -2124,7 +2140,7 @@ async function init(): Promise<void> {
       try {
         for (const x of [...openList]) closeCard(x);
         echoLayoutName = layout.name || null;
-        interface EchoLayoutMem { colWidths?: number[]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number }> }
+        interface EchoLayoutMem { colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number }> }
         let mem: EchoLayoutMem | null = null;
         try {
           const raw = echoLayoutName ? localStorage.getItem(echoMemKey(echoLayoutName)) : null;
@@ -2175,13 +2191,20 @@ async function init(): Promise<void> {
         if (gridCells.length) {
           const nCols = Math.max(layout.cols || 0, ...gridCells.map((c) => c.col + c.colSpan));
           const nRows = Math.max(layout.rows || 0, ...gridCells.map((c) => c.row + c.rowSpan));
+          // every column starts from the layout's row shape, then owns its
+          // fractions independently (legacy flat rowHeights memory expands)
+          const baseRow: number[] = (mem?.rowHeights?.length === nRows ? mem.rowHeights.slice()
+            : layout.rowHeights?.length === nRows ? layout.rowHeights.slice()
+            : Array.from({ length: nRows }, () => 1));
+          const memFracs = mem?.rowFracs;
+          const fracsOk = Array.isArray(memFracs) && memFracs.length === nCols
+            && memFracs.every((r) => Array.isArray(r) && r.length === nRows);
           echoGrid = {
             colWidths: mem?.colWidths?.length === nCols ? mem.colWidths.slice()
               : layout.colWidths?.length === nCols ? layout.colWidths.slice()
               : Array.from({ length: nCols }, () => 1),
-            rowHeights: mem?.rowHeights?.length === nRows ? mem.rowHeights.slice()
-              : layout.rowHeights?.length === nRows ? layout.rowHeights.slice()
-              : Array.from({ length: nRows }, () => 1),
+            rowFracs: fracsOk ? memFracs!.map((r) => r.slice())
+              : Array.from({ length: nCols }, () => baseRow.slice()),
             cells: gridCells,
           };
           layoutCards();
