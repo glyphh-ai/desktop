@@ -2970,6 +2970,10 @@ body.account-locked #dl-btn-wrap {
 .help-section[data-section="connections"] #conn-detail.hidden { display: none !important; }
 
 /* ── Home dashboard (landing) ─────────────────────────────────────────── */
+/* The dashboard renders INSIDE an echo card as often as full-page — media
+   queries measure the window, so responsiveness keys off the SECTION's own
+   width (container queries), like the lib tables. */
+.help-section[data-section="dashboard"] { container-type: inline-size; container-name: dash; }
 .dash-scroll {
   padding: 30px 36px 48px;
   max-width: 1120px;
@@ -2977,6 +2981,7 @@ body.account-locked #dl-btn-wrap {
   width: 100%;
   box-sizing: border-box;
 }
+@container dash (max-width: 720px) { .dash-scroll { padding: 18px 16px 32px; } }
 .dash-header {
   display: flex;
   align-items: flex-start;
@@ -2996,7 +3001,9 @@ body.account-locked #dl-btn-wrap {
 .dash-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
 .dash-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-@media (max-width: 720px) { .dash-grid { grid-template-columns: 1fr; } }
+@container dash (max-width: 900px) { .dash-grid { grid-template-columns: repeat(2, 1fr); } }
+@container dash (max-width: 620px) { .dash-grid { grid-template-columns: 1fr; } }
+@container dash (max-width: 620px) { .dash-header { flex-wrap: wrap; } }
 
 .dash-card {
   background: var(--surface-3);
@@ -13969,22 +13976,57 @@ body.code-dragging webview { pointer-events: none !important; }
 .echo-card.dragging { transition: none; z-index: 5; opacity: 0.92; }
 /* Dividers — the seams between layout slots (the old rail handles): drag
    to reshape the whole layout. */
-/* Echo top bar — wall controls: search + drips. Sits over the canvas,
-   under the cards. */
+/* Echo top bar — wall controls: SPOTLIGHT-style search + the drip picker.
+   Sits over the canvas, under the cards. */
 .echo-topbar {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px; z-index: 3;
+  position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; z-index: 3;
 }
+.echo-search-wrap {
+  display: flex; align-items: center; gap: 10px;
+  width: 560px; max-width: 64vw;
+  padding: 0 16px; height: 46px;
+  border: 1px solid var(--border); border-radius: 13px;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+}
+.echo-search-wrap:focus-within { border-color: var(--accent); }
+.echo-search-ic { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
 .echo-search {
-  width: 320px; max-width: 60vw;
-  padding: 7px 12px;
-  border: 1px solid var(--border); border-radius: 9px;
-  background: var(--surface-2); color: var(--text);
-  font-size: 12.5px; outline: none;
+  flex: 1; min-width: 0; border: none; background: none; outline: none;
+  color: var(--text); font-size: 16px;
 }
-.echo-search:focus { border-color: var(--accent); }
-.echo-topbar .ws-icon-btn { border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); }
-.echo-topbar .ws-icon-btn svg { width: 15px; height: 15px; }
+.echo-search::placeholder { color: var(--text-faint); }
+.echo-topbar .ws-icon-btn {
+  border: 1px solid var(--border); border-radius: 13px;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  backdrop-filter: blur(18px);
+  width: 46px; height: 46px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+}
+.echo-topbar .ws-icon-btn svg { width: 18px; height: 18px; }
+
+/* the drip PICKER popup — under the bar, right-aligned to the droplet */
+.echo-drip-pop {
+  position: absolute; top: 54px; right: 0;
+  display: grid; grid-template-columns: repeat(3, 96px); gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border); border-radius: 13px;
+  background: var(--surface-2);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+  z-index: 5;
+}
+.echo-drip-pop.hidden { display: none; }
+.echo-drip-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 6px; border: none; border-radius: 10px;
+  background: none; color: var(--text); cursor: pointer; font-size: 12px;
+}
+.echo-drip-tile:hover { background: var(--hover); }
+.echo-drip-tile .edt-ic { font-size: 20px; }
+.echo-drip-tile .edt-nm { max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.echo-drip-empty { padding: 12px 16px; color: var(--text-faint); font-size: 12.5px; grid-column: 1 / -1; }
 
 .echo-dividers { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .echo-div { position: absolute; pointer-events: auto; border-radius: 4px; transition: background 0.12s ease; }

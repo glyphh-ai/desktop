@@ -1265,8 +1265,12 @@ async function init(): Promise<void> {
     body.innerHTML = `
       <div class="echo-stage"></div>
       <div class="echo-topbar">
-        <input class="echo-search" type="text" placeholder="Search apps, layouts, tools…" spellcheck="false" autocomplete="off" />
+        <div class="echo-search-wrap">
+          <svg class="echo-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="echo-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" />
+        </div>
         <button class="ws-icon-btn echo-drip-btn" title="Drips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></button>
+        <div class="echo-drip-pop hidden"></div>
       </div>
       <div class="echo-veil"></div>
       <div class="echo-cards"></div>
@@ -1948,9 +1952,45 @@ async function init(): Promise<void> {
           }
         }
       });
-      body.querySelector<HTMLElement>(".echo-drip-btn")!.addEventListener("click", () => {
-        // Drips live as a Settings sub-panel — same route the nav takes.
-        (window as unknown as { __gotoSection?: (s: string, sub?: string) => void }).__gotoSection?.("settings", "drips");
+      // The droplet opens the DRIP PICKER as a popup right here — builtin
+      // effects + the user's saved drips; a tile plays its recipe.
+      const dripPop = body.querySelector<HTMLElement>(".echo-drip-pop")!;
+      const dripBtn = body.querySelector<HTMLElement>(".echo-drip-btn")!;
+      const DRIP_EMOJI: Record<string, string> = { fireworks: "🎆", rain: "🌧️", confetti: "🎉", snow: "❄️", hearts: "💖", bubbles: "🫧" };
+      const closeDripPop = (): void => dripPop.classList.add("hidden");
+      dripBtn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (!dripPop.classList.contains("hidden")) { closeDripPop(); return; }
+        const yoD = (window as unknown as { yo?: { dripsBuiltinEffects?: () => Promise<string[]>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).yo;
+        const [builtinsRaw, customsRaw] = await Promise.all([
+          yoD?.dripsBuiltinEffects?.().catch(() => [] as string[]) ?? [],
+          yoD?.dripsList?.().catch(() => [] as Array<{ name: string; recipe: string }>) ?? [],
+        ]);
+        const builtins = builtinsRaw || [];
+        const customs = customsRaw || [];
+        dripPop.innerHTML = "";
+        const tile = (name: string, recipe: string, emoji: string): void => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "echo-drip-tile";
+          b.innerHTML = `<span class="edt-ic"></span><span class="edt-nm"></span>`;
+          b.querySelector(".edt-ic")!.textContent = emoji;
+          b.querySelector(".edt-nm")!.textContent = name;
+          b.addEventListener("click", (e2) => { e2.stopPropagation(); void yoD?.dripsPreview?.(recipe); closeDripPop(); });
+          dripPop.appendChild(b);
+        };
+        for (const n of builtins) tile(n, n, DRIP_EMOJI[n] || "🎨");
+        for (const c of customs) tile(c.name, c.recipe, "💧");
+        if (!dripPop.childElementCount) {
+          const empty = document.createElement("div");
+          empty.className = "echo-drip-empty";
+          empty.textContent = "No drips yet";
+          dripPop.appendChild(empty);
+        }
+        dripPop.classList.remove("hidden");
+      });
+      document.addEventListener("click", (ev) => {
+        if (!dripPop.classList.contains("hidden") && !dripPop.contains(ev.target as Node)) closeDripPop();
       });
     }
     const layoutCards = (): void => {
@@ -2545,6 +2585,14 @@ async function init(): Promise<void> {
     const openSectionCard = (section: string, title?: string): void => {
       const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${section}"]`);
       if (!sec) return;
+      if (section === "dashboard") {
+        // HOME is a clean landing — like the chat icon, clicking Home clears
+        // whatever is up (layout memory saved by the reset) and loads the
+        // Home page alone.
+        const home = openList.find((x) => x.tile.slug === "page:dashboard");
+        if (home?.card && openList.length === 1) { flash(home.card); return; }
+        resetEcho();
+      }
       const existing = openList.find((x) => x.tile.slug === `page:${section}`);
       if (existing?.card) { flash(existing.card); return; }
       const name = title || (section === "dashboard" ? "Home" : section.charAt(0).toUpperCase() + section.slice(1));
