@@ -11,6 +11,7 @@ import { openUrlInWorkbench, seedNewSession, openRunSession, adoptComposer } fro
 import { SPACE_LABEL, spacePillHtml, type Space } from "./space-meta.js";
 import { mascotSvg, type Mascot } from "./mascots.js";
 import { openStarterLayout, type STARTER_LAYOUTS } from "./starter-layouts.js";
+import { ensureStarterSkill, hasSkill, NOTEBOOK_RESEARCH, type StarterSkill } from "./starter-skills.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: any;
@@ -462,21 +463,32 @@ const RECOMMENDATIONS: Array<{ prompt: string; icon: string }> = [
 // switches the tab, lands on a fresh session, and seeds the composer — it
 // never sends; the user finishes the thought and hits enter.
 interface Starter {
-  space: Space; title: string; blurb: string; seed: string; mascot: Mascot;
+  space: Space; title: string; blurb: string; mascot: Mascot;
+  /** Plain-English seed — always safe, used when no skill backs the card. */
+  seed: string;
   /** The workspace this starter opens into, if any (Chat starters need none). */
   layout?: keyof typeof STARTER_LAYOUTS;
+  /** A skill that does this properly. `install` ships its body (we seed it on
+   *  first use); without one we only reference the skill when the library
+   *  already has it — a card must never seed a slash-ref that resolves to
+   *  nothing and lands in the thread as literal text. */
+  skill?: { slug: string; seed: string; install?: StarterSkill };
 }
 const STARTERS: Starter[] = [
   {
     space: "cowork", title: "Research a topic",
     blurb: "NotebookLM does the digging — sources imported, deck built, findings remembered.",
-    seed: "/notebook-research ", layout: "research",
+    seed: "Research this topic end to end and build me a deck on it: ",
+    layout: "research",
+    skill: { slug: "notebook-research", seed: "/notebook-research ", install: NOTEBOOK_RESEARCH },
     mascot: { name: "Scout", key: "scout", color: "#2dd4bf" },
   },
   {
     space: "code", title: "Build an app",
     blurb: "From one sentence to a running app in your workspace.",
-    seed: "/build-glyphh-app ", layout: "dev",
+    seed: "Build me an app that ",
+    layout: "dev",
+    skill: { slug: "build-glyphh-app", seed: "/build-glyphh-app " },
     mascot: { name: "Byte", key: "byte", color: "#a78bfa" },
   },
   {
@@ -505,6 +517,18 @@ const STARTERS: Starter[] = [
   },
 ];
 
+/** Open the starter's workspace, then seed it — the skill's own reference
+ *  when that skill will resolve, plain English when it won't. */
+async function runStarter(s: Starter): Promise<void> {
+  if (s.layout) await openStarterLayout(s.layout);
+  let seed = s.seed;
+  if (s.skill) {
+    const ready = s.skill.install ? await ensureStarterSkill(s.skill.install) : await hasSkill(s.skill.slug);
+    if (ready) seed = s.skill.seed;
+  }
+  seedNewSession(seed, s.space);
+}
+
 function renderStarters(): void {
   const host = document.getElementById("dash-starters");
   if (!host || host.childElementCount) return;
@@ -524,12 +548,7 @@ function renderStarters(): void {
     card.querySelector(".dash-starter-title")!.textContent = s.title;
     card.querySelector(".dash-starter-blurb")!.textContent = s.blurb;
     card.title = `${s.mascot.name} · opens in ${SPACE_LABEL[s.space]}`;
-    card.addEventListener("click", () => {
-      // The setup comes first — the layout carries the space, so the tab,
-      // the panels, and the session all land together; then the prompt.
-      if (s.layout) void openStarterLayout(s.layout).then(() => seedNewSession(s.seed, s.space));
-      else seedNewSession(s.seed, s.space);
-    });
+    card.addEventListener("click", () => { void runStarter(s); });
     host.appendChild(card);
   }
 }
