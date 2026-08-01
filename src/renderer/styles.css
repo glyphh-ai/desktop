@@ -14077,11 +14077,8 @@ body.code-dragging webview { pointer-events: none !important; }
 /* the header's command-center eye mirrors the echo eye's pinned state */
 #code-cc-btn.active { color: var(--accent); }
 
-/* TEMPORARILY HIDDEN (2026-07-31, per Chris): the rail's Apps and Layouts
-   sections — code and behavior intact, just not shown for now. The whole
-   section: header row (toggle + reset + open-page buttons), body, and the
-   recents/apps drag splitter. */
-.app-rail-section-head, .app-rail-section-body, #recents-vsplit { display: none !important; }
+/* (The rail's Apps and Layouts sections were hidden 2026-07-31 and are back
+   as of 2026-08-01 — collapsed by default, see RAIL_SECTIONS in help/code.ts.) */
 
 /* GATED composer — no working folder yet. A disabled textarea swallows
    clicks, so let them pass through to the wrap (whose click opens the

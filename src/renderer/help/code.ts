@@ -2201,9 +2201,13 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
 
 // ── Rail sections (Apps, Layouts) — each collapsible, state remembered ───────
 interface RailSectionDef { toggle: string; body: string; pref: string }
+// Both start COLLAPSED — the rail leads with sessions; Apps and Layouts are
+// there when wanted. The pref keys carry a "2": the v1 keys hold stale
+// "open" values from before these sections were hidden, and honoring those
+// would expand the rail on exactly the machines that were using it.
 const RAIL_SECTIONS: RailSectionDef[] = [
-  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railAppsOpen" },
-  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railLayoutsOpen" },
+  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railAppsOpen2" },
+  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railLayoutsOpen2" },
 ];
 /** The user's chosen Recents height — the splitter's flex-basis. Kept in a var
  *  so syncRailLayout can restore it after a "both sections closed" fill. */
@@ -2244,7 +2248,7 @@ function initRailSections(): void {
       const open = el(def.toggle)!.classList.contains("closed"); // was closed → open it
       setRailSectionOpen(def, open, true);
     });
-    void window.yo.getPreference?.(def.pref, true).then((v) => setRailSectionOpen(def, v !== false, false));
+    void window.yo.getPreference?.(def.pref, false).then((v) => setRailSectionOpen(def, v === true, false));
   }
 }
 

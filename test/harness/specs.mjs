@@ -323,6 +323,23 @@ export const SPECS = [
     `,
   },
   {
+    name: "rail Apps + Layouts sections are present and COLLAPSED by default",
+    fresh: true,
+    body: `
+      const heads = $$(".app-rail-section-head");
+      const shown = heads.length >= 2 && heads.every((h) => getComputedStyle(h).display !== "none");
+      await until(() => $("#rail-apps-body")?.classList.contains("hidden"), 4000);
+      const appsClosed = $("#rail-apps-body").classList.contains("hidden");
+      const layoutsClosed = $("#rail-layouts-body").classList.contains("hidden");
+      // opening one persists under the versioned key
+      click($("#rail-apps-toggle"));
+      await until(() => !$("#rail-apps-body").classList.contains("hidden"), 2000);
+      const persisted = window.__stub.calls.setPreference.some(([k, v]) => k === "railAppsOpen2" && v === true);
+      return ok(shown && appsClosed && layoutsClosed && persisted,
+        JSON.stringify({ heads: heads.length, appsClosed, layoutsClosed, persisted }));
+    `,
+  },
+  {
     name: "a rail section REPLACES an open layout (no divider bleed-through)",
     fresh: true,
     body: `
