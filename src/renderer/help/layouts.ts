@@ -111,6 +111,23 @@ const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   { id: "tool:echo",     label: "Echo", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
 ];
 const toolPanelIcon = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.icon || "";
+
+// ── Layout SPACE (which agent rides it) — mirrors code-workbench ─────────
+// Explicit `space` wins; else dev tool panels make it a Code layout, and
+// anything else is Work. The badge glyphs are the rail tabs' own icons.
+type LayoutSpace = "chat" | "cowork" | "code";
+const DEV_PANEL_RE = /^tool:(coding|terminal|editor|diff|git)/;
+const SPACE_LABEL: Record<LayoutSpace, string> = { chat: "Chat", cowork: "Work", code: "Code" };
+const SPACE_GLYPH_SVG: Record<LayoutSpace, string> = {
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  cowork: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+};
+function cardSpace(layout: { space?: string | null; splits?: Array<{ panelId: string }> }): LayoutSpace {
+  const s = layout?.space;
+  if (s === "chat" || s === "cowork" || s === "code") return s;
+  return (layout?.splits ?? []).some((p) => DEV_PANEL_RE.test(String(p.panelId || ""))) ? "code" : "cowork";
+}
 const isToolPanel = (id: string): boolean => id.startsWith("tool:");
 const toolPanelLabel = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.label || id.slice(5);
 /** One app-icon square for a layout card — identical icon resolution to the
@@ -143,6 +160,55 @@ const layoutsList = document.getElementById("layouts-list")!;
 const layoutEditor = document.getElementById("layout-editor")!;
 const layoutsToolbar = document.getElementById("layouts-toolbar")!;
 const layoutSearchInput = document.getElementById("layout-search") as HTMLInputElement;
+
+// ── Space filter (funnel beside the search) — the standard check dropdown ──
+let layoutSpaceFilter: "" | LayoutSpace = "";
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+function initSpaceFilter(): void {
+  const btn = document.getElementById("layout-space-filter") as HTMLButtonElement | null;
+  if (!btn || btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+  const menu = document.createElement("div");
+  menu.className = "yo-workdir-menu layout-space-menu";
+  menu.setAttribute("role", "menu");
+  document.body.appendChild(menu);
+  const close = (): void => menu.classList.remove("open");
+  const paintBtn = (): void => { btn.classList.toggle("active", !!layoutSpaceFilter); };
+  const open = (): void => {
+    menu.innerHTML = "";
+    const rows: Array<["" | LayoutSpace, string]> = [["", "All"], ["chat", "Chat"], ["cowork", "Work"], ["code", "Code"]];
+    for (const [val, label] of rows) {
+      const item = document.createElement("button");
+      item.className = "yo-workdir-menu-item";
+      item.innerHTML = `<span class="check">${layoutSpaceFilter === val ? CHECK_SVG : ""}</span><span class="nm"></span>`;
+      (item.querySelector(".nm") as HTMLElement).textContent = label;
+      item.addEventListener("click", () => {
+        layoutSpaceFilter = val;
+        layoutsPage = 1;
+        close();
+        paintBtn();
+        renderLayoutsList();
+      });
+      menu.appendChild(item);
+    }
+    const r = btn.getBoundingClientRect();
+    menu.style.left = `${Math.round(r.right - 150)}px`;
+    menu.style.top = `${Math.round(r.bottom + 4)}px`;
+    menu.style.bottom = "auto";
+    menu.classList.add("open");
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.contains("open") ? close() : open();
+  });
+  document.addEventListener("click", (e) => {
+    if (!menu.classList.contains("open")) return;
+    if (menu.contains(e.target as Node) || btn.contains(e.target as Node)) return;
+    close();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+}
+initSpaceFilter();
 const layoutNameInput = document.getElementById("layout-new-name") as HTMLInputElement;
 const layoutFormError = document.getElementById("layout-form-error")!;
 const layoutDeleteBtn = document.getElementById("layout-delete-btn") as HTMLButtonElement;
@@ -589,7 +655,8 @@ async function loadLayouts() {
 
 function renderLayoutsList() {
   const query = layoutSearchInput.value.trim().toLowerCase();
-  const filtered = query ? allLayouts.filter((l) => l.name.toLowerCase().includes(query)) : allLayouts;
+  const bySpace = layoutSpaceFilter ? allLayouts.filter((l) => cardSpace(l) === layoutSpaceFilter) : allLayouts;
+  const filtered = query ? bySpace.filter((l) => l.name.toLowerCase().includes(query)) : bySpace;
 
   // Same tile grid as the Apps/Connections pages (.app-list-wrap .app-grid).
   // Preserve the hidden state — async icon re-renders must not pop the list
@@ -611,13 +678,20 @@ function renderLayoutsList() {
   layoutsPage = state.page;
 
   // Cards mirror the command center's layout tiles: a geometric mini-grid
-  // preview (no app icons) + the name. One visual language across surfaces.
+  // preview (no app icons) + the name. One visual language across surfaces —
+  // including the SPACE badge (which agent rides the layout).
   const grid = document.createElement("div");
   grid.className = "cc-layouts layouts-page-grid";
   for (const layout of layouts) {
     const card = document.createElement("div");
     card.className = "cc-layout-card";
-    card.innerHTML = `${layoutMini(layout)}<span class="cc-card-name"></span>`;
+    const space = cardSpace(layout);
+    card.innerHTML =
+      `${layoutMini(layout)}` +
+      `<span class="cc-card-space" title="${SPACE_LABEL[space]} layout">` +
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${SPACE_GLYPH_SVG[space]}</svg>` +
+      `</span>` +
+      `<span class="cc-card-name"></span>`;
     card.querySelector(".cc-card-name")!.textContent = layout.name;
     // The Layouts page is for EDITING — the left-rail Layouts tiles open them.
     card.addEventListener("click", () => editLayout(layout.name));
