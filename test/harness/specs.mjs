@@ -337,6 +337,23 @@ export const SPECS = [
     `,
   },
   {
+    name: "the seeded Dev layout opens ALL five panels (files + diff included)",
+    fresh: true,
+    body: `
+      killTransitions();
+      window.__wbEchoReset();
+      await sleep(500);
+      const search = $(".echo-search");
+      typeInto(search, "dev");
+      pressEnter(search);
+      await until(() => $$(".echo-card").length >= 3, 8000);
+      await sleep(900);
+      const titles = $$(".echo-card").map((c) => (c.querySelector(".echo-card-title") || c).textContent.trim().toLowerCase());
+      const has = (t) => titles.some((x) => x.includes(t));
+      return ok(has("files") && has("diff"), JSON.stringify({ n: titles.length, titles }));
+    `,
+  },
+  {
     name: "NOTHING creates a session but a send — starter card, header +, rail +",
     fresh: true,
     body: `

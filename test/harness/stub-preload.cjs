@@ -25,6 +25,17 @@ const APPS = [
 ];
 const LAYOUTS = [
   {
+    name: "Dev", cols: 3, rows: 2, sessionMode: "last",
+    colWidths: [0.34, 0.33, 0.33], rowHeights: [0.5, 0.5],
+    splits: [
+      { panelId: "tool:files", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:diff", col: 0, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:monaco", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:terminal", col: 1, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:coding", col: 2, row: 0, colSpan: 1, rowSpan: 2 },
+    ],
+  },
+  {
     name: "Coding day", cols: 2, rows: 2, colWidths: [60, 40], rowHeights: [70, 30], sessionMode: "last",
     splits: [
       { panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 2 },

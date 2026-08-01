@@ -52,21 +52,22 @@ async function ensureDefaultApp(app: { slug: string; name: string; url: string }
 }
 
 export const STARTER_LAYOUTS: Record<"dev" | "email" | "research", LayoutTemplate> = {
-  // A real dev bench: the agent down the left, the code it is writing in
-  // the middle, and the two panels you actually watch while it works —
-  // Files and Diff — down the right.
+  // FALLBACK ONLY — the server seeds "Dev" into every org at signup, so this
+  // is used only by a workspace that deleted it. Same shape as the seeded
+  // one (files/diff left, editor/terminal middle, agent right) so the two
+  // can never drift apart.
   dev: {
     name: "Dev", space: "code", cols: 3, rows: 2,
-    colWidths: [0.38, 0.37, 0.25], rowHeights: [0.62, 0.38], sessionMode: "last",
+    colWidths: [0.34, 0.33, 0.33], rowHeights: [0.5, 0.5], sessionMode: "last",
     cells: [
-      { panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 2 },
-      { panelId: "tool:editor", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:files", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:diff", col: 0, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:monaco", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
       { panelId: "tool:terminal", col: 1, row: 1, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:files", col: 2, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:diff", col: 2, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:coding", col: 2, row: 0, colSpan: 1, rowSpan: 2 },
     ],
   },
-  // The agent beside the actual mailbox.
+  // FALLBACK ONLY — the server seeds "Email" (agent + Gmail + Calendar).
   email: {
     name: "Email", space: "cowork", cols: 2, rows: 1,
     colWidths: [0.42, 0.58], rowHeights: [1], sessionMode: "last",
@@ -91,7 +92,7 @@ export const STARTER_LAYOUTS: Record<"dev" | "email" | "research", LayoutTemplat
  *  Research layout never opens with a hole where NotebookLM should be. */
 async function repairAppCell(t: LayoutTemplate, existing: unknown[]): Promise<void> {
   const row = (existing as Array<{ name?: string; splits?: Array<{ panelId: string }> }>)
-    .find((l) => l.name === t.name);
+    .find((l) => (l.name || "").toLowerCase() === t.name.toLowerCase());
   const cells = row?.splits ?? [];
   const appCell = cells.find((c) => !c.panelId.startsWith("tool:"));
   const apps = (await window.yo.panelAppsList?.()) ?? [];
@@ -119,7 +120,13 @@ export async function openStarterLayout(key: keyof typeof STARTER_LAYOUTS): Prom
   const t = STARTER_LAYOUTS[key];
   try {
     const existing = (await window.yo.layoutsList?.()) ?? [];
-    const known = existing.some((l) => (l as { name?: string }).name === t.name);
+    // Case-INSENSITIVE: the server seeds "Dev"/"Email" into every org and
+    // some carry lowercase "email"/"research". Matching exactly would add a
+    // second, capitalised copy of a layout the user already has.
+    const match = existing.find((l) =>
+      ((l as { name?: string }).name || "").toLowerCase() === t.name.toLowerCase()) as { name?: string } | undefined;
+    const known = !!match;
+    const openName = match?.name ?? t.name;
     if (!known) {
       // "@notebooklm" resolves to a real panel id, installing the default
       // app first if the org doesn't have it yet.
@@ -141,7 +148,7 @@ export async function openStarterLayout(key: keyof typeof STARTER_LAYOUTS): Prom
       });
     }
     else if (key === "research") await repairAppCell(t, existing);
-    await window.yo.layoutsOpen?.(t.name);
+    await window.yo.layoutsOpen?.(openName);
   } catch {
     /* offline or the library refused — the starter still seeds its prompt */
   }
