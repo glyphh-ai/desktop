@@ -8,9 +8,10 @@
  * skill on first use, the same self-healing contract as the starter layouts
  * and the NotebookLM app.
  *
- * The body here is the source of truth the app installs;
- * `skills/notebook-research/SKILL.md` is its readable twin for review. Keep
- * the two in step when either changes.
+ * This module is the ONE source: skills live in the server DB (the `skills`
+ * table), and this is what gets written there. There is deliberately no
+ * SKILL.md twin in the repo — nothing reads it, nothing packages it, and a
+ * second copy only drifts.
  */
 
 export interface StarterSkill {

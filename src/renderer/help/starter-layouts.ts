@@ -26,28 +26,38 @@ export interface LayoutTemplate {
   }>;
 }
 
-/** NotebookLM — the surface the research skill drives over RPA. It ships as
- *  a default app: the Research starter installs it into the library if the
- *  org doesn't have it, so the layout always has something to open. */
+/** NotebookLM — the surface the research skill drives over RPA. The server
+ *  seeds it into every new org (starter-defaults.ts), so this is only a
+ *  backfill for orgs created before the Research layout existed. */
 const NOTEBOOKLM = { slug: "notebooklm", name: "NotebookLM", url: "https://notebooklm.google.com" };
 
-/** Make sure a default app exists, and answer with the panel id the layout
- *  should reference (existing rows keep their own slug — we never duplicate
- *  an app the user already has under another name). */
-async function ensureDefaultApp(app: { slug: string; name: string; url: string }): Promise<string> {
-  try {
-    const apps = (await window.yo.panelAppsList?.()) ?? [];
-    const host = new URL(app.url).host;
-    const hit = apps.find((a) => {
+/**
+ * The panel id a layout cell should carry for a default app — its ROW ID.
+ * Layout cells address apps by id, never by slug (that is the seeder's
+ * convention, and the editor + the Layouts page resolve by id: a slug in a
+ * cell renders as raw text and the panel is a mystery box). Returns null
+ * when the app can't be resolved, so the cell is skipped rather than baked
+ * with something that points nowhere.
+ */
+async function defaultAppId(app: { slug: string; name: string; url: string }): Promise<string | null> {
+  const host = (() => { try { return new URL(app.url).host; } catch { return ""; } })();
+  const find = (rows: unknown[]): string | null => {
+    const hit = rows.find((a) => {
       const row = a as { slug?: string; url?: string | null };
       if ((row.slug || "").toLowerCase().includes(app.slug)) return true;
-      try { return !!row.url && new URL(row.url).host === host; } catch { return false; }
-    }) as { slug?: string; id?: string } | undefined;
-    if (hit) return (hit.slug || hit.id || app.slug).toLowerCase();
-    const made = await window.yo.panelAppsCreate?.({ name: app.name, slug: app.slug, url: app.url, isBrowser: true });
-    return (made?.app?.slug || app.slug).toLowerCase();
+      try { return !!row.url && !!host && new URL(row.url).host === host; } catch { return false; }
+    }) as { id?: string } | undefined;
+    return hit?.id ?? null;
+  };
+  try {
+    const existing = find((await window.yo.panelAppsList?.()) ?? []);
+    if (existing) return existing;
+    await window.yo.panelAppsCreate?.({ name: app.name, slug: app.slug, url: app.url, isBrowser: true });
+    // Re-read rather than trusting the create response's shape — the row id
+    // is what the cell needs, and only the list is authoritative about it.
+    return find((await window.yo.panelAppsList?.()) ?? []);
   } catch {
-    return app.slug;   // offline — the cell resolves (or is skipped) on the next try
+    return null;
   }
 }
 
@@ -102,11 +112,12 @@ async function repairAppCell(t: LayoutTemplate, existing: unknown[]): Promise<vo
       || (r.id || "").toLowerCase() === (appCell?.panelId || "").toLowerCase();
   });
   if (!appCell || known) return;
-  const slug = await ensureDefaultApp(NOTEBOOKLM);
+  const id = await defaultAppId(NOTEBOOKLM);
+  if (!id) return;
   await window.yo.layoutsSaveGrid?.({
     name: t.name, cols: t.cols, rows: t.rows,
     colWidths: t.colWidths, rowHeights: t.rowHeights,
-    cells: cells.map((c) => (c === appCell ? { ...c, panelId: slug } : c)) as LayoutTemplate["cells"],
+    cells: cells.map((c) => (c === appCell ? { ...c, panelId: id } : c)) as LayoutTemplate["cells"],
     folderMode: "single", target: "glyphh", sessionMode: t.sessionMode, space: t.space,
   });
 }
@@ -132,9 +143,9 @@ export async function openStarterLayout(key: keyof typeof STARTER_LAYOUTS): Prom
       // app first if the org doesn't have it yet.
       const cells = [];
       for (const cell of t.cells) {
-        cells.push(cell.panelId === "@notebooklm"
-          ? { ...cell, panelId: await ensureDefaultApp(NOTEBOOKLM) }
-          : cell);
+        if (cell.panelId !== "@notebooklm") { cells.push(cell); continue; }
+        const id = await defaultAppId(NOTEBOOKLM);
+        if (id) cells.push({ ...cell, panelId: id });   // unresolved → no cell
       }
       await window.yo.layoutsSaveGrid?.({
         name: t.name,
