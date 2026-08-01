@@ -220,6 +220,13 @@ function monacoTheme(): string {
 function isMarkdown(name: string): boolean {
   return /\.(md|mdx|markdown)$/i.test(name);
 }
+// Monaco's theme is GLOBAL and only read at editor creation — re-apply it
+// whenever the app theme flips so open editors follow (settings stamps
+// data-theme on <html>).
+new MutationObserver(() => {
+  const w = window as unknown as { monaco?: { editor?: { setTheme?: (t: string) => void } } };
+  try { w.monaco?.editor?.setTheme?.(monacoTheme()); } catch { /* monaco not loaded yet */ }
+}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
 async function init(): Promise<void> {
   if (!window.wb) {

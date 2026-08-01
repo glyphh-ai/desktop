@@ -20,9 +20,12 @@ ADV = 600          # JetBrains Mono advance at upm 1000
 ASCENT = 800
 DESCENT = -200
 DOT = 150          # dot square side
-# dot centers: 2 columns x 4 rows spanning the cell
-XS = [170, 430]
-YS = [660, 440, 220, 0]
+# Dot centers sit at exact quarter (x) and eighth (y) positions of the cell
+# so the lattice is CONTINUOUS across neighbouring cells — art that spans a
+# cell boundary (dot pitch must match: 300 x, 250 y, inside and across)
+# otherwise tears into "floating" dots at every cell seam.
+XS = [150, 450]
+YS = [675, 425, 175, -75]
 # braille bit -> (col, row): dots 1-3 left col rows 0-2, 4-6 right col rows
 # 0-2, 7 left row 3, 8 right row 3
 BITS = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (0, 3), (1, 3)]
