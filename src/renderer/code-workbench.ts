@@ -220,10 +220,25 @@ function monacoTheme(): string {
 function isMarkdown(name: string): boolean {
   return /\.(md|mdx|markdown)$/i.test(name);
 }
+/** Ink that reads on the theme's ACCENT — white on dark accents (purple,
+ *  GitHub blue), black on bright ones (Matrix green, amber, high-vis
+ *  yellow). Exposed as --accent-ink for CSS (the space tabs' active pill). */
+function applyAccentInk(): void {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  let r = 128, g = 128, b = 128;
+  const hex = /^#([0-9a-f]{6})$/i.exec(raw);
+  const rgb = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(raw);
+  if (hex) { const n = parseInt(hex[1]!, 16); r = (n >> 16) & 255; g = (n >> 8) & 255; b = n & 255; }
+  else if (rgb) { r = +rgb[1]!; g = +rgb[2]!; b = +rgb[3]!; }
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  document.documentElement.style.setProperty("--accent-ink", lum < 140 ? "#fff" : "#000");
+}
+applyAccentInk();
 // Monaco's theme is GLOBAL and only read at editor creation — re-apply it
-// whenever the app theme flips so open editors follow (settings stamps
+// (and the accent ink) whenever the app theme flips (settings stamps
 // data-theme on <html>).
 new MutationObserver(() => {
+  applyAccentInk();
   const w = window as unknown as { monaco?: { editor?: { setTheme?: (t: string) => void } } };
   try { w.monaco?.editor?.setTheme?.(monacoTheme()); } catch { /* monaco not loaded yet */ }
 }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -2214,6 +2229,12 @@ async function init(): Promise<void> {
      *  running — and reopening the same layout cell re-attaches instead of
      *  spawning fresh. Keyed by layout::memKey. Explicit ✕ still kills. */
     const parkedTerms = new Map<string, TermSlot>();
+    /** Handoff for ONE activateTile call: the parked slot whose live
+     *  terminals the fresh slot must adopt. activateTile builds the slot and
+     *  renders it in the same breath, so the swap has to happen in there —
+     *  setting it on the entry afterwards was too late (the shell had
+     *  already spawned) and the parked pty was orphaned. */
+    let pendingParkedTerms: TermSlot | null = null;
     const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean }): void => {
       const card = e.card;
       if (!card) return;
@@ -2541,17 +2562,17 @@ async function init(): Promise<void> {
               // never stopped. Fresh slots get the DEFINITION's app setup
               // (snapshots keep geometry, not configs) — the spawn is
               // rAF-deferred, so initCmd set here lands before the shell.
-              const parked = v === "terminal"
-                ? parkedTerms.get(`${(layout.name || "").toLowerCase()}::${pendingKey}`) : undefined;
-              if (parked && entry.toolSlot?.view === "terminal") {
-                parkedTerms.delete(`${(layout.name || "").toLowerCase()}::${pendingKey}`);
-                entry.toolSlot.terminals = parked.terminals;
-                entry.toolSlot.activeIdx = parked.activeIdx;
+              const parkKey = `${(layout.name || "").toLowerCase()}::${pendingKey}`;
+              const parked = v === "terminal" ? parkedTerms.get(parkKey) : undefined;
+              if (parked) {
+                parkedTerms.delete(parkKey);
+                pendingParkedTerms = parked;   // activateTile adopts it
               }
               // the DEFINITION says whether this terminal survives the
               // layout closing ("Maintain on close", default yes)
               if (v === "terminal") entry.keepTermsAlive = cell.config?.keepAlive !== false;
               activateTile(entry);
+              pendingParkedTerms = null;   // never leak into the next cell
               if (v === "terminal" && cell.config?.cmd && !parked) {
                 const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
                 if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cell.config.cmd;
@@ -2763,6 +2784,15 @@ async function init(): Promise<void> {
         const body = card.querySelector<HTMLElement>(".echo-card-body")!;
         body.classList.add("ws-rail-slot-body");   // the panels' own CSS scope
         const slot = makeSlot(t.toolView);
+        // Adopt a PARKED terminal here, before the renderer runs: with the
+        // live pty + xterm already in the slot, renderTerminalIntoSlot takes
+        // its re-attach path (same process, same scrollback) instead of
+        // spawning a fresh shell.
+        if (slot.view === "terminal" && pendingParkedTerms) {
+          slot.terminals = pendingParkedTerms.terminals;
+          slot.activeIdx = pendingParkedTerms.activeIdx;
+          pendingParkedTerms = null;
+        }
         e.toolSlot = slot;
         if (slot.view === "files") void renderFilesIntoSlot(body, slot);
         else if (slot.view === "terminal") renderTerminalIntoSlot(body, slot);
@@ -3288,6 +3318,12 @@ async function init(): Promise<void> {
       obs.disconnect();
       ro.disconnect();
       themeObs.disconnect();
+      // Parked terminals live in THIS surface's closure — if the surface
+      // itself goes, their ptys have no way back and must not linger.
+      for (const slot of parkedTerms.values()) {
+        for (const t of slot.terminals) { try { killTerminal(t); } catch { /* already gone */ } }
+      }
+      parkedTerms.clear();
       // only OUR registration — a re-render's fresh controller must survive
       // this stale observer firing after it
       if (echoCtl === ctl) {

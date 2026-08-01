@@ -3124,9 +3124,10 @@ body[data-rail-space="code"] .app-rail-nav-item[data-space]:not([data-space~="co
 .rail-mode-tabs button:hover { color: var(--text); background: var(--hover); }
 .rail-mode-tabs button.active {
   background: var(--accent);
-  /* Ink on accent, every theme: bright accents (Matrix green, amber) made
-     white text unreadable. */
-  color: #000;
+  /* Contrast follows the ACCENT, not a constant: white on dark accents
+     (purple, GitHub blue), black on bright ones (Matrix green, amber).
+     Computed per theme by applyAccentInk (code-workbench.ts). */
+  color: var(--accent-ink, #000);
 }
 
 /* Settings › Usage: the Add credits action above the metric cards */
