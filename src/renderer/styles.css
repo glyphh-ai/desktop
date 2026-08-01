@@ -3013,6 +3013,17 @@ body.account-locked #dl-btn-wrap {
 
 /* the FULL agent footer, adopted — full column width (same as the two
    cowork cards), taller input, and it never moves */
+/* Under-title line — one span per space, the rail tab picks which shows. */
+.dash-subtitle { margin: 4px 0 0; font-size: 15px; color: var(--text-2); }
+.dash-subtitle span { display: none; }
+body[data-rail-space="chat"] .dash-sub-chat { display: inline; }
+body[data-rail-space="cowork"] .dash-sub-cowork { display: inline; }
+
+/* Work landing: the agent header's folder chips (sans git) above the
+   composer's top-left. Hidden everywhere but the Work tab. */
+.dash-wd-chips { display: none; align-items: center; gap: 4px; margin: 0 0 6px; }
+body[data-rail-space="cowork"] .dash-wd-chips { display: flex; }
+
 .dash-composer-slot { width: 100%; margin: 0 0 26px; }
 /* flush with the cowork columns: the composer's own thread-matching
    max-width and gutters don't apply on Home */

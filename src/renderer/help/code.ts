@@ -1275,12 +1275,21 @@ const SPACE_PREF: Record<"chat" | "cowork" | "code", string> = { chat: "lastSess
  *  session switches so the control always shows the CURRENT session's mode. */
 let cwPaint: (() => void) | null = null;
 
+/** The composer's resting prompt, in the voice of the ACTIVE space. */
+function readyPlaceholder(): string {
+  const cur = current();
+  const eff = cur ? modeOf(cur) : railTab;
+  if (eff === "chat") return "Ask anything…";
+  if (eff === "cowork") return "What should we get done? Email, files, research…";
+  return "Describe what to build or fix…";
+}
+
 function paintComposerGate(): void {
   const ta = input();
   if (!ta) return;
   ta.disabled = !workdirReady;
   ta.placeholder = workdirReady
-    ? "Describe the app to build…"
+    ? readyPlaceholder()
     : "Pick a working folder to start — click here to choose";
   el("code-send")?.toggleAttribute("disabled", !workdirReady);
   const wrap = document.querySelector(".code-input-wrap");

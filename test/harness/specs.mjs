@@ -308,4 +308,28 @@ export const SPECS = [
       return ok(keys.length === 0 || spaceScoped, JSON.stringify(keys));
     `,
   },
+  {
+    name: "landing wears each space's voice (folder chips, subtitle, placeholder)",
+    fresh: true,
+    body: `
+      await until(() => tab("cowork")?.classList.contains("active"));
+      const vis = (el) => !!el && getComputedStyle(el).display !== "none";
+      // Work: folder chips above the composer (header layout, no git), work
+      // subtitle, work placeholder (the stub always reports a cwd → ungated).
+      const chips = $("#dash-wd-chips");
+      const chipsWork = vis(chips);
+      const subWork = vis($(".dash-sub-cowork")) && !vis($(".dash-sub-chat"));
+      const nameWork = $("#dash-wd-name")?.textContent || "";
+      await until(() => (composer()?.placeholder || "").includes("get done"));
+      // Chat: chips gone, chat subtitle, chat placeholder — never app talk.
+      click(tab("chat"));
+      await until(() => document.body.dataset.railSpace === "chat");
+      const chipsChat = vis(chips);
+      await until(() => (composer()?.placeholder || "").includes("Ask anything"));
+      const subChat = vis($(".dash-sub-chat")) && !vis($(".dash-sub-cowork"));
+      const noApp = !(composer()?.placeholder || "").toLowerCase().includes("app");
+      return ok(chipsWork && subWork && nameWork.length > 0 && !chipsChat && subChat && noApp,
+        JSON.stringify({ chipsWork, subWork, nameWork, chipsChat, subChat, noApp }));
+    `,
+  },
 ];

@@ -232,6 +232,11 @@ async function init(): Promise<void> {
   const workdirAdd = document.getElementById("code-workdir-add") as HTMLButtonElement | null;
   const branchWrap = document.getElementById("code-workdir-branch-wrap");
   const branchEl = document.getElementById("code-workdir-branch");
+  // The Work landing's copy of the same chips (dashboard.html, no git chip) —
+  // painted and wired alongside the header originals.
+  const dashWdBtn = document.getElementById("dash-wd-btn") as HTMLButtonElement | null;
+  const dashWdName = document.getElementById("dash-wd-name");
+  const dashWdAdd = document.getElementById("dash-wd-add") as HTMLButtonElement | null;
 
   const dropdown = document.createElement("div");
   dropdown.className = "yo-workdir-menu";
@@ -243,6 +248,8 @@ async function init(): Promise<void> {
   async function paintWorkdirBar(dir: string): Promise<void> {
     if (workdirName) workdirName.textContent = dir ? basename(dir) : "Pick a folder";
     if (workdirBtn) workdirBtn.title = dir ? `working directory: ${dir}` : "Pick a folder";
+    if (dashWdName) dashWdName.textContent = dir ? basename(dir) : "Pick a folder";
+    if (dashWdBtn) dashWdBtn.title = dir ? `working directory: ${dir}` : "Pick a folder";
     if (!dir) {
       if (branchWrap) (branchWrap as HTMLElement).style.display = "none";
       return;
@@ -260,7 +267,7 @@ async function init(): Promise<void> {
     }
   }
 
-  async function openDropdown(): Promise<void> {
+  async function openDropdown(anchor: HTMLElement | null = workdirBtn): Promise<void> {
     const recents = await window.wb.getCwdRecents().catch(() => [] as string[]);
     dropdown.innerHTML = "";
     const list = recents.length ? recents : (cwd ? [cwd] : []);
@@ -291,8 +298,8 @@ async function init(): Promise<void> {
     });
     dropdown.appendChild(choose);
 
-    if (workdirBtn) {
-      const r = workdirBtn.getBoundingClientRect();
+    if (anchor) {
+      const r = anchor.getBoundingClientRect();
       dropdown.style.left = `${r.left}px`;
       dropdown.style.top = `${r.bottom + 4}px`;
       dropdown.style.bottom = "auto";
@@ -308,10 +315,19 @@ async function init(): Promise<void> {
     e.stopPropagation();
     void window.wb.pickCwd();
   });
+  dashWdBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    isDropdownOpen() ? closeDropdown() : void openDropdown(dashWdBtn);
+  });
+  dashWdAdd?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void window.wb.pickCwd();
+  });
   document.addEventListener("click", (e) => {
     if (!isDropdownOpen()) return;
     if (dropdown.contains(e.target as Node)) return;
     if (workdirBtn?.contains(e.target as Node)) return;
+    if (dashWdBtn?.contains(e.target as Node)) return;
     closeDropdown();
   });
   document.addEventListener("keydown", (e) => {
