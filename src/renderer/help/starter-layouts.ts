@@ -1,166 +1,91 @@
 /**
  * starter-layouts — the workspaces the Chat starters open into.
  *
- * A starter card is a whole setup, not just a prompt: "Build an app" opens
- * the dev layout, "Triage my inbox" opens the email layout, "Research a
- * topic" opens the research layout beside NotebookLM. Each template is a
- * real layout — saved into the user's library the first time it is used, so
- * from then on it lives on the Layouts page and can be edited like any
- * other. An existing layout with the same name always wins: we never
- * overwrite what the user has made.
+ * The server seeds Dev, Email and Research at signup
+ * (server/src/domains/org/starter-defaults.ts) — that is the source of
+ * truth, and the definitions here MIRROR it. The only job on this side is
+ * backfill: a user who predates a starter (or deleted it) gets it created
+ * for them the first time they reach for it, written to the SERVER through
+ * the same library API as any other layout. Nothing is stored client-side.
+ *
+ * Cells address apps by ROW ID, never by slug — that is the seeder's
+ * convention and what the editor and the Layouts page resolve by.
  */
 
-import type { Space } from "./space-meta.js";
+type Cell = { panelId: string; col: number; row: number; colSpan: number; rowSpan: number };
+const cell = (panelId: string, col: number, row: number, rowSpan = 1): Cell =>
+  ({ panelId, col, row, colSpan: 1, rowSpan });
 
-export interface LayoutTemplate {
+interface Template {
   name: string;
-  space: Space;
   cols: number;
   rows: number;
-  colWidths: number[];
-  rowHeights: number[];
-  sessionMode: "keep" | "new" | "last";
-  cells: Array<{
-    panelId: string; col: number; row: number; colSpan: number; rowSpan: number;
-    sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean };
-  }>;
+  /** Tool cells are fixed; app cells resolve to ids by their seeded slug. */
+  build: (appId: (slug: string) => string | null) => Cell[] | null;
 }
 
-/** NotebookLM — the surface the research skill drives over RPA. The server
- *  seeds it into every new org (starter-defaults.ts), so this is only a
- *  backfill for orgs created before the Research layout existed. */
-const NOTEBOOKLM = { slug: "notebooklm", name: "NotebookLM", url: "https://notebooklm.google.com" };
-
-/**
- * The panel id a layout cell should carry for a default app — its ROW ID.
- * Layout cells address apps by id, never by slug (that is the seeder's
- * convention, and the editor + the Layouts page resolve by id: a slug in a
- * cell renders as raw text and the panel is a mystery box). Returns null
- * when the app can't be resolved, so the cell is skipped rather than baked
- * with something that points nowhere.
- */
-async function defaultAppId(app: { slug: string; name: string; url: string }): Promise<string | null> {
-  const host = (() => { try { return new URL(app.url).host; } catch { return ""; } })();
-  const find = (rows: unknown[]): string | null => {
-    const hit = rows.find((a) => {
-      const row = a as { slug?: string; url?: string | null };
-      if ((row.slug || "").toLowerCase().includes(app.slug)) return true;
-      try { return !!row.url && !!host && new URL(row.url).host === host; } catch { return false; }
-    }) as { id?: string } | undefined;
-    return hit?.id ?? null;
-  };
-  try {
-    const existing = find((await window.yo.panelAppsList?.()) ?? []);
-    if (existing) return existing;
-    await window.yo.panelAppsCreate?.({ name: app.name, slug: app.slug, url: app.url, isBrowser: true });
-    // Re-read rather than trusting the create response's shape — the row id
-    // is what the cell needs, and only the list is authoritative about it.
-    return find((await window.yo.panelAppsList?.()) ?? []);
-  } catch {
-    return null;
-  }
-}
-
-export const STARTER_LAYOUTS: Record<"dev" | "email" | "research", LayoutTemplate> = {
-  // FALLBACK ONLY — the server seeds "Dev" into every org at signup, so this
-  // is used only by a workspace that deleted it. Same shape as the seeded
-  // one (files/diff left, editor/terminal middle, agent right) so the two
-  // can never drift apart.
+const TEMPLATES: Record<"dev" | "email" | "research", Template> = {
+  // Files/Diff | Editor/Terminal | the agent full-height on the right.
   dev: {
-    name: "Dev", space: "code", cols: 3, rows: 2,
-    colWidths: [0.34, 0.33, 0.33], rowHeights: [0.5, 0.5], sessionMode: "last",
-    cells: [
-      { panelId: "tool:files", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:diff", col: 0, row: 1, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:monaco", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:terminal", col: 1, row: 1, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:coding", col: 2, row: 0, colSpan: 1, rowSpan: 2 },
+    name: "Dev", cols: 3, rows: 2,
+    build: () => [
+      cell("tool:files", 0, 0), cell("tool:diff", 0, 1),
+      cell("tool:monaco", 1, 0), cell("tool:terminal", 1, 1),
+      cell("tool:coding", 2, 0, 2),
     ],
   },
-  // FALLBACK ONLY — the server seeds "Email" (agent + Gmail + Calendar).
+  // The mailbox beside the calendar.
   email: {
-    name: "Email", space: "cowork", cols: 2, rows: 1,
-    colWidths: [0.42, 0.58], rowHeights: [1], sessionMode: "last",
-    cells: [
-      { panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:preview", col: 1, row: 0, colSpan: 1, rowSpan: 1, config: { url: "https://mail.google.com" } },
-    ],
+    name: "Email", cols: 2, rows: 1,
+    build: (appId) => {
+      const gmail = appId("gmail"), cal = appId("google-calendar");
+      return gmail && cal ? [cell(gmail, 0, 0), cell(cal, 1, 0)] : null;
+    },
   },
   // The agent beside NotebookLM — the surface the research skill drives.
   research: {
-    name: "Research", space: "cowork", cols: 2, rows: 1,
-    colWidths: [0.4, 0.6], rowHeights: [1], sessionMode: "last",
-    cells: [
-      { panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "@notebooklm", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
-    ],
+    name: "Research", cols: 2, rows: 1,
+    build: (appId) => {
+      const nb = appId("notebooklm");
+      return nb ? [cell("tool:coding", 0, 0), cell(nb, 1, 0)] : null;
+    },
   },
 };
 
-/** An app cell can go stale (the app was deleted, or the layout was saved
- *  while offline). Re-resolve it against the library and re-save, so the
- *  Research layout never opens with a hole where NotebookLM should be. */
-async function repairAppCell(t: LayoutTemplate, existing: unknown[]): Promise<void> {
-  const row = (existing as Array<{ name?: string; splits?: Array<{ panelId: string }> }>)
-    .find((l) => (l.name || "").toLowerCase() === t.name.toLowerCase());
-  const cells = row?.splits ?? [];
-  const appCell = cells.find((c) => !c.panelId.startsWith("tool:"));
+export const STARTER_LAYOUTS = TEMPLATES;
+
+/** Create the layout ON THE SERVER, mirroring the signup seed. */
+async function backfill(t: Template): Promise<void> {
   const apps = (await window.yo.panelAppsList?.()) ?? [];
-  const known = apps.some((a) => {
-    const r = a as { slug?: string; id?: string };
-    return (r.slug || "").toLowerCase() === (appCell?.panelId || "").toLowerCase()
-      || (r.id || "").toLowerCase() === (appCell?.panelId || "").toLowerCase();
-  });
-  if (!appCell || known) return;
-  const id = await defaultAppId(NOTEBOOKLM);
-  if (!id) return;
+  const appId = (slug: string): string | null => {
+    const hit = apps.find((a) => ((a as { slug?: string }).slug || "").toLowerCase().includes(slug)) as { id?: string } | undefined;
+    return hit?.id ?? null;
+  };
+  const cells = t.build(appId);
+  if (!cells) return;   // a seeded app is missing — better no layout than a broken one
   await window.yo.layoutsSaveGrid?.({
-    name: t.name, cols: t.cols, rows: t.rows,
-    colWidths: t.colWidths, rowHeights: t.rowHeights,
-    cells: cells.map((c) => (c === appCell ? { ...c, panelId: id } : c)) as LayoutTemplate["cells"],
-    folderMode: "single", target: "glyphh", sessionMode: t.sessionMode, space: t.space,
+    name: t.name,
+    cols: t.cols, rows: t.rows,
+    colWidths: Array.from({ length: t.cols }, () => 1 / t.cols),
+    rowHeights: Array.from({ length: t.rows }, () => 1 / t.rows),
+    cells,
+    folderMode: "single",
+    target: "glyphh",
   });
 }
 
-/**
- * Open a starter's layout, creating it on first use. Resolves once the
- * layout is on screen (or immediately if there's nothing to open) so the
- * caller can seed the composer into it.
- */
-export async function openStarterLayout(key: keyof typeof STARTER_LAYOUTS): Promise<void> {
-  const t = STARTER_LAYOUTS[key];
+/** Open a starter's workspace, creating it server-side when it's missing. */
+export async function openStarterLayout(key: keyof typeof TEMPLATES): Promise<void> {
+  const t = TEMPLATES[key];
   try {
     const existing = (await window.yo.layoutsList?.()) ?? [];
-    // Case-INSENSITIVE: the server seeds "Dev"/"Email" into every org and
-    // some carry lowercase "email"/"research". Matching exactly would add a
-    // second, capitalised copy of a layout the user already has.
+    // Case-insensitive: a workspace may carry its own lowercase copy, and a
+    // second capitalised one would be a duplicate, not a fix.
     const match = existing.find((l) =>
       ((l as { name?: string }).name || "").toLowerCase() === t.name.toLowerCase()) as { name?: string } | undefined;
-    const known = !!match;
-    const openName = match?.name ?? t.name;
-    if (!known) {
-      // "@notebooklm" resolves to a real panel id, installing the default
-      // app first if the org doesn't have it yet.
-      const cells = [];
-      for (const cell of t.cells) {
-        if (cell.panelId !== "@notebooklm") { cells.push(cell); continue; }
-        const id = await defaultAppId(NOTEBOOKLM);
-        if (id) cells.push({ ...cell, panelId: id });   // unresolved → no cell
-      }
-      await window.yo.layoutsSaveGrid?.({
-        name: t.name,
-        cols: t.cols, rows: t.rows,
-        colWidths: t.colWidths, rowHeights: t.rowHeights,
-        cells,
-        folderMode: "single",
-        target: "glyphh",
-        sessionMode: t.sessionMode,
-        space: t.space,
-      });
-    }
-    else if (key === "research") await repairAppCell(t, existing);
-    await window.yo.layoutsOpen?.(openName);
+    if (!match) await backfill(t);
+    await window.yo.layoutsOpen?.(match?.name ?? t.name);
   } catch {
-    /* offline or the library refused — the starter still seeds its prompt */
+    /* offline — the starter still seeds its prompt */
   }
 }

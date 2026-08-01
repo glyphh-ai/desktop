@@ -2372,8 +2372,14 @@ function railEmpty(list: HTMLElement, q: string, label: string, section: string)
   btn.type = "button";
   btn.className = "app-rail-empty-btn";
   btn.textContent = `+ ${label}`;
-  btn.title = `Open ${section === "apps" ? "Apps" : "Layouts"}`;
-  btn.addEventListener("click", (e) => { e.stopPropagation(); gotoSection(section); });
+  btn.title = `New ${label.toLowerCase()}`;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    gotoSection(section);
+    // Land ON the create form, not just the page — the button says "+".
+    // The page's own New button is the one authority for what "new" means.
+    window.setTimeout(() => document.getElementById(`${section === "apps" ? "app" : "layout"}-new-btn`)?.click(), 60);
+  });
   list.appendChild(btn);
 }
 
