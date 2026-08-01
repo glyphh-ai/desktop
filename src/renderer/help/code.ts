@@ -2274,8 +2274,10 @@ let railLayouts: RailLayout[] = [];
 let railRecentTs: Record<string, number> = {};
 let railAppsPage = 0;
 let railLayoutsPage = 0;
+// Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
+// as one system rather than two differently-sized lists.
 const RAIL_APPS_PER_PAGE = 9;
-const RAIL_LAYOUTS_PER_PAGE = 6;
+const RAIL_LAYOUTS_PER_PAGE = 9;
 
 /** Slice items to a page, clamping in-range (palette parity). */
 function railPaginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; totalPages: number } {
