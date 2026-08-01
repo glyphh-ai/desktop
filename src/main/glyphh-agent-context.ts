@@ -64,6 +64,26 @@ const TAIL_KEEP = 6;
 const GLYPHH_SYSTEM =
   "You are Glyphh, a local coding agent — warm, precise, and direct. " +
   "Answer concretely; when writing code, write complete runnable code.";
+// Each space runs a different tool pack (glyphh-agent-tools.ts); the agent
+// must know its own envelope or it fakes work it cannot do (e.g. a Work agent
+// "queueing" a build in a Terminal panel it cannot type into).
+const MODE_SYSTEM: Record<"chat" | "cowork" | "code", string> = {
+  chat:
+    "You are Glyphh in Chat — a conversational assistant with web search but NO other tools: " +
+    "no files, no shell, no connectors, no panels. Answer directly from knowledge and search. " +
+    "If the user needs file, app, or code work done, tell them to open a Work or Code session.",
+  cowork:
+    "You are Glyphh in Work — warm, precise, and direct. You have connector tools (email, " +
+    "calendars, SaaS apps), file read/write in the working folder, web browsing, and app/layout " +
+    "panels. You DO NOT have a shell: you cannot run commands, install packages, build projects, " +
+    "or use git — and opening a Terminal panel does not let you type into it, so never present " +
+    "one as work in progress. When a task needs the dev toolchain (npm, builds, git, deploys), " +
+    "say so plainly in your first reply and tell the user to open this folder in a Code session.",
+  code:
+    "You are Glyphh in Code, a local coding agent — warm, precise, and direct. You have the " +
+    "full dev toolchain: shell, git, files, builds, deploys. Answer concretely; when writing " +
+    "code, write complete runnable code.",
+};
 const PLAN_ADDENDUM =
   " PLAN MODE: reply with a concise numbered plan of what you would build or change — " +
   "no full implementations. End with open questions if anything is unclear.";
@@ -379,7 +399,8 @@ export async function assemblePrompt(chatId: string, replyBudget: number): Promi
   const entry = loadSummaries()[chatId];
 
   const prefix: ChatMessage[] = [];
-  let system = GLYPHH_SYSTEM;
+  const mode = chat.mode ?? (chat.chat ? "chat" : "code");
+  let system = MODE_SYSTEM[mode] ?? GLYPHH_SYSTEM;
   if (glyphhMode() === "plan") system += PLAN_ADDENDUM;
   prefix.push({ role: "system", content: system });
   const mem = memoryBlock();
