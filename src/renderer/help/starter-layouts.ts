@@ -52,14 +52,18 @@ async function ensureDefaultApp(app: { slug: string; name: string; url: string }
 }
 
 export const STARTER_LAYOUTS: Record<"dev" | "email" | "research", LayoutTemplate> = {
-  // The agent down the left, the code it is writing on the right.
+  // A real dev bench: the agent down the left, the code it is writing in
+  // the middle, and the two panels you actually watch while it works —
+  // Files and Diff — down the right.
   dev: {
-    name: "Dev", space: "code", cols: 2, rows: 2,
-    colWidths: [0.52, 0.48], rowHeights: [0.62, 0.38], sessionMode: "last",
+    name: "Dev", space: "code", cols: 3, rows: 2,
+    colWidths: [0.38, 0.37, 0.25], rowHeights: [0.62, 0.38], sessionMode: "last",
     cells: [
       { panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 2 },
       { panelId: "tool:editor", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
       { panelId: "tool:terminal", col: 1, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:files", col: 2, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:diff", col: 2, row: 1, colSpan: 1, rowSpan: 1 },
     ],
   },
   // The agent beside the actual mailbox.
@@ -81,6 +85,30 @@ export const STARTER_LAYOUTS: Record<"dev" | "email" | "research", LayoutTemplat
     ],
   },
 };
+
+/** An app cell can go stale (the app was deleted, or the layout was saved
+ *  while offline). Re-resolve it against the library and re-save, so the
+ *  Research layout never opens with a hole where NotebookLM should be. */
+async function repairAppCell(t: LayoutTemplate, existing: unknown[]): Promise<void> {
+  const row = (existing as Array<{ name?: string; splits?: Array<{ panelId: string }> }>)
+    .find((l) => l.name === t.name);
+  const cells = row?.splits ?? [];
+  const appCell = cells.find((c) => !c.panelId.startsWith("tool:"));
+  const apps = (await window.yo.panelAppsList?.()) ?? [];
+  const known = apps.some((a) => {
+    const r = a as { slug?: string; id?: string };
+    return (r.slug || "").toLowerCase() === (appCell?.panelId || "").toLowerCase()
+      || (r.id || "").toLowerCase() === (appCell?.panelId || "").toLowerCase();
+  });
+  if (!appCell || known) return;
+  const slug = await ensureDefaultApp(NOTEBOOKLM);
+  await window.yo.layoutsSaveGrid?.({
+    name: t.name, cols: t.cols, rows: t.rows,
+    colWidths: t.colWidths, rowHeights: t.rowHeights,
+    cells: cells.map((c) => (c === appCell ? { ...c, panelId: slug } : c)) as LayoutTemplate["cells"],
+    folderMode: "single", target: "glyphh", sessionMode: t.sessionMode, space: t.space,
+  });
+}
 
 /**
  * Open a starter's layout, creating it on first use. Resolves once the
@@ -112,6 +140,7 @@ export async function openStarterLayout(key: keyof typeof STARTER_LAYOUTS): Prom
         space: t.space,
       });
     }
+    else if (key === "research") await repairAppCell(t, existing);
     await window.yo.layoutsOpen?.(t.name);
   } catch {
     /* offline or the library refused — the starter still seeds its prompt */

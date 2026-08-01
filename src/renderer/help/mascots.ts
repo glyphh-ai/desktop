@@ -110,17 +110,16 @@ const mouth = (y: number, w = 4.4, curve = 1.4): string =>
   `<path d="M${24 - w} ${y} Q24 ${y + curve} ${24 + w} ${y}" fill="none" stroke="${K}" stroke-opacity="0.75" stroke-width="1.3" stroke-linecap="round"/>`;
 
 const CHARACTERS: Record<MascotKey, (c: string) => string> = {
-  // SCOUT — narrow, antenna'd: the mark's big ring eye plus a small second
-  // one set low, two long feeler-antennae.
+  // SCOUT — the one true cyclops, closest to the mark itself: a single wide
+  // ring eye, narrow build, two bulbed antennae.
   scout: (c) => shell("scout",
     `<path d="M31.4 39.6 Q41.2 38.8 41.6 30.2" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>` +
     `<g stroke="${c}" stroke-width="1.6" stroke-linecap="round">` +
     `<line x1="16.4" y1="6" x2="12.8" y2="1.4"/><line x1="30.6" y1="5.4" x2="35.2" y2="2.2"/></g>` +
     `<circle cx="12.8" cy="1.4" r="1.7" fill="${c}"/><circle cx="35.2" cy="2.2" r="1.4" fill="${c}"/>` +
     lit("scout", "M13.4 4.6 L19.2 18.6 Q24 17.2 28.4 18.4 L34.4 5.6 L36 26.4 Q35.6 37 24 44.8 Q12.8 37 12.4 26.6 Z", c) +
-    ringEye(21.4, 25, 6.2) +
-    ringEye(29.8, 30.2, 2.5, 0.2) +
-    feelers("scout", 33) + mouth(36, 3.2)),
+    ringEye(24, 24.6, 7.4) +
+    feelers("scout", 33.6) + mouth(37, 3.2)),
 
   // BYTE — clipped flat top, THREE pixel eyes in a row, a zigzag tail.
   byte: (c) => shell("byte",

@@ -2692,16 +2692,19 @@ export function initCode(): void {
     setRecentsOpen(open, true);
   });
   initRailApps();
-  el("code-new-chat")?.addEventListener("click", () => {
-    // NEW creates NOTHING — the record is born on the first send. This just
-    // clears the current selection and shows the space's landing.
+  /** NEW creates NOTHING — the record is born on the first send. Clears the
+   *  selection and shows the space's landing. Both entry points use this:
+   *  the rail's "+ New session" and the agent header's +, which used to call
+   *  startNew() and leave an empty "New session" row behind. */
+  const newSessionLanding = (): void => {
     currentId = "";
     void saveStore();
     renderHistory();
     renderThread();
     void checkWorkdirGate();
     gotoSection(railTab === "code" ? "agent" : "dashboard");
-  });
+  };
+  el("code-new-chat")?.addEventListener("click", newSessionLanding);
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.
@@ -2809,7 +2812,7 @@ export function initCode(): void {
   // hidden): + starts a new session, the clock drops the history list.
   type HeadSessionsApi = { list(): Array<{ id: string; title: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
   const sessApi = (): HeadSessionsApi | undefined => (window as unknown as { __agentSessions?: HeadSessionsApi }).__agentSessions;
-  el("code-session-new")?.addEventListener("click", () => sessApi()?.startNew());
+  el("code-session-new")?.addEventListener("click", newSessionLanding);
   el("code-session-history")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     const anchor = ev.currentTarget as HTMLElement;
