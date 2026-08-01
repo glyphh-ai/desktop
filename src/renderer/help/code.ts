@@ -20,7 +20,8 @@ import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline"; attachments?: AttachRef[]; decline?: { kind: string; url: string } }
+interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline" | "connect"; attachments?: AttachRef[]; decline?: { kind: string; url: string }; connect?: ConnectCard }
 interface CodeChat {
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
@@ -942,6 +943,62 @@ function renderHistory(): void {
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+/** The inline CONNECT card — the agent's connect_account tool offers an
+ *  account connection right in the thread; the button runs the SAME in-app
+ *  OAuth the Connections page uses (connectorsConnect), and the waiting tool
+ *  is answered when it finishes. The user never leaves the chat. */
+function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "code-connect-card";
+  const initial = (card.name || "?").charAt(0).toUpperCase();
+  wrap.innerHTML = `
+    ${card.icon ? `<img class="ccx-icon" src="${card.icon}" />` : `<span class="ccx-initial">${initial}</span>`}
+    <div class="ccx-info">
+      <div class="ccx-name"></div>
+      <div class="ccx-sub"></div>
+    </div>
+    <button type="button" class="ccx-btn"></button>`;
+  (wrap.querySelector(".ccx-name") as HTMLElement).textContent = card.name;
+  const sub = wrap.querySelector(".ccx-sub") as HTMLElement;
+  const btn = wrap.querySelector(".ccx-btn") as HTMLButtonElement;
+  const paint = (): void => {
+    wrap.dataset.status = card.status;
+    if (card.status === "connected") {
+      sub.textContent = "Connected — the agent can use this account now.";
+      btn.textContent = "Connected ✓";
+      btn.disabled = true;
+    } else if (card.status === "connecting") {
+      sub.textContent = "Finishing the authorization…";
+      btn.textContent = "Connecting…";
+      btn.disabled = true;
+    } else if (card.status === "failed") {
+      sub.textContent = card.error || "The connection didn't complete.";
+      btn.textContent = "Retry";
+      btn.disabled = false;
+    } else {
+      sub.textContent = "The agent needs this account — authorize it right here.";
+      btn.textContent = "Connect";
+      btn.disabled = false;
+    }
+  };
+  paint();
+  btn.addEventListener("click", () => {
+    card.status = "connecting";
+    paint();
+    void saveStore();
+    void window.yo.connectorsConnect(card.appId).then((res) => {
+      card.status = res.ok ? "connected" : "failed";
+      if (!res.ok) card.error = res.error || "Authorization failed.";
+      paint();
+      void saveStore();
+      // answer the WAITING tool (retries after a failure answer again — the
+      // respond handler ignores unknown ids, so that's harmless)
+      void window.yo.glyphhAgentConnectRespond?.({ id: card.id, connected: res.ok, ...(res.ok ? {} : { reason: card.error }) });
+    });
+  });
+  return wrap;
+}
+
 /** A styled card for a gateway decline (out of credits / role / rate) — replaces
  *  the raw "API Error: 400 …" text with a title, explanation, and one-click
  *  actions (buy credits / manage plan; and switch to a free on-device model). */
@@ -1063,6 +1120,9 @@ function renderThread(): void {
       } else if (b.msg.kind === "decline" && b.msg.decline) {
         el.className = "code-decline-wrap";
         el.appendChild(declineCardEl(b.msg.decline));
+      } else if (b.msg.kind === "connect" && b.msg.connect) {
+        el.className = "code-connect-wrap";
+        el.appendChild(connectCardEl(c, b.msg.connect));
       } else {
         el.className = "code-agent-text";
         el.innerHTML = formatMarkdown(b.msg.text);
@@ -2068,6 +2128,23 @@ function initGlyphhAgentEvents(): void {
       renderThread(); // first token — adds the live block under the spinner
     }
   };
+  window.yo.onGlyphhAgentConnect?.((p) => {
+    // the card belongs to the session whose run asked — with parallel runs
+    // that's the single live one, else the current session
+    const liveIds = [...liveRuns.keys()];
+    const targetId = liveIds.length === 1 ? liveIds[0]! : currentId;
+    const chat = chats.find((ch) => ch.id === targetId) ?? current();
+    if (!chat) { void window.yo.glyphhAgentConnectRespond?.({ id: p.id, connected: false, reason: "no session" }); return; }
+    chat.messages.push({
+      role: "assistant",
+      kind: "connect",
+      text: "",
+      connect: { id: p.id, appId: p.app.appId, name: p.app.name, icon: p.app.icon, status: "offer" },
+      at: Date.now(),
+    });
+    void saveStore();
+    if (chat.id === currentId) { renderThread(); pinThreadToBottom(); }
+  });
   window.yo.onGlyphhAgentDelta?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;

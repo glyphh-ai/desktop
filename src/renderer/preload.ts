@@ -553,6 +553,13 @@ contextBridge.exposeInMainWorld("yo", {
   connectorsGetApps: (search?: string, offset?: number) => ipcRenderer.invoke("connectors-get-apps", search, offset) as Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string }>; hasMore: boolean }>,
   connectorsGetAccounts: () => ipcRenderer.invoke("connectors-get-accounts") as Promise<Array<{ id: string; appSlug: string; appName: string; createdAt: string; healthy: boolean }>>,
   connectorsConnect: (appSlug: string) => ipcRenderer.invoke("connectors-connect", appSlug) as Promise<{ ok: boolean; error?: string }>,
+  onGlyphhAgentConnect: (cb: (p: { id: string; app: { appId: string; name: string; icon?: string | null } }) => void) => {
+    const handler = (_e: unknown, p: { id: string; app: { appId: string; name: string; icon?: string | null } }) => cb(p);
+    ipcRenderer.on("glyphh-agent:connect", handler);
+    return () => { ipcRenderer.removeListener("glyphh-agent:connect", handler); };
+  },
+  glyphhAgentConnectRespond: (p: { id: string; connected: boolean; reason?: string }) =>
+    ipcRenderer.invoke("glyphh-agent-connect-respond", p) as Promise<boolean>,
   connectorsDisconnect: (accountId: string) => ipcRenderer.invoke("connectors-disconnect", accountId) as Promise<boolean>,
   connectorsRefreshMcp: () => ipcRenderer.invoke("connectors-refresh-mcp") as Promise<{ ok: boolean; error?: string; toolCount: number }>,
   connectorsListTools: () => ipcRenderer.invoke("connectors-list-tools") as Promise<Array<{ slug: string; name: string; description: string }>>,

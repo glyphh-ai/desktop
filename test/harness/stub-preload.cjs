@@ -11,7 +11,7 @@
 
 const listeners = new Map();   // channel → Set<cb>
 const prefs = new Map();
-const calls = { glyphhRun: [], setPreference: [], execCommand: [] };
+const calls = { glyphhRun: [], setPreference: [], execCommand: [], connectorsConnect: [], connectRespond: [] };
 let runSeq = 0;
 
 const APPS = [
@@ -90,6 +90,8 @@ const YO_OVERRIDES = {
   railCollapseSet: () => Promise.resolve(),
   refreshAuth: () => Promise.resolve(),
   localMcpStatus: () => Promise.resolve({ running: false, port: 8123 }),
+  connectorsConnect: (appSlug) => { calls.connectorsConnect.push(appSlug); return Promise.resolve({ ok: true }); },
+  glyphhAgentConnectRespond: (p) => { calls.connectRespond.push(JSON.parse(JSON.stringify(p))); return Promise.resolve(true); },
 };
 
 const WB_OVERRIDES = {
@@ -137,5 +139,6 @@ window.__stub = {
   agentDelta: (runId, delta) => emit("onGlyphhAgentDelta", { runId, delta }),
   agentDone: (runId, stopped = false) => emit("onGlyphhAgentDone", { runId, stopped }),
   agentError: (runId, error) => emit("onGlyphhAgentError", { runId, error }),
+  agentConnect: (id, app) => emit("onGlyphhAgentConnect", { id, app }),
   lastRunId: () => `run-${runSeq}`,
 };

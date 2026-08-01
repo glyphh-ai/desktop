@@ -188,6 +188,31 @@ export const SPECS = [
     `,
   },
 
+  {
+    name: "inline CONNECT card: offered in-thread, OAuth runs in-app, tool answered",
+    fresh: true,
+    body: `
+      await until(() => composer() && tab("cowork")?.classList.contains("active"));
+      // a live work session (the card lands in the run's thread)
+      typeInto(composer(), "connect to notion please");
+      pressEnter(composer());
+      await until(() => window.__stub.calls.glyphhRun.length === 1);
+      // main's connect_account offers the card
+      window.__stub.agentConnect("conn-1", { appId: "notion", name: "Notion", icon: null });
+      const card = await until(() => $(".code-connect-card"), 5000);
+      const offered = card.dataset.status === "offer";
+      // the user clicks Connect — the SAME in-app OAuth the Connections page runs
+      click(card.querySelector(".ccx-btn"));
+      await until(() => window.__stub.calls.connectorsConnect.length === 1, 5000);
+      await until(() => $(".code-connect-card")?.dataset.status === "connected", 5000);
+      const answered = window.__stub.calls.connectRespond.at(-1);
+      // the card persists in the session record
+      const persisted = window.__stub.store().chats.some((c) => c.messages.some((m) => m.kind === "connect" && m.connect && m.connect.status === "connected"));
+      return ok(offered && answered && answered.id === "conn-1" && answered.connected === true && persisted,
+        JSON.stringify({ offered, answered, persisted }));
+    `,
+  },
+
   // ── Group 4: chrome + meter (fresh boot) ────────────────────────────────
   {
     name: "chat-space landing strips work chrome + never gates on a folder",

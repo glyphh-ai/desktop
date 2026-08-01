@@ -123,7 +123,46 @@ export function askUserQuestions(wc: WebContents, questions: AskQuestion[]): Pro
   });
 }
 
+// ── Inline CONNECT card — the agent offers an account connection in the
+// thread; the user authorizes without leaving the chat; the tool WAITS on
+// the outcome (same contract as ask_user: a timeout resolves gracefully so
+// an unattended run re-plans instead of hanging).
+
+export interface ConnectCardApp { appId: string; name: string; icon?: string | null }
+
+const pendingConnects = new Map<string, (r: { connected: boolean; reason?: string }) => void>();
+const CONNECT_TIMEOUT_MS = 10 * 60_000;
+
+export function requestInlineConnect(wc: WebContents, app: ConnectCardApp): Promise<{ connected: boolean; reason?: string }> {
+  return new Promise((resolve) => {
+    const id = `conn-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    const timer = setTimeout(() => {
+      pendingConnects.delete(id);
+      resolve({ connected: false, reason: "no response" });
+    }, CONNECT_TIMEOUT_MS);
+    pendingConnects.set(id, (r) => {
+      clearTimeout(timer);
+      resolve(r);
+    });
+    try {
+      if (wc.isDestroyed()) throw new Error("panel gone");
+      wc.send("glyphh-agent:connect", { id, app });
+    } catch {
+      clearTimeout(timer);
+      pendingConnects.delete(id);
+      resolve({ connected: false, reason: "panel gone" });
+    }
+  });
+}
+
 export function registerGlyphhPermissionIpc(): void {
+  ipcMain.handle("glyphh-agent-connect-respond", (_e, p: { id?: string; connected?: boolean; reason?: string }) => {
+    const entry = pendingConnects.get(String(p?.id ?? ""));
+    if (!entry) return false;
+    pendingConnects.delete(String(p?.id));
+    entry({ connected: !!p?.connected, ...(p?.reason ? { reason: String(p.reason) } : {}) });
+    return true;
+  });
   ipcMain.handle("glyphh-agent-approval-respond", (_e, p: { id?: string; allow?: boolean }) => {
     const entry = pending.get(String(p?.id ?? ""));
     if (!entry) return false;

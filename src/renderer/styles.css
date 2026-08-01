@@ -3035,6 +3035,34 @@ body[data-session-space="chat"] #code-workdir-branch-wrap,
 body[data-session-space="chat"] .code-view-toggles,
 body[data-session-space="cowork"] #code-workdir-branch-wrap,
 body[data-session-space="cowork"] .code-view-toggles { display: none !important; }
+/* Inline CONNECT card — the agent offers an account connection in the
+   thread; OAuth runs in-app, the user never leaves the chat. */
+.code-connect-wrap { margin: 10px 0; }
+.code-connect-card {
+  display: flex; align-items: center; gap: 12px;
+  max-width: 440px;
+  padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-3);
+}
+.code-connect-card .ccx-icon { width: 30px; height: 30px; border-radius: 7px; flex: none; }
+.code-connect-card .ccx-initial {
+  width: 30px; height: 30px; border-radius: 7px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--active-bg); color: var(--text); font-weight: 700;
+}
+.code-connect-card .ccx-info { flex: 1; min-width: 0; }
+.code-connect-card .ccx-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.code-connect-card .ccx-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.code-connect-card .ccx-btn {
+  flex: none; padding: 7px 16px;
+  border: none; border-radius: 8px; cursor: pointer;
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 700;
+}
+.code-connect-card .ccx-btn:disabled { opacity: 0.75; cursor: default; }
+.code-connect-card[data-status="connected"] .ccx-btn { background: var(--active-bg); color: var(--text); }
+.code-connect-card[data-status="failed"] .ccx-sub { color: #e5484d; }
+
 /* the + menu's folder actions belong to the folder-bearing spaces only */
 body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 .code-drop-sep { height: 1px; background: var(--border); margin: 4px 6px; }

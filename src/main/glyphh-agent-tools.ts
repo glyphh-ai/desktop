@@ -25,7 +25,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
-import { gateGlyphhAction, askUserQuestions, type GlyphhActionKind } from "./glyphh-agent-permissions";
+import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { currentLoop, resolveRoles } from "./loop-selections";
@@ -753,6 +753,40 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "connect_account",
+    doc: "connect_account(app) — the user needs an account that ISN'T connected yet (e.g. they asked to use X and list_connections shows nothing): looks <app> up in the connector catalog and shows a CONNECT card right in the chat; the user authorizes inline — never leaving the thread — and this returns once they're connected (or declined). After success the account's tools are reachable via find_tools/call_tool. Check list_connections first; never ask the user to visit the Connections page.",
+    action: (a) => ({ kind: "read", title: `Offer to connect ${String(a.app ?? "")}` }),
+    run: async (a, _signal, wc) => {
+      if (!wc) return "ERROR: no panel available";
+      const q = String(a.app ?? "").trim();
+      if (!q) return "ERROR: app is required (e.g. 'slack', 'notion')";
+      const needle = q.toLowerCase();
+      // already connected? (both axes — see list_connections)
+      const [org, personal] = await Promise.all([
+        getClient().connections.list().catch(() => []),
+        getClient().connections.personalList().catch(() => []),
+      ]);
+      const existing = [...org, ...personal].find((c) => {
+        const cc = c as { slug?: string; name?: string; appSlug?: string };
+        return [cc.slug, cc.name, cc.appSlug].some((v) => (v || "").toLowerCase().includes(needle));
+      });
+      if (existing) {
+        const ex = existing as { slug?: string; name?: string };
+        return `already connected: ${ex.name || ex.slug} — its tools are available via find_tools/call_tool.`;
+      }
+      // catalog lookup
+      const { apps } = await getClient().connections.apps({ search: q, limit: 6 }).catch(() => ({ apps: [] as Array<{ id: string; name: string; icon: string | null }> }));
+      const best = apps.find((x) => x.id.toLowerCase() === needle || x.name.toLowerCase() === needle)
+        ?? apps.find((x) => x.name.toLowerCase().includes(needle) || x.id.toLowerCase().includes(needle))
+        ?? apps[0];
+      if (!best) return `no connector exists for "${q}" in the catalog.`;
+      const res = await requestInlineConnect(wc, { appId: best.id, name: best.name, icon: best.icon });
+      return res.connected
+        ? `connected: ${best.name} (${best.id}). Its tools are now available — use find_tools to discover them, call_tool to run them.`
+        : `the user did not complete the ${best.name} connection (${res.reason || "declined"}). Do not retry unprompted.`;
+    },
+  },
+  {
     name: "list_connections",
     doc: "list_connections() — the user's connected accounts (Slack, GitHub, …)",
     action: () => ({ kind: "read", title: "List connections" }),
@@ -1114,7 +1148,7 @@ export interface ToolOutcome { result: string; denied: boolean; title: string }
 const ROLE_RUN_ROUNDS = 16;
 const ROLE_RESULT_CAP = 24_000;
 // No recursion, and no interactive asks a delegated packet can't answer.
-const ROLE_RUN_EXCLUDED = new Set(["run_role", "ask_user"]);
+const ROLE_RUN_EXCLUDED = new Set(["run_role", "ask_user", "connect_account"]);
 
 async function runRolePacket(
   role: string,
