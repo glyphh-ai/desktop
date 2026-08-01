@@ -2356,6 +2356,27 @@ async function loadRecentApps(): Promise<void> {
  *  under their own collapsible header (see initRailSections). */
 function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); }
 
+/** The empty state for a rail grid: a short "No matches." while searching,
+ *  otherwise a single ACTION — the sentence that used to sit here ("Your
+ *  layouts land here") described nothing the user could do and wrapped
+ *  badly in a narrow rail. */
+function railEmpty(list: HTMLElement, q: string, label: string, section: string): void {
+  if (q) {
+    const none = document.createElement("div");
+    none.className = "code-empty app-rail-empty";
+    none.textContent = "No matches.";
+    list.appendChild(none);
+    return;
+  }
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "app-rail-empty-btn";
+  btn.textContent = `+ ${label}`;
+  btn.title = `Open ${section === "apps" ? "Apps" : "Layouts"}`;
+  btn.addEventListener("click", (e) => { e.stopPropagation(); gotoSection(section); });
+  list.appendChild(btn);
+}
+
 function renderRailApps(): void {
   const list = el<HTMLDivElement>("recent-apps-list");
   if (!list) return;
@@ -2400,13 +2421,7 @@ function renderRailApps(): void {
     list.appendChild(tile);
   }
   if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { railAppsPage = pg; renderRailApps(); }));
-  if (!apps.length) {
-    const empty = document.createElement("div");
-    empty.className = "code-empty";
-    empty.style.margin = "10px auto";
-    empty.textContent = q ? "No matches." : "Your apps land here.";
-    list.appendChild(empty);
-  }
+  if (!apps.length) railEmpty(list, q, "App", "apps");
 }
 
 function renderRailLayouts(): void {
@@ -2451,13 +2466,7 @@ function renderRailLayouts(): void {
     list.appendChild(tile);
   }
   if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRailLayouts(); }));
-  if (!layouts.length) {
-    const empty = document.createElement("div");
-    empty.className = "code-empty";
-    empty.style.margin = "10px auto";
-    empty.textContent = q ? "No matches." : "Your layouts land here.";
-    list.appendChild(empty);
-  }
+  if (!layouts.length) railEmpty(list, q, "Layout", "layouts");
 }
 
 // ── Recents vertical resize ──────────────────────────────────────────────

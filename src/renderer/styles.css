@@ -13813,6 +13813,19 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   align-content: start;
 }
 
+/* Empty rail grid: one action, spanning the whole grid so it can't be
+   squeezed into a 58px column and wrap mid-word. */
+.app-rail-empty, .app-rail-empty-btn { grid-column: 1 / -1; }
+.app-rail-empty { margin: 8px auto; }
+.app-rail-empty-btn {
+  margin: 6px 0 2px;
+  padding: 7px 10px;
+  border: 1px dashed var(--border-2); border-radius: 8px;
+  background: transparent; color: var(--text-2);
+  font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.app-rail-empty-btn:hover { border-color: var(--accent); color: var(--text); }
+
 .app-rail-tile {
   display: flex;
   flex-direction: column;
