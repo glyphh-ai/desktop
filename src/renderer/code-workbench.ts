@@ -205,7 +205,17 @@ function languageForFile(name: string): string {
   return map[ext] || "plaintext";
 }
 function monacoTheme(): string {
-  return (document.documentElement.dataset.theme || document.body.dataset.theme) === "dark" ? "vs-dark" : "vs";
+  // Decide by the theme's ACTUAL surface, not its name — "dark" was the only
+  // name that mapped to vs-dark, so every other dark scheme (high-vis,
+  // matrix, …) got a white editor in a black app.
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()
+    || getComputedStyle(document.body).backgroundColor;
+  let r = 255, g = 255, b = 255;
+  const hex = /^#([0-9a-f]{6})$/i.exec(raw);
+  const rgb = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(raw);
+  if (hex) { const n = parseInt(hex[1]!, 16); r = (n >> 16) & 255; g = (n >> 8) & 255; b = n & 255; }
+  else if (rgb) { r = +rgb[1]!; g = +rgb[2]!; b = +rgb[3]!; }
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128 ? "vs-dark" : "vs";
 }
 function isMarkdown(name: string): boolean {
   return /\.(md|mdx|markdown)$/i.test(name);
@@ -2435,6 +2445,23 @@ async function init(): Promise<void> {
      *  layout's reading order. The agent cell adopts the singleton (or is
      *  skipped when the agent is already on screen). */
     const openLayoutInEcho = (layout: LayoutRow): void => {
+      // The layout's FOLDER leads the open — same contract as the standard
+      // path: switch first, arrange after, so terminals and workspace panels
+      // spawn rooted in the layout's folder instead of wherever cwd last was.
+      if (layout.folder && layout.folder !== cwd) {
+        const folder = layout.folder;
+        void window.wb.setCwd(folder)
+          .catch(() => { /* folder gone — open in place */ })
+          .then(() => {
+            cwd = folder;
+            void paintWorkdirBar(cwd);
+            openLayoutInEchoArranged(layout);
+          });
+        return;
+      }
+      openLayoutInEchoArranged(layout);
+    };
+    const openLayoutInEchoArranged = (layout: LayoutRow): void => {
       // The layout REPLACES the echo arrangement — cards sit at the layout's
       // own grid (colWidths/rowHeights/spans), pins carried through.
       openingLayout = true;
@@ -2470,6 +2497,18 @@ async function init(): Promise<void> {
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               activateTile(entry);
+              // The DEFINITION's app setup rides the fresh slot (snapshots
+              // keep geometry, not configs) — same contract as the standard
+              // path's applyCellConfigs. The terminal spawn is rAF-deferred,
+              // so setting initCmd here still lands before the shell boots.
+              if (v === "terminal" && cell.config?.cmd) {
+                const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
+                if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cell.config.cmd;
+              }
+              if (v === "preview" && cell.config?.url) {
+                const pv = entry.toolSlot as unknown as { url?: string } | undefined;
+                if (pv && !pv.url) { pv.url = cell.config.url; rerenderToolBody(entry); }
+              }
             }
           } else {
             const wallTile = findTile(id)?.tile;
