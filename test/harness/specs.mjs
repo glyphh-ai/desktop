@@ -337,6 +337,30 @@ export const SPECS = [
     `,
   },
   {
+    name: "NOTHING creates a session but a send — starter card, header +, rail +",
+    fresh: true,
+    body: `
+      await until(() => $$(".dash-starter").length === 6, 6000);
+      const n = () => window.__stub.store().chats.length;
+      const before = n();
+      // a starter card (opens a layout, which asks for a "new session")
+      click($$(".dash-starter").find((c) => c.classList.contains("dash-starter-code")));
+      await sleep(900);
+      const afterCard = n();
+      // the agent header's +
+      click(tab("code"));
+      await until(() => document.body.dataset.railSpace === "code");
+      if ($("#code-session-new")) { click($("#code-session-new")); await sleep(400); }
+      const afterHeader = n();
+      // the rail's + New session
+      click($("#code-new-chat"));
+      await sleep(400);
+      const afterRail = n();
+      return ok(before === 0 && afterCard === 0 && afterHeader === 0 && afterRail === 0,
+        JSON.stringify({ before, afterCard, afterHeader, afterRail }));
+    `,
+  },
+  {
     name: "Chat starters: six mascot cards, each opening into its own space",
     fresh: true,
     body: `

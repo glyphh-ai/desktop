@@ -762,7 +762,15 @@ function ensureCodeSection(): void {
     renderThread();
     broadcastTimeline(!!currentRun());
   },
-  startNew: (): void => newChat(),
+  startNew: (): void => {
+    // LAZY, like both + buttons: clear the selection and repaint. The record
+    // is born on the first send (a layout that asked for a new session gets
+    // its folder via pendingWorkdir below, so nothing is lost by waiting).
+    currentId = "";
+    void saveStore();
+    renderHistory();
+    renderThread();
+  },
   /** Repaint the thread + history from the store. The agent card calls this
    *  after adoption so an empty session shows the BRANDED landing (mark +
    *  slogan) instead of a blank panel — the thread may never have been
@@ -770,10 +778,13 @@ function ensureCodeSection(): void {
   repaint: (): void => { renderHistory(); renderThread(); },
   /** Message counts, so a caller can prefer a session with real content. */
   counts: (): Record<string, number> => Object.fromEntries(chats.map((c) => [c.id, c.messages.length])),
-  /** Bind the CURRENT session to a folder (layout opens + folder picks). */
+  /** Bind the CURRENT session to a folder (layout opens + folder picks).
+   *  With no session yet — the lazy landing — the folder is held and applied
+   *  to the one the next send creates. */
   stampWorkdir: (dir: string): void => {
+    if (!dir) return;
     const c = current();
-    if (!c || !dir) return;
+    if (!c) { pendingWorkdir = dir; return; }
     c.workdir = dir;
     void saveStore();
   },
@@ -793,9 +804,14 @@ function ensureCodeSection(): void {
     } catch { return false; }
   };
 
+/** A folder a layout asked for while no session existed — applied to the
+ *  session the next send creates. */
+let pendingWorkdir = "";
+
 function newChat(): void {
   const mode: CodeChat["mode"] = railTab;
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
+  if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   chats.unshift(c);
   currentId = c.id;
   lastBySpace[spaceOf(c)] = c.id;
