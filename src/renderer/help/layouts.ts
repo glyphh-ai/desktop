@@ -123,6 +123,14 @@ const SPACE_GLYPH_SVG: Record<LayoutSpace, string> = {
   cowork: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
 };
+/** No explicit space picked → the badge wears a sparkle ("auto"), never the
+ *  derived space's glyph — the user should see which layouts they've chosen. */
+const AUTO_GLYPH_SVG =
+  '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z"/>';
+const explicitSpace = (layout: unknown): LayoutSpace | null => {
+  const s = (layout as { space?: string | null } | null)?.space;
+  return s === "chat" || s === "cowork" || s === "code" ? s : null;
+};
 function cardSpace(layout: { space?: string | null; splits?: Array<{ panelId: string }> }): LayoutSpace {
   const s = layout?.space;
   if (s === "chat" || s === "cowork" || s === "code") return s;
@@ -686,10 +694,13 @@ function renderLayoutsList() {
     const card = document.createElement("div");
     card.className = "cc-layout-card";
     const space = cardSpace(layout);
+    const chosen = explicitSpace(layout);
+    const badgeTitle = chosen ? `${SPACE_LABEL[chosen]} layout` : `Auto — opens as ${SPACE_LABEL[space]}`;
+    const badgeGlyph = chosen ? SPACE_GLYPH_SVG[chosen] : AUTO_GLYPH_SVG;
     card.innerHTML =
       `${layoutMini(layout)}` +
-      `<span class="cc-card-space" title="${SPACE_LABEL[space]} layout">` +
-      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${SPACE_GLYPH_SVG[space]}</svg>` +
+      `<span class="cc-card-space" title="${badgeTitle}">` +
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${badgeGlyph}</svg>` +
       `</span>` +
       `<span class="cc-card-name"></span>`;
     card.querySelector(".cc-card-name")!.textContent = layout.name;

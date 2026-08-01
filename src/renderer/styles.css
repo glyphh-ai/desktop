@@ -3088,10 +3088,9 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 body[data-rail-space="chat"] .app-rail-nav-item[data-space]:not([data-space~="chat"]) { display: none; }
 body[data-rail-space="cowork"] .app-rail-nav-item[data-space]:not([data-space~="cowork"]) { display: none; }
 body[data-rail-space="code"] .app-rail-nav-item[data-space]:not([data-space~="code"]) { display: none; }
-/* CHAT keeps no nav — but the COMMAND CENTER works in every space now:
-   the wall shows all layouts (space-badged) and opening one activates its
-   own space, so chat is a fine place to stand when reaching for it. */
-body[data-rail-space="chat"] .app-rail-nav { display: none !important; }
+/* CHAT gets the nav too now — Connections, Apps, and Layouts are tagged
+   for it (per-item data-space scoping above does the filtering), and the
+   command center works in every space. */
 
 /* The rail's SPACE tabs — Chat | Code, above + New session. The active
    space should be unmissable: filled accent pill, icon + label. */

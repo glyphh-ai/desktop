@@ -20,6 +20,7 @@ import { formatMarkdown } from "./format-markdown.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { CanvasAddon } from "@xterm/addon-canvas";
 import * as THREE from "three";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
@@ -427,6 +428,12 @@ async function init(): Promise<void> {
     ],
     code: ["M16 18 L22 12 L16 6", "M8 6 L2 12 L8 18"],
   };
+  /** Auto-derived space (no explicit pick) wears a sparkle, not the derived
+   *  space's glyph — so "I chose Code" and "it looks like Code" read apart. */
+  const AUTO_GLYPH = [
+    "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z",
+    "M18.5 15.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z",
+  ];
   function layoutSpace(row?: { space?: string | null; splits?: Array<{ panelId: string }> } | null): "chat" | "cowork" | "code" {
     const s = row?.space;
     if (s === "chat" || s === "cowork" || s === "code") return s;
@@ -1512,8 +1519,11 @@ async function init(): Promise<void> {
       if (e.tile.kind === "layout") {
         // Space badge — the rail tab's own glyph in a chip at the icon's
         // upper-right, so a wall of layouts reads Chat/Work/Code at a glance.
-        const space = layoutSpace(e.tile.layoutRow);
-        const paths = SPACE_GLYPHS[space];
+        const explicit = ((): boolean => {
+          const s = e.tile.layoutRow?.space;
+          return s === "chat" || s === "cowork" || s === "code";
+        })();
+        const paths = explicit ? SPACE_GLYPHS[layoutSpace(e.tile.layoutRow)] : AUTO_GLYPH;
         const bs = 18, bx = ix + 56 - bs / 2 - 1, by = iy - 1;
         rr(c, bx, by, bs, bs, 5);
         c.fillStyle = theme.surface2;
@@ -4743,10 +4753,16 @@ async function init(): Promise<void> {
         fontSize: 12,
         theme: terminalTheme(),
         scrollback: 10_000,
+        // With the canvas renderer below, xterm draws box/block/BRAILLE
+        // glyphs itself — the CLI's braille cat rendered as tofu because
+        // the DOM renderer leaves those to a font chain that lacks them.
+        customGlyphs: true,
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(hostEl);
+      try { term.loadAddon(new CanvasAddon()); }
+      catch { /* canvas unavailable → DOM renderer still works, minus drawn glyphs */ }
       // Spawn ONLY once the host has real dimensions. A layout-open renders
       // terminals before the rails have laid out (or while the section is
       // hidden): fit() at zero size computes garbage cols/rows, the pty

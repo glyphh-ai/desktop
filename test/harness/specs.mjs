@@ -68,21 +68,16 @@ export const SPECS = [
     `,
   },
   {
-    name: "nav scopes by space: Connections hidden under Code, Layouts hidden under Chat",
+    name: "nav shows Connections, Apps, Layouts on EVERY tab",
     body: `
-      const conn = $('.app-rail-nav-item[data-section="connections"]');
-      const lay = $('.app-rail-nav-item[data-section="layouts"]');
-      click(tab("code"));
-      await until(() => document.body.dataset.railSpace === "code");
-      const connHiddenUnderCode = getComputedStyle(conn).display === "none";
-      const layShownUnderCode = getComputedStyle(lay).display !== "none";
-      click(tab("chat"));
-      await until(() => document.body.dataset.railSpace === "chat");
-      const layHiddenUnderChat = getComputedStyle(lay).display === "none";
-      click(tab("cowork"));
-      await until(() => document.body.dataset.railSpace === "cowork");
-      return ok(connHiddenUnderCode && layShownUnderCode && layHiddenUnderChat,
-        JSON.stringify({ connHiddenUnderCode, layShownUnderCode, layHiddenUnderChat }));
+      const items = ["connections", "apps", "layouts"].map((s) => $('.app-rail-nav-item[data-section="' + s + '"]'));
+      const seen = {};
+      for (const t of ["code", "chat", "cowork"]) {
+        click(tab(t));
+        await until(() => document.body.dataset.railSpace === (t === "code" ? "code" : t === "chat" ? "chat" : "cowork"));
+        seen[t] = items.every((el) => el && getComputedStyle(el).display !== "none");
+      }
+      return ok(seen.code && seen.chat && seen.cowork, JSON.stringify(seen));
     `,
   },
 
