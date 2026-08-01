@@ -54,8 +54,13 @@ const TEMPLATES: Record<"dev" | "email" | "research", Template> = {
 
 export const STARTER_LAYOUTS = TEMPLATES;
 
-/** Create the layout ON THE SERVER, mirroring the signup seed. */
+/** Create the layout ON THE SERVER, mirroring the signup seed. Never
+ *  overwrites: the name is re-checked against a FRESH list immediately
+ *  before the write, so a stale or half-loaded list can't clobber a layout
+ *  the user already has under that name. */
 async function backfill(t: Template): Promise<void> {
+  const fresh = (await window.yo.layoutsList?.()) ?? [];
+  if (fresh.some((l) => ((l as { name?: string }).name || "").toLowerCase() === t.name.toLowerCase())) return;
   const apps = (await window.yo.panelAppsList?.()) ?? [];
   const appId = (slug: string): string | null => {
     const hit = apps.find((a) => ((a as { slug?: string }).slug || "").toLowerCase().includes(slug)) as { id?: string } | undefined;
@@ -83,7 +88,11 @@ export async function openStarterLayout(key: keyof typeof TEMPLATES): Promise<vo
     // second capitalised one would be a duplicate, not a fix.
     const match = existing.find((l) =>
       ((l as { name?: string }).name || "").toLowerCase() === t.name.toLowerCase()) as { name?: string } | undefined;
-    if (!match) await backfill(t);
+    // An EMPTY list is ambiguous — a workspace with no layouts reads the
+    // same as a list call that failed — so only backfill when the library
+    // answered with something. A missing starter is recoverable; writing
+    // over a layout because the list came back empty is not.
+    if (!match && existing.length) await backfill(t);
     await window.yo.layoutsOpen?.(match?.name ?? t.name);
   } catch {
     /* offline — the starter still seeds its prompt */

@@ -1717,23 +1717,72 @@ async function init(): Promise<void> {
       }));
       dirty = true;
     };
+    /** Everything one tile needs to exist on the wall. Extracted so a tile
+     *  can be created AFTER the initial build — a layout made while the wall
+     *  is mounted has to be able to join it. */
+    const makeTileEntry = (t: EchoTile): TileEntry => {
+      const canvas = document.createElement("canvas");
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const entry: TileEntry = { tile: t, canvas, tex, img: null };
+      entries.push(entry);
+      drawTile(entry);
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(TILE_W, TILE_H),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
+      );
+      group.add(mesh);
+      entry.mesh = mesh;
+      loadEntryIcon(entry);
+      return entry;
+    };
+    /** Take a tile off the wall for good (a layout that was deleted). */
+    const dropTileEntry = (entry: TileEntry): void => {
+      if (entry.mesh) {
+        group.remove(entry.mesh);
+        entry.mesh.geometry.dispose();
+        (entry.mesh.material as THREE.MeshBasicMaterial).dispose();
+        entry.mesh = undefined;
+      }
+      entry.tex.dispose();
+      const i = entries.indexOf(entry);
+      if (i >= 0) entries.splice(i, 1);
+      for (const band of wallBands) {
+        const j = band.indexOf(entry);
+        if (j >= 0) band.splice(j, 1);
+      }
+    };
+    /** The wall tile for a layout: up to 4 unique panels as mini icons.
+     *  Shared by the first build and by layouts that appear later. */
+    const layoutTileOf = (layoutRow: LayoutRow): EchoTile => {
+      const seenIds = new Set<string>();
+      const ids = (layoutRow.splits ?? [])
+        .map((cell) => cell.panelId)
+        .filter((id) => id && !seenIds.has(id) && (seenIds.add(id), true))
+        .slice(0, 4);
+      const cells: EchoCell[] = ids.map((id) => {
+        const key = id.trim().toLowerCase();
+        const app = echoRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
+        if (app) {
+          const icon = { slug: app.slug || app.id, url: app.url || null, execPath: app.execPath || null, appArchetype: app.appArchetype || null, connection: null };
+          if (app.appArchetype === "glyphh-nav") {
+            return { glyphSvg: appIconInner(icon, app.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
+          }
+          return { iconUrl: appIconUrl(icon) || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
+        }
+        const toolView = id.startsWith("tool:") ? id.slice(5) : "";
+        const label = toolView ? (VIEW_META[toolView as ViewKind]?.title ?? toolView) : id;
+        return { initial: (label || "?").charAt(0).toUpperCase(), img: null };
+      });
+      return {
+        name: layoutRow.name,
+        slug: `layout:${(layoutRow.name || "").toLowerCase()}`,
+        layoutName: layoutRow.name,
+        cells, layoutRow, kind: "layout",
+      };
+    };
     const buildWall = (bands: EchoTile[][]): void => {
-      wallBands = bands.map((band) => band.map((t) => {
-        const canvas = document.createElement("canvas");
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        const entry: TileEntry = { tile: t, canvas, tex, img: null };
-        entries.push(entry);
-        drawTile(entry);
-        const mesh = new THREE.Mesh(
-          new THREE.PlaneGeometry(TILE_W, TILE_H),
-          new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
-        );
-        group.add(mesh);
-        entry.mesh = mesh;
-        loadEntryIcon(entry);
-        return entry;
-      }));
+      wallBands = bands.map((band) => band.map((t) => makeTileEntry(t)));
       positionWall();
       refit = fitExtents;
       fitExtents();   // open on the whole wall
@@ -1775,27 +1824,7 @@ async function init(): Promise<void> {
       const glyphOf = (a: PanelRowLite): string | undefined =>
         appIconInner(iconOf(a), a.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined;
       const toTile = (e: Entry): EchoTile => {
-        if (e.layout) {
-          // the CC layout tile: up to 4 unique panels, app icon or tool initial
-          const layoutRow = e.layout;
-          const seenIds = new Set<string>();
-          const ids = layoutRow.splits
-            .map((cell) => cell.panelId)
-            .filter((id) => id && !seenIds.has(id) && (seenIds.add(id), true))
-            .slice(0, 4);
-          const cells: EchoCell[] = ids.map((id) => {
-            const key = id.trim().toLowerCase();
-            const app = appsAll.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
-            if (app) {
-              if (app.appArchetype === "glyphh-nav") return { glyphSvg: glyphOf(app), initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
-              return { iconUrl: appIconUrl(iconOf(app)) || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
-            }
-            const toolView = id.startsWith("tool:") ? id.slice(5) : "";
-            const label = toolView ? (VIEW_META[toolView as ViewKind]?.title ?? toolView) : id;
-            return { initial: (label || "?").charAt(0).toUpperCase(), img: null };
-          });
-          return { name: e.name, slug: `layout:${(e.name || "").toLowerCase()}`, layoutName: layoutRow.name, cells, layoutRow, kind: "layout" };
-        }
+        if (e.layout) return layoutTileOf(e.layout);
         const a = e.app!;
         const slug = (a.slug || a.id).toLowerCase();
         if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
@@ -1823,13 +1852,34 @@ async function init(): Promise<void> {
       if (!body.isConnected) { document.removeEventListener("glyphh:apps-changed", onLayoutsChanged); return; }
       void yoApi?.layoutsList?.().then((fresh) => {
         if (!body.isConnected || !Array.isArray(fresh)) return;
-        for (const e of entries) {
+        const live = new Map(fresh.map((l) => [(l.name || "").toLowerCase(), l]));
+        let shifted = false;
+        // Existing tiles follow their row; a layout that's gone leaves the wall.
+        for (const e of [...entries]) {
           if (e.tile.kind !== "layout" || !e.tile.layoutName) continue;
-          const row = fresh.find((l) => l.name === e.tile.layoutName);
-          if (!row) continue;
+          const row = live.get(e.tile.layoutName.toLowerCase());
+          if (!row) {
+            if (!e.card) { dropTileEntry(e); shifted = true; }   // never yank an OPEN panel
+            continue;
+          }
           e.tile.layoutRow = row;
           drawTile(e);
         }
+        // A layout made since the wall was built (a starter card, the Layouts
+        // page) joins it — the wall used to be fixed at mount, so anything
+        // created afterwards simply never appeared.
+        const onWall = new Set(entries.filter((e) => e.tile.kind === "layout" && e.tile.layoutName)
+          .map((e) => e.tile.layoutName!.toLowerCase()));
+        for (const row of fresh) {
+          const key = (row.name || "").toLowerCase();
+          if (!key || onWall.has(key)) continue;
+          const band = wallBands[wallBands.length - 1];
+          if (!band) break;
+          band.push(makeTileEntry(layoutTileOf(row)));
+          shifted = true;
+        }
+        if (shifted) positionWall();
+        dirty = true;
       }).catch(() => { /* next visit refetches */ });
     };
     document.addEventListener("glyphh:apps-changed", onLayoutsChanged);
@@ -1853,6 +1903,19 @@ async function init(): Promise<void> {
     // remembered under its name and restored on the next open.
     let echoLayoutName: string | null = null;
     const echoMemKey = (name: string): string => `echo:layout:${name.trim().toLowerCase()}`;
+    /** A fingerprint of the layout's DEFINITION — grid size plus every cell's
+     *  panel and slot. Remembered positions override the definition (that is
+     *  what makes a user's drag stick), so memory saved against a DIFFERENT
+     *  shape must be discarded: an edited layout would otherwise open with its
+     *  old geometry forever, panels landing in columns that no longer exist. */
+    const layoutSig = (l: { cols?: number; rows?: number; splits?: Array<{ panelId: string; col?: number; row?: number; colSpan?: number; rowSpan?: number }> }): string =>
+      `${l.cols ?? 0}x${l.rows ?? 0}:` +
+      (l.splits ?? [])
+        .map((c) => `${(c.panelId || "").toLowerCase()}@${c.col ?? 0},${c.row ?? 0},${c.colSpan ?? 1},${c.rowSpan ?? 1}`)
+        .sort()
+        .join("|");
+    /** The definition currently on stage — what a save fingerprints against. */
+    let echoLayoutSig = "";
     /** What a layout cell was DOING, restored on the next open: the web
      *  card's last navigated page, the editor's open files, the Browser's
      *  tabs. Terminals restart (a pty can't be frozen). */
@@ -1911,6 +1974,7 @@ async function init(): Promise<void> {
         } catch { prior = null; }
       }
       const data = {
+        sig: echoLayoutSig,
         colWidths: echoGrid.colWidths,
         rowFracs: echoGrid.rowFracs,
         cells: echoGrid.cells.filter((c) => c.entry.memKey).map((c) => {
@@ -2533,11 +2597,16 @@ async function init(): Promise<void> {
         for (const x of [...openList]) closeCard(x, { parkTerms: true });
         echoLayoutName = layout.name || null;
         echoActiveLayout = echoLayoutName ? { name: echoLayoutName, mode: layout.sessionMode ?? "keep" } : null;
-        interface EchoLayoutMem { colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number; state?: EchoCellState }> }
+        interface EchoLayoutMem { sig?: string; colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number; state?: EchoCellState }> }
         let mem: EchoLayoutMem | null = null;
+        echoLayoutSig = layoutSig(layout);
         try {
           const raw = echoLayoutName ? localStorage.getItem(echoMemKey(echoLayoutName)) : null;
           if (raw) mem = JSON.parse(raw) as EchoLayoutMem;
+          // Memory from a DIFFERENT shape is not this layout's memory. (A
+          // pre-signature memory has no sig at all — treat it the same way:
+          // the definition is the truth, and the next save re-earns it.)
+          if (mem && mem.sig !== echoLayoutSig) mem = null;
         } catch { mem = null; }
         const seenKeys = new Map<string, number>();
         const cells = [...layout.splits].sort((a, b) => (a.row - b.row) || (a.col - b.col));
