@@ -323,6 +323,25 @@ export const SPECS = [
     `,
   },
   {
+    name: "a rail section REPLACES an open layout (no divider bleed-through)",
+    fresh: true,
+    body: `
+      await until(() => tab("cowork")?.classList.contains("active"));
+      killTransitions();
+      window.__wbEchoReset();
+      await sleep(400);
+      const search = $(".echo-search");
+      typeInto(search, "coding day");
+      pressEnter(search);
+      await until(() => $$(".echo-card").length >= 1, 8000);
+      await until(() => $$(".echo-div").length >= 1, 4000);   // the layout's seams are up
+      window.__wbOpenSection("layouts");
+      await until(() => $$(".echo-div").length === 0, 4000);  // layout let go — no seams under the page
+      const cards = $$(".echo-card").length;
+      return ok(cards >= 1 && $$(".echo-div").length === 0, "cards=" + cards);
+    `,
+  },
+  {
     name: "landing wears each space's voice (folder chips, subtitle, placeholder)",
     fresh: true,
     body: `

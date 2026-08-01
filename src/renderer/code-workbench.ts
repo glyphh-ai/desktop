@@ -2209,7 +2209,12 @@ async function init(): Promise<void> {
         }
       });
     };
-    const closeCard = (e: TileEntry): void => {
+    /** Terminals PARKED when their layout let go (nav-away, replace, reset):
+     *  the pty and the xterm buffer stay alive — a CLI agent mid-run keeps
+     *  running — and reopening the same layout cell re-attaches instead of
+     *  spawning fresh. Keyed by layout::memKey. Explicit ✕ still kills. */
+    const parkedTerms = new Map<string, TermSlot>();
+    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean }): void => {
       const card = e.card;
       if (!card) return;
       e.card = undefined;
@@ -2232,6 +2237,10 @@ async function init(): Promise<void> {
       card.style.pointerEvents = "none";
       const toolSlot = e.toolSlot;
       e.toolSlot = undefined;
+      // Captured NOW — by the time the deferred teardown runs, the incoming
+      // layout may already own echoLayoutName.
+      const parkKey = opts?.parkTerms && echoLayoutName && e.memKey
+        ? `${echoLayoutName.toLowerCase()}::${e.memKey}` : null;
       window.setTimeout(() => {
         // sections are SINGLETONS — park the page back to its pen before
         // the card's DOM goes away (same contract as parkSections)
@@ -2243,7 +2252,16 @@ async function init(): Promise<void> {
             sec.classList.remove("active", "wb-hosted");
             pen?.appendChild(sec);
           });
-          if (toolSlot?.view === "terminal") for (const t of toolSlot.terminals) { try { killTerminal(t); } catch { /* pty already gone */ } }
+          if (toolSlot?.view === "terminal") {
+            if (parkKey) {
+              // keep pty + xterm wired (offscreen writes land in the buffer);
+              // only the per-host ResizeObservers go
+              for (const t of toolSlot.terminals) t.ro?.disconnect();
+              parkedTerms.set(parkKey, toolSlot);
+            } else {
+              for (const t of toolSlot.terminals) { try { killTerminal(t); } catch { /* pty already gone */ } }
+            }
+          }
         } finally {
           card.remove();   // NEVER leave a zombie card
         }
@@ -2491,7 +2509,7 @@ async function init(): Promise<void> {
         // the OUTGOING layout remembers what its panels were doing (last
         // page, open files, browser tabs) — capture before the teardown
         saveEchoLayoutMem();   // the OUTGOING layout's save runs under ITS contract
-        for (const x of [...openList]) closeCard(x);
+        for (const x of [...openList]) closeCard(x, { parkTerms: true });
         echoLayoutName = layout.name || null;
         echoActiveLayout = echoLayoutName ? { name: echoLayoutName, mode: layout.sessionMode ?? "keep" } : null;
         interface EchoLayoutMem { colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number; state?: EchoCellState }> }
@@ -2518,12 +2536,20 @@ async function init(): Promise<void> {
             if (v === "coding") entry = openAgentCard();
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
+              // A PARKED terminal (this same layout cell, closed by nav-away)
+              // re-attaches: same pty, same buffer, the CLI agent inside
+              // never stopped. Fresh slots get the DEFINITION's app setup
+              // (snapshots keep geometry, not configs) — the spawn is
+              // rAF-deferred, so initCmd set here lands before the shell.
+              const parked = v === "terminal"
+                ? parkedTerms.get(`${(layout.name || "").toLowerCase()}::${pendingKey}`) : undefined;
+              if (parked && entry.toolSlot?.view === "terminal") {
+                parkedTerms.delete(`${(layout.name || "").toLowerCase()}::${pendingKey}`);
+                entry.toolSlot.terminals = parked.terminals;
+                entry.toolSlot.activeIdx = parked.activeIdx;
+              }
               activateTile(entry);
-              // The DEFINITION's app setup rides the fresh slot (snapshots
-              // keep geometry, not configs) — same contract as the standard
-              // path's applyCellConfigs. The terminal spawn is rAF-deferred,
-              // so setting initCmd here still lands before the shell boots.
-              if (v === "terminal" && cell.config?.cmd) {
+              if (v === "terminal" && cell.config?.cmd && !parked) {
                 const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
                 if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cell.config.cmd;
               }
@@ -2837,7 +2863,15 @@ async function init(): Promise<void> {
         activateTile(adHoc(tile));
       },
       openLayout: (layout) => openLayoutInEcho(layout),
-      openSection: (section) => openSectionCard(section),
+      openSection: (section) => {
+        // A rail destination REPLACES an open layout — the layout's seams
+        // and dividers kept eating events meant for the page stacked above
+        // them, and clicking a nav item reads as leaving the layout anyway.
+        // The reset saves the layout's memory ("last" resumes it), same as
+        // the universal chat icon.
+        if (echoGrid) resetEcho();
+        openSectionCard(section);
+      },
       openAgent: () => { void openAgentCard(); },
       openChat: () => {
         // THE universal chat icon: whatever layout is up clears (its memory
@@ -3234,7 +3268,7 @@ async function init(): Promise<void> {
     // call the same thing through echoCtl.reset.
     const resetEcho = (): void => {
       saveEchoLayoutMem();   // "last" layouts remember their panels through a reset
-      for (const x of [...openList]) closeCard(x);
+      for (const x of [...openList]) closeCard(x, { parkTerms: true });
       echoGrid = null;
       gridHoles = [];
       echoLayoutName = null;
