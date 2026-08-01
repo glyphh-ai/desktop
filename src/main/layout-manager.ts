@@ -25,7 +25,7 @@ export interface ServerLayout {
   name: string;
   cols: number;
   rows: number;
-  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }>;
+  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>;
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
   glyphh?: GlyphhPlacement;
@@ -92,7 +92,7 @@ export interface GridCell {
   sticky?: boolean;
   /** Per-cell app setup the layout applies on open: the Browser cell's URL,
    *  the Terminal cell's first command (runs after the folder is set). */
-  config?: { url?: string; cmd?: string };
+  config?: { url?: string; cmd?: string; keepAlive?: boolean };
 }
 
 /** Folder-binding mode for layouts that contain any folder-bound app

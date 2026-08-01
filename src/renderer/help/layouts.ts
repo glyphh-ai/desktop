@@ -339,7 +339,7 @@ interface BuilderCell {
   sticky?: boolean;
   /** Per-cell app setup: the Browser cell's URL, the Terminal cell's first
    *  command (runs after the working folder is set). */
-  config?: { url?: string; cmd?: string };
+  config?: { url?: string; cmd?: string; keepAlive?: boolean };
 }
 
 /** Mark exactly one cell sticky (or clear it). Enforces single-sticky. */
@@ -493,6 +493,31 @@ function renderCellConfigs(): void {
       }
     });
     row.append(label, input);
+    if (c.panelId === "tool:terminal") {
+      // Maintain on close (default ON): navigating away from the layout
+      // PARKS this terminal — the shell and whatever it's running (a CLI
+      // agent, a dev server) stay alive, and reopening the layout
+      // re-attaches. Unchecked → leaving the layout kills the terminal.
+      const keep = document.createElement("label");
+      keep.className = "layout-cell-config-keep";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = c.config?.keepAlive !== false;
+      cb.addEventListener("change", () => {
+        const cell = builderCells[i];
+        if (!cell) return;
+        if (cb.checked) {
+          if (cell.config) {
+            delete cell.config.keepAlive;
+            if (!Object.keys(cell.config).length) delete cell.config;
+          }
+        } else {
+          cell.config = { ...(cell.config || {}), keepAlive: false };
+        }
+      });
+      keep.append(cb, document.createTextNode(" Maintain on close — keeps the terminal (and anything running in it) alive when the layout closes"));
+      row.append(keep);
+    }
     list.appendChild(row);
   });
   empty?.classList.toggle("hidden", fields > 0);
@@ -733,7 +758,7 @@ async function editLayout(name: string) {
         cell.colSpan = s.colSpan ?? 1;
         cell.rowSpan = s.rowSpan ?? 1;
         cell.sticky = !!(s as { sticky?: boolean }).sticky;
-        const cfg = (s as { config?: { url?: string; cmd?: string } }).config;
+        const cfg = (s as { config?: { url?: string; cmd?: string; keepAlive?: boolean } }).config;
         if (cfg && (cfg.url || cfg.cmd)) cell.config = { ...cfg };
       }
     }

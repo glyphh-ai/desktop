@@ -410,7 +410,7 @@ async function init(): Promise<void> {
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -686,7 +686,7 @@ async function init(): Promise<void> {
    *  Echo's own slots — set by renderEchoIntoSlot, cleared on teardown. */
   interface EchoCtlType {
     openApp(app: { slug: string; name: string; url: string; glyphh?: boolean }): void;
-    openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> }): void;
+    openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> }): void;
     openSection(section: string): void;
     openAgent(): void;
     /** The universal chat icon: clear the surface, load the chat alone. */
@@ -1432,7 +1432,7 @@ async function init(): Promise<void> {
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
     interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
-    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string }
+    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
     const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; highlight: string; font: string } => {
@@ -2239,7 +2239,7 @@ async function init(): Promise<void> {
       e.toolSlot = undefined;
       // Captured NOW — by the time the deferred teardown runs, the incoming
       // layout may already own echoLayoutName.
-      const parkKey = opts?.parkTerms && echoLayoutName && e.memKey
+      const parkKey = opts?.parkTerms && echoLayoutName && e.memKey && e.keepTermsAlive !== false
         ? `${echoLayoutName.toLowerCase()}::${e.memKey}` : null;
       window.setTimeout(() => {
         // sections are SINGLETONS — park the page back to its pen before
@@ -2548,6 +2548,9 @@ async function init(): Promise<void> {
                 entry.toolSlot.terminals = parked.terminals;
                 entry.toolSlot.activeIdx = parked.activeIdx;
               }
+              // the DEFINITION says whether this terminal survives the
+              // layout closing ("Maintain on close", default yes)
+              if (v === "terminal") entry.keepTermsAlive = cell.config?.keepAlive !== false;
               activateTile(entry);
               if (v === "terminal" && cell.config?.cmd && !parked) {
                 const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
@@ -3571,7 +3574,7 @@ async function init(): Promise<void> {
   }
 
   interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
-  interface WbLayoutCell extends WbAppRef { col: number; row: number; span?: number; sticky?: boolean; tool?: string; config?: { url?: string; cmd?: string } }
+  interface WbLayoutCell extends WbAppRef { col: number; row: number; span?: number; sticky?: boolean; tool?: string; config?: { url?: string; cmd?: string; keepAlive?: boolean } }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 
   /** Open an app in the workbench. Default = STACK a new panel, so apps
