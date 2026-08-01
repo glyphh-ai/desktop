@@ -703,6 +703,8 @@ async function init(): Promise<void> {
     close(slug: string): boolean;
     focus(slug: string): boolean;
     closeAll(): void;
+    /** ⌘W: close the top panel; false when nothing is open. */
+    closeTop(): boolean;
   }
   let echoCtl: EchoCtlType | null = null;
 
@@ -1829,6 +1831,9 @@ async function init(): Promise<void> {
     // height independently, like the old layout manager's rails — dragging
     // the seam between two stacked panels never reshapes the neighbours.
     let echoGrid: { colWidths: number[]; rowFracs: number[][]; cells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> } | null = null;
+    /** Grid slots freed by closed cards (FIFO) — the next panel opened while
+     *  the layout is up fills the first hole instead of breaking to flow. */
+    let gridHoles: Array<{ col: number; row: number; colSpan: number; rowSpan: number }> = [];
     // The layout whose cards are on stage — dragged/resized card geometry is
     // remembered under its name and restored on the next open.
     let echoLayoutName: string | null = null;
@@ -2213,8 +2218,11 @@ async function init(): Promise<void> {
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
       if (echoGrid) {
+        // The freed slot becomes a HOLE — the next open fills it first.
+        const freed = echoGrid.cells.find((c) => c.entry === e);
+        if (freed) gridHoles.push({ col: freed.col, row: freed.row, colSpan: freed.colSpan, rowSpan: freed.rowSpan });
         echoGrid.cells = echoGrid.cells.filter((c) => c.entry !== e);
-        if (!echoGrid.cells.length) echoGrid = null;
+        if (!echoGrid.cells.length) { echoGrid = null; gridHoles = []; }
       }
       if (e.tile.slug && card.querySelector("webview")) rpaYo().rpaUnregister?.(e.tile.slug);
       notifyOpenApps();
@@ -2376,6 +2384,13 @@ async function init(): Promise<void> {
       e.open = true;
       drawTile(e);
       openList.push(e);
+      // A layout with a freed slot ADOPTS the new card into that hole —
+      // an accidental close is undone by just reopening something. (Layout
+      // opens assign cells explicitly; never claim during one.)
+      if (echoGrid && !openingLayout && gridHoles.length) {
+        const hole = gridHoles.shift()!;
+        echoGrid.cells.push({ entry: e, ...hole });
+      }
       notifyOpenApps();
       const place = (): void => {
         if (card.classList.contains("placed")) return;
@@ -2578,6 +2593,7 @@ async function init(): Promise<void> {
           const memFracs = mem?.rowFracs;
           const fracsOk = Array.isArray(memFracs) && memFracs.length === nCols
             && memFracs.every((r) => Array.isArray(r) && r.length === nRows);
+          gridHoles = [];
           echoGrid = {
             colWidths: mem?.colWidths?.length === nCols ? mem.colWidths.slice()
               : layout.colWidths?.length === nCols ? layout.colWidths.slice()
@@ -2890,6 +2906,12 @@ async function init(): Promise<void> {
         return true;
       },
       closeAll: () => { for (const x of [...openList]) closeCard(x); },
+      closeTop: () => {
+        const top = openList[openList.length - 1];
+        if (!top) return false;
+        closeCard(top);
+        return true;
+      },
     };
     echoCtl = ctl;
     notifyOpenApps();
@@ -2929,12 +2951,25 @@ async function init(): Promise<void> {
         return;
       }
       if (e.key !== "Escape") return;
-      e.stopPropagation();
-      e.preventDefault();
-      if (cardsLayer.classList.contains("echo-shadow")) { setShadow(false, false); return; }
+      // Esc handles the NON-destructive states only: shadow off, expanded
+      // back down. It no longer closes panels — Esc is real input to what's
+      // inside them (the CLI uses it to stop the agent), and eating it
+      // closed the very terminal the user was typing in. Close is the ✕ or
+      // ⌘W (the app menu's Close routes here before falling back to the
+      // window).
+      if (cardsLayer.classList.contains("echo-shadow")) {
+        e.stopPropagation();
+        e.preventDefault();
+        setShadow(false, false);
+        return;
+      }
       const expanded = openList.find((x) => x.card?.classList.contains("expanded"));
-      if (expanded?.card) { collapseCard(expanded.card); layoutCards(); return; }
-      closeCard(openList[openList.length - 1]);
+      if (expanded?.card) {
+        e.stopPropagation();
+        e.preventDefault();
+        collapseCard(expanded.card);
+        layoutCards();
+      }
     };
     document.addEventListener("keydown", onKey, true);
     const onKeyUp = (e: KeyboardEvent): void => {
@@ -3201,6 +3236,7 @@ async function init(): Promise<void> {
       saveEchoLayoutMem();   // "last" layouts remember their panels through a reset
       for (const x of [...openList]) closeCard(x);
       echoGrid = null;
+      gridHoles = [];
       echoLayoutName = null;
       echoActiveLayout = null;
       setShadow(false, false);
@@ -5465,6 +5501,14 @@ async function init(): Promise<void> {
     openEchoSurface();
     echoCtl?.reset();
   };
+  // ⌘W (the menu's Close) closes the TOP PANEL first; only with nothing
+  // open does it fall through to closing the window (the old behavior).
+  // Esc no longer closes panels — it's real input to whatever is inside.
+  (window as unknown as { yo?: { onCloseGesture?: (cb: () => void) => void; windowClose?: () => void } })
+    .yo?.onCloseGesture?.(() => {
+      if (echoCtl?.closeTop?.()) return;
+      (window as unknown as { yo?: { windowClose?: () => void } }).yo?.windowClose?.();
+    });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
     if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding"].includes(v)) return;

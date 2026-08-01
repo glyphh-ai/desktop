@@ -156,6 +156,9 @@ contextBridge.exposeInMainWorld("yo", {
   // removed File.path; webUtils.getPathForFile is the supported replacement.
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },
   windowClose: () => ipcRenderer.send("window-close"),
+  /** The menu's ⌘W — the workbench closes the top panel first, and only
+   *  falls back to windowClose when nothing is open. */
+  onCloseGesture: (cb: () => void) => { ipcRenderer.on("close-gesture", () => cb()); },
   windowMinimize: () => ipcRenderer.send("window-minimize"),
   // Org-admin Models page (mirrors the platform's Configure → Models).
   orgModelsList: () => ipcRenderer.invoke("org-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,

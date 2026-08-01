@@ -699,7 +699,15 @@ async function boot() {
         label: "Window",
         submenu: [
           { role: "minimize" },
-          { role: "close" },
+          // ⌘W routes through the renderer: close the top workbench panel
+          // first; the renderer calls window-close itself when nothing is
+          // open. A bare { role: "close" } killed the window while users
+          // meant "close this panel".
+          {
+            label: "Close",
+            accelerator: "CmdOrCtrl+W",
+            click: () => { mainWindow?.webContents.send("close-gesture"); },
+          },
         ],
       },
     ])
