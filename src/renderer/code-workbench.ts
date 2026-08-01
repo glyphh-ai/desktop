@@ -1771,6 +1771,25 @@ async function init(): Promise<void> {
       buildWall([midBand]);
     }).catch(() => buildWall([]));
 
+    // The wall outlives the Layouts page (echo stays mounted behind
+    // layouts), so an edit there — e.g. the layout's SPACE — must repaint
+    // the mounted tiles: refresh each layout tile's row in place and
+    // redraw (the badge and the space it activates both read layoutRow).
+    const onLayoutsChanged = (): void => {
+      if (!body.isConnected) { document.removeEventListener("glyphh:apps-changed", onLayoutsChanged); return; }
+      void yoApi?.layoutsList?.().then((fresh) => {
+        if (!body.isConnected || !Array.isArray(fresh)) return;
+        for (const e of entries) {
+          if (e.tile.kind !== "layout" || !e.tile.layoutName) continue;
+          const row = fresh.find((l) => l.name === e.tile.layoutName);
+          if (!row) continue;
+          e.tile.layoutRow = row;
+          drawTile(e);
+        }
+      }).catch(() => { /* next visit refetches */ });
+    };
+    document.addEventListener("glyphh:apps-changed", onLayoutsChanged);
+
     // ── Open panels: click a tile and its LIVE webview zooms up from the
     // tile's spot into a slot row anchored high, so the wall stays visible
     // (and pannable) beneath; close zooms it back to its spot. ──
