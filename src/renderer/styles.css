@@ -3035,6 +3035,9 @@ body[data-session-space="chat"] #code-workdir-branch-wrap,
 body[data-session-space="chat"] .code-view-toggles,
 body[data-session-space="cowork"] #code-workdir-branch-wrap,
 body[data-session-space="cowork"] .code-view-toggles { display: none !important; }
+/* the + menu's folder actions belong to the folder-bearing spaces only */
+body[data-session-space="chat"] .plus-folder-only { display: none !important; }
+.code-drop-sep { height: 1px; background: var(--border); margin: 4px 6px; }
 
 /* session rows: the TYPE's icon when idle (the working pulse replaces it) */
 .code-sess-ic { display: inline-flex; flex-shrink: 0; margin-left: 2px; color: var(--text-3); }

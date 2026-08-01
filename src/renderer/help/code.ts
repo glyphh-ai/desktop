@@ -1472,6 +1472,27 @@ function wireComposerAttachments(): void {
         void window.yo.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
     );
+    // WORK and CODE run inside a working folder — the + is where you set it,
+    // right from the landing or the thread (Chat has no folder concept; CSS
+    // hides these under data-session-space="chat").
+    const sep = document.createElement("div");
+    sep.className = "code-drop-sep plus-folder-only";
+    const curItem = mkItem("Working folder", "The folder this session works in", () => {
+      void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
+    });
+    curItem.classList.add("plus-folder-only");
+    const newItem = mkItem("Choose working folder…", "Pick (or create) the folder to work in", () => {
+      void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
+    });
+    newItem.classList.add("plus-folder-only");
+    menu.append(sep, curItem, newItem);
+    const paintPlusFolder = (): void => {
+      void wb()?.getCwdExplicit?.().then((dir) => {
+        const name = dir ? String(dir).split("/").filter(Boolean).pop() : null;
+        (curItem.querySelector("span") as HTMLElement).textContent = name ? `Working folder: ${name}` : "Working folder: not set";
+        curItem.title = dir ? String(dir) : "No folder picked yet — click to choose";
+      });
+    };
     plusWrap.appendChild(menu);
     el("code-plus-chip")?.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1479,6 +1500,7 @@ function wireComposerAttachments(): void {
       el("code-effort-pop")?.classList.add("hidden");
       el("code-model-menu")?.classList.add("hidden");
       el("code-ctx-pop")?.classList.add("hidden");
+      paintPlusFolder();
       menu.classList.toggle("hidden");
     });
   }
