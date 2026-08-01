@@ -6,6 +6,20 @@
   src: url(fonts/Inter-latin.woff2) format('woff2');
 }
 
+/* Braille patterns (U+2800-28FF) — generated squares-on-a-grid glyphs
+   (scripts/gen-braille-font.py), metrics matched to JetBrains Mono. The
+   bundled webfonts are LATIN SUBSETS, so without this the CLI's braille
+   art rendered as tofu in the terminal. unicode-range scopes it so it
+   never touches anything but braille. */
+@font-face {
+  font-family: 'Glyphh Braille';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(fonts/GlyphhBraille.ttf) format('truetype');
+  unicode-range: U+2800-28FF;
+}
+
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;

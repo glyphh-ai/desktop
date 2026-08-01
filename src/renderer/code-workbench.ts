@@ -4788,7 +4788,10 @@ async function init(): Promise<void> {
     if (!wbt.term) {
       const term = new Terminal({
         cursorBlink: true,
-        fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace",
+        // 'Glyphh Braille' is unicode-range scoped to U+2800-28FF — it only
+        // ever supplies braille (the CLI's cat art); everything else falls
+        // through to JetBrains Mono as before.
+        fontFamily: "'Glyphh Braille', 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace",
         fontSize: 12,
         theme: terminalTheme(),
         scrollback: 10_000,
@@ -4824,6 +4827,9 @@ async function init(): Promise<void> {
         }
         doSpawn();
       };
+      // Make sure the braille face is decoded before the renderer measures —
+      // a canvas atlas built pre-load would cache tofu for those cells.
+      try { void document.fonts.load("12px 'Glyphh Braille'", "⣿"); } catch { /* older engines */ }
       const doSpawn = (): void => {
         try { fit.fit(); } catch { /* noop */ }
         const { cols, rows } = term;
