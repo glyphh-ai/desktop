@@ -3041,16 +3041,19 @@ body[data-rail-space="cowork"] .dash-wd-chips { display: flex; }
 /* ── Chat landing starters ─────────────────────────────────────────────
    Six characters, each a front door to a space. Chat only — Work and Code
    land on their own surfaces. */
-.dash-starters { display: none; }
-body[data-rail-space="chat"] .dash-starters {
+/* The starters ALWAYS occupy their space — hidden with visibility outside
+   Chat, so the centred landing column is the same height in every space and
+   the greeting starts at exactly the same point on Chat and Work. */
+.dash-starters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
   margin: 2px 0 8px;
 }
-@container dash (max-width: 780px) { body[data-rail-space="chat"] .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container dash (max-width: 520px) { body[data-rail-space="chat"] .dash-starters { grid-template-columns: 1fr; } }
+body:not([data-rail-space="chat"]) .dash-starters { visibility: hidden; }
+@container dash (max-width: 780px) { .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container dash (max-width: 520px) { .dash-starters { grid-template-columns: 1fr; } }
 
 .dash-starter {
   position: relative;
@@ -3071,7 +3074,7 @@ body[data-rail-space="chat"] .dash-starters {
   box-shadow: 0 10px 26px rgba(0,0,0,.28);
 }
 .dash-starter-top { display: flex; align-items: center; gap: 8px; }
-.dash-starter-mascot { width: 30px; height: 30px; flex: none; display: block; }
+.dash-starter-mascot { width: 40px; height: 40px; flex: none; display: block; }
 .dash-starter-mascot svg { width: 100%; height: 100%; display: block; }
 .dash-starter-name { font-size: 12px; font-weight: 650; color: var(--text-2); letter-spacing: .01em; }
 .dash-starter-top .space-pill { margin-left: auto; }

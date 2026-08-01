@@ -61,6 +61,29 @@ function eyes(cy: number, color: string, r = 4.4): string {
   return eye(17.6, cy, r, r * 1.06, color) + eye(29.2, cy, r, r * 1.06, color);
 }
 
+
+/** Nose, mouth and whiskers — the family face. The mouth is the one part
+ *  that changes per character (deadpan, grinning, serene…). Whiskers ride in
+ *  the BODY colour and reach past the silhouette, so they read on a light
+ *  card and a dark one alike. */
+function face(y: number, color: string, mouth: "w" | "smile" | "flat" | "crooked" | "grin"): string {
+  const nose = `<path d="M${24 - 2.4} ${y} L${24 + 2.4} ${y} L24 ${y + 2.3} Z" fill="${K}" fill-opacity="0.82"/>`;
+  const m = {
+    w: `<path d="M20.4 ${y + 3.4} Q22.2 ${y + 5.6} 24 ${y + 3} Q25.8 ${y + 5.6} 27.6 ${y + 3.4}" fill="none" stroke="${K}" stroke-opacity="0.82" stroke-width="1.5" stroke-linecap="round"/>`,
+    smile: `<path d="M19.6 ${y + 3} Q24 ${y + 7.2} 28.4 ${y + 3}" fill="none" stroke="${K}" stroke-opacity="0.82" stroke-width="1.6" stroke-linecap="round"/>`,
+    flat: `<line x1="21" y1="${y + 4}" x2="27" y2="${y + 4}" stroke="${K}" stroke-opacity="0.82" stroke-width="1.6" stroke-linecap="round"/>`,
+    crooked: `<path d="M20 ${y + 3.2} Q23.4 ${y + 6.4} 27.8 ${y + 2.4}" fill="none" stroke="${K}" stroke-opacity="0.82" stroke-width="1.6" stroke-linecap="round"/>`,
+    grin: `<path d="M19.8 ${y + 2.8} Q24 ${y + 8} 28.2 ${y + 2.8} Z" fill="${K}" fill-opacity="0.78"/>`,
+  }[mouth];
+  const wh = `<g stroke="${color}" stroke-width="1.4" stroke-linecap="round">` +
+    `<line x1="15" y1="${y + 0.6}" x2="3.4" y2="${y - 1.4}"/>` +
+    `<line x1="15" y1="${y + 3}" x2="3" y2="${y + 3.8}"/>` +
+    `<line x1="33" y1="${y + 0.6}" x2="44.6" y2="${y - 1.4}"/>` +
+    `<line x1="33" y1="${y + 3}" x2="45" y2="${y + 3.8}"/>` +
+    `</g>`;
+  return wh + nose + m;
+}
+
 /** Body path + the shared gradient wash over it. */
 const lit = (key: MascotKey, d: string, color: string): string =>
   `<path d="${d}" fill="${color}"/><path d="${d}" fill="url(#mg-${key})"/>`;
@@ -70,7 +93,8 @@ const CHARACTERS: Record<MascotKey, (c: string) => string> = {
   scout: (c) => shell("scout", c,
     `<path d="M31.6 40 Q41.4 39.2 41.8 30.6" fill="none" stroke="${c}" stroke-width="3.2" stroke-linecap="round"/>` +
     lit("scout", "M14 1.6 L19.4 18.4 Q24 17 28.6 18.4 L34 1.6 L35.4 26.6 Q35.4 37 24 44.8 Q12.6 37 12.6 26.6 Z", c) +
-    eyes(26, c, 4.1)),
+    eyes(26, c, 4.1) +
+    face(31.6, c, "w")),
 
   // BYTE — built square: clipped ears, blocky head, pixel eyes, zigzag tail.
   byte: (c) => shell("byte", c,
@@ -79,23 +103,24 @@ const CHARACTERS: Record<MascotKey, (c: string) => string> = {
     `<rect x="13.6" y="21" width="8.4" height="8.4" rx="2" fill="${W}"/>` +
     `<rect x="26" y="21" width="8.4" height="8.4" rx="2" fill="${W}"/>` +
     `<rect x="17" y="24.2" width="3.4" height="3.4" rx="0.8" fill="${K}"/>` +
-    `<rect x="29.4" y="24.2" width="3.4" height="3.4" rx="0.8" fill="${K}"/>`),
+    `<rect x="29.4" y="24.2" width="3.4" height="3.4" rx="0.8" fill="${K}"/>` +
+    face(32.4, c, "flat")),
 
   // POST — the round friendly one: tufted ears, the widest eyes, a curl
   // of tail.
   post: (c) => shell("post", c,
     `<path d="M33.6 39.4 Q42.6 39 41.4 32.2 Q40.6 28.4 36.4 30.2" fill="none" stroke="${c}" stroke-width="3.1" stroke-linecap="round"/>` +
     lit("post", "M14 8.6 Q10.4 2.6 16 4.8 L20.4 9.2 Q24 8.3 27.6 9.2 L32 4.8 Q37.6 2.6 34 8.6 Q40.6 14.6 40.6 26 Q40.6 37 24 44.8 Q7.4 37 7.4 26 Q7.4 14.6 14 8.6 Z", c) +
-    eyes(25, c, 4.8)),
+    eyes(25, c, 4.8) +
+    face(32, c, "smile")),
 
-  // PATCH — scrappy: one ear folded over, a permanent wink, a stub of
-  // tail.
+  // PATCH — scrappy: one ear folded over, a crooked grin, a stub of tail.
   patch: (c) => shell("patch", c,
     `<path d="M32 42.2 Q37.8 42 37.6 37.2" fill="none" stroke="${c}" stroke-width="3.2" stroke-linecap="round"/>` +
     lit("patch", "M10 4 L18 17.8 Q24 16.2 30 17.8 L38 3.6 L39 26 Q39 36.8 24 44.8 Q9 36.8 9 26 Z", c) +
     `<path d="M10 4 L17.4 12.4 L9.2 13.6 Z" fill="${K}" fill-opacity="0.3"/>` +
-    eye(17.6, 24.8, 4.4, 4.7, c) +
-    `<path d="M25.8 24.8 Q29.2 22.2 32.6 24.8" fill="none" stroke="${W}" stroke-width="2.2" stroke-linecap="round"/>`),
+    eyes(24.8, c) +
+    face(31, c, "crooked")),
 
   // SAGE — leaning back, both eyes half-closed, a long S of tail.
   sage: (c) => shell("sage", c,
@@ -106,13 +131,15 @@ const CHARACTERS: Record<MascotKey, (c: string) => string> = {
     `<path d="M26 25.2 Q30.4 20.4 34.8 25.2 Q30.4 28.8 26 25.2 Z" fill="${W}"/>` +
     `<circle cx="18.4" cy="24.4" r="1.9" fill="${K}"/>` +
     `<circle cx="31.2" cy="24.4" r="1.9" fill="${K}"/>` +
+    face(31, c, "w") +
     `</g>`),
 
   // TALLY — the symmetrical one: even ears, a perfectly level gaze.
   tally: (c) => shell("tally", c,
     `<path d="M31.4 41 Q39.8 41 39.6 33.6" fill="none" stroke="${c}" stroke-width="3.2" stroke-linecap="round"/>` +
     lit("tally", "M8.4 7.6 L18.6 17.4 Q24 16 29.4 17.4 L39.6 7.6 L40.4 26 Q40.4 36.8 24 44.8 Q7.6 36.8 7.6 26 Z", c) +
-    eyes(25.4, c, 4.6)),
+    eyes(25.4, c, 4.6) +
+    face(32, c, "grin")),
 };
 
 /** One mascot as inline SVG, sized by CSS (the box is square). */
