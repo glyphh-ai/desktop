@@ -201,6 +201,16 @@ export async function loadUsageChart(): Promise<void> {
 // untouched — this draws over whatever is behind it. Self-stops when the
 // landing leaves the screen; restarts on the next load. ──
 let particlesRaf = 0;
+let particlesVariant = "";
+let particlesCleanup: (() => void) | null = null;
+// Three surfaces, three orientations of the ONE HeroFlow engine (web's
+// component verbatim): the splash runs "fan" (home), Work runs "converge"
+// (desktop page), Chat runs "fall" — the CLI page's cascade, streams
+// falling like terminal output in its teal/emerald set.
+const FLOW_VARIANTS = {
+  cowork: { mode: "converge", colors: ["179, 107, 251", "245, 158, 11", "236, 72, 153"], pulse: "255, 236, 180", seed: 2025 },
+  chat: { mode: "fall", colors: ["94, 234, 212", "52, 211, 153", "179, 107, 251"], pulse: "190, 242, 255", seed: 4242 },
+} as const;
 function startDashParticles(): void {
   const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
   if (!canvas || particlesRaf) return;
@@ -208,11 +218,15 @@ function startDashParticles(): void {
   if (!ctx) return;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const COLORS = ["179, 107, 251", "245, 158, 11", "236, 72, 153"];   // DESKTOP_FLOW: purple / amber / pink
-  const PULSE = "255, 236, 180";
+  const variantKey = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
+  particlesVariant = variantKey;
+  const V = FLOW_VARIANTS[variantKey];
+  const mode: "converge" | "fall" = V.mode;
+  const COLORS: readonly string[] = V.colors;
+  const PULSE = V.pulse;
   const WHITE = "255, 255, 255";
   const N = 28;
-  const SEED = 2025;
+  const SEED = V.seed;
 
   const mulberry = (seed: number): (() => number) => () => {
     seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
@@ -226,11 +240,12 @@ function startDashParticles(): void {
   const streams: Stream[] = Array.from({ length: N }, (_, i) => {
     const y0 = 0.5 + (rand() - 0.5) * 0.14;
     const endRaw = rand();
-    const endX = 0.34 + endRaw * 0.28;   // converge: endpoints cluster mid-canvas
+    // converge stops mid-canvas so the two sides meet; fall runs most of the way
+    const endX = mode === "converge" ? 0.34 + endRaw * 0.28 : 0.42 + endRaw * 0.56;
     const y1 = 0.5 + (rand() - 0.5) * 0.95;
     return {
       y0, endX, y1,
-      mirror: i % 2 === 1,   // converge: odd streams enter from the far edge
+      mirror: mode === "converge" && i % 2 === 1,   // converge: odd streams enter from the far edge
       alpha: 0.12 + rand() * 0.24,
       tint: rand() < 0.72 ? 0 : rand() < 0.6 ? 1 : 2,
       dashSpeed: 0.02 + rand() * 0.05,
@@ -259,10 +274,13 @@ function startDashParticles(): void {
   };
   const ro = new ResizeObserver(resize);
   if (canvas.parentElement) ro.observe(canvas.parentElement);
+  particlesCleanup = () => ro.disconnect();
   resize();
 
   type Pt = [number, number];
-  const mapPt = (S: Stream, run: number, fan: number): Pt => [S.mirror ? (1 - run) * w : run * w, fan * h];
+  // fall swaps the axes: streams cascade top-down like terminal output
+  const mapPt = (S: Stream, run: number, fan: number): Pt =>
+    mode === "fall" ? [fan * w, run * h] : [S.mirror ? (1 - run) * w : run * w, fan * h];
   const ctrl = (S: Stream): [Pt, Pt, Pt, Pt] => [
     mapPt(S, 0, S.y0),
     mapPt(S, S.endX * 0.42, S.y0),
@@ -308,10 +326,12 @@ function startDashParticles(): void {
       for (const d of S.scatter) {
         const tw = reduced ? 0.8 : 0.45 + 0.55 * Math.sin(now * 0.0018 * d.tr + d.tw);
         const col = d.tint === 3 ? WHITE : COLORS[d.tint];
-        const sx = S.mirror ? -d.dx : d.dx;
+        // scatter spreads toward the entering edge for converge, downward for fall
+        const sx = mode === "fall" ? d.dy : (S.mirror ? -d.dx : d.dx);
+        const sy = mode === "fall" ? d.dx : d.dy;
         ctx.fillStyle = `rgba(${col}, ${d.a * tw})`;
         ctx.beginPath();
-        ctx.arc(ex + sx, ey + d.dy, d.s / 2, 0, Math.PI * 2);
+        ctx.arc(ex + sx, ey + sy, d.s / 2, 0, Math.PI * 2);
         ctx.fill();
       }
       if (S.pulse && !reduced) {
@@ -342,6 +362,19 @@ function startDashParticles(): void {
   };
   particlesRaf = requestAnimationFrame(frame);
 }
+
+// Switching Chat ↔ Work while the landing is up swaps the flow's orientation
+// (fall ↔ converge) — restart the engine with the new variant.
+window.addEventListener("rail-space-changed", () => {
+  const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
+  if (!canvas || canvas.offsetParent === null) return;
+  const want = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
+  if (want === particlesVariant) return;
+  if (particlesRaf) { cancelAnimationFrame(particlesRaf); particlesRaf = 0; }
+  particlesCleanup?.();
+  particlesCleanup = null;
+  startDashParticles();
+});
 
 export async function loadDashboard(): Promise<void> {
   startDashParticles();
