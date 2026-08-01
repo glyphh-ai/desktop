@@ -1349,6 +1349,8 @@ async function init(): Promise<void> {
     stage.appendChild(renderer.domElement);
 
     let dragEntry: TileEntry | null = null;
+    /** The tile under the cursor — drawTile rings it in the theme highlight. */
+    let hoverEntry: TileEntry | null = null;
     const HOME = { yaw: 0, yOff: 0, dist: -200 };
     let yaw = HOME.yaw, yOff = HOME.yOff, dist = HOME.dist;
     let maxYaw = 1.2;
@@ -1407,7 +1409,7 @@ async function init(): Promise<void> {
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
-    const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; font: string } => {
+    const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; highlight: string; font: string } => {
       const css = getComputedStyle(document.documentElement);
       const v = (name: string, fb: string): string => css.getPropertyValue(name).trim() || fb;
       return {
@@ -1416,6 +1418,9 @@ async function init(): Promise<void> {
         text2: v("--text-2", "#adbac7"),
         text3: v("--text-3", "#7d8590"),
         accent: v("--accent", "#f59e0b"),
+        // Hover ring: a theme may name one (--echo-tile-highlight); otherwise
+        // the brightest ink — white on the default theme.
+        highlight: v("--echo-tile-highlight", v("--text", "#ffffff")),
         font: v("--font-sans", "-apple-system, system-ui, sans-serif"),
       };
     };
@@ -1448,6 +1453,13 @@ async function init(): Promise<void> {
       if (e.open) {
         rr(c, ix - 1.5, iy - 1.5, 59, 59, 15.5);
         c.strokeStyle = theme.accent;
+        c.lineWidth = 1.5;
+        c.stroke();
+      }
+      if (e === hoverEntry) {
+        // hover ring — the theme's highlight ink (white on default)
+        rr(c, ix - 1.5, iy - 1.5, 59, 59, 15.5);
+        c.strokeStyle = theme.highlight;
         c.lineWidth = 1.5;
         c.stroke();
       }
@@ -2994,6 +3006,23 @@ async function init(): Promise<void> {
       reordered = false;
       positionWall();
     };
+
+    // Hover highlight — ring the tile under the cursor in the theme's
+    // highlight ink (white by default) and show a pointer. Suppressed while
+    // a reorder drag is riding the cursor.
+    const setHover = (next: TileEntry | null): void => {
+      if (next === hoverEntry) return;
+      const prev = hoverEntry;
+      hoverEntry = next;
+      if (prev) drawTile(prev);
+      if (next) drawTile(next);
+      stage.style.cursor = next ? "pointer" : "";
+    };
+    stage.addEventListener("mousemove", (e) => {
+      if (dragEntry) { setHover(null); return; }
+      setHover(overUi(e.target) ? null : pick(e));
+    });
+    stage.addEventListener("mouseleave", () => setHover(null));
 
     stage.addEventListener("mousedown", (e) => {
       if (e.button !== 0 || overUi(e.target)) return;
