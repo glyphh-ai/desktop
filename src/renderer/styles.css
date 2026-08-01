@@ -3000,11 +3000,13 @@ body.account-locked #dl-btn-wrap {
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
-  /* vertically centred landing — the column floats mid-page */
+  /* Vertically centred landing — the column floats mid-page. `safe` is
+     load-bearing: without it an overflowing column centres by pushing its
+     top out of the scroll box, and the greeting disappears upward. */
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: safe center;
 }
 @container dash (max-width: 720px) { .dash-scroll { padding: 18px 16px 32px; } }
 .dash-header {
@@ -3041,9 +3043,10 @@ body[data-rail-space="cowork"] .dash-wd-chips { display: flex; }
 /* ── Chat landing starters ─────────────────────────────────────────────
    Six characters, each a front door to a space. Chat only — Work and Code
    land on their own surfaces. */
-/* The starters ALWAYS occupy their space — hidden with visibility outside
-   Chat, so the centred landing column is the same height in every space and
-   the greeting starts at exactly the same point on Chat and Work. */
+/* Chat only. (Hidden with display, not visibility: a reserved-but-invisible
+   block made the landing column taller than its container, and a centred
+   flex column that overflows pushes its FIRST child out through the top —
+   which is why the greeting kept sitting too high instead of centred.) */
 .dash-starters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3051,7 +3054,7 @@ body[data-rail-space="cowork"] .dash-wd-chips { display: flex; }
   width: 100%;
   margin: 2px 0 8px;
 }
-body:not([data-rail-space="chat"]) .dash-starters { visibility: hidden; }
+body:not([data-rail-space="chat"]) .dash-starters { display: none; }
 @container dash (max-width: 780px) { .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container dash (max-width: 520px) { .dash-starters { grid-template-columns: 1fr; } }
 
@@ -3098,7 +3101,7 @@ body:not([data-rail-space="chat"]) .dash-starters { visibility: hidden; }
 
 /* Chat mode hides the cowork content but KEEPS its space — the composer
    stays fixed in the page; the toggle never makes the layout jump */
-body.chat-only .dash-two-col { visibility: hidden; }
+body.chat-only .dash-two-col { display: none; }
 
 /* The agent's head chrome matches the session's SPACE (or the active tab
    before the first send creates the session):

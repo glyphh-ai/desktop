@@ -26,9 +26,30 @@ export interface LayoutTemplate {
   }>;
 }
 
-/** The NotebookLM app the research skill drives over RPA. The cell is
- *  skipped harmlessly when the app isn't installed. */
-const NOTEBOOKLM = "notebooklm-f90d39da";
+/** NotebookLM — the surface the research skill drives over RPA. It ships as
+ *  a default app: the Research starter installs it into the library if the
+ *  org doesn't have it, so the layout always has something to open. */
+const NOTEBOOKLM = { slug: "notebooklm", name: "NotebookLM", url: "https://notebooklm.google.com" };
+
+/** Make sure a default app exists, and answer with the panel id the layout
+ *  should reference (existing rows keep their own slug — we never duplicate
+ *  an app the user already has under another name). */
+async function ensureDefaultApp(app: { slug: string; name: string; url: string }): Promise<string> {
+  try {
+    const apps = (await window.yo.panelAppsList?.()) ?? [];
+    const host = new URL(app.url).host;
+    const hit = apps.find((a) => {
+      const row = a as { slug?: string; url?: string | null };
+      if ((row.slug || "").toLowerCase().includes(app.slug)) return true;
+      try { return !!row.url && new URL(row.url).host === host; } catch { return false; }
+    }) as { slug?: string; id?: string } | undefined;
+    if (hit) return (hit.slug || hit.id || app.slug).toLowerCase();
+    const made = await window.yo.panelAppsCreate?.({ name: app.name, slug: app.slug, url: app.url, isBrowser: true });
+    return (made?.app?.slug || app.slug).toLowerCase();
+  } catch {
+    return app.slug;   // offline — the cell resolves (or is skipped) on the next try
+  }
+}
 
 export const STARTER_LAYOUTS: Record<"dev" | "email" | "research", LayoutTemplate> = {
   // The agent down the left, the code it is writing on the right.
@@ -56,7 +77,7 @@ export const STARTER_LAYOUTS: Record<"dev" | "email" | "research", LayoutTemplat
     colWidths: [0.4, 0.6], rowHeights: [1], sessionMode: "last",
     cells: [
       { panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: NOTEBOOKLM, col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "@notebooklm", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
     ],
   },
 };
@@ -72,11 +93,19 @@ export async function openStarterLayout(key: keyof typeof STARTER_LAYOUTS): Prom
     const existing = (await window.yo.layoutsList?.()) ?? [];
     const known = existing.some((l) => (l as { name?: string }).name === t.name);
     if (!known) {
+      // "@notebooklm" resolves to a real panel id, installing the default
+      // app first if the org doesn't have it yet.
+      const cells = [];
+      for (const cell of t.cells) {
+        cells.push(cell.panelId === "@notebooklm"
+          ? { ...cell, panelId: await ensureDefaultApp(NOTEBOOKLM) }
+          : cell);
+      }
       await window.yo.layoutsSaveGrid?.({
         name: t.name,
         cols: t.cols, rows: t.rows,
         colWidths: t.colWidths, rowHeights: t.rowHeights,
-        cells: t.cells,
+        cells,
         folderMode: "single",
         target: "glyphh",
         sessionMode: t.sessionMode,
