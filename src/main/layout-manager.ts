@@ -41,6 +41,10 @@ export interface ServerLayout {
   /** Opening this layout switches the agent to this folder. Absent → the
    *  current working folder stays. */
   folder?: string;
+  /** The SPACE this layout belongs to — which agent rides it (chat | cowork |
+   *  code). Absent → derived from content (dev tool panels ⇒ code, else
+   *  cowork). One layout, one space: dual use means two layouts. */
+  space?: "chat" | "cowork" | "code";
 }
 
 const LAYOUTS_CACHE_KEY = "/api/layouts";
@@ -66,6 +70,7 @@ export function fetchServerLayouts(): Promise<ServerLayout[]> {
         ...(typeof data.loop === "string" && data.loop ? { loop: data.loop } : {}),
         ...(data.sessionMode === "new" || data.sessionMode === "last" ? { sessionMode: data.sessionMode } : {}),
         ...(typeof data.folder === "string" && data.folder ? { folder: data.folder } : {}),
+        ...(data.space === "chat" || data.space === "cowork" || data.space === "code" ? { space: data.space } : {}),
         ...(data.modelSelections && typeof data.modelSelections === "object"
           ? { modelSelections: data.modelSelections as Record<string, string> }
           : {}),
@@ -123,6 +128,9 @@ export interface GridLayout {
   sessionMode?: "keep" | "new" | "last";
   /** Folder the agent switches to on open. */
   folder?: string;
+  /** The space this layout belongs to (chat | cowork | code). Absent →
+   *  derived from content at open time. */
+  space?: "chat" | "cowork" | "code";
 }
 
 // ── Legacy types (migration only) ───────────────────────────
@@ -228,6 +236,7 @@ export class LayoutManager {
       ...(sl.modelSelections ? { modelSelections: sl.modelSelections } : {}),
       ...(sl.sessionMode ? { sessionMode: sl.sessionMode } : {}),
       ...(sl.folder ? { folder: sl.folder } : {}),
+      ...(sl.space ? { space: sl.space } : {}),
     };
   }
 
@@ -245,6 +254,7 @@ export class LayoutManager {
       ...(grid.modelSelections && Object.keys(grid.modelSelections).length ? { modelSelections: grid.modelSelections } : {}),
       ...(grid.sessionMode && grid.sessionMode !== "keep" ? { sessionMode: grid.sessionMode } : {}),
       ...(grid.folder ? { folder: grid.folder } : {}),
+      ...(grid.space ? { space: grid.space } : {}),
     };
     const id = this.serverIds.get(grid.name);
     const saved = await getClient().layouts.save({ name: grid.name, data: body, ...(id ? { id } : {}) });

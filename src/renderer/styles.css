@@ -3088,9 +3088,10 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 body[data-rail-space="chat"] .app-rail-nav-item[data-space]:not([data-space~="chat"]) { display: none; }
 body[data-rail-space="cowork"] .app-rail-nav-item[data-space]:not([data-space~="cowork"]) { display: none; }
 body[data-rail-space="code"] .app-rail-nav-item[data-space]:not([data-space~="code"]) { display: none; }
-body[data-rail-space="chat"] .app-rail-nav,
-body[data-rail-space="chat"] #code-cc-btn,
-body[data-rail-space="chat"] .echo-zoom { display: none !important; }
+/* CHAT keeps no nav — but the COMMAND CENTER works in every space now:
+   the wall shows all layouts (space-badged) and opening one activates its
+   own space, so chat is a fine place to stand when reaching for it. */
+body[data-rail-space="chat"] .app-rail-nav { display: none !important; }
 
 /* The rail's SPACE tabs — Chat | Code, above + New session. The active
    space should be unmissable: filled accent pill, icon + label. */
@@ -3110,7 +3111,9 @@ body[data-rail-space="chat"] .echo-zoom { display: none !important; }
 .rail-mode-tabs button:hover { color: var(--text); background: var(--hover); }
 .rail-mode-tabs button.active {
   background: var(--accent);
-  color: #fff;
+  /* Ink on accent, every theme: bright accents (Matrix green, amber) made
+     white text unreadable. */
+  color: #000;
 }
 
 /* Settings › Usage: the Add credits action above the metric cards */
@@ -10263,6 +10266,15 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
 .ws-section-body > .help-section[data-section="layouts"] {
   display: flex; flex-direction: column;
 }
+/* Settings/Docs scroll an INNER pane (.settings-panels) — the hosted
+   section's own right/bottom gutter left that pane's scrollbar floating
+   inboard of the card edge. Mirror the full-page rule (#page-body:has):
+   drop the outer gutter, the pane's 28px padding keeps the content inset. */
+.ws-section-body > .help-section[data-section="docs"],
+.ws-section-body > .help-section[data-section="settings"] {
+  padding-right: 0;
+  padding-bottom: 0;
+}
 
 /* Floating relaunch-to-update badge (was in the rail; the rail is gone). */
 .app-relaunch-float {
@@ -12654,8 +12666,8 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
      chip's right edge instead of pushing the page wider. */
   left: auto; right: 0;
 }
-/* (right-anchoring retired — every chip's drop-up is centred over the chat
-   input at open time; see centerDropOverInput) */
+/* (positioning is JS-owned at open time — up and to the left, viewport
+   clamped; see openChipDropUp) */
 /* A multi-slot loop names every binding on the chip ("Planner: Fable 5 / …");
    cap it so a many-slot loop cannot blow up the composer row — the title
    attribute carries the full cast. */

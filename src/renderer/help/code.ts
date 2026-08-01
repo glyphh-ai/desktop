@@ -470,22 +470,27 @@ function refreshCtxMeter(): void {
   }, 350);
 }
 
-/** A chip's drop-up opens CENTRED OVER THE CHAT INPUT, not hard against the
- *  chip that spawned it — the menus are wider than the chips, and a
- *  right-hand chip used to throw its list off to one side. Clamped to the
- *  composer so it never spills past the panel edge. */
-function centerDropOverInput(menu: HTMLElement): void {
+/** A chip's drop-up opens UP AND TO THE LEFT: its right edge stays on the
+ *  chip, so a menu wider than its chip grows into the page instead of past
+ *  the composer's right edge (which used to widen the row and shove the
+ *  input sideways on the Chat/Work landing). Height clamps to the space
+ *  above the chip so a short window scrolls the menu instead of clipping
+ *  its top. If left growth would leave the viewport, it clamps back. */
+function openChipDropUp(menu: HTMLElement): void {
   const wrap = menu.parentElement;
-  const input = el("code-input") ?? document.querySelector<HTMLElement>(".code-input-wrap");
-  if (!wrap || !input) return;
-  menu.style.left = "0px";
-  menu.style.right = "auto";
+  if (!wrap) return;
+  menu.style.left = "auto";
+  menu.style.right = "0px";
   const wrapBox = wrap.getBoundingClientRect();
-  const inputBox = input.getBoundingClientRect();
+  // bottom: calc(100% + 8px) — the menu's bottom sits 8px above the chip.
+  const room = Math.max(140, wrapBox.top - 8 - 12);
+  menu.style.maxHeight = `${Math.round(room)}px`;
+  menu.style.overflowY = "auto";
   const menuBox = menu.getBoundingClientRect();
-  const centred = inputBox.left + inputBox.width / 2 - menuBox.width / 2;
-  const clamped = Math.max(inputBox.left, Math.min(centred, inputBox.right - menuBox.width));
-  menu.style.left = `${Math.round(clamped - wrapBox.left)}px`;
+  if (menuBox.left < 8) {
+    menu.style.right = "auto";
+    menu.style.left = `${Math.round(8 - wrapBox.left)}px`;
+  }
 }
 
 function initComposerControls(): void {
@@ -507,7 +512,7 @@ function initComposerControls(): void {
       const opening = mmenu.classList.contains("hidden");
       mmenu.classList.toggle("hidden");
       if (opening) {
-        centerDropOverInput(mmenu);
+        openChipDropUp(mmenu);
         picker.focusSearch(mmenu);
         // Re-resolve behind the open menu, FORCING past the cache — so a model
         // an admin just added/removed on the platform shows on the next open,
@@ -536,17 +541,17 @@ function initComposerControls(): void {
     renderModeMenu();
     const mm = el("code-mode-menu");
     mm?.classList.toggle("hidden");
-    if (mm && !mm.classList.contains("hidden")) centerDropOverInput(mm);
+    if (mm && !mm.classList.contains("hidden")) openChipDropUp(mm);
   });
   el("code-effort-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
     el("code-mode-menu")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
-    void refreshLoops().then(() => { renderLoopMenu(); const p2 = el("code-effort-pop"); if (p2 && !p2.classList.contains("hidden")) centerDropOverInput(p2); });
+    void refreshLoops().then(() => { renderLoopMenu(); const p2 = el("code-effort-pop"); if (p2 && !p2.classList.contains("hidden")) openChipDropUp(p2); });
     renderLoopMenu();
     const lp = el("code-effort-pop");
     lp?.classList.toggle("hidden");
-    if (lp && !lp.classList.contains("hidden")) centerDropOverInput(lp);
+    if (lp && !lp.classList.contains("hidden")) openChipDropUp(lp);
   });
   // Context panel — per-lane distance to compaction, anchored to the meter.
   const ctxWrap = el("code-ctx-wrap");
@@ -566,7 +571,7 @@ function initComposerControls(): void {
     if (!cpop) return;
     const opening = cpop.classList.contains("hidden");
     cpop.classList.toggle("hidden");
-    if (opening) { centerDropOverInput(cpop); void renderCtxPop(); }
+    if (opening) { openChipDropUp(cpop); void renderCtxPop(); }
   });
   document.addEventListener("click", (e) => {
     const t = e.target as Node;
@@ -2750,6 +2755,19 @@ export function initCode(): void {
     railTab = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
     enterSpace(true);
   }));
+  // A layout ACTIVATES ITS OWN SPACE (code-workbench dispatches on open):
+  // the tab, lists, and menus follow the layout — without navigating away
+  // from it, and without resetting the session the layout is about to bind.
+  window.addEventListener("glyphh:layout-space", (e) => {
+    const s = (e as CustomEvent).detail;
+    if (s !== "chat" && s !== "cowork" && s !== "code") return;
+    if (railTab === s) return;
+    railTab = s;
+    paintRailTabs();
+    renderHistory();
+    paintCw();
+    void checkWorkdirGate();
+  });
   void Promise.all([
     window.yo.getPreference?.("lastSessionChat", ""),
     window.yo.getPreference?.("lastSessionCowork", ""),

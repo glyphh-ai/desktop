@@ -43,6 +43,15 @@
               <div id="layout-loop-models" class="layout-loop-models"></div>
             </div>
 
+            <label class="settings-label" style="margin-top:16px;">Space</label>
+            <div class="settings-hint" style="margin:-2px 0 8px;">Which agent rides this layout &mdash; opening it activates that tab. Auto derives it from the panels (dev tools &rArr; Code).</div>
+            <select id="layout-space" class="settings-input">
+              <option value="">Auto (from the panels)</option>
+              <option value="chat">Chat</option>
+              <option value="cowork">Work</option>
+              <option value="code">Code</option>
+            </select>
+
             <label class="settings-label" style="margin-top:16px;">Agent session</label>
             <div class="settings-hint" style="margin:-2px 0 8px;">What the agent&rsquo;s session does when this layout opens.</div>
             <select id="layout-session-mode" class="settings-input">

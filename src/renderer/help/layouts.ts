@@ -174,6 +174,7 @@ const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSe
 // ── Loop + models this layout activates on open ──────────────────────────
 const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
 const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
+const layoutSpaceSelect = document.getElementById("layout-space") as HTMLSelectElement | null;
 const layoutFolderInput = document.getElementById("layout-folder-input") as HTMLInputElement | null;
 const layoutFolderPickBtn = document.getElementById("layout-folder-pick") as HTMLButtonElement | null;
 const layoutFolderClearBtn = document.getElementById("layout-folder-clear") as HTMLButtonElement | null;
@@ -674,6 +675,10 @@ async function editLayout(name: string) {
     const sm = (layout as { sessionMode?: string })?.sessionMode;
     layoutSessionSelect.value = sm === "new" || sm === "last" ? sm : "keep";
   }
+  if (layoutSpaceSelect) {
+    const sp = (layout as { space?: string | null })?.space;
+    layoutSpaceSelect.value = sp === "chat" || sp === "cowork" || sp === "code" ? sp : "";
+  }
   if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
   // Loop + models this layout activates on open.
   builderLoop = (layout as { loop?: string })?.loop ?? "";
@@ -705,6 +710,7 @@ async function newLayout() {
   gridRowsSelect.value = "1";
   if (folderModeSelect) folderModeSelect.value = "single";
   if (layoutSessionSelect) layoutSessionSelect.value = "keep";
+  if (layoutSpaceSelect) layoutSpaceSelect.value = "";
   if (layoutFolderInput) layoutFolderInput.value = "";
   builderLoop = "";
   builderModelSelections = {};
@@ -797,6 +803,8 @@ async function saveLayout() {
     sessionMode: (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last"
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
     folder: layoutFolderInput?.value.trim() || null,
+    ...(layoutSpaceSelect?.value === "chat" || layoutSpaceSelect?.value === "cowork" || layoutSpaceSelect?.value === "code"
+      ? { space: layoutSpaceSelect.value as "chat" | "cowork" | "code" } : {}),
   });
   cancelLayout();
   // Settle pass: re-pull once the server write has certainly landed, so the

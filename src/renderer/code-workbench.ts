@@ -392,7 +392,7 @@ async function init(): Promise<void> {
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string } }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -413,6 +413,31 @@ async function init(): Promise<void> {
   function activeSpace(): "chat" | "cowork" | "code" {
     const v = document.body.dataset.railSpace;
     return v === "code" ? "code" : v === "chat" ? "chat" : "cowork";
+  }
+  /** THE LAYOUT decides its space, not the tab it was opened from: explicit
+   *  `space` wins; otherwise dev tool panels make it a Code layout, anything
+   *  else is Work. One layout, one space — dual use means two layouts. */
+  const DEV_PANEL_RE = /^tool:(coding|terminal|editor|diff|git)/;
+  /** The rail tabs' own glyphs (24-box stroke paths) — drawn as tile badges. */
+  const SPACE_GLYPHS: Record<"chat" | "cowork" | "code", string[]> = {
+    chat: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
+    cowork: [
+      "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
+      "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
+    ],
+    code: ["M16 18 L22 12 L16 6", "M8 6 L2 12 L8 18"],
+  };
+  function layoutSpace(row?: { space?: string | null; splits?: Array<{ panelId: string }> } | null): "chat" | "cowork" | "code" {
+    const s = row?.space;
+    if (s === "chat" || s === "cowork" || s === "code") return s;
+    return (row?.splits ?? []).some((p) => DEV_PANEL_RE.test(String(p.panelId || ""))) ? "code" : "cowork";
+  }
+  /** Opening a layout activates ITS space — the rail tab follows the layout
+   *  (help/code.ts listens and re-scopes lists/menus without navigating). */
+  function activateLayoutSpace(row: Parameters<typeof layoutSpace>[0]): "chat" | "cowork" | "code" {
+    const space = layoutSpace(row);
+    window.dispatchEvent(new CustomEvent("glyphh:layout-space", { detail: space }));
+    return space;
   }
   function layoutSessionKey(name: string, space: string = activeSpace()): string {
     return `workbench:layoutsession:${name.trim().toLowerCase()}:${space}`;
@@ -1472,6 +1497,28 @@ async function init(): Promise<void> {
         c.textAlign = "center"; c.textBaseline = "middle";
         c.fillText((e.tile.name || "?").charAt(0).toUpperCase(), TILE_PX_W / 2, iy + 28);
       }
+      if (e.tile.kind === "layout") {
+        // Space badge — the rail tab's own glyph in a chip at the icon's
+        // upper-right, so a wall of layouts reads Chat/Work/Code at a glance.
+        const space = layoutSpace(e.tile.layoutRow);
+        const paths = SPACE_GLYPHS[space];
+        const bs = 18, bx = ix + 56 - bs / 2 - 1, by = iy - 1;
+        rr(c, bx, by, bs, bs, 5);
+        c.fillStyle = theme.surface2;
+        c.fill();
+        c.strokeStyle = theme.text3;
+        c.lineWidth = 1;
+        c.stroke();
+        c.save();
+        c.translate(bx + 3, by + 3);
+        c.scale(12 / 24, 12 / 24);
+        c.strokeStyle = theme.text2;
+        c.lineWidth = 2.4;
+        c.lineCap = "round";
+        c.lineJoin = "round";
+        for (const d of paths) c.stroke(new Path2D(d));
+        c.restore();
+      }
       if (editMode && removable(e.tile)) {
         // the delete badge — red disc + white ✕, upper-left of the icon
         const bx = ix + 1, by = iy + 1;
@@ -1583,12 +1630,10 @@ async function init(): Promise<void> {
      *  tile mutates these and re-runs positionWall(); nothing is rebuilt, so
      *  open cards keep pointing at their tile. */
     let wallBands: TileEntry[][] = [];
-    /** Space scoping: WORK and CODE both get the full wall (apps +
-     *  layouts). The CHAT space hides its entry points entirely (CSS), and
-     *  if the wall is reached anyway (⌘.), layouts stay hidden — chat
-     *  doesn't navigate. */
-    const spaceHidden = (t: EchoTile): boolean =>
-      document.body.dataset.railSpace === "chat" && t.kind === "layout";
+    /** EVERY space sees the full wall (apps + all layouts) — a layout
+     *  carries its own space (badge on the tile) and opening one activates
+     *  it, so there is nothing to hide per tab anymore. */
+    const spaceHidden = (_t: EchoTile): boolean => false;
     const bandRows = (): TileEntry[][] => {
       const rows: TileEntry[][] = [];
       for (const band of wallBands) {
@@ -2462,11 +2507,11 @@ async function init(): Promise<void> {
         {
           type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir?(dir: string): void };
           const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+          const space = activateLayoutSpace(layout);
           const mode = layout.sessionMode ?? "keep";
           if (sess && mode === "new") {
             sess.startNew();
           } else if (sess && mode === "last" && layout.name) {
-            const space = activeSpace();
             let last: string | null = null;
             try {
               last = localStorage.getItem(layoutSessionKey(layout.name, space))
@@ -5040,11 +5085,11 @@ async function init(): Promise<void> {
       void (async () => {
         type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir(dir: string): void };
         const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+        const space = activateLayoutSpace(layout);
         const mode = layout.sessionMode ?? "keep";
         const stamp = (): void => { if (layout.folder) sess?.stampWorkdir(layout.folder); };
         if (!sess || mode === "keep") { stamp(); return; }
         if (mode === "new") { sess.startNew(); stamp(); return; }
-        const space = activeSpace();
         let last: string | null = null;
         try {
           last = localStorage.getItem(layoutSessionKey(layout.name, space))

@@ -309,6 +309,25 @@ export const SPECS = [
     `,
   },
   {
+    name: "a layout ACTIVATES ITS OWN SPACE (dev layout opened from Work flips to Code)",
+    fresh: true,
+    body: `
+      // "Coding day" contains tool:coding → it is a CODE layout no matter
+      // which tab it is opened from; opening it re-scopes the rail to Code.
+      await until(() => tab("cowork")?.classList.contains("active"));
+      killTransitions();
+      window.__wbEchoReset();
+      await sleep(500);
+      const search = $(".echo-search");
+      typeInto(search, "coding day");
+      pressEnter(search);
+      await until(() => $$(".echo-card").length >= 1, 8000);
+      await until(() => document.body.dataset.railSpace === "code", 4000);
+      const codeTabActive = tab("code")?.classList.contains("active");
+      return ok(codeTabActive, "railSpace=" + document.body.dataset.railSpace);
+    `,
+  },
+  {
     name: "landing wears each space's voice (folder chips, subtitle, placeholder)",
     fresh: true,
     body: `
