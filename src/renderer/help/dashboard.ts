@@ -8,6 +8,9 @@
 
 import { $a, cssVar, escapeHtml, paginate, renderPaginationBar } from "./shared.js";
 import { openUrlInWorkbench, seedNewSession, openRunSession, adoptComposer } from "./code.js";
+import { SPACE_LABEL, spacePillHtml, type Space } from "./space-meta.js";
+import { mascotSvg, type Mascot } from "./mascots.js";
+import { openStarterLayout, type STARTER_LAYOUTS } from "./starter-layouts.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: any;
@@ -389,6 +392,7 @@ export async function loadDashboard(): Promise<void> {
     // the FULL agent footer moves into the Home slot while Home is up
     adoptComposer(document.getElementById("dash-composer-slot"));
 
+    renderStarters();
     renderRecommendations();
     void loadRuns();
   } catch (err) {
@@ -450,6 +454,85 @@ const RECOMMENDATIONS: Array<{ prompt: string; icon: string }> = [
     icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   },
 ];
+
+// ── Chat landing starters — the front door to ALL THREE spaces ──────────
+// Every card names the space it opens into and wears that space's pill, so
+// "Research a topic" visibly takes you to Work (it drives NotebookLM over
+// RPA, which only Work can do) and "Build an app" takes you to Code. A card
+// switches the tab, lands on a fresh session, and seeds the composer — it
+// never sends; the user finishes the thought and hits enter.
+interface Starter {
+  space: Space; title: string; blurb: string; seed: string; mascot: Mascot;
+  /** The workspace this starter opens into, if any (Chat starters need none). */
+  layout?: keyof typeof STARTER_LAYOUTS;
+}
+const STARTERS: Starter[] = [
+  {
+    space: "cowork", title: "Research a topic",
+    blurb: "NotebookLM does the digging — sources imported, deck built, findings remembered.",
+    seed: "/notebook-research ", layout: "research",
+    mascot: { name: "Scout", key: "scout", color: "#2dd4bf" },
+  },
+  {
+    space: "code", title: "Build an app",
+    blurb: "From one sentence to a running app in your workspace.",
+    seed: "/build-glyphh-app ", layout: "dev",
+    mascot: { name: "Byte", key: "byte", color: "#a78bfa" },
+  },
+  {
+    space: "cowork", title: "Triage my inbox",
+    blurb: "What actually needs you today — and drafts for the easy ones.",
+    seed: "Read my inbox and give me a brief of what actually needs me today, with drafts for anything routine.", layout: "email",
+    mascot: { name: "Post", key: "post", color: "#fbbf24" },
+  },
+  {
+    space: "code", title: "Fix a bug",
+    blurb: "Point at the symptom; the agent reads the folder and lands the fix.",
+    seed: "In my working folder, find and fix: ", layout: "dev",
+    mascot: { name: "Patch", key: "patch", color: "#fb7185" },
+  },
+  {
+    space: "chat", title: "Explain something",
+    blurb: "A straight answer, no tools, no workspace — just the explanation.",
+    seed: "Explain, simply and concretely: ",
+    mascot: { name: "Sage", key: "sage", color: "#60a5fa" },
+  },
+  {
+    space: "chat", title: "Weigh a decision",
+    blurb: "Lay out the options, the trade-offs, and a recommendation.",
+    seed: "Help me decide between: ",
+    mascot: { name: "Tally", key: "tally", color: "#4ade80" },
+  },
+];
+
+function renderStarters(): void {
+  const host = document.getElementById("dash-starters");
+  if (!host || host.childElementCount) return;
+  for (const s of STARTERS) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = `dash-starter dash-starter-${s.space}`;
+    card.innerHTML =
+      `<span class="dash-starter-top">` +
+      `<span class="dash-starter-mascot">${mascotSvg(s.mascot)}</span>` +
+      `<span class="dash-starter-name"></span>` +
+      spacePillHtml(s.space) +
+      `</span>` +
+      `<span class="dash-starter-title"></span>` +
+      `<span class="dash-starter-blurb"></span>`;
+    card.querySelector(".dash-starter-name")!.textContent = s.mascot.name;
+    card.querySelector(".dash-starter-title")!.textContent = s.title;
+    card.querySelector(".dash-starter-blurb")!.textContent = s.blurb;
+    card.title = `${s.mascot.name} · opens in ${SPACE_LABEL[s.space]}`;
+    card.addEventListener("click", () => {
+      // The setup comes first — the layout carries the space, so the tab,
+      // the panels, and the session all land together; then the prompt.
+      if (s.layout) void openStarterLayout(s.layout).then(() => seedNewSession(s.seed, s.space));
+      else seedNewSession(s.seed, s.space);
+    });
+    host.appendChild(card);
+  }
+}
 
 function renderRecommendations(): void {
   const host = document.getElementById("dash-recs");

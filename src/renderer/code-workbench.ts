@@ -475,7 +475,7 @@ async function init(): Promise<void> {
    *  (help/code.ts listens and re-scopes lists/menus without navigating). */
   function activateLayoutSpace(row: Parameters<typeof layoutSpace>[0]): "chat" | "cowork" | "code" {
     const space = layoutSpace(row);
-    window.dispatchEvent(new CustomEvent("glyphh:layout-space", { detail: space }));
+    window.dispatchEvent(new CustomEvent("glyphh:activate-space", { detail: space }));
     return space;
   }
   function layoutSessionKey(name: string, space: string = activeSpace()): string {

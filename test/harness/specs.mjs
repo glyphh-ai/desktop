@@ -44,13 +44,13 @@ export const HELPERS = `
 export const SPECS = [
   // ── Group 1: boot + spaces (fresh boot) ─────────────────────────────────
   {
-    name: "boot lands on the Work tab with the dashboard landing",
+    name: "boot lands on the Chat tab with the dashboard landing",
     fresh: true,
     body: `
-      await until(() => tab("cowork"));
-      await until(() => tab("cowork").classList.contains("active"));
+      await until(() => tab("chat"));
+      await until(() => tab("chat").classList.contains("active"));
       await until(() => document.querySelector('.help-section[data-section="dashboard"].active'));
-      return ok(document.body.dataset.railSpace === "cowork", "railSpace=" + document.body.dataset.railSpace);
+      return ok(document.body.dataset.railSpace === "chat", "railSpace=" + document.body.dataset.railSpace);
     `,
   },
   {
@@ -86,7 +86,11 @@ export const SPECS = [
     name: "+ New session creates NOTHING until the first send",
     fresh: true,
     body: `
-      await until(() => $("#code-new-chat") && tab("cowork")?.classList.contains("active"));
+      await until(() => $("#code-new-chat"));
+      click(tab("cowork"));
+      await until(() => tab("cowork"));
+      click(tab("cowork"));
+      await until(() => tab("cowork").classList.contains("active"));
       const before = window.__stub.store().chats.length;
       click($("#code-new-chat"));
       await sleep(400);
@@ -112,7 +116,9 @@ export const SPECS = [
     fresh: true,
     seed: [{ id: "cA", title: "chat one", createdAt: 1722400000000, messages: [{ role: "user", text: "hi", at: 1 }], mode: "chat" }],
     body: `
-      await until(() => tab("cowork")?.classList.contains("active"), 8000);
+      await until(() => tab("cowork"), 8000);
+      click(tab("cowork"));
+      await until(() => tab("cowork").classList.contains("active"), 8000);
       await until(() => composer());
       typeInto(composer(), "work message");
       pressEnter(composer());
@@ -146,7 +152,9 @@ export const SPECS = [
     name: "two sessions run in PARALLEL; composer state follows the session on screen",
     fresh: true,
     body: `
-      await until(() => composer() && tab("cowork")?.classList.contains("active"));
+      await until(() => composer() && tab("cowork"));
+      click(tab("cowork"));
+      await until(() => tab("cowork").classList.contains("active"));
       // session 1 (work): send — run starts and STAYS live (no done event)
       typeInto(composer(), "long work task");
       pressEnter(composer());
@@ -187,7 +195,9 @@ export const SPECS = [
     name: "inline CONNECT card: offered in-thread, OAuth runs in-app, tool answered",
     fresh: true,
     body: `
-      await until(() => composer() && tab("cowork")?.classList.contains("active"));
+      await until(() => composer() && tab("cowork"));
+      click(tab("cowork"));
+      await until(() => tab("cowork").classList.contains("active"));
       // a live work session (the card lands in the run's thread)
       typeInto(composer(), "connect to notion please");
       pressEnter(composer());
@@ -240,7 +250,9 @@ export const SPECS = [
     fresh: true,
     body: `
       killTransitions();
-      await until(() => tab("cowork")?.classList.contains("active"));
+      await until(() => tab("cowork"));
+      click(tab("cowork"));
+      await until(() => tab("cowork").classList.contains("active"));
       // open echo via the header eye (mounts the surface). Boot has the HOME
       // landing open as a card — that's the baseline, not an empty surface.
       await until(() => $("#code-cc-btn"));
@@ -309,7 +321,9 @@ export const SPECS = [
     body: `
       // "Coding day" contains tool:coding → it is a CODE layout no matter
       // which tab it is opened from; opening it re-scopes the rail to Code.
-      await until(() => tab("cowork")?.classList.contains("active"));
+      await until(() => tab("cowork"));
+      click(tab("cowork"));
+      await until(() => tab("cowork").classList.contains("active"));
       killTransitions();
       window.__wbEchoReset();
       await sleep(500);
@@ -320,6 +334,25 @@ export const SPECS = [
       await until(() => document.body.dataset.railSpace === "code", 4000);
       const codeTabActive = tab("code")?.classList.contains("active");
       return ok(codeTabActive, "railSpace=" + document.body.dataset.railSpace);
+    `,
+  },
+  {
+    name: "Chat starters: six mascot cards, each opening into its own space",
+    fresh: true,
+    body: `
+      await until(() => tab("chat")?.classList.contains("active"));
+      await until(() => $$(".dash-starter").length === 6, 6000);
+      const cards = $$(".dash-starter");
+      const everyCardHasMascotAndPill = cards.every((c) =>
+        c.querySelector(".dash-starter-mascot svg") && c.querySelector(".space-pill") && c.querySelector(".dash-starter-name").textContent);
+      const spaces = cards.map((c) => [...c.classList].find((k) => k.startsWith("dash-starter-")) || "");
+      // a CODE card switches the rail to Code and seeds the composer
+      const codeCard = cards.find((c) => c.classList.contains("dash-starter-code"));
+      click(codeCard);
+      await until(() => document.body.dataset.railSpace === "code", 4000);
+      const seeded = (composer()?.value || "").length > 0;
+      return ok(everyCardHasMascotAndPill && seeded,
+        JSON.stringify({ n: cards.length, everyCardHasMascotAndPill, seeded, spaces }));
     `,
   },
   {
@@ -343,7 +376,9 @@ export const SPECS = [
     name: "a rail section REPLACES an open layout (no divider bleed-through)",
     fresh: true,
     body: `
-      await until(() => tab("cowork")?.classList.contains("active"));
+      await until(() => tab("cowork"));
+      click(tab("cowork"));
+      await until(() => tab("cowork").classList.contains("active"));
       killTransitions();
       window.__wbEchoReset();
       await sleep(400);
@@ -362,7 +397,9 @@ export const SPECS = [
     name: "landing wears each space's voice (folder chips, subtitle, placeholder)",
     fresh: true,
     body: `
-      await until(() => tab("cowork")?.classList.contains("active"));
+      await until(() => tab("cowork"));
+      click(tab("cowork"));
+      await until(() => tab("cowork").classList.contains("active"));
       const vis = (el) => !!el && getComputedStyle(el).display !== "none";
       // Work: folder chips above the composer (header layout, no git), work
       // subtitle, work placeholder (the stub always reports a cwd → ungated).

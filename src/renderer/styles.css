@@ -3038,6 +3038,55 @@ body[data-rail-space="cowork"] .dash-sub-cowork { display: inline; }
 .dash-wd-chips { display: none; align-items: center; gap: 4px; margin: 0 0 6px; }
 body[data-rail-space="cowork"] .dash-wd-chips { display: flex; }
 
+/* ── Chat landing starters ─────────────────────────────────────────────
+   Six characters, each a front door to a space. Chat only — Work and Code
+   land on their own surfaces. */
+.dash-starters { display: none; }
+body[data-rail-space="chat"] .dash-starters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  margin: 2px 0 8px;
+}
+@container dash (max-width: 780px) { body[data-rail-space="chat"] .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container dash (max-width: 520px) { body[data-rail-space="chat"] .dash-starters { grid-template-columns: 1fr; } }
+
+.dash-starter {
+  position: relative;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px 14px 15px;
+  text-align: left; cursor: pointer;
+  border: 1px solid var(--border-2); border-radius: 14px;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--surface-3) 88%, transparent), var(--surface-2));
+  color: var(--text);
+  transition: transform .16s cubic-bezier(.2,.8,.2,1), border-color .16s, box-shadow .16s;
+}
+.dash-starter:hover {
+  transform: translateY(-2px);
+  /* the theme's highlight ink — WHITE on the default dark theme (same token
+     as the echo tiles' hover ring) */
+  border-color: var(--echo-tile-highlight, var(--text));
+  box-shadow: 0 10px 26px rgba(0,0,0,.28);
+}
+.dash-starter-top { display: flex; align-items: center; gap: 8px; }
+.dash-starter-mascot { width: 30px; height: 30px; flex: none; display: block; }
+.dash-starter-mascot svg { width: 100%; height: 100%; display: block; }
+.dash-starter-name { font-size: 12px; font-weight: 650; color: var(--text-2); letter-spacing: .01em; }
+.dash-starter-top .space-pill { margin-left: auto; }
+.dash-starter-title { font-size: 14.5px; font-weight: 650; }
+.dash-starter-blurb { font-size: 12.5px; line-height: 1.45; color: var(--text-3); }
+
+/* The space pill — the same badge language as the layout cards. */
+.space-pill {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  padding: 2px 7px 2px 5px; border-radius: 999px;
+  border: 1px solid var(--border-2); background: var(--surface);
+  font-size: 10.5px; font-weight: 600; color: var(--text-2);
+}
+.space-pill svg { width: 10px; height: 10px; }
+
 .dash-composer-slot { width: 100%; margin: 0 0 26px; }
 /* flush with the cowork columns: the composer's own thread-matching
    max-width and gutters don't apply on Home */

@@ -2762,7 +2762,7 @@ export function initCode(): void {
   // A layout ACTIVATES ITS OWN SPACE (code-workbench dispatches on open):
   // the tab, lists, and menus follow the layout — without navigating away
   // from it, and without resetting the session the layout is about to bind.
-  window.addEventListener("glyphh:layout-space", (e) => {
+  window.addEventListener("glyphh:activate-space", (e) => {
     const s = (e as CustomEvent).detail;
     if (s !== "chat" && s !== "cowork" && s !== "code") return;
     if (railTab === s) return;
@@ -2777,8 +2777,9 @@ export function initCode(): void {
     window.yo.getPreference?.("lastSessionCowork", ""),
     window.yo.getPreference?.("lastSessionCode", ""),
   ]).then(([lc, lw, lco]) => {
-    // STARTUP ALWAYS LANDS ON WORK — the space the day starts in.
-    railTab = "cowork";
+    // STARTUP ALWAYS LANDS ON CHAT — the front door: its starter cards open
+    // into whichever space the task actually belongs to.
+    railTab = "chat";
     lastBySpace.chat = String(lc || "");
     lastBySpace.cowork = String(lw || "");
     lastBySpace.code = String(lco || "");
@@ -3032,14 +3033,23 @@ export function openRunSession(run: {
 
 /** A NEW session with `text` ready in the composer — the dashboard's
  *  "Recommended for you" entries land here. */
-export function seedNewSession(text: string): void {
+export function seedNewSession(text: string, space?: "chat" | "cowork" | "code"): void {
+  // A starter card can point at ANY space — switch first (the rail, the
+  // lists, and the chrome follow), then land on the new session there.
+  if (space && space !== railTab) {
+    window.dispatchEvent(new CustomEvent("glyphh:activate-space", { detail: space }));
+  }
   // No record until the user actually SENDS — the seed just fills the
   // composer on a cleared selection.
   currentId = "";
   void saveStore();
   renderHistory();
   renderThread();
+  // Code's new session IS the full agent; Chat and Work seed the composer
+  // on the landing they're already looking at.
+  if (space === "code") gotoSection("agent");
   seedComposer(text);
+  void checkWorkdirGate();
 }
 
 /** The composer's ORIGINAL home (inside .code-agent) — remembered on the

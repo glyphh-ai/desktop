@@ -6,6 +6,7 @@ import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./sh
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
+import { SPACE_LABEL, SPACE_GLYPH_SVG, AUTO_GLYPH_SVG, type Space } from "./space-meta.js";
 
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
  *  right) instead of tiling OS windows. Resolves each cell's panel to its
@@ -115,18 +116,8 @@ const toolPanelIcon = (id: string): string => TOOL_PANELS.find((t) => t.id === i
 // ── Layout SPACE (which agent rides it) — mirrors code-workbench ─────────
 // Explicit `space` wins; else dev tool panels make it a Code layout, and
 // anything else is Work. The badge glyphs are the rail tabs' own icons.
-type LayoutSpace = "chat" | "cowork" | "code";
+type LayoutSpace = Space;
 const DEV_PANEL_RE = /^tool:(coding|terminal|editor|diff|git)/;
-const SPACE_LABEL: Record<LayoutSpace, string> = { chat: "Chat", cowork: "Work", code: "Code" };
-const SPACE_GLYPH_SVG: Record<LayoutSpace, string> = {
-  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-  cowork: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
-  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
-};
-/** No explicit space picked → the badge wears a sparkle ("auto"), never the
- *  derived space's glyph — the user should see which layouts they've chosen. */
-const AUTO_GLYPH_SVG =
-  '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z"/>';
 const explicitSpace = (layout: unknown): LayoutSpace | null => {
   const s = (layout as { space?: string | null } | null)?.space;
   return s === "chat" || s === "cowork" || s === "code" ? s : null;
