@@ -50,7 +50,23 @@ Corroborating signals for case 3:
   a failing uninstaller is deterministic.
 - Retry never advances the progress bar.
 
-## Recovery (case 3)
+## Fixed in 2.7.2
+
+Installers ≥ 2.7.2 perform the recovery below **themselves**: `customInit`
+deletes the previous version's Uninstall registry entry
+(`_glyphhForgetOldUninstaller` in `assets/installer.nsh`), so
+`uninstallOldVersion` reads an empty `UninstallString` and returns before its
+first `ExecWait`. The old uninstaller — the one binary on the machine we can
+never patch — simply never runs. A machine stuck in the loop today heals the
+moment it runs any ≥ 2.7.2 installer (auto-update download or manual).
+
+The same change removed `/t` from `_glyphhKill`: on the auto-update handoff
+the installer and the old uninstaller are *children of the still-exiting old
+app*, so a tree-kill rooted at the app's image name could kill them mid-run —
+the uninstaller's non-zero exit being exactly what arms case 3. Plain `/im`
+already matches every Electron process (they share the exe name).
+
+## Manual recovery (pre-2.7.2 installers only)
 
 Remove the stale installation *and* its Uninstall registry entry, so the new
 installer never reaches `uninstallOldVersion`. In **PowerShell**:
