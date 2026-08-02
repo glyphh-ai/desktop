@@ -254,7 +254,7 @@ async function init(): Promise<void> {
   // Default address-bar visibility for app panels — a roaming pref set in
   // Settings → Appearance. New app slots inherit it; the per-panel header
   // toggle overrides. Settings dispatches an event so changes apply live.
-  const yoPrefs = (window as unknown as { yo?: { getPreference?: (k: string, d?: unknown) => Promise<unknown> } }).yo;
+  const yoPrefs = (window as unknown as { glyphh?: { getPreference?: (k: string, d?: unknown) => Promise<unknown> } }).glyphh;
   let appUrlBarShow = (await yoPrefs?.getPreference?.("showAppUrlBar", true)) !== false;
   const urlBarHiddenDefault = (): boolean => !appUrlBarShow;
   document.addEventListener("glyphh:app-urlbar-default", (e) => { appUrlBarShow = !!(e as CustomEvent).detail; });
@@ -1617,7 +1617,7 @@ async function init(): Promise<void> {
     };
     // Cross-origin icons (favicons) arrive as data URLs via the main process —
     // a tainted <img> can't feed a WebGL texture.
-    const iconYo = (window as unknown as { yo?: { webIconFetch?: (u: string) => Promise<string> } }).yo;
+    const iconYo = (window as unknown as { glyphh?: { webIconFetch?: (u: string) => Promise<string> } }).glyphh;
     const resolveIconSrc = (src: string): Promise<string> =>
       /^https?:/i.test(src) ? (iconYo?.webIconFetch?.(src) ?? Promise.resolve("")) : Promise.resolve(src);
     const loadOne = (src: string, assign: (img: HTMLImageElement) => void, e: TileEntry): void => {
@@ -1798,7 +1798,7 @@ async function init(): Promise<void> {
       layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
     };
-    const yoApi = (window as unknown as { yo?: Yo }).yo;
+    const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
       yoApi?.panelAppsList?.() ?? [],
       yoApi?.layoutsList?.().catch(() => []) ?? [],
@@ -2151,7 +2151,7 @@ async function init(): Promise<void> {
       dripBtn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         if (!dripPop.classList.contains("hidden")) { closeDripPop(); return; }
-        const yoD = (window as unknown as { yo?: { dripsBuiltinEffects?: () => Promise<string[]>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).yo;
+        const yoD = (window as unknown as { glyphh?: { dripsBuiltinEffects?: () => Promise<string[]>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).glyphh;
         const [builtinsRaw, customsRaw] = await Promise.all([
           yoD?.dripsBuiltinEffects?.().catch(() => [] as string[]) ?? [],
           yoD?.dripsList?.().catch(() => [] as Array<{ name: string; recipe: string }>) ?? [],
@@ -2779,7 +2779,7 @@ async function init(): Promise<void> {
           wv.addEventListener("dom-ready", () => {
             if (previewOpened) return;
             previewOpened = true;
-            const yoG = (window as unknown as { yo?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>; rpaRegister?: (slug: string, wcId: number) => void } }).yo;
+            const yoG = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>; rpaRegister?: (slug: string, wcId: number) => void } }).glyphh;
             const wcId = (wv as unknown as WebviewEl).getWebContentsId?.();
             if (wcId !== undefined) yoG?.rpaRegister?.(t.slug!, wcId);
             void yoG?.glyphhAppPreviewOpen?.(t.slug!, wcId).then((res) => {
@@ -3167,7 +3167,7 @@ async function init(): Promise<void> {
           danger: true,
         });
         if (!ok) return;
-        const yo = (window as unknown as { yo?: { panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; layoutsDelete?: (n: string) => Promise<boolean> } }).yo;
+        const yo = (window as unknown as { glyphh?: { panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; layoutsDelete?: (n: string) => Promise<boolean> } }).glyphh;
         try {
           if (t.kind === "layout" && t.layoutName) await yo?.layoutsDelete?.(t.layoutName);
           else if (t.appId) {
@@ -3206,7 +3206,7 @@ async function init(): Promise<void> {
       return Math.hypot(u - bx, v - by) <= BADGE_R + 5;
     };
     const persistOrder = (band: number): void => {
-      const yo = (window as unknown as { yo?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).yo;
+      const yo = (window as unknown as { glyphh?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).glyphh;
       const keys = (wallBands[band] ?? []).map((x) => x.tile.orderKey).filter((k): k is string => !!k);
       if (band === MID_BAND) void yo?.setPreference?.("ccIconOrder", keys);
     };
@@ -3449,9 +3449,9 @@ async function init(): Promise<void> {
   interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
   const appViews = new Map<number, AppView>();
   // ── Echo mode — while an echo slot exists it IS the workspace view. Apps
-  // The RPA registration bridge on window.yo (slug ↔ panel webContents id).
+  // The RPA registration bridge on window.glyphh (slug ↔ panel webContents id).
   const rpaYo = (): { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } =>
-    (window as unknown as { yo?: { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } }).yo ?? {};
+    (window as unknown as { glyphh?: { rpaRegister?: (slug: string, wcId: number) => void; rpaUnregister?: (slug: string) => void } }).glyphh ?? {};
   let appLayer: HTMLDivElement | null = null;
   let appSyncRaf = 0;
 
@@ -3578,7 +3578,7 @@ async function init(): Promise<void> {
       if (err.errorCode && err.errorCode !== -3) {
         const m = `[wb] "${slot.name}" failed to load (${err.errorCode} ${err.errorDescription || ""}) — it may block embedding.`;
         console.warn(m);
-        (window as unknown as { yo?: { wbLog?: (s: string) => void } }).yo?.wbLog?.(m);
+        (window as unknown as { glyphh?: { wbLog?: (s: string) => void } }).glyphh?.wbLog?.(m);
       }
     });
 
@@ -3593,7 +3593,7 @@ async function init(): Promise<void> {
       // preview-open flow the Apps page already uses.
       webview.setAttribute("src", "about:blank");
       webview.addEventListener("dom-ready", () => {
-        const yo = (window as unknown as { yo?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>; rpaRegister?: (slug: string, wcId: number) => void } }).yo;
+        const yo = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>; rpaRegister?: (slug: string, wcId: number) => void } }).glyphh;
         const wcId = webview.getWebContentsId?.();
         if (wcId !== undefined) yo?.rpaRegister?.(slot.slug, wcId);
         void yo?.glyphhAppPreviewOpen?.(slot.slug, wcId).then((res) => {
@@ -3675,7 +3675,7 @@ async function init(): Promise<void> {
     const json = JSON.stringify(open);
     if (json === lastAppsJson) return;
     lastAppsJson = json;
-    (window as unknown as { yo?: { wbAppsChanged?: (apps: Array<{ slug: string; name: string }>) => void } }).yo?.wbAppsChanged?.(open);
+    (window as unknown as { glyphh?: { wbAppsChanged?: (apps: Array<{ slug: string; name: string }>) => void } }).glyphh?.wbAppsChanged?.(open);
   }
 
   interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
@@ -4733,7 +4733,7 @@ async function init(): Promise<void> {
       wv.addEventListener("did-fail-load", (e) => {
         const err = e as unknown as { errorCode?: number; errorDescription?: string };
         if (err.errorCode && err.errorCode !== -3) {
-          (window as unknown as { yo?: { wbLog?: (m: string) => void } }).yo?.wbLog?.(
+          (window as unknown as { glyphh?: { wbLog?: (m: string) => void } }).glyphh?.wbLog?.(
             `[wb] Browser tab failed to load (${err.errorCode} ${err.errorDescription || ""}).`);
         }
       });
@@ -5319,7 +5319,7 @@ async function init(): Promise<void> {
     // A DESKTOP-target layout never panels — main opens it on the desktop
     // (native launches + external browsers), same as .dip and the agent.
     if (layout.target === "desktop") {
-      void (window as unknown as { yo?: { layoutsOpen?: (n: string) => Promise<unknown> } }).yo?.layoutsOpen?.(layout.name);
+      void (window as unknown as { glyphh?: { layoutsOpen?: (n: string) => Promise<unknown> } }).glyphh?.layoutsOpen?.(layout.name);
       return;
     }
     // The layout's FOLDER leads the whole open: arrange only once the switch
@@ -5602,7 +5602,7 @@ async function init(): Promise<void> {
     return true;
   };
   wbApp.__wbOpenLayoutByName = async (name: string): Promise<boolean> => {
-    const yo = (window as unknown as { yo?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).yo;
+    const yo = (window as unknown as { glyphh?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).glyphh;
     const [rows, layouts] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).catch(() => [[], []] as [PanelAppRow[], LayoutRow[]]);
     const key = name.trim().toLowerCase();
     // Match like the switcher's search does — exact, then prefix, then
@@ -5646,10 +5646,10 @@ async function init(): Promise<void> {
   // ⌘W (the menu's Close) closes the TOP PANEL first; only with nothing
   // open does it fall through to closing the window (the old behavior).
   // Esc no longer closes panels — it's real input to whatever is inside.
-  (window as unknown as { yo?: { onCloseGesture?: (cb: () => void) => void; windowClose?: () => void } })
-    .yo?.onCloseGesture?.(() => {
+  (window as unknown as { glyphh?: { onCloseGesture?: (cb: () => void) => void; windowClose?: () => void } })
+    .glyphh?.onCloseGesture?.(() => {
       if (echoCtl?.closeTop?.()) return;
-      (window as unknown as { yo?: { windowClose?: () => void } }).yo?.windowClose?.();
+      (window as unknown as { glyphh?: { windowClose?: () => void } }).glyphh?.windowClose?.();
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;

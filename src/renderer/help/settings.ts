@@ -26,7 +26,7 @@ function initSettings() {
   document.getElementById("glyphh-agent-compact-save")?.addEventListener("click", () => {
     const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
     const status = document.getElementById("glyphh-agent-compact-status");
-    void Promise.resolve(window.yo.setPreference?.("glyphhCompactionPrompt", (wcp?.value || "").trim())).then(() => {
+    void Promise.resolve(window.glyphh.setPreference?.("glyphhCompactionPrompt", (wcp?.value || "").trim())).then(() => {
       if (status) { status.textContent = "Saved."; setTimeout(() => { status.textContent = ""; }, 1800); }
     });
   });
@@ -36,7 +36,7 @@ function initSettings() {
   // Theme picker
   const themePicker = document.getElementById("theme-picker");
   if (themePicker) {
-    window.yo.getTheme().then((theme) => {
+    window.glyphh.getTheme().then((theme) => {
       themePicker.querySelectorAll(".theme-option").forEach((btn) => {
         btn.classList.toggle("active", btn.getAttribute("data-theme") === theme);
       });
@@ -49,7 +49,7 @@ function initSettings() {
         ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
         : theme;
       document.documentElement.setAttribute("data-theme", resolved);
-      window.yo.setTheme(theme);
+      window.glyphh.setTheme(theme);
       themePicker.querySelectorAll(".theme-option").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
     });
@@ -61,7 +61,7 @@ function initSettings() {
     if (bar) bar.classList.remove("hidden");
   };
   toggleAutoUpdate.addEventListener("change", () => {
-    window.yo.setPreference("autoUpdate", toggleAutoUpdate.checked);
+    window.glyphh.setPreference("autoUpdate", toggleAutoUpdate.checked);
     showRelaunch();
   });
 
@@ -69,9 +69,9 @@ function initSettings() {
   // no relaunch needed.
   const bgToggle = document.getElementById("toggle-background-mode") as HTMLInputElement | null;
   if (bgToggle) {
-    void window.yo.getBackgroundMode?.().then((on) => { bgToggle.checked = !!on; }).catch(() => {});
+    void window.glyphh.getBackgroundMode?.().then((on) => { bgToggle.checked = !!on; }).catch(() => {});
     bgToggle.addEventListener("change", () => {
-      void window.yo.setBackgroundMode?.(bgToggle.checked).then((on) => { bgToggle.checked = !!on; }).catch(() => {});
+      void window.glyphh.setBackgroundMode?.(bgToggle.checked).then((on) => { bgToggle.checked = !!on; }).catch(() => {});
     });
   }
 
@@ -111,7 +111,7 @@ function initSettings() {
   }
 
   async function refreshLocalMcp(): Promise<void> {
-    const s = await window.yo.localMcpStatus();
+    const s = await window.glyphh.localMcpStatus();
     if (localMcpStatusEl) {
       localMcpStatusEl.textContent = s.running ? `Running on http://127.0.0.1:${s.port}` : "Stopped.";
       localMcpStatusEl.style.color = s.running ? "var(--accent)" : "var(--text-3)";
@@ -123,7 +123,7 @@ function initSettings() {
   async function renderLocalMcpTokens(): Promise<void> {
     if (!localMcpTokensListEl) return;
     localMcpTokensListEl.innerHTML = "";
-    const tokens = await window.yo.localMcpTokensList();
+    const tokens = await window.glyphh.localMcpTokensList();
     if (!tokens.length) {
       localMcpTokensListEl.innerHTML = `<div style="font-size:12px;color:var(--text-3);">No tokens yet — generate one below.</div>`;
       return;
@@ -141,7 +141,7 @@ function initSettings() {
           confirmLabel: "Revoke token",
           danger: true,
         }))) return;
-        await window.yo.localMcpTokensRevoke(t.id);
+        await window.glyphh.localMcpTokensRevoke(t.id);
         void renderLocalMcpTokens();
       });
       localMcpTokensListEl.appendChild(row);
@@ -155,7 +155,7 @@ function initSettings() {
   if (localMcpSection && localMcpToggle) {
     localMcpSection.classList.remove("hidden");
     void (async () => {
-      const enabled = (await window.yo.getPreference("localMcpEnabled", false)) as boolean;
+      const enabled = (await window.glyphh.getPreference("localMcpEnabled", false)) as boolean;
       localMcpToggle.checked = enabled;
       setLocalMcpBodyVisible(enabled);
       await refreshLocalMcp();
@@ -165,7 +165,7 @@ function initSettings() {
     localMcpToggle.addEventListener("change", async () => {
       const on = localMcpToggle.checked;
       setLocalMcpBodyVisible(on);
-      const res = await window.yo.localMcpSetEnabled(on);
+      const res = await window.glyphh.localMcpSetEnabled(on);
       if (!res.ok && res.error) {
         if (localMcpStatusEl) {
           localMcpStatusEl.textContent = res.error;
@@ -180,7 +180,7 @@ function initSettings() {
 
     document.getElementById("local-mcp-port-save")?.addEventListener("click", async () => {
       const port = parseInt(localMcpPortInput?.value || "", 10);
-      const res = await window.yo.localMcpSetPort(port);
+      const res = await window.glyphh.localMcpSetPort(port);
       if (!res.ok && res.error) {
         if (localMcpStatusEl) {
           localMcpStatusEl.textContent = res.error;
@@ -193,7 +193,7 @@ function initSettings() {
 
     document.getElementById("local-mcp-gen-token")?.addEventListener("click", async () => {
       const label = localMcpLabelInput?.value.trim() || "default";
-      const res = await window.yo.localMcpTokensCreate(label);
+      const res = await window.glyphh.localMcpTokensCreate(label);
       if (localMcpLabelInput) localMcpLabelInput.value = "";
       if (localMcpNewTokenBox && localMcpNewTokenValue) {
         localMcpNewTokenValue.textContent = res.token;
@@ -204,7 +204,7 @@ function initSettings() {
 
     document.getElementById("local-mcp-copy-token")?.addEventListener("click", () => {
       const val = localMcpNewTokenValue?.textContent || "";
-      window.yo.copyToClipboard(val);
+      window.glyphh.copyToClipboard(val);
       const btn = document.getElementById("local-mcp-copy-token") as HTMLButtonElement;
       btn.textContent = "Copied";
       setTimeout(() => { btn.textContent = "Copy"; }, 2000);
@@ -212,7 +212,7 @@ function initSettings() {
 
     document.getElementById("local-mcp-copy-config")?.addEventListener("click", () => {
       const val = localMcpConfigEl?.textContent || "";
-      window.yo.copyToClipboard(val);
+      window.glyphh.copyToClipboard(val);
       const btn = document.getElementById("local-mcp-copy-config") as HTMLButtonElement;
       btn.textContent = "Copied";
       setTimeout(() => { btn.textContent = "Copy"; }, 2000);
@@ -230,7 +230,7 @@ function initSettings() {
 
   // Timezone — persists to the user's server profile (shared with platform).
   settingsTimezone.addEventListener("change", () => {
-    void window.yo.userTimezoneSet(settingsTimezone.value);
+    void window.glyphh.userTimezoneSet(settingsTimezone.value);
   });
 
   // Browser homepage
@@ -238,14 +238,14 @@ function initSettings() {
     const val = settingsBrowserHome.value;
     browserHomeCustomRow.classList.toggle("hidden", val !== "custom");
     if (val !== "custom") {
-      window.yo.setPreference("browserHomepage", val);
+      window.glyphh.setPreference("browserHomepage", val);
     }
   });
   settingsBrowserHomeUrl.addEventListener("change", () => {
     const url = settingsBrowserHomeUrl.value.trim();
     if (url) {
-      window.yo.setPreference("browserHomepage", "custom");
-      window.yo.setPreference("browserHomepageUrl", url);
+      window.glyphh.setPreference("browserHomepage", "custom");
+      window.glyphh.setPreference("browserHomepageUrl", url);
     }
   });
 
@@ -254,13 +254,13 @@ function initSettings() {
   // to newly-opened panels live.
   const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
   appUrlBar?.addEventListener("change", () => {
-    void window.yo.setPreference("showAppUrlBar", appUrlBar.checked);
+    void window.glyphh.setPreference("showAppUrlBar", appUrlBar.checked);
     document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
   });
 
   // Relaunch button
   document.getElementById("settings-relaunch-btn")?.addEventListener("click", () => {
-    window.yo.relaunch();
+    window.glyphh.relaunch();
   });
 
   // (Glyphh Skill export moved to its own Skills page — see help/skills.ts.)
@@ -268,7 +268,7 @@ function initSettings() {
   // Manage Account — open the platform as a WORKBENCH browser panel (beside the
   // agent), not the retired BrowserView. Shared mechanics (openUrlInWorkbench).
   document.getElementById("account-dashboard-btn")?.addEventListener("click", () => {
-    openUrlInWorkbench("Manage Account", window.yo.platformUrl);
+    openUrlInWorkbench("Manage Account", window.glyphh.platformUrl);
   });
 
   // Refresh plan status — after an in-app upgrade/downgrade the cached session
@@ -279,7 +279,7 @@ function initSettings() {
     const tierEl = document.getElementById("account-tier");
     btn?.classList.add("spinning");
     try {
-      const r = await window.yo.refreshAuth();
+      const r = await window.glyphh.refreshAuth();
       if (tierEl && r?.tier) {
         tierEl.textContent = r.tier;
         tierEl.className = `license-value ${r.tier !== "free" ? "active" : ""}`;
@@ -291,7 +291,7 @@ function initSettings() {
   // Sign out
   document.getElementById("account-logout-btn")?.addEventListener("click", async () => {
     document.getElementById("help-overlay")!.classList.add("hidden");
-    await window.yo.logout();
+    await window.glyphh.logout();
   });
 }
 
@@ -302,10 +302,10 @@ async function loadSettings() {
   void loadUsageMetrics();
   // Glyphh: standing compaction guidance + training capture
   const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
-  if (wcp) wcp.value = String((await window.yo.getPreference?.("glyphhCompactionPrompt", "")) || "");
+  if (wcp) wcp.value = String((await window.glyphh.getPreference?.("glyphhCompactionPrompt", "")) || "");
 
   settingsStatus.textContent = "";
-  const accountInfo = await window.yo.getAccountInfo();
+  const accountInfo = await window.glyphh.getAccountInfo();
 
   // Account info
   const emailEl = document.getElementById("account-email")!;
@@ -327,7 +327,7 @@ async function loadSettings() {
   }
 
   // Load toggle states
-  toggleAutoUpdate.checked = await window.yo.getPreference("autoUpdate", true) as boolean;
+  toggleAutoUpdate.checked = await window.glyphh.getPreference("autoUpdate", true) as boolean;
 
   const mcpSectionWrap = document.getElementById("mcp-section-wrap")!;
   mcpSectionWrap.classList.remove("hidden");
@@ -347,18 +347,18 @@ async function loadSettings() {
   } catch {
     settingsTimezone.innerHTML = `<option value="UTC">UTC</option>`;
   }
-  const serverTz = await window.yo.userTimezoneGet().catch(() => null);
+  const serverTz = await window.glyphh.userTimezoneGet().catch(() => null);
   settingsTimezone.value = serverTz || "UTC";
 
   // Browser homepage
-  const homePref = await window.yo.getPreference("browserHomepage", "claude") as string;
+  const homePref = await window.glyphh.getPreference("browserHomepage", "claude") as string;
   settingsBrowserHome.value = homePref === "custom" ? "custom" : homePref;
   browserHomeCustomRow.classList.toggle("hidden", homePref !== "custom");
   if (homePref === "custom") {
-    settingsBrowserHomeUrl.value = await window.yo.getPreference("browserHomepageUrl", "") as string;
+    settingsBrowserHomeUrl.value = await window.glyphh.getPreference("browserHomepageUrl", "") as string;
   }
   const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
-  if (appUrlBar) appUrlBar.checked = await window.yo.getPreference("showAppUrlBar", true) as boolean;
+  if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
 }
 
 async function saveSettings() {

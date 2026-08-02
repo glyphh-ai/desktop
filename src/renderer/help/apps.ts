@@ -226,7 +226,7 @@ async function saveMcpGuardrails(statusId: string): Promise<void> {
   const launchConfig = { ...base, mcpApproved, guardrails };
   const statusEl = document.getElementById(statusId);
   if (statusEl) statusEl.textContent = "Saving…";
-  const res = await window.yo.panelAppsUpdate(currentAppId, { launchConfig });
+  const res = await window.glyphh.panelAppsUpdate(currentAppId, { launchConfig });
   if (res?.ok && currentApp) currentApp.launchConfig = launchConfig;
   if (statusEl) {
     statusEl.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
@@ -250,7 +250,7 @@ async function testMcpTool(): Promise<void> {
   }
   out.classList.remove("hidden");
   out.textContent = "Running…";
-  const res = await window.yo.appCallTool(currentApp.slug, tool, args);
+  const res = await window.glyphh.appCallTool(currentApp.slug, tool, args);
   out.textContent = res?.ok
     ? (typeof res.result === "string" ? res.result : JSON.stringify(res.result, null, 2))
     : `Error: ${res?.error || "failed"}`;
@@ -318,7 +318,7 @@ let panelApps: PanelApp[] = [];
  *  the configured real browser (window or tab). Returns the launch result so callers can
  *  surface an error. */
 async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: string }> {
-  return window.yo.appLaunch({
+  return window.glyphh.appLaunch({
     slug: app.slug, name: app.name, url: app.url,
     isBrowser: app.isBrowser,
     execPath: app.execPath, appArchetype: app.appArchetype, launchConfig: app.launchConfig,
@@ -334,7 +334,7 @@ async function loadApps() {
   appsToolbar.classList.remove("hidden");
 
   try {
-    const apps = await window.yo.panelAppsList();
+    const apps = await window.glyphh.panelAppsList();
     // Keep browser apps (have a url) and native apps (isBrowser === false).
     // Legacy rows have neither field set but always carry a url, so the url
     // check still covers them.
@@ -407,7 +407,7 @@ function renderAppsList() {
 // Public catalog + org-private apps: search, categories, sponsored + popular
 // strips, paginated grid. Backed by marketplace.ts (placeholder catalog until
 // the yo-server routes land).
-type MktApp = Awaited<ReturnType<typeof window.yo.marketplaceList>>["items"][number];
+type MktApp = Awaited<ReturnType<typeof window.glyphh.marketplaceList>>["items"][number];
 
 const marketplaceLibraryPage = document.getElementById("apps-library-page")!;
 const marketplacePage = document.getElementById("apps-marketplace-page")!;
@@ -524,7 +524,7 @@ async function renderRequiredConnections(app: PanelApp): Promise<void> {
 
   let connected = new Set<string>();
   try {
-    const res = await window.yo.connectionsList();
+    const res = await window.glyphh.connectionsList();
     connected = new Set((res.connections || []).map((c) => c.appSlug));
   } catch { /* status unknown — render everything as missing */ }
 
@@ -597,13 +597,13 @@ function renderMktCategories(cats: Array<{ id: string; label: string; count: num
   for (const c of cats) mktCategoriesEl.appendChild(chip(c.id, c.label, c.count));
 }
 
-type MktRes = Awaited<ReturnType<typeof window.yo.marketplaceList>>;
+type MktRes = Awaited<ReturnType<typeof window.glyphh.marketplaceList>>;
 let lastMktRes: MktRes | null = null;
 
 async function loadMarketplace(): Promise<void> {
   mktListEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
   try {
-    lastMktRes = await window.yo.marketplaceList({ scope: mktScope, category: mktCategory || undefined, q: mktQuery || undefined, sort: mktSort, page: mktPage });
+    lastMktRes = await window.glyphh.marketplaceList({ scope: mktScope, category: mktCategory || undefined, q: mktQuery || undefined, sort: mktSort, page: mktPage });
   } catch {
     lastMktRes = null;
     mktListEl.innerHTML = `<div class="crud-empty">Marketplace unavailable right now.</div>`;
@@ -665,7 +665,7 @@ function renderMktStorefront(res: MktRes): void {
 }
 
 // ── App detail page (Shopify-style listing) ──────────────
-type MktDetail = NonNullable<Awaited<ReturnType<typeof window.yo.marketplaceDetail>>>;
+type MktDetail = NonNullable<Awaited<ReturnType<typeof window.glyphh.marketplaceDetail>>>;
 
 const MKT_CATEGORY_LABELS: Record<string, string> = {
   productivity: "Productivity", communication: "Communication", developer: "Developer tools",
@@ -698,7 +698,7 @@ async function openMktDetail(id: string): Promise<void> {
   marketplacePage.scrollTop = 0;
 
   let detail: MktDetail | null = null;
-  try { detail = await window.yo.marketplaceDetail(id); }
+  try { detail = await window.glyphh.marketplaceDetail(id); }
   catch { detail = null; }
   if (!detail) {
     mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Couldn't load this app right now.</div>`;
@@ -849,7 +849,7 @@ function renderMktDetail(d: MktDetail): void {
   mktDetailEl.querySelector(".mkt-ext")?.addEventListener("click", (e) => {
     e.preventDefault();
     const url = (e.currentTarget as HTMLElement).dataset.url;
-    if (url) void window.yo.execCommand(`dip ${url}`);
+    if (url) void window.glyphh.execCommand(`dip ${url}`);
   });
 
   const mainImg = mktDetailEl.querySelector("#mkt-shot-main") as HTMLImageElement | null;
@@ -869,7 +869,7 @@ function renderMktDetail(d: MktDetail): void {
   if (installEl && !d.installed) {
     installEl.addEventListener("click", async () => {
       installEl.disabled = true; installEl.textContent = "Installing…";
-      const res = await window.yo.marketplaceInstall(d.id);
+      const res = await window.glyphh.marketplaceInstall(d.id);
       if (res.ok) { installEl.textContent = "Installed"; }
       else { installEl.disabled = false; installEl.textContent = "Install"; flashMktNote(res.error || "Install failed"); }
     });
@@ -1026,7 +1026,7 @@ function listingStatus(msg: string): void {
 
 /** Re-read the app so the tab renders what the server actually stored. */
 async function refreshCurrentApp(): Promise<void> {
-  const apps = await window.yo.panelAppsList();
+  const apps = await window.glyphh.panelAppsList();
   reloadPanelApps(apps.map(toPanelApp));
   const fresh = panelApps.find((a) => a.id === currentAppId);
   if (fresh) currentApp = fresh;
@@ -1047,7 +1047,7 @@ async function saveListing(): Promise<void> {
     videoUrl: el.video.value.trim() || null,
   };
   listingStatus("Saving…");
-  const res = await window.yo.appListingSet(currentApp.slug, patch);
+  const res = await window.glyphh.appListingSet(currentApp.slug, patch);
   if (!res.ok) { listingStatus(""); listingError(res.error || "Couldn't save the listing."); return; }
   listingStatus("Saved ✓");
   await refreshCurrentApp();
@@ -1058,7 +1058,7 @@ async function addListingImage(kind: "icon" | "screenshot"): Promise<void> {
   if (!currentApp) return;
   document.getElementById("listing-error")!.classList.add("hidden");
   listingStatus("Uploading…");
-  const res = await window.yo.appListingImageAdd(currentApp.slug, kind);
+  const res = await window.glyphh.appListingImageAdd(currentApp.slug, kind);
   if (!res.ok) {
     listingStatus("");
     if (res.error !== "Canceled") listingError(res.error || "Couldn't upload the image.");
@@ -1071,7 +1071,7 @@ async function addListingImage(kind: "icon" | "screenshot"): Promise<void> {
 
 async function removeListingImage(key: string): Promise<void> {
   if (!currentApp || !key) return;
-  const res = await window.yo.appListingImageRemove(currentApp.slug, key);
+  const res = await window.glyphh.appListingImageRemove(currentApp.slug, key);
   if (!res.ok) { listingError(res.error || "Couldn't remove the image."); return; }
   await refreshCurrentApp();
   loadMarketplaceTab();
@@ -1089,7 +1089,7 @@ async function setListed(listed: boolean): Promise<void> {
     if (!confirmed) return;
   }
   listingStatus(listed ? "Listing…" : "Unlisting…");
-  const res = await window.yo.appListingList(currentApp.slug, listed);
+  const res = await window.glyphh.appListingList(currentApp.slug, listed);
   if (!res.ok) { listingStatus(""); listingError(res.error || "Couldn't change the listing."); return; }
   listingStatus(listed ? "Listed ✓" : "Unlisted ✓");
   await refreshCurrentApp();
@@ -1113,7 +1113,7 @@ function initMarketplaceTab(): void {
 // A build is immutable, so the only things editable here are its NOTES and its
 // channel. The left pane edits the selected release; the right pane is the history.
 
-type ReleaseRow = Awaited<ReturnType<typeof window.yo.appReleases>>["releases"][number];
+type ReleaseRow = Awaited<ReturnType<typeof window.glyphh.appReleases>>["releases"][number];
 
 let releases: ReleaseRow[] = [];
 let selectedReleaseId: string | null = null;
@@ -1139,7 +1139,7 @@ async function loadReleasesTab(): Promise<void> {
   if (!owned) renderInstalledReleaseView();
 
   const slug = currentApp?.slug || currentAppId;
-  const res = await window.yo.appReleases(slug);
+  const res = await window.glyphh.appReleases(slug);
   if (!res.ok) {
     listEl.innerHTML = "";
     releaseError(res.error || "Couldn't load the release history.");
@@ -1288,7 +1288,7 @@ function renderInstalledReleaseView(): void {
 
   // Toggle reflects the stored preference (default on).
   const toggle = document.getElementById("release-autoupdate") as HTMLInputElement;
-  void window.yo.getPreference?.(autoUpdateKey(app?.slug || ""), true).then((v) => { toggle.checked = v !== false; });
+  void window.glyphh.getPreference?.(autoUpdateKey(app?.slug || ""), true).then((v) => { toggle.checked = v !== false; });
 }
 
 // ── Connections tab: the app's required connections + their tools ────
@@ -1309,7 +1309,7 @@ async function loadAppConnectionsTab(): Promise<void> {
   // Map required slugs → the user's actual connection (for the id → tools lookup).
   let byslug = new Map<string, { id: string; hiddenTools: string[] }>();
   try {
-    const res = await window.yo.connectionsList();
+    const res = await window.glyphh.connectionsList();
     byslug = new Map((res.connections || []).map((c) => [c.appSlug, { id: c.id, hiddenTools: c.hiddenTools }]));
   } catch { /* offline — everything renders as not connected */ }
 
@@ -1335,7 +1335,7 @@ async function loadAppConnectionsTab(): Promise<void> {
       tools.dataset.loaded = "1";
       if (!conn) { tools.innerHTML = `<div class="app-conn-tool-empty">Connect ${escMkt(connLabel(slug))} to see its tools.</div>`; return; }
       tools.innerHTML = `<div class="app-conn-tool-empty">Loading tools…</div>`;
-      const tres = await window.yo.connectionToolsList(conn.id).catch(() => ({ ok: false as const, tools: [] }));
+      const tres = await window.glyphh.connectionToolsList(conn.id).catch(() => ({ ok: false as const, tools: [] }));
       if (!tres.ok || !tres.tools.length) { tools.innerHTML = `<div class="app-conn-tool-empty">No tools.</div>`; return; }
       // A tool the user/org has hidden is BLOCKED — the app can't call it, so the
       // dependency is unmet even though the account is connected.
@@ -1348,7 +1348,7 @@ async function loadAppConnectionsTab(): Promise<void> {
     listEl.appendChild(row);
     // Any required connection that's connected but has all tools blocked is a
     // silent failure — surface it on the row without needing expansion.
-    if (conn) void window.yo.connectionToolsList(conn.id).then((tres) => {
+    if (conn) void window.glyphh.connectionToolsList(conn.id).then((tres) => {
       if (tres.ok && tres.tools.length && tres.tools.every((t) => t.hidden)) {
         const st = row.querySelector<HTMLElement>(".app-conn-status")!;
         st.textContent = "Tools blocked";
@@ -1365,14 +1365,14 @@ function initReleasesTab(): void {
   // Auto-update toggle (installed apps) — persisted per app slug.
   document.getElementById("release-autoupdate")?.addEventListener("change", (e) => {
     const on = (e.target as HTMLInputElement).checked;
-    void window.yo.setPreference?.(autoUpdateKey(currentApp?.slug || ""), on);
+    void window.glyphh.setPreference?.(autoUpdateKey(currentApp?.slug || ""), on);
   });
   // Manual "Update now" — the download mechanism is server-side (a bundle
   // endpoint); until it lands this reports honestly rather than silently no-op.
   document.getElementById("release-update-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("release-update-btn") as HTMLButtonElement;
     const prev = btn.textContent; btn.disabled = true; btn.textContent = "Updating…";
-    const res = await window.yo.appUpdateInstalled?.(currentApp?.slug || "");
+    const res = await window.glyphh.appUpdateInstalled?.(currentApp?.slug || "");
     btn.disabled = false; btn.textContent = res?.ok ? "Updated ✓" : prev;
     if (res?.ok) { await refreshCurrentApp(); loadReleasesTab(); }
     else if (res?.error) releaseError(res.error);
@@ -1386,7 +1386,7 @@ function initReleasesTab(): void {
     document.getElementById("release-error")!.classList.add("hidden");
     const notes = (document.getElementById("release-notes") as HTMLTextAreaElement).value;
     releaseStatus("Saving…");
-    const res = await window.yo.appReleaseNotes(currentApp?.slug || currentAppId, selectedReleaseId, notes || null);
+    const res = await window.glyphh.appReleaseNotes(currentApp?.slug || currentAppId, selectedReleaseId, notes || null);
     if (!res.ok) { releaseStatus(""); releaseError(res.error || "Couldn't save the notes."); return; }
     releaseStatus("Saved ✓");
     await loadReleasesTab();
@@ -1403,7 +1403,7 @@ function initReleasesTab(): void {
     btn.disabled = true;
     releaseStatus("Building from your working folder…");
     try {
-      const res = await window.yo.appBuildDeploy(slug);
+      const res = await window.glyphh.appBuildDeploy(slug);
       if (!res.ok) { releaseStatus(""); releaseError(res.error || "Build failed."); return; }
       releaseStatus(`Built v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : " — uploaded"} ✓`);
       await loadReleasesTab();
@@ -1422,7 +1422,7 @@ function initReleasesTab(): void {
     });
     if (!confirmed) return;
     releaseStatus("Promoting…");
-    const res = await window.yo.appReleasePromote(currentApp?.slug || currentAppId, selectedReleaseId);
+    const res = await window.glyphh.appReleasePromote(currentApp?.slug || currentAppId, selectedReleaseId);
     if (!res.ok) { releaseStatus(""); releaseError(res.error || "Couldn't promote the release."); return; }
     releaseStatus("Live ✓");
     await loadReleasesTab();
@@ -1451,7 +1451,7 @@ async function loadDeployTab(): Promise<void> {
   syncDeployAccessHint();
 
   const slug = currentApp?.slug || currentAppId;
-  const res = await window.yo.hostingStatus(slug);
+  const res = await window.glyphh.hostingStatus(slug);
   if (!res.ok) { statusEl.textContent = "Couldn't load deploy status."; return; }
   const d = res.deployment;
   if (d && (d.status === "live" || d.status === "building" || d.status === "queued")) {
@@ -1484,7 +1484,7 @@ async function saveDeployAccess(): Promise<void> {
   const status = document.getElementById("deploy-access-status");
   const access = (document.getElementById("deploy-access") as HTMLSelectElement).value as "public" | "members";
   if (status) status.textContent = "Saving…";
-  const res = await window.yo.panelAppsUpdate(currentAppId, { access });
+  const res = await window.glyphh.panelAppsUpdate(currentAppId, { access });
   if (res?.ok && currentApp) currentApp.access = access;
   if (status) {
     status.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
@@ -1509,7 +1509,7 @@ async function loadConfigVarsTab() {
   (document.getElementById("config-var-value") as HTMLTextAreaElement).value = "";
   (document.getElementById("config-var-readable") as HTMLInputElement).checked = false;
   const listEl = document.getElementById("config-var-list")!;
-  const res = await window.yo.appSecretsList(currentAppId);
+  const res = await window.glyphh.appSecretsList(currentAppId);
   listEl.innerHTML = "";
   if (!res.ok) {
     listEl.innerHTML = `<div class="inline-empty">Couldn't load config vars.</div>`;
@@ -1571,7 +1571,7 @@ async function loadConfigVarsTab() {
         confirmLabel: "Delete var",
         danger: true,
       }))) return;
-      await window.yo.appSecretsDelete(currentAppId, s.key);
+      await window.glyphh.appSecretsDelete(currentAppId, s.key);
       void loadConfigVarsTab();
     });
     row.append(keyEl, valEl, edit, del);
@@ -1590,7 +1590,7 @@ function wireConfigVarsForm() {
     statusEl.textContent = "";
     const key = keyEl.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
     const value = valueEl.value;
-    const res = await window.yo.appSecretsSet(currentAppId, key, value, readableEl.checked);
+    const res = await window.glyphh.appSecretsSet(currentAppId, key, value, readableEl.checked);
     if (!res.ok) {
       errEl.textContent = res.error || "Couldn't save";
       errEl.classList.remove("hidden");
@@ -1630,7 +1630,7 @@ async function loadPanelTab() {
       // authorized — the preload is attached in main) and load its on-disk entry
       // so relative ../_libs/* references resolve. Mirrors openGlyphhApp.
       const wcId = await ensurePreviewWcId();
-      const res = await window.yo.glyphhAppPreviewOpen(app.slug, wcId);
+      const res = await window.glyphh.glyphhAppPreviewOpen(app.slug, wcId);
       if (!res?.ok || !res.fileUrl) {
         document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">${res?.error || "Could not load app preview."}</div>`;
         return;
@@ -1638,7 +1638,7 @@ async function loadPanelTab() {
       appPreview.src = res.fileUrl;
     } else {
       // Web app: drop any glyphh grant left on the reused preview webContents.
-      void window.yo.glyphhAppPreviewClear(getPreviewWebContentsId());
+      void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());
       appPreview.partition = "persist:yo";
       appPreview.src = app.url!;
     }
@@ -1737,7 +1737,7 @@ function getPreviewWebContentsId(): number | undefined {
 
 function closeAppDetail() {
   // Drop any glyphh capability grant on the reused preview webContents.
-  void window.yo.glyphhAppPreviewClear(getPreviewWebContentsId());
+  void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());
   appPreview.src = "about:blank";
   panelLoaded = false;
   appDetail.classList.add("hidden");
@@ -1776,13 +1776,13 @@ function initApps() {
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
   document.querySelectorAll<HTMLElement>(".tab-upgrade-btn").forEach((btn) => {
-    btn.addEventListener("click", () => { void window.yo.execCommand(`dip ${window.yo.platformUrl}`); });
+    btn.addEventListener("click", () => { void window.glyphh.execCommand(`dip ${window.glyphh.platformUrl}`); });
   });
 
   // Manual refresh + live refresh when the app library changes server-side
   // (e.g. an app installed over the MCP relay while this page is open).
   document.getElementById("apps-refresh-btn")?.addEventListener("click", () => { void loadApps(); });
-  window.yo.onPanelAppsChanged?.(() => {
+  window.glyphh.onPanelAppsChanged?.(() => {
     // Don't stomp an open editor — the list re-fetches next time it shows.
     if (appDetail.classList.contains("hidden")) void loadApps();
   });
@@ -1888,7 +1888,7 @@ function initApps() {
   // Add-form archetype toggle + Browse… button (the type control is gone).
   addArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
   document.getElementById("app-add-exec-browse")!.addEventListener("click", async () => {
-    const picked = await window.yo.pickExecutable();
+    const picked = await window.glyphh.pickExecutable();
     if (picked) addExecPath.value = picked;
   });
 
@@ -1926,7 +1926,7 @@ function initApps() {
       return;
     }
     // Uniqueness check — apps and vibes share one namespace.
-    const existing = await window.yo.panelAppsList();
+    const existing = await window.glyphh.panelAppsList();
     if (existing.some((a) => a.slug === id)) {
       addSlugInput.classList.add("invalid"); clearInvalid(addSlugInput);
       appFormError.textContent = `Slug "${id}" is already taken. Pick a different one.`;
@@ -1942,7 +1942,7 @@ function initApps() {
           launchConfig: (document.getElementById("app-add-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {},
         }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
-    const created = await window.yo.panelAppsCreate(createInput);
+    const created = await window.glyphh.panelAppsCreate(createInput);
     if (!created.ok || !created.app) {
       appFormError.textContent = created.error || "Failed to create app.";
       appFormError.classList.remove("hidden");
@@ -1951,7 +1951,7 @@ function initApps() {
     // Force-web / do-not-record are set from the app's detail screen now; new
     // apps already default to capture-off.
     appAddForm.classList.add("hidden");
-    const apps = await window.yo.panelAppsList();
+    const apps = await window.glyphh.panelAppsList();
     reloadPanelApps(apps.map(toPanelApp));
     const createdLocal = panelApps.find((a) => a.id === created.app!.id);
     if (createdLocal) openPanelAppDetail(createdLocal);
@@ -1991,7 +1991,7 @@ function initApps() {
   });
   detailArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-detail", detailArchetypeSelect.value as Archetype));
   document.getElementById("app-detail-exec-browse")!.addEventListener("click", async () => {
-    const picked = await window.yo.pickExecutable();
+    const picked = await window.glyphh.pickExecutable();
     if (picked) detailExecPath.value = picked;
   });
 
@@ -2025,7 +2025,7 @@ function initApps() {
       patch.appArchetype = archetype;
       patch.launchConfig = readLaunchConfig("app-detail", archetype);
     }
-    const saved = await window.yo.panelAppsUpdate(currentAppId, patch);
+    const saved = await window.glyphh.panelAppsUpdate(currentAppId, patch);
     if (!saved?.ok) {
       appFormError.textContent = saved?.error || "Failed to save app.";
       appFormError.classList.remove("hidden");
@@ -2048,7 +2048,7 @@ function initApps() {
       danger: true,
     });
     if (!confirmed) return;
-    await window.yo.panelAppsDelete(currentAppId);
+    await window.glyphh.panelAppsDelete(currentAppId);
     closeAppDetail();
   });
 
@@ -2060,7 +2060,7 @@ function initApps() {
     btn.disabled = true;
     btn.textContent = "Exporting…";
     try {
-      const res = await window.yo.appExport(currentAppId);
+      const res = await window.glyphh.appExport(currentAppId);
       btn.textContent = res?.ok ? "Exported ✓" : (res?.error === "Canceled" ? prev : "Export failed");
     } catch {
       btn.textContent = "Export failed";
@@ -2082,7 +2082,7 @@ function initApps() {
     const err = document.getElementById("deploy-error")!;
     err.classList.add("hidden");
     btn.disabled = true; const prev = btn.textContent; btn.textContent = "Deploying…";
-    const res = await window.yo.hostingDeploy(currentApp?.slug || currentAppId);
+    const res = await window.glyphh.hostingDeploy(currentApp?.slug || currentAppId);
     btn.disabled = false; btn.textContent = prev;
     if (!res.ok) { err.textContent = res.error || "Deploy failed."; err.classList.remove("hidden"); return; }
     await loadDeployTab();
@@ -2093,7 +2093,7 @@ function initApps() {
     const err = document.getElementById("deploy-error")!;
     err.classList.add("hidden");
     btn.disabled = true; const prev = btn.textContent; btn.textContent = "Taking down…";
-    const res = await window.yo.hostingDestroy(deployCurrentId);
+    const res = await window.glyphh.hostingDestroy(deployCurrentId);
     btn.disabled = false; btn.textContent = prev;
     if (!res.ok) { err.textContent = res.error || "Take-down failed."; err.classList.remove("hidden"); return; }
     await loadDeployTab();
@@ -2105,7 +2105,7 @@ function initApps() {
     const err = document.getElementById("graduate-error")!;
     err.classList.add("hidden");
     btn.disabled = true; const prev = btn.textContent; btn.textContent = "Exporting…";
-    const res = await window.yo.appGraduate(currentApp?.slug || currentAppId);
+    const res = await window.glyphh.appGraduate(currentApp?.slug || currentAppId);
     btn.disabled = false; btn.textContent = res.ok ? "Exported ✓" : prev;
     if (!res.ok && res.error !== "Canceled") { err.textContent = res.error || "Export failed."; err.classList.remove("hidden"); }
     setTimeout(() => { btn.textContent = prev; }, 1800);
@@ -2118,7 +2118,7 @@ function initApps() {
     btn.disabled = true;
     btn.textContent = "Importing…";
     try {
-      const res = await window.yo.appImport();
+      const res = await window.glyphh.appImport();
       if (res?.ok) {
         btn.textContent = "Imported ✓";
         await loadApps();

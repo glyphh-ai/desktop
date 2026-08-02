@@ -45,7 +45,7 @@ export function currentRoles(): RoleView[] {
 /** Pull this loop's slots from the server. Safe to call on every loop change. */
 export async function refreshRoles(loop: string, force?: boolean): Promise<RoleView[]> {
   try {
-    const r = await window.yo.loopRoles?.(loop, force);
+    const r = await window.glyphh.loopRoles?.(loop, force);
     roles = r?.roles ?? [];
   } catch {
     roles = []; // Offline — the chip falls back to a neutral label.
@@ -223,7 +223,7 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
           menu.classList.add("hidden");
           void (async () => {
             try {
-              const r = await window.yo.loopRoleSet?.(loop, role.name, choice.id);
+              const r = await window.glyphh.loopRoleSet?.(loop, role.name, choice.id);
               if (r?.roles) roles = r.roles;
             } catch { /* the pick did not take; the next open shows the truth */ }
             onPicked();

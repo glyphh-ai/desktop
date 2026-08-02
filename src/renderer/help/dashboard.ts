@@ -2,7 +2,7 @@
  * Dashboard (Home) — the landing section. Shows a welcome, org credit balance,
  * spend this month, apps deployed, and a per-day usage chart (credits + calls;
  * LLM tokens are not a client concept). All numbers come from the server via
- * window.yo.dashboardData() (see home-ipc.ts), which mirrors the same
+ * window.glyphh.dashboardData() (see home-ipc.ts), which mirrors the same
  * billing/usage endpoints the platform dashboard uses.
  */
 
@@ -167,7 +167,7 @@ export async function loadUsageChart(): Promise<void> {
   const filterSel = document.getElementById("dash-usage-filter") as HTMLSelectElement | null;
   const win = parseInt(daysSel?.value || "30", 10);
   const groupBy = groupSel?.value === "source" ? "source" : "model";
-  const env = await window.yo.usageSeries?.(win, groupBy);
+  const env = await window.glyphh.usageSeries?.(win, groupBy);
   if (!env?.ok || !env.data) return;
   const series = env.data as SeriesData;
 
@@ -384,7 +384,7 @@ export async function loadDashboard(): Promise<void> {
   // Paint the greeting immediately from cached account info if available; the
   // server call fills in the numbers.
   try {
-    const data = (await window.yo.dashboardData?.()) as DashboardData | undefined;
+    const data = (await window.glyphh.dashboardData?.()) as DashboardData | undefined;
     if (!data) return;
 
     $a("dash-greeting").textContent = greeting(data.name);
@@ -404,7 +404,7 @@ export async function loadDashboard(): Promise<void> {
  *  chart; Settings' loader calls this. */
 export async function loadUsageMetrics(): Promise<void> {
   try {
-    const data = (await window.yo.dashboardData?.()) as DashboardData | undefined;
+    const data = (await window.glyphh.dashboardData?.()) as DashboardData | undefined;
     if (!data) return;
     const planName = data.plan ? data.plan.charAt(0).toUpperCase() + data.plan.slice(1) : "";
     if (data.orgCredits === false) {
@@ -611,7 +611,7 @@ function renderRuns(): void {
 }
 
 async function loadRuns(): Promise<void> {
-  const env = await window.yo.dashboardRuns?.();
+  const env = await window.glyphh.dashboardRuns?.();
   if (!env?.ok) return;
   allRuns = env.data as DashRun[];
   runsPage = 0;
@@ -626,7 +626,7 @@ export function initDashboardEvents(): void {
   // Billing opens INSIDE the app as a workbench panel — the same mechanics
   // Settings → Manage Account uses — never the external browser.
   document.getElementById("dash-add-funds")?.addEventListener("click", () => {
-    openUrlInWorkbench("Billing", `${window.yo.platformUrl}/billing`);
+    openUrlInWorkbench("Billing", `${window.glyphh.platformUrl}/billing`);
   });
   // the refresh button rides the chart card in Settings › Usage
   document.getElementById("dash-refresh")?.addEventListener("click", () => {

@@ -14,13 +14,13 @@ import { SPACE_LABEL, SPACE_GLYPH_SVG, AUTO_GLYPH_SVG, type Space } from "./spac
  *  webview). Switches to the agent surface so the workbench is visible. */
 export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
-  const layout = (await window.yo.layoutsList()).find((l) => l.name === name);
+  const layout = (await window.glyphh.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
   // A layout also sets the loop + its slot models — apply before the panels
   // tile so the composer is already in the layout's program state.
   if (layout.loop) {
     try {
-      await window.yo.loopApplyConfig(layout.loop, layout.modelSelections ?? {});
+      await window.glyphh.loopApplyConfig(layout.loop, layout.modelSelections ?? {});
       // Tell the composer to re-sync its loop + model chips to the new state.
       document.dispatchEvent(new CustomEvent("glyphh:loop-applied"));
     } catch { /* offline — the panels still open; the loop just stays as-is */ }
@@ -77,7 +77,7 @@ async function ensureAppNames(): Promise<void> {
   try {
     // Apps come from the server (the Apps tab's list, /api/panel-apps) — the
     // same source the Apps page shows. NOT the local internal-app registry.
-    const apps = await window.yo.panelAppsList();
+    const apps = await window.glyphh.panelAppsList();
     const next: Record<string, LayoutApp> = {};
     for (const a of apps) next[a.id] = { id: a.id, name: a.name, url: a.url, isBrowser: a.isBrowser, execPath: a.execPath, appArchetype: a.appArchetype, launchConfig: a.launchConfig };
     appById = next;
@@ -244,7 +244,7 @@ const layoutFolderInput = document.getElementById("layout-folder-input") as HTML
 const layoutFolderPickBtn = document.getElementById("layout-folder-pick") as HTMLButtonElement | null;
 const layoutFolderClearBtn = document.getElementById("layout-folder-clear") as HTMLButtonElement | null;
 layoutFolderPickBtn?.addEventListener("click", () => {
-  void window.yo.layoutsPickFolder().then((dir) => {
+  void window.glyphh.layoutsPickFolder().then((dir) => {
     if (dir && layoutFolderInput) layoutFolderInput.value = dir;
   });
 });
@@ -261,7 +261,7 @@ let builderModelSelections: Record<string, string> = {};
 async function refreshFolderModeRow(): Promise<void> {
   if (!folderModeRow) return;
   try {
-    const apps = await window.yo.panelAppsList();
+    const apps = await window.glyphh.panelAppsList();
     const byId = new Map(apps.map((a) => [a.id, a]));
     const folderRequired = builderCells.some((c) => {
       if (!c.panelId) return false;
@@ -278,7 +278,7 @@ async function refreshFolderModeRow(): Promise<void> {
 async function ensureLoopOptions(): Promise<void> {
   if (!layoutLoopSelect || layoutLoopSelect.dataset.filled) return;
   try {
-    const res = await window.yo.loopsList();
+    const res = await window.glyphh.loopsList();
     const opts = [`<option value="">Leave as-is</option>`];
     for (const l of res.loops) opts.push(`<option value="${l.id}">${escLayout(l.name)}</option>`);
     layoutLoopSelect.innerHTML = opts.join("");
@@ -292,8 +292,8 @@ async function renderLoopModels(): Promise<void> {
   if (!layoutLoopModels) return;
   if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
   layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
-  let roles: Awaited<ReturnType<typeof window.yo.loopRoles>>["roles"] = [];
-  try { roles = (await window.yo.loopRoles(builderLoop)).roles; }
+  let roles: Awaited<ReturnType<typeof window.glyphh.loopRoles>>["roles"] = [];
+  try { roles = (await window.glyphh.loopRoles(builderLoop)).roles; }
   catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load this loop's models.</div>`; return; }
   if (!roles.length) { layoutLoopModels.innerHTML = ""; return; }
   layoutLoopModels.innerHTML = roles.map((r) => {
@@ -565,7 +565,7 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
   // agent is the "Glyphh" workbench tool above, not an app cell.
   let apps: Array<{ id: string; name: string }>;
   try {
-    apps = (await window.yo.panelAppsList()).filter((a: any) =>
+    apps = (await window.glyphh.panelAppsList()).filter((a: any) =>
       (a.url || a.isBrowser === false) && a.appArchetype !== "glyphh-self" && a.slug !== "glyphh");
   } catch {
     apps = [];
@@ -664,7 +664,7 @@ async function loadLayouts() {
   layoutEditor.classList.add("hidden");
   layoutFormError.classList.add("hidden");
   await ensureAppNames();
-  allLayouts = await window.yo.layoutsList();
+  allLayouts = await window.glyphh.layoutsList();
   // The rail's Apps grid mirrors layouts too — tell it to refresh.
   document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
 
@@ -736,7 +736,7 @@ async function editLayout(name: string) {
   // Names must be current before the grid renders — a stale map shows raw
   // app ids in the cells (healUnresolvedNames covers late misses too).
   await ensureAppNames();
-  const layouts = await window.yo.layoutsList();
+  const layouts = await window.glyphh.layoutsList();
   const layout = layouts.find((l) => l.name === name);
   if (layout) {
     builderCols = layout.cols || 2;
@@ -865,7 +865,7 @@ async function saveLayout() {
   }
 
   if (editingLayoutName && editingLayoutName !== name) {
-    await window.yo.layoutsDelete(editingLayoutName);
+    await window.glyphh.layoutsDelete(editingLayoutName);
   }
 
   const folderMode = (folderModeSelect?.value === "multi" ? "multi" : "single") as "single" | "multi";
@@ -891,7 +891,7 @@ async function saveLayout() {
       localStorage.removeItem(`workbench:namedlayout:${n.trim().toLowerCase()}`);
     } catch { /* storage unavailable — recall just goes stale */ }
   }
-  await window.yo.layoutsSaveGrid({
+  await window.glyphh.layoutsSaveGrid({
     name,
     cols: builderCols,
     rows: builderRows,
@@ -929,7 +929,7 @@ async function deleteLayout() {
     localStorage.removeItem(`workbench:namedlayout:${editingLayoutName.trim().toLowerCase()}`);
     localStorage.removeItem(`workbench:layoutsession:${editingLayoutName.trim().toLowerCase()}`);
   } catch { /* best effort */ }
-  await window.yo.layoutsDelete(editingLayoutName);
+  await window.glyphh.layoutsDelete(editingLayoutName);
   cancelLayout();
   setTimeout(() => { if (layoutEditor.classList.contains("hidden")) void loadLayouts(); }, 1200);
 }

@@ -37,7 +37,7 @@ function fail(msg: string): void {
 export async function loadSkillsLibrary(): Promise<void> {
   listEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
   try {
-    all = unwrap<SkillSummary[]>(await window.yo.librarySkillsList());
+    all = unwrap<SkillSummary[]>(await window.glyphh.librarySkillsList());
   } catch (err) {
     listEl.innerHTML = `<div class="crud-empty">Couldn't load skills — ${escapeHtml(err instanceof Error ? err.message : String(err))}</div>`;
     return;
@@ -90,7 +90,7 @@ function renderList(): void {
         void (async () => {
           const sure = await confirmAction({ title: `Delete "${skill.name}"?`, body: "Loops and agent tasks that name it will fail until rebound.", confirmLabel: "Delete", danger: true });
           if (!sure) return;
-          const env = await window.yo.librarySkillDelete(skill.slug);
+          const env = await window.glyphh.librarySkillDelete(skill.slug);
           if (env.ok) await loadSkillsLibrary();
         })();
       } },
@@ -131,7 +131,7 @@ function readRow(label: string, value: string): string {
 
 async function openDetail(ref: string): Promise<void> {
   formError.classList.add("hidden");
-  const env = await window.yo.librarySkillGet(ref);
+  const env = await window.glyphh.librarySkillGet(ref);
   if (!env.ok) { fail(env.error || "couldn't load the skill"); return; }
   current = env.data as Skill;
   const m = current.manifest ?? {};
@@ -157,7 +157,7 @@ async function openDetail(ref: string): Promise<void> {
 
   detailEl.querySelector("#skill-delete-btn")!.addEventListener("click", () => void deleteCurrent());
   wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
-    const res = await window.yo.librarySkillUpdate(current!.slug, patch);
+    const res = await window.glyphh.librarySkillUpdate(current!.slug, patch);
     if (!res.ok) return res.error || "Couldn't save.";
     const row = all.find((s) => s.id === current!.id);
     if (row) { row.name = patch.name; row.description = patch.description; }
@@ -189,7 +189,7 @@ async function deleteCurrent(): Promise<void> {
   if (!current) return;
   const sure = await confirmAction({ title: `Delete "${current.name}"?`, body: "Loops and agent tasks that name it will fail until rebound.", confirmLabel: "Delete", danger: true });
   if (!sure) return;
-  const env = await window.yo.librarySkillDelete(current.slug);
+  const env = await window.glyphh.librarySkillDelete(current.slug);
   if (!env.ok) { fail(env.error || "delete failed"); return; }
   await loadSkillsLibrary();
 }

@@ -59,16 +59,16 @@ export const STARTER_LAYOUTS = TEMPLATES;
  *  before the write, so a stale or half-loaded list can't clobber a layout
  *  the user already has under that name. */
 async function backfill(t: Template): Promise<void> {
-  const fresh = (await window.yo.layoutsList?.()) ?? [];
+  const fresh = (await window.glyphh.layoutsList?.()) ?? [];
   if (fresh.some((l) => ((l as { name?: string }).name || "").toLowerCase() === t.name.toLowerCase())) return;
-  const apps = (await window.yo.panelAppsList?.()) ?? [];
+  const apps = (await window.glyphh.panelAppsList?.()) ?? [];
   const appId = (slug: string): string | null => {
     const hit = apps.find((a) => ((a as { slug?: string }).slug || "").toLowerCase().includes(slug)) as { id?: string } | undefined;
     return hit?.id ?? null;
   };
   const cells = t.build(appId);
   if (!cells) return;   // a seeded app is missing — better no layout than a broken one
-  await window.yo.layoutsSaveGrid?.({
+  await window.glyphh.layoutsSaveGrid?.({
     name: t.name,
     cols: t.cols, rows: t.rows,
     colWidths: Array.from({ length: t.cols }, () => 1 / t.cols),
@@ -83,7 +83,7 @@ async function backfill(t: Template): Promise<void> {
 export async function openStarterLayout(key: keyof typeof TEMPLATES): Promise<void> {
   const t = TEMPLATES[key];
   try {
-    const existing = (await window.yo.layoutsList?.()) ?? [];
+    const existing = (await window.glyphh.layoutsList?.()) ?? [];
     // Case-insensitive: a workspace may carry its own lowercase copy, and a
     // second capitalised one would be a duplicate, not a fix.
     const match = existing.find((l) =>
@@ -93,7 +93,7 @@ export async function openStarterLayout(key: keyof typeof TEMPLATES): Promise<vo
     // answered with something. A missing starter is recoverable; writing
     // over a layout because the list came back empty is not.
     if (!match && existing.length) await backfill(t);
-    await window.yo.layoutsOpen?.(match?.name ?? t.name);
+    await window.glyphh.layoutsOpen?.(match?.name ?? t.name);
   } catch {
     /* offline — the starter still seeds its prompt */
   }

@@ -103,7 +103,7 @@ function paintChips(): void {
 
 function setMode(id: (typeof MODES)[number]["id"]): void {
   glyphhMode = id;
-  void window.yo.setPreference?.("glyphhMode", id);
+  void window.glyphh.setPreference?.("glyphhMode", id);
   paintChips();
   renderModeMenu();
 }
@@ -115,7 +115,7 @@ function cycleMode(): void {
 
 function setLoop(id: string): void {
   glyphhLoop = id;
-  void window.yo.setPreference?.("glyphhLoop", id);
+  void window.glyphh.setPreference?.("glyphhLoop", id);
   paintChips();
   // A different loop declares different slots — the model chip and the meter
   // both go stale the moment the loop changes.
@@ -233,7 +233,7 @@ function showModeInfoModal(): void {
 // built-in Default. canBuild gates the (stub) Loops tab in the nav.
 async function refreshLoops(): Promise<void> {
   try {
-    const r = await window.yo.loopsList?.();
+    const r = await window.glyphh.loopsList?.();
     if (r?.loops?.length) { loops = r.loops; loopsCanBuild = !!r.canBuild; }
     if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = loops[0]?.id || "default";
     paintChips();
@@ -346,8 +346,8 @@ async function runManualCompact(focus: string): Promise<void> {
   const meter = el("code-ctx-meter");
   meter?.classList.add("compacting");
   try {
-    const r = await window.yo.glyphhCompact?.(c.id, focus);
-    const u = await window.yo.glyphhContextUsage?.(c.id).catch(() => null);
+    const r = await window.glyphh.glyphhCompact?.(c.id, focus);
+    const u = await window.glyphh.glyphhContextUsage?.(c.id).catch(() => null);
     const pct = u ? ` — context now ${Math.round(u.ratio * 100)}%` : "";
     c.messages.push({
       role: "assistant",
@@ -372,7 +372,7 @@ async function renderCtxPop(): Promise<void> {
   const pop = el("code-ctx-pop");
   if (!pop || !currentId) return;
   pop.innerHTML = `<div class="ctx-pop-empty">Measuring…</div>`;
-  const u = await window.yo.glyphhContextUsage?.(currentId).catch(() => null);
+  const u = await window.glyphh.glyphhContextUsage?.(currentId).catch(() => null);
   if (!u) { pop.innerHTML = `<div class="ctx-pop-empty">Context unavailable.</div>`; return; }
   const lanes = u.lanes?.length
     ? u.lanes
@@ -454,7 +454,7 @@ function refreshCtxMeter(): void {
       meter.title = "Context — empty (new session)";
       return;
     }
-    void window.yo.glyphhContextUsage?.(currentId).then((u) => {
+    void window.glyphh.glyphhContextUsage?.(currentId).then((u) => {
       const fill = meter.querySelector<HTMLElement>(".ctx-fill");
       const tick = meter.querySelector<HTMLElement>(".ctx-tick");
       if (!fill || !tick) return;
@@ -704,7 +704,7 @@ let storeLoaded = false;
 async function loadStore(): Promise<void> {
   if (storeLoaded) return;
   try {
-    const s = await window.yo.glyphhSessionsLoad?.();
+    const s = await window.glyphh.glyphhSessionsLoad?.();
     chats = ((s?.chats as CodeChat[]) || []);
     currentId = String(s?.currentId || "");
   } catch { chats = []; currentId = ""; }
@@ -723,7 +723,7 @@ async function loadStore(): Promise<void> {
   storeLoaded = true;
 }
 function saveStore(): Promise<void> {
-  return Promise.resolve(window.yo.glyphhSessionsSave?.(chats, currentId)).then(() => undefined);
+  return Promise.resolve(window.glyphh.glyphhSessionsSave?.(chats, currentId)).then(() => undefined);
 }
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
 
@@ -798,7 +798,7 @@ function ensureCodeSection(): void {
       await picker.refreshRoles(glyphhLoop);
       const role = picker.currentRoles()[0];
       if (!role) return false;
-      await window.yo.loopRoleSet?.(glyphhLoop, role.name, modelId);
+      await window.glyphh.loopRoleSet?.(glyphhLoop, role.name, modelId);
       await refreshModelList(true);
       return true;
     } catch { return false; }
@@ -815,7 +815,7 @@ function newChat(): void {
   chats.unshift(c);
   currentId = c.id;
   lastBySpace[spaceOf(c)] = c.id;
-  void window.yo.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
+  void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
   threadPinned = true;
   void saveStore();
   syncThinking();   // fresh session — no run of its own yet
@@ -948,7 +948,7 @@ function renderHistory(): void {
     row.addEventListener("click", () => {
       currentId = c.id;
       lastBySpace[spaceOf(c)] = c.id;
-      void window.yo.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
+      void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
       threadPinned = true;
       void saveStore();
       ensureCodeSection();
@@ -1007,14 +1007,14 @@ function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
     card.status = "connecting";
     paint();
     void saveStore();
-    void window.yo.connectorsConnect(card.appId).then((res) => {
+    void window.glyphh.connectorsConnect(card.appId).then((res) => {
       card.status = res.ok ? "connected" : "failed";
       if (!res.ok) card.error = res.error || "Authorization failed.";
       paint();
       void saveStore();
       // answer the WAITING tool (retries after a failure answer again — the
       // respond handler ignores unknown ids, so that's harmless)
-      void window.yo.glyphhAgentConnectRespond?.({ id: card.id, connected: res.ok, ...(res.ok ? {} : { reason: card.error }) });
+      void window.glyphh.glyphhAgentConnectRespond?.({ id: card.id, connected: res.ok, ...(res.ok ? {} : { reason: card.error }) });
     });
   });
   return wrap;
@@ -1525,13 +1525,13 @@ async function handleComposerPaste(e: ClipboardEvent): Promise<void> {
   const paths: string[] = [];
   const refs: AttachRef[] = [];
   for (const f of files) {
-    const p = window.yo.getPathForFile(f);
+    const p = window.glyphh.getPathForFile(f);
     if (p) { paths.push(p); continue; }
     if (!f.type.startsWith("image/")) continue;
-    try { refs.push(await window.yo.glyphhSaveClipboardImage(await f.arrayBuffer())); }
+    try { refs.push(await window.glyphh.glyphhSaveClipboardImage(await f.arrayBuffer())); }
     catch { /* oversized/empty clipboard image — skip */ }
   }
-  if (paths.length) refs.push(...await window.yo.glyphhClassifyPaths(paths));
+  if (paths.length) refs.push(...await window.glyphh.glyphhClassifyPaths(paths));
   if (refs.length) queueAttachments(refs);
 }
 
@@ -1556,10 +1556,10 @@ function wireComposerAttachments(): void {
     };
     menu.append(
       mkItem("Attach files…", "Images and documents ride the next message", () => {
-        void window.yo.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
+        void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
       mkItem("Add folder…", "Give Glyphh read access to another directory", () => {
-        void window.yo.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
+        void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
     );
     // WORK and CODE run inside a working folder — the + is where you set it,
@@ -1604,9 +1604,9 @@ function wireComposerAttachments(): void {
   comp.addEventListener("drop", (e) => {
     e.preventDefault();
     comp.classList.remove("dropping");
-    const paths = Array.from(e.dataTransfer?.files ?? []).map((f) => window.yo.getPathForFile(f)).filter(Boolean);
+    const paths = Array.from(e.dataTransfer?.files ?? []).map((f) => window.glyphh.getPathForFile(f)).filter(Boolean);
     if (!paths.length) return;
-    void window.yo.glyphhClassifyPaths(paths).then((refs) => { if (refs.length) queueAttachments(refs); });
+    void window.glyphh.glyphhClassifyPaths(paths).then((refs) => { if (refs.length) queueAttachments(refs); });
   });
 }
 
@@ -1675,7 +1675,7 @@ function syncThinking(): void {
 function stopThinking(): void {
   // Abort the CURRENT chat's stream — main answers with glyphh-agent:done
   // { stopped: true } for that run; other sessions keep working.
-  void window.yo.glyphhStop?.(currentId);
+  void window.glyphh.glyphhStop?.(currentId);
 }
 
 /** `.dip <app-or-layout>` — the ONE mechanism, callable from any input in the
@@ -1718,13 +1718,13 @@ export function runDip(ref: string): void {
     // A layouts-list failure (offline, server hiccup) must not kill the
     // whole .dip — fall through to the app path.
     if (await w.__wbOpenLayoutByName?.(ref).catch(() => false)) return;
-    const yo2 = window.yo as unknown as { appLaunch?: (s: { slug: string; name: string }) => Promise<{ ok: boolean; error?: string }> };
+    const yo2 = window.glyphh as unknown as { appLaunch?: (s: { slug: string; name: string }) => Promise<{ ok: boolean; error?: string }> };
     const asApp = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }) as { ok: boolean; error?: string });
     if (asApp?.ok) return;
     if (!current()) newChat();
     // Name the layouts the resolver actually sees — "not found" with no
     // context turns into a support question; this answers it in place.
-    const known = await window.yo.layoutsList?.().then((ls) => ls.map((l) => l.name)).catch(() => [] as string[]);
+    const known = await window.glyphh.layoutsList?.().then((ls) => ls.map((l) => l.name)).catch(() => [] as string[]);
     const hint = known?.length ? ` Layouts: ${known.join(", ")}.` : "";
     current()!.messages.push({
       role: "assistant",
@@ -1754,7 +1754,7 @@ export function wireGlobalDotCommands(): void {
     t.value = "";
     t.dispatchEvent(new Event("input", { bubbles: true }));
     if (dip) runDip(dip[1].trim());
-    else void (window.yo as unknown as { dripsPreview?: (r: string) => Promise<string> }).dripsPreview?.((drip![1] || "fireworks").trim());
+    else void (window.glyphh as unknown as { dripsPreview?: (r: string) => Promise<string> }).dripsPreview?.((drip![1] || "fireworks").trim());
   }, true);
 }
 
@@ -1797,7 +1797,7 @@ function send(): void {
     cc.messages.push({ role: "user", text, at: Date.now() });
     ta.value = "";
     autoGrow(ta);
-    void window.yo.glyphhRemember?.(rem[1].trim())
+    void window.glyphh.glyphhRemember?.(rem[1].trim())
       .then(() => cc.messages.push({ role: "assistant", text: "✓ Remembered — it rides along in every session now.", at: Date.now() }))
       .catch((err) => cc.messages.push({ role: "assistant", text: `⚠ ${err instanceof Error ? err.message : String(err)}`, at: Date.now() }))
       .then(() => { void saveStore(); renderHistory(); renderThread(); });
@@ -1808,7 +1808,7 @@ function send(): void {
   if (drip) {
     ta.value = "";
     autoGrow(ta);
-    void (window.yo as unknown as { dripsPreview?: (r: string) => Promise<string> })
+    void (window.glyphh as unknown as { dripsPreview?: (r: string) => Promise<string> })
       .dripsPreview?.((drip[1] || "fireworks").trim());
     return;
   }
@@ -1828,7 +1828,7 @@ function send(): void {
     if (cc.title === "New session") cc.title = text.length > 42 ? text.slice(0, 42) + "…" : text;
     ta.value = "";
     autoGrow(ta);
-    void window.yo.execCommand(text.slice(1).trim());
+    void window.glyphh.execCommand(text.slice(1).trim());
     cc.messages.push({ role: "assistant", text: `→ ran ${text}`, at: Date.now() });
     void saveStore();
     renderHistory();
@@ -1865,7 +1865,7 @@ function send(): void {
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
   const launch = (retried: boolean): Promise<void> =>
-    window.yo.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c) })
+    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -1997,7 +1997,7 @@ function paintAskDock(): void {
       b.className = `action-btn ${cls}`;
       b.textContent = label;
       b.addEventListener("click", () => {
-        void window.yo.glyphhApprovalRespond?.(item.id, allow);
+        void window.glyphh.glyphhApprovalRespond?.(item.id, allow);
         askDockShift();
       });
       return b;
@@ -2018,7 +2018,7 @@ function paintAskDock(): void {
     item.answers[item.step] = value;
     item.step += 1;
     if (item.step >= item.questions.length) {
-      void window.yo.glyphhAskRespond?.(item.id, item.questions.map((_x, i) => item.answers[i] ?? ""));
+      void window.glyphh.glyphhAskRespond?.(item.id, item.questions.map((_x, i) => item.answers[i] ?? ""));
       askDockShift();
     } else {
       paintAskDock();
@@ -2064,7 +2064,7 @@ function paintAskDock(): void {
 /** Wire the stream events once — deltas paint the live bubble (or just
  *  accumulate when another session is in view). */
 function initGlyphhAgentEvents(): void {
-  window.yo.onGlyphhAgentSetup?.((d) => {
+  window.glyphh.onGlyphhAgentSetup?.((d) => {
     if (d.phase === "downloading") {
       for (const r of liveRuns.values()) r.setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
     } else if (d.phase === "manifest") {
@@ -2083,30 +2083,30 @@ function initGlyphhAgentEvents(): void {
     }
     paintRunMeta();
   });
-  window.yo.onGlyphhAgentCredits?.((d) => {
+  window.glyphh.onGlyphhAgentCredits?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;
     e[1].creditsMicro = d.creditsMicro;
     if (e[0] === currentId) paintRunMeta();
   });
-  window.yo.onGlyphhAgentProgress?.((d) => {
+  window.glyphh.onGlyphhAgentProgress?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;
     e[1].inTok = d.inTokens;
     e[1].outTok = d.outTokens;
     if (e[0] === currentId) paintRunMeta();
   });
-  window.yo.onGlyphhAgentApproval?.((a) => {
+  window.glyphh.onGlyphhAgentApproval?.((a) => {
     askQueue.push({ type: "approval", ...a });
     paintAskDock();
   });
-  window.yo.onGlyphhAgentAsk?.((d) => {
+  window.glyphh.onGlyphhAgentAsk?.((d) => {
     askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0, runId: (d as { runId?: string }).runId });
     paintAskDock();
   });
   // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
   // so a re-render or restart keeps the run's story).
-  window.yo.onGlyphhAgentTool?.((d) => {
+  window.glyphh.onGlyphhAgentTool?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;
     const [runChatId, run] = e;
@@ -2158,13 +2158,13 @@ function initGlyphhAgentEvents(): void {
       renderThread(); // first token — adds the live block under the spinner
     }
   };
-  window.yo.onGlyphhAgentConnect?.((p) => {
+  window.glyphh.onGlyphhAgentConnect?.((p) => {
     // the card belongs to the session whose run asked — with parallel runs
     // that's the single live one, else the current session
     const liveIds = [...liveRuns.keys()];
     const targetId = liveIds.length === 1 ? liveIds[0]! : currentId;
     const chat = chats.find((ch) => ch.id === targetId) ?? current();
-    if (!chat) { void window.yo.glyphhAgentConnectRespond?.({ id: p.id, connected: false, reason: "no session" }); return; }
+    if (!chat) { void window.glyphh.glyphhAgentConnectRespond?.({ id: p.id, connected: false, reason: "no session" }); return; }
     chat.messages.push({
       role: "assistant",
       kind: "connect",
@@ -2175,7 +2175,7 @@ function initGlyphhAgentEvents(): void {
     void saveStore();
     if (chat.id === currentId) { renderThread(); pinThreadToBottom(); }
   });
-  window.yo.onGlyphhAgentDelta?.((d) => {
+  window.glyphh.onGlyphhAgentDelta?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;
     e[1].text += d.delta;
@@ -2184,12 +2184,12 @@ function initGlyphhAgentEvents(): void {
       requestAnimationFrame(paintStream);
     }
   });
-  window.yo.onGlyphhAgentDone?.((d) => {
+  window.glyphh.onGlyphhAgentDone?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;
     finishRun(e[0], e[1].text, d.stopped);
   });
-  window.yo.onGlyphhAgentError?.((d) => {
+  window.glyphh.onGlyphhAgentError?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;
     const [runChatId, run] = e;
@@ -2211,7 +2211,7 @@ function initGlyphhAgentEvents(): void {
 function setRecentsOpen(open: boolean, persist: boolean): void {
   el("recents-toggle")?.classList.toggle("closed", !open);
   el("code-history")?.classList.toggle("hidden", !open);
-  if (persist) void window.yo.setPreference?.("codeRecentsOpen", open);
+  if (persist) void window.glyphh.setPreference?.("codeRecentsOpen", open);
   syncRailLayout();
 }
 
@@ -2232,7 +2232,7 @@ let railRecentsH = 170;
 function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
   el(def.toggle)?.classList.toggle("closed", !open);
   el(def.body)?.classList.toggle("hidden", !open);
-  if (persist) void window.yo.setPreference?.(def.pref, open);
+  if (persist) void window.glyphh.setPreference?.(def.pref, open);
   syncRailLayout();
 }
 
@@ -2264,7 +2264,7 @@ function initRailSections(): void {
       const open = el(def.toggle)!.classList.contains("closed"); // was closed → open it
       setRailSectionOpen(def, open, true);
     });
-    void window.yo.getPreference?.(def.pref, false).then((v) => setRailSectionOpen(def, v === true, false));
+    void window.glyphh.getPreference?.(def.pref, false).then((v) => setRailSectionOpen(def, v === true, false));
   }
 }
 
@@ -2330,9 +2330,9 @@ function railPager(page: number, totalPages: number, onPage: (p: number) => void
 async function loadRecentApps(): Promise<void> {
   try {
     const [apps, layouts, recents] = await Promise.all([
-      window.yo.panelAppsList?.() ?? Promise.resolve([]),
-      window.yo.layoutsList?.() ?? Promise.resolve([]),
-      window.yo.recentsList?.() ?? Promise.resolve([]),
+      window.glyphh.panelAppsList?.() ?? Promise.resolve([]),
+      window.glyphh.layoutsList?.() ?? Promise.resolve([]),
+      window.glyphh.recentsList?.() ?? Promise.resolve([]),
     ]);
     // Palette parity: web apps (have a url) + native library apps. The
     // agent's own row (glyphh-self) stays OUT — the Glyphh mark in the
@@ -2418,7 +2418,7 @@ function renderRailApps(): void {
     tile.addEventListener("click", () => {
       // Same open the Apps page's "Open app" uses (per-config launch).
       openCommandCenter();   // rail clicks land in Echo — the layout manager
-      void window.yo.appLaunch?.({
+      void window.glyphh.appLaunch?.({
         slug: a.slug || a.id, name: a.name, url: a.url,
         isBrowser: a.isBrowser, execPath: a.execPath,
         appArchetype: a.appArchetype, launchConfig: a.launchConfig,
@@ -2508,7 +2508,7 @@ function initRecentsVsplit(): void {
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
       document.body.classList.remove("code-vdragging");
-      if (railRecentsH > 0) void window.yo.setPreference?.("codeRecentsH", railRecentsH);
+      if (railRecentsH > 0) void window.glyphh.setPreference?.("codeRecentsH", railRecentsH);
     };
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
@@ -2518,7 +2518,7 @@ function initRecentsVsplit(): void {
 /** Wire the rail's Apps grid: restore its height, load, and bind search. */
 function initRailApps(): void {
   void (async () => {
-    const recentsH = Number(await window.yo.getPreference?.("codeRecentsH", 0)) || 0;
+    const recentsH = Number(await window.glyphh.getPreference?.("codeRecentsH", 0)) || 0;
     if (recentsH > 0) railRecentsH = recentsH;
     syncRailLayout();
   })();
@@ -2540,7 +2540,7 @@ function initRailApps(): void {
   el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     const text = (e.target as HTMLInputElement).value.trim();
-    if (text) void window.yo.execCommand(text.replace(/^\./, ""));
+    if (text) void window.glyphh.execCommand(text.replace(/^\./, ""));
   });
   // Layouts search — its own page + list.
   el<HTMLInputElement>("recent-layouts-search")?.addEventListener("input", () => {
@@ -2568,7 +2568,7 @@ function initRailSplitter(): void {
       document.removeEventListener("mouseup", up);
       document.body.classList.remove("code-dragging");
       const w = parseInt(pane.style.width || "0", 10);
-      if (w > 0) void window.yo.setPreference?.("codeRailWidth", w);
+      if (w > 0) void window.glyphh.setPreference?.("codeRailWidth", w);
     };
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
@@ -2576,13 +2576,13 @@ function initRailSplitter(): void {
 }
 
 async function applyPanelPrefs(): Promise<void> {
-  const railCollapsed = ((await window.yo.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
+  const railCollapsed = ((await window.glyphh.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
   el("app-rail")?.classList.toggle("collapsed", railCollapsed);
   document.body.classList.toggle("rail-collapsed", railCollapsed);
-  const railW = Number(await window.yo.getPreference?.("codeRailWidth", 0)) || 0;
+  const railW = Number(await window.glyphh.getPreference?.("codeRailWidth", 0)) || 0;
   const rail = el("app-rail");
   if (rail && railW > 0) { rail.style.width = `${railW}px`; rail.style.minWidth = `${railW}px`; }
-  const recentsOpen = (await window.yo.getPreference?.("codeRecentsOpen", true)) as boolean;
+  const recentsOpen = (await window.glyphh.getPreference?.("codeRecentsOpen", true)) as boolean;
   setRecentsOpen(recentsOpen !== false, false);
 }
 
@@ -2656,7 +2656,7 @@ export function initCode(): void {
     if (e.code === "Space" && e.shiftKey && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
   });
   // The OS-wide ⌘⇧Space lands here from main once the window is fronted.
-  (window.yo as unknown as { onOpenCommandCenter?: (cb: () => void) => void }).onOpenCommandCenter?.(() => openCommandCenter());
+  (window.glyphh as unknown as { onOpenCommandCenter?: (cb: () => void) => void }).onOpenCommandCenter?.(() => openCommandCenter());
   // Header launcher button — bound here (home-panel startup) through the
   // cold-safe path, so it works even before the Code workbench first mounts.
   syncDragStripOffset();
@@ -2664,7 +2664,7 @@ export function initCode(): void {
   // replacement). Every main-side opener — Glyphh's open_app, the relay's
   // panels_*, the Apps/Layouts pages — lands here: flip to Code, make sure
   // the workbench booted, then drive the wb bridge.
-  window.yo.onWbAppCommand?.((cmd) => {
+  window.glyphh.onWbAppCommand?.((cmd) => {
     showWorkspaceSurface();
     (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench?.();
     const w = window as unknown as {
@@ -2809,9 +2809,9 @@ export function initCode(): void {
     void checkWorkdirGate();
   });
   void Promise.all([
-    window.yo.getPreference?.("lastSessionChat", ""),
-    window.yo.getPreference?.("lastSessionCowork", ""),
-    window.yo.getPreference?.("lastSessionCode", ""),
+    window.glyphh.getPreference?.("lastSessionChat", ""),
+    window.glyphh.getPreference?.("lastSessionCowork", ""),
+    window.glyphh.getPreference?.("lastSessionCode", ""),
   ]).then(([lc, lw, lco]) => {
     // STARTUP ALWAYS LANDS ON CHAT — the front door: its starter cards open
     // into whichever space the task actually belongs to.
@@ -2825,7 +2825,7 @@ export function initCode(): void {
   el("code-rail-toggle")?.addEventListener("click", () => {
     const collapsed = el("app-rail")!.classList.toggle("collapsed");
     document.body.classList.toggle("rail-collapsed", collapsed);
-    void window.yo.setPreference?.("codeRailCollapsed", collapsed);
+    void window.glyphh.setPreference?.("codeRailCollapsed", collapsed);
   });
   // The command-center eye beside the rail toggle — the same control as the
   // echo panel's eye button: pin the shadow so the wall shows through the
@@ -2943,9 +2943,9 @@ export function initCode(): void {
   initWorkdirGate();
   initComposerControls();
   void (async () => {
-    const m = String((await window.yo.getPreference?.("glyphhMode", "ask")) || "ask");
+    const m = String((await window.glyphh.getPreference?.("glyphhMode", "ask")) || "ask");
     if (MODES.some((x) => x.id === m)) glyphhMode = m as typeof glyphhMode;
-    const lp = String((await window.yo.getPreference?.("glyphhLoop", "default")) || "default");
+    const lp = String((await window.glyphh.getPreference?.("glyphhLoop", "default")) || "default");
     glyphhLoop = lp;
     void refreshLoops();
     paintChips();
@@ -2962,7 +2962,7 @@ export function initCode(): void {
   // live main-side, so this is display-consistency, not correctness.)
   document.addEventListener("glyphh:loop-applied", () => {
     void (async () => {
-      const lp = String((await window.yo.getPreference?.("glyphhLoop", "default")) || "default");
+      const lp = String((await window.glyphh.getPreference?.("glyphhLoop", "default")) || "default");
       if (lp === glyphhLoop) { await refreshModelList(true); return; }
       glyphhLoop = lp;
       await refreshLoops();
@@ -3009,10 +3009,10 @@ export function initCode(): void {
   // list so a ghost-created session appears in the history dropdown immediately. The
   // CURRENT chat keeps its local object: it may be mid-stream, and the disk
   // copy of it is never newer than this window's memory.
-  (window.yo as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => {
+  (window.glyphh as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => {
     void (async () => {
       try {
-        const s = await window.yo.glyphhSessionsLoad?.();
+        const s = await window.glyphh.glyphhSessionsLoad?.();
         const disk = ((s?.chats as CodeChat[]) || []);
         if (!disk.length || !storeLoaded) return;
         const cur = current();

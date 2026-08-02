@@ -801,7 +801,7 @@ async function boot() {
   });
 
   // yo-panel-open/-prefill/-dismiss-from-renderer removed with the panel.
-  // The Schedules run-history "View run" hand-off (previously window.yo.openYoChat
+  // The Schedules run-history "View run" hand-off (previously window.glyphh.openYoChat
   // -> "yo-open-chat-from-renderer") was also removed from the renderer side
   // (src/renderer/help/schedules.ts) since there's no surface left to open a
   // run's transcript INTO. No handler is registered for that channel anymore.

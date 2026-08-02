@@ -85,7 +85,7 @@ function renderModelGrid(kind: "proxied" | "open_weight"): void {
     card.querySelector(".mdl-chip-warn")?.addEventListener("click", () => switchTab("providers"));
     const box = card.querySelector("input[type=checkbox]") as HTMLInputElement;
     box.addEventListener("change", () => {
-      void window.yo.orgModelsSetSupported(m.id, box.checked).then((r) => {
+      void window.glyphh.orgModelsSetSupported(m.id, box.checked).then((r) => {
         if (!r.ok) { box.checked = !box.checked; showError(r.error || "Update failed"); return; }
         m.supported = box.checked;
         showError("");
@@ -135,7 +135,7 @@ function renderProviders(): void {
       const value = keyInput.value.trim();
       if (!value) return;
       saveBtn.disabled = true;
-      void window.yo.orgProviderEnable(p.slug, value).then((r) => {
+      void window.glyphh.orgProviderEnable(p.slug, value).then((r) => {
         if (!r.ok) { showError(r.error || "Save failed"); saveBtn.disabled = false; return; }
         showError("");
         void refresh();
@@ -147,7 +147,7 @@ function renderProviders(): void {
     removeBtn.classList.toggle("hidden", !p.hasByokKey);
     removeBtn.addEventListener("click", () => {
       removeBtn.disabled = true;
-      void window.yo.orgProviderClearKey(p.slug).then((r) => {
+      void window.glyphh.orgProviderClearKey(p.slug).then((r) => {
         removeBtn.disabled = false;
         if (!r.ok) { showError(r.error || "Remove failed"); return; }
         showError("");
@@ -156,7 +156,7 @@ function renderProviders(): void {
     });
     const toggle = row.querySelector(".settings-toggle input") as HTMLInputElement;
     toggle.addEventListener("change", () => {
-      const call = toggle.checked ? window.yo.orgProviderEnable(p.slug) : window.yo.orgProviderDisable(p.slug);
+      const call = toggle.checked ? window.glyphh.orgProviderEnable(p.slug) : window.glyphh.orgProviderDisable(p.slug);
       void call.then((r) => {
         if (!r.ok) { toggle.checked = !toggle.checked; showError(r.error || "Update failed"); return; }
         p.enabledForOrg = toggle.checked;
@@ -200,7 +200,7 @@ function renderCustom(): void {
       (el("mc-key") as HTMLInputElement).value = "";
     });
     row.querySelector(".mdl-del")?.addEventListener("click", () => {
-      void window.yo.orgCustomModelsDelete(m.id).then((r) => {
+      void window.glyphh.orgCustomModelsDelete(m.id).then((r) => {
         if (!r.ok) { showError(r.error || "Delete failed"); return; }
         showError("");
         void refresh();
@@ -221,7 +221,7 @@ function renderCounts(): void {
 // ── data ─────────────────────────────────────────────────────────────────────
 
 async function refreshModelsOnly(): Promise<void> {
-  const r = await window.yo.orgModelsList();
+  const r = await window.glyphh.orgModelsList();
   if (r.ok && r.data) models = r.data as OrgModelRow[];
   renderModelGrid("proxied");
   renderModelGrid("open_weight");
@@ -230,9 +230,9 @@ async function refreshModelsOnly(): Promise<void> {
 
 async function refresh(): Promise<void> {
   const [m, p, c] = await Promise.all([
-    window.yo.orgModelsList(),
-    window.yo.orgProvidersList(),
-    window.yo.orgCustomModelsList(),
+    window.glyphh.orgModelsList(),
+    window.glyphh.orgProvidersList(),
+    window.glyphh.orgCustomModelsList(),
   ]);
   const firstError = [m, p, c].find((r) => !r.ok)?.error;
   showError(firstError ? `Couldn't load: ${firstError}` : "");
@@ -264,7 +264,7 @@ async function saveCustom(): Promise<void> {
   }
   const btn = el("mc-save") as HTMLButtonElement;
   btn.disabled = true;
-  const r = await window.yo.orgCustomModelsSave({
+  const r = await window.glyphh.orgCustomModelsSave({
     slug,
     name: v("mc-name"),
     baseUrl: v("mc-url"),

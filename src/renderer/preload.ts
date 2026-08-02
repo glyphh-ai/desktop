@@ -149,7 +149,7 @@ interface LoopRoleView {
   }>;
 }
 
-contextBridge.exposeInMainWorld("yo", {
+contextBridge.exposeInMainWorld("glyphh", {
   copyToClipboard: (text: string) => ipcRenderer.invoke("copy-to-clipboard", text),
   // Toggle the full-screen command overlay (also bound to a global hotkey).
   // Resolve a dropped/selected File to its absolute on-disk path. Electron 32+

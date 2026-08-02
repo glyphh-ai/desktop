@@ -100,13 +100,13 @@ function showTutorial(cb: BootGateCallbacks): void {
 
   function closeTutorial() {
     tutorialShowing = false;
-    window.yo.setPreference("hasSeenTutorial", true);
+    window.glyphh.setPreference("hasSeenTutorial", true);
     overlay.classList.add("hidden");
     // Restore panels now that tutorial is dismissed
     cb.showPanels();
     // First run ends at HOME — the dashboard's starters and schedule are the
     // natural next step, not whatever section the panel restored to.
-    void (window.yo as unknown as { homeGotoSection?: (s: string) => Promise<unknown> }).homeGotoSection?.("dashboard");
+    void (window.glyphh as unknown as { homeGotoSection?: (s: string) => Promise<unknown> }).homeGotoSection?.("dashboard");
   }
 
   // Start first step
@@ -186,7 +186,7 @@ function dismissSplash(cb: BootGateCallbacks): void {
 // ── Account lockout (admin-disabled account) ────────────────────────────────
 
 let accountLocked = false;
-let manageUrl = `${window.yo.platformUrl}/billing`;
+let manageUrl = `${window.glyphh.platformUrl}/billing`;
 
 /** Raise the full-window lockout gate. The user keeps the titlebar (so they
  *  can quit) but everything else is sealed until the account is active. */
@@ -236,7 +236,7 @@ function hideLockout(cb: BootGateCallbacks): void {
  */
 export function initBootGate(cb: BootGateCallbacks): void {
   // Config sync status during boot
-  (window as any).yo.onSplashStatus?.((msg: string) => {
+  (window as any).glyphh.onSplashStatus?.((msg: string) => {
     const el = document.getElementById("splash-status");
     if (el) {
       el.textContent = msg;
@@ -247,7 +247,7 @@ export function initBootGate(cb: BootGateCallbacks): void {
 
   // Update gate — surface a progress bar on the splash and hold it while an
   // update downloads. Wired before onBoot so events that arrive early count.
-  window.yo.onUpdateStatus((info) => {
+  window.glyphh.onUpdateStatus((info) => {
     if (info.status === "available" || info.status === "downloading") {
       updateVerdict = "downloading";
       if (pendingGraceTimer) { clearTimeout(pendingGraceTimer); pendingGraceTimer = null; }
@@ -284,7 +284,7 @@ export function initBootGate(cb: BootGateCallbacks): void {
     }
   });
 
-  window.yo.onBoot((data: BootData) => {
+  window.glyphh.onBoot((data: BootData) => {
     booted = true;
     bootData = data;
     if (data.theme) {
@@ -304,7 +304,7 @@ export function initBootGate(cb: BootGateCallbacks): void {
 
     // Show tutorial on first launch (skip if going through onboarding — handled by yo-onboarding-done)
     if (!data.needsOnboarding) {
-      window.yo.getPreference("hasSeenTutorial", false).then((seen) => {
+      window.glyphh.getPreference("hasSeenTutorial", false).then((seen) => {
         if (!seen) showTutorial(cb);
       });
     }
@@ -314,19 +314,19 @@ export function initBootGate(cb: BootGateCallbacks): void {
 
   // Account gate — fired by the main-process heartbeat observer the moment a
   // trial expires (or the account is disabled / reactivated), at boot or live.
-  window.yo.onAccountLocked((info) => { showLockout(cb, info); });
-  window.yo.onAccountUnlocked(() => { if (accountLocked) hideLockout(cb); });
+  window.glyphh.onAccountLocked((info) => { showLockout(cb, info); });
+  window.glyphh.onAccountUnlocked(() => { if (accountLocked) hideLockout(cb); });
 
   // Lockout overlay buttons.
   document.getElementById("lockout-upgrade")?.addEventListener("click", () => {
-    window.yo.openExternal(manageUrl);
+    window.glyphh.openExternal(manageUrl);
   });
   document.getElementById("lockout-recheck")?.addEventListener("click", () => {
     const statusEl = document.getElementById("lockout-status");
     const btn = document.getElementById("lockout-recheck") as HTMLButtonElement | null;
     if (statusEl) { statusEl.textContent = "Checking…"; statusEl.className = ""; }
     if (btn) btn.disabled = true;
-    void window.yo.recheckAccount().then((r) => {
+    void window.glyphh.recheckAccount().then((r) => {
       if (btn) btn.disabled = false;
       if (r.status === "active") {
         hideLockout(cb);
@@ -343,20 +343,20 @@ export function initBootGate(cb: BootGateCallbacks): void {
     });
   });
   document.getElementById("lockout-signout")?.addEventListener("click", () => {
-    void window.yo.logout().then(() => window.location.reload());
+    void window.glyphh.logout().then(() => window.location.reload());
   });
 
-  window.yo.onThemeChanged((theme: string) => {
+  window.glyphh.onThemeChanged((theme: string) => {
     cb.applyTheme(theme);
   });
 
-  window.yo.onShowOnboarding(() => {
+  window.glyphh.onShowOnboarding(() => {
     cb.showOnboarding(true);
   });
 
   // After onboarding activation, show tutorial (first time only) or restore panels
   window.addEventListener("yo-onboarding-done", async () => {
-    const seen = await window.yo.getPreference("hasSeenTutorial", false);
+    const seen = await window.glyphh.getPreference("hasSeenTutorial", false);
     if (!seen) {
       showTutorial(cb);
     } else {

@@ -74,7 +74,7 @@ function makeDripTile(name: string, recipe: string, emoji: string, closePicker: 
   btn.className = "drip-picker-tile";
   btn.innerHTML = `<span class="drip-tile-icon">${emoji}</span><span class="drip-tile-label">${name}</span>`;
   btn.addEventListener("click", () => {
-    window.yo.dripsPreview(recipe);
+    window.glyphh.dripsPreview(recipe);
     closePicker();
   });
   return btn;
@@ -84,7 +84,7 @@ export function initDrip(): { openDripPicker: () => void; closeDripPicker: () =>
   // Register drip effect handler — this must stay wired unconditionally: it's
   // how .drip commands (from the command center) render their in-app effect,
   // independent of the manual picker UI below.
-  window.yo.onDripEffect(playDrip);
+  window.glyphh.onDripEffect(playDrip);
 
   // DOM elements for the manual picker — these lived inside the now-removed
   // #yo-panel markup, so the picker has no UI home right now. Skip wiring it
@@ -108,8 +108,8 @@ export function initDrip(): { openDripPicker: () => void; closeDripPicker: () =>
     dripPickerBuiltin.innerHTML = "";
     dripPickerCustom.innerHTML = "";
     const [builtins, customs] = await Promise.all([
-      window.yo.dripsBuiltinEffects().catch(() => [] as string[]),
-      window.yo.dripsList().catch(() => [] as Array<{ name: string; recipe: string }>),
+      window.glyphh.dripsBuiltinEffects().catch(() => [] as string[]),
+      window.glyphh.dripsList().catch(() => [] as Array<{ name: string; recipe: string }>),
     ]);
     for (const name of builtins) {
       dripPickerBuiltin.appendChild(makeDripTile(name, name, EFFECT_EMOJI[name] || "🎨", closeDripPicker));

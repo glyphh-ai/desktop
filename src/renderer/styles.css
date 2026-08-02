@@ -1241,6 +1241,12 @@ body.account-locked #dl-btn-wrap {
   -webkit-app-region: no-drag;
 }
 
+/* Web target: OS window controls (traffic lights) are meaningless in a browser
+   tab — hide them. Gated by the .glyphh-web class the web bridge sets on <html>.
+   .wc covers both the titlebar (#window-controls) and the home rail (#panel-wc). */
+.glyphh-web .wc,
+.glyphh-web #window-controls { display: none !important; }
+
 .wc {
   width: 12px;
   height: 12px;

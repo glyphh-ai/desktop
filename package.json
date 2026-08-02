@@ -18,6 +18,12 @@
     "bench:code-index": "npm run build:main && node dist/main/code-index/benchmark.js",
     "bench:code-index-ab": "npm run build:main && node dist/main/code-index/benchmark-ab.js",
     "start": "electron .",
+    "build:web": "npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:web-bridge",
+    "build:web-bridge": "esbuild web/src/bridge.js --bundle --outfile=dist/renderer/glyphh-web-bundle.js --platform=browser --format=iife --sourcemap",
+    "web": "node web/serve.mjs",
+    "dev:web": "npm run build:web && npm run web",
+    "test:web": "vitest run web/test",
+    "test:web:watch": "vitest web/test",
     "clean:local": "bash scripts/clean-local.sh",
     "postinstall": "electron-rebuild",
     "package:mac": "electron-builder --mac",
@@ -27,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/glyphh-ai/yo-client.git"
+    "url": "git+https://github.com/glyphh-ai/app.git"
   },
   "author": "Glyphh AI",
   "license": "LicenseRef-Proprietary",
@@ -46,7 +52,8 @@
     "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "shx": "^0.4.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.126",

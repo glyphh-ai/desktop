@@ -16,14 +16,14 @@ function loadDocs() {
     if (!a) return;
     e.preventDefault();
     const href = a.dataset.href;
-    if (href) void window.yo.openExternal(href);
+    if (href) void window.glyphh.openExternal(href);
   });
 }
 
 // ── Support ───────────────────────────────────────────────
 // Configurable via the GLYPHH_DISCORD_INVITE env var (exposed through preload),
 // falling back to the canonical server invite.
-const DISCORD_INVITE = window.yo.discordInvite || "https://discord.gg/cHGZR764D";
+const DISCORD_INVITE = window.glyphh.discordInvite || "https://discord.gg/cHGZR764D";
 
 let supportInitialized = false;
 
@@ -33,7 +33,7 @@ function loadSupport() {
 
   const discordLink = document.getElementById("support-discord-link")!;
   discordLink.addEventListener("click", () => {
-    window.yo.openExternal(DISCORD_INVITE);
+    window.glyphh.openExternal(DISCORD_INVITE);
   });
 
   const form = document.getElementById("support-form") as HTMLFormElement;
@@ -53,7 +53,7 @@ function loadSupport() {
     statusEl.textContent = "";
     statusEl.className = "support-status";
 
-    const result = await window.yo.submitSupportTicket({ subject, description });
+    const result = await window.glyphh.submitSupportTicket({ subject, description });
 
     if (result.ok) {
       statusEl.textContent = "Ticket submitted! We'll get back to you soon.";
@@ -77,7 +77,7 @@ async function loadAbout() {
   // Version from package.json via main process
   const versionEl = document.getElementById("about-version");
   if (versionEl) {
-    const ver = await window.yo.getAppVersion();
+    const ver = await window.glyphh.getAppVersion();
     versionEl.textContent = `Version ${ver}`;
   }
 
@@ -98,7 +98,7 @@ async function loadAbout() {
   // On load: if the main process already has an update pending, show the prompt
   // straight away (not only when a live event happens to arrive).
   try {
-    const pending = await window.yo.getUpdateStatus();
+    const pending = await window.glyphh.getUpdateStatus();
     if (pending?.version) showPrompt(pending.version);
   } catch { /* not available */ }
 
@@ -109,7 +109,7 @@ async function loadAbout() {
   checkBtn?.addEventListener("click", async () => {
     checkBtn.disabled = true;
     checkBtn.textContent = "Checking…";
-    const ver = await window.yo.checkForUpdates();
+    const ver = await window.glyphh.checkForUpdates();
     if (ver) {
       // The update flow now takes over — its status events reveal the prompt.
       checkBtn.textContent = `Downloading v${ver}…`;
@@ -125,10 +125,10 @@ async function loadAbout() {
   relaunchBtn?.addEventListener("click", () => {
     relaunchBtn.disabled = true;
     relaunchBtn.textContent = "Relaunching…";
-    window.yo.updateInstall();
+    window.glyphh.updateInstall();
   });
 
-  window.yo.onUpdateStatus((info) => {
+  window.glyphh.onUpdateStatus((info) => {
     if (info.status === "available") {
       showPrompt(info.version);
       if (checkBtn) { checkBtn.disabled = true; checkBtn.textContent = `Downloading v${info.version}…`; }

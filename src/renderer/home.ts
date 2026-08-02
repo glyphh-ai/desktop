@@ -2,7 +2,7 @@
  * Home app — entry point for the home.html section panels (loaded as
  * home.html?section=<slug> for each system-app tab: Apps / Layouts / Drips /
  * Skills / Settings / About). Runs in a dedicated BrowserView with the full
- * window.yo API.
+ * window.glyphh API.
  */
 
 import { initHelp, gotoSection } from "./help/index.js";
@@ -19,27 +19,27 @@ function applyTheme(theme: string) {
   try { localStorage.setItem("yoTheme", theme); } catch {}
 }
 
-window.yo.getTheme?.().then(applyTheme).catch(() => {});
-window.yo.onThemeChanged?.(applyTheme);
+window.glyphh.getTheme?.().then(applyTheme).catch(() => {});
+window.glyphh.onThemeChanged?.(applyTheme);
 
 // React to system dark/light changes when theme = "system"
 window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", async () => {
   try {
-    const theme = await window.yo.getTheme();
+    const theme = await window.glyphh.getTheme();
     if (theme === "system") applyTheme(theme);
   } catch {}
 });
 
 initHelp();
 initSearchClears();
-window.yo.refreshAuth?.().catch(() => {});
+window.glyphh.refreshAuth?.().catch(() => {});
 
 // Full-bleed chrome — the panel covers the titlebar strip, so it owns the
 // window controls and the command button (page-top, left of which sits the
 // rail toggle wired by code.ts).
-document.getElementById("panel-btn-close")?.addEventListener("click", () => window.yo.windowClose());
-document.getElementById("panel-btn-minimize")?.addEventListener("click", () => window.yo.windowMinimize());
-document.getElementById("panel-btn-maximize")?.addEventListener("click", () => window.yo.windowMaximize());
+document.getElementById("panel-btn-close")?.addEventListener("click", () => window.glyphh.windowClose());
+document.getElementById("panel-btn-minimize")?.addEventListener("click", () => window.glyphh.windowMinimize());
+document.getElementById("panel-btn-maximize")?.addEventListener("click", () => window.glyphh.windowMaximize());
 // Pick the startup section. Priority: ?section=<slug> in the URL (system-app
 // panel mounted as its own section) → the user's configured default
 // ("homeStartupSection", blank = "last viewed") → the last section → dashboard.
@@ -123,14 +123,14 @@ void (async () => {
     btn.classList.remove("hidden");
   };
 
-  btn.addEventListener("click", () => { window.yo.updateInstall?.(); });
+  btn.addEventListener("click", () => { window.glyphh.updateInstall?.(); });
 
-  window.yo.onUpdateStatus?.((info) => {
+  window.glyphh.onUpdateStatus?.((info) => {
     if (info.status === "ready") show(info.version || "");
     else if (info.status === "restarting" || info.status === "none") btn.classList.add("hidden");
   });
 
   // Panels mount after boot — ask main whether an update is already waiting.
-  const pending = await window.yo.getUpdateStatus?.();
+  const pending = await window.glyphh.getUpdateStatus?.();
   if (pending?.ready) show(pending.version);
 })();

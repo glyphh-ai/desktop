@@ -24,7 +24,7 @@ const REFUND_URL = "https://glyphh.ai/refund";
 const closeBtn = document.getElementById("onboarding-close");
 if (closeBtn) {
   closeBtn.addEventListener("click", () => {
-    window.yo.windowClose();
+    window.glyphh.windowClose();
   });
 }
 
@@ -49,7 +49,7 @@ function completeOnboarding() {
   setStatus("All set!");
   setTimeout(() => {
     hideOnboarding();
-    window.yo.onboardingComplete();
+    window.glyphh.onboardingComplete();
     window.dispatchEvent(new Event("yo-onboarding-done"));
   }, 600);
 }
@@ -103,7 +103,7 @@ function legal(): HTMLParagraphElement {
   const mk = (text: string, url: string) => {
     const a = el("a", undefined, text);
     a.href = "#";
-    a.addEventListener("click", (e) => { e.preventDefault(); window.yo.openExternal(url); });
+    a.addEventListener("click", (e) => { e.preventDefault(); window.glyphh.openExternal(url); });
     return a;
   };
   p.append(
@@ -125,7 +125,7 @@ interface DevicePromptInfo { userCode: string; verificationUri: string; verifica
 // hook is registered once and routes into whichever screen is live.
 let showPrompt: ((prompt: DevicePromptInfo) => void) | null = null;
 if (ONBOARDING_AVAILABLE) {
-  window.yo.onDeviceLoginPrompt((prompt) => {
+  window.glyphh.onDeviceLoginPrompt((prompt) => {
     try { showPrompt?.(prompt); } catch { /* display is best-effort */ }
   });
 }
@@ -179,7 +179,7 @@ function renderAuthStep(): void {
   let approvalUrl = "";
   openA.addEventListener("click", (e) => {
     e.preventDefault();
-    if (approvalUrl) void window.yo.openDeviceApproval(approvalUrl);
+    if (approvalUrl) void window.glyphh.openDeviceApproval(approvalUrl);
   });
 
   // Restarting replaces the in-flight grant: the superseded attempt resolves
@@ -197,7 +197,7 @@ function renderAuthStep(): void {
       codeWrap.style.display = "";
       retry.style.display = "";
     };
-    const r = await window.yo.startDeviceLogin();
+    const r = await window.glyphh.startDeviceLogin();
     if (mine !== attempt) return; // superseded by "Get a new code"
     showPrompt = null;
     if (r.ok) {

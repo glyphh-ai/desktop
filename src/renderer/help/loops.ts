@@ -36,7 +36,7 @@ function fail(msg: string): void {
 
 export async function loadLoops(): Promise<void> {
   listEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
-  const r = await window.yo.loopsList?.();
+  const r = await window.glyphh.loopsList?.();
   all = ((r?.loops ?? []) as unknown as LoopSummary[]);
   renderList();
 }
@@ -86,7 +86,7 @@ function renderList(): void {
         void (async () => {
           const sure = await confirmAction({ title: `Delete "${loop.name}"?`, body: "Agents bound to it will fall back to the Default loop.", confirmLabel: "Delete", danger: true });
           if (!sure) return;
-          const env = await window.yo.libraryLoopDelete(loop.slug ?? loop.id);
+          const env = await window.glyphh.libraryLoopDelete(loop.slug ?? loop.id);
           if (env.ok) await loadLoops();
         })();
       } },
@@ -104,7 +104,7 @@ function readRow(label: string, value: string): string {
 
 async function openDetail(ref: string): Promise<void> {
   formError.classList.add("hidden");
-  const env = await window.yo.libraryLoopGet(ref);
+  const env = await window.glyphh.libraryLoopGet(ref);
   if (!env.ok) { fail(env.error || "couldn't load the loop"); return; }
   current = env.data as Loop;
   const m = current.manifest ?? {};
@@ -122,8 +122,8 @@ async function openDetail(ref: string): Promise<void> {
 
   // Resolve the loop's slots + their choices up front — the editable default-model
   // pickers and the flow-node model subs both read from this one call.
-  let resolvedRoles: Awaited<ReturnType<typeof window.yo.loopRoles>>["roles"] = [];
-  try { resolvedRoles = (await window.yo.loopRoles(current.slug)).roles; }
+  let resolvedRoles: Awaited<ReturnType<typeof window.glyphh.loopRoles>>["roles"] = [];
+  try { resolvedRoles = (await window.glyphh.loopRoles(current.slug)).roles; }
   catch { /* offline — pickers fall back to read-only, flow renders without subs */ }
 
   detailEl.innerHTML = `
@@ -147,7 +147,7 @@ async function openDetail(ref: string): Promise<void> {
   detailEl.querySelector("#loop-delete-btn")?.addEventListener("click", () => void deleteCurrent());
   if (!current.builtIn) {
     wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
-      const res = await window.yo.libraryLoopUpdate(current!.slug, patch);
+      const res = await window.glyphh.libraryLoopUpdate(current!.slug, patch);
       if (!res.ok) return res.error || "Couldn't save.";
       const row = all.find((l) => l.id === current!.id);
       if (row) { row.name = patch.name; row.description = patch.description; }
@@ -174,7 +174,7 @@ async function openDetail(ref: string): Promise<void> {
  *  picked one. Editable (writes manifest.roles[].default) unless the loop is
  *  built-in (immutable). "Auto" hands the slot to the platform default. */
 function renderDefaultModels(
-  roles: Awaited<ReturnType<typeof window.yo.loopRoles>>["roles"],
+  roles: Awaited<ReturnType<typeof window.glyphh.loopRoles>>["roles"],
   manifest: NonNullable<Loop["manifest"]>,
   builtIn: boolean,
 ): string {
@@ -213,7 +213,7 @@ function wireDefaultModelPickers(): void {
         if (!current) return;
         const role = sel.dataset.role!;
         sel.disabled = true;
-        const res = await window.yo.loopSetRoleDefault(current.id, role, sel.value || null);
+        const res = await window.glyphh.loopSetRoleDefault(current.id, role, sel.value || null);
         sel.disabled = false;
         if (!msg) return;
         if (res.ok) { msg.textContent = "Saved."; msg.classList.remove("hidden", "danger"); }
@@ -246,7 +246,7 @@ async function deleteCurrent(): Promise<void> {
   if (!current || current.builtIn) return;
   const sure = await confirmAction({ title: `Delete "${current.name}"?`, body: "Agents bound to it will fall back to the Default loop.", confirmLabel: "Delete", danger: true });
   if (!sure) return;
-  const env = await window.yo.libraryLoopDelete(current.slug);
+  const env = await window.glyphh.libraryLoopDelete(current.slug);
   if (!env.ok) { fail(env.error || "delete failed"); return; }
   await loadLoops();
 }

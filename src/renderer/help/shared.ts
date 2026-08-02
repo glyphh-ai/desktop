@@ -329,7 +329,7 @@ export function closeHelp() {
   helpTransitioning = true;
   setTimeout(() => { helpTransitioning = false; }, 300);
   overlay.classList.add("hidden");
-  window.yo.panelsShow();
+  window.glyphh.panelsShow();
 }
 
 export function getHelpOverlay(): HTMLElement {

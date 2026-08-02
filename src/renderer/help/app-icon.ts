@@ -51,7 +51,7 @@ export const connectedIconCache: Record<string, string | null> = {};
 // OS icon (data URL) per native app's execPath, via the app-file-icon IPC.
 export const nativeIconCache: Record<string, string> = {};
 
-// window.yo is globally typed in the renderer program (via renderer.ts), but
+// window.glyphh is globally typed in the renderer program (via renderer.ts), but
 // this module is also compiled into the main-process typecheck through
 // code-workbench.ts's import, where that global augmentation isn't in scope.
 // Reach the two IPC methods through a locally typed accessor so both programs
@@ -59,10 +59,10 @@ export const nativeIconCache: Record<string, string> = {};
 const yoIcons = (): {
   appFileIcon: (execPath: string) => Promise<string | null>;
   connectorsGetApps: (slug: string) => Promise<{ apps: Array<{ id: string; icon?: string | null }> }>;
-} => (window as unknown as { yo: {
+} => (window as unknown as { glyphh: {
   appFileIcon: (execPath: string) => Promise<string | null>;
   connectorsGetApps: (slug: string) => Promise<{ apps: Array<{ id: string; icon?: string | null }> }>;
-} }).yo;
+} }).glyphh;
 
 /** Resolve the icon URL for an app ("" when only the initial fallback applies). */
 export function appIconUrl(app: IconApp): string {

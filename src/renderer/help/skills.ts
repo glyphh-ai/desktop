@@ -13,7 +13,7 @@ export function initSkills(): void {
     if (!provider) continue;
     btn.addEventListener("click", async () => {
       if (status) { status.textContent = "Saving…"; status.style.color = "var(--text-3)"; }
-      const res = await window.yo.exportGlyphhSkill(provider);
+      const res = await window.glyphh.exportGlyphhSkill(provider);
       if (!status) return;
       if (res.ok) {
         status.textContent = `✓ Saved to ${res.path}`;

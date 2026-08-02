@@ -26,9 +26,9 @@ export function openHelp() {
   if (getHelpTransitioning()) return;
   setHelpTransitioning(true);
   setTimeout(() => { setHelpTransitioning(false); }, 300);
-  window.yo.panelsHide();
+  window.glyphh.panelsHide();
   overlay.classList.remove("hidden");
-  window.yo.refreshAuth().catch(() => {});
+  window.glyphh.refreshAuth().catch(() => {});
   loadActiveSection();
 }
 
@@ -109,10 +109,10 @@ export function gotoSection(section: string, sub?: string): void {
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
   if (["apps", "connections", "layouts", "settings"].includes(section)) {
-    void window.yo.railCollapseSet?.(false);
+    void window.glyphh.railCollapseSet?.(false);
   }
-  void window.yo.setPreference?.("homeLastSection", section);
-  void window.yo.setPreference?.("homeLastSub", sub || "");
+  void window.glyphh.setPreference?.("homeLastSection", section);
+  void window.glyphh.setPreference?.("homeLastSub", sub || "");
   // 2.5.0 shell: every section IS a workbench panel — opening one replaces
   // the workspace with just that panel; "code" is the agent surface. The
   // loader runs via __wbSectionLoad once the panel's DOM mounts.
@@ -280,7 +280,7 @@ export function initHelp() {
     mk("Docs", DOCS_SVG, () => gotoSection("docs"));
     mk("Settings", GEAR_SVG, () => gotoSection("settings"));
     mk("Account", USER_SVG, () => gotoSection("settings", "account"));
-    mk("Logout", LOGOUT_SVG, () => { void window.yo.logout(); }, true);
+    mk("Logout", LOGOUT_SVG, () => { void window.glyphh.logout(); }, true);
     document.body.appendChild(m);
     const r = userBtn.getBoundingClientRect();
     m.style.left = `${r.left}px`;
@@ -300,8 +300,8 @@ export function initHelp() {
     nameEl.textContent =
       (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account";
   };
-  void window.yo.getAccountInfo?.().then(fillRailUser).catch(() => { /* signed out — placeholder stays */ });
-  window.yo.onAccountUpdated?.(fillRailUser);
+  void window.glyphh.getAccountInfo?.().then(fillRailUser).catch(() => { /* signed out — placeholder stays */ });
+  window.glyphh.onAccountUpdated?.(fillRailUser);
 
   // Initialize all section event handlers
   initDashboardEvents();
@@ -317,7 +317,7 @@ export function initHelp() {
   initCode();
   wireGlobalDotCommands();
   // The shell steers sections too (the first-run walkthrough lands on Home).
-  window.yo.onGotoSection?.((section) => {
+  window.glyphh.onGotoSection?.((section) => {
     // "settings:account" → section + sub-panel (the nav apps use this).
     const [sec, sub] = String(section).split(":");
     gotoSection(sec, sub || undefined);

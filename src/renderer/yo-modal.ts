@@ -28,10 +28,10 @@ export interface YoConfirmOpts {
 export async function hidePanelsForModal(): Promise<boolean> {
   const screenshots = document.getElementById("panel-screenshots");
   try {
-    const yo = (window as unknown as { yo?: {
+    const yo = (window as unknown as { glyphh?: {
       capturePanels?: () => Promise<Array<{ dataUrl: string; bounds: { x: number; y: number; width: number; height: number } }>>;
       panelsHide?: () => void;
-    } }).yo;
+    } }).glyphh;
     if (!yo?.capturePanels || !yo?.panelsHide || !screenshots) return false;
     const caps = await yo.capturePanels();
     for (const cap of caps) {
@@ -54,7 +54,7 @@ export async function hidePanelsForModal(): Promise<boolean> {
 /** Restore panels + drop the freeze-frames a modal painted on its way in. */
 export function restorePanelsForModal(wasHidden: boolean): void {
   if (wasHidden) {
-    const yo = (window as unknown as { yo?: { panelsShow?: () => void } }).yo;
+    const yo = (window as unknown as { glyphh?: { panelsShow?: () => void } }).glyphh;
     try { yo?.panelsShow?.(); } catch { /* */ }
   }
   document.getElementById("panel-screenshots")
@@ -74,10 +74,10 @@ export function yoConfirm(opts: YoConfirmOpts): Promise<boolean> {
     const screenshots = document.getElementById("panel-screenshots");
     void (async () => {
       try {
-        const yo = (window as unknown as { yo?: {
+        const yo = (window as unknown as { glyphh?: {
           capturePanels?: () => Promise<Array<{ dataUrl: string; bounds: { x: number; y: number; width: number; height: number } }>>;
           panelsHide?: () => void;
-        } }).yo;
+        } }).glyphh;
         if (!yo?.capturePanels || !yo?.panelsHide || !screenshots) return;
         const caps = await yo.capturePanels();
         for (const cap of caps) {
@@ -142,7 +142,7 @@ export function yoConfirm(opts: YoConfirmOpts): Promise<boolean> {
       document.removeEventListener("keydown", onKey, true);
       // Restore panels + drop freeze-frames the modal painted on its way in.
       if (panelsWereHidden) {
-        const yo = (window as unknown as { yo?: { panelsShow?: () => void } }).yo;
+        const yo = (window as unknown as { glyphh?: { panelsShow?: () => void } }).glyphh;
         try { yo?.panelsShow?.(); } catch { /* */ }
       }
       if (screenshots) {

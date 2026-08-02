@@ -116,7 +116,7 @@ async function open(ta: HTMLTextAreaElement, at: number, query = ""): Promise<vo
   anchor = ta;
   slashStart = at;
   try {
-    items = unwrap<SkillSummary[]>(await window.yo.librarySkillsList());
+    items = unwrap<SkillSummary[]>(await window.glyphh.librarySkillsList());
   } catch {
     items = [];
   }

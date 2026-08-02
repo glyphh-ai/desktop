@@ -10,9 +10,9 @@ import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { confirmAction } from "./shared.js";
 import { showAppOverlay, hideAppOverlay } from "../app-overlay.js";
 
-type Conn = Awaited<ReturnType<typeof window.yo.connectionsList>>["connections"][number];
-type CatalogApp = Awaited<ReturnType<typeof window.yo.connectorsGetApps>>["apps"][number];
-type McpConn = Awaited<ReturnType<typeof window.yo.mcpConnectionsList>>["connections"][number];
+type Conn = Awaited<ReturnType<typeof window.glyphh.connectionsList>>["connections"][number];
+type CatalogApp = Awaited<ReturnType<typeof window.glyphh.connectorsGetApps>>["apps"][number];
+type McpConn = Awaited<ReturnType<typeof window.glyphh.mcpConnectionsList>>["connections"][number];
 
 let connections: Conn[] = [];
 // Custom MCP connections — server-side rows like any other connection; the
@@ -51,9 +51,9 @@ export async function loadConnections(): Promise<void> {
   // The org × role policy can change with any heartbeat, so re-check it on
   // every load — it hides the "+ Custom MCP" button AND the custom cards.
   const [res, custom, gate] = await Promise.all([
-    window.yo.connectionsList(),
-    window.yo.mcpConnectionsList().catch(() => ({ ok: false, connections: [] })),
-    window.yo.mcpCustomAllowed().catch(() => ({ allowed: false })),
+    window.glyphh.connectionsList(),
+    window.glyphh.mcpConnectionsList().catch(() => ({ ok: false, connections: [] })),
+    window.glyphh.mcpCustomAllowed().catch(() => ({ allowed: false })),
   ]);
   connections = res.ok ? res.connections : [];
   customServers = custom.ok ? custom.connections : [];
@@ -172,7 +172,7 @@ async function openConnDetail(id: string): Promise<void> {
 
   document.getElementById("conn-tools-select-all-wrap")?.classList.add("hidden");
   toolsEl.innerHTML = `<div class="crud-empty">Loading tools…</div>`;
-  const res = await window.yo.connectionToolsList(id);
+  const res = await window.glyphh.connectionToolsList(id);
   if (!res.ok) { toolsEl.innerHTML = `<div class="crud-empty">Couldn't load tools.</div>`; return; }
   if (res.tools.length === 0) { toolsEl.innerHTML = `<div class="crud-empty">This app publishes no tools yet.</div>`; return; }
 
@@ -249,7 +249,7 @@ async function saveHiddenTools(): Promise<void> {
   const hidden = Array.from(toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check"))
     .filter((cb) => !cb.checked)
     .map((cb) => cb.dataset.tool || "");
-  const res = await window.yo.connectionToolsSet(currentConnId, hidden);
+  const res = await window.glyphh.connectionToolsSet(currentConnId, hidden);
   if (res.ok && res.connection) {
     const c = connections.find((x) => x.id === currentConnId);
     if (c) c.hiddenTools = (res.connection as Conn).hiddenTools;
@@ -367,7 +367,7 @@ async function loadCustomStatus(c: McpConn): Promise<void> {
   customStatusText.textContent = "checking…";
   document.getElementById("conn-tools-select-all-wrap")?.classList.add("hidden");
   toolsEl.innerHTML = `<div class="crud-empty">Loading tools…</div>`;
-  const res = await window.yo.mcpConnectionsTools(c.slug);
+  const res = await window.glyphh.mcpConnectionsTools(c.slug);
   if (currentCustomSlug !== c.slug) return;   // user navigated away meanwhile
   if (!res.ok) {
     customStatusText.textContent = `unreachable — ${res.error || "connection failed"}`;
@@ -405,7 +405,7 @@ async function saveCustomHiddenTools(): Promise<void> {
   const hidden = Array.from(toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check"))
     .filter((cb) => !cb.checked)
     .map((cb) => cb.dataset.tool || "");
-  const res = await window.yo.mcpConnectionsUpdate(currentCustomSlug, { hiddenTools: hidden });
+  const res = await window.glyphh.mcpConnectionsUpdate(currentCustomSlug, { hiddenTools: hidden });
   if (res.ok) {
     const c = customServers.find((x) => x.slug === currentCustomSlug);
     if (c) c.hiddenTools = hidden;
@@ -426,7 +426,7 @@ function collectCustomHeaders(): Record<string, string> | null {
 }
 
 async function refreshCustomList(): Promise<void> {
-  const r = await window.yo.mcpConnectionsList().catch(() => ({ ok: false as const, connections: [] }));
+  const r = await window.glyphh.mcpConnectionsList().catch(() => ({ ok: false as const, connections: [] }));
   if (r.ok) customServers = r.connections;
 }
 
@@ -449,7 +449,7 @@ async function saveCustomForm(): Promise<void> {
 
   if (customMode === "new") {
     setBtnBusy(saveBtn, true, "Connecting…");
-    const res = await window.yo.mcpConnectionsCreate({ name, url, headers: headers ?? {}, ...(oauth ? { oauth } : {}) });
+    const res = await window.glyphh.mcpConnectionsCreate({ name, url, headers: headers ?? {}, ...(oauth ? { oauth } : {}) });
     if (!res.connection) {
       setBtnBusy(saveBtn, false, "Add & Connect");
       fail(res.error || "Couldn't create the connection.");
@@ -464,7 +464,7 @@ async function saveCustomForm(): Promise<void> {
     setBtnBusy(saveBtn, true, "Saving…");
     const fields: Record<string, unknown> = { name, url };
     if (headers) fields.headers = headers;   // blank box = keep saved values
-    const res = await window.yo.mcpConnectionsUpdate(currentCustomSlug, fields);
+    const res = await window.glyphh.mcpConnectionsUpdate(currentCustomSlug, fields);
     if (!res.ok) {
       setBtnBusy(saveBtn, false, "Save");
       fail(res.error || "Couldn't save the connection.");
@@ -478,14 +478,14 @@ async function saveCustomForm(): Promise<void> {
 // ── Catalog modal ────────────────────────────────────────
 // Org-published MCP connections ride at the top of the catalog — they're
 // "just connections" to members: click = install, no OAuth dance.
-let orgCatalog: Awaited<ReturnType<typeof window.yo.mcpConnectionsCatalog>>["connections"] = [];
+let orgCatalog: Awaited<ReturnType<typeof window.glyphh.mcpConnectionsCatalog>>["connections"] = [];
 
 function openCatalog(): void {
   modalEl.classList.remove("hidden");
   catalogSearch.value = "";
   catalogOffset = 0;
   orgCatalog = [];
-  void window.yo.mcpConnectionsCatalog().then((r) => {
+  void window.glyphh.mcpConnectionsCatalog().then((r) => {
     orgCatalog = r.ok ? r.connections : [];
     // Re-render the first page so the org section appears once it's known.
     if (catalogOffset === 0 && !modalEl.classList.contains("hidden")) {
@@ -517,7 +517,7 @@ function renderOrgCatalogSection(search?: string): void {
     card.addEventListener("click", async () => {
       const nameEl = card.querySelector(".connector-card-name")!;
       nameEl.textContent = "Installing…";
-      const r = await window.yo.mcpConnectionsInstall(oc.slug);
+      const r = await window.glyphh.mcpConnectionsInstall(oc.slug);
       if (!r.ok) { nameEl.textContent = r.error || "Failed"; setTimeout(() => { nameEl.textContent = oc.name; }, 2500); return; }
       closeCatalog();
       await loadConnections();
@@ -535,7 +535,7 @@ function closeCatalog(): void { modalEl.classList.add("hidden"); }
 async function loadCatalog(search?: string): Promise<void> {
   if (catalogOffset === 0) catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Loading…</div>`;
   let apps: CatalogApp[] = [], hasMore = false;
-  try { ({ apps, hasMore } = await window.yo.connectorsGetApps(search, catalogOffset)); }
+  try { ({ apps, hasMore } = await window.glyphh.connectorsGetApps(search, catalogOffset)); }
   catch { catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Couldn't load apps.</div>`; return; }
 
   if (catalogOffset === 0) {
@@ -555,7 +555,7 @@ async function loadCatalog(search?: string): Promise<void> {
       const nameEl = card.querySelector(".connector-card-name")!;
       nameEl.textContent = "Connecting…";
       const beforeIds = new Set(connections.map((c) => c.id));
-      const result = await window.yo.connectorsConnect(app.id);
+      const result = await window.glyphh.connectorsConnect(app.id);
       if (!result.ok) { nameEl.textContent = result.error || "Failed"; setTimeout(() => { nameEl.textContent = app.name; }, 2500); return; }
       // The overlay is already up (the "verifying" phase raised it). The SLOW
       // tail is here — reloading the list and fetching the detail screen's
@@ -599,7 +599,7 @@ export function initConnections(): void {
   // Connect-flow overlay — from the moment the OAuth window closes until the
   // connection is verified (or ruled cancelled), the standard spinner covers
   // the whole app so the handoff never looks dead.
-  window.yo.onConnectorsConnectProgress?.((p) => {
+  window.glyphh.onConnectorsConnectProgress?.((p) => {
     if (p.phase === "verifying") showAppOverlay("Connecting");
     // A SUCCESSFUL done keeps the overlay up — the connect click handler
     // drops it once the detail screen has painted (the slow tail lives
@@ -623,7 +623,7 @@ export function initConnections(): void {
     const enabling = !c.enabled;
     setBtnBusy(customToggle, true, enabling ? "Enabling…" : "Disabling…");
     detailErr.classList.add("hidden");
-    const res = await window.yo.mcpConnectionsUpdate(c.slug, { enabled: enabling });
+    const res = await window.glyphh.mcpConnectionsUpdate(c.slug, { enabled: enabling });
     if (!res.ok) {
       detailErr.textContent = res.error || "Couldn't update the connection.";
       detailErr.classList.remove("hidden");
@@ -656,7 +656,7 @@ export function initConnections(): void {
     }
     detailErr.classList.add("hidden");
     if (!currentConnId) return;
-    const res = await window.yo.connectionRename(currentConnId, name);
+    const res = await window.glyphh.connectionRename(currentConnId, name);
     if (res.ok && res.connection) {
       const c = connections.find((x) => x.id === currentConnId);
       if (c) c.label = (res.connection as Conn).label;
@@ -680,7 +680,7 @@ export function initConnections(): void {
         danger: true,
       }))) return;
       disc.disabled = true;
-      const res = await window.yo.mcpConnectionsDelete(currentCustomSlug);
+      const res = await window.glyphh.mcpConnectionsDelete(currentCustomSlug);
       disc.disabled = false;
       if (!res.ok) {
         detailErr.textContent = res.error || "Couldn't remove the connection.";
@@ -701,7 +701,7 @@ export function initConnections(): void {
       danger: true,
     }))) return;
     disc.disabled = true;
-    const res = await window.yo.connectionDisconnect(currentConnId);
+    const res = await window.glyphh.connectionDisconnect(currentConnId);
     disc.disabled = false;
     if (!res.ok) {
       detailErr.textContent = res.error || "Couldn't disconnect.";

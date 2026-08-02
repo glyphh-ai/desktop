@@ -103,9 +103,9 @@ async function loadDrips() {
   dripsListEl.classList.remove("hidden");
 
   if (builtinEffects.length === 0) {
-    builtinEffects = await window.yo.dripsBuiltinEffects();
+    builtinEffects = await window.glyphh.dripsBuiltinEffects();
   }
-  allDrips = await window.yo.dripsList();
+  allDrips = await window.glyphh.dripsList();
   renderDripsList();
 }
 
@@ -233,9 +233,9 @@ async function saveDrip() {
   }
 
   if (editingDripName && editingDripName !== name) {
-    await window.yo.dripsDelete(editingDripName);
+    await window.glyphh.dripsDelete(editingDripName);
   }
-  await window.yo.dripsSave(name, recipe);
+  await window.glyphh.dripsSave(name, recipe);
   editingDripName = name;
   closeDripEditor();
 }
@@ -249,7 +249,7 @@ async function deleteDrip() {
     danger: true,
   });
   if (!confirmed) return;
-  await window.yo.dripsDelete(editingDripName);
+  await window.glyphh.dripsDelete(editingDripName);
   closeDripEditor();
 }
 
@@ -263,7 +263,7 @@ export function initDripsEvents() {
   document.getElementById("drip-delete-btn")!.addEventListener("click", deleteDrip);
   document.getElementById("drip-preview-btn")!.addEventListener("click", () => {
     const recipe = buildDripRecipe();
-    if (recipe) window.yo.dripsPreview(recipe);
+    if (recipe) window.glyphh.dripsPreview(recipe);
   });
   dripModeSelect.addEventListener("change", () => {
     dripCountInput.classList.toggle("hidden", dripModeSelect.value !== "counted");

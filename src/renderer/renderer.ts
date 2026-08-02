@@ -119,7 +119,7 @@ type AppReleaseRow = {
 
 declare global {
   interface Window {
-    yo: {
+    glyphh: {
       copyToClipboard: (text: string) => void;
       getPathForFile: (file: File) => string;
       windowClose: () => void;
@@ -386,10 +386,10 @@ declare global {
 
 // -- Window controls --
 
-document.getElementById("btn-close")!.addEventListener("click", () => window.yo.windowClose());
-document.getElementById("btn-minimize")!.addEventListener("click", () => window.yo.windowMinimize());
-document.getElementById("btn-maximize")!.addEventListener("click", () => window.yo.windowMaximize());
-document.getElementById("splash-close")?.addEventListener("click", () => window.yo.windowClose());
+document.getElementById("btn-close")!.addEventListener("click", () => window.glyphh.windowClose());
+document.getElementById("btn-minimize")!.addEventListener("click", () => window.glyphh.windowMinimize());
+document.getElementById("btn-maximize")!.addEventListener("click", () => window.glyphh.windowMaximize());
+document.getElementById("splash-close")?.addEventListener("click", () => window.glyphh.windowClose());
 
 // -- Titlebar label -> open home tab --
 
@@ -408,21 +408,21 @@ document.addEventListener("keydown", (e) => {
   // Cmd+R / Ctrl+R to refresh the home view
   if (e.key === "r" && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
-    window.yo.panelsRefresh();
+    window.glyphh.panelsRefresh();
   }
 
   // Cmd+Plus / Cmd+Minus to zoom the home view
   if ((e.key === "=" || e.key === "+") && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
-    window.yo.panelsGetZoom().then((z) => window.yo.panelsZoom(z + 0.1));
+    window.glyphh.panelsGetZoom().then((z) => window.glyphh.panelsZoom(z + 0.1));
   }
   if (e.key === "-" && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
-    window.yo.panelsGetZoom().then((z) => window.yo.panelsZoom(z - 0.1));
+    window.glyphh.panelsGetZoom().then((z) => window.glyphh.panelsZoom(z - 0.1));
   }
   if (e.key === "0" && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
-    window.yo.panelsZoom(1.0);
+    window.glyphh.panelsZoom(1.0);
   }
 });
 
@@ -441,7 +441,7 @@ const updatingOverlay = document.getElementById("updating-overlay");
 const updatingLabel = document.getElementById("updating-label");
 const updatingFill = document.getElementById("updating-fill");
 
-window.yo.onUpdateStatus(({ status, version, percent, error }) => {
+window.glyphh.onUpdateStatus(({ status, version, percent, error }) => {
   if (status === "available") {
     updateMsg.textContent = `Downloading v${version}...`;
     updateProgress.classList.remove("hidden");
@@ -470,7 +470,7 @@ window.yo.onUpdateStatus(({ status, version, percent, error }) => {
 });
 
 updateAction.addEventListener("click", () => {
-  window.yo.updateInstall();
+  window.glyphh.updateInstall();
 });
 
 updateDismiss.addEventListener("click", () => {
@@ -494,8 +494,8 @@ function initDashboard(): void {
 
 initBootGate({
   onBootReady: () => {},
-  showPanels: () => { window.yo.panelsShow(); initDashboard(); },
-  hidePanels: () => window.yo.panelsHide(),
+  showPanels: () => { window.glyphh.panelsShow(); initDashboard(); },
+  hidePanels: () => window.glyphh.panelsHide(),
   applyTheme: (theme) => {
     document.documentElement.setAttribute("data-theme", theme);
     try { localStorage.setItem("yoTheme", theme); } catch {}

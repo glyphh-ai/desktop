@@ -65,7 +65,7 @@ function modelBadges(agent: AgentSummary): string {
 export async function loadAgents(): Promise<void> {
   listEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
   try {
-    all = unwrap<AgentSummary[]>(await window.yo.libraryAgentsList());
+    all = unwrap<AgentSummary[]>(await window.glyphh.libraryAgentsList());
   } catch (err) {
     listEl.innerHTML = `<div class="crud-empty">Couldn't load agents — ${escapeHtml(err instanceof Error ? err.message : String(err))}</div>`;
     return;
@@ -117,7 +117,7 @@ function renderList(): void {
         void (async () => {
           const sure = await confirmAction({ title: `Delete "${agent.name}"?`, body: "Its scheduled tasks stop firing with it.", confirmLabel: "Delete", danger: true });
           if (!sure) return;
-          const env = await window.yo.libraryAgentDelete(agent.id);
+          const env = await window.glyphh.libraryAgentDelete(agent.id);
           if (env.ok) await loadAgents();
         })();
       } },
@@ -235,7 +235,7 @@ function scheduleEditor(task: AgentTask, row: HTMLElement, repaint: () => void):
       void (async () => {
         const cron = readCron();
         if (!cron || cron.trim().split(/\s+/).length !== 5) { q(".se-status").textContent = ""; return; }
-        const r = await window.yo.libraryAgentTaskUpdate(current!.id, task.id, { cron });
+        const r = await window.glyphh.libraryAgentTaskUpdate(current!.id, task.id, { cron });
         q(".se-status").textContent = r.ok ? "saved ✓" : (r.error || "save failed");
         if (r.ok) task.cron = cron;
       })();
@@ -297,8 +297,8 @@ async function runFeed(task: AgentTask, host: FeedHost, opts: { quiet?: boolean 
   if (host.__feedTimer) { clearTimeout(host.__feedTimer); host.__feedTimer = undefined; }
   if (!opts.quiet) host.innerHTML = `<div class="crud-empty">Loading runs…</div>`;
   const [env, runningEnv] = await Promise.all([
-    window.yo.libraryAgentTaskRuns(current!.id, task.id),
-    window.yo.libraryAgentTaskRunning(current!.id, task.id),
+    window.glyphh.libraryAgentTaskRuns(current!.id, task.id),
+    window.glyphh.libraryAgentTaskRunning(current!.id, task.id),
   ]);
   if (!host.isConnected) return;
   if (!env.ok) { host.innerHTML = `<div class="crud-empty">Couldn't load runs.</div>`; return; }
@@ -346,7 +346,7 @@ function taskRow(task: AgentTask): HTMLElement {
 
     row.querySelector<HTMLInputElement>(".lib-task-enabled input")!.addEventListener("change", async (e) => {
       const enabled = (e.target as HTMLInputElement).checked;
-      const r = await window.yo.libraryAgentTaskUpdate(current!.id, task.id, { enabled });
+      const r = await window.glyphh.libraryAgentTaskUpdate(current!.id, task.id, { enabled });
       if (!r.ok) { fail(r.error || "couldn't toggle the task"); (e.target as HTMLInputElement).checked = !enabled; }
       else task.enabled = enabled;
     });
@@ -354,7 +354,7 @@ function taskRow(task: AgentTask): HTMLElement {
     row.querySelector(".lib-task-sched")!.addEventListener("click", () => {
       scheduleEditor(task, row, () => {
         void (async () => {
-          const env = await window.yo.libraryAgentTasks(current!.id);
+          const env = await window.glyphh.libraryAgentTasks(current!.id);
           const fresh = env.ok ? (env.data as AgentTask[]).find((x) => x.id === task.id) : null;
           if (fresh) Object.assign(task, fresh);
           paintRow();
@@ -367,7 +367,7 @@ function taskRow(task: AgentTask): HTMLElement {
     runBtn.addEventListener("click", async () => {
       runBtn.disabled = true;
       runBtn.textContent = "running…";
-      const pending = window.yo.libraryAgentTaskRunNow(current!.id, task.id);
+      const pending = window.glyphh.libraryAgentTaskRunNow(current!.id, task.id);
       // Repaint right away so the feed's "Running…" row shows while it goes.
       void runFeed(task, feed, { quiet: true });
       const r = await pending;
@@ -378,7 +378,7 @@ function taskRow(task: AgentTask): HTMLElement {
       if (!outcome.ok) fail(outcome.error || "run failed");
       // Refresh both the feed and the row's last-run glance.
       await runFeed(task, feed);
-      const env = await window.yo.libraryAgentTasks(current!.id);
+      const env = await window.glyphh.libraryAgentTasks(current!.id);
       const fresh = env.ok ? (env.data as AgentTask[]).find((x) => x.id === task.id) : null;
       if (fresh) { Object.assign(task, fresh); paintRow(); }
     });
@@ -395,11 +395,11 @@ export function openAgentDetail(id: string): void {
 
 async function openDetail(id: string): Promise<void> {
   formError.classList.add("hidden");
-  const env = await window.yo.libraryAgentGet(id);
+  const env = await window.glyphh.libraryAgentGet(id);
   if (!env.ok) { fail(env.error || "couldn't load the agent"); return; }
   current = env.data as Agent;
 
-  const r = await window.yo.loopsList?.();
+  const r = await window.glyphh.loopsList?.();
   loops = ((r?.loops ?? []) as unknown as LoopSummary[]);
 
   liveToggle.checked = current.live;
@@ -451,7 +451,7 @@ async function openDetail(id: string): Promise<void> {
   // The RIGHT pane: the schedule and its run feeds — what this agent DOES.
   sideEl.innerHTML = `<span class="lib-read-label">Schedule</span><div id="agent-task-rows"></div>`;
   const rowsEl = sideEl.querySelector<HTMLElement>("#agent-task-rows")!;
-  const tasksEnv = await window.yo.libraryAgentTasks(current.id);
+  const tasksEnv = await window.glyphh.libraryAgentTasks(current.id);
   const tasks = tasksEnv.ok ? (tasksEnv.data as AgentTask[]) : [];
   if (!tasks.length) {
     rowsEl.innerHTML = `<div class="crud-empty">No scheduled tasks — ask the agent to add one.</div>`;
@@ -471,14 +471,14 @@ async function paintModelRows(loopSlug: string, selections: Record<string, strin
   const host = detailEl.querySelector<HTMLElement>("#agent-model-rows");
   if (!host) return;
   host.innerHTML = "";
-  const res = await window.yo.loopRoles(loopSlug);
+  const res = await window.glyphh.loopRoles(loopSlug);
   if (!res.ok || !res.roles.length) return;
 
   const loop = loops.find((l) => (l.slug ?? l.id) === loopSlug);
   const declared = new Set<string>();
   // Declared role names come from the summary's manifest only via detail —
   // the roles endpoint returns the implicit slot too, so ask the loop itself.
-  const loopEnv = await window.yo.libraryLoopGet(loopSlug);
+  const loopEnv = await window.glyphh.libraryLoopGet(loopSlug);
   if (loopEnv.ok) {
     for (const role of ((loopEnv.data as { manifest?: { roles?: Array<{ name: string }> } }).manifest?.roles ?? [])) {
       declared.add(role.name);
@@ -549,7 +549,7 @@ async function saveLoopAndModels(): Promise<void> {
   if (Object.keys(roles).length) selections.roles = roles;
   else delete selections.roles;
 
-  const env = await window.yo.libraryAgentUpdate(current.id, { loopId, selections });
+  const env = await window.glyphh.libraryAgentUpdate(current.id, { loopId, selections });
   if (!env.ok) { fail(env.error || "save failed"); return; }
   await loadAgents();
   await openDetail(current.id);
@@ -570,7 +570,7 @@ export function initAgentsEvents(): void {
   // Live/pause is operational, not authoring — it stays a hand switch.
   liveToggle.addEventListener("change", async () => {
     if (!current) return;
-    const env = await window.yo.libraryAgentUpdate(current.id, { live: liveToggle.checked });
+    const env = await window.glyphh.libraryAgentUpdate(current.id, { live: liveToggle.checked });
     if (!env.ok) { fail(env.error || "couldn't change live state"); liveToggle.checked = !liveToggle.checked; return; }
     current = env.data as Agent;
   });
@@ -581,7 +581,7 @@ async function deleteCurrent(): Promise<void> {
   if (!current) return;
   const sure = await confirmAction({ title: `Delete "${current.name}"?`, body: "Its scheduled tasks stop firing with it.", confirmLabel: "Delete", danger: true });
   if (!sure) return;
-  const env = await window.yo.libraryAgentDelete(current.id);
+  const env = await window.glyphh.libraryAgentDelete(current.id);
   if (!env.ok) { fail(env.error || "delete failed"); return; }
   await loadAgents();
 }
