@@ -1,0 +1,73 @@
+name: Deploy app-web
+
+# Deploys the WEB TARGET ONLY (web/serve.mjs + dist/renderer) to Fly as
+# glyphh-ai-app. The check (test:web + build:web) runs HERE before any deploy,
+# so a broken build fails with readable logs instead of inside a remote build.
+#
+# The `@glyphh/sdk: file:../sdk` dependency is a sibling checkout that exists
+# locally but not in CI or the Docker build context — same self-heal as
+# build.yml: clone the sdk, build it, place it at ../sdk (for the runner's
+# npm ci) AND at .sdk-vendor/ (inside the context, for the Dockerfile).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "src/renderer/**"
+      - "package.json"
+      - "package-lock.json"
+      - "Dockerfile"
+      - "fly.toml"
+      - ".dockerignore"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Vendor the SDK (file:../sdk dependency)
+        env:
+          SDK_TOKEN: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Prefer the sdk branch matching this app ref (home-refactor spans
+          # both repos); fall back to main once the branch merges away.
+          REF="${GITHUB_REF_NAME}"
+          if ! git clone --depth 1 --branch "$REF" \
+              "https://x-access-token:${SDK_TOKEN}@github.com/glyphh-ai/sdk.git" .sdk-src; then
+            echo "sdk has no branch '$REF' — falling back to main"
+            git clone --depth 1 --branch main \
+              "https://x-access-token:${SDK_TOKEN}@github.com/glyphh-ai/sdk.git" .sdk-src
+          fi
+          cd .sdk-src
+          npm ci
+          npm run build
+          cd ..
+          mkdir -p ../sdk .sdk-vendor
+          cp .sdk-src/package.json ../sdk/package.json
+          cp -R .sdk-src/dist ../sdk/dist
+          cp .sdk-src/package.json .sdk-vendor/package.json
+          cp -R .sdk-src/dist .sdk-vendor/dist
+          rm -rf .sdk-src
+
+      # --ignore-scripts skips the electron-rebuild postinstall — the web
+      # target needs no native desktop modules.
+      - run: npm ci --ignore-scripts
+      - run: npm run test:web
+      - run: npm run build:web
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only
