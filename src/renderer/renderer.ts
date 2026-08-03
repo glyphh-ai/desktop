@@ -508,7 +508,9 @@ initBootGate({
 // so it reaches these via window). The web boot decides first-run from the server
 // per-user `regionChosen` and calls exactly one of these. Desktop never sets this.
 if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) {
-  (window as unknown as { glyphhWebBoot?: Record<string, () => void> }).glyphhWebBoot = {
+  (window as unknown as {
+    glyphhWebBoot?: { showFirstRun: (onComplete?: () => void) => void; enterApp: (onComplete?: () => void) => void };
+  }).glyphhWebBoot = {
     showFirstRun: webShowFirstRun,
     enterApp: webEnterApp,
   };

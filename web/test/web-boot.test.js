@@ -66,11 +66,17 @@ function fakeEl() {
   return { classList: { add: vi.fn(), remove: vi.fn() }, textContent: '', remove: vi.fn() };
 }
 
-function installDom({ pathname = '/', search = '', webBoot = true } = {}) {
-  const els = { splash: fakeEl(), 'splash-status': fakeEl(), 'onboarding-overlay': fakeEl() };
-  const glyphhWebBoot = webBoot ? { showFirstRun: vi.fn(), enterApp: vi.fn() } : undefined;
+function installDom({ pathname = '/', search = '', webBoot = true, loginShell = true } = {}) {
+  // The login shell (index.html) has the onboarding overlay; the home shell (home.html) does not.
+  const els = { splash: fakeEl(), 'splash-status': fakeEl() };
+  if (loginShell) els['onboarding-overlay'] = fakeEl();
+  // Drivers, when present, forward their onComplete callback (the nav) so tests can
+  // assert the hand-off nav fires.
+  const glyphhWebBoot = webBoot
+    ? { showFirstRun: vi.fn((cb) => cb && cb()), enterApp: vi.fn((cb) => cb && cb()) }
+    : undefined;
   globalThis.window = {
-    location: { pathname, search, origin: 'http://localhost:3002', reload: vi.fn() },
+    location: { pathname, search, origin: 'http://localhost:3002', reload: vi.fn(), assign: vi.fn(), href: '' },
     history: { replaceState: vi.fn() },
     __GLYPHH_GOOGLE_CLIENT_ID__: 'gid',
     glyphhWebBoot,
@@ -101,7 +107,7 @@ describe('startWebBoot routing', () => {
     expect(drivers.enterApp).not.toHaveBeenCalled();
   });
 
-  it('authed + regionChosen=false (NEW user) → first-run shown once, not enter-app', async () => {
+  it('authed + regionChosen=false (NEW user) → first-run shown once, then navigates to Chat tab on completion', async () => {
     const { els, drivers } = installDom({ pathname: '/' });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'new@b.co', regionChosen: false });
@@ -111,15 +117,18 @@ describe('startWebBoot routing', () => {
     expect(els['onboarding-overlay'].classList.add).toHaveBeenCalledWith('hidden');
     expect(drivers.showFirstRun).toHaveBeenCalledTimes(1);
     expect(drivers.enterApp).not.toHaveBeenCalled();
+    // showFirstRun's onComplete (the nav) → the Chat tab (/) once the tutorial closes.
+    expect(window.location.assign).toHaveBeenCalledWith('/');
   });
 
-  it('authed + regionChosen=true (RETURNING user) → straight into app, NO first-run', async () => {
+  it('authed + regionChosen=true (RETURNING user) → straight into app, navigates to Chat tab, NO first-run', async () => {
     const { drivers } = installDom({ pathname: '/' });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
     await startWebBoot();
     expect(drivers.enterApp).toHaveBeenCalledTimes(1);
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
+    expect(window.location.assign).toHaveBeenCalledWith('/');
   });
 
   it('callback token → verifyEmailLink, then first-run for a new user', async () => {
@@ -153,7 +162,7 @@ describe('startWebBoot routing', () => {
     expect(drivers.enterApp).not.toHaveBeenCalled();
   });
 
-  it('drivers never appear → falls back to dispatching yo-onboarding-done so the app still reveals', async () => {
+  it('drivers never appear → dispatches yo-onboarding-done AND navigates to Chat tab so the app still lands', async () => {
     installDom({ pathname: '/', webBoot: false });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'x@b.co', regionChosen: true });
@@ -162,5 +171,29 @@ describe('startWebBoot routing', () => {
     await p;
     expect(window.dispatchEvent).toHaveBeenCalled();
     expect(window.dispatchEvent.mock.calls[0][0].type).toBe('yo-onboarding-done');
+    expect(window.location.assign).toHaveBeenCalledWith('/');
+  });
+});
+
+describe('startWebBoot — Chat tab / home shell (input-first, no login wall)', () => {
+  it('LOGGED-OUT on the Chat tab → renders (no login, no redirect, no first-run)', async () => {
+    const { drivers } = installDom({ pathname: '/', loginShell: false });
+    web.isAuthenticated.mockResolvedValueOnce(false);
+    await startWebBoot();
+    // Anonymous visitor is left to render home.ts; never walled or bounced.
+    expect(login.mountLogin).not.toHaveBeenCalled();
+    expect(window.location.assign).not.toHaveBeenCalled();
+    expect(web.syncGating).not.toHaveBeenCalled();
+    expect(drivers.showFirstRun).not.toHaveBeenCalled();
+    expect(drivers.enterApp).not.toHaveBeenCalled();
+  });
+
+  it('AUTHED on the Chat tab → renders, best-effort syncGating, no redirect/login', async () => {
+    installDom({ pathname: '/', loginShell: false });
+    web.isAuthenticated.mockResolvedValueOnce(true);
+    await startWebBoot();
+    expect(login.mountLogin).not.toHaveBeenCalled();
+    expect(window.location.assign).not.toHaveBeenCalled();
+    expect(web.syncGating).toHaveBeenCalled(); // lights up the session-aware UI
   });
 });

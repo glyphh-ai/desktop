@@ -9,6 +9,17 @@
  *     • already authenticated → straight into the app (Chat front door)
  *     • not authenticated → show the platform-style Google + magic-link login
  *
+ * INPUT-FIRST front door (no login wall):
+ * The base page (/) is the Chat tab = home.html, rendered LOGGED-OUT. The deliberate
+ * auth page (index.html — the onboarding/login FRAME + Google/magic-link) stays fully
+ * intact and reachable ON DEMAND at /auth, and remains the target of the magic-link /
+ * OAuth callback. So:
+ *   • home shell (home.html, the Chat tab): render regardless of auth. An anonymous
+ *     visitor sees the composer + starters; auth-gated data degrades to empty. We do
+ *     NOT bounce them to login.
+ *   • login shell (index.html at /auth, /auth/callback): the full splash→auth→login /
+ *     first-run flow; on success, navigate BACK to the Chat tab (/).
+ *
  * It NEVER triggers device-flow (that's desktop-only). Only started under
  * __GLYPHH_WEB__ by bridge.js. The decision logic is the pure decideBootState()
  * in glyphh-core.js (unit-tested); this file is the thin browser wiring around it.
@@ -22,6 +33,25 @@ import {
 import { mountLogin } from './web-login.js';
 
 const SPLASH_MIN_MS = 1200;
+
+/** The Chat-tab front door path (serve.mjs maps / and /home → home.html). After a
+ *  sign-in on the auth page we return here. */
+export const HOME_PATH = '/';
+
+/** True when we're on the LOGIN shell (index.html / the /auth page) — it carries the
+ *  onboarding overlay. home.html (the Chat tab) has none, so the splash→auth→login
+ *  sequence must NOT run there — the Chat tab renders logged-out. */
+function isLoginShell() {
+  return !!document.getElementById('onboarding-overlay');
+}
+
+/** Navigate to the Chat-tab front door. A full navigation (not a history push) so
+ *  home.html boots fresh under the bridge; a fresh session in localStorage survives
+ *  the nav. Overridable in tests. */
+function goHome() {
+  try { window.location.assign(HOME_PATH); }
+  catch { window.location.href = HOME_PATH; }
+}
 
 /** Fade the splash out (mirrors boot-gate-ui.ts finishSplash), respecting a
  *  minimum on-screen time so it never flashes. */
@@ -65,7 +95,7 @@ function whenWebBootReady(timeoutMs = 4000) {
  * genuinely new user (regionChosen === false) gets the first-time flow ONCE, on any
  * device; a returning user goes straight into the workspace.
  */
-async function enterApp(shownAt) {
+async function enterApp(shownAt, nav = goHome) {
   const user = await syncGating();
   document.getElementById('onboarding-overlay')?.classList.add('hidden');
   dismissSplash(shownAt);
@@ -75,15 +105,17 @@ async function enterApp(shownAt) {
     regionChosen: !!(user && user.regionChosen),
   });
 
-  // Drive the renderer's first-run vs. enter-app path directly (the desktop
-  // `yo-onboarding-done` → hasSeenTutorial handler is web-gated off). Fall back to
-  // dispatching the event if the drivers never appear, so the app still reveals.
+  // Drive the renderer's first-run vs. enter-app path (the desktop `yo-onboarding-done`
+  // → hasSeenTutorial handler is web-gated off). New user → show the tutorial, then
+  // navigate to the home.html front door on completion; returning user → straight to
+  // home. If the drivers never appear, navigate anyway so the app still lands.
   const drivers = await whenWebBootReady();
   if (drivers) {
-    if (firstRun) drivers.showFirstRun();
-    else drivers.enterApp();
+    if (firstRun) drivers.showFirstRun(nav);
+    else drivers.enterApp(nav);
   } else {
     window.dispatchEvent(new Event('yo-onboarding-done'));
+    nav();
   }
 }
 
@@ -133,6 +165,7 @@ function showLogin(shownAt, initialError) {
 export async function startWebBoot(overrides = {}) {
   const shownAt = Date.now();
   const isAuthed = overrides.isAuthenticated || isAuthenticated;
+  const loginShell = overrides.isLoginShell ? overrides.isLoginShell() : isLoginShell();
 
   splashStatus('Loading…');
   let authed = false;
@@ -142,6 +175,17 @@ export async function startWebBoot(overrides = {}) {
     authed = false;
   }
 
+  // CHAT TAB / front door (home.html): no login overlay here. INPUT-FIRST — the Chat
+  // tab renders for everyone, logged-in OR logged-out. We do NOT gate it behind auth
+  // and never bounce an anonymous visitor to login. home.ts renders the composer +
+  // starters; auth-gated SDK reads degrade to empty via the bridge. If authed, syncing
+  // gating cookies is best-effort (non-blocking) so the session-aware UI can light up.
+  if (!loginShell) {
+    if (authed) { try { void syncGating(); } catch { /* best-effort */ } }
+    return;
+  }
+
+  // LOGIN SHELL (the deliberate /auth page + the OAuth/magic-link callback).
   const state = decideBootState({
     pathname: window.location.pathname,
     search: window.location.search,

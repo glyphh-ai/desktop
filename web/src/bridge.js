@@ -26,6 +26,7 @@ import {
   toLegacyMcpConnections, toLegacyLoops, toLegacyLoopRoles,
   toLegacyLayouts, toLegacyDrips, toLegacyPanelApps, toAccountInfo,
 } from './glyphh-core.js';
+import { installErrorSurface } from './web-errors.js';
 
 const client = glyphh();
 const noop = () => {};
@@ -70,6 +71,24 @@ const KNOWN = {
   userTimezoneSet: async (tz) => {
     try { await client.profile.update({ timezone: tz }); return { ok: true }; }
     catch (err) { return libError(err); }
+  },
+
+  // Dashboard/home landing data. The Chat-tab landing (composer + starter cards)
+  // renders ONLY when dashboardData() resolves truthy (see help/dashboard.ts) — so
+  // on web we must always return a shape, even logged-out, or the front door blanks.
+  // Numbers are best-effort (real usage wiring is a later slice); a logged-out visitor
+  // or any failed read still gets a valid zeroed shape so the composer + starters show.
+  dashboardData: async () => {
+    const base = {
+      name: '', plan: '', orgCredits: false, me: null,
+      credits: 0, allowance: 0, spendCredits: 0, requests: 0, appsCount: 0,
+    };
+    try {
+      const me = await client.me(); // 401 for an anonymous visitor → caught → base shape
+      return { ...base, name: me?.name || '', plan: me?.tier || '' };
+    } catch {
+      return base; // logged-out (or offline): still render the Chat tab landing
+    }
   },
 
   // ── Prefs/theme — no server prefs endpoint yet (section C); safe defaults. ───
@@ -199,6 +218,12 @@ if (typeof window !== 'undefined') {
   // in a browser tab. Set before renderer scripts run, so there's no flash.
   if (typeof document !== 'undefined') document.documentElement.classList.add('glyphh-web');
 
+  // ── LOUD errors ────────────────────────────────────────────────────────────
+  // Blank screens are the enemy: install global error + unhandledrejection handlers
+  // that surface any render-path throw as a visible overlay (+ tagged console.error)
+  // instead of a silent white-out. First thing, so a bridge/renderer boot error shows.
+  try { window.__glyphhReportError = installErrorSurface(); } catch { /* never block boot */ }
+
   // ── Phone-mode marker ──────────────────────────────────────────────────────
   // A PHONE viewport gets `glyphh-phone` on <html> (alongside `glyphh-web`); all
   // mobile CSS is scoped to it so it can NEVER touch desktop or iPad (both stay
@@ -251,10 +276,12 @@ if (typeof window !== 'undefined') {
     } else {
       runWebBoot();
     }
-    // A signed-out bounce (session became unrecoverable, or an explicit sign out)
-    // returns the tab to the login screen — the web equivalent of platform's
-    // `location.href = '/auth/login'`. Re-running the boot re-shows the login.
+    // A signed-out bounce (session became unrecoverable, or an explicit sign out).
+    // INPUT-FIRST: on the Chat tab (home.html) we do NOT wall the app — an anonymous
+    // visitor stays on the composer; only the deliberate login shell (which carries
+    // the onboarding overlay) re-mounts the login screen here.
     window.addEventListener('glyphh:signed-out', () => {
+      if (!document.getElementById('onboarding-overlay')) return;
       import('./web-login.js')
         .then((m) => m.mountLogin({
           googleClientId: window.__GLYPHH_GOOGLE_CLIENT_ID__ || null,

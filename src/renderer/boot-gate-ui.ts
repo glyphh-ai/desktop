@@ -63,12 +63,18 @@ let bootCb: BootGateCallbacks | null = null;
 /** WEB-ONLY: the web boot decides first-run from the SERVER's per-user `regionChosen`
  *  (see web-boot.js), NOT the per-device `hasSeenTutorial` prefs stub. It then calls
  *  one of these to either show the first-time tutorial for a new user, or just reveal
- *  the workspace for a returning one. No-ops on desktop / before initBootGate. */
-export function webShowFirstRun(): void {
-  if (bootCb) showTutorial(bootCb);
+ *  the workspace for a returning one. No-ops on desktop / before initBootGate.
+ *
+ *  `onComplete` runs when the tutorial is dismissed — the web boot uses it to navigate
+ *  to the home.html Chat front door (the real DOM landing on web; the native-panel
+ *  workspace is empty in a browser). `webEnterApp` is the returning-user path, which
+ *  navigates straight there via the same callback. */
+export function webShowFirstRun(onComplete?: () => void): void {
+  if (bootCb) showTutorial(bootCb, onComplete);
 }
-export function webEnterApp(): void {
+export function webEnterApp(onComplete?: () => void): void {
   if (bootCb) bootCb.showPanels();
+  onComplete?.();
 }
 
 // ── Tutorial ────────────────────────────────────────────────────────────────
@@ -78,7 +84,7 @@ export function webEnterApp(): void {
 // the dots and the final "Get Started" button.
 const TUTORIAL_STEPS = 5;
 
-function showTutorial(cb: BootGateCallbacks): void {
+function showTutorial(cb: BootGateCallbacks, onWebComplete?: () => void): void {
   tutorialShowing = true;
   const overlay = document.getElementById("tutorial-overlay")!;
   overlay.classList.remove("hidden");
@@ -119,6 +125,14 @@ function showTutorial(cb: BootGateCallbacks): void {
     overlay.classList.add("hidden");
     // Restore panels now that tutorial is dismissed
     cb.showPanels();
+    // WEB: the native-panel workspace is empty in a browser — the real Chat front
+    // door is home.html. Hand off to the web boot's completer (→ navigate to /home)
+    // instead of the desktop homeGotoSection IPC. Desktop passes no callback and
+    // takes the original path below, byte-identical.
+    if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) {
+      onWebComplete?.();
+      return;
+    }
     // First run ends at HOME — the dashboard's starters and schedule are the
     // natural next step, not whatever section the panel restored to.
     void (window.glyphh as unknown as { homeGotoSection?: (s: string) => Promise<unknown> }).homeGotoSection?.("dashboard");

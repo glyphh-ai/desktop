@@ -9,6 +9,7 @@
 // The bridge is served as a normal static asset from dist/renderer; we only need
 // to inject a <script> for it as the first thing in <head>.
 import http from 'node:http';
+import https from 'node:https';
 import { readFile, access } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
@@ -43,6 +44,35 @@ const ROOT = fileURLToPath(new URL('../dist/renderer/', import.meta.url));
 const PORT = ENV.PORT || 3002;
 const BRIDGE = '/glyphh-web-bundle.js';
 
+// The real control-plane server. In dev the web + API are separate processes
+// (:3002 static here, :3001 the API). We proxy <origin>/api/* → here so the
+// browser talks to ONE origin — no CORS, and a single tunnel (ngrok) covers the
+// whole app end-to-end (page load + the sign-in call after Google/magic-link).
+const API_UPSTREAM = new URL(ENV.GLYPHH_SERVER_URL || 'http://localhost:3001');
+
+function proxyApi(req, res) {
+  const isHttps = API_UPSTREAM.protocol === 'https:';
+  const lib = isHttps ? https : http;
+  const upstream = lib.request(
+    {
+      hostname: API_UPSTREAM.hostname,
+      port: API_UPSTREAM.port || (isHttps ? 443 : 80),
+      method: req.method,
+      path: req.url, // keeps the /api/... prefix the server serves
+      headers: { ...req.headers, host: API_UPSTREAM.host },
+    },
+    (pres) => {
+      res.writeHead(pres.statusCode || 502, pres.headers);
+      pres.pipe(res);
+    },
+  );
+  upstream.on('error', (e) => {
+    res.statusCode = 502;
+    res.end('api proxy error: ' + e.message);
+  });
+  req.pipe(upstream);
+}
+
 // SPA fallback paths: the OAuth/magic-link redirect returns to /auth/callback so
 // the boot script can exchange the code — serve the app shell there (no such file
 // exists on disk). Mirrors platform's /auth/callback route.
@@ -50,9 +80,11 @@ const SPA_FALLBACK = new Set(['/auth/callback']);
 
 // Client-safe config script, injected before the bridge so window.__GLYPHH_* exist
 // when the SDK client + login screen initialise. Only public values are exposed.
-function configScript() {
+function configScript(origin) {
   const cfg = {
-    __GLYPHH_API_URL__: ENV.GLYPHH_SERVER_URL || 'https://api.glyphh.ai',
+    // Same-origin base: the SDK calls <origin>/api/* which we proxy to API_UPSTREAM,
+    // so web + API share one host (works on localhost AND behind a single tunnel).
+    __GLYPHH_API_URL__: origin,
     __GLYPHH_GOOGLE_CLIENT_ID__: ENV.GLYPHH_GOOGLE_CLIENT_ID || '',
     __GLYPHH_WEB_URL__: ENV.GLYPHH_WEB_URL || 'https://glyphh.ai',
   };
@@ -85,13 +117,25 @@ function securityHeaders(res, isHttps) {
 const exists = async (f) => { try { await access(f); return true; } catch { return false; } };
 
 const server = http.createServer(async (req, res) => {
+  // Same-origin API proxy: everything under /api/* goes to the real server, so the
+  // browser only ever talks to this origin (one tunnel, no CORS, cookies same-site).
+  if ((req.url || '').startsWith('/api/')) return proxyApi(req, res);
   securityHeaders(res, (req.headers['x-forwarded-proto'] || '').includes('https'));
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    // Entry + SPA fallback: prefer index.html, fall back to home.html (the two
-    // renderer shells). /auth/callback has no file on disk — serve the shell there
-    // so the boot script runs and exchanges the returning OAuth/magic-link code.
-    if (p === '/' || SPA_FALLBACK.has(p)) {
+    // INPUT-FIRST front door: the base page is the Chat tab (home.html), rendered
+    // LOGGED-OUT — no login wall. home.html boots standalone under the bridge and the
+    // composer + starters render for an anonymous visitor; auth-gated data degrades to
+    // empty. (The native-panel workspace that index.html frames is empty in a browser,
+    // so index.html is NOT the base page here.)
+    if (p === '/' || p === '/home' || p === '/home/') {
+      p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
+    }
+    // The DELIBERATE auth page (index.html carries the onboarding overlay) is a real,
+    // reachable destination — a "Sign in" affordance and the magic-link/OAuth callback
+    // land here, NOT a forced first screen. /auth/callback has no file on disk; serve
+    // the shell so the boot script exchanges the returning code.
+    if (p === '/auth' || p === '/auth/' || p === '/login' || SPA_FALLBACK.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
     }
     const file = normalize(join(ROOT, p));
@@ -121,9 +165,11 @@ const server = http.createServer(async (req, res) => {
       // so window.__GLYPHH_* and window.glyphh (the SDK client) exist before any
       // renderer script executes. Config must precede the bridge — the SDK reads
       // window.__GLYPHH_API_URL__ at import time.
+      const proto = (req.headers['x-forwarded-proto'] || '').includes('https') ? 'https' : 'http';
+      const origin = `${proto}://${req.headers.host || `localhost:${PORT}`}`;
       body = body.replace(
         /<head(\s[^>]*)?>/i,
-        (m) => `${m}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`,
+        (m) => `${m}\n  ${configScript(origin)}\n  <script src="${BRIDGE}"></script>`,
       );
     }
     res.setHeader('content-type', TYPES[ext] || 'application/octet-stream');
