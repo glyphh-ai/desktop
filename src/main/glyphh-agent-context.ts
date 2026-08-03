@@ -229,7 +229,7 @@ async function flushChatSync(): Promise<void> {
   const pendingIds = [...new Set(f.pendingPush)];
   const deletedIds = Object.keys(f.deleted ?? {});
   if (!pendingIds.length && !deletedIds.length) return;
-  let client: import("@glyphh/client").Client;
+  let client: import("@glyphh/sdk").Client;
   try { client = (await import("./glyphh-client")).getClient(); } catch { return; }
   // Refresh the id index when a queued chat isn't mapped yet — pushing an
   // unmapped chat without it would CREATE a duplicate library item.

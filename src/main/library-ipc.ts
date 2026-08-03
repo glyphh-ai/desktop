@@ -20,7 +20,7 @@ import type {
   CreateSkillInput, UpdateSkillInput,
   CreateAgentInput, UpdateAgentInput,
   CreateAgentTaskInput, UpdateAgentTaskInput,
-} from "@glyphh/client";
+} from "@glyphh/sdk";
 
 /** The `{ ok, error }` envelope every renderer CRUD section speaks. */
 async function envelope<T>(work: () => Promise<T>): Promise<{ ok: true; data: T } | { ok: false; error: string }> {

@@ -2,7 +2,7 @@
  * bridge.test.js — verifies the web bridge wires each KNOWN cloud read to the
  * correct SDK domain method AND pipes its result through the right shape adapter.
  *
- * glyphh-web.js is the SDK-touching singleton (it imports @glyphh/client); we mock
+ * glyphh-web.js is the SDK-touching singleton (it imports @glyphh/sdk); we mock
  * it so `window.glyphh` assembles over a FAKE client with no server and no browser.
  * The adapters themselves are unit-tested separately (glyphh-core.test.js); here we
  * assert the plumbing — method name, arguments, and that the legacy shape comes out.

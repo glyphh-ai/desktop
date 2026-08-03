@@ -1,7 +1,7 @@
 /**
  * library-types.ts — renderer-side mirrors of the SDK's library contracts.
  *
- * The renderer cannot import from @glyphh/client (preload boundary), so the
+ * The renderer cannot import from @glyphh/sdk (preload boundary), so the
  * wire shapes are restated here. They cross the bridge verbatim from the SDK —
  * if a field changes there, it changes here.
  */

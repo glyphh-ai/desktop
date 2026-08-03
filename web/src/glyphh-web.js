@@ -1,5 +1,5 @@
 /**
- * glyphh-web.js — app-web's ONE client onto the control plane, via @glyphh/client.
+ * glyphh-web.js — app-web's ONE client onto the control plane, via @glyphh/sdk.
  *
  * This is the SDK-direct data layer for the web target: the SDK owns tokens,
  * refresh and rotation; here we back its token store with localStorage and stamp
@@ -7,7 +7,7 @@
  * adapted to the renderer (no Next): onSignedOut dispatches a `glyphh:signed-out`
  * event the boot-gate/router handles instead of a Next redirect.
  */
-import { createClient } from '@glyphh/client';
+import { createClient } from '@glyphh/sdk';
 import {
   resolveApiUrl, gatingCookieStrings, makeTokenStore, toLegacyUser, USER_KEY,
 } from './glyphh-core.js';

@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { validateAppBundle, lintRemoteAssets, type AppBundle } from "@glyphh/client";
+import { validateAppBundle, lintRemoteAssets, type AppBundle } from "@glyphh/sdk";
 import { collectBuiltProject, manifestPathIn, type InstallFile } from "./glyphh-app-spec";
 import { installGlyphhAppBundle } from "./glyphh-app-host";
 import { getClient } from "./glyphh-client";

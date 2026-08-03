@@ -71,7 +71,7 @@ const wb = new Proxy({}, {
 if (typeof window !== 'undefined') {
   window.glyphh = bridge;
   window.wb = wb;
-  window.glyphhSdk = client;    // raw @glyphh/client handle for SDK-direct views (P2+)
+  window.glyphhSdk = client;    // raw @glyphh/sdk handle for SDK-direct views (P2+)
   window.__GLYPHH_WEB__ = true; // renderer branches on this to hide native/attach UI
   // A class so CSS can hide OS-only chrome (window controls) that has no meaning
   // in a browser tab. Set before renderer scripts run, so there's no flash.

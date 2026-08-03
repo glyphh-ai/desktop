@@ -10,7 +10,7 @@
 
 import { ipcMain } from "electron";
 import { getClient } from "./glyphh-client";
-import type { CustomModelInput } from "@glyphh/client";
+import type { CustomModelInput } from "@glyphh/sdk";
 
 function wrap<T>(fn: () => Promise<T>): Promise<{ ok: boolean; data?: T; error?: string }> {
   return fn()

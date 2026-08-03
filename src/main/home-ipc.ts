@@ -19,7 +19,7 @@ import {
 import { setPreference } from "./stores/preferences-db";
 import { getAccountInfo, getAuthStatus } from "./auth";
 import { getClient } from "./glyphh-client";
-import { ForbiddenError } from "@glyphh/client";
+import { ForbiddenError } from "@glyphh/sdk";
 
 interface HomeIpcDeps {
   mcpManager: McpManager | null;

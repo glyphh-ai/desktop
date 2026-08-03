@@ -1,7 +1,7 @@
 /**
  * glyphh-core.js — the pure, SDK-free heart of the app-web client layer.
  *
- * Everything here is a plain function with no import of @glyphh/client and no
+ * Everything here is a plain function with no import of @glyphh/sdk and no
  * hard dependency on browser globals (globals are passed in), so it unit-tests
  * under `node --test` with zero setup. The SDK-touching singleton lives in
  * glyphh-web.js; the window.glyphh assembly lives in bridge.js. This split is

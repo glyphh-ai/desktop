@@ -1,5 +1,5 @@
 /**
- * Auth — the desktop face of @glyphh/client.
+ * Auth — the desktop face of @glyphh/sdk.
  *
  * Sign-in is the SDK device flow: we start a device grant, open the user's
  * browser on the platform to approve it, and poll until the session lands.
@@ -13,7 +13,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { shell } from "electron";
-import type { DevicePrompt } from "@glyphh/client";
+import type { DevicePrompt } from "@glyphh/sdk";
 import { GLYPHH_DIR } from "./app-paths.js";
 import { setActiveUser } from "./user-scope.js";
 import { getClient, resetClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, SESSION_FILE, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";

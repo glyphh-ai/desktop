@@ -12,7 +12,7 @@
  * empty value as "not rated yet", which is true.
  */
 
-import type { AppListing, InstalledApp } from "@glyphh/client";
+import type { AppListing, InstalledApp } from "@glyphh/sdk";
 import { getClient } from "./glyphh-client.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 

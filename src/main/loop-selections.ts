@@ -16,7 +16,7 @@
 
 import { getClient } from "./glyphh-client";
 import { getPreference, setPreference } from "./stores/preferences-db";
-import { createTtlCache, type ResolvedLoopRole } from "@glyphh/client";
+import { createTtlCache, type ResolvedLoopRole } from "@glyphh/sdk";
 
 /** Every loop's stored picks: `{ [loopSlug]: { [role]: modelId } }`. */
 type SelectionMap = Record<string, Record<string, string>>;

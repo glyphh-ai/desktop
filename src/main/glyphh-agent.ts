@@ -37,12 +37,12 @@ import {
 import { indexChatTurns, shortTermRecallBlock, pruneTurnVectors } from "./glyphh-agent-recall";
 import { refreshWorkspaceIndex, relevantFilesHint } from "./workspace-index";
 import { stopEmbedServer } from "./glyphh-agent-embeddings";
-import { GLYPHH_APP_SPEC } from "@glyphh/client";
+import { GLYPHH_APP_SPEC } from "@glyphh/sdk";
 import { fetchOrgApps } from "./org-apps";
 import { assemblePrompt, compactIfNeeded, compactNow, loadSessions, registerGlyphhContextIpc } from "./glyphh-agent-context";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { getClient } from "./glyphh-client";
-import { startInterceptor, type Interceptor } from "@glyphh/client/runtime";
+import { startInterceptor, type Interceptor } from "@glyphh/sdk/runtime";
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 

@@ -8,7 +8,7 @@ import { deployAppFromWorkdir } from "./glyphh-app-builder";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import { getClient } from "./glyphh-client";
 import { probeMcpAuth, authorizeMcpServer } from "./mcp-oauth";
-import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/client";
+import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/sdk";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
 

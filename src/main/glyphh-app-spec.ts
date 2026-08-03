@@ -2,7 +2,7 @@
  * Glyphh app PACKAGING — the fs-bound half of shipping an app: built-project
  * detection, dist-only file collection, and the project .gitignore.
  *
- * The spec text and ALL validation live in @glyphh/client (app-spec/): one
+ * The spec text and ALL validation live in @glyphh/sdk (app-spec/): one
  * authority shared by this desktop, external builders, and the server, so a
  * bundle that passes here passes everywhere. This module only touches disk.
  */

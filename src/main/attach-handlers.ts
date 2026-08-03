@@ -28,7 +28,7 @@ function obj(params: unknown, key: string): Record<string, unknown> {
 }
 
 export function installAttachHandlers(): void {
-  // ── machine reach: the SDK's shared layer (@glyphh/client/machine) ─────────
+  // ── machine reach: the SDK's shared layer (@glyphh/sdk/machine) ─────────
   registerRelayHandler("machine.appsList", async () => {
     return { apps: listInstalledApps().map((a) => a.name) };
   });

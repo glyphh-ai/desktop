@@ -4,7 +4,7 @@
  * The renderer (shared with desktop) consumes `window.glyphh.*` — the IPC contract
  * whose canonical shape is src/renderer/preload.ts. On desktop those methods are
  * Electron IPC into the main process; on web THIS module implements the SAME contract
- * over @glyphh/client, returning the EXACT shapes the renderer reads. It is the single,
+ * over @glyphh/sdk, returning the EXACT shapes the renderer reads. It is the single,
  * coherent place the contract is honoured for web — the systematic replacement for the
  * ad-hoc per-method try/catch shapes that had accumulated in bridge.js.
  *
@@ -56,7 +56,7 @@ export const EMPTY = {
  * Assemble the web contract: the map of `window.glyphh.*` method → implementation.
  * Every entry honours preload.ts's return type for the same-named method.
  *
- * @param {import('@glyphh/client').Client} client  the SDK handle
+ * @param {import('@glyphh/sdk').Client} client  the SDK handle
  * @param {{ apiUrl:string, isAuthenticated:()=>Promise<boolean>, signOut:()=>Promise<void> }} deps
  * @returns {Record<string, Function>} the contract method map (bridge.js's KNOWN)
  */

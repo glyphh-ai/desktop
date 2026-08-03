@@ -46,7 +46,7 @@ import { getClient } from "./glyphh-client.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
-import { lintRemoteAssets } from "@glyphh/client";
+import { lintRemoteAssets } from "@glyphh/sdk";
 import {
   initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend,
   connectorStatus, connectorTools, connectorCall,

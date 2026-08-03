@@ -27,9 +27,9 @@
  */
 
 import { getClient } from "./glyphh-client";
-import { runProgram, type ProgramCapabilities, type RunResult } from "@glyphh/client/runtime";
+import { runProgram, type ProgramCapabilities, type RunResult } from "@glyphh/sdk/runtime";
 import { createBrowserHost } from "./glyphh-browser-host";
-import type { Agent, AgentTask, GuardrailsPolicy } from "@glyphh/client";
+import type { Agent, AgentTask, GuardrailsPolicy } from "@glyphh/sdk";
 import { callAppTool } from "./glyphh-app-host";
 import { connectorWireTools, resolveWireTool } from "./glyphh-agent-tools";
 

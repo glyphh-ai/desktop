@@ -30,7 +30,7 @@ jobs:
         run: python3 -m pip install --upgrade setuptools
 
       # ── Vendor the SDK ──────────────────────────────────────────────
-      # package.json depends on `@glyphh/client: file:../sdk` — a sibling
+      # package.json depends on `@glyphh/sdk: file:../sdk` — a sibling
       # checkout that exists locally but not in CI. Same self-heal as the
       # platform's deploy workflow: check out sdk@main, build it, and place
       # package.json + dist at ../sdk so the lockfile's link resolves.
@@ -93,15 +93,15 @@ jobs:
         run: npm run build
 
       # electron-builder's asar packer refuses files outside the app dir,
-      # and node_modules/@glyphh/client is a SYMLINK to ../sdk (outside).
+      # and node_modules/@glyphh/sdk is a SYMLINK to ../sdk (outside).
       # Replace the link with a real copy before packaging.
-      - name: Materialize @glyphh/client (asar cannot follow ../sdk)
+      - name: Materialize @glyphh/sdk (asar cannot follow ../sdk)
         shell: bash
         run: |
-          rm -rf node_modules/@glyphh/client
-          mkdir -p node_modules/@glyphh/client
-          cp ../sdk/package.json node_modules/@glyphh/client/package.json
-          cp -R ../sdk/dist node_modules/@glyphh/client/dist
+          rm -rf node_modules/@glyphh/sdk
+          mkdir -p node_modules/@glyphh/sdk
+          cp ../sdk/package.json node_modules/@glyphh/sdk/package.json
+          cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
 
       - name: Package macOS (signed + notarized)
         run: npx electron-builder --mac --publish never
@@ -136,7 +136,7 @@ jobs:
           cache: npm
 
       # ── Vendor the SDK ──────────────────────────────────────────────
-      # package.json depends on `@glyphh/client: file:../sdk` — a sibling
+      # package.json depends on `@glyphh/sdk: file:../sdk` — a sibling
       # checkout that exists locally but not in CI. Same self-heal as the
       # platform's deploy workflow: check out sdk@main, build it, and place
       # package.json + dist at ../sdk so the lockfile's link resolves.
@@ -166,15 +166,15 @@ jobs:
         run: npm run build
 
       # electron-builder's asar packer refuses files outside the app dir,
-      # and node_modules/@glyphh/client is a SYMLINK to ../sdk (outside).
+      # and node_modules/@glyphh/sdk is a SYMLINK to ../sdk (outside).
       # Replace the link with a real copy before packaging.
-      - name: Materialize @glyphh/client (asar cannot follow ../sdk)
+      - name: Materialize @glyphh/sdk (asar cannot follow ../sdk)
         shell: bash
         run: |
-          rm -rf node_modules/@glyphh/client
-          mkdir -p node_modules/@glyphh/client
-          cp ../sdk/package.json node_modules/@glyphh/client/package.json
-          cp -R ../sdk/dist node_modules/@glyphh/client/dist
+          rm -rf node_modules/@glyphh/sdk
+          mkdir -p node_modules/@glyphh/sdk
+          cp ../sdk/package.json node_modules/@glyphh/sdk/package.json
+          cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
 
       - name: Package Windows (unsigned)
         run: npx electron-builder --win --publish never

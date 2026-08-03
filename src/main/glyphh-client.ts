@@ -1,5 +1,5 @@
 /**
- * glyphh-client.ts — the ONE @glyphh/client instance for the desktop app.
+ * glyphh-client.ts — the ONE @glyphh/sdk instance for the desktop app.
  *
  * Every control-plane call goes through this client: typed resource clients
  * (client.connections, client.apps, …) where coverage exists, and the
@@ -15,7 +15,7 @@
 
 import fs from "fs";
 import path from "path";
-import { createClient, createTtlCache, type Client, type StoredSession, type TokenStore } from "@glyphh/client";
+import { createClient, createTtlCache, type Client, type StoredSession, type TokenStore } from "@glyphh/sdk";
 import { GLYPHH_DIR } from "./app-paths.js";
 
 /**

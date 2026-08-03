@@ -16,7 +16,7 @@
  * surface now, and per-app command mappings await the app-state work.
  */
 
-import type { OrgApp } from "@glyphh/client";
+import type { OrgApp } from "@glyphh/sdk";
 import { getClient } from "./glyphh-client.js";
 import { appCache } from "./glyphh-client.js";
 

@@ -1,6 +1,6 @@
-# glyphh-apps → @glyphh/client SDK port — server-call audit
+# glyphh-apps → @glyphh/sdk SDK port — server-call audit
 
-> **Status 2026-07-19:** Foundation + bucket A landed. `@glyphh/client` wired in
+> **Status 2026-07-19:** Foundation + bucket A landed. `@glyphh/sdk` wired in
 > (file:../sdk), auth.ts ported to the SDK (device-flow sign-in only; password
 > auth deleted), `server*Authed` reimplemented as shims over the new `client.http`
 > escape hatch — every remaining legacy call already routes through the SDK
@@ -13,7 +13,7 @@
 > port to Personal + Shared tabs like the platform.
 
 Date: 2026-07-19. Scope: every network call from the desktop app to the control
-plane. Goal: all of them go through `@glyphh/client` (the SDK in `../sdk`).
+plane. Goal: all of them go through `@glyphh/sdk` (the SDK in `../sdk`).
 
 ## Current transport (all to be deleted)
 
@@ -88,7 +88,7 @@ way `net.request` does. If proxy support must survive, pass an Electron-net
 
 ## Foundation work
 
-1. Add `@glyphh/client` dep (file: link like platform) — remember to **build the SDK** after edits (dist symlink gotcha).
+1. Add `@glyphh/sdk` dep (file: link like platform) — remember to **build the SDK** after edits (dist symlink gotcha).
 2. One `client.ts` module in main/: `createClient()` singleton with a file-backed `TokenStore` (port of current token persistence in auth.ts), `onSignedOut` → login gate IPC, optional Electron-net fetch shim for proxy support.
 3. Port auth.ts to `client.auth` + delete `serverPost*`/`server*Authed` and `AUTH_SERVER` once the last caller is migrated (no dead code in cutovers).
 4. server-cache.ts wraps SDK calls instead (generic memo over a thunk, not an endpoint string).

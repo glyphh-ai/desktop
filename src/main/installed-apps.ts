@@ -3,7 +3,7 @@
  * `.dip <name>` (and the agent, over attach) can open them even when they were
  * never added to the Glyphh library.
  *
- * The implementation is the SDK's shared MACHINE layer (@glyphh/client/machine):
+ * The implementation is the SDK's shared MACHINE layer (@glyphh/sdk/machine):
  * one codebase for every host of machine-reach — this desktop, and the CLI on
  * machines without one. This module only re-exports it so existing callers
  * keep their import path.
@@ -16,4 +16,4 @@ export {
   normKey,
   isSubsequence,
   type InstalledApp,
-} from "@glyphh/client/machine";
+} from "@glyphh/sdk/machine";
