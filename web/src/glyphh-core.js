@@ -120,7 +120,13 @@ const NATIVE = new Set([
   'windowClose', 'windowMinimize', 'windowMaximize', 'onCloseGesture',
   'panelsHide', 'panelsShow', 'panelsRefresh', 'panelsZoom', 'panelsGetZoom',
   'capturePanels', 'copyToClipboard', 'openExternal', 'openFile', 'openInEditor',
-  'getPathForFile', 'appFileIcon',
+  'getPathForFile', 'appFileIcon', 'webIconFetch',
+  // Auto-updater / relaunch — an OS installer concept; a browser tab has none.
+  'checkForUpdates', 'updateInstall', 'getUpdateStatus', 'relaunch',
+  // OS window-manager panel/layout control (real tiled OS windows).
+  'panelsGetZoom', 'railCollapseGet', 'railCollapseToggle', 'railCollapseSet',
+  'appLaunch', 'appFileIcon', 'rpaRegister', 'rpaUnregister',
+  'glyphhAppPreviewOpen', 'glyphhAppPreviewClear',
 ]);
 
 // Prefixes/names that only a real machine can serve — on web these route over
@@ -130,8 +136,13 @@ const NATIVE = new Set([
 // genuinely local is the file system (and the shell that acts on it).
 const LOCAL_PREFIXES = ['files:', 'git:', 'pty:', 'terminal:', 'localMcp', 'workingDir'];
 const LOCAL_NAMES = new Set([
-  'getWorkingDir', 'setWorkingDir', 'pickWorkingDir',
+  'getWorkingDir', 'setWorkingDir', 'pickWorkingDir', 'getWorkingDirRecents',
   'deployAppFromWorkdir', 'dripsPreview',
+  // Local OS file/exec pickers + path classification — need a real filesystem.
+  // P6 routes these over attach to a connected provider.
+  'pickExecutable', 'pickDirectory', 'layoutsPickFolder',
+  'glyphhPickAttachments', 'glyphhClassifyPaths', 'glyphhSaveClipboardImage',
+  'exportGlyphhSkill', 'appImport', 'appExport', 'appGraduate',
 ]);
 
 /**
@@ -150,4 +161,210 @@ export function classifyMethod(name) {
   if (LOCAL_NAMES.has(name)) return 'local';
   if (typeof name === 'string' && LOCAL_PREFIXES.some((p) => name.startsWith(p))) return 'local';
   return 'cloud';
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * SHAPE ADAPTERS — pure functions mapping the SDK's clean response shapes to the
+ * LEGACY IPC shapes the (unchanged) renderer reads. Kept here so each mapping is
+ * unit-testable with a plain object, no SDK and no browser. bridge.js wires each
+ * SDK call and pipes its result through the matching adapter below.
+ *
+ * The renderer's contracts live in src/renderer/preload.ts; each adapter's target
+ * shape is that file's return type for the same-named method.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** The `{ ok, data }` envelope the library-* IPC handlers return; `unwrap` in the
+ *  renderer throws `error` when `ok` is false. A resolved SDK call is always ok. */
+export function libEnvelope(data) {
+  return { ok: true, data };
+}
+
+/** An error envelope for a failed cloud read, so the renderer's `unwrap` surfaces
+ *  a message instead of reading `undefined`. */
+export function libError(err) {
+  return { ok: false, error: err instanceof Error ? err.message : String(err) };
+}
+
+/**
+ * `connectionsList` — adapt the SDK's RESOLVED connections (slug/name/kind/scope +
+ * governance-narrowed tools) to the renderer's first-class Connection rows. The new
+ * server keys connections by `slug`, so slug stands in for the legacy id/accountId/
+ * appSlug. A resolved connection is, by definition, agent-allowed.
+ * @param {{connections: Array<{slug:string,name:string,kind:string,scope:string,tools?:unknown[],availableTools?:unknown[]}>}} resolved
+ */
+export function toLegacyConnections(resolved) {
+  const rows = (resolved?.connections ?? []).map((c) => ({
+    id: c.slug,
+    accountId: c.slug,
+    appSlug: c.slug,
+    appName: c.name,
+    label: c.name,
+    healthy: true,
+    hiddenTools: [],
+    createdAt: '',
+    org: c.scope === 'org',
+    agentAllowed: true,
+    agentTools: (c.tools ?? []).length,
+    agentAvailable: (c.availableTools ?? c.tools ?? []).length,
+  }));
+  return { ok: true, connections: rows };
+}
+
+/**
+ * `connectionToolsList(id)` — the exposure list for one connection: every tool the
+ * member COULD allow (`availableTools`), each flagged `hidden` when it is not in the
+ * currently-allowed `tools` set. `id` is the connection slug.
+ * @param {{connections: Array<{slug:string,tools?:Array<{name:string}>,availableTools?:Array<{name:string,description?:string|null}>}>}} resolved
+ * @param {string} id
+ */
+export function toLegacyConnectionTools(resolved, id) {
+  const conn = (resolved?.connections ?? []).find((c) => c.slug === id);
+  if (!conn) return { ok: true, tools: [] };
+  const allowed = new Set((conn.tools ?? []).map((t) => t.name));
+  const universe = conn.availableTools ?? conn.tools ?? [];
+  const tools = universe.map((t) => ({
+    name: t.name,
+    description: t.description ?? '',
+    hidden: !allowed.has(t.name),
+  }));
+  return { ok: true, tools };
+}
+
+/**
+ * `connectorsGetApps(search, offset)` — the "Add Connection" catalog picker. The SDK
+ * returns `{ apps: [{id,name,icon}] }` with no paging cursor, so `hasMore` is false.
+ * @param {{apps: Array<{id:string,name:string,icon?:string|null}>}} res
+ */
+export function toLegacyConnectorApps(res) {
+  const apps = (res?.apps ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    description: '',
+    icon: a.icon ?? undefined,
+  }));
+  return { apps, hasMore: false };
+}
+
+/**
+ * `mcpConnectionsList` — the org + personal custom-MCP catalog, tagged by kind.
+ * @param {Array<{slug:string,name:string,url:string,headerKeys?:string[],enabled:boolean,iconSha?:string|null}>} personal
+ * @param {Array<{slug:string,name:string,url:string,headerKeys?:string[],enabled:boolean,iconSha?:string|null}>} org
+ * @param {string} apiUrl  base URL for the icon asset route
+ */
+export function toLegacyMcpConnections(personal, org, apiUrl) {
+  const map = (rows, kind) => (rows ?? []).map((c) => ({
+    slug: c.slug,
+    name: c.name,
+    url: c.url,
+    headerKeys: c.headerKeys ?? [],
+    enabled: c.enabled,
+    hiddenTools: [],
+    createdAt: '',
+    kind,
+    iconUrl: c.iconSha ? `${apiUrl}/api/mcp-icons/${c.iconSha}` : null,
+  }));
+  return { ok: true, connections: [...map(org, 'org'), ...map(personal, 'personal')] };
+}
+
+/**
+ * `loopsList` — the org's loops for the picker. `canBuild` gates the "New loop" UI;
+ * the new server enforces authz on write, so we optimistically allow the affordance
+ * (a non-admin's create simply 403s).
+ * @param {{loops: Array<{id:string,name:string,description:string,builtIn:boolean}>}} res
+ */
+export function toLegacyLoops(res) {
+  const loops = (res?.loops ?? []).map((l) => ({
+    id: l.id,
+    name: l.name,
+    description: l.description,
+    builtIn: !!l.builtIn,
+  }));
+  return { ok: true, loops, canBuild: true };
+}
+
+/**
+ * `loopRoles(loop)` — the resolved model slots for a loop's picker. The SDK returns
+ * `ResolvedLoopRole[]` already in the renderer's LoopRoleView shape; only the outer
+ * `{ ok, loop, roles }` envelope is added.
+ * @param {string} loop
+ * @param {Array<object>} roles
+ */
+export function toLegacyLoopRoles(loop, roles) {
+  return { ok: true, loop, roles: roles ?? [] };
+}
+
+/**
+ * `layoutsList` — the saved grids. Each library item carries the grid in `data`; the
+ * item `name` is authoritative. Non-object `data` (a corrupt row) is skipped.
+ * @param {Array<{name:string,data:unknown}>} items
+ */
+export function toLegacyLayouts(items) {
+  return (items ?? [])
+    .filter((it) => it && typeof it.data === 'object' && it.data !== null)
+    .map((it) => ({ ...(it.data), name: it.name }));
+}
+
+/**
+ * `dripsList` — saved drips as `{name, recipe}`. The recipe string lives in the item's
+ * `data` (either a bare string or `{recipe}`).
+ * @param {Array<{name:string,data:unknown}>} items
+ */
+export function toLegacyDrips(items) {
+  return (items ?? []).map((it) => ({
+    name: it.name,
+    recipe: typeof it.data === 'string' ? it.data : String(it.data?.recipe ?? ''),
+  }));
+}
+
+/**
+ * `panelAppsList` — the deployed panel apps as the dashboard's SavedPanelApp rows.
+ * The new server's `/api/panel-apps` (client.apps.deployed) returns a leaner PanelApp;
+ * missing legacy fields default so the renderer never reads `undefined`.
+ * @param {Array<Record<string, unknown>>} apps
+ */
+export function toLegacyPanelApps(apps) {
+  return (apps ?? []).map((a) => ({
+    id: String(a.id ?? a.slug ?? ''),
+    orgId: String(a.orgId ?? ''),
+    createdBy: String(a.createdBy ?? ''),
+    name: String(a.name ?? a.slug ?? ''),
+    slug: String(a.slug ?? ''),
+    system: !!a.system,
+    url: a.url ?? null,
+    isBrowser: a.isBrowser ?? true,
+    execPath: a.execPath ?? null,
+    appArchetype: a.appArchetype ?? null,
+    launchConfig: a.launchConfig ?? null,
+    access: a.access ?? 'members',
+    owned: a.owned ?? true,
+    latestVersion: a.latestVersion ?? null,
+    requiredConnections: a.requiredConnections ?? [],
+    connectionIds: a.connectionIds ?? [],
+    mcp: a.mcp ?? null,
+    commands: a.commands ?? {},
+    createdAt: String(a.createdAt ?? ''),
+    updatedAt: String(a.updatedAt ?? ''),
+  }));
+}
+
+/**
+ * `getAccountInfo` — the rail/Settings account card. Composed from `me()` (identity),
+ * the org (name), and the billing subscription (tier + status). Any of the latter two
+ * failing must not blank the card — they degrade to safe defaults.
+ * @param {{email:string,name?:string|null,role:string,tier?:string}} me
+ * @param {{name?:string}|null} org
+ * @param {{tier?:string,billingStatus?:string}|null} sub
+ */
+export function toAccountInfo(me, org, sub) {
+  if (!me) return null;
+  const parts = (me.name || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    email: me.email,
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' '),
+    role: me.role,
+    orgName: org?.name || '',
+    tier: sub?.tier || me.tier || 'free',
+    billingStatus: sub?.billingStatus || 'none',
+  };
 }
