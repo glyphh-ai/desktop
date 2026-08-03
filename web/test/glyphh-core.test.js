@@ -25,6 +25,8 @@ import {
   toLegacyDrips,
   toLegacyPanelApps,
   toAccountInfo,
+  isWebAuthedFromCookie,
+  gateModeSwitch,
 } from '../src/glyphh-core.js';
 
 describe('resolveApiUrl', () => {
@@ -458,5 +460,49 @@ describe('toAccountInfo', () => {
   });
   it('returns null with no identity', () => {
     expect(toAccountInfo(null, null, null)).toBeNull();
+  });
+});
+
+describe('isWebAuthedFromCookie (sync gating-cookie read)', () => {
+  it('true only when glyphh_logged_in=1 is present', () => {
+    expect(isWebAuthedFromCookie('glyphh_logged_in=1')).toBe(true);
+    expect(isWebAuthedFromCookie('glyphh_role=org_admin; glyphh_logged_in=1; x=y')).toBe(true);
+  });
+  it('false when the cookie is empty, absent, or cleared', () => {
+    expect(isWebAuthedFromCookie('glyphh_logged_in=')).toBe(false);
+    expect(isWebAuthedFromCookie('glyphh_role=org_admin')).toBe(false);
+    expect(isWebAuthedFromCookie('')).toBe(false);
+    expect(isWebAuthedFromCookie(undefined)).toBe(false);
+    expect(isWebAuthedFromCookie(null)).toBe(false);
+  });
+  it('does not match a look-alike cookie name', () => {
+    expect(isWebAuthedFromCookie('not_glyphh_logged_in=1')).toBe(false);
+  });
+});
+
+describe('gateModeSwitch (Chat open, Work/Code gated on web)', () => {
+  // Chat is always allowed — authed or not, web or desktop.
+  it('Chat always switches', () => {
+    expect(gateModeSwitch({ tab: 'chat', web: true, authed: false })).toBe('switch');
+    expect(gateModeSwitch({ tab: 'chat', web: true, authed: true })).toBe('switch');
+    expect(gateModeSwitch({ tab: 'chat', web: false, authed: false })).toBe('switch');
+  });
+  // The core requirement: an UNAUTHENTICATED web visitor selecting Work or Code
+  // is routed to auth, NOT switched.
+  it('unauthed web → Work/Code route to auth (no switch)', () => {
+    expect(gateModeSwitch({ tab: 'cowork', web: true, authed: false })).toBe('auth');
+    expect(gateModeSwitch({ tab: 'code', web: true, authed: false })).toBe('auth');
+  });
+  it('authed web → Work/Code switch', () => {
+    expect(gateModeSwitch({ tab: 'cowork', web: true, authed: true })).toBe('switch');
+    expect(gateModeSwitch({ tab: 'code', web: true, authed: true })).toBe('switch');
+  });
+  // Desktop is never gated this way — every tab switches regardless of auth.
+  it('desktop (web:false) never gates — all tabs switch even unauthed', () => {
+    expect(gateModeSwitch({ tab: 'cowork', web: false, authed: false })).toBe('switch');
+    expect(gateModeSwitch({ tab: 'code', web: false, authed: false })).toBe('switch');
+  });
+  it('an unknown tab is treated as open (never trapped)', () => {
+    expect(gateModeSwitch({ tab: 'weird', web: true, authed: false })).toBe('switch');
   });
 });

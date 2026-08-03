@@ -1317,26 +1317,40 @@ body.account-locked #dl-btn-wrap {
 .glyphh-web .wc,
 .glyphh-web #window-controls { display: none !important; }
 
-/* ── Web: neutralize ALL OS window chrome ───────────────────────────────────
-   The frameless-window titlebar is a desktop concept. On web the red close "×"
-   and its 38px band would otherwise bleed onto the splash/login as an empty
-   desktop strip. Hide the whole titlebar gutter + every traffic-light button by
-   id, and drop drag regions (a browser tab can't drag its window). The brand
-   mark/nav moved into the home panel rail, so nothing is lost by hiding it. */
+/* ── Web: neutralize OS window chrome, KEEP the app header ───────────────────
+   The frameless-window TITLEBAR (#titlebar — the login/splash shell's desktop
+   workspace chrome in index.html) is a desktop concept: on web that page is only
+   the auth screen, so its empty 38px gutter must stay hidden. But the Chat tab's
+   APP HEADER (home.html: #panel-wc's brand mark + rail toggle, riding on the
+   full-width #shell-drag-strip bar) IS wanted on web — we only strip the OS
+   traffic-light cluster (the .wc buttons, already hidden above) and the desktop
+   window-drag behaviour, never the header itself. */
 .glyphh-web #titlebar { display: none !important; }
 .glyphh-web #btn-close,
 .glyphh-web #btn-minimize,
 .glyphh-web #btn-maximize,
 .glyphh-web #panel-btn-close,
 .glyphh-web #panel-btn-minimize,
-.glyphh-web #panel-btn-maximize,
-.glyphh-web #panel-wc { display: none !important; }
-/* A browser tab has no OS window to drag — kill every drag-region claim so the
-   splash/login behaves like an ordinary page. */
+.glyphh-web #panel-btn-maximize { display: none !important; }
+/* #panel-wc (the header chrome cluster) STAYS VISIBLE on web — only its
+   traffic-light buttons (.wc) are hidden. With the lights gone, the mark no
+   longer needs the cluster's left inset that made room for them: pull it flush so
+   the header reads as a clean native-web bar, not an off-set desktop strip. */
+.glyphh-web #panel-wc { padding-left: 2px; }
+.glyphh-web #panel-wc .app-rail-mark { margin-left: 8px; }
+/* A browser tab has no OS window to drag — kill every drag-region claim (incl.
+   the header's drag band) so the splash/login/header behave like ordinary pages.
+   The empty drag GAP right of the cluster (margin-left offsets sized to clear the
+   now-hidden traffic lights) is collapsed so there's no dead band in the bar. */
 .glyphh-web [style*="app-region"],
 .glyphh-web #titlebar,
+.glyphh-web #shell-drag-strip,
+.glyphh-web #shell-drag-strip .shell-drag-area,
+.glyphh-web .app-rail-top,
 .glyphh-web .auth-shell-header,
 .glyphh-web #onboarding-close { -webkit-app-region: no-drag !important; }
+.glyphh-web #shell-drag-strip .shell-drag-area,
+.glyphh-web .app-rail-top { margin-left: 0 !important; }
 
 .wc {
   width: 12px;
@@ -3281,6 +3295,20 @@ body[data-rail-space="code"] .app-rail-nav-item[data-space]:not([data-space~="co
      Computed per theme by applyAccentInk (code-workbench.ts). */
   color: var(--accent-ink, #000);
 }
+/* WEB, logged-out: Work + Code are gated behind sign-in. code.ts adds
+   .tab-locked (title="Sign in to use"); the tab stays clickable (the click
+   routes to /auth) but reads as gated — dimmed with a small lock glyph — so it
+   is clearly "sign in to use", not a dead control. Desktop never sets it. */
+.rail-mode-tabs button.tab-locked { color: var(--text-4, var(--text-3)); opacity: 0.72; }
+.rail-mode-tabs button.tab-locked::after {
+  content: "";
+  width: 11px; height: 11px; margin-left: 1px; flex: 0 0 auto;
+  background: currentColor;
+  -webkit-mask: no-repeat center / contain; mask: no-repeat center / contain;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E");
+          mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E");
+}
+.rail-mode-tabs button.tab-locked:hover { opacity: 1; color: var(--text); background: var(--hover); }
 
 /* Settings › Usage: the Add credits action above the metric cards */
 .dash-usage-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }

@@ -161,6 +161,49 @@ export function gatingCookieStrings(loggedIn, role, platformAdmin, impersonating
 }
 
 /**
+ * Read the `glyphh_logged_in` gating cookie out of a raw `document.cookie` string.
+ * Pure (takes the cookie string, not `document`) so it unit-tests with no browser.
+ * This is the SYNC, instant answer the renderer's tab-gate consults — it mirrors the
+ * cookie `gatingCookieStrings()` stamps on sign-in and clears on sign-out, so it needs
+ * no network round-trip. A truthy value only requires a live session existed; the SDK
+ * still refreshes lazily on the next real call.
+ * @param {string} cookieStr  e.g. `glyphh_logged_in=1; glyphh_role=org_admin`
+ * @returns {boolean}
+ */
+export function isWebAuthedFromCookie(cookieStr) {
+  if (typeof cookieStr !== 'string' || !cookieStr) return false;
+  return cookieStr
+    .split(';')
+    .some((c) => c.trim().startsWith('glyphh_logged_in=') && c.trim().slice('glyphh_logged_in='.length) === '1');
+}
+
+/** The rail's session-mode tabs (home.template.html #rail-mode-tabs data-tab). `chat`
+ *  is the open front door; `cowork` (Work) and `code` are the gated spaces. */
+export const OPEN_TABS = new Set(['chat']);
+export const GATED_TABS = new Set(['cowork', 'code']);
+
+/**
+ * Decide what happens when a rail session-mode tab is selected. Pure + testable so the
+ * whole gate is exercised with plain values (no DOM, SDK, or server).
+ *
+ *   - 'switch' — allow the mode switch (the normal enterSpace path)
+ *   - 'auth'   — do NOT switch; route the visitor to sign-in instead
+ *
+ * The gate is WEB-ONLY: on desktop (`web` false) every tab always switches — desktop
+ * keeps its current behaviour untouched. On web, Chat is always open; Work + Code
+ * require a live session (`authed`). An unknown tab is treated as open (never trap the
+ * user on a tab we don't recognise).
+ *
+ * @param {{ tab:string, web:boolean, authed:boolean }} input
+ * @returns {'switch'|'auth'}
+ */
+export function gateModeSwitch({ tab, web, authed }) {
+  if (!web) return 'switch';           // desktop: unchanged
+  if (!GATED_TABS.has(tab)) return 'switch'; // chat / unknown → open
+  return authed ? 'switch' : 'auth';   // Work/Code need a session on web
+}
+
+/**
  * A localStorage-shaped TokenStore implementing the SDK's async load/save/clear.
  * Storage and side-effects are injected so it tests against a fake Map with no
  * browser. `onSave`/`onClear` carry the cookie stamping (kept out of here so the

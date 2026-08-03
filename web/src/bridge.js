@@ -22,6 +22,7 @@ import {
   classifyMethod,
   libEnvelope, libError,
   applyPhoneClass,
+  isWebAuthedFromCookie, gateModeSwitch,
   toLegacyConnections, toLegacyConnectionTools, toLegacyConnectorApps,
   toLegacyMcpConnections, toLegacyLoops, toLegacyLoopRoles,
   toLegacyLayouts, toLegacyDrips, toLegacyPanelApps, toAccountInfo,
@@ -218,6 +219,39 @@ if (typeof window !== 'undefined') {
   // in a browser tab. Set before renderer scripts run, so there's no flash.
   if (typeof document !== 'undefined') document.documentElement.classList.add('glyphh-web');
 
+  // ── WEB gate surface (window.glyphhWeb) ──────────────────────────────────────
+  // The renderer's rail session-mode tabs (Chat | Work | Code) share code with
+  // desktop; on WEB, Work + Code are gated behind sign-in while Chat stays open.
+  // The renderer consults this SYNCHRONOUSLY on a tab click (an async auth probe
+  // would race the click), so `isAuthed()` reads the instant `glyphh_logged_in`
+  // gating cookie the SDK's token store stamps — no network round-trip. We also
+  // reflect the state as a class on <html> so CSS can paint a lock affordance on
+  // the gated tabs when logged out, and re-sync it on sign-in / sign-out.
+  const isAuthedSync = () =>
+    isWebAuthedFromCookie(typeof document !== 'undefined' ? document.cookie : '');
+  const reflectAuthClass = () => {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    const cl = document.documentElement.classList;
+    if (!cl || typeof cl.toggle !== 'function') return;
+    const authed = isAuthedSync();
+    cl.toggle('glyphh-web-authed', authed);
+    cl.toggle('glyphh-web-anon', !authed);
+  };
+  reflectAuthClass();
+  window.glyphhWeb = {
+    /** Instant, cookie-backed auth presence check (see isAuthedSync). */
+    isAuthed: isAuthedSync,
+    /** Decide a rail tab selection: 'switch' (allow) | 'auth' (route to sign-in). */
+    gateTab: (tab) => gateModeSwitch({ tab, web: true, authed: isAuthedSync() }),
+    /** Send an unauthenticated visitor to the deliberate /auth login shell. */
+    requireAuth: () => {
+      try { window.location.assign('/auth'); }
+      catch { window.location.href = '/auth'; }
+    },
+    /** Re-sync the <html> auth class after a sign-in/out (renderer/boot may call). */
+    refresh: reflectAuthClass,
+  };
+
   // ── LOUD errors ────────────────────────────────────────────────────────────
   // Blank screens are the enemy: install global error + unhandledrejection handlers
   // that surface any render-path throw as a visible overlay (+ tagged console.error)
@@ -263,6 +297,10 @@ if (typeof window !== 'undefined') {
   const runWebBoot = () => {
     import('./web-boot.js')
       .then((m) => m.startWebBoot())
+      // startWebBoot() best-effort re-stamps the gating cookie (syncGating) when a
+      // session exists; re-reflect the auth class afterward so the Chat tab's
+      // Work/Code lock affordance settles to the true state without a reload.
+      .then(() => reflectAuthClass())
       .catch((err) => console.error('[glyphh-web] boot failed', err));
   };
   // Guard the real-browser wiring so bridge.js stays importable under `node --test`
@@ -281,6 +319,7 @@ if (typeof window !== 'undefined') {
     // visitor stays on the composer; only the deliberate login shell (which carries
     // the onboarding overlay) re-mounts the login screen here.
     window.addEventListener('glyphh:signed-out', () => {
+      reflectAuthClass(); // gated tabs re-show their lock the moment the session drops
       if (!document.getElementById('onboarding-overlay')) return;
       import('./web-login.js')
         .then((m) => m.mountLogin({

@@ -2773,8 +2773,32 @@ export function initCode(): void {
   // ── The rail's SPACE tabs: Chat | Code — the list + "+ New session" scope
   // to the active one. ──
   const railTabs = el("rail-mode-tabs");
+  // WEB gating: the bridge exposes window.glyphhWeb (only under __GLYPHH_WEB__).
+  // Chat is always open; Work (cowork) + Code are gated behind sign-in when the
+  // visitor has no live session. Desktop never sets glyphhWeb, so gateTab() is
+  // absent there and every tab switches as before.
+  const webGate = (): {
+    isAuthed(): boolean;
+    gateTab(tab: string): "switch" | "auth";
+    requireAuth(): void;
+  } | undefined => (window as unknown as { glyphhWeb?: {
+    isAuthed(): boolean; gateTab(tab: string): "switch" | "auth"; requireAuth(): void;
+  } }).glyphhWeb;
+  // Mark each gated tab as locked when logged out on web, so it shows a lock
+  // affordance ("Sign in to use") instead of reading like a dead click.
+  const paintTabLocks = (): void => {
+    const gate = webGate();
+    railTabs?.querySelectorAll("button").forEach((b) => {
+      const tab = b.dataset.tab || "";
+      const locked = !!gate && (tab === "cowork" || tab === "code") && !gate.isAuthed();
+      b.classList.toggle("tab-locked", locked);
+      if (locked) b.setAttribute("title", "Sign in to use");
+      else if (b.getAttribute("title") === "Sign in to use") b.removeAttribute("title");
+    });
+  };
   const paintRailTabs = (): void => {
     railTabs?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === railTab));
+    paintTabLocks();
     // the nav below scopes to the space (data-space items + the More menu)
     document.body.dataset.railSpace = railTab;
     // the command-center wall re-scopes too
@@ -2797,9 +2821,22 @@ export function initCode(): void {
     paintCw();
   };
   railTabs?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
-    railTab = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
+    const next = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
+    // WEB-ONLY gate: Work/Code require sign-in. When gated, DON'T switch — route
+    // to the deliberate /auth login shell. Chat is always allowed. On desktop
+    // webGate() is undefined, so this is a no-op and every tab switches.
+    const gate = webGate();
+    if (gate && gate.gateTab(next) === "auth") {
+      gate.requireAuth();
+      return;
+    }
+    railTab = next;
     enterSpace(true);
   }));
+  // WEB: keep the Work/Code lock affordance honest when the session changes
+  // (sign-in stamps the cookie + reloads; an explicit sign-out fires this) so the
+  // gated tabs light/clear their lock without needing a fresh render.
+  if (webGate()) window.addEventListener("glyphh:signed-out", () => paintTabLocks());
   // A layout ACTIVATES ITS OWN SPACE (code-workbench dispatches on open):
   // the tab, lists, and menus follow the layout — without navigating away
   // from it, and without resetting the session the layout is about to bind.
