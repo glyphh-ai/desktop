@@ -413,14 +413,59 @@ export function toLegacyLoopRoles(loop, roles) {
 }
 
 /**
- * `layoutsList` — the saved grids. Each library item carries the grid in `data`; the
- * item `name` is authoritative. Non-object `data` (a corrupt row) is skipped.
+ * `layoutsList` — the saved grids in the shape the renderer's rail + Layouts page
+ * consume (desktop's apps-ipc `layouts-list`): `{ name, cols, rows, colWidths,
+ * rowHeights, cells, splits, target, glyphh, loop, modelSelections, sessionMode,
+ * folder, space }`.
+ *
+ * TWO shape hazards the naive `{...data, name}` spread hit:
+ *  1. `item.data` is `unknown` — it may arrive as a JSON STRING (the server stores the
+ *     grid spec opaquely); spreading a string yields char-index keys, not fields. Parse
+ *     it first.
+ *  2. The stored grid carries `cells`, NOT `splits` — but the rail's tile renderer reads
+ *     `l.splits.map((s) => s.panelId)`. Derive `splits` from `cells` exactly as desktop
+ *     does, so `renderRailLayouts` never sees an undefined `.splits`.
+ * A corrupt/unparseable row degrades to a minimal valid layout (empty `splits`) rather
+ * than being dropped or throwing.
  * @param {Array<{name:string,data:unknown}>} items
  */
 export function toLegacyLayouts(items) {
   return (items ?? [])
-    .filter((it) => it && typeof it.data === 'object' && it.data !== null)
-    .map((it) => ({ ...(it.data), name: it.name }));
+    .filter((it) => it && it.data != null)
+    .map((it) => {
+      let d = it.data;
+      if (typeof d === 'string') {
+        try { d = JSON.parse(d); } catch { d = {}; }
+      }
+      if (typeof d !== 'object' || d === null) d = {};
+      const cells = Array.isArray(d.cells) ? d.cells : [];
+      // Prefer an already-present `splits`; otherwise derive it from `cells` (the
+      // stored shape). Each split is the panel ref the rail's mini-icon stack reads.
+      const splits = Array.isArray(d.splits)
+        ? d.splits
+        : cells.map((c) => ({
+            panelId: c.panelId,
+            col: c.col, row: c.row,
+            colSpan: c.colSpan, rowSpan: c.rowSpan,
+            sticky: c.sticky, config: c.config,
+          }));
+      return {
+        name: it.name,
+        cols: d.cols ?? 1,
+        rows: d.rows ?? 1,
+        colWidths: d.colWidths ?? [],
+        rowHeights: d.rowHeights ?? [],
+        cells,
+        splits,
+        target: d.target ?? 'glyphh',
+        glyphh: d.glyphh ?? null,
+        loop: d.loop ?? null,
+        modelSelections: d.modelSelections ?? {},
+        sessionMode: d.sessionMode ?? 'keep',
+        folder: d.folder ?? null,
+        space: d.space ?? null,
+      };
+    });
 }
 
 /**

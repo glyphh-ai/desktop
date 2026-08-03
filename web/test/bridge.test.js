@@ -119,8 +119,12 @@ describe('bridge KNOWN wiring', () => {
     expect(tasks).toEqual({ ok: true, data: [{ id: 't' }] });
   });
 
-  it('layoutsList → layouts.list, grids with item name', async () => {
-    expect(await glyphh.layoutsList()).toEqual([{ cols: 2, rows: 1, name: 'Grid' }]);
+  it('layoutsList → layouts.list, desktop layout shape with a splits array', async () => {
+    const out = await glyphh.layoutsList();
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ name: 'Grid', cols: 2, rows: 1 });
+    // splits must always be an array so the rail's `l.splits.map` never throws.
+    expect(Array.isArray(out[0].splits)).toBe(true);
   });
 
   it('dripsList → drips.list, {name,recipe}', async () => {

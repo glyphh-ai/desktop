@@ -382,12 +382,38 @@ describe('toLegacyLoopRoles', () => {
 });
 
 describe('toLegacyLayouts', () => {
-  it('spreads the grid from data and overrides name from the item', () => {
-    const out = toLegacyLayouts([{ name: 'Grid A', data: { cols: 2, rows: 1, name: 'stale' } }]);
-    expect(out).toEqual([{ cols: 2, rows: 1, name: 'Grid A' }]);
+  it('yields the desktop layout shape and derives splits from cells (rail reads l.splits)', () => {
+    const [out] = toLegacyLayouts([{ name: 'Grid A', data: {
+      cols: 2, rows: 1, name: 'stale',
+      cells: [{ panelId: 'p1', col: 0, row: 0 }, { panelId: 'p2', col: 1, row: 0 }],
+    } }]);
+    expect(out.name).toBe('Grid A');
+    expect(out.cols).toBe(2);
+    // splits MUST exist as an array so renderRailLayouts' `.splits.map` never throws.
+    expect(Array.isArray(out.splits)).toBe(true);
+    expect(out.splits.map((s) => s.panelId)).toEqual(['p1', 'p2']);
+    // safe defaults for the fields the renderer reads.
+    expect(out).toMatchObject({ target: 'glyphh', sessionMode: 'keep', modelSelections: {} });
   });
-  it('skips rows whose data is not an object', () => {
-    expect(toLegacyLayouts([{ name: 'x', data: null }, { name: 'y', data: 'z' }])).toEqual([]);
+  it('parses data when it is a JSON STRING (spreading a string would give char-indices)', () => {
+    const json = JSON.stringify({ cols: 1, rows: 1, cells: [{ panelId: 'only' }] });
+    const [out] = toLegacyLayouts([{ name: 'S', data: json }]);
+    expect(out.name).toBe('S');
+    expect(out.splits.map((s) => s.panelId)).toEqual(['only']);
+  });
+  it('prefers an already-present splits array over deriving from cells', () => {
+    const [out] = toLegacyLayouts([{ name: 'S', data: { splits: [{ panelId: 'x' }], cells: [{ panelId: 'y' }] } }]);
+    expect(out.splits.map((s) => s.panelId)).toEqual(['x']);
+  });
+  it('degrades a corrupt/missing/unparseable row to a valid layout with EMPTY splits (never throws, never dropped)', () => {
+    const out = toLegacyLayouts([
+      { name: 'null', data: null },       // dropped (no data)
+      { name: 'bad-json', data: '{not json' },
+      { name: 'no-cells', data: {} },
+    ]);
+    // the null-data row is filtered; the other two survive with empty splits.
+    expect(out.map((l) => l.name)).toEqual(['bad-json', 'no-cells']);
+    for (const l of out) expect(l.splits).toEqual([]);
   });
 });
 

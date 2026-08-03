@@ -2344,8 +2344,11 @@ async function loadRecentApps(): Promise<void> {
       const key = `${r.kind}:${r.id}`;
       railRecentTs[key] = Math.max(railRecentTs[key] || 0, r.ts || 0);
     }
-  } catch { railApps = []; railLayouts = []; railRecentTs = {}; }
-  renderRecentApps();
+    // Render INSIDE the try so a render-path error is contained here (an empty rail),
+    // not escalated to an app-level unhandled rejection / blank screen. Desktop
+    // behavior is identical — it doesn't throw here.
+    renderRecentApps();
+  } catch { railApps = []; railLayouts = []; railRecentTs = {}; renderRecentApps(); }
   // Icons land async (Pipedream catalog + OS file icons), then re-render —
   // same as the palette / Apps page.
   void primeConnectedIcons(railApps as never, renderRecentApps);
@@ -2454,7 +2457,9 @@ function renderRailLayouts(): void {
     const icon = document.createElement("div");
     icon.className = "tile-icon tile-layout";
     const seen = new Set<string>();
-    const ids = l.splits
+    // A render function must never throw on a missing field: `splits` can be absent
+    // for layouts from the web bridge / a malformed row — guard before mapping.
+    const ids = (l.splits || [])
       .map((s) => s.panelId)
       .filter((id) => id && !seen.has(id) && (seen.add(id), true))
       .slice(0, 4);
