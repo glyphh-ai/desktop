@@ -25,6 +25,8 @@ import {
   toLegacyDrips,
   toLegacyPanelApps,
   toAccountInfo,
+  toDashboardData,
+  emptyDashboardData,
   isWebAuthedFromCookie,
   gateModeSwitch,
 } from '../src/glyphh-core.js';
@@ -477,6 +479,60 @@ describe('isWebAuthedFromCookie (sync gating-cookie read)', () => {
   });
   it('does not match a look-alike cookie name', () => {
     expect(isWebAuthedFromCookie('not_glyphh_logged_in=1')).toBe(false);
+  });
+});
+
+describe('emptyDashboardData / toDashboardData (Chat-tab landing shape)', () => {
+  // The Chat-tab landing renders ONLY when dashboardData() resolves truthy, so the
+  // empty shape must be a FULL object with every field the DashboardData contract reads.
+  it('emptyDashboardData is a complete zeroed shape (never null/partial)', () => {
+    expect(emptyDashboardData()).toEqual({
+      name: '', plan: '', orgCredits: false, me: null,
+      credits: 0, allowance: 0, spendCredits: 0, requests: 0, appsCount: 0,
+    });
+  });
+  // A fresh object each call — a caller can never mutate a shared instance.
+  it('emptyDashboardData returns a fresh object', () => {
+    expect(emptyDashboardData()).not.toBe(emptyDashboardData());
+  });
+  // Logged out: no identity → the empty shape (the front door still renders).
+  it('toDashboardData(null,…) → emptyDashboardData()', () => {
+    expect(toDashboardData(null, null, null, null, null)).toEqual(emptyDashboardData());
+  });
+  // Authed member: no org pool (403 → null) but a personal allocation → member card.
+  it('member with allocation, no org pool → orgCredits false, me populated', () => {
+    const out = toDashboardData(
+      { name: 'Ada Lovelace', tier: 'pro' },
+      null,
+      { uncapped: false, capCredits: 100, spentCredits: 30, remainingCredits: 70, windowEnd: '2026-09-01', workspaceName: 'Growth' },
+      { credits: 30, events: 12 },
+      [{ system: true, url: 'x' }, { system: false, url: 'https://a' }, { system: false, url: null }],
+    );
+    expect(out.name).toBe('Ada');           // first token of the display name
+    expect(out.plan).toBe('pro');
+    expect(out.orgCredits).toBe(false);      // null org pool → member card
+    expect(out.me).toEqual({
+      roleName: 'Growth', uncapped: false, capCredits: 100,
+      spentCredits: 30, remainingCredits: 70, windowEnd: '2026-09-01',
+    });
+    expect(out.spendCredits).toBe(30);
+    expect(out.requests).toBe(12);
+    expect(out.appsCount).toBe(1);           // only the non-system app WITH a url
+  });
+  // Admin with an org pool: credits/allowance are micro-credits → whole credits.
+  it('admin with org pool → orgCredits true, micro→whole credit math', () => {
+    const out = toDashboardData(
+      { name: 'Sam', tier: 'advanced' },
+      { balance: 5_500_000, allowance: 10_000_000 },
+      null,
+      null,
+      null,
+    );
+    expect(out.orgCredits).toBe(true);
+    expect(out.credits).toBe(5);             // floor(5.5M / 1M)
+    expect(out.allowance).toBe(10);
+    expect(out.me).toBe(null);
+    expect(out.appsCount).toBe(0);           // apps null → 0, never a throw
   });
 });
 

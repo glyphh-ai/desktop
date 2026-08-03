@@ -575,3 +575,61 @@ export function toAccountInfo(me, org, sub) {
     billingStatus: sub?.billingStatus || 'none',
   };
 }
+
+/**
+ * The zeroed `dashboardData()` shape (preload.ts DashboardData) — what the Chat-tab
+ * landing renders for a logged-out visitor or any failed read. The composer + starter
+ * cards render ONLY when dashboardData() resolves truthy (help/dashboard.ts), so this
+ * MUST be a full object, never null/undefined, or the front door blanks.
+ */
+export function emptyDashboardData() {
+  return {
+    name: '', plan: '', orgCredits: false, me: null,
+    credits: 0, allowance: 0, spendCredits: 0, requests: 0, appsCount: 0,
+  };
+}
+
+/**
+ * `dashboardData()` — compose the Chat-tab landing card exactly as desktop's
+ * `dashboard-data` handler (home-ipc.ts) does: identity + org credit pool +
+ * the caller's own allocation + month-to-date spend + deployed-app count. Each SDK
+ * read is best-effort at the CALL SITE (a member without billing visibility 403s on
+ * the org pool → null → the personal `me` card renders instead), and the whole thing
+ * degrades to `emptyDashboardData()` off an anonymous `me`. Pure: takes the already-
+ * resolved SDK values (bridge.js does the Promise.all), so it unit-tests with plain
+ * objects.
+ * @param {{name?:string|null,tier?:string}|null} me       identity (client.me())
+ * @param {{balance?:number,allowance?:number}|null} credits  org pool (billing.credits())
+ * @param {{uncapped?:boolean,capCredits?:number,spentCredits?:number,remainingCredits?:number,windowEnd?:string,workspaceName?:string}|null} alloc  caller allocation (usage.allocation())
+ * @param {{credits?:number,events?:number}|null} usage    MTD spend (usage.summary())
+ * @param {Array<{system?:boolean,url?:string|null}>|null} apps  deployed apps (apps.deployed())
+ */
+export function toDashboardData(me, credits, alloc, usage, apps) {
+  if (!me) return emptyDashboardData();
+  const MICRO = 1_000_000;
+  const parts = (me.name || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    name: parts[0] || '',
+    plan: me.tier || '',
+    // null org credits = the pool is admin-only for this account — the renderer
+    // swaps in the member card fed by `me`.
+    orgCredits: credits != null,
+    me: alloc
+      ? {
+          roleName: alloc.workspaceName || null,
+          uncapped: alloc.uncapped,
+          capCredits: alloc.capCredits,
+          spentCredits: alloc.spentCredits,
+          remainingCredits: alloc.remainingCredits,
+          windowEnd: alloc.windowEnd || null,
+        }
+      : null,
+    credits: Math.floor((credits?.balance || 0) / MICRO),
+    allowance: Math.floor((credits?.allowance || 0) / MICRO),
+    // UsageSummary.credits is already WHOLE credits (converted server-side).
+    spendCredits: Math.round(usage?.credits || 0),
+    requests: usage?.events || 0,
+    // Live deployments only — the seeded system app (system:true) is not deployed.
+    appsCount: Array.isArray(apps) ? apps.filter((a) => !a.system && a.url).length : 0,
+  };
+}
