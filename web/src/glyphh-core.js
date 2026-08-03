@@ -209,7 +209,29 @@ export function toLegacyUser(id) {
     avatarUrl: id.avatarUrl || null,
     isPlatformAdmin: !!id.isPlatformAdmin,
     impersonating: id.impersonating || null,
+    // The server's per-user first-run flag (from /api/auth/me). false/absent = a NEW
+    // user who hasn't chosen a region yet → the web boot shows first-run once.
+    regionChosen: !!id.regionChosen,
   };
+}
+
+/**
+ * Decide whether the WEB target should show the first-time flow (region choice /
+ * onboarding / tutorial) right after sign-in. Pure + testable, like decideBootState.
+ *
+ * The gate is the SERVER's per-user `regionChosen`, NOT a per-device local flag and
+ * NOT app-start: first-run appears only the first time a genuinely new USER signs in
+ * (regionChosen === false), on any device. It NEVER shows pre-auth, and a returning
+ * user (regionChosen === true) goes straight into the app. On web this replaces the
+ * desktop `hasSeenTutorial` mechanism entirely (which is per-device and, on web, a
+ * broken prefs stub — hence the misfire this fixes).
+ *
+ * @param {{ authenticated:boolean, regionChosen:boolean }} input
+ * @returns {boolean}
+ */
+export function shouldShowFirstRun({ authenticated, regionChosen }) {
+  if (!authenticated) return false; // pre-auth: login only, never first-run
+  return regionChosen === false;    // new user (no region yet) → show once
 }
 
 // Native/OS-only bridge methods — no web equivalent; they no-op (degrade) on web.

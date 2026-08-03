@@ -7,6 +7,7 @@ import {
   classifyMethod,
   parseCallbackParams,
   decideBootState,
+  shouldShowFirstRun,
   CALLBACK_PATH,
   isPhoneViewport,
   applyPhoneClass,
@@ -213,6 +214,24 @@ describe('toLegacyUser', () => {
     expect(u.lastName).toBe('');
     expect(u.isPlatformAdmin).toBe(false);
     expect(u.impersonating).toBeNull();
+  });
+  it('surfaces the server per-user regionChosen flag (defaults false when absent)', () => {
+    expect(toLegacyUser({ userId: 'u1', email: 'a@b.co', regionChosen: true }).regionChosen).toBe(true);
+    expect(toLegacyUser({ userId: 'u1', email: 'a@b.co', regionChosen: false }).regionChosen).toBe(false);
+    expect(toLegacyUser({ userId: 'u1', email: 'a@b.co' }).regionChosen).toBe(false);
+  });
+});
+
+describe('shouldShowFirstRun (server regionChosen gate)', () => {
+  it('pre-auth → NEVER first-run (login only), regardless of regionChosen', () => {
+    expect(shouldShowFirstRun({ authenticated: false, regionChosen: false })).toBe(false);
+    expect(shouldShowFirstRun({ authenticated: false, regionChosen: true })).toBe(false);
+  });
+  it('authed + regionChosen=false (NEW user) → show first-run once', () => {
+    expect(shouldShowFirstRun({ authenticated: true, regionChosen: false })).toBe(true);
+  });
+  it('authed + regionChosen=true (RETURNING user) → skip first-run', () => {
+    expect(shouldShowFirstRun({ authenticated: true, regionChosen: true })).toBe(false);
   });
 });
 

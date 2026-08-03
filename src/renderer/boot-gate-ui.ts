@@ -56,6 +56,21 @@ export function isBooted(): boolean { return booted; }
 export function isTutorialShowing(): boolean { return tutorialShowing; }
 export function isCcModalShowing(): boolean { return ccModalShowing; }
 
+// The callbacks captured at initBootGate(), so the WEB boot (web/src/web-boot.js)
+// can drive first-run itself instead of the desktop `hasSeenTutorial` path.
+let bootCb: BootGateCallbacks | null = null;
+
+/** WEB-ONLY: the web boot decides first-run from the SERVER's per-user `regionChosen`
+ *  (see web-boot.js), NOT the per-device `hasSeenTutorial` prefs stub. It then calls
+ *  one of these to either show the first-time tutorial for a new user, or just reveal
+ *  the workspace for a returning one. No-ops on desktop / before initBootGate. */
+export function webShowFirstRun(): void {
+  if (bootCb) showTutorial(bootCb);
+}
+export function webEnterApp(): void {
+  if (bootCb) bootCb.showPanels();
+}
+
 // ── Tutorial ────────────────────────────────────────────────────────────────
 
 // Tutorial steps (sections/tutorial.html): Connections → Apps → Loops →
@@ -235,6 +250,9 @@ function hideLockout(cb: BootGateCallbacks): void {
  * CC-bootstrap flow. Call once from renderer.ts at module scope.
  */
 export function initBootGate(cb: BootGateCallbacks): void {
+  // Captured so the WEB boot's first-run driver (webShowFirstRun / webEnterApp) can
+  // reuse the same panel/tutorial callbacks. Desktop ignores this.
+  bootCb = cb;
   // Config sync status during boot
   (window as any).glyphh.onSplashStatus?.((msg: string) => {
     const el = document.getElementById("splash-status");
@@ -354,8 +372,13 @@ export function initBootGate(cb: BootGateCallbacks): void {
     cb.showOnboarding(true);
   });
 
-  // After onboarding activation, show tutorial (first time only) or restore panels
+  // After onboarding activation, show tutorial (first time only) or restore panels.
+  // WEB owns its own first-run decision (server per-user `regionChosen`, driven from
+  // web-boot.js via webShowFirstRun/webEnterApp) — so on web this desktop path, which
+  // keys off the per-device `hasSeenTutorial` prefs (a no-op stub on web that would
+  // otherwise misfire the tutorial every boot), is skipped entirely.
   window.addEventListener("yo-onboarding-done", async () => {
+    if ((window as any).__GLYPHH_WEB__) return;
     const seen = await window.glyphh.getPreference("hasSeenTutorial", false);
     if (!seen) {
       showTutorial(cb);

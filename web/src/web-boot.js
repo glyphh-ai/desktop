@@ -14,7 +14,7 @@
  * in glyphh-core.js (unit-tested); this file is the thin browser wiring around it.
  */
 
-import { decideBootState, parseCallbackParams, CALLBACK_PATH } from './glyphh-core.js';
+import { decideBootState, parseCallbackParams, shouldShowFirstRun, CALLBACK_PATH } from './glyphh-core.js';
 import {
   isAuthenticated, syncGating,
   signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode,
@@ -42,15 +42,49 @@ function splashStatus(msg) {
   if (el) el.textContent = msg || '';
 }
 
-/** Once a session exists: stamp gating cookies + cache the user, then enter the app. */
+/** Resolve the renderer-exposed first-run drivers (window.glyphhWebBoot), which
+ *  renderer.ts publishes once initBootGate runs. The renderer bundle loads as a
+ *  module right after this script, so briefly poll rather than assume it's ready. */
+function whenWebBootReady(timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    if (window.glyphhWebBoot) return resolve(window.glyphhWebBoot);
+    const started = Date.now();
+    const tick = () => {
+      if (window.glyphhWebBoot) return resolve(window.glyphhWebBoot);
+      if (Date.now() - started >= timeoutMs) return resolve(null);
+      setTimeout(tick, 40);
+    };
+    tick();
+  });
+}
+
+/**
+ * Once a session exists: stamp gating cookies + cache the user, then enter the app.
+ * FIRST-RUN is gated on the SERVER's per-user `regionChosen` (surfaced by syncGating
+ * → toLegacyUser), NOT app-start and NOT the per-device `hasSeenTutorial` prefs — a
+ * genuinely new user (regionChosen === false) gets the first-time flow ONCE, on any
+ * device; a returning user goes straight into the workspace.
+ */
 async function enterApp(shownAt) {
-  await syncGating();
-  // The onboarding overlay (if it was shown) comes down; the renderer's own boot
-  // continues behind the splash. `yo-onboarding-done` is the same signal desktop
-  // fires post-auth so the boot gate restores the workspace (Chat front door).
+  const user = await syncGating();
   document.getElementById('onboarding-overlay')?.classList.add('hidden');
   dismissSplash(shownAt);
-  window.dispatchEvent(new Event('yo-onboarding-done'));
+
+  const firstRun = shouldShowFirstRun({
+    authenticated: !!user,
+    regionChosen: !!(user && user.regionChosen),
+  });
+
+  // Drive the renderer's first-run vs. enter-app path directly (the desktop
+  // `yo-onboarding-done` → hasSeenTutorial handler is web-gated off). Fall back to
+  // dispatching the event if the drivers never appear, so the app still reveals.
+  const drivers = await whenWebBootReady();
+  if (drivers) {
+    if (firstRun) drivers.showFirstRun();
+    else drivers.enterApp();
+  } else {
+    window.dispatchEvent(new Event('yo-onboarding-done'));
+  }
 }
 
 /** Strip the callback query from the URL so a refresh doesn't re-run the exchange,

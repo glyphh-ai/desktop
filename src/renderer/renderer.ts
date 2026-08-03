@@ -8,7 +8,7 @@
 // Section content (Apps/Layouts/Drips/Skills/Settings/About) lives in the
 // home.html panel (home.ts).
 import { showOnboarding } from "./onboarding.js";
-import { initBootGate } from "./boot-gate-ui.js";
+import { initBootGate, webShowFirstRun, webEnterApp } from "./boot-gate-ui.js";
 import { initDrip } from "./drip-ui.js";
 import type { RoleView as LoopRoleView } from "./help/model-picker.js";
 import type { LibEnvelope } from "./help/library-types.js";
@@ -502,3 +502,14 @@ initBootGate({
   },
   showOnboarding: (requiresAuth) => showOnboarding(requiresAuth),
 });
+
+// WEB-ONLY: expose the boot-gate's first-run drivers to the web boot script
+// (web/src/web-boot.js lives in a separate module graph — the injected bundle —
+// so it reaches these via window). The web boot decides first-run from the server
+// per-user `regionChosen` and calls exactly one of these. Desktop never sets this.
+if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) {
+  (window as unknown as { glyphhWebBoot?: Record<string, () => void> }).glyphhWebBoot = {
+    showFirstRun: webShowFirstRun,
+    enterApp: webEnterApp,
+  };
+}

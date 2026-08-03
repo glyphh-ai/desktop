@@ -66,18 +66,20 @@ function fakeEl() {
   return { classList: { add: vi.fn(), remove: vi.fn() }, textContent: '', remove: vi.fn() };
 }
 
-function installDom({ pathname = '/', search = '' } = {}) {
+function installDom({ pathname = '/', search = '', webBoot = true } = {}) {
   const els = { splash: fakeEl(), 'splash-status': fakeEl(), 'onboarding-overlay': fakeEl() };
+  const glyphhWebBoot = webBoot ? { showFirstRun: vi.fn(), enterApp: vi.fn() } : undefined;
   globalThis.window = {
     location: { pathname, search, origin: 'http://localhost:3002', reload: vi.fn() },
     history: { replaceState: vi.fn() },
     __GLYPHH_GOOGLE_CLIENT_ID__: 'gid',
+    glyphhWebBoot,
     dispatchEvent: vi.fn(),
     Event: class { constructor(t) { this.type = t; } },
   };
   globalThis.Event = globalThis.window.Event;
   globalThis.document = { getElementById: (id) => els[id] || null };
-  return els;
+  return { els, drivers: glyphhWebBoot };
 }
 
 let startWebBoot;
@@ -88,50 +90,77 @@ beforeEach(async () => {
 });
 
 describe('startWebBoot routing', () => {
-  it('authenticated boot → syncGating + enter app (dispatches yo-onboarding-done), no login', async () => {
-    const els = installDom({ pathname: '/' });
-    web.isAuthenticated.mockResolvedValueOnce(true);
-    await startWebBoot();
-    expect(web.syncGating).toHaveBeenCalled();
-    expect(login.mountLogin).not.toHaveBeenCalled();
-    expect(els['onboarding-overlay'].classList.add).toHaveBeenCalledWith('hidden');
-    expect(window.dispatchEvent).toHaveBeenCalled();
-    expect(window.dispatchEvent.mock.calls[0][0].type).toBe('yo-onboarding-done');
-  });
-
-  it('unauthenticated boot → mounts the login screen, no syncGating', async () => {
-    installDom({ pathname: '/' });
+  it('NOT authenticated → login ONLY (no syncGating, no first-run)', async () => {
+    const { drivers } = installDom({ pathname: '/' });
     web.isAuthenticated.mockResolvedValueOnce(false);
     await startWebBoot();
     expect(login.mountLogin).toHaveBeenCalledTimes(1);
     expect(login.mountLogin.mock.calls[0][0]).toMatchObject({ googleClientId: 'gid', origin: 'http://localhost:3002' });
     expect(web.syncGating).not.toHaveBeenCalled();
+    expect(drivers.showFirstRun).not.toHaveBeenCalled();
+    expect(drivers.enterApp).not.toHaveBeenCalled();
   });
 
-  it('callback path with a token → verifyEmailLink, then enter app', async () => {
-    const els = installDom({ pathname: CALLBACK_PATH, search: '?token=tok&redirect=%2Fchat' });
+  it('authed + regionChosen=false (NEW user) → first-run shown once, not enter-app', async () => {
+    const { els, drivers } = installDom({ pathname: '/' });
+    web.isAuthenticated.mockResolvedValueOnce(true);
+    web.syncGating.mockResolvedValueOnce({ email: 'new@b.co', regionChosen: false });
+    await startWebBoot();
+    expect(web.syncGating).toHaveBeenCalled();
+    expect(login.mountLogin).not.toHaveBeenCalled();
+    expect(els['onboarding-overlay'].classList.add).toHaveBeenCalledWith('hidden');
+    expect(drivers.showFirstRun).toHaveBeenCalledTimes(1);
+    expect(drivers.enterApp).not.toHaveBeenCalled();
+  });
+
+  it('authed + regionChosen=true (RETURNING user) → straight into app, NO first-run', async () => {
+    const { drivers } = installDom({ pathname: '/' });
+    web.isAuthenticated.mockResolvedValueOnce(true);
+    web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
+    await startWebBoot();
+    expect(drivers.enterApp).toHaveBeenCalledTimes(1);
+    expect(drivers.showFirstRun).not.toHaveBeenCalled();
+  });
+
+  it('callback token → verifyEmailLink, then first-run for a new user', async () => {
+    const { drivers } = installDom({ pathname: CALLBACK_PATH, search: '?token=tok&redirect=%2Fchat' });
+    web.syncGating.mockResolvedValueOnce({ email: 'new@b.co', regionChosen: false });
     await startWebBoot();
     expect(web.verifyEmailLink).toHaveBeenCalledWith('tok');
     expect(web.syncGating).toHaveBeenCalled();
     expect(window.history.replaceState).toHaveBeenCalledWith(null, '', '/chat');
     expect(login.mountLogin).not.toHaveBeenCalled();
-    expect(window.dispatchEvent.mock.calls[0][0].type).toBe('yo-onboarding-done');
-    void els;
+    expect(drivers.showFirstRun).toHaveBeenCalledTimes(1);
   });
 
-  it('callback path with a code → exchangeCode, then enter app', async () => {
-    installDom({ pathname: CALLBACK_PATH, search: '?code=c' });
+  it('callback code → exchangeCode, then enter app for a returning user', async () => {
+    const { drivers } = installDom({ pathname: CALLBACK_PATH, search: '?code=c' });
+    web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
     await startWebBoot();
     expect(web.exchangeCode).toHaveBeenCalledWith('c');
     expect(web.syncGating).toHaveBeenCalled();
+    expect(drivers.enterApp).toHaveBeenCalledTimes(1);
   });
 
   it('callback exchange failure → falls back to the login screen', async () => {
-    installDom({ pathname: CALLBACK_PATH, search: '?token=bad' });
+    const { drivers } = installDom({ pathname: CALLBACK_PATH, search: '?token=bad' });
     web.verifyEmailLink.mockRejectedValueOnce(new Error('expired'));
     await startWebBoot();
     expect(login.mountLogin).toHaveBeenCalledTimes(1);
     expect(login.mountLogin.mock.calls[0][0].initialError).toBe('expired');
     expect(window.history.replaceState).toHaveBeenCalledWith(null, '', '/');
+    expect(drivers.showFirstRun).not.toHaveBeenCalled();
+    expect(drivers.enterApp).not.toHaveBeenCalled();
+  });
+
+  it('drivers never appear → falls back to dispatching yo-onboarding-done so the app still reveals', async () => {
+    installDom({ pathname: '/', webBoot: false });
+    web.isAuthenticated.mockResolvedValueOnce(true);
+    web.syncGating.mockResolvedValueOnce({ email: 'x@b.co', regionChosen: true });
+    const p = startWebBoot();
+    await vi.advanceTimersByTimeAsync(4100); // exhaust the whenWebBootReady poll timeout
+    await p;
+    expect(window.dispatchEvent).toHaveBeenCalled();
+    expect(window.dispatchEvent.mock.calls[0][0].type).toBe('yo-onboarding-done');
   });
 });
