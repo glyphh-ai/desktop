@@ -100,11 +100,28 @@ const server = http.createServer(async (req, res) => {
     let body = await readFile(file);
     const ext = extname(file);
     if (ext === '.html') {
+      body = body.toString();
+      // Web-only: ensure the viewport opts into the safe-area insets so the phone
+      // splash/login can pad around the notch + home indicator via env(safe-area-*).
+      // Desktop Electron loads the template directly and never sees this rewrite.
+      if (/viewport-fit\s*=\s*cover/i.test(body)) {
+        /* already opted in */
+      } else if (/<meta\s+name=["']viewport["'][^>]*>/i.test(body)) {
+        body = body.replace(
+          /(<meta\s+name=["']viewport["']\s+content=["'])([^"']*)(["'][^>]*>)/i,
+          (_m, pre, content, post) => `${pre}${content.replace(/\s*$/, '')}, viewport-fit=cover${post}`,
+        );
+      } else {
+        body = body.replace(
+          /<head(\s[^>]*)?>/i,
+          (m) => `${m}\n  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">`,
+        );
+      }
       // Inject the client-safe config THEN the bridge as the first things in <head>,
       // so window.__GLYPHH_* and window.glyphh (the SDK client) exist before any
       // renderer script executes. Config must precede the bridge — the SDK reads
       // window.__GLYPHH_API_URL__ at import time.
-      body = body.toString().replace(
+      body = body.replace(
         /<head(\s[^>]*)?>/i,
         (m) => `${m}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`,
       );

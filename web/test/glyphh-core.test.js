@@ -8,6 +8,9 @@ import {
   parseCallbackParams,
   decideBootState,
   CALLBACK_PATH,
+  isPhoneViewport,
+  applyPhoneClass,
+  PHONE_MAX,
   SESSION_KEY,
   libEnvelope,
   libError,
@@ -61,6 +64,59 @@ describe('parseCallbackParams / decideBootState (web boot)', () => {
     expect(decideBootState({ pathname: '/', search: '', authenticated: false })).toBe('login');
     expect(decideBootState({ pathname: CALLBACK_PATH, search: '?token=t', authenticated: false })).toBe('callback');
     expect(decideBootState({ pathname: CALLBACK_PATH, search: '', authenticated: true })).toBe('app');
+  });
+});
+
+describe('isPhoneViewport (min-dimension phone detection)', () => {
+  it('phone PORTRAIT is a phone (narrow shorter edge)', () => {
+    // iPhone 14/15 portrait ~390x844.
+    expect(isPhoneViewport({ innerWidth: 390, innerHeight: 844, coarse: true })).toBe(true);
+    // Small phone.
+    expect(isPhoneViewport({ innerWidth: 360, innerHeight: 780, coarse: true })).toBe(true);
+  });
+  it('phone LANDSCAPE is still a phone (wide but SHORT) — width alone would miss it', () => {
+    // Same device rotated: 844x390. A raw max-width test would call this desktop.
+    expect(isPhoneViewport({ innerWidth: 844, innerHeight: 390, coarse: true })).toBe(true);
+    // Largest phone landscape ~932x430 — shorter edge 430 < 600.
+    expect(isPhoneViewport({ innerWidth: 932, innerHeight: 430, coarse: true })).toBe(true);
+  });
+  it('iPad PORTRAIT and LANDSCAPE are NOT a phone (shorter edge ≥ 768)', () => {
+    expect(isPhoneViewport({ innerWidth: 768, innerHeight: 1024, coarse: true })).toBe(false); // portrait
+    expect(isPhoneViewport({ innerWidth: 1024, innerHeight: 768, coarse: true })).toBe(false); // landscape
+    expect(isPhoneViewport({ innerWidth: 834, innerHeight: 1194, coarse: true })).toBe(false); // iPad Air portrait
+  });
+  it('desktop is NOT a phone', () => {
+    expect(isPhoneViewport({ innerWidth: 1440, innerHeight: 900, coarse: false })).toBe(false);
+    // Even a NARROW desktop window (mouse pointer) is not a phone.
+    expect(isPhoneViewport({ innerWidth: 500, innerHeight: 800, coarse: false })).toBe(false);
+  });
+  it('a touch device right at a borderline size uses the full threshold', () => {
+    expect(PHONE_MAX).toBe(600);
+    expect(isPhoneViewport({ innerWidth: 599, innerHeight: 900, coarse: true })).toBe(true);
+    expect(isPhoneViewport({ innerWidth: 601, innerHeight: 900, coarse: true })).toBe(false);
+  });
+  it('is false for missing / degenerate measurements', () => {
+    expect(isPhoneViewport({})).toBe(false);
+    expect(isPhoneViewport({ innerWidth: 0, innerHeight: 0 })).toBe(false);
+    expect(isPhoneViewport()).toBe(false);
+  });
+});
+
+describe('applyPhoneClass', () => {
+  const fakeList = () => {
+    const set = new Set();
+    return { add: (c) => set.add(c), remove: (c) => set.delete(c), has: (c) => set.has(c) };
+  };
+  it('adds glyphh-phone for a phone viewport and returns true', () => {
+    const list = fakeList();
+    expect(applyPhoneClass(list, { innerWidth: 390, innerHeight: 844, coarse: true })).toBe(true);
+    expect(list.has('glyphh-phone')).toBe(true);
+  });
+  it('removes glyphh-phone for a non-phone (iPad/desktop) and returns false', () => {
+    const list = fakeList();
+    list.add('glyphh-phone');
+    expect(applyPhoneClass(list, { innerWidth: 1024, innerHeight: 768, coarse: true })).toBe(false);
+    expect(list.has('glyphh-phone')).toBe(false);
   });
 });
 

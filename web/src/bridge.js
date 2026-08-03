@@ -21,6 +21,7 @@ import { glyphh, isAuthenticated, signOut, API_URL } from './glyphh-web.js';
 import {
   classifyMethod,
   libEnvelope, libError,
+  applyPhoneClass,
   toLegacyConnections, toLegacyConnectionTools, toLegacyConnectorApps,
   toLegacyMcpConnections, toLegacyLoops, toLegacyLoopRoles,
   toLegacyLayouts, toLegacyDrips, toLegacyPanelApps, toAccountInfo,
@@ -197,6 +198,36 @@ if (typeof window !== 'undefined') {
   // A class so CSS can hide OS-only chrome (window controls) that has no meaning
   // in a browser tab. Set before renderer scripts run, so there's no flash.
   if (typeof document !== 'undefined') document.documentElement.classList.add('glyphh-web');
+
+  // ── Phone-mode marker ──────────────────────────────────────────────────────
+  // A PHONE viewport gets `glyphh-phone` on <html> (alongside `glyphh-web`); all
+  // mobile CSS is scoped to it so it can NEVER touch desktop or iPad (both stay
+  // FULL). Detection is min-dimension based (see isPhoneViewport) — no UA sniff —
+  // and re-runs on resize/orientationchange so rotating a device flips modes live.
+  // Applied synchronously here (before the renderer paints) to avoid a layout flash.
+  // Only wire this in a REAL browser: a live classList (add+remove) and numeric
+  // viewport dims. Bare test stubs (node --test) skip it, keeping bridge.js importable.
+  const root = typeof document !== 'undefined' ? document.documentElement : null;
+  const realClassList = root && root.classList
+    && typeof root.classList.add === 'function' && typeof root.classList.remove === 'function';
+  if (realClassList && typeof window.innerWidth === 'number' && typeof window.innerHeight === 'number') {
+    const coarse = () => {
+      try { return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches; }
+      catch { return undefined; }
+    };
+    const measure = () => ({ innerWidth: window.innerWidth, innerHeight: window.innerHeight, coarse: coarse() });
+    const syncPhone = () => applyPhoneClass(root.classList, measure());
+    syncPhone();
+    if (typeof window.addEventListener === 'function') {
+      let raf = 0;
+      const debounced = () => {
+        if (raf) return;
+        raf = (window.requestAnimationFrame || ((cb) => setTimeout(cb, 100)))(() => { raf = 0; syncPhone(); });
+      };
+      window.addEventListener('resize', debounced);
+      window.addEventListener('orientationchange', debounced);
+    }
+  }
 
   // ── WEB boot gate ──────────────────────────────────────────────────────────
   // On desktop the splash + auth gate are driven by the main process over IPC

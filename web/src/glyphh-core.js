@@ -15,6 +15,53 @@ export const USER_KEY = 'glyphh_user';
  *  SPA fallback). Mirrors platform's /auth/callback. */
 export const CALLBACK_PATH = '/auth/callback';
 
+/** The phone breakpoint, keyed off the SMALLER viewport dimension (not width).
+ *  ~600px cleanly separates a phone (smaller-dim ≤ ~430) from an iPad (smaller-dim
+ *  ≥ 768): iPad — portrait OR landscape, and a full-screen PWA — always stays FULL. */
+export const PHONE_MAX = 600;
+
+/**
+ * Is this a PHONE viewport? Pure (takes the measurements, not `window`) so it
+ * unit-tests with plain numbers. We branch on `Math.min(innerWidth, innerHeight)`
+ * — the SHORTER edge — rather than a raw `max-width`, because a phone held in
+ * landscape is wide-but-short: min-dimension catches it, while width alone would
+ * misread it as a desktop. It also keeps every iPad (portrait 768, landscape 1024,
+ * full-screen PWA) on the FULL layout. No user-agent sniffing.
+ *
+ * A coarse pointer (touch) LOWERS confidence that a borderline size is a real phone
+ * vs. a small desktop window: when `coarse` is explicitly `false` (a mouse), we
+ * require the shorter edge to be clearly phone-sized; a touch device uses the full
+ * threshold. When `coarse` is unknown (undefined), we don't gate on it.
+ *
+ * @param {{ innerWidth:number, innerHeight:number, coarse?:boolean }} m
+ * @returns {boolean}
+ */
+export function isPhoneViewport({ innerWidth, innerHeight, coarse } = {}) {
+  const w = Number(innerWidth);
+  const h = Number(innerHeight);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return false;
+  const minDim = Math.min(w, h);
+  // A definite mouse (coarse === false) on a borderline-small window is NOT a phone:
+  // require it to be well under the threshold. Touch / unknown pointer uses the line.
+  const threshold = coarse === false ? PHONE_MAX - 120 : PHONE_MAX;
+  return minDim < threshold;
+}
+
+/**
+ * Reconcile the `glyphh-phone` marker class against the current viewport. Pure DOM
+ * side-effect isolated behind an injected classList so the toggle logic is unit-
+ * tested without a browser. Returns the resolved phone state.
+ * @param {{ add:Function, remove:Function }} classList  documentElement.classList (or a fake)
+ * @param {{ innerWidth:number, innerHeight:number, coarse?:boolean }} m
+ * @returns {boolean} the phone state applied
+ */
+export function applyPhoneClass(classList, m) {
+  const phone = isPhoneViewport(m);
+  if (phone) classList.add('glyphh-phone');
+  else classList.remove('glyphh-phone');
+  return phone;
+}
+
 /**
  * Parse the auth-callback query so the boot script can complete a magic-link (or
  * legacy code) sign-in. Kept pure (takes the raw `?…` search string, not a

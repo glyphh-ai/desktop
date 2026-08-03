@@ -14380,3 +14380,149 @@ body.code-dragging webview { pointer-events: none !important; }
 .echo-card-body { flex: 1; min-height: 0; display: flex; }
 .echo-card-body webview { flex: 1; min-width: 0; min-height: 0; }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WEB — PHONE MODE (splash + auth)
+   Scoped to `.glyphh-web.glyphh-phone` so it can NEVER affect desktop or iPad
+   (both stay on the FULL layout — iPad is not a separate tier). The marker class
+   is set by web/src/bridge.js from the pure isPhoneViewport() min-dimension test.
+   This slice covers ONLY the splash + login; the rest of the app's mobile layout
+   is a later slice. Brand-forward amber (Ember) is a locally-scoped accent so it
+   never leaks into the full layout's theme tokens.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.glyphh-web.glyphh-phone,
+.glyphh-web.glyphh-phone body {
+  /* Ember amber, scoped to phone only. */
+  --phone-ember: #f59e0b;
+  --phone-ember-strong: #f0a020;
+  --phone-grad-ember: linear-gradient(120deg, #f59e0b, #fbbf24 55%, #f97316);
+  /* Safe-area insets (require viewport-fit=cover, injected by serve.mjs). */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* ── Splash — native app launch screen ─────────────────────────────────────── */
+
+/* The desktop close "traffic light" on the splash is meaningless in a browser
+   tab / on a phone — hide it on the whole web target. */
+.glyphh-web .splash-close { display: none !important; }
+
+.glyphh-web.glyphh-phone #splash {
+  /* Pad the launch content inside the notch + home indicator. */
+  padding: calc(var(--safe-top) + 24px) calc(var(--safe-right) + 24px)
+           calc(var(--safe-bottom) + 24px) calc(var(--safe-left) + 24px);
+  box-sizing: border-box;
+}
+
+.glyphh-web.glyphh-phone .splash-content {
+  width: 100%;
+  max-width: 420px;
+}
+
+/* Brand sizes down for the small screen and sits optically centered. */
+.glyphh-web.glyphh-phone .splash-logo { margin-bottom: 20px; }
+.glyphh-web.glyphh-phone .splash-logo .glyphh-logo {
+  height: clamp(72px, 22vw, 104px);
+  width: auto;
+}
+
+.glyphh-web.glyphh-phone .splash-status {
+  font-size: 13px;
+}
+
+/* A slim amber progress bar if an (unlikely on web) update paints. */
+.glyphh-web.glyphh-phone .splash-update-bar { width: min(240px, 72vw); }
+.glyphh-web.glyphh-phone .splash-update-fill { background: var(--phone-ember); }
+
+/* ── Login — full-bleed native mobile sign-in ──────────────────────────────── */
+
+/* The onboarding overlay + auth-shell become full-screen (no centered desktop
+   card): a top-anchored brand, then a stacked, generously-spaced form that flows
+   to the bottom, all inside the safe area. */
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell {
+  grid-template-rows: auto 1fr auto;
+}
+
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-header {
+  padding: calc(var(--safe-top) + 20px) calc(var(--safe-right) + 24px) 0
+           calc(var(--safe-left) + 24px);
+  justify-content: center;
+}
+.glyphh-web.glyphh-phone #onboarding-overlay .onboarding-wordmark .glyphh-logo {
+  height: 40px;
+}
+
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-body {
+  /* Left-align the content column and let it breathe full-width. */
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 8vh calc(var(--safe-right) + 24px) 4vh calc(var(--safe-left) + 24px);
+}
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-content {
+  max-width: none;
+  width: 100%;
+}
+
+/* Big, brand-forward title. */
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-title {
+  font-size: clamp(2rem, 9vw, 2.75rem);
+  margin-bottom: 0.5rem;
+}
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-lede {
+  font-size: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* Inputs: 16px min font stops iOS auto-zoom on focus; taller tap target. */
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-input {
+  font-size: 16px;
+  padding: 1rem 1.05rem;
+  border-radius: 14px;
+}
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-input:focus {
+  border-color: var(--phone-ember);
+  box-shadow: 0 0 0 1px var(--phone-ember);
+}
+
+/* Buttons: ≥44px touch targets, full-width, roomy stacking. */
+.glyphh-web.glyphh-phone #onboarding-overlay .btn-lg {
+  min-height: 52px;
+  font-size: 1rem;
+  border-radius: 14px;
+}
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-actions { gap: 1rem; }
+
+/* Primary CTA goes amber (Ember) on phone — resting amber, not the desktop
+   white→purple wipe. Text stays dark for contrast on amber. */
+.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary {
+  background: var(--phone-ember);
+  color: #1a1206;
+}
+.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary::before {
+  background: var(--phone-grad-ember);
+}
+.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary:hover:not(:disabled),
+.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary:active:not(:disabled),
+.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary:focus-visible:not(:disabled),
+.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary:disabled {
+  color: #1a1206;
+}
+
+/* Google button + its GIS face fill the width and match the 52px height. */
+.glyphh-web.glyphh-phone #onboarding-overlay .google-btn { height: 52px; }
+.glyphh-web.glyphh-phone #onboarding-overlay .btn-social { min-height: 52px; border-radius: 14px; }
+
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-divider { margin: 1.75rem 0 1.5rem; }
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-social { gap: 0.875rem; }
+
+/* Footer sits above the home indicator. */
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-footer {
+  padding: 1rem calc(var(--safe-right) + 24px)
+           calc(var(--safe-bottom) + 1rem) calc(var(--safe-left) + 24px);
+}
+
+/* "Check your email" state — same full-bleed treatment (inherits the above). */
+.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-meta { margin-top: 1.5rem; font-size: 0.9375rem; }
