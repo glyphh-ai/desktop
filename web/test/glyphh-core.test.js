@@ -28,7 +28,6 @@ import {
   toDashboardData,
   emptyDashboardData,
   isWebAuthedFromCookie,
-  gateModeSwitch,
 } from '../src/glyphh-core.js';
 
 describe('resolveApiUrl', () => {
@@ -536,29 +535,13 @@ describe('emptyDashboardData / toDashboardData (Chat-tab landing shape)', () => 
   });
 });
 
-describe('gateModeSwitch (Chat open, Work/Code gated on web)', () => {
-  // Chat is always allowed — authed or not, web or desktop.
-  it('Chat always switches', () => {
-    expect(gateModeSwitch({ tab: 'chat', web: true, authed: false })).toBe('switch');
-    expect(gateModeSwitch({ tab: 'chat', web: true, authed: true })).toBe('switch');
-    expect(gateModeSwitch({ tab: 'chat', web: false, authed: false })).toBe('switch');
-  });
-  // The core requirement: an UNAUTHENTICATED web visitor selecting Work or Code
-  // is routed to auth, NOT switched.
-  it('unauthed web → Work/Code route to auth (no switch)', () => {
-    expect(gateModeSwitch({ tab: 'cowork', web: true, authed: false })).toBe('auth');
-    expect(gateModeSwitch({ tab: 'code', web: true, authed: false })).toBe('auth');
-  });
-  it('authed web → Work/Code switch', () => {
-    expect(gateModeSwitch({ tab: 'cowork', web: true, authed: true })).toBe('switch');
-    expect(gateModeSwitch({ tab: 'code', web: true, authed: true })).toBe('switch');
-  });
-  // Desktop is never gated this way — every tab switches regardless of auth.
-  it('desktop (web:false) never gates — all tabs switch even unauthed', () => {
-    expect(gateModeSwitch({ tab: 'cowork', web: false, authed: false })).toBe('switch');
-    expect(gateModeSwitch({ tab: 'code', web: false, authed: false })).toBe('switch');
-  });
-  it('an unknown tab is treated as open (never trapped)', () => {
-    expect(gateModeSwitch({ tab: 'weird', web: true, authed: false })).toBe('switch');
+// LOGIN-FIRST (2026-08-03): per-tab Work/Code sign-in gating was removed — the app
+// is only reachable with a session, so gateModeSwitch/GATED_TABS no longer exist.
+// The wall itself is exercised in the bridge (anonymous /home → login redirect).
+describe('login-first wall replaced per-tab gating', () => {
+  it('gating primitives are gone from the core surface', async () => {
+    const core = await import('../src/glyphh-core.js');
+    expect(core.gateModeSwitch).toBeUndefined();
+    expect(core.GATED_TABS).toBeUndefined();
   });
 });

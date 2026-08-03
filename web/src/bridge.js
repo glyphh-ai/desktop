@@ -21,7 +21,7 @@ import { glyphh, isAuthenticated, signOut, API_URL } from './glyphh-web.js';
 import {
   classifyMethod,
   applyPhoneClass,
-  isWebAuthedFromCookie, gateModeSwitch,
+  isWebAuthedFromCookie,
 } from './glyphh-core.js';
 import { buildContract } from './web-contract.js';
 import { installErrorSurface } from './web-errors.js';
@@ -77,37 +77,22 @@ if (typeof window !== 'undefined') {
   // in a browser tab. Set before renderer scripts run, so there's no flash.
   if (typeof document !== 'undefined') document.documentElement.classList.add('glyphh-web');
 
-  // ── WEB gate surface (window.glyphhWeb) ──────────────────────────────────────
-  // The renderer's rail session-mode tabs (Chat | Work | Code) share code with
-  // desktop; on WEB, Work + Code are gated behind sign-in while Chat stays open.
-  // The renderer consults this SYNCHRONOUSLY on a tab click (an async auth probe
-  // would race the click), so `isAuthed()` reads the instant `glyphh_logged_in`
-  // gating cookie the SDK's token store stamps — no network round-trip. We also
-  // reflect the state as a class on <html> so CSS can paint a lock affordance on
-  // the gated tabs when logged out, and re-sync it on sign-in / sign-out.
+  // ── LOGIN-FIRST wall (2026-08-03, Claude model — no anonymous app access) ────
+  // `/` serves the login shell; `/home` is the AUTHED app surface. `isAuthed()`
+  // reads the instant `glyphh_logged_in` gating cookie the SDK's token store
+  // stamps — synchronous, no network round-trip. An anonymous visitor landing on
+  // /home bounces to the login BEFORE the renderer paints. The old per-tab
+  // Work/Code gating (lock affordances for signed-out visitors) is dead under
+  // this model — nobody signed-out reaches the tabs at all.
   const isAuthedSync = () =>
     isWebAuthedFromCookie(typeof document !== 'undefined' ? document.cookie : '');
-  const reflectAuthClass = () => {
-    if (typeof document === 'undefined' || !document.documentElement) return;
-    const cl = document.documentElement.classList;
-    if (!cl || typeof cl.toggle !== 'function') return;
-    const authed = isAuthedSync();
-    cl.toggle('glyphh-web-authed', authed);
-    cl.toggle('glyphh-web-anon', !authed);
-  };
-  reflectAuthClass();
+  const loc = typeof window !== 'undefined' ? window.location : undefined;
+  if (loc && /^\/home(\.html)?\/?$/.test(loc.pathname || '') && !isAuthedSync()) {
+    loc.replace('/');
+  }
   window.glyphhWeb = {
     /** Instant, cookie-backed auth presence check (see isAuthedSync). */
     isAuthed: isAuthedSync,
-    /** Decide a rail tab selection: 'switch' (allow) | 'auth' (route to sign-in). */
-    gateTab: (tab) => gateModeSwitch({ tab, web: true, authed: isAuthedSync() }),
-    /** Send an unauthenticated visitor to the deliberate /auth login shell. */
-    requireAuth: () => {
-      try { window.location.assign('/auth'); }
-      catch { window.location.href = '/auth'; }
-    },
-    /** Re-sync the <html> auth class after a sign-in/out (renderer/boot may call). */
-    refresh: reflectAuthClass,
   };
 
   // ── LOUD errors ────────────────────────────────────────────────────────────
@@ -173,21 +158,12 @@ if (typeof window !== 'undefined') {
       runWebBoot();
     }
     // A signed-out bounce (session became unrecoverable, or an explicit sign out).
-    // INPUT-FIRST: on the Chat tab (home.html) we do NOT wall the app — an anonymous
-    // visitor stays on the composer; only the deliberate login shell (which carries
-    // the onboarding overlay) re-mounts the login screen here.
+    // LOGIN-FIRST: the app has no signed-out state — leave the app surface and
+    // return to the login shell at `/`. (On the login shell itself, web-boot
+    // already mounts/re-mounts the login screen.)
     window.addEventListener('glyphh:signed-out', () => {
-      reflectAuthClass(); // gated tabs re-show their lock the moment the session drops
-      if (!document.getElementById('onboarding-overlay')) return;
-      import('./web-login.js')
-        .then((m) => m.mountLogin({
-          googleClientId: window.__GLYPHH_GOOGLE_CLIENT_ID__ || null,
-          origin: window.location.origin,
-          onGoogle: (t) => import('./glyphh-web.js').then((w) => w.signInWithGoogle(t)),
-          onStartEmailLink: (e, r) => import('./glyphh-web.js').then((w) => w.startEmailLink(e, r)),
-          onAuthed: () => import('./glyphh-web.js').then((w) => w.syncGating()).then(() => window.location.reload()),
-        }))
-        .catch((err) => console.error('[glyphh-web] re-login failed', err));
+      if (document.getElementById('onboarding-overlay')) return; // already on the login shell
+      window.location.replace('/');
     });
   }
 }

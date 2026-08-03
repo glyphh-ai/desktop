@@ -34,9 +34,10 @@ import { mountLogin } from './web-login.js';
 
 const SPLASH_MIN_MS = 1200;
 
-/** The Chat-tab front door path (serve.mjs maps / and /home → home.html). After a
- *  sign-in on the auth page we return here. */
-export const HOME_PATH = '/';
+/** The AUTHED app surface (serve.mjs maps /home → home.html). LOGIN-FIRST: `/` is
+ *  the login shell now, so after sign-in we hand off HERE — navigating to '/'
+ *  would land back on the login shell and loop the getting-started flow. */
+export const HOME_PATH = '/home';
 
 /** True when we're on the LOGIN shell (index.html / the /auth page) — it carries the
  *  onboarding overlay. home.html (the Chat tab) has none, so the splash→auth→login
@@ -111,12 +112,36 @@ async function enterApp(shownAt, nav = goHome) {
   // home. If the drivers never appear, navigate anyway so the app still lands.
   const drivers = await whenWebBootReady();
   if (drivers) {
-    if (firstRun) drivers.showFirstRun(nav);
+    if (firstRun) drivers.showFirstRun(() => { void completeFirstRun(nav); });
     else drivers.enterApp(nav);
   } else {
     window.dispatchEvent(new Event('yo-onboarding-done'));
-    nav();
+    if (firstRun) void completeFirstRun(nav);
+    else nav();
   }
+}
+
+/**
+ * First-run COMPLETION: persist the one-time region choice so the server flips
+ * `regionChosen` and the flow never re-shows. Until the real region/image picker
+ * screen ships, the choice is the org's HOME region (stamped at signup from the
+ * server's default) on the shared tier — the same thing the picker would default
+ * to. Failure is non-fatal: the user still lands in the app, and the flow simply
+ * shows again next login (better than blocking entry on a transient error).
+ */
+async function completeFirstRun(nav) {
+  try {
+    const { glyphh } = await import('./glyphh-web.js');
+    const client = glyphh();
+    const infra = await client.org.infra();
+    if (!infra.regionChosen) {
+      const region = infra.region || infra.regions?.[0]?.id;
+      if (region) await client.org.chooseInfra({ region, tier: 'shared' });
+    }
+  } catch (err) {
+    console.error('[glyphh-web] first-run region choice failed (will re-prompt)', err);
+  }
+  nav();
 }
 
 /** Strip the callback query from the URL so a refresh doesn't re-run the exchange,

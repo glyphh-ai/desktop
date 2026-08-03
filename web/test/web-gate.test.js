@@ -1,11 +1,11 @@
 /**
- * web-gate.test.js — the WEB tab-gate surface the bridge exposes as window.glyphhWeb.
+ * web-gate.test.js — the LOGIN-FIRST wall (2026-08-03).
  *
- * Chat is the open front door; Work (cowork) + Code are gated behind sign-in on web.
- * The renderer's rail tab-switch consults window.glyphhWeb SYNCHRONOUSLY on a click:
- *   • isAuthed()      — instant, reads the glyphh_logged_in gating cookie
- *   • gateTab(tab)    — 'switch' (allow) | 'auth' (route to sign-in)
- *   • requireAuth()   — navigates to the /auth login shell
+ * `/` is the login shell; `/home` is the AUTHED app surface. The bridge bounces an
+ * anonymous visitor landing on /home back to `/` BEFORE the renderer paints, and
+ * exposes a minimal window.glyphhWeb with the instant cookie-backed isAuthed().
+ * The old per-tab Work/Code gating (gateTab/requireAuth + lock affordances) was
+ * removed with the wall — nobody signed-out reaches the tabs at all.
  * glyphh-web.js (the SDK singleton) is mocked so bridge.js assembles with no server.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -17,12 +17,13 @@ vi.mock('../src/glyphh-web.js', () => ({
   API_URL: 'https://api.glyphh.ai',
 }));
 
-// A minimal browser: a live classList (so reflectAuthClass runs) + a mutable
-// document.cookie + an assignable location. No addEventListener → the bridge's
-// real-browser boot wiring stays dormant (kept importable, like node --test).
-function installWindow(cookie) {
+// A minimal browser: a live classList + a mutable document.cookie + a location
+// with a pathname (the wall reads it) and replace/assign spies. No
+// addEventListener → the bridge's real-browser boot wiring stays dormant.
+function installWindow(cookie, pathname = '/') {
   const classes = new Set();
   const assigned = [];
+  const replaced = [];
   globalThis.document = {
     cookie,
     documentElement: {
@@ -35,26 +36,31 @@ function installWindow(cookie) {
     },
   };
   globalThis.window = {
-    location: { assign: (u) => assigned.push(u), href: '' },
+    location: {
+      pathname,
+      assign: (u) => assigned.push(u),
+      replace: (u) => replaced.push(u),
+      href: '',
+    },
   };
-  return { classes, assigned };
+  return { classes, assigned, replaced };
 }
 
-async function loadBridge(cookie) {
-  const ctx = installWindow(cookie);
+async function loadBridge(cookie, pathname = '/') {
+  const ctx = installWindow(cookie, pathname);
   vi.resetModules();
   await import('../src/bridge.js');
   return { ...ctx, glyphhWeb: globalThis.window.glyphhWeb };
 }
 
-describe('window.glyphhWeb (web tab gate)', () => {
+describe('window.glyphhWeb (login-first wall)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('is assembled on the window with the gate surface', async () => {
+  it('exposes the minimal surface — isAuthed only, per-tab gating is gone', async () => {
     const { glyphhWeb } = await loadBridge('');
     expect(typeof glyphhWeb.isAuthed).toBe('function');
-    expect(typeof glyphhWeb.gateTab).toBe('function');
-    expect(typeof glyphhWeb.requireAuth).toBe('function');
+    expect(glyphhWeb.gateTab).toBeUndefined();
+    expect(glyphhWeb.requireAuth).toBeUndefined();
   });
 
   it('isAuthed reflects the glyphh_logged_in cookie', async () => {
@@ -62,33 +68,25 @@ describe('window.glyphhWeb (web tab gate)', () => {
     expect((await loadBridge('glyphh_logged_in=1')).glyphhWeb.isAuthed()).toBe(true);
   });
 
-  it('logged out: Work + Code gate to auth, Chat always switches', async () => {
-    const { glyphhWeb } = await loadBridge('');
-    expect(glyphhWeb.gateTab('chat')).toBe('switch');
-    expect(glyphhWeb.gateTab('cowork')).toBe('auth');
-    expect(glyphhWeb.gateTab('code')).toBe('auth');
+  it('anonymous on /home bounces to the login shell before paint', async () => {
+    const { replaced } = await loadBridge('', '/home');
+    expect(replaced).toEqual(['/']);
   });
 
-  it('logged in: every tab switches', async () => {
-    const { glyphhWeb } = await loadBridge('glyphh_logged_in=1');
-    expect(glyphhWeb.gateTab('chat')).toBe('switch');
-    expect(glyphhWeb.gateTab('cowork')).toBe('switch');
-    expect(glyphhWeb.gateTab('code')).toBe('switch');
+  it('anonymous on /home.html bounces too (direct file path)', async () => {
+    const { replaced } = await loadBridge('', '/home.html');
+    expect(replaced).toEqual(['/']);
   });
 
-  it('requireAuth navigates to the /auth login shell', async () => {
-    const { glyphhWeb, assigned } = await loadBridge('');
-    glyphhWeb.requireAuth();
-    expect(assigned).toEqual(['/auth']);
+  it('an AUTHED session on /home is NOT bounced', async () => {
+    const { replaced } = await loadBridge('glyphh_logged_in=1', '/home');
+    expect(replaced).toEqual([]);
   });
 
-  it('reflects the auth state as a class on <html> for the lock affordance', async () => {
-    const anon = await loadBridge('');
-    expect(anon.classes.has('glyphh-web-anon')).toBe(true);
-    expect(anon.classes.has('glyphh-web-authed')).toBe(false);
-
-    const authed = await loadBridge('glyphh_logged_in=1');
-    expect(authed.classes.has('glyphh-web-authed')).toBe(true);
-    expect(authed.classes.has('glyphh-web-anon')).toBe(false);
+  it('the login shell itself never bounces (no redirect loop)', async () => {
+    const anon = await loadBridge('', '/');
+    expect(anon.replaced).toEqual([]);
+    const authed = await loadBridge('glyphh_logged_in=1', '/');
+    expect(authed.replaced).toEqual([]);
   });
 });

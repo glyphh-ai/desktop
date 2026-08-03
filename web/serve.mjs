@@ -90,20 +90,17 @@ const server = http.createServer(async (req, res) => {
   securityHeaders(res, (req.headers['x-forwarded-proto'] || '').includes('https'));
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    // INPUT-FIRST front door: the base page is the Chat tab (home.html), rendered
-    // LOGGED-OUT — no login wall. home.html boots standalone under the bridge and the
-    // composer + starters render for an anonymous visitor; auth-gated data degrades to
-    // empty. (The native-panel workspace that index.html frames is empty in a browser,
-    // so index.html is NOT the base page here.)
-    if (p === '/' || p === '/home' || p === '/home/') {
-      p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
-    }
-    // The DELIBERATE auth page (index.html carries the onboarding overlay) is a real,
-    // reachable destination — a "Sign in" affordance and the magic-link/OAuth callback
-    // land here, NOT a forced first screen. /auth/callback has no file on disk; serve
-    // the shell so the boot script exchanges the returning code.
-    if (p === '/auth' || p === '/auth/' || p === '/login' || SPA_FALLBACK.has(p)) {
+    // LOGIN-FIRST front door (decided 2026-08-03, Claude model — no anonymous app
+    // access): the base page is the LOGIN SHELL (index.html carries the splash→auth→
+    // login flow: Google + magic-link, same as platform's). web-boot sends an
+    // already-authed session straight through to /home, so returning users never see
+    // the login. home.html (the Chat tab) is the AUTHED app surface at /home; the
+    // bridge bounces an anonymous visitor there back here.
+    if (p === '/' || p === '/auth' || p === '/auth/' || p === '/login' || SPA_FALLBACK.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
+    }
+    if (p === '/home' || p === '/home/') {
+      p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
     }
     const file = normalize(join(ROOT, p));
     if (!file.startsWith(ROOT)) { res.statusCode = 403; res.end('forbidden'); return; }

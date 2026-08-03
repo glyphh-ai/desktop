@@ -48,6 +48,10 @@ describe('decideBootState', () => {
 
 // ── Orchestrator (mocked seams) ─────────────────────────────────────────────────
 
+const infra = {
+  infra: vi.fn(async () => ({ mode: 'shared', region: 'local', regionChosen: false, regions: [{ id: 'local' }] })),
+  chooseInfra: vi.fn(async () => ({ mode: 'shared', region: 'local', regionChosen: true, regions: [{ id: 'local' }] })),
+};
 const web = {
   isAuthenticated: vi.fn(async () => false),
   syncGating: vi.fn(async () => ({ email: 'a@b.co' })),
@@ -55,6 +59,9 @@ const web = {
   startEmailLink: vi.fn(async () => ({})),
   verifyEmailLink: vi.fn(async () => {}),
   exchangeCode: vi.fn(async () => {}),
+  // LOGIN-FIRST first-run completion: web-boot persists the one-time region
+  // choice through the SDK client (org.infra / org.chooseInfra).
+  glyphh: () => ({ org: infra }),
 };
 vi.mock('../src/glyphh-web.js', () => web);
 
@@ -117,8 +124,10 @@ describe('startWebBoot routing', () => {
     expect(els['onboarding-overlay'].classList.add).toHaveBeenCalledWith('hidden');
     expect(drivers.showFirstRun).toHaveBeenCalledTimes(1);
     expect(drivers.enterApp).not.toHaveBeenCalled();
-    // showFirstRun's onComplete (the nav) → the Chat tab (/) once the tutorial closes.
-    expect(window.location.assign).toHaveBeenCalledWith('/');
+    // showFirstRun's onComplete persists the one-time region choice through the
+    // SDK (async), THEN navigates to the authed app surface — flush microtasks.
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
+    expect(infra.chooseInfra).toHaveBeenCalledWith({ region: 'local', tier: 'shared' });
   });
 
   it('authed + regionChosen=true (RETURNING user) → straight into app, navigates to Chat tab, NO first-run', async () => {
@@ -128,7 +137,7 @@ describe('startWebBoot routing', () => {
     await startWebBoot();
     expect(drivers.enterApp).toHaveBeenCalledTimes(1);
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
-    expect(window.location.assign).toHaveBeenCalledWith('/');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 
   it('callback token → verifyEmailLink, then first-run for a new user', async () => {
@@ -171,7 +180,7 @@ describe('startWebBoot routing', () => {
     await p;
     expect(window.dispatchEvent).toHaveBeenCalled();
     expect(window.dispatchEvent.mock.calls[0][0].type).toBe('yo-onboarding-done');
-    expect(window.location.assign).toHaveBeenCalledWith('/');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 });
 

@@ -177,32 +177,6 @@ export function isWebAuthedFromCookie(cookieStr) {
     .some((c) => c.trim().startsWith('glyphh_logged_in=') && c.trim().slice('glyphh_logged_in='.length) === '1');
 }
 
-/** The rail's session-mode tabs (home.template.html #rail-mode-tabs data-tab). `chat`
- *  is the open front door; `cowork` (Work) and `code` are the gated spaces. */
-export const OPEN_TABS = new Set(['chat']);
-export const GATED_TABS = new Set(['cowork', 'code']);
-
-/**
- * Decide what happens when a rail session-mode tab is selected. Pure + testable so the
- * whole gate is exercised with plain values (no DOM, SDK, or server).
- *
- *   - 'switch' — allow the mode switch (the normal enterSpace path)
- *   - 'auth'   — do NOT switch; route the visitor to sign-in instead
- *
- * The gate is WEB-ONLY: on desktop (`web` false) every tab always switches — desktop
- * keeps its current behaviour untouched. On web, Chat is always open; Work + Code
- * require a live session (`authed`). An unknown tab is treated as open (never trap the
- * user on a tab we don't recognise).
- *
- * @param {{ tab:string, web:boolean, authed:boolean }} input
- * @returns {'switch'|'auth'}
- */
-export function gateModeSwitch({ tab, web, authed }) {
-  if (!web) return 'switch';           // desktop: unchanged
-  if (!GATED_TABS.has(tab)) return 'switch'; // chat / unknown → open
-  return authed ? 'switch' : 'auth';   // Work/Code need a session on web
-}
-
 /**
  * A localStorage-shaped TokenStore implementing the SDK's async load/save/clear.
  * Storage and side-effects are injected so it tests against a fake Map with no
