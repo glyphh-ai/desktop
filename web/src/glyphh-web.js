@@ -97,6 +97,32 @@ export async function isAuthenticated() {
   }
 }
 
+// ── Web sign-in surface (mirrors platform/app/auth) ──────────────────────────
+// The renderer runs the platform's exact flows over the SDK: Google GIS yields an
+// ID token we hand to auth.google(); magic-link start emails a link back to the
+// static server's /auth/callback, which verifyEmailLink() then redeems. Each returns
+// after the session is adopted so the caller can immediately syncGating() + enter.
+
+/** Exchange a Google ID token (from GIS) for a session. */
+export async function signInWithGoogle(idToken) {
+  await glyphh().auth.google(idToken);
+}
+
+/** Email a magic sign-in link that returns to `redirectUri` (…/auth/callback?token=…). */
+export function startEmailLink(email, redirectUri) {
+  return glyphh().auth.startEmailLink(email, redirectUri ? { redirectUri } : {});
+}
+
+/** Redeem the opaque magic-link token from the callback URL. */
+export async function verifyEmailLink(token) {
+  await glyphh().auth.verifyEmailLink(token);
+}
+
+/** Redeem a one-time exchange code (org-SSO / deep-link handoff) from the callback. */
+export async function exchangeCode(code) {
+  await glyphh().auth.exchange(code);
+}
+
 /** Sign out this device, clear local state, signal the app to show login. */
 export async function signOut() {
   try {

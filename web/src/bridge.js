@@ -197,4 +197,42 @@ if (typeof window !== 'undefined') {
   // A class so CSS can hide OS-only chrome (window controls) that has no meaning
   // in a browser tab. Set before renderer scripts run, so there's no flash.
   if (typeof document !== 'undefined') document.documentElement.classList.add('glyphh-web');
+
+  // ── WEB boot gate ──────────────────────────────────────────────────────────
+  // On desktop the splash + auth gate are driven by the main process over IPC
+  // (window.glyphh.onBoot). On web that IPC never fires — so we drive the boot
+  // ourselves: splash → resolve auth → app | platform-style login | callback.
+  // Deferred to DOM-ready so #splash / #onboarding-overlay exist, and imported
+  // lazily so the tested KNOWN/adapter surface above stays browser-free.
+  const runWebBoot = () => {
+    import('./web-boot.js')
+      .then((m) => m.startWebBoot())
+      .catch((err) => console.error('[glyphh-web] boot failed', err));
+  };
+  // Guard the real-browser wiring so bridge.js stays importable under `node --test`
+  // (where window/document are bare stubs without addEventListener).
+  const canListen = typeof document !== 'undefined'
+    && typeof document.addEventListener === 'function'
+    && typeof window.addEventListener === 'function';
+  if (canListen) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', runWebBoot, { once: true });
+    } else {
+      runWebBoot();
+    }
+    // A signed-out bounce (session became unrecoverable, or an explicit sign out)
+    // returns the tab to the login screen — the web equivalent of platform's
+    // `location.href = '/auth/login'`. Re-running the boot re-shows the login.
+    window.addEventListener('glyphh:signed-out', () => {
+      import('./web-login.js')
+        .then((m) => m.mountLogin({
+          googleClientId: window.__GLYPHH_GOOGLE_CLIENT_ID__ || null,
+          origin: window.location.origin,
+          onGoogle: (t) => import('./glyphh-web.js').then((w) => w.signInWithGoogle(t)),
+          onStartEmailLink: (e, r) => import('./glyphh-web.js').then((w) => w.startEmailLink(e, r)),
+          onAuthed: () => import('./glyphh-web.js').then((w) => w.syncGating()).then(() => window.location.reload()),
+        }))
+        .catch((err) => console.error('[glyphh-web] re-login failed', err));
+    });
+  }
 }

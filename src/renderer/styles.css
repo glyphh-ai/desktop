@@ -1011,6 +1011,76 @@ body {
   box-shadow: 0 0 0 1px var(--white);
 }
 
+/* ── Social sign-in (WEB target only — Google GIS + divider) ─────────────────
+   Ported from yo-platform globals.css so the web login (web/src/web-login.js)
+   matches the marketing/auth look. Only used under __GLYPHH_WEB__; the desktop
+   device-flow onboarding doesn't render these. */
+
+#onboarding-overlay .auth-shell-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin: 1.5rem 0 1.25rem;
+  color: var(--text-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+#onboarding-overlay .auth-shell-divider::before,
+#onboarding-overlay .auth-shell-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+#onboarding-overlay .auth-shell-social {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+#onboarding-overlay .btn-social {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  background: transparent;
+  color: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-weight: 500;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+#onboarding-overlay .btn-social:hover:not(:disabled) {
+  border-color: var(--white);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Google button: the real GIS button (click target) sits under our own face, which
+   is overlaid pointer-events:none so clicks fall through to Google's. */
+#onboarding-overlay .google-btn {
+  position: relative;
+  width: 100%;
+  height: 48px;
+}
+#onboarding-overlay .google-btn-gis {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  overflow: hidden;
+  color-scheme: light;
+}
+#onboarding-overlay .btn-social.google-btn-face {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--bg);
+}
+
 /* ── Code input (ported from yo-platform globals.css) ──────── */
 
 #onboarding-overlay .code-input-grid {
@@ -1246,6 +1316,27 @@ body.account-locked #dl-btn-wrap {
    .wc covers both the titlebar (#window-controls) and the home rail (#panel-wc). */
 .glyphh-web .wc,
 .glyphh-web #window-controls { display: none !important; }
+
+/* ── Web: neutralize ALL OS window chrome ───────────────────────────────────
+   The frameless-window titlebar is a desktop concept. On web the red close "×"
+   and its 38px band would otherwise bleed onto the splash/login as an empty
+   desktop strip. Hide the whole titlebar gutter + every traffic-light button by
+   id, and drop drag regions (a browser tab can't drag its window). The brand
+   mark/nav moved into the home panel rail, so nothing is lost by hiding it. */
+.glyphh-web #titlebar { display: none !important; }
+.glyphh-web #btn-close,
+.glyphh-web #btn-minimize,
+.glyphh-web #btn-maximize,
+.glyphh-web #panel-btn-close,
+.glyphh-web #panel-btn-minimize,
+.glyphh-web #panel-btn-maximize,
+.glyphh-web #panel-wc { display: none !important; }
+/* A browser tab has no OS window to drag — kill every drag-region claim so the
+   splash/login behaves like an ordinary page. */
+.glyphh-web [style*="app-region"],
+.glyphh-web #titlebar,
+.glyphh-web .auth-shell-header,
+.glyphh-web #onboarding-close { -webkit-app-region: no-drag !important; }
 
 .wc {
   width: 12px;

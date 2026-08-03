@@ -10,12 +10,57 @@
 // to inject a <script> for it as the first thing in <head>.
 import http from 'node:http';
 import { readFile, access } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// ── Env (web/.env) ────────────────────────────────────────────────────────────
+// A tiny dependency-free .env parse of the CLIENT-SAFE web config. These are
+// injected into the page as window.__GLYPHH_* BEFORE the bridge runs, so the SDK
+// client (API url) and the login screen (Google client id) read them at boot.
+// Anything already in process.env wins, so `PORT=… node web/serve.mjs` still works.
+function loadEnv() {
+  const out = {};
+  try {
+    const raw = readFileSync(fileURLToPath(new URL('./.env', import.meta.url)), 'utf8');
+    for (const line of raw.split('\n')) {
+      const s = line.trim();
+      if (!s || s.startsWith('#')) continue;
+      const eq = s.indexOf('=');
+      if (eq === -1) continue;
+      const key = s.slice(0, eq).trim();
+      let val = s.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+      out[key] = val;
+    }
+  } catch {
+    /* no .env — fall back to process.env + client defaults */
+  }
+  return { ...out, ...process.env };
+}
+const ENV = loadEnv();
+
 const ROOT = fileURLToPath(new URL('../dist/renderer/', import.meta.url));
-const PORT = process.env.PORT || 3002;
+const PORT = ENV.PORT || 3002;
 const BRIDGE = '/glyphh-web-bundle.js';
+
+// SPA fallback paths: the OAuth/magic-link redirect returns to /auth/callback so
+// the boot script can exchange the code — serve the app shell there (no such file
+// exists on disk). Mirrors platform's /auth/callback route.
+const SPA_FALLBACK = new Set(['/auth/callback']);
+
+// Client-safe config script, injected before the bridge so window.__GLYPHH_* exist
+// when the SDK client + login screen initialise. Only public values are exposed.
+function configScript() {
+  const cfg = {
+    __GLYPHH_API_URL__: ENV.GLYPHH_SERVER_URL || 'https://api.glyphh.ai',
+    __GLYPHH_GOOGLE_CLIENT_ID__: ENV.GLYPHH_GOOGLE_CLIENT_ID || '',
+    __GLYPHH_WEB_URL__: ENV.GLYPHH_WEB_URL || 'https://glyphh.ai',
+  };
+  const assigns = Object.entries(cfg)
+    .map(([k, v]) => `window.${k}=${JSON.stringify(v)};`)
+    .join('');
+  return `<script>${assigns}</script>`;
+}
 
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
@@ -43,8 +88,10 @@ const server = http.createServer(async (req, res) => {
   securityHeaders(res, (req.headers['x-forwarded-proto'] || '').includes('https'));
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    // Entry: prefer index.html, fall back to home.html (the two renderer shells).
-    if (p === '/') {
+    // Entry + SPA fallback: prefer index.html, fall back to home.html (the two
+    // renderer shells). /auth/callback has no file on disk — serve the shell there
+    // so the boot script runs and exchanges the returning OAuth/magic-link code.
+    if (p === '/' || SPA_FALLBACK.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
     }
     const file = normalize(join(ROOT, p));
@@ -53,11 +100,13 @@ const server = http.createServer(async (req, res) => {
     let body = await readFile(file);
     const ext = extname(file);
     if (ext === '.html') {
-      // Inject the bridge as the first thing in <head> so window.glyphh (and the
-      // SDK client) exist before any renderer script executes.
+      // Inject the client-safe config THEN the bridge as the first things in <head>,
+      // so window.__GLYPHH_* and window.glyphh (the SDK client) exist before any
+      // renderer script executes. Config must precede the bridge — the SDK reads
+      // window.__GLYPHH_API_URL__ at import time.
       body = body.toString().replace(
         /<head(\s[^>]*)?>/i,
-        (m) => `${m}\n  <script src="${BRIDGE}"></script>`,
+        (m) => `${m}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`,
       );
     }
     res.setHeader('content-type', TYPES[ext] || 'application/octet-stream');

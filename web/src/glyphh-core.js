@@ -11,6 +11,56 @@
 export const SESSION_KEY = 'glyphh_session';
 export const USER_KEY = 'glyphh_user';
 
+/** The static-server path the OAuth/magic-link redirect returns to (see web/serve.mjs
+ *  SPA fallback). Mirrors platform's /auth/callback. */
+export const CALLBACK_PATH = '/auth/callback';
+
+/**
+ * Parse the auth-callback query so the boot script can complete a magic-link (or
+ * legacy code) sign-in. Kept pure (takes the raw `?…` search string, not a
+ * `location`) so it unit-tests with a plain string.
+ *   - `token`    → the opaque magic-link token → client.auth.verifyEmailLink(token)
+ *   - `code`     → a one-time exchange code    → client.auth.exchange(code)
+ *   - `redirect` → an in-app path to land on afterward (only honoured if it starts '/')
+ * @param {string} search  e.g. `?token=abc&redirect=%2Fchat`
+ * @returns {{ token: string|null, code: string|null, redirect: string|null }}
+ */
+export function parseCallbackParams(search) {
+  let params;
+  try {
+    params = new URLSearchParams(search || '');
+  } catch {
+    return { token: null, code: null, redirect: null };
+  }
+  const redirect = params.get('redirect');
+  return {
+    token: params.get('token') || null,
+    code: params.get('code') || null,
+    // Only accept an in-app absolute path — never an off-site or protocol-relative URL.
+    redirect: redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : null,
+  };
+}
+
+/**
+ * Decide what the WEB boot should do next, given the current path and whether a
+ * session resolved. Pure so the whole boot state machine is unit-testable with no
+ * browser, SDK, or server (glyphh-core.js style).
+ *   - 'callback' — we're on the /auth/callback path with a token/code to exchange
+ *   - 'app'      — a live session exists → dismiss splash, enter the app
+ *   - 'login'    — no session → show the platform-style Google + magic-link screen
+ * The callback path is decided BEFORE auth so a returning link always gets exchanged
+ * (the user may have no session yet on this device — that's the whole point).
+ * @param {{ pathname:string, search:string, authenticated:boolean }} input
+ * @returns {'callback'|'app'|'login'}
+ */
+export function decideBootState({ pathname, search, authenticated }) {
+  if (pathname === CALLBACK_PATH) {
+    const { token, code } = parseCallbackParams(search);
+    if (token || code) return 'callback';
+  }
+  return authenticated ? 'app' : 'login';
+}
+
 /**
  * Resolve the control-plane base URL. Normally the env value, but if the page
  * was opened from a non-localhost host (a LAN device, the machine IP) while the

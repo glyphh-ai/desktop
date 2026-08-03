@@ -5,6 +5,9 @@ import {
   makeTokenStore,
   toLegacyUser,
   classifyMethod,
+  parseCallbackParams,
+  decideBootState,
+  CALLBACK_PATH,
   SESSION_KEY,
   libEnvelope,
   libError,
@@ -41,6 +44,23 @@ describe('resolveApiUrl', () => {
   });
   it('falls back to env on an unparseable url', () => {
     expect(resolveApiUrl('not a url', { hostname: 'x' })).toBe('not a url');
+  });
+});
+
+describe('parseCallbackParams / decideBootState (web boot)', () => {
+  it('CALLBACK_PATH is the platform-parity /auth/callback', () => {
+    expect(CALLBACK_PATH).toBe('/auth/callback');
+  });
+  it('parses token, code, and a safe in-app redirect', () => {
+    expect(parseCallbackParams('?token=t')).toMatchObject({ token: 't', code: null });
+    expect(parseCallbackParams('?code=c&redirect=%2Fapps')).toMatchObject({ code: 'c', redirect: '/apps' });
+    expect(parseCallbackParams('?redirect=https://x.com').redirect).toBe(null);
+  });
+  it('routes authed→app, unauthed→login, and a token on the callback path→callback', () => {
+    expect(decideBootState({ pathname: '/', search: '', authenticated: true })).toBe('app');
+    expect(decideBootState({ pathname: '/', search: '', authenticated: false })).toBe('login');
+    expect(decideBootState({ pathname: CALLBACK_PATH, search: '?token=t', authenticated: false })).toBe('callback');
+    expect(decideBootState({ pathname: CALLBACK_PATH, search: '', authenticated: true })).toBe('app');
   });
 });
 
