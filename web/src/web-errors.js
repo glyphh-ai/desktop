@@ -12,6 +12,19 @@
 
 const TAG = '[glyphh-web]';
 
+// Benign browser noise that must NOT surface as a "something went wrong" overlay.
+// "ResizeObserver loop …" is a famously harmless message every app with a
+// ResizeObserver emits when a callback nudges layout into the next frame — it
+// breaks nothing. Add other known-harmless patterns here as they show up.
+const BENIGN = [
+  /ResizeObserver loop (?:limit exceeded|completed with undelivered notifications)/i,
+];
+
+/** True for known-harmless browser noise the overlay should ignore. */
+export function isBenignError(msg) {
+  return BENIGN.some((re) => re.test(msg || ''));
+}
+
 /** Normalize any thrown value / rejection reason to a printable string. */
 export function formatError(err) {
   if (err == null) return 'Unknown error';
@@ -70,7 +83,9 @@ export function installErrorSurface(deps = {}) {
 
   let last = '';
   const report = (err, context) => {
-    const msg = (context ? `${context}\n` : '') + formatError(err);
+    const raw = formatError(err);
+    if (isBenignError(raw)) return report; // benign browser noise (e.g. ResizeObserver loop) — never surface
+    const msg = (context ? `${context}\n` : '') + raw;
     log(TAG, context || 'error:', err);
     if (msg === last) return report; // collapse a repeated identical error
     last = msg;
