@@ -101,10 +101,11 @@ export function parseCallbackParams(search) {
  * @returns {'callback'|'app'|'login'}
  */
 export function decideBootState({ pathname, search, authenticated }) {
-  if (pathname === CALLBACK_PATH) {
-    const { token, code } = parseCallbackParams(search);
-    if (token || code) return 'callback';
-  }
+  // The callback is identified by its PAYLOAD, not its path: serve.mjs 302s the
+  // nested /auth/callback to '/' (relative-asset fix), so the token/code arrives
+  // at the root. Any page carrying a token/code is a returning sign-in.
+  const { token, code } = parseCallbackParams(search);
+  if (token || code) return 'callback';
   return authenticated ? 'app' : 'login';
 }
 

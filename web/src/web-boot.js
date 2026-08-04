@@ -76,19 +76,6 @@ function splashStatus(msg) {
 /** Resolve the renderer-exposed first-run drivers (window.glyphhWebBoot), which
  *  renderer.ts publishes once initBootGate runs. The renderer bundle loads as a
  *  module right after this script, so briefly poll rather than assume it's ready. */
-function whenWebBootReady(timeoutMs = 4000) {
-  return new Promise((resolve) => {
-    if (window.glyphhWebBoot) return resolve(window.glyphhWebBoot);
-    const started = Date.now();
-    const tick = () => {
-      if (window.glyphhWebBoot) return resolve(window.glyphhWebBoot);
-      if (Date.now() - started >= timeoutMs) return resolve(null);
-      setTimeout(tick, 40);
-    };
-    tick();
-  });
-}
-
 /**
  * Once a session exists: stamp gating cookies + cache the user, then enter the app.
  * FIRST-RUN is gated on the SERVER's per-user `regionChosen` (surfaced by syncGating
@@ -110,15 +97,14 @@ async function enterApp(shownAt, nav = goHome) {
   // → hasSeenTutorial handler is web-gated off). New user → show the tutorial, then
   // navigate to the home.html front door on completion; returning user → straight to
   // home. If the drivers never appear, navigate anyway so the app still lands.
-  const drivers = await whenWebBootReady();
-  if (drivers) {
-    if (firstRun) drivers.showFirstRun(() => { void completeFirstRun(nav); });
-    else drivers.enterApp(nav);
-  } else {
-    window.dispatchEvent(new Event('yo-onboarding-done'));
-    if (firstRun) void completeFirstRun(nav);
-    else nav();
-  }
+  // LOGIN-FIRST: this only ever runs on the LOGIN SHELL, which in a browser is a
+  // blank workspace — never wait for renderer drivers or show a tutorial HERE
+  // (that was up to 4s of white page post-exchange). A new user gets the region
+  // choice stamped, then everyone navigates straight to /home. The real
+  // region/image onboarding SCREEN replaces this seam when it ships.
+  window.dispatchEvent(new Event('yo-onboarding-done'));
+  if (firstRun) void completeFirstRun(nav);
+  else nav();
 }
 
 /**

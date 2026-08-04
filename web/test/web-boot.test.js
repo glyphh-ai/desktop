@@ -122,10 +122,10 @@ describe('startWebBoot routing', () => {
     expect(web.syncGating).toHaveBeenCalled();
     expect(login.mountLogin).not.toHaveBeenCalled();
     expect(els['onboarding-overlay'].classList.add).toHaveBeenCalledWith('hidden');
-    expect(drivers.showFirstRun).toHaveBeenCalledTimes(1);
+    // LOGIN-FIRST: the login shell never consults renderer drivers (blank browser
+    // workspace) — a new user gets the region choice stamped, then navigates.
+    expect(drivers.showFirstRun).not.toHaveBeenCalled();
     expect(drivers.enterApp).not.toHaveBeenCalled();
-    // showFirstRun's onComplete persists the one-time region choice through the
-    // SDK (async), THEN navigates to the authed app surface — flush microtasks.
     await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
     expect(infra.chooseInfra).toHaveBeenCalledWith({ region: 'local', tier: 'shared' });
   });
@@ -135,7 +135,8 @@ describe('startWebBoot routing', () => {
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
     await startWebBoot();
-    expect(drivers.enterApp).toHaveBeenCalledTimes(1);
+    // Drivers are never consulted on the login shell; a returning user just lands.
+    expect(drivers.enterApp).not.toHaveBeenCalled();
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
     expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
@@ -148,7 +149,11 @@ describe('startWebBoot routing', () => {
     expect(web.syncGating).toHaveBeenCalled();
     expect(window.history.replaceState).toHaveBeenCalledWith(null, '', '/chat');
     expect(login.mountLogin).not.toHaveBeenCalled();
-    expect(drivers.showFirstRun).toHaveBeenCalledTimes(1);
+    // New user via magic link: region stamped through the SDK, then /home — no
+    // tutorial on the blank login shell.
+    expect(drivers.showFirstRun).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
+    expect(infra.chooseInfra).toHaveBeenCalled();
   });
 
   it('callback code → exchangeCode, then enter app for a returning user', async () => {
@@ -157,7 +162,8 @@ describe('startWebBoot routing', () => {
     await startWebBoot();
     expect(web.exchangeCode).toHaveBeenCalledWith('c');
     expect(web.syncGating).toHaveBeenCalled();
-    expect(drivers.enterApp).toHaveBeenCalledTimes(1);
+    expect(drivers.enterApp).not.toHaveBeenCalled();
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 
   it('callback exchange failure → falls back to the login screen', async () => {

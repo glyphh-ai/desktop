@@ -96,7 +96,19 @@ const server = http.createServer(async (req, res) => {
     // already-authed session straight through to /home, so returning users never see
     // the login. home.html (the Chat tab) is the AUTHED app surface at /home; the
     // bridge bounces an anonymous visitor there back here.
-    if (p === '/' || p === '/auth' || p === '/auth/' || p === '/login' || SPA_FALLBACK.has(p)) {
+    // NESTED fallback paths (/auth/callback) must NOT serve the shell in place:
+    // index.html's asset URLs are relative, so at a nested path the browser asks
+    // for /auth/styles.css → 404 → a naked, unstyled page. Redirect to the root
+    // (which serves the same shell) PRESERVING the query — the boot script reads
+    // token/code from location.search wherever it lands.
+    if (SPA_FALLBACK.has(p)) {
+      const q = new URL(req.url, 'http://x').search;
+      res.statusCode = 302;
+      res.setHeader('location', `/${q}`);
+      res.end();
+      return;
+    }
+    if (p === '/' || p === '/auth' || p === '/auth/' || p === '/login') {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
     }
     if (p === '/home' || p === '/home/') {
