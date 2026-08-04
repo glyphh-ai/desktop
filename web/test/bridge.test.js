@@ -40,7 +40,7 @@ const fake = {
   },
   layouts: { list: vi.fn(async () => [{ name: 'Grid', data: { cols: 2, rows: 1 } }]) },
   drips: { list: vi.fn(async () => [{ name: 'd', data: 'confetti' }]) },
-  apps: { deployed: vi.fn(async () => [{ slug: 'crm', name: 'CRM', url: 'https://crm' }]) },
+  apps: { deployed: vi.fn(async () => []), mine: vi.fn(async () => [{ slug: 'crm', name: 'CRM', url: 'https://crm' }]) },
   orgModels: { list: vi.fn(async () => [{ id: 'm1' }]), listCustom: vi.fn(async () => [{ id: 'c1' }]) },
   providers: {},
   catalog: { providers: vi.fn(async () => [{ slug: 'anthropic' }]) },
@@ -131,9 +131,9 @@ describe('bridge KNOWN wiring', () => {
     expect(await glyphh.dripsList()).toEqual([{ name: 'd', recipe: 'confetti' }]);
   });
 
-  it('panelAppsList → apps.deployed, SavedPanelApp defaults', async () => {
+  it('panelAppsList → apps.mine, SavedPanelApp defaults', async () => {
     const out = await glyphh.panelAppsList();
-    expect(fake.apps.deployed).toHaveBeenCalled();
+    expect(fake.apps.mine).toHaveBeenCalled();
     expect(out[0]).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, mcp: null });
   });
 

@@ -28,7 +28,7 @@ function authedClient() {
       allocation: vi.fn(async () => ({ uncapped: true, capCredits: 0, spentCredits: 0, remainingCredits: 0, workspaceName: 'Main', windowEnd: '' })),
       summary: vi.fn(async () => ({ credits: 7, events: 3 })),
     },
-    profile: { get: vi.fn(async () => ({ timezone: 'UTC' })), update: vi.fn(async () => ({})) },
+    profile: { get: vi.fn(async () => ({ timezone: 'UTC' })), update: vi.fn(async () => ({})), prefs: vi.fn(async () => ({ theme: 'nord' })), setPrefs: vi.fn(async (p) => p) },
     connections: {
       resolvedTools: vi.fn(async () => ({ connections: [{ slug: 'gmail', name: 'Gmail', scope: 'personal', tools: [{ name: 'send' }], availableTools: [{ name: 'send' }, { name: 'find' }] }] })),
       apps: vi.fn(async () => ({ apps: [{ id: 'slack', name: 'Slack', icon: null }] })),
@@ -44,7 +44,7 @@ function authedClient() {
     agents: { list: vi.fn(async () => [{ id: 'a' }]), get: vi.fn(async () => ({ id: 'a' })), tasks: vi.fn(async () => [{ id: 't' }]), taskRuns: vi.fn(async () => [{ id: 'r' }]) },
     layouts: { list: vi.fn(async () => [{ name: 'Grid', data: { cols: 2, rows: 1, cells: [{ panelId: 'p', col: 0, row: 0, colSpan: 1, rowSpan: 1 }] } }]) },
     drips: { list: vi.fn(async () => [{ name: 'd', data: 'confetti' }]) },
-    apps: { deployed: vi.fn(async () => [{ slug: 'crm', name: 'CRM', url: 'https://crm' }]) },
+    apps: { deployed: vi.fn(async () => []), mine: vi.fn(async () => [{ slug: 'crm', name: 'CRM', url: 'https://crm' }]) },
     orgModels: { list: vi.fn(async () => [{ id: 'm1' }]), listCustom: vi.fn(async () => [{ id: 'c1' }]) },
     catalog: { providers: vi.fn(async () => [{ slug: 'anthropic' }]) },
     support: { ticket: vi.fn(async () => ({ ok: true })) },
@@ -54,7 +54,7 @@ function authedClient() {
 /** A fake whose EVERY method rejects — the anonymous-visitor / offline path (401s). */
 function rejectingClient() {
   const boom = vi.fn(async () => { throw new Error('401 Unauthorized'); });
-  const rej = { get: boom, list: boom, roles: boom, apps: boom, resolvedTools: boom, personalMcpList: boom, orgMcpList: boom, deployed: boom, listCustom: boom, providers: boom, status: boom, credits: boom, allocation: boom, summary: boom, update: boom, ticket: boom };
+  const rej = { get: boom, list: boom, roles: boom, apps: boom, resolvedTools: boom, personalMcpList: boom, orgMcpList: boom, deployed: boom, mine: boom, listCustom: boom, providers: boom, status: boom, credits: boom, allocation: boom, summary: boom, update: boom, prefs: boom, setPrefs: boom, ticket: boom };
   return {
     me: boom,
     org: rej, billing: rej, usage: rej, profile: rej, connections: rej, loops: rej,
@@ -70,7 +70,7 @@ describe('buildContract — AUTHED shapes', () => {
 
   it('dashboardData composes the full DashboardData shape', async () => {
     const d = await c.dashboardData();
-    expect(d).toMatchObject({ name: 'Ada', plan: 'pro', orgCredits: true, credits: 5, allowance: 10, spendCredits: 7, requests: 3, appsCount: 1 });
+    expect(d).toMatchObject({ name: 'Ada', plan: 'pro', orgCredits: true, credits: 5, allowance: 10, spendCredits: 7, requests: 3, appsCount: 0 });
     expect(d.me).toMatchObject({ roleName: 'Main', uncapped: true });
   });
   it('getAccountInfo → identity ⊕ org ⊕ billing', async () => {
@@ -103,9 +103,10 @@ describe('buildContract — AUTHED shapes', () => {
     expect(await c.orgModelsList()).toEqual({ ok: true, data: [{ id: 'm1' }] });
     expect(await c.orgProvidersList()).toEqual({ ok: true, data: [{ slug: 'anthropic' }] });
   });
-  it('getPreference returns the passed default (no server prefs endpoint)', async () => {
-    expect(await c.getPreference('glyphhMode', 'ask')).toBe('ask');
-    expect(await c.getPreference('missing')).toBe(null);
+  it('getPreference reads the server map, falls back to the default for absent keys', async () => {
+    expect(await c.getPreference('glyphhMode', 'ask')).toBe('ask'); // absent → default
+    expect(await c.getPreference('missing')).toBe(null);            // absent, no default
+    expect(await c.getTheme()).toBe('nord');                        // present in the server map
   });
 });
 

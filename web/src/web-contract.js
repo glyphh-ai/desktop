@@ -63,6 +63,26 @@ export const EMPTY = {
 export function buildContract(client, deps) {
   const { apiUrl, isAuthenticated, signOut } = deps;
 
+  /** The user's pref map, fetched once and cached. Reads are cheap + synchronous
+   *  after the first load; writes update the cache immediately (optimistic) then
+   *  persist to the server. A failed load caches `{}` so the app boots on defaults
+   *  rather than storming the API on every getPreference. Cleared on sign-out. */
+  const prefsCache = {
+    _p: null,
+    get() {
+      if (!this._p) this._p = client.profile.prefs().catch(() => ({}));
+      return this._p;
+    },
+    async set(key, value) {
+      const map = await this.get();
+      if (value === null || value === undefined) delete map[key];
+      else map[key] = value;                 // optimistic — the renderer reads it back at once
+      try { await client.profile.setPrefs({ [key]: value ?? null }); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    clear() { this._p = null; },
+  };
+
   /** Run an SDK read → adapt; on ANY throw resolve to the named empty shape. The single
    *  uniform error path (replaces the per-method inline catches). `empty` is a factory. */
   const read = (thunk, adapt, empty) => async (...args) => {
@@ -83,8 +103,8 @@ export function buildContract(client, deps) {
   return {
     // ── Auth / account ────────────────────────────────────────────────────────
     isAuthenticated: () => isAuthenticated(),
-    logout: () => signOut(),
-    signOut: () => signOut(),
+    logout: () => { prefsCache.clear(); return signOut(); },
+    signOut: () => { prefsCache.clear(); return signOut(); },
     // Rail + Settings account card: identity ⊕ org name ⊕ subscription. Org + billing
     // are best-effort — a member without billing visibility still gets name/email/role.
     getAccountInfo: async () => {
@@ -141,12 +161,22 @@ export function buildContract(client, deps) {
     dashboardRuns: async () => ({ ok: true, data: [] }),
 
     // ── Prefs / theme ───────────────────────────────────────────────────────────
-    // No server prefs endpoint yet: the contract is getPreference(key, default) → the
-    // DEFAULT (not undefined), so the renderer's boot reads settle on their fallbacks.
-    getPreference: async (_key, defaultVal) => (defaultVal === undefined ? null : defaultVal),
-    getPreferences: async () => ({}),
-    getTheme: async () => 'dark',
-    getBackgroundMode: async () => false,
+    // Server-backed (org→user in the stator) via profile.prefs/setPrefs. The whole
+    // map is fetched ONCE and cached (prefsCache) — the renderer reads prefs
+    // synchronously-ish at boot in many places, so a per-key round-trip would storm
+    // the API. Writes update the cache optimistically, then persist; a logged-out
+    // read resolves to the caller's default (never throws). `theme`/`backgroundMode`
+    // are plain keys in the same map, so desktop and web share pref keys.
+    getPreference: async (key, defaultVal) => {
+      const map = await prefsCache.get();
+      return key in map ? map[key] : (defaultVal === undefined ? null : defaultVal);
+    },
+    getPreferences: async () => ({ ...(await prefsCache.get()) }),
+    setPreference: (key, value) => prefsCache.set(key, value),
+    getTheme: async () => (await prefsCache.get()).theme ?? 'dark',
+    setTheme: (theme) => prefsCache.set('theme', theme),
+    getBackgroundMode: async () => (await prefsCache.get()).backgroundMode ?? false,
+    setBackgroundMode: (enabled) => prefsCache.set('backgroundMode', !!enabled),
 
     // ── Connections (ConnectionsClient) ──────────────────────────────────────────
     connectionsList: read(() => client.connections.resolvedTools(), toLegacyConnections, EMPTY.connections),
@@ -188,7 +218,22 @@ export function buildContract(client, deps) {
     dripsBuiltinEffects: async () => [],
 
     // ── Apps (AppsClient) ─────────────────────────────────────────────────────────
-    panelAppsList: read(() => client.apps.deployed(), toLegacyPanelApps, EMPTY.list),
+    // WEB app launch (2026-08-03): panels can't host third-party sites in a
+    // browser (X-Frame-Options/frame-ancestors belong to the TARGET site), so
+    // on web an app simply OPENS IN A NEW TAB. Native apps need the desktop.
+    appLaunch: async (app) => {
+      const url = (app && (app.url || app.prodUrl)) || null;
+      if (url) {
+        try { window.open(url, '_blank', 'noopener'); return { ok: true }; }
+        catch { return { ok: false, error: 'popup blocked — allow popups for this site' }; }
+      }
+      return { ok: false, error: 'this app needs the desktop app' };
+    },
+
+    // The LAUNCHER list: every app the org owns or installed (the copied 25
+    // defaults live here) — NOT apps.deployed(), which is only hosted deploys
+    // and is empty for a fresh org (that read backs the dashboard count).
+    panelAppsList: read(() => client.apps.mine(), toLegacyPanelApps, EMPTY.list),
 
     // ── Models governance (OrgModelsClient / CatalogClient) ───────────────────────
     orgModelsList: lib(() => client.orgModels.list()),

@@ -183,7 +183,11 @@
     </div>
   </div>
 
-  <!-- Onboarding gate — matches the yo-platform auth-shell look & feel. -->
+  <!-- Onboarding gate — split shell: login (left) | the muse (right).
+       The muse is Ada Lovelace-inspired — her Analytical Engine "weaves
+       algebraic patterns"; the panel weaves threads in CSS and carries the
+       message: peace, love & machines that serve them. Hidden on narrow
+       viewports; the login column is always primary. -->
   <div id="onboarding-overlay" class="hidden">
     <div class="auth-shell">
       <header class="auth-shell-header">
@@ -206,6 +210,24 @@
         &copy; 2026 Glyphh AI LLC
       </footer>
     </div>
+    <aside class="auth-muse" aria-hidden="true">
+      <div class="auth-muse-weave"></div>
+      <div class="auth-muse-copy">
+        <span class="auth-muse-eyebrow">Poetical science</span>
+        <blockquote class="auth-muse-quote">
+          &ldquo;The Analytical Engine weaves algebraic patterns, just as the
+          Jacquard&#8209;loom weaves flowers and leaves.&rdquo;
+          <cite>&mdash; Ada Lovelace, 1843</cite>
+        </blockquote>
+        <h2 class="auth-muse-title">Weave something good.</h2>
+        <p class="auth-muse-body">
+          Technology has always been a loom &mdash; thread over thread, thought
+          over thought. We build in Ada&rsquo;s spirit: machines that carry the
+          toil, so people can carry each other.
+        </p>
+        <p class="auth-muse-sign">Peace in the pattern. Love in the loop.</p>
+      </div>
+    </aside>
     <!-- Kept for backwards-compat status messaging; visually unused now. -->
     <div id="onboarding-status" class="hidden"></div>
   </div>

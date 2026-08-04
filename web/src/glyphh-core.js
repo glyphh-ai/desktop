@@ -262,7 +262,7 @@ const NATIVE = new Set([
   'checkForUpdates', 'updateInstall', 'getUpdateStatus', 'relaunch',
   // OS window-manager panel/layout control (real tiled OS windows).
   'panelsGetZoom', 'railCollapseGet', 'railCollapseToggle', 'railCollapseSet',
-  'appLaunch', 'appFileIcon', 'rpaRegister', 'rpaUnregister',
+  'appFileIcon', 'rpaRegister', 'rpaUnregister', // appLaunch: web-contract opens a new tab
   'glyphhAppPreviewOpen', 'glyphhAppPreviewClear',
 ]);
 
@@ -512,7 +512,10 @@ export function toLegacyPanelApps(apps) {
     name: String(a.name ?? a.slug ?? ''),
     slug: String(a.slug ?? ''),
     system: !!a.system,
-    url: a.url ?? null,
+    // mine() wire: a WEB app's launch address is `prodUrl` (kind==='web' → the
+    // stored url); legacy/deployed rows may carry `url` directly. Without this
+    // the Apps screen's (url || !isBrowser) filter drops every default app.
+    url: a.url ?? a.prodUrl ?? null,
     isBrowser: a.isBrowser ?? true,
     execPath: a.execPath ?? null,
     appArchetype: a.appArchetype ?? null,
