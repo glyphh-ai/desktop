@@ -84,6 +84,19 @@ function brandColor(host: string): string {
   return "";
 }
 
+// Connectors carry a Pipedream slug, not a URL — map the household slugs to
+// their real domains so the RESOLVER layer (and brand plates) apply to the
+// Connections page exactly like everywhere else. Unknown slugs fall through
+// to the catalog icon, then the monogram.
+const CONNECTOR_DOMAINS: Record<string, string> = {
+  gmail: "gmail.com", google_gmail: "gmail.com",
+  google_calendar: "calendar.google.com", google_drive: "drive.google.com",
+  google_docs: "docs.google.com", google_sheets: "sheets.google.com",
+  slack: "slack.com", github: "github.com", notion: "notion.so",
+  linear: "linear.app", figma: "figma.com", discord: "discord.com",
+  microsoft_outlook: "outlook.com", microsoft_teams: "teams.microsoft.com",
+};
+
 /** The resolver URL for a domain — THROUGH THE SDK on web (the SDK is the
  *  only client of the server); the desktop renderer holds no SDK handle, so
  *  it uses the SDK-configured origin the preload exposes (serverUrl). */
@@ -118,6 +131,9 @@ export function appIconUrl(app: IconApp): string {
   if (app.url && !isInternal) {
     try { resolved = resolverUrlFor(new URL(app.url).hostname); }
     catch { resolved = ""; }
+  } else if (!app.url && app.connection?.pipedreamSlug) {
+    const domain = CONNECTOR_DOMAINS[app.connection.pipedreamSlug];
+    if (domain) resolved = resolverUrlFor(domain);
   }
   const connectedIcon = app.connection?.accountId && app.connection.pipedreamSlug
     ? connectedIconCache[app.connection.pipedreamSlug] || ""
