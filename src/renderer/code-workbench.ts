@@ -1039,34 +1039,6 @@ async function init(): Promise<void> {
    */
   function openSectionInWorkbench(section: string): void {
     const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
-    if (isWebTarget()) {
-      // WEB: Echo is a DESKTOP surface — its WebGL wall + webview cards are
-      // both dead in a browser, which is why the chat/work/code landing came
-      // up as the wall instead of the ported screens. Pages render directly
-      // as a full-width section slot; agent/code host the singleton agent.
-      if (section === "agent" || section === "code" || section === "workspace") {
-        let changed = false;
-        for (let i = rails.length - 1; i >= 0; i--) {
-          const kept = rails[i].slots.filter((sl) => sl.view !== "section");
-          if (kept.length !== rails[i].slots.length) { rails[i].slots = kept; changed = true; }
-          if (!rails[i].slots.length) rails.splice(i, 1);
-        }
-        if (section !== "workspace" && !codingHosted()) {
-          rails.unshift({ id: nextRailId++, slots: [{ id: nextSlotId++, view: "coding" }] });
-          changed = true;
-        }
-        if (changed) { renderRails(); saveLayout(); }
-        return;
-      }
-      // A page section replaces the workspace with itself, full width (the
-      // 2.5.0 shell's stated behavior) — and runs its loader.
-      rails.length = 0;
-      rails.push({ id: nextRailId++, slots: [{ id: nextSlotId++, view: "section", section }] });
-      renderRails();
-      saveLayout();
-      loadSection?.(section);
-      return;
-    }
     if (section === "agent") {
       // The Glyphh mark is the UNIVERSAL CHAT ICON: the current layout
       // clears (memory saved) and the chat loads alone.
@@ -2809,6 +2781,42 @@ async function init(): Promise<void> {
     /** Build an app's live content (webview + browser bar) into a card. */
     const mountAppIntoCard = (e: TileEntry, card: HTMLElement): void => {
       const t = e.tile;
+      if (isWebTarget()) {
+        // WEB: a card's <webview> is inert in a browser — the interior is a
+        // STREAMED panel from the user's desktop (hosted Glyphh apps render
+        // as a plain iframe). Same card, same chrome, different transport.
+        const body = card.querySelector(".echo-card-body")!;
+        if (t.glyphh && t.slug) {
+          const frame = document.createElement("iframe");
+          frame.src = `https://${t.slug}.glyphh.app/`;
+          frame.style.cssText = "flex:1;min-height:0;width:100%;border:0;background:var(--bg-2)";
+          body.appendChild(frame);
+          return;
+        }
+        const url = t.url || "https://www.google.com";
+        const navTarget = new EventTarget();
+        const streamed = mountStreamedPanel({
+          url,
+          onNav: (u) => { if (u) t.url = u; navTarget.dispatchEvent(Object.assign(new Event("did-navigate"), { url: u })); },
+        });
+        const adapter = {
+          loadURL: (u: string) => streamed.navigate(u),
+          goBack: () => streamed.back(),
+          goForward: () => streamed.forward(),
+          reload: () => streamed.reload(),
+          canGoBack: () => true,
+          canGoForward: () => true,
+          getURL: () => streamed.currentUrl(),
+          addEventListener: (type: string, fn: EventListener) => navTarget.addEventListener(type, fn),
+        } as unknown as WebviewEl;
+        streamed.el.style.flex = "1";
+        streamed.el.style.minHeight = "0";
+        body.appendChild(streamed.el);
+        const { chrome, urlbar } = buildAppChrome(adapter, () => t.url || url);
+        urlbar.value = t.url || url;
+        card.querySelector(".echo-card-head")!.after(chrome);
+        return;
+      }
       {
         const wv = document.createElement("webview");
         wv.setAttribute("partition", "persist:yo");
@@ -2988,19 +2996,6 @@ async function init(): Promise<void> {
     };
     const ctl: EchoCtlType = {
       openApp: (app) => {
-        // WEB: every entry point (rail, palette, echo tile, popup) opens the
-        // SAME way — a workbench panel (__wbOpenApp's web branch). An echo
-        // card's <webview> is inert in a browser, so routing here forked the
-        // behavior depending on where the user clicked.
-        if (isWebTarget()) {
-          // The Browser builtin has no fixed url — open the streamed panel on a
-          // start page; its chrome urlbar takes it anywhere from there.
-          const target = (app.slug || "").trim().toLowerCase() === "browser" && !app.url
-            ? { ...app, url: "https://www.google.com" }
-            : app;
-          openAppInWorkbench(target, { newPanel: true });
-          return;
-        }
         const key = (app.slug || "").trim().toLowerCase();
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
@@ -5463,10 +5458,7 @@ async function init(): Promise<void> {
   function openLayoutRowArranged(layout: LayoutRow, appRows: PanelAppRow[]): void {
     // Echo IS the layout manager: while it is mounted, a layout open lands
     // as Echo cards on the layout's grid (folder switching already ran).
-    // NOT on web — an Echo card's <webview> is inert there; the grid path
-    // below mounts every cell as the standard (streamed) workbench panel,
-    // the same panel every other entry point produces.
-    if (echoCtl && !isWebTarget()) { echoCtl.openLayout(layout); return; }
+    if (echoCtl) { echoCtl.openLayout(layout); return; }
     const resolveCell = (panelId: string): PanelAppRow | undefined => {
       const key = panelId.trim().toLowerCase();
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
