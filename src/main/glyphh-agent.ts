@@ -40,6 +40,7 @@ import { stopEmbedServer } from "./glyphh-agent-embeddings";
 import { GLYPHH_APP_SPEC } from "@glyphh/sdk";
 import { fetchOrgApps } from "./org-apps";
 import { assemblePrompt, compactIfNeeded, compactNow, loadSessions, registerGlyphhContextIpc } from "./glyphh-agent-context";
+import { registerThreadsIpc } from "./threads-ipc";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { getClient } from "./glyphh-client";
 import { startInterceptor, type Interceptor } from "@glyphh/sdk/runtime";
@@ -183,6 +184,8 @@ export function assertGlyphhExternalAllowed(via: "relay" | "local-mcp"): void {
 export function registerGlyphhIpc(): void {
   registerGlyphhPermissionIpc();
   registerGlyphhContextIpc();
+  // The renderer's transport to the server threads surface (thread-store.ts).
+  registerThreadsIpc();
   ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code" }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");

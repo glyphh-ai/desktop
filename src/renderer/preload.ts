@@ -398,6 +398,16 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("glyphh-agent-sessions-load") as Promise<{ chats: unknown[]; currentId: string }>,
   glyphhSessionsSave: (chats: unknown[], currentId: string) =>
     ipcRenderer.invoke("glyphh-agent-sessions-save", { chats, currentId }) as Promise<boolean>,
+  // ── Server threads surface (thread-store.ts's desktop transport) — the
+  // main-process SDK client executes these (threads-ipc.ts). ──
+  threadsList: () =>
+    ipcRenderer.invoke("glyphh-threads-list") as Promise<Array<{ id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number }>>,
+  threadsGet: (id: string) =>
+    ipcRenderer.invoke("glyphh-threads-get", id) as Promise<{ id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number; messages: unknown[] }>,
+  threadsPush: (id: string, body: { title?: string; mode?: string; source?: unknown; messages?: unknown[]; updatedAt: number }) =>
+    ipcRenderer.invoke("glyphh-threads-push", { id, body }) as Promise<{ applied: boolean; thread: { id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number } }>,
+  threadsDelete: (id: string) =>
+    ipcRenderer.invoke("glyphh-threads-delete", id) as Promise<void>,
   // Another window (ghost overlay ↔ main app) saved the shared session store.
   onGlyphhSessionsUpdated: (callback: () => void) => {
     ipcRenderer.on("glyphh-sessions-updated", () => callback());

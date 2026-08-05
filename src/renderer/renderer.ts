@@ -272,6 +272,11 @@ declare global {
       glyphhSaveClipboardImage: (bytes: ArrayBuffer) => Promise<{ kind: "image"; path: string; name: string }>;
       glyphhSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
       glyphhSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
+      // Server threads surface (desktop transport for help/thread-store.ts).
+      threadsList?: () => Promise<Array<{ id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number }>>;
+      threadsGet?: (id: string) => Promise<{ id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number; messages: unknown[] }>;
+      threadsPush?: (id: string, body: { title?: string; mode?: string; source?: unknown; messages?: unknown[]; updatedAt: number }) => Promise<{ applied: boolean; thread: { id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number } }>;
+      threadsDelete?: (id: string) => Promise<void>;
       glyphhRemember: (fact: string) => Promise<boolean>;
       adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
       libraryLoopGet: (ref: string) => Promise<LibEnvelope>;
