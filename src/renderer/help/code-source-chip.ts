@@ -206,11 +206,10 @@ export function createGitChip(opts: {
     menu = document.createElement("div");
     menu.className = "code-drop-up ws-source-drop";
     wrap.appendChild(menu);
+    menu.classList.add("ws-drop-flex");
     renderRepos(menu, opts, pick, closeMenu);
     menu.style.left = "0px"; menu.style.right = "auto";
-    const wb2 = wrap.getBoundingClientRect();
-    menu.style.maxHeight = `${Math.max(160, Math.round(window.innerHeight - wb2.bottom - 20))}px`;
-    menu.style.overflowY = "auto";
+    clampDropUp(menu, btn);
   });
   document.addEventListener("mousedown", (e) => {
     if (menu && !wrap.contains(e.target as Node)) closeMenu();
@@ -230,9 +229,10 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
   const wrap = anchor.parentElement || anchor;
   wrap.querySelector(".ws-source-drop")?.remove();
   const menu = document.createElement("div");
-  menu.className = "code-drop-up ws-source-drop";
+  menu.className = "code-drop-up ws-source-drop ws-drop-flex";
   (wrap as HTMLElement).style.position ||= "relative";
   wrap.appendChild(menu);
+  clampDropUp(menu, anchor);
   const close = (): void => menu.remove();
   const pick = (next: Source): void => { opts.onPick(next); close(); };
   void listMachines().then((machines) => {
@@ -245,6 +245,13 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
     if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
   };
   document.addEventListener("mousedown", away, true);
+}
+
+/** A drop-UP must fit the space ABOVE its anchor — unclamped it runs past the
+ *  top of the page. */
+function clampDropUp(menu: HTMLElement, anchor: HTMLElement): void {
+  const top = anchor.getBoundingClientRect().top;
+  menu.style.maxHeight = `${Math.max(180, Math.round(top - 16))}px`;
 }
 
 /** The "+" chip: NEW FOLDER only — no browsing. Creates one directory inside
@@ -460,6 +467,7 @@ function renderLocal(
 ): void {
   backHead(menu, "Local folder", onBack);
   const body = document.createElement("div");
+  body.className = "ws-drop-body";
   menu.appendChild(body);
   body.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking your desktop…</div>`);
 

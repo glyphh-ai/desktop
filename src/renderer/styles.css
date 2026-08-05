@@ -14927,3 +14927,17 @@ body.code-dragging webview { pointer-events: none !important; }
 .ws-fs-newfolder { display: flex; align-items: center; gap: 6px; padding: 2px 8px 4px; }
 .ws-fs-newfolder .loop-drop-search { flex: 1; margin: 0; }
 .ws-fs-newfolder-err { font-size: 11px; color: var(--danger, #e5484d); }
+
+/* Drop-up pickers: the MENU is a flex column capped to the space above its
+   anchor — the LIST is the only scrolling part (path header + "Use this
+   folder" stay pinned). */
+.ws-drop-flex { display: flex; flex-direction: column; }
+.ws-drop-flex .ws-drop-body { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.ws-drop-flex .ws-fs-list,
+.ws-drop-flex .code-repo-drop-list { flex: 1; min-height: 0; max-height: none; }
+
+/* Scrollbars sit ON the drop's edge — the drop's 5px padding was insetting
+   them, which read as a gap right of every picker's scrollbar. */
+.code-drop-up .code-repo-drop-list,
+.code-drop-up .ws-fs-list,
+.code-drop-up .loop-drop-list { margin-right: -5px; padding-right: 5px; scrollbar-gutter: stable; }

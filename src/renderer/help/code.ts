@@ -3498,11 +3498,6 @@ export function initCode(): void {
     else gotoSection(railTab === "code" ? "agent" : "dashboard");
     paintCw();
   };
-  railTabs?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
-    const next = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
-    railTab = next;
-    enterSpace(true);
-  }));
   // The composer pill is the space switch now. It does NOT navigate away — the
   // new-chat page stays put and just re-scopes (chips + the columns below).
   spacePill?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => b.addEventListener("click", () => {
