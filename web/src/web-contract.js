@@ -242,6 +242,22 @@ export function buildContract(client, deps) {
     // and is empty for a fresh org (that read backs the dashboard count).
     panelAppsList: read(() => client.apps.mine(), toLegacyPanelApps, EMPTY.list),
 
+    // ── App config vars (write-only secrets) — SDK apps.secrets surface.
+    // The desktop's `appReadable` flag is a LOCAL concept; the cloud store
+    // has no read-back path at all, so the flag is accepted and dropped.
+    appSecretsList: async (idOrSlug) => {
+      try { return { ok: true, secrets: await client.apps.secrets(idOrSlug) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appSecretsSet: async (idOrSlug, key, value, _appReadable) => {
+      try { await client.apps.setSecret(idOrSlug, key, value); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appSecretsDelete: async (idOrSlug, key) => {
+      try { await client.apps.removeSecret(idOrSlug, key); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+
     // ── Models governance (OrgModelsClient / CatalogClient) ───────────────────────
     orgModelsList: lib(() => client.orgModels.list()),
     orgCustomModelsList: lib(() => client.orgModels.listCustom()),

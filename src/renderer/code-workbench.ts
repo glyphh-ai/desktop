@@ -4863,6 +4863,59 @@ async function init(): Promise<void> {
     const ensureView = (t: PreviewTab): WebviewEl & HTMLElement => {
       const existing = views.get(t.id);
       if (existing) return existing;
+      if (isWebTarget()) {
+        // WEB: a tab's content is the SAME streamed renderer the web panels
+        // use (a <webview> is inert in a browser). The holder div wears the
+        // webview-shaped methods the tab plumbing calls (setSrc/loadURL/
+        // reload/getURL), and far-side navs feed the tab title/url. Local
+        // HTML previews render in a sandboxed srcdoc iframe.
+        const holder = document.createElement("div") as unknown as WebviewEl & HTMLElement;
+        holder.className = "ws-preview-frame";
+        (holder as HTMLElement).style.display = "flex";
+        let streamed: StreamedPanelHandle | null = null;
+        const openUrl = (u: string): void => {
+          streamed?.dispose();
+          (holder as HTMLElement).innerHTML = "";
+          streamed = mountStreamedPanel({
+            url: u,
+            onNav: (nu, title) => {
+              if (nu) t.url = nu;
+              if (title) { t.title = title; paintTabs(); }
+              if (t.id === active().id) {
+                syncLegacy();
+                if (document.activeElement !== urlInput) urlInput.value = t.url || "";
+              }
+            },
+          });
+          streamed.el.style.flex = "1";
+          streamed.el.style.minHeight = "0";
+          (holder as HTMLElement).appendChild(streamed.el);
+        };
+        const h = holder as unknown as Record<string, unknown>;
+        h.loadURL = (u: string) => { if (streamed) { streamed.navigate(u); t.url = u; } else openUrl(u); };
+        h.getWebContentsId = () => 1;   // "guest attached" → setSrc takes the loadURL path
+        h.reload = () => streamed?.reload();
+        h.getURL = () => t.url || "";
+        h.goBack = () => streamed?.back();
+        h.goForward = () => streamed?.forward();
+        const nativeSetAttr = HTMLElement.prototype.setAttribute.bind(holder as HTMLElement);
+        h.setAttribute = (name: string, value: string) => {
+          if (name === "src") { (h.loadURL as (u: string) => void)(value); return; }
+          nativeSetAttr(name, value);
+        };
+        if (t.html) {
+          const frame = document.createElement("iframe");
+          frame.setAttribute("sandbox", "allow-scripts");
+          frame.srcdoc = t.html;
+          frame.style.cssText = "flex:1;min-height:0;width:100%;border:0;background:var(--bg-2)";
+          (holder as HTMLElement).appendChild(frame);
+        } else if (t.url) {
+          openUrl(t.url);
+        }
+        frames.appendChild(holder as HTMLElement);
+        views.set(t.id, holder);
+        return holder;
+      }
       const wv = document.createElement("webview") as WebviewEl & HTMLElement;
       wv.className = "ws-preview-frame";
       // DEFAULT session on purpose: glyphh-preview:// (local file/PDF/office
