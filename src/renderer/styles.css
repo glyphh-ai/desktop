@@ -3370,6 +3370,13 @@ body[data-session-space="chat"] #code-workdir-branch-wrap,
 body[data-session-space="chat"] .code-view-toggles,
 body[data-session-space="cowork"] #code-workdir-branch-wrap,
 body[data-session-space="cowork"] .code-view-toggles { display: none !important; }
+/* Chat carries no permission-mode chip (sends stay ask-mode under the hood);
+   Work/Code keep the full control (Composer.js: space !== 'chat'). */
+body[data-session-space="chat"] #code-mode-wrap { display: none; }
+/* A locked chip (Chat's Loop) reads disabled but still catches clicks so it can
+   close other open popups. */
+.code-chip.is-locked { opacity: 0.55; cursor: default; }
+.code-chip.is-locked:hover { border-color: var(--border); color: var(--text-3); }
 /* Inline CONNECT card — the agent offers an account connection in the
    thread; OAuth runs in-app, the user never leaves the chat. */
 .code-connect-wrap { margin: 10px 0; }

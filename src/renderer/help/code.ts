@@ -109,9 +109,13 @@ function paintChips(): void {
   const ec = el("code-effort-chip");
   if (ec) {
     const lp = loops.find((x) => x.id === glyphhLoop) ?? loops[0];
+    const cur = current();
+    const eff = cur ? modeOf(cur) : railTab;
+    const locked = eff === "chat"; // Chat runs the Default loop — chip is locked
     ec.textContent = `Loop: ${lp?.name ?? "Default"}`;
-    ec.title = lp?.description ?? "Which agent loop runs this session";
-    ec.className = "code-chip";
+    ec.title = locked ? "Chat runs the Default loop" : (lp?.description ?? "Which agent loop runs this session");
+    ec.className = "code-chip" + (locked ? " is-locked" : "");
+    ec.setAttribute("aria-disabled", locked ? "true" : "false");
   }
 }
 
@@ -561,6 +565,10 @@ function initComposerControls(): void {
     e.stopPropagation();
     el("code-mode-menu")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
+    // Chat runs the Default loop — the chip is locked: it closes other popups
+    // (done above) but never opens its own menu (Composer.js loopLocked).
+    const cur = current();
+    if ((cur ? modeOf(cur) : railTab) === "chat") { el("code-effort-pop")?.classList.add("hidden"); return; }
     void refreshLoops().then(() => { renderLoopMenu(); const p2 = el("code-effort-pop"); if (p2 && !p2.classList.contains("hidden")) openChipDropUp(p2); });
     renderLoopMenu();
     const lp = el("code-effort-pop");
@@ -3391,6 +3399,8 @@ export function initCode(): void {
     // the source chip reflects the active surface (hidden in chat via CSS).
     sourceChip?.setSource(activeSource());
     sourceChip?.setSessionId(cur?.id ?? null);
+    // the loop chip locks in Chat + the mode chip hides — repaint the chips.
+    paintChips();
   };
   cwPaint = paintCw;
   // ── The rail's SPACE tabs: Chat | Code — the list + "+ New session" scope
@@ -3643,6 +3653,10 @@ export function initCode(): void {
       if (thinking) queueNote();
       else send();
     } else if (e.key === "Tab" && e.shiftKey) {
+      // Chat carries no visible mode control — no hidden cycling either.
+      const curTab = current();
+      const eff = curTab ? modeOf(curTab) : railTab;
+      if (eff === "chat") return;
       e.preventDefault();
       cycleMode();
     }
