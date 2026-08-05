@@ -206,33 +206,60 @@ async function showDevice(shownAt) {
   if (overlay) overlay.classList.remove('hidden');
   if (!step) return;
   step.innerHTML = '';
-  const h = document.createElement('h1'); h.className = 'auth-shell-title'; h.textContent = 'Authorize this device';
-  const lede = document.createElement('p'); lede.className = 'auth-shell-lede';
-  lede.textContent = 'Confirm the code shown in your terminal to authorize this device.';
-  const input = document.createElement('input');
-  input.className = 'auth-shell-input device-code-input'; input.id = 'device-code';
-  input.value = code; input.placeholder = 'ABCD-1234'; input.autocomplete = 'off'; input.spellcheck = false;
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  // Same components as the DESKTOP device screen (onboarding.ts): auth-shell
+  // title/lede, the code as device-code-grid TILES, btn-primary btn-lg btn-full.
+  // The tile styles are scoped to #onboarding-overlay, which this renders inside.
+  const h = el('h1', 'auth-shell-title', 'Approve this sign-in');
+  const lede = el('p', 'auth-shell-lede', code
+    ? 'Make sure this matches the code shown in your terminal or app.'
+    : 'Enter the code shown in your terminal or app.');
+  const grid = el('div', 'device-code-grid');
+  const paintTiles = (value) => {
+    grid.innerHTML = '';
+    for (const ch of value) {
+      if (ch === '-' || ch === ' ') grid.append(el('span', 'device-code-sep', '–'));
+      else grid.append(el('span', 'device-code-tile', ch));
+    }
+  };
+  // No code in the URL (user typed the bare verification URI): an input in the
+  // shell idiom; with a code, the tiles — matching the app's screen exactly.
+  const input = el('input', 'auth-shell-input device-code-input');
+  input.id = 'device-code'; input.placeholder = 'ABCD-1234';
+  input.autocomplete = 'off'; input.spellcheck = false;
   input.addEventListener('input', () => { input.value = input.value.toUpperCase(); });
-  const btn = document.createElement('button');
-  btn.className = 'btn btn-primary'; btn.type = 'button'; btn.textContent = 'Approve device';
-  const msg = document.createElement('p'); msg.className = 'auth-shell-error'; msg.style.marginTop = '10px';
+  if (code) paintTiles(code); else grid.style.display = 'none';
+
+  const err = el('p', 'auth-shell-error'); err.style.display = 'none';
+  const btn = el('button', 'btn btn-primary btn-lg btn-full', 'Approve sign-in');
+  btn.type = 'button';
+  const actions = el('div', 'auth-shell-actions'); actions.append(btn);
   btn.addEventListener('click', async () => {
-    const value = (input.value || '').trim();
-    if (!value) { msg.textContent = 'Enter the code from your terminal.'; return; }
-    btn.disabled = true; btn.textContent = 'Approving…'; msg.textContent = '';
+    const value = (code || input.value || '').trim();
+    if (!value) { err.textContent = 'Enter the code from your terminal.'; err.style.display = ''; return; }
+    btn.disabled = true; btn.textContent = 'Approving…'; err.style.display = 'none';
     try {
       await approveDevice(value);
       step.innerHTML = '';
-      const ok = document.createElement('h1'); ok.className = 'auth-shell-title'; ok.textContent = 'Device approved';
-      const sub = document.createElement('p'); sub.className = 'auth-shell-lede';
-      sub.textContent = 'Return to your terminal — it is signed in now. You can close this tab.';
-      step.append(ok, sub);
-    } catch (err) {
-      btn.disabled = false; btn.textContent = 'Approve device';
-      msg.textContent = (err && err.message) || 'Could not confirm this code.';
+      step.append(
+        el('h1', 'auth-shell-title', 'Device approved'),
+        el('p', 'auth-shell-lede', 'You are signed in — return to the app. You can close this tab.'),
+      );
+    } catch (ex) {
+      btn.disabled = false; btn.textContent = 'Approve sign-in';
+      err.textContent = (ex && ex.message) || 'Could not confirm this code.';
+      err.style.display = '';
     }
   });
-  step.append(h, lede, input, btn, msg);
+
+  step.append(h, lede, grid);
+  if (!code) step.append(input);
+  step.append(actions, err);
 }
 
 function showLogin(shownAt, initialError) {
