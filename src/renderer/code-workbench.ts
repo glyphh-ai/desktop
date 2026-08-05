@@ -3614,6 +3614,9 @@ async function init(): Promise<void> {
     const { chrome, urlbar } = buildAppChrome(adapter, () => slot.url);
     urlbar.value = slot.url;
     holder.appendChild(chrome);
+    // Same classes as the native view so every panel rule (sizing, radius,
+    // focus ring) applies identically — streamed is a transport, not a look.
+    streamed.el.classList.add("ws-app-view");
     streamed.el.style.flex = "1";
     streamed.el.style.minHeight = "0";
     holder.appendChild(streamed.el);
@@ -5429,7 +5432,10 @@ async function init(): Promise<void> {
   function openLayoutRowArranged(layout: LayoutRow, appRows: PanelAppRow[]): void {
     // Echo IS the layout manager: while it is mounted, a layout open lands
     // as Echo cards on the layout's grid (folder switching already ran).
-    if (echoCtl) { echoCtl.openLayout(layout); return; }
+    // NOT on web — an Echo card's <webview> is inert there; the grid path
+    // below mounts every cell as the standard (streamed) workbench panel,
+    // the same panel every other entry point produces.
+    if (echoCtl && !isWebTarget()) { echoCtl.openLayout(layout); return; }
     const resolveCell = (panelId: string): PanelAppRow | undefined => {
       const key = panelId.trim().toLowerCase();
       return appRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
