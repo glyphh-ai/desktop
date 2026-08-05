@@ -283,8 +283,20 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
       ws = socket;
       socket.onopen = async () => {
         try {
-          const r = (await call("panel.open", { url: opts.url, width: canvas.width, height: canvas.height, quality: opts.quality ?? 70 })) as { panelId: string };
+          // Open at the element's REAL box, not the canvas's 1280x800 default —
+          // otherwise the page renders at the wrong size until the user happens
+          // to resize (the ResizeObserver drops events while panelId is null).
+          const box = root.getBoundingClientRect();
+          const w0 = Math.max(1, Math.round(box.width)) || canvas.width;
+          const h0 = Math.max(1, Math.round(box.height)) || canvas.height;
+          const r = (await call("panel.open", { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 })) as { panelId: string };
           panelId = r.panelId;
+          // Layout may have settled while the socket/open round-tripped — sync
+          // once now that resize events are deliverable.
+          const after = root.getBoundingClientRect();
+          const w1 = Math.max(1, Math.round(after.width));
+          const h1 = Math.max(1, Math.round(after.height));
+          if ((w1 !== w0 || h1 !== h0) && w1 > 1 && h1 > 1) input({ type: "resize", width: w1, height: h1 });
           setOverlay(null);
           setBadge();
           canvas.focus();
