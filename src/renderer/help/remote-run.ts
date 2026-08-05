@@ -1,19 +1,23 @@
 /**
- * remote-run.ts — the app-web REMOTE runtime transport (a vanilla-TS port of the
- * platform's lib/agent/transport.js). The desktop app runs the harness locally
- * (window.glyphh.glyphhRun → main); the WEB build cannot. When a session's
- * workspace SOURCE is remote (cloud-new / cloud-repo), a turn instead goes
+ * remote-run.ts — the app-web REMOTE turn transport. The desktop app runs the
+ * harness locally (window.glyphh.glyphhRun → main); the WEB build cannot. When
+ * a session's workspace SOURCE is remote (or web = cloud, period), a turn goes
  * through the SDK handle (window.glyphhSdk) against the control plane's session
- * surface + the data-plane rotor stream:
+ * surface + the provisioned pod's HARNESS data plane (`glyphh.harness/v1`):
  *
  *   1. glyphhSdk.sessions.create(provisionArgsFor(source))
- *        → provisions a rotor runtime, returns { session, runtimeToken }
+ *        → provisions a runtime pod, returns { session, runtimeToken }
  *          (the token is shown ONCE — the chat record binds it).
  *   2. poll glyphhSdk.sessions.get(id) until status === 'ready' (bounded).
- *   3. glyphhSdk.session({ url: runtimeUrl, token, rotor, sessionId })
- *        → opens the data plane (rotor.stream/v1 over SSE).
- *   4. session.turn(prompt) → a Run: for await (ev of run.events) yields
- *        open → step* → (answer | error) → done; run.done resolves the terminal.
+ *   3. glyphhSdk.harness({ url: runtimeUrl, token })
+ *        → opens the harness data plane (POST /run + frame stream, durable
+ *          reconnect inside the SDK: WS when reachable, frame-poll otherwise).
+ *   4. pod.start({ prompt, threadId: chat.id, mode }) → a run handle streaming
+ *        the DESKTOP FRAME VOCABULARY (delta/tool/progress/approval/ask/done/
+ *        error) — near-1:1 onto the same callbacks the local path drives.
+ *
+ * `threadId` rides every run: the pod records the transcript under the CLIENT's
+ * chat id (auth stays bound to the provisioned sessionId via the bearer).
  *
  * Every stage can honestly fail on web today (no runtime deployed for the org's
  * region, the provisioner disabled, the runtime unreachable from a browser).
@@ -31,32 +35,38 @@ import type { Source } from "./code-source-chip.js";
 
 // ── SDK handle mirrors (window.glyphhSdk = the raw @glyphh/sdk client) ─────────
 
-/** A run's streamed frame — the `rotor.stream/v1` wire contract (+ SDK lifecycle). */
-type WireEvent =
-  | { seq: number; kind: "open"; wire: string; run_id: string; trace_id: string; rotor: string; session?: string }
-  | { seq: number; kind: "step"; step_id: string; type: string; status: string; frames: string[]; tick: number; error?: string }
-  | { seq: number; kind: "answer"; text: string }
-  | { seq: number; kind: "interrupt"; step_id: string; awaiting: unknown }
-  | { seq: number; kind: "error"; code: string; detail: string; remediation: string }
-  | { seq: number; kind: "done"; status: string; terminal: string; outputs: unknown };
-type LifecycleEvent = { kind: "reconnecting"; attempt: number } | { kind: "reconnected"; from: number };
-type TurnEvent = WireEvent | LifecycleEvent;
+/** A harness frame as it rides `glyphh.harness/v1` (SDK contract/harness.ts —
+ *  itself the desktop's glyphh-agent frame vocabulary, enveloped). */
+type HarnessWireFrame = (
+  | { type: "delta"; delta: string }
+  | { type: "tool"; phase: "start" | "done"; name: string; thought?: string; title?: string; denied?: boolean; failed?: boolean; preview?: string }
+  | { type: "progress"; inTokens: number; outTokens: number }
+  | { type: "credits"; creditsMicro: number }
+  | { type: "approval"; id: string; kind: string; title: string; detail: string }
+  | { type: "ask"; id: string; questions: Array<{ question: string; options?: string[] }> }
+  | { type: "setup"; phase: string }
+  | { type: "done"; stopped: boolean }
+  | { type: "error"; error: string }
+) & { seq: number; runId: string; at: number };
 
-interface RunResult {
-  runId: string;
-  status: string;
-  terminal: string;
-  outputs: unknown;
-  error?: { code: string; detail: string; remediation: string };
+interface HarnessRunHandle {
+  readonly whenStarted: Promise<{ runId: string; sessionId: string; wire: string }>;
+  /** Terminal result — an `error` FRAME resolves (with `error` set); only a
+   *  transport-level failure (unreachable pod, wire mismatch) rejects. */
+  readonly done: Promise<{ runId: string; stopped: boolean; text: string; error?: string }>;
+  on(fn: (frame: HarnessWireFrame) => void): () => void;
+  answer(id: string, reply: { allow?: boolean; answers?: string[] }): Promise<void>;
+  stop(): Promise<void>;
 }
 
-interface SdkRun {
-  readonly events: AsyncIterable<TurnEvent>;
-  readonly done: Promise<RunResult>;
-}
-
-interface SdkSession {
-  turn(prompt: string, opts?: { inputs?: Record<string, unknown>; signal?: AbortSignal }): SdkRun;
+interface HarnessPod {
+  start(opts: {
+    prompt: string;
+    threadId?: string;
+    mode?: "chat" | "cowork" | "code";
+    model?: string;
+    signal?: AbortSignal;
+  }): HarnessRunHandle;
 }
 
 type SessionStatus = "provisioning" | "ready" | "error" | "stopped";
@@ -75,21 +85,12 @@ interface CreateSessionInput {
   newProject?: boolean;
 }
 
-interface OpenSessionArgs {
-  url?: string;
-  token?: () => Promise<string>;
-  rotor: unknown;
-  sessionId?: string;
-  model?: string;
-  run?: { maxReconnects?: number };
-}
-
 interface SdkHandle {
   sessions?: {
     create?: (input: CreateSessionInput) => Promise<ProvisionedSession>;
     get?: (id: string) => Promise<RuntimeSession>;
   };
-  session?: (opts: OpenSessionArgs) => SdkSession;
+  harness?: (opts: { url: string; token?: () => Promise<string>; run?: { maxReconnects?: number } }) => HarnessPod;
 }
 
 const sdk = (): SdkHandle | undefined =>
@@ -101,6 +102,10 @@ export interface RuntimeBinding { sessionId: string; url: string; token: string 
 export interface RemoteChat {
   id: string;
   source?: Source;
+  /** The session's SPACE + toolbelt (code.ts modeOf) — rides every run. */
+  mode?: "chat" | "cowork" | "code";
+  /** LEGACY pre-mode flag (code.ts) — folded in by modeFor, never written. */
+  chat?: boolean;
   /** Bound after a successful provision — reused for every later turn. */
   runtime?: RuntimeBinding;
   [k: string]: unknown;
@@ -120,7 +125,7 @@ export function isRemoteSource(source?: Source): boolean {
 /** A remote turn is only routed here on WEB, where the SDK handle is exposed and
  *  the local harness (window.glyphh.glyphhRun → main) does not exist. */
 export function canRunRemote(source?: Source): boolean {
-  return isRemoteSource(source) && !!sdk()?.session && !!sdk()?.sessions?.create;
+  return isRemoteSource(source) && !!sdk()?.harness && !!sdk()?.sessions?.create;
 }
 
 /** The honest typed failure — never thrown to the UI, always rendered as the
@@ -219,6 +224,12 @@ function bindSessionId(chat: RemoteChat, sessionId: string, save: () => void): v
   save();
 }
 
+/** The session's effective mode for the pod (mirror of code.ts modeOf: the
+ *  legacy chat flag folds in; default code). */
+function modeFor(chat: RemoteChat): "chat" | "cowork" | "code" {
+  return chat.mode ?? (chat.chat ? "chat" : "code");
+}
+
 /** The stream callbacks — mirror code.ts's CURRENT (glyphhRun) run event model so
  *  the thread renders identically whether a turn is local or remote:
  *    onStep   ≈ onGlyphhAgentTool  (a step/tool breadcrumb)
@@ -241,11 +252,57 @@ export type RemoteRunOutcome =
   | { ok: false; error: string; runtime?: RuntimeBinding }
   | Unavailable;
 
+/** Map one harness frame onto the UI callbacks. `delta` appends; `tool` leaves a
+ *  breadcrumb on start (and on a denied/failed finish); `approval`/`ask` have no
+ *  web UI yet, so they surface as honestly-labeled breadcrumbs and ride the
+ *  POD's timeout semantics (approval → denied after ~2min; ask → answered empty
+ *  after ~10min, the agent re-plans). progress/credits/setup: no UI mapping. */
+function dispatchFrame(
+  frame: HarnessWireFrame,
+  cb: RemoteRunCallbacks,
+  state: { text: string; error: string | null },
+): void {
+  switch (frame.type) {
+    case "delta":
+      state.text += frame.delta;
+      cb.onToken?.(frame.delta);
+      cb.onAnswer?.(state.text);
+      return;
+    case "tool":
+      if (frame.phase === "start") {
+        cb.onStep?.({ id: `${frame.name}#${frame.seq}`, type: frame.name, status: "" });
+      } else if (frame.denied || frame.failed) {
+        cb.onStep?.({ id: `${frame.name}#${frame.seq}`, type: frame.name, status: frame.denied ? "denied" : "failed", ...(frame.title ? { error: frame.title } : {}) });
+      }
+      return;
+    case "approval":
+      cb.onStep?.({
+        id: frame.id,
+        type: "approval",
+        status: `${frame.title} — no approval UI here yet; auto-denied by the runtime if unanswered`,
+      });
+      return;
+    case "ask":
+      cb.onStep?.({
+        id: frame.id,
+        type: "question",
+        status: `${frame.questions.map((q) => q.question).join(" · ")} — no answer UI here yet; the agent continues without one after the runtime's timeout`,
+      });
+      return;
+    case "error":
+      state.error = frame.error || "the runtime reported an error";
+      return;
+    default:
+      // progress / credits / setup / done — no UI mapping (done resolves run.done).
+      return;
+  }
+}
+
 /**
- * Run ONE remote turn end to end. Provisions/reuses the runtime, opens the data
- * plane, streams the turn through the callbacks, and resolves a typed outcome.
- * Never throws to the caller — every failure is a typed result the UI can render
- * as the honest not-connected / turn-error state.
+ * Run ONE remote turn end to end. Provisions/reuses the runtime, opens the
+ * harness data plane, streams the frames through the callbacks, and resolves a
+ * typed outcome. Never throws to the caller — every failure is a typed result
+ * the UI can render as the honest not-connected / turn-error state.
  */
 export async function runRemoteTurn(
   chat: RemoteChat,
@@ -264,16 +321,18 @@ export async function runRemoteTurn(
   const { runtime } = ensured;
 
   const handle = sdk();
-  let session: SdkSession;
+  let run: HarnessRunHandle;
   try {
-    if (!handle?.session) throw new Error("the SDK session transport is not available");
-    session = handle.session({
-      url: runtime.url,
-      token: async () => runtime.token,
-      rotor,
-      sessionId: runtime.sessionId,
+    if (!handle?.harness) throw new Error("the SDK harness transport is not available");
+    const pod = handle.harness({ url: runtime.url, token: async () => runtime.token });
+    // threadId = the CHAT's id on every run — the pod records the transcript
+    // under it (auth stays bound to the provisioned session via the bearer).
+    run = pod.start({
+      prompt,
+      threadId: chat.id,
+      mode: modeFor(chat),
       ...(opts.model ? { model: opts.model } : {}),
-      run: { maxReconnects: 1 },
+      ...(opts.signal ? { signal: opts.signal } : {}),
     });
   } catch (err) {
     const u = unavailable("open", err);
@@ -281,41 +340,35 @@ export async function runRemoteTurn(
     return u;
   }
 
-  let text = "";
-  let outcomeError: string | null = null;
+  const state = { text: "", error: null as string | null };
+  const off = run.on((frame) => {
+    if (opts.signal?.aborted) return;
+    dispatchFrame(frame, callbacks, state);
+  });
+
+  let stopped = false;
   try {
-    const run = session.turn(prompt, { signal: opts.signal });
-    for await (const ev of run.events) {
-      if (opts.signal?.aborted) break;
-      if (ev.kind === "step") {
-        callbacks.onStep?.({ id: ev.step_id, type: ev.type, status: ev.status, error: ev.error });
-      } else if (ev.kind === "answer") {
-        text += ev.text;
-        callbacks.onToken?.(ev.text);
-        callbacks.onAnswer?.(text);
-      } else if (ev.kind === "error") {
-        outcomeError = ev.detail || ev.code || "the runtime reported an error";
-      }
-      // open / interrupt / done / reconnecting / reconnected: no UI mapping here
-      // (done's terminal is read from run.done below).
-    }
     const result = await run.done;
-    if (result?.error && !outcomeError) outcomeError = result.error.detail || result.error.code;
+    stopped = result.stopped;
+    if (result.error && !state.error) state.error = result.error;
   } catch (err) {
+    off();
     if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime }; }
-    // A stream that never opened (unreachable runtime, CORS, no /run surface) is
-    // the honest not-connected state; anything mid-stream is a turn error.
-    if (!text) {
+    // A run that never streamed (unreachable pod, 401 bearer, 409 at-capacity,
+    // wire mismatch) is the honest not-connected state; mid-stream loss with
+    // text already on screen is a turn error.
+    if (!state.text) {
       const u = unavailable("stream", err);
       u.sessionId = runtime.sessionId;
       callbacks.onError?.(u.detail);
       return u;
     }
-    outcomeError = err instanceof Error ? err.message : String(err);
+    state.error = err instanceof Error ? err.message : String(err);
   }
+  off();
 
-  if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime }; }
-  if (outcomeError && !text) { callbacks.onError?.(outcomeError); return { ok: false, error: outcomeError, runtime }; }
-  callbacks.onDone?.(text);
-  return { ok: true, text, runtime, ...(outcomeError ? { error: outcomeError } : {}) };
+  if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime }; }
+  if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime }; }
+  callbacks.onDone?.(state.text);
+  return { ok: true, text: state.text, runtime, ...(state.error ? { error: state.error } : {}) };
 }
