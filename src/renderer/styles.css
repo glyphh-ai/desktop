@@ -3289,6 +3289,7 @@ body.account-locked #dl-btn-wrap {
 .dash-subtitle span { display: none; }
 body[data-rail-space="chat"] .dash-sub-chat { display: inline; }
 body[data-rail-space="cowork"] .dash-sub-cowork { display: inline; }
+body[data-rail-space="code"] .dash-sub-code { display: inline; }
 
 /* Work landing: the agent header's folder chips (sans git) above the
    composer's top-left. Hidden everywhere but the Work tab. */
