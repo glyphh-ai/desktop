@@ -28,7 +28,7 @@
 import { decideBootState, parseCallbackParams, shouldShowFirstRun, CALLBACK_PATH } from './glyphh-core.js';
 import {
   isAuthenticated, syncGating,
-  signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode,
+  signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode, approveDevice,
 } from './glyphh-web.js';
 import { mountLogin } from './web-login.js';
 
@@ -165,15 +165,25 @@ async function handleCallback(shownAt) {
  */
 async function showDevice(shownAt) {
   dismissSplash(shownAt);
-  const code = (new URLSearchParams(window.location.search).get('code') || '').toUpperCase();
-  const sdk = window.glyphhSdk;
+  const params = new URLSearchParams(window.location.search);
+  const code = (params.get('code') || '').toUpperCase();
 
-  // Verify the session for REAL — a cached user can outlive a dead session and
-  // drop the user on a confirm form that just 401s with no way to sign in.
-  let authed = false;
-  try { authed = !!(await sdk?.auth?.me?.()); } catch { authed = false; }
+  // A magic link aimed back at THIS page arrives as ?code=…&token=… — redeem the
+  // token first (decideBootState routes by path, so handleCallback never sees it),
+  // then strip it from the URL so a reload can't double-redeem.
+  const token = params.get('token') || '';
+  if (token) {
+    try { await verifyEmailLink(token); } catch { /* expired — the check below shows login */ }
+    params.delete('token');
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+  }
 
-  if (!authed) {
+  // Verify the session for REAL (me() via syncGating) — a cached user can outlive
+  // a dead session and drop the user on a confirm form that just 401s.
+  let user = null;
+  try { user = await syncGating(); } catch { user = null; }
+
+  if (!user) {
     mountLogin({
       googleClientId: (typeof window !== 'undefined' && window.__GLYPHH_GOOGLE_CLIENT_ID__) || null,
       origin: window.location.origin,
@@ -183,8 +193,9 @@ async function showDevice(shownAt) {
       lede: code
         ? `Sign in to approve the code ${code} from your terminal.`
         : 'Sign in to approve the device shown in your terminal.',
-      // After signing in, re-run this view (code still in the URL) so the user
-      // lands on the confirm step rather than the workspace.
+      // The magic link must come BACK HERE with the code, not to /auth/callback.
+      redirectUri: `${window.location.origin}${window.location.pathname}?code=${encodeURIComponent(code)}`,
+      // Google signs in right here in-page — re-enter this view for the confirm step.
       onAuthed: () => { void showDevice(shownAt); },
     });
     return;
@@ -210,7 +221,7 @@ async function showDevice(shownAt) {
     if (!value) { msg.textContent = 'Enter the code from your terminal.'; return; }
     btn.disabled = true; btn.textContent = 'Approving…'; msg.textContent = '';
     try {
-      await sdk.auth.approveDevice(value);
+      await approveDevice(value);
       step.innerHTML = '';
       const ok = document.createElement('h1'); ok.className = 'auth-shell-title'; ok.textContent = 'Device approved';
       const sub = document.createElement('p'); sub.className = 'auth-shell-lede';
