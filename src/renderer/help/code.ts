@@ -1806,7 +1806,12 @@ let gitChip: ReturnType<typeof createGitChip> | null = null;
 /** The source for the ACTIVE surface — the current session's stamped source,
  *  else the active space's pending pick (chat has none → cloud-new). */
 function activeSource(): Source {
-  const cur = current();
+  // On the LANDING the chips describe the NEXT session — the space's pending
+  // pick — never a resumed session's old stamp. (Switching spaces on Home
+  // binds currentId to the space's last session, whose stale cloud stamp was
+  // hijacking the whole chips row.)
+  const onHome = document.body.classList.contains("composer-on-home");
+  const cur = onHome ? null : current();
   if (cur?.source) return cur.source;
   const space = cur ? modeOf(cur) : railTab;
   if (space === "chat") return { ...DEFAULT_SOURCE };
