@@ -475,22 +475,29 @@ window.addEventListener("rail-space-changed", () => {
 
 export async function loadDashboard(): Promise<void> {
   startDashParticles();
-  // Paint the greeting immediately from cached account info if available; the
-  // server call fills in the numbers.
+
+  // The landing's STRUCTURE never waits on the server: composer adoption,
+  // starters, and the space columns paint first — a failed/slow data call only
+  // costs the greeting name, not the whole screen (which is exactly what
+  // happened on web when the data path threw).
+  // RETRY the adoption until the code section has actually built its composer —
+  // a straight call silently no-ops when Home paints first.
+  const adoptWhenReady = (tries = 0): void => {
+    const slot = document.getElementById("dash-composer-slot");
+    if (!slot) return;
+    if (document.querySelector(".code-composer")) { adoptComposer(slot); return; }
+    if (tries < 60) setTimeout(() => adoptWhenReady(tries + 1), 50);
+  };
+  adoptWhenReady();
+  renderStarters();
+  paintSpaceColumns();
+  void loadRuns();
+
   try {
     const data = (await window.glyphh.dashboardData?.()) as DashboardData | undefined;
-    if (!data) return;
-
-    $a("dash-greeting").textContent = greeting(data.name);
-
-    // the FULL agent footer moves into the Home slot while Home is up
-    adoptComposer(document.getElementById("dash-composer-slot"));
-
-    renderStarters();
-    paintSpaceColumns();
-    void loadRuns();
+    if (data) $a("dash-greeting").textContent = greeting(data.name);
   } catch (err) {
-    console.error("[dashboard] load failed", err);
+    console.error("[dashboard] data failed (landing already painted)", err);
   }
 }
 

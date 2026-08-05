@@ -23,14 +23,20 @@
       <!-- App notifications — hidden until an app posts one. -->
       <div id="dash-notifications" class="dash-notifications hidden"></div>
 
-      <!-- Work only: the coding agent's top-left header chips (folder picker +
-           add-folder — no git chip), sitting above the composer's top-left.
-           Painted + wired by code-workbench.ts alongside the header originals. -->
+      <!-- Work + Code: ONE left-justified row above the input —
+           <source> <folder> <git> <+>. The source chip relocates here while the
+           composer sits on Home (adoptComposer); folder/git/+ mirror the code
+           header originals, painted by code-workbench.ts. -->
       <div id="dash-wd-chips" class="dash-wd-chips">
+        <div id="dash-source-slot" class="dash-source-slot"></div>
         <button id="dash-wd-btn" class="code-wd-btn" title="Pick the working folder" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
           <span id="dash-wd-name">Pick a folder</span>
         </button>
+        <span class="code-wd-branch" id="dash-wd-branch-wrap" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>
+          <span id="dash-wd-branch"></span>
+        </span>
         <button id="dash-wd-add" class="code-icon-btn" title="Add folder" type="button">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
         </button>

@@ -3293,7 +3293,8 @@ body[data-rail-space="cowork"] .dash-sub-cowork { display: inline; }
 /* Work landing: the agent header's folder chips (sans git) above the
    composer's top-left. Hidden everywhere but the Work tab. */
 .dash-wd-chips { display: none; align-items: center; gap: 4px; margin: 0 0 6px; }
-body[data-rail-space="cowork"] .dash-wd-chips { display: flex; }
+body[data-rail-space="cowork"] .dash-wd-chips,
+body[data-rail-space="code"] .dash-wd-chips { display: flex; }
 
 /* ── Chat landing starters ─────────────────────────────────────────────
    Six characters, each a front door to a space. Chat only — Work and Code
@@ -14886,3 +14887,17 @@ body.code-dragging webview { pointer-events: none !important; }
 /* Two-col landing: bare columns — header + cards only, no wrapper chrome. */
 .dash-col { min-width: 0; }
 .dash-session-row .dash-session-when { flex: none; font-size: 11px; color: var(--text-3); }
+
+/* The SPACE pill exists ONLY on the landing (composer adopted onto Home). */
+.code-space-pill { display: none; }
+.composer-on-home .dash-composer-slot .code-space-pill { display: inline-flex; }
+
+/* Landing chips row: source chip first, then folder/git/+ — one row, left. */
+.dash-source-slot { display: contents; }
+/* While the composer sits on Home its own source slot is empty — the chip
+   moved up into the dash row; keep the empty slot from reserving space. */
+.composer-on-home .code-source-slot { display: none; }
+
+/* Cloud source: no machine folder to pick, nothing to attach from — the
+   folder + add controls sleep (visible, explained by title, not clickable). */
+.chip-disabled { opacity: 0.45; pointer-events: none; }

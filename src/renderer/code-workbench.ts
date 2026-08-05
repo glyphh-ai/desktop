@@ -271,6 +271,8 @@ async function init(): Promise<void> {
   const dashWdBtn = document.getElementById("dash-wd-btn") as HTMLButtonElement | null;
   const dashWdName = document.getElementById("dash-wd-name");
   const dashWdAdd = document.getElementById("dash-wd-add") as HTMLButtonElement | null;
+  const dashBranchWrap = document.getElementById("dash-wd-branch-wrap");
+  const dashBranchEl = document.getElementById("dash-wd-branch");
 
   const dropdown = document.createElement("div");
   dropdown.className = "yo-workdir-menu";
@@ -280,24 +282,25 @@ async function init(): Promise<void> {
   const isDropdownOpen = () => dropdown.classList.contains("open");
 
   async function paintWorkdirBar(dir: string): Promise<void> {
-    if (workdirName) workdirName.textContent = dir ? basename(dir) : "Pick a folder";
-    if (workdirBtn) workdirBtn.title = dir ? `working directory: ${dir}` : "Pick a folder";
-    if (dashWdName) dashWdName.textContent = dir ? basename(dir) : "Pick a folder";
-    if (dashWdBtn) dashWdBtn.title = dir ? `working directory: ${dir}` : "Pick a folder";
-    if (!dir) {
-      if (branchWrap) (branchWrap as HTMLElement).style.display = "none";
-      return;
-    }
+    // No explicit pick = the session's default root (the user's home dir) —
+    // never a "Pick a folder" nag; picking is optional, not a gate.
+    if (workdirName) workdirName.textContent = dir ? basename(dir) : "Home";
+    if (workdirBtn) workdirBtn.title = dir ? `working directory: ${dir}` : "working directory: your home folder";
+    if (dashWdName) dashWdName.textContent = dir ? basename(dir) : "Home";
+    if (dashWdBtn) dashWdBtn.title = dir ? `working directory: ${dir}` : "working directory: your home folder";
+    const setBranch = (branch: string | null): void => {
+      for (const [wrap, el2] of [[branchWrap, branchEl], [dashBranchWrap, dashBranchEl]] as const) {
+        if (!wrap || !el2) continue;
+        if (branch) { el2.textContent = branch; (wrap as HTMLElement).style.display = ""; }
+        else (wrap as HTMLElement).style.display = "none";
+      }
+    };
+    if (!dir) { setBranch(null); return; }
     try {
       const info = await window.wb.gitInfo(dir);
-      if (info.isRepo && info.branch && branchWrap && branchEl) {
-        branchEl.textContent = info.branch;
-        (branchWrap as HTMLElement).style.display = "";
-      } else if (branchWrap) {
-        (branchWrap as HTMLElement).style.display = "none";
-      }
+      setBranch(info.isRepo && info.branch ? info.branch : null);
     } catch {
-      if (branchWrap) (branchWrap as HTMLElement).style.display = "none";
+      setBranch(null);
     }
   }
 
@@ -1036,6 +1039,34 @@ async function init(): Promise<void> {
    */
   function openSectionInWorkbench(section: string): void {
     const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
+    if (isWebTarget()) {
+      // WEB: Echo is a DESKTOP surface — its WebGL wall + webview cards are
+      // both dead in a browser, which is why the chat/work/code landing came
+      // up as the wall instead of the ported screens. Pages render directly
+      // as a full-width section slot; agent/code host the singleton agent.
+      if (section === "agent" || section === "code" || section === "workspace") {
+        let changed = false;
+        for (let i = rails.length - 1; i >= 0; i--) {
+          const kept = rails[i].slots.filter((sl) => sl.view !== "section");
+          if (kept.length !== rails[i].slots.length) { rails[i].slots = kept; changed = true; }
+          if (!rails[i].slots.length) rails.splice(i, 1);
+        }
+        if (section !== "workspace" && !codingHosted()) {
+          rails.unshift({ id: nextRailId++, slots: [{ id: nextSlotId++, view: "coding" }] });
+          changed = true;
+        }
+        if (changed) { renderRails(); saveLayout(); }
+        return;
+      }
+      // A page section replaces the workspace with itself, full width (the
+      // 2.5.0 shell's stated behavior) — and runs its loader.
+      rails.length = 0;
+      rails.push({ id: nextRailId++, slots: [{ id: nextSlotId++, view: "section", section }] });
+      renderRails();
+      saveLayout();
+      loadSection?.(section);
+      return;
+    }
     if (section === "agent") {
       // The Glyphh mark is the UNIVERSAL CHAT ICON: the current layout
       // clears (memory saved) and the chat loads alone.

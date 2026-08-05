@@ -1820,6 +1820,7 @@ function pickSource(next: Source): void {
   const space = cur ? modeOf(cur) : railTab;
   if (space === "chat") return; // chat carries no source
   sourceBySpace[space] = next;
+  paintSourceDependents();
   void window.glyphh.setPreference?.(SOURCE_PREF[space], next);
   if (cur && cur.messages.length === 0) { cur.source = next; void saveStore(); }
   sourceChip?.setSource(next);
@@ -1829,7 +1830,11 @@ function pickSource(next: Source): void {
  *  driven by the active space via CSS (data-sessionSpace) — hidden in chat. */
 function mountSourceChip(): void {
   if (sourceChip) { sourceChip.setSource(activeSource()); return; }
-  const host = el("code-source-slot");
+  // The chip mounts AFTER prefs restore (async) — land it in whichever slot is
+  // live right now: the landing's chips row when the composer sits on Home,
+  // else its place above the agent composer.
+  const host = (document.body.classList.contains("composer-on-home") && document.getElementById("dash-source-slot"))
+    || el("code-source-slot");
   if (!host) return;
   sourceChip = createSourceChip({
     getSource: activeSource,
@@ -1880,30 +1885,29 @@ function paintComposerGate(): void {
 }
 
 async function checkWorkdirGate(): Promise<void> {
-  const cur = current();
-  const eff = cur ? modeOf(cur) : railTab;
-  if (eff === "chat") {
-    // a CHAT session (or a pending chat-space new) runs no tools — it needs
-    // no folder, so it never gates
-    workdirReady = true;
-    paintComposerGate();
-    return;
-  }
-  try {
-    workdirReady = !!(await wb()?.getCwdExplicit?.());
-  } catch { workdirReady = true; /* bridge missing — never brick the composer */ }
+  // The folder GATE is gone (2026-08-05): a session without an explicit pick
+  // runs from the default root — the user's home dir on a machine, the
+  // project root in the cloud. The composer never blocks on a folder.
+  workdirReady = true;
   paintComposerGate();
+  paintSourceDependents();
 }
 
 function initWorkdirGate(): void {
   void checkWorkdirGate();
-  wb()?.onCwdChanged?.(() => { void checkWorkdirGate(); });
-  // A click on the sleeping composer IS the ask — pop the picker (cancel
-  // keeps the gate honest).
-  document.querySelector(".code-input-wrap")?.addEventListener("click", () => {
-    if (workdirReady) return;
-    void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
-  });
+}
+
+/** Folder + add-files controls follow the SOURCE: a cloud workspace has no
+ *  machine folder to pick and nothing local to attach — they sleep (until the
+ *  R2 project root exists to browse). Local keeps them live. */
+function paintSourceDependents(): void {
+  const cloud = activeSource().kind !== "local";
+  for (const id of ["dash-wd-btn", "dash-wd-add", "code-workdir-btn", "code-workdir-add", "code-plus-chip"]) {
+    const el2 = document.getElementById(id);
+    if (!el2) continue;
+    el2.classList.toggle("chip-disabled", cloud);
+    if (cloud) el2.setAttribute("title", "Runs in the cloud — folder + attachments come from the project workspace");
+  }
 }
 
 // ── Composer attachments ─────────────────────────────────────────────────
@@ -3482,7 +3486,28 @@ export function initCode(): void {
     };
     const cw = coerce(sw); if (cw) sourceBySpace.cowork = cw;
     const cc = coerce(sc); if (cc) sourceBySpace.code = cc;
+    // No stored pick → LOCAL machine when one exists (the desktop itself, or
+    // the web's attached machine), cloud only as the fallback.
+    if (!cw || !cc) {
+      void (async () => {
+        let local: Source | null = null;
+        const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__ || document.documentElement.classList.contains("glyphh-web");
+        if (!onWeb) local = { kind: "local", path: "" };
+        else {
+          try {
+            const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean }> } } }).glyphhSdk?.attach?.status?.();
+            if (st?.attached) local = { kind: "local", path: "" };
+          } catch { /* stays cloud */ }
+        }
+        if (!local) return;
+        if (!cw) sourceBySpace.cowork = { ...local };
+        if (!cc) sourceBySpace.code = { ...local };
+        sourceChip?.setSource(activeSource());
+        paintSourceDependents();
+      })();
+    }
     mountSourceChip();
+    paintSourceDependents();
   });
   void Promise.all([
     window.glyphh.getPreference?.("lastSessionChat", ""),
@@ -3788,12 +3813,19 @@ let composerHome: { parent: HTMLElement; next: Node | null } | null = null;
 export function adoptComposer(host: HTMLElement | null): void {
   const comp = document.querySelector<HTMLElement>(".code-composer");
   if (!comp) return;
+  const chipEl = sourceChip?.el;
   if (host) {
     if (!composerHome && comp.parentElement) composerHome = { parent: comp.parentElement, next: comp.nextSibling };
     if (comp.parentElement !== host) host.appendChild(comp);
+    // The source chip leads the landing's chips row ([source][folder][git][+])
+    // rather than sitting alone above the input.
+    const dashSlot = document.getElementById("dash-source-slot");
+    if (chipEl && dashSlot && chipEl.parentElement !== dashSlot) dashSlot.appendChild(chipEl);
     document.body.classList.add("composer-on-home");
   } else {
     if (composerHome && comp.parentElement !== composerHome.parent) composerHome.parent.insertBefore(comp, composerHome.next);
+    const homeSlot = el("code-source-slot");
+    if (chipEl && homeSlot && chipEl.parentElement !== homeSlot) homeSlot.appendChild(chipEl);
     document.body.classList.remove("composer-on-home");
   }
   cwPaint?.();   // the Chat/Co-work toggle exists only on the Home composer
