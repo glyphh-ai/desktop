@@ -12699,6 +12699,63 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 }
 .drop-info-btn:hover { color: var(--text); border-color: var(--text-3); }
 
+/* ── Workspace-source chip (RuntimeLocationChip port) ─────────────────────
+   Sits above the composer on Work + Code; a drop-up picks cloud/local source.
+   Hidden in Chat — that surface carries no source. */
+.code-source-slot { padding: 0 4px; margin-bottom: 6px; }
+body[data-session-space="chat"] .code-source-slot { display: none; }
+.cl-runtime-chip-wrap { position: relative; display: inline-flex; }
+.cl-runtime-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--border); background: var(--surface-2, var(--hover));
+  color: var(--text-2); font-size: 12px; padding: 5px 10px; border-radius: 999px;
+  cursor: pointer; max-width: 100%; min-width: 0;
+}
+.cl-runtime-chip:hover { border-color: var(--border-2); color: var(--text); }
+.cl-runtime-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cl-runtime-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: var(--text-faint);
+}
+.cl-runtime-dot[data-live] { background: var(--accent); box-shadow: 0 0 5px rgba(140, 59, 242, 0.5); }
+.cl-runtime-chip .ws-chev { flex-shrink: 0; opacity: 0.7; }
+
+/* The drop-up opens UP from the chip (matches code-drop-up mechanics). */
+.ws-source-drop {
+  bottom: calc(100% + 8px); top: auto;
+  width: 300px; max-width: 84vw;
+}
+.ws-sec-label {
+  font-size: 10.5px; font-weight: 600; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 8px 10px 3px;
+}
+.ws-drill .ws-chev { opacity: 0.6; }
+.ws-source-drop .ws-main { color: inherit; }
+.ws-install { opacity: 0.95; }
+.ws-back-head { gap: 6px; justify-content: flex-start; }
+.ws-back {
+  border: none; background: none; color: var(--text-2); cursor: pointer;
+  font-size: 17px; line-height: 1; padding: 0 4px; border-radius: 5px;
+}
+.ws-back:hover { color: var(--text); background: var(--hover); }
+.code-repo-drop-list { max-height: 260px; overflow-y: auto; }
+.ws-fs-list { max-height: 220px; }
+.ws-path {
+  font-size: 11px; color: var(--text-3); padding: 4px 10px 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ws-fs-row { gap: 9px; }
+.ws-fs-up { color: var(--text-3); }
+.ws-gitdot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0;
+}
+.ws-use-folder { width: calc(100% - 20px); margin: 8px 10px 4px; }
+.ws-note { padding: 10px; }
+.ws-note-title { font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.ws-note-body { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
+.ws-source-drop .drop-empty { font-size: 12px; color: var(--text-3); padding: 8px 10px; }
+
 /* Permission-modes explainer — the one dialog that runs wider than the
    standard 420px confirm box: five modes with real paragraphs need room. */
 .mode-info-box { width: min(560px, 90vw) !important; text-align: left !important; }

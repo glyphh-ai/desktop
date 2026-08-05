@@ -18,6 +18,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
+import { createSourceChip, type Source } from "./code-source-chip.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -36,6 +37,11 @@ interface CodeChat {
    *  Chat→co-work is a safe upgrade anytime (a chat history carries no tool
    *  transcripts); the reverse only before the first turn. */
   mode?: "chat" | "cowork" | "code";
+  /** The workspace SOURCE (Work/Code only): where this session RUNS + what it
+   *  works on — cloud-new (empty cloud project), cloud-repo (a GitHub clone),
+   *  or local (a folder on the machine). Stamped from the source chip when the
+   *  session is born; threaded into provisioning (glyphhRun). */
+  source?: Source;
 }
 
 /** The session's effective mode (legacy chat flag folds in; default code). */
@@ -812,6 +818,12 @@ function newChat(): void {
   const mode: CodeChat["mode"] = railTab;
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
+  // Stamp the space's pending source (Work/Code) — a local source seeds the
+  // session's own workdir so the run targets that folder.
+  if (mode !== "chat") {
+    c.source = sourceBySpace[mode];
+    if (c.source.kind === "local" && c.source.path && !c.workdir) c.workdir = c.source.path;
+  }
   chats.unshift(c);
   currentId = c.id;
   lastBySpace[spaceOf(c)] = c.id;
@@ -1295,6 +1307,52 @@ const SPACE_PREF: Record<"chat" | "cowork" | "code", string> = { chat: "lastSess
 /** Repaints the Chat/Work toggle — set by initComposerControls, called on
  *  session switches so the control always shows the CURRENT session's mode. */
 let cwPaint: (() => void) | null = null;
+
+// ── Workspace SOURCE (the location chip on Work + Code) ───────────────────
+// Where the next session runs + what it works on. Persisted PER SPACE (a
+// code session defaults to a folder/repo; a work session to a cloud project),
+// stamped onto the record the first send creates. Chat never carries a source.
+const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
+const sourceBySpace: Record<"cowork" | "code", Source> = { cowork: { ...DEFAULT_SOURCE }, code: { ...DEFAULT_SOURCE } };
+const SOURCE_PREF: Record<"cowork" | "code", string> = { cowork: "workspaceSourceCowork", code: "workspaceSourceCode" };
+let sourceChip: ReturnType<typeof createSourceChip> | null = null;
+
+/** The source for the ACTIVE surface — the current session's stamped source,
+ *  else the active space's pending pick (chat has none → cloud-new). */
+function activeSource(): Source {
+  const cur = current();
+  if (cur?.source) return cur.source;
+  const space = cur ? modeOf(cur) : railTab;
+  if (space === "chat") return { ...DEFAULT_SOURCE };
+  return sourceBySpace[space];
+}
+
+/** A source pick from the chip: stamp the CURRENT session if one exists (only
+ *  before its first send — after that the runtime is bound), else remember it
+ *  as the active space's pending pick. Persisted either way. */
+function pickSource(next: Source): void {
+  const cur = current();
+  const space = cur ? modeOf(cur) : railTab;
+  if (space === "chat") return; // chat carries no source
+  sourceBySpace[space] = next;
+  void window.glyphh.setPreference?.(SOURCE_PREF[space], next);
+  if (cur && cur.messages.length === 0) { cur.source = next; void saveStore(); }
+  sourceChip?.setSource(next);
+}
+
+/** Mount the source chip above the composer (once). Its own visibility is
+ *  driven by the active space via CSS (data-sessionSpace) — hidden in chat. */
+function mountSourceChip(): void {
+  if (sourceChip) { sourceChip.setSource(activeSource()); return; }
+  const host = el("code-source-slot");
+  if (!host) return;
+  sourceChip = createSourceChip({
+    getSource: activeSource,
+    onPick: pickSource,
+    getSessionId: () => current()?.id ?? null,
+  });
+  host.appendChild(sourceChip.el);
+}
 
 /** The composer's resting prompt, in the voice of the ACTIVE space. */
 function readyPlaceholder(): string {
@@ -1864,8 +1922,13 @@ function send(): void {
   // Main assembles the prompt from the store — the save must land first.
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
+  // The workspace SOURCE rides the run: a LOCAL source targets its folder (also
+  // the workdir); a CLOUD source (new project / repo) tells main to provision a
+  // remote runtime. Chat carries no source. main reads what it supports and
+  // ignores the rest (older builds just run local, as before).
+  const src = modeOf(c) === "chat" ? undefined : (c.source ?? sourceBySpace[modeOf(c) as "cowork" | "code"]);
   const launch = (retried: boolean): Promise<void> =>
-    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c) })
+    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), ...(src ? { source: src } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -2768,6 +2831,9 @@ export function initCode(): void {
     document.body.dataset.sessionSpace = eff;
     // the Home landing hides the cowork content in the CHAT space
     document.body.classList.toggle("chat-only", railTab === "chat");
+    // the source chip reflects the active surface (hidden in chat via CSS).
+    sourceChip?.setSource(activeSource());
+    sourceChip?.setSessionId(cur?.id ?? null);
   };
   cwPaint = paintCw;
   // ── The rail's SPACE tabs: Chat | Code — the list + "+ New session" scope
@@ -2817,6 +2883,24 @@ export function initCode(): void {
     renderHistory();
     paintCw();
     void checkWorkdirGate();
+  });
+  // Restore the per-space workspace source picks (Work/Code chip), then mount
+  // the chip above the composer.
+  void Promise.all([
+    window.glyphh.getPreference?.(SOURCE_PREF.cowork, null),
+    window.glyphh.getPreference?.(SOURCE_PREF.code, null),
+  ]).then(([sw, sc]) => {
+    const coerce = (v: unknown): Source | null => {
+      if (!v || typeof v !== "object") return null;
+      const s = v as Source;
+      if (s.kind === "cloud-repo" && s.repo) return { kind: "cloud-repo", repo: String(s.repo) };
+      if (s.kind === "local" && s.path) return { kind: "local", path: String(s.path), ...(s.machineId ? { machineId: s.machineId } : {}) };
+      if (s.kind === "cloud-new") return { kind: "cloud-new" };
+      return null;
+    };
+    const cw = coerce(sw); if (cw) sourceBySpace.cowork = cw;
+    const cc = coerce(sc); if (cc) sourceBySpace.code = cc;
+    mountSourceChip();
   });
   void Promise.all([
     window.glyphh.getPreference?.("lastSessionChat", ""),
