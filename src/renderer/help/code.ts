@@ -18,7 +18,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { createSourceChip, type Source, createGitChip } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser } from "./code-source-chip.js";
 import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
 import { runHeroFlow } from "./dashboard.js";
 import { SPACE_LABEL } from "./space-meta.js";
@@ -1904,6 +1904,7 @@ async function checkWorkdirGate(): Promise<void> {
 
 function initWorkdirGate(): void {
   void checkWorkdirGate();
+  initWebFolderChips();
 }
 
 /** Folder + add-files controls follow the SOURCE: a cloud workspace has no
@@ -1926,6 +1927,35 @@ function paintSourceDependents(): void {
   const mirror = document.getElementById("dash-wd-branch-wrap");
   if (mirror && cloud) (mirror as HTMLElement).style.display = "none";
   gitChip?.refresh();
+  // WEB: the folder chip shows the SESSION source's folder (the machine's cwd
+  // concept doesn't reach a browser) — Home until a pick lands.
+  if (onWebTarget()) {
+    const src = activeSource();
+    const name = document.getElementById("dash-wd-name");
+    if (name && src.kind === "local") name.textContent = src.path ? (src.path.split("/").filter(Boolean).pop() || src.path) : "Home";
+  }
+}
+
+/** Web target check (the bridge stamps the html class; the global came later). */
+function onWebTarget(): boolean {
+  return !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__
+    || document.documentElement.classList.contains("glyphh-web");
+}
+
+/** WEB plumbing for the landing's folder + new-folder chips: both open the
+ *  MACHINE folder browser over the attach relay (fs.list / fs.mkdir) — the
+ *  native OS picker they trigger on desktop cannot exist in a browser. The
+ *  pick stamps the SOURCE (session-scoped), never the machine's own cwd. */
+function initWebFolderChips(): void {
+  if (!onWebTarget()) return;
+  for (const id of ["dash-wd-btn", "dash-wd-add"]) {
+    const chip = document.getElementById(id);
+    chip?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();   // the workbench's native-picker handler must not run
+      openMachineFolderBrowser(chip, { getSource: activeSource, onPick: pickSource });
+    }, true);
+  }
 }
 
 // ── Composer attachments ─────────────────────────────────────────────────
@@ -3513,8 +3543,7 @@ export function initCode(): void {
     if (!cwPinned || !ccPinned) {
       void (async () => {
         let local: Source | null = null;
-        const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__ || document.documentElement.classList.contains("glyphh-web");
-        if (!onWeb) local = { kind: "local", path: "" };
+        if (!onWebTarget()) local = { kind: "local", path: "" };
         else {
           try {
             const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean }> } } }).glyphhSdk?.attach?.status?.();

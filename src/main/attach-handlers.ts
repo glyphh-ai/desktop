@@ -15,7 +15,7 @@
 
 import { BrowserWindow } from "electron";
 import { homedir } from "node:os";
-import { readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
 import { runLoopBySlug, runSkillBySlug, runTaskNow } from "./agent-scheduler.js";
@@ -52,6 +52,20 @@ export function installAttachHandlers(): void {
       throw new Error(`could not list ${path}: ${(err as Error).message}`);
     }
     return { path, parent: path === home ? null : dirname(path), entries };
+  });
+
+  // ── fs.mkdir: the web's "+ new folder" — create ONE directory under home
+  // (no recursive trees, no dotfiles) and hand back the fresh listing entry. ──
+  registerRelayHandler("fs.mkdir", async (params) => {
+    const home = homedir();
+    const parent = str(params, "path") || home;
+    const name = str(params, "name").trim();
+    if (!name || name.startsWith(".") || /[\/\\:]/.test(name)) throw new Error("fs.mkdir needs a plain folder name");
+    if (!parent.startsWith(home)) throw new Error("fs.mkdir is capped at your home folder");
+    const full = join(parent, name);
+    if (existsSync(full)) throw new Error(`"${name}" already exists here`);
+    mkdirSync(full);
+    return { name, path: full, dir: true };
   });
 
   // ── machine reach: the SDK's shared layer (@glyphh/sdk/machine) ─────────

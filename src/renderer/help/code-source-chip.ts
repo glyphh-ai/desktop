@@ -44,7 +44,7 @@ interface FsListing { path: string; parent: string | null; root?: string; entrie
 interface SdkHandle {
   sessions?: { list?: () => Promise<unknown[]> };
   git?: { status?: () => Promise<GitConnection>; repos?: () => Promise<Repo[]>; connect?: () => Promise<GitConnectLink> };
-  attach?: { status?: () => Promise<AttachStatus>; fsList?: (path?: string) => Promise<FsListing> };
+  attach?: { status?: () => Promise<AttachStatus>; fsList?: (path?: string) => Promise<FsListing>; dispatch?: (method: string, params?: Record<string, unknown>) => Promise<unknown> };
 }
 interface WbHandle {
   listDir?: (dir: string) => Promise<Array<{ name: string; isDir: boolean }>>;
@@ -72,10 +72,9 @@ function shortId(id?: string | null): string { return id ? String(id).replace(/^
  *  local → `Desktop · <folder>`. */
 export function sourceLabel(source: Source, sessionId?: string | null, machineName?: string): string {
   if (source.kind === "local") {
-    // The MACHINE'S NAME, not a generic "Desktop" — cloud labels are reserved
-    // for remote runs. No explicit folder → the default root (Home).
-    const who = machineName || (isWeb() ? "Desktop" : "This machine");
-    return `${who} · ${source.path ? lastSeg(source.path) : "Home"}`;
+    // The MACHINE'S NAME only — the folder chip beside it owns the folder.
+    // Cloud labels are reserved for remote runs.
+    return machineName || (isWeb() ? "Desktop" : "This machine");
   }
   const folder = source.kind === "cloud-repo" && source.repo ? lastSeg(source.repo) : "workspace";
   const id = shortId(sessionId);
@@ -220,6 +219,33 @@ export function createGitChip(opts: {
 
   paint();
   return { el: wrap, refresh: paint };
+}
+
+/** Open the MACHINE FOLDER BROWSER as a drop anchored to `anchor` — the folder
+ *  chip's web plumbing (desktop keeps the native OS picker). Resolves the
+ *  source's machine (machineId) so multi-desktop picks land on the right box. */
+export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
+  getSource: () => Source;
+  onPick: (s: Source) => void;
+}): void {
+  const wrap = anchor.parentElement || anchor;
+  wrap.querySelector(".ws-source-drop")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "code-drop-up ws-source-drop";
+  (wrap as HTMLElement).style.position ||= "relative";
+  wrap.appendChild(menu);
+  const close = (): void => menu.remove();
+  const pick = (next: Source): void => { opts.onPick(next); close(); };
+  void listMachines().then((machines) => {
+    const s = opts.getSource();
+    const mid = s.kind === "local" ? s.machineId : undefined;
+    const machine = (mid && machines.find((m) => m.id === mid)) || machines[0] || null;
+    renderLocal(menu, opts, machine, pick, close);
+  });
+  const away = (e: MouseEvent): void => {
+    if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
+  };
+  document.addEventListener("mousedown", away, true);
 }
 
 // ── Root view: CLOUD + LOCAL sections ────────────────────────────────────
@@ -423,6 +449,25 @@ function renderLocal(
       list.appendChild(row);
     }
     if (!dirs.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No sub-folders here.</div>`);
+    // "+ new folder": inline name input → fs.mkdir on the machine → walk into it.
+    const nf = document.createElement("div");
+    nf.className = "ws-fs-newfolder";
+    nf.innerHTML = `<input class="loop-drop-search repo-drop-search" placeholder="New folder name…" spellcheck="false" autocomplete="off"><button type="button" class="action-btn">Create</button><span class="ws-fs-newfolder-err"></span>`;
+    const nfInput = nf.querySelector("input") as HTMLInputElement;
+    const nfBtn = nf.querySelector("button") as HTMLButtonElement;
+    const nfErr = nf.querySelector(".ws-fs-newfolder-err") as HTMLElement;
+    nfInput.addEventListener("mousedown", (ev) => ev.stopPropagation());
+    const create = (): void => {
+      const name = nfInput.value.trim();
+      if (!name) return;
+      nfBtn.disabled = true; nfErr.textContent = "";
+      void (sdk()?.attach?.dispatch?.("fs.mkdir", { path: listing.path, name }) ?? Promise.reject(new Error("not available")))
+        .then((made) => walk((made as { path: string }).path))
+        .catch((err) => { nfBtn.disabled = false; nfErr.textContent = (err as Error).message || "could not create"; });
+    };
+    nfBtn.addEventListener("click", create);
+    nfInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") create(); });
+    body.appendChild(nf);
     const use = document.createElement("button");
     use.type = "button";
     use.className = "action-btn primary ws-use-folder";

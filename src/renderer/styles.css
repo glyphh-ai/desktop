@@ -14925,3 +14925,8 @@ body.code-dragging webview { pointer-events: none !important; }
 .glyphh-web #code-workdir-add,
 .glyphh-web #code-workdir-branch-wrap,
 .glyphh-web #code-plus-wrap { display: none !important; }
+
+/* Machine folder browser: the "+ new folder" row (input + Create + error). */
+.ws-fs-newfolder { display: flex; align-items: center; gap: 6px; padding: 2px 8px 4px; }
+.ws-fs-newfolder .loop-drop-search { flex: 1; margin: 0; }
+.ws-fs-newfolder-err { font-size: 11px; color: var(--danger, #e5484d); }
