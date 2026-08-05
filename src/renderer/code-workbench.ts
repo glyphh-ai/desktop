@@ -532,7 +532,11 @@ async function init(): Promise<void> {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
         } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
           slots.push({ id: nextSlotId++, view: "section", section: v.section });
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "coding" || v === "echo" || v === "monaco") {
+        } else if (v === "coding") {
+          // NEVER restore an agent slot — the agent opens on demand; a stale one
+          // saved by the old force-place would otherwise re-open every load.
+          continue;
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco") {
           slots.push(makeSlot(v));
         }
       }
@@ -796,12 +800,9 @@ async function init(): Promise<void> {
       rails[i].slots = rails[i].slots.filter((s) => s.view !== view);
       if (rails[i].slots.length === 0) rails.splice(i, 1);
     }
-    // Leaving Echo (it hosted the agent): the agent needs a home again —
-    // same restore closeSlot does for the × path.
-    if (view === "echo" && !codingHosted()) {
-      placeSlot(makeSlot("coding"));   // renders + saves
-      return;
-    }
+    // Leaving Echo does NOT spawn an agent session — a coding slot appears only
+    // when the user actually opens the agent (the old force-place persisted into
+    // the saved layout and re-opened on every load, an unclearable phantom).
     renderRails();
     saveLayout();
   }
@@ -834,11 +835,8 @@ async function init(): Promise<void> {
         const wasEcho = r.slots[idx].view === "echo";
         r.slots.splice(idx, 1);
         if (r.slots.length === 0) rails.splice(i, 1);
-        // Leaving Echo: the agent needs a home again.
-        if (wasEcho && !codingHosted()) {
-          placeSlot(makeSlot("coding"));   // renders + saves
-          return;
-        }
+        // Leaving Echo does NOT spawn an agent session (see closeAllOfView).
+        void wasEcho;
         renderRails();
         saveLayout();
         // Closing an internal app panel (a section) goes back to the
