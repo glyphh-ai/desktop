@@ -14949,3 +14949,9 @@ body.code-dragging webview { pointer-events: none !important; }
    inline (brand for household names, deterministic hue otherwise). */
 .icon-monogram { display: flex; align-items: center; justify-content: center;
   width: 100%; height: 100%; border-radius: inherit; font-weight: 650; }
+
+/* BOOT VEIL: nothing between the splash and the NEW CHAT screen. The wall
+   mounts before the landing card does, and that bare-wall paint was the
+   "echo command page flash" on every load — the workbench stays invisible
+   until the landing is hosted (home.ts lifts the class). */
+.wb-booting .code-workbench { visibility: hidden !important; }

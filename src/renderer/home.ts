@@ -106,6 +106,18 @@ void (async () => {
   // Every restart lands on the HOME page — no matter what was open before.
   // (?section / ?solo panels above are system windows, not normal boots.)
   gotoSection("dashboard");
+  // Lift the boot veil only once the LANDING is actually hosted — the wall
+  // mounts first and its bare paint was the flash between splash and Home.
+  let veilTries = 0;
+  const lift = (): void => {
+    const hosted = document.querySelector('.help-section[data-section="dashboard"].wb-hosted, .help-section[data-section="dashboard"].active');
+    if (hosted || veilTries++ > 120) {
+      requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("wb-booting")));
+      return;
+    }
+    requestAnimationFrame(lift);
+  };
+  lift();
 })();
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────
