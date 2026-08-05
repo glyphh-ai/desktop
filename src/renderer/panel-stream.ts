@@ -96,20 +96,20 @@ const RPC_TIMEOUT_MS = 15_000;
 export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHandle {
   const root = document.createElement("div");
   root.className = "streamed-panel";
-  root.style.cssText = "position:relative;width:100%;height:100%;background:#000;overflow:hidden;display:flex;flex-direction:column;";
+  root.style.cssText = "position:relative;width:100%;height:100%;background:var(--bg-2, transparent);overflow:hidden;display:flex;flex-direction:column;";
 
   // The video surfaces. Canvas is always present (JPEG floor); the <video> is
   // shown only once WebRTC media flows, layered over the canvas.
   const canvas = document.createElement("canvas");
   canvas.width = 1280; canvas.height = 800; canvas.tabIndex = 0;
-  canvas.style.cssText = "flex:1;min-height:0;width:100%;height:100%;object-fit:contain;background:#000;outline:none;cursor:default;";
+  canvas.style.cssText = "flex:1;min-height:0;width:100%;height:100%;object-fit:contain;background:transparent;outline:none;cursor:default;";
   const video = document.createElement("video");
   video.autoplay = true; video.muted = true; (video as HTMLVideoElement).playsInline = true;
-  video.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none;pointer-events:none;";
+  video.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:transparent;display:none;pointer-events:none;";
 
   const overlay = document.createElement("div");
   overlay.className = "streamed-panel-overlay";
-  overlay.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#ccc;font:13px system-ui,sans-serif;text-align:center;padding:24px;z-index:3;";
+  overlay.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--text-2, #ccc);font:13px system-ui,sans-serif;text-align:center;padding:24px;z-index:3;";
 
   root.append(canvas, video, overlay);
 
