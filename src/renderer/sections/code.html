@@ -6,7 +6,13 @@
             <!-- Center — the agent -->
             <section class="code-agent">
               <div class="code-agent-head">
-                <span id="code-session-title" title="Current session">New session</span>
+                <!-- In-thread session head (SessionHeader port): ‹ + locus icon
+                     + name — ‹/name opens the space's list view. -->
+                <button id="code-session-back" class="session-head-back" title="All sessions" type="button">
+                  <svg class="session-head-chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  <span id="code-session-locus" class="session-head-locus" title="Where this session runs"></span>
+                  <span id="code-session-title" title="Current session">New session</span>
+                </button>
                 <!-- Workdir controls (old workbench header): folder picker +
                      git branch (shown once a repo is picked) + add-folder.
                      Wiring lands with the William loop. -->
@@ -27,6 +33,12 @@
                 <!-- Workbench view toggles (old wb-section-toggles): each opens
                      its rail on the right; accent = open. -->
                 <div class="code-view-toggles">
+                  <!-- Session kebab (SessionHeader port): Rename / Pin / Delete. -->
+                  <div id="code-session-kebab-wrap" class="code-chipwrap">
+                    <button id="code-session-kebab" class="code-icon-btn session-head-kebab" title="Session actions" type="button">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+                    </button>
+                  </div>
                   <button id="code-session-history" class="code-icon-btn" title="Session history" type="button">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   </button>

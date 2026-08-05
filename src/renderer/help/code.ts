@@ -760,6 +760,7 @@ function ensureCodeSection(): void {
   currentTitle: (): string => current()?.title ?? "New session",
   switch: (id: string): void => {
     if (!chats.some((c) => c.id === id)) return;
+    listView = false;
     currentId = id;
     threadPinned = true;
     void saveStore();
@@ -772,6 +773,7 @@ function ensureCodeSection(): void {
     // LAZY, like both + buttons: clear the selection and repaint. The record
     // is born on the first send (a layout that asked for a new session gets
     // its folder via pendingWorkdir below, so nothing is lost by waiting).
+    listView = false;
     currentId = "";
     void saveStore();
     renderHistory();
@@ -815,6 +817,7 @@ function ensureCodeSection(): void {
 let pendingWorkdir = "";
 
 function newChat(): void {
+  listView = false;
   const mode: CodeChat["mode"] = railTab;
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
@@ -913,11 +916,107 @@ function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
   menuEl = m;
 }
 
+// ── In-thread session header (SessionHeader port) ──────────────────────────
+// The head's LEFT is `‹ <locus> <name>` (‹ opens the space's list view); the
+// RIGHT carries a ⋮ kebab (Rename / Pin / Delete). The head is sticky and
+// fades in as the thread scrolls (data-scrolled on the head). Rename edits the
+// LOCAL title; Pin toggles chat.pinned; Delete runs the app's confirm+delete.
+const HEAD_LOCUS_REMOTE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19Z"/></svg>`;
+const HEAD_LOCUS_LOCAL = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+
+/** Paint the head's locus icon from the current session's source (remote =
+ *  cloud, local = machine). Hidden when there's no open session. */
+function paintSessionHeadLocus(): void {
+  const locus = el("code-session-locus");
+  const back = el("code-session-back");
+  if (!locus || !back) return;
+  const c = current();
+  // No open session (a landing) → the head is a plain title, no back/locus.
+  back.classList.toggle("headless", !c);
+  if (!c) { locus.innerHTML = ""; return; }
+  const remote = !!c.source && c.source.kind !== "local";
+  locus.innerHTML = remote ? HEAD_LOCUS_REMOTE : HEAD_LOCUS_LOCAL;
+  locus.title = remote ? "Runs in the cloud (Fly)" : "Runs on your machine";
+}
+
+/** Rename the current session inline in the head (Enter commits, Esc cancels). */
+function renameCurrentInline(): void {
+  const c = current();
+  const titleEl = el("code-session-title");
+  if (!c || !titleEl) return;
+  const field = document.createElement("input");
+  field.type = "text";
+  field.className = "session-head-rename";
+  field.value = c.title;
+  field.maxLength = 120;
+  field.spellcheck = false;
+  field.addEventListener("click", (ev) => ev.stopPropagation());
+  let done = false;
+  const restore = (): void => { titleEl.textContent = c.title; field.replaceWith(titleEl); };
+  const commit = (): void => {
+    if (done) return; done = true;
+    const t = field.value.trim();
+    if (t && t !== c.title) {
+      c.title = t; void saveStore();
+      window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+      renderHistory();
+    }
+    restore();
+  };
+  field.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); done = true; restore(); }
+  });
+  field.addEventListener("blur", commit);
+  titleEl.replaceWith(field);
+  field.focus(); field.select();
+}
+
+/** Toggle the current session's pin (chat.pinned — floats it in the lists). */
+function toggleCurrentPin(): void {
+  const c = current();
+  if (!c) return;
+  c.pinned = !c.pinned;
+  void saveStore();
+  renderHistory();
+  window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+}
+
+let headKebabEl: HTMLDivElement | null = null;
+function closeHeadKebab(): void { headKebabEl?.remove(); headKebabEl = null; }
+
+function openHeadKebab(anchor: HTMLElement): void {
+  closeHeadKebab();
+  const c = current();
+  if (!c) return;
+  const m = document.createElement("div");
+  m.className = "code-menu session-head-menu";
+  const mk = (label: string, danger: boolean, on: () => void): HTMLButtonElement => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "code-menu-item" + (danger ? " danger" : "");
+    b.textContent = label;
+    b.addEventListener("click", () => { closeHeadKebab(); on(); });
+    return b;
+  };
+  m.append(
+    mk("Rename", false, renameCurrentInline),
+    mk(c.pinned ? "Unpin" : "Pin", false, toggleCurrentPin),
+    mk("Delete", true, () => { void deleteChat(c); }),
+  );
+  const r = anchor.getBoundingClientRect();
+  m.style.top = `${r.bottom + 4}px`;
+  m.style.left = `${Math.max(8, r.right - 150)}px`;
+  document.body.appendChild(m);
+  headKebabEl = m;
+}
+
 function renderHistory(): void {
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
   // The agent head's session title rides every history repaint.
   const sessTitleEl = el("code-session-title");
   if (sessTitleEl) sessTitleEl.textContent = current()?.title ?? "New session";
+  paintSessionHeadLocus();
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
   const list = el<HTMLDivElement>("code-history");
   if (!list) return;
@@ -958,6 +1057,7 @@ function renderHistory(): void {
     menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openChatMenu(menuBtn, c); });
     row.append(dot, label, menuBtn);
     row.addEventListener("click", () => {
+      listView = false;
       currentId = c.id;
       lastBySpace[spaceOf(c)] = c.id;
       void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
@@ -1080,6 +1180,8 @@ function wireThreadScroll(thread: HTMLDivElement): void {
   threadScrollWired = true;
   thread.addEventListener("scroll", () => {
     threadPinned = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48;
+    // The sticky head fades in as content scrolls under it (SessionHeader).
+    el("code-session-back")?.closest(".code-agent-head")?.classList.toggle("scrolled", thread.scrollTop > 6);
   }, { passive: true });
 }
 
@@ -1223,9 +1325,165 @@ function renderCodeLanding(host: HTMLElement): void {
   host.appendChild(wrap);
 }
 
+// ── Per-space session LIST VIEW (SessionList port) ─────────────────────────
+// Reached from the in-thread head's ‹. Card rows (2-row, left-justified, locus
+// icon) for THIS space's sessions, a SEARCH input top-left + a FILTER menu
+// top-right, and a New action. Scoped to the local store (this app's sessions
+// are local records, not SDK runtime sessions).
+type ListFilter = "all" | "pinned" | "working" | "idle";
+const LIST_FILTERS: Array<{ id: ListFilter; label: string }> = [
+  { id: "all", label: "All sessions" },
+  { id: "pinned", label: "Pinned" },
+  { id: "working", label: "Working" },
+  { id: "idle", label: "Idle" },
+];
+let listQuery = "";
+let listFilter: ListFilter = "all";
+
+function openSessionListView(): void {
+  listView = true;
+  closeHeadKebab();
+  renderThread();
+}
+
+function matchesListFilter(f: ListFilter, c: CodeChat): boolean {
+  const working = liveRuns.has(c.id);
+  switch (f) {
+    case "pinned": return !!c.pinned;
+    case "working": return working;
+    case "idle": return !working;
+    default: return true;
+  }
+}
+
+function renderSessionList(host: HTMLElement): void {
+  host.classList.add("session-list-host");
+  const wrap = document.createElement("div");
+  wrap.className = "session-list";
+
+  // Top bar: search (left) + filter (right) + New.
+  const bar = document.createElement("div");
+  bar.className = "session-list-bar";
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "session-list-search";
+  searchWrap.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "session-list-search-input";
+  search.placeholder = `Search ${railTab === "code" ? "code" : railTab === "cowork" ? "work" : "chat"} sessions…`;
+  search.value = listQuery;
+  search.spellcheck = false;
+  searchWrap.appendChild(search);
+  bar.appendChild(searchWrap);
+
+  const filterWrap = document.createElement("div");
+  filterWrap.className = "code-chipwrap session-list-filterwrap";
+  const filterBtn = document.createElement("button");
+  filterBtn.type = "button";
+  filterBtn.className = "code-icon-btn session-list-filter" + (listFilter !== "all" ? " on" : "");
+  filterBtn.title = `Filter — ${LIST_FILTERS.find((f) => f.id === listFilter)?.label}`;
+  filterBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`;
+  filterWrap.appendChild(filterBtn);
+  bar.appendChild(filterWrap);
+
+  const newBtn = document.createElement("button");
+  newBtn.type = "button";
+  newBtn.className = "action-btn primary session-list-new";
+  newBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New</span>`;
+  newBtn.addEventListener("click", () => {
+    listView = false;
+    currentId = "";
+    void saveStore();
+    renderHistory();
+    renderThread();
+    void checkWorkdirGate();
+    input()?.focus();
+  });
+  bar.appendChild(newBtn);
+  wrap.appendChild(bar);
+
+  const scroll = document.createElement("div");
+  scroll.className = "session-list-scroll";
+  wrap.appendChild(scroll);
+
+  const paintRows = (): void => {
+    scroll.textContent = "";
+    const q = listQuery.trim().toLowerCase();
+    const rows = chats
+      .filter((c) => spaceOf(c) === railTab)
+      .filter((c) => matchesListFilter(listFilter, c))
+      .filter((c) => !q || c.title.toLowerCase().includes(q))
+      .sort((a, b) => {
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+        const at = a.messages[a.messages.length - 1]?.at || a.createdAt;
+        const bt = b.messages[b.messages.length - 1]?.at || b.createdAt;
+        return bt - at;
+      });
+    if (!rows.length) {
+      scroll.innerHTML = `<div class="session-list-empty">${q || listFilter !== "all" ? "No sessions match." : "No sessions in this space yet."}</div>`;
+      return;
+    }
+    for (const s of rows) {
+      const working = liveRuns.has(s.id);
+      const local = !s.source || s.source.kind === "local";
+      const last = s.messages[s.messages.length - 1]?.at || s.createdAt;
+      const snippet = s.source?.kind === "cloud-repo" ? s.source.repo
+        : s.workdir ? (s.workdir.split("/").filter(Boolean).pop() || s.workdir)
+          : local ? "local runtime" : "cloud runtime";
+      const tone = working ? "busy" : "idle";
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "session-card";
+      row.innerHTML =
+        `<span class="session-card-row1">` +
+          `<span class="session-card-locus" title="${local ? "Runs on your machine" : "Runs in the cloud"}">${local ? IC_LOCAL : IC_REMOTE}</span>` +
+          `<span class="session-card-title"></span>` +
+          `${s.pinned ? `<span class="session-card-pin" title="Pinned">📌</span>` : ""}` +
+        `</span>` +
+        `<span class="session-card-row2">` +
+          `<span class="session-card-dot ${tone}"></span>` +
+          `<span class="session-card-status ${tone}"></span>` +
+          `<span class="session-card-sep">·</span>` +
+          `<span class="session-card-snippet"></span>` +
+          `<span class="session-card-age"></span>` +
+        `</span>`;
+      (row.querySelector(".session-card-title") as HTMLElement).textContent = s.title;
+      (row.querySelector(".session-card-status") as HTMLElement).textContent = working ? "Working" : "Idle";
+      (row.querySelector(".session-card-snippet") as HTMLElement).textContent = snippet;
+      (row.querySelector(".session-card-age") as HTMLElement).textContent = timeAgo(last);
+      row.addEventListener("click", () => { listView = false; openLocalSession(s.id); });
+      scroll.appendChild(row);
+    }
+  };
+
+  search.addEventListener("input", () => { listQuery = search.value; paintRows(); });
+  filterBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const existing = filterWrap.querySelector(".session-list-filter-menu");
+    if (existing) { existing.remove(); return; }
+    const menu = document.createElement("div");
+    menu.className = "code-menu session-list-filter-menu";
+    for (const f of LIST_FILTERS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "code-menu-item" + (f.id === listFilter ? " selected" : "");
+      b.textContent = f.label;
+      b.addEventListener("click", () => { listFilter = f.id; menu.remove(); renderThread(); });
+      menu.appendChild(b);
+    }
+    filterWrap.appendChild(menu);
+    const off = (e: MouseEvent): void => { if (!filterWrap.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", off, true); } };
+    setTimeout(() => document.addEventListener("mousedown", off, true), 0);
+  });
+
+  paintRows();
+  host.appendChild(wrap);
+}
+
 /** Open a local session by id (used by the Code home + session list). */
 function openLocalSession(id: string): void {
   if (!chats.some((x) => x.id === id)) return;
+  listView = false;
   currentId = id;
   const c = current();
   if (c) { lastBySpace[spaceOf(c)] = c.id; void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id); }
@@ -1252,6 +1510,9 @@ function renderThread(): void {
   inner.className = "code-thread-inner";
   thread.appendChild(inner);
   stopGhostRotation();
+  // The per-space LIST VIEW (reached from the head's ‹) takes over the thread
+  // area — a search + filter over this space's session cards.
+  if (listView) { renderSessionList(inner); paintSessionHeadLocus(); return; }
   const c = current();
   // Code space, no session → the Code HOME (two-column: suggestions LEFT,
   // "Waiting on you" sessions RIGHT), not the bare ghost. Chat/Work land on
@@ -1463,6 +1724,10 @@ const SPACE_PREF: Record<"chat" | "cowork" | "code", string> = { chat: "lastSess
 /** Repaints the Chat/Work toggle — set by initComposerControls, called on
  *  session switches so the control always shows the CURRENT session's mode. */
 let cwPaint: (() => void) | null = null;
+/** The per-space LIST VIEW is open (reached from the head's ‹). While true the
+ *  thread area shows SessionList instead of the open session. Cleared on open
+ *  / new / space-switch. */
+let listView = false;
 
 // ── Workspace SOURCE (the location chip on Work + Code) ───────────────────
 // Where the next session runs + what it works on. Persisted PER SPACE (a
@@ -3007,6 +3272,7 @@ export function initCode(): void {
     window.dispatchEvent(new CustomEvent("rail-space-changed"));
   };
   const enterSpace = (navigate: boolean): void => {
+    listView = false;
     paintRailTabs();
     // NEVER carry a session across spaces: resume THIS space's last
     // selection, or land on the new (no record until the user types).
@@ -3091,6 +3357,17 @@ export function initCode(): void {
     go();
   });
   el("code-send")?.addEventListener("click", send);
+  // Session head (SessionHeader port): ‹/name → the space's list view; the
+  // kebab → Rename / Pin / Delete.
+  el("code-session-back")?.addEventListener("click", () => { if (current()) openSessionListView(); });
+  el("code-session-kebab")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (headKebabEl) { closeHeadKebab(); return; }
+    openHeadKebab(ev.currentTarget as HTMLElement);
+  });
+  document.addEventListener("click", (ev) => {
+    if (headKebabEl && !(ev.target as HTMLElement).closest?.(".session-head-menu, #code-session-kebab")) closeHeadKebab();
+  });
   // Session controls in the agent head (the coding panel's own header row is
   // hidden): + starts a new session, the clock drops the history list.
   type HeadSessionsApi = { list(): Array<{ id: string; title: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };

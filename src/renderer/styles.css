@@ -12001,6 +12001,36 @@ select:focus {
 .code-agent-head button,
 .code-agent-head .code-wd-btn { -webkit-app-region: no-drag; }
 .code-spacer { flex: 1; }
+
+/* ── Session head (SessionHeader port): ‹ + locus + name, sticky + fades ── */
+.session-head-back {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: none; background: none; color: var(--text); cursor: pointer;
+  padding: 3px 6px 3px 2px; border-radius: 7px; min-width: 0; flex-shrink: 1;
+  -webkit-app-region: no-drag;
+}
+.session-head-back:hover { background: var(--hover); }
+.session-head-back .session-head-chev { color: var(--text-3); flex-shrink: 0; }
+.session-head-locus { color: var(--text-3); display: inline-flex; flex-shrink: 0; }
+.session-head-back #code-session-title {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+/* A landing (no open session): the head is a plain non-interactive title —
+   hide the ‹ and locus, kill the hover. */
+.session-head-back.headless { pointer-events: none; padding-left: 8px; }
+.session-head-back.headless .session-head-chev,
+.session-head-back.headless .session-head-locus { display: none; }
+/* Sticky/fade — the head sits transparent over the thread top and fades in as
+   content scrolls under it. */
+.code-agent-head { position: sticky; top: 0; z-index: 5; background: var(--bg); transition: box-shadow 0.2s ease, background 0.2s ease; }
+.code-agent-head.scrolled { box-shadow: 0 1px 0 var(--border), 0 6px 14px -10px rgba(0,0,0,0.35); }
+.session-head-rename {
+  font-size: 13.5px; color: var(--text); background: var(--surface-2, var(--hover));
+  border: 1px solid var(--border-2); border-radius: 6px; padding: 3px 8px; min-width: 160px;
+  -webkit-app-region: no-drag;
+}
+.session-head-menu { min-width: 150px; }
+.session-head-kebab { -webkit-app-region: no-drag; }
 .code-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -12795,6 +12825,26 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
 .session-card-sep { opacity: 0.5; }
 .session-card-snippet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .session-card-age { margin-left: auto; flex-shrink: 0; opacity: 0.8; }
+
+/* ── Per-space session LIST VIEW (SessionList port) ───────────────────────── */
+.session-list-host { width: 100%; }
+.session-list { max-width: 720px; margin: 0 auto; padding: 18px 20px 8px; width: 100%; }
+.session-list-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.session-list-search {
+  display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0;
+  border: 1px solid var(--border); background: var(--surface-2, var(--hover));
+  border-radius: 8px; padding: 6px 10px; color: var(--text-3);
+}
+.session-list-search-input {
+  flex: 1; min-width: 0; border: none; background: none; color: var(--text);
+  font-size: 13px; outline: none;
+}
+.session-list-filterwrap { position: relative; }
+.session-list-filter.on { color: var(--accent); }
+.session-list-filter-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 160px; }
+.session-list-new { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.session-list-scroll { display: flex; flex-direction: column; gap: 8px; }
+.session-list-empty { font-size: 12.5px; color: var(--text-3); padding: 16px 2px; text-align: center; }
 
 /* Permission-modes explainer — the one dialog that runs wider than the
    standard 420px confirm box: five modes with real paragraphs need room. */
