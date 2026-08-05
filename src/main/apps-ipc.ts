@@ -92,7 +92,10 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   const webIconCache = new Map<string, string>();
   ipcMain.handle("web-icon-fetch", async (_e, rawUrl: string) => {
     const u = String(rawUrl || "").trim();
-    if (!/^https:\/\//i.test(u)) return "";
+    // https, or http to LOOPBACK only (the dev control plane at
+    // localhost:3001 serves /api/icons — the https-only guard was returning
+    // "" for every tile, which is why the whole wall fell back to letters).
+    if (!/^https:\/\//i.test(u) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(u)) return "";
     const hit = webIconCache.get(u);
     if (hit !== undefined) return hit;
     let out = "";
