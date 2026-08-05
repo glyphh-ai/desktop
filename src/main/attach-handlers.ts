@@ -14,6 +14,9 @@
  */
 
 import { BrowserWindow } from "electron";
+import { homedir } from "node:os";
+import { readdirSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
 import { runLoopBySlug, runSkillBySlug, runTaskNow } from "./agent-scheduler.js";
 import { listInstalledApps, findInstalledApp, launchInstalledApp } from "./installed-apps.js";
@@ -28,6 +31,29 @@ function obj(params: unknown, key: string): Record<string, unknown> {
 }
 
 export function installAttachHandlers(): void {
+  // ── fs.list: the web's folder browser (source chip → Local). DIRECTORIES
+  // only, dotfiles skipped, git roots flagged — capped at the user's home so
+  // the cloud can browse where sessions may run, never the whole disk. ──
+  registerRelayHandler("fs.list", async (params) => {
+    const home = homedir();
+    let path = str(params, "path") || home;
+    if (!path.startsWith(home)) path = home; // never above the machine root we expose
+    let entries: Array<{ name: string; path: string; dir: boolean; git?: boolean }> = [];
+    try {
+      entries = readdirSync(path, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+        .map((d) => {
+          const full = join(path, d.name);
+          const git = existsSync(join(full, ".git"));
+          return { name: d.name, path: full, dir: true, ...(git ? { git: true } : {}) };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch (err) {
+      throw new Error(`could not list ${path}: ${(err as Error).message}`);
+    }
+    return { path, parent: path === home ? null : dirname(path), entries };
+  });
+
   // ── machine reach: the SDK's shared layer (@glyphh/sdk/machine) ─────────
   registerRelayHandler("machine.appsList", async () => {
     return { apps: listInstalledApps().map((a) => a.name) };

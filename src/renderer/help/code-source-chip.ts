@@ -133,7 +133,6 @@ export function createSourceChip(opts: {
     if (!menu) return;
     menu.textContent = "";
     if (v === "root") renderRoot(menu, opts, pick, (view, m) => { if (m) selectedMachine = m; showView(view); });
-    else if (v === "repos") renderRepos(menu, opts, pick, () => showView("root"));
     else if (v === "local") renderLocal(menu, opts, selectedMachine, pick, () => showView("root"));
   };
 
@@ -152,6 +151,59 @@ export function createSourceChip(opts: {
     setSource: () => paintChip(),
     setSessionId: () => paintChip(),
   };
+}
+
+// ── The GIT chip (landing row, after the folder) ──────────────────────────
+const BRANCH_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>`;
+
+/** The repo picker for a CLOUD source — the repository the remote agent checks
+ *  out into the project workspace. Hidden on a local source (the passive
+ *  branch mirror covers local); "Connect GitHub" when no account is linked
+ *  (renderRepos carries the connect flow + poll). */
+export function createGitChip(opts: {
+  getSource: () => Source;
+  onPick: (s: Source) => void;
+}): { el: HTMLElement; refresh: () => void } {
+  const wrap = document.createElement("div");
+  wrap.className = "cl-runtime-chip-wrap";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "cl-runtime-chip cl-runtime-btn";
+  btn.title = "The GitHub repository this cloud workspace checks out";
+  wrap.appendChild(btn);
+
+  let menu: HTMLElement | null = null;
+  const closeMenu = (): void => { menu?.remove(); menu = null; };
+
+  const paint = (): void => {
+    const s = opts.getSource();
+    if (s.kind === "local") { wrap.style.display = "none"; return; }
+    wrap.style.display = "";
+    const label = s.kind === "cloud-repo" && s.repo ? lastSeg(s.repo) : "Connect GitHub";
+    btn.innerHTML = `${BRANCH_SVG}<span class="cl-runtime-lbl"></span>${CHEV}`;
+    (btn.querySelector(".cl-runtime-lbl") as HTMLElement).textContent = label;
+  };
+
+  const pick = (next: Source): void => { opts.onPick(next); paint(); closeMenu(); };
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (menu) { closeMenu(); return; }
+    menu = document.createElement("div");
+    menu.className = "code-drop-up ws-source-drop";
+    wrap.appendChild(menu);
+    renderRepos(menu, opts, pick, closeMenu);
+    menu.style.left = "0px"; menu.style.right = "auto";
+    const wb2 = wrap.getBoundingClientRect();
+    menu.style.maxHeight = `${Math.max(160, Math.round(window.innerHeight - wb2.bottom - 20))}px`;
+    menu.style.overflowY = "auto";
+  });
+  document.addEventListener("mousedown", (e) => {
+    if (menu && !wrap.contains(e.target as Node)) closeMenu();
+  }, true);
+
+  paint();
+  return { el: wrap, refresh: paint };
 }
 
 // ── Root view: CLOUD + LOCAL sections ────────────────────────────────────
@@ -173,17 +225,6 @@ function renderRoot(
   const np = drillItem("New project (empty)", "Git-init'd in the cloud — no GitHub needed", isNew ? CHECK : "");
   np.addEventListener("click", () => pick({ kind: "cloud-new" }));
   menu.appendChild(np);
-
-  // GitHub repo → repo picker.
-  const gr = drillItem(
-    isRepo && s.repo ? s.repo : "GitHub repo",
-    isRepo && s.repo ? "Clone this repository" : "Clone one of your repositories",
-    CHEV,
-  );
-  gr.classList.add("ws-drill");
-  if (isRepo) gr.classList.add("selected");
-  gr.addEventListener("click", () => onView("repos"));
-  menu.appendChild(gr);
 
   menu.insertAdjacentHTML("beforeend", `<div class="ws-sec-label">Connected machines</div>`);
   const machinesHost = document.createElement("div");

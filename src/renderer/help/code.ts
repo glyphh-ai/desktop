@@ -18,7 +18,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { createSourceChip, type Source } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip } from "./code-source-chip.js";
 import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
 import { runHeroFlow } from "./dashboard.js";
 import { SPACE_LABEL } from "./space-meta.js";
@@ -1801,6 +1801,7 @@ const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
 const sourceBySpace: Record<"cowork" | "code", Source> = { cowork: { ...DEFAULT_SOURCE }, code: { ...DEFAULT_SOURCE } };
 const SOURCE_PREF: Record<"cowork" | "code", string> = { cowork: "workspaceSourceCowork", code: "workspaceSourceCode" };
 let sourceChip: ReturnType<typeof createSourceChip> | null = null;
+let gitChip: ReturnType<typeof createGitChip> | null = null;
 
 /** The source for the ACTIVE surface — the current session's stamped source,
  *  else the active space's pending pick (chat has none → cloud-new). */
@@ -1842,6 +1843,14 @@ function mountSourceChip(): void {
     getSessionId: () => current()?.id ?? null,
   });
   host.appendChild(sourceChip.el);
+  // The GIT chip sits AFTER the folder in the landing row: repo picker on a
+  // cloud source (what the remote agent checks out), hidden on local (the
+  // passive branch mirror covers local).
+  if (!gitChip) {
+    gitChip = createGitChip({ getSource: activeSource, onPick: pickSource });
+    const branchMirror = document.getElementById("dash-wd-branch-wrap");
+    branchMirror?.insertAdjacentElement("afterend", gitChip.el);
+  }
 }
 
 /** The composer's resting prompt, in the voice of the ACTIVE space. */
@@ -1908,6 +1917,10 @@ function paintSourceDependents(): void {
     el2.classList.toggle("chip-disabled", cloud);
     if (cloud) el2.setAttribute("title", "Runs in the cloud — folder + attachments come from the project workspace");
   }
+  // GIT position: local → the passive branch mirror; cloud → the repo chip.
+  const mirror = document.getElementById("dash-wd-branch-wrap");
+  if (mirror && cloud) (mirror as HTMLElement).style.display = "none";
+  gitChip?.refresh();
 }
 
 // ── Composer attachments ─────────────────────────────────────────────────
