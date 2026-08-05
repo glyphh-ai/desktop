@@ -94,7 +94,7 @@ function resolverUrlFor(host: string): string {
   };
   if (w.glyphhSdk?.icons?.urlFor) return w.glyphhSdk.icons.urlFor(host);
   const base = (w.glyphh?.serverUrl || "https://api.glyphh.ai").replace(/\/$/, "");
-  return `${base}/api/icons?domain=${encodeURIComponent(host)}`;
+  return `${base}/api/icons?domain=${encodeURIComponent(host)}&v=2`;
 }
 
 /** Deterministic monogram hue — the SAME app always wears the same color, and
