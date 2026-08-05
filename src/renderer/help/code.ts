@@ -3446,7 +3446,13 @@ export function initCode(): void {
     renderHistory();
     renderThread();
     void checkWorkdirGate();
-    gotoSection(railTab === "code" ? "agent" : "dashboard");
+    // A LAYOUT-HOSTED agent starts its new session IN ITS SLOT — same space,
+    // bare thread, composer chips intact; the arrangement was deliberate.
+    const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent");
+    if (hosted) return;
+    // Every other new session lands on THE main new-session screen — one
+    // front door for all three spaces (the pill picks chat/work/code there).
+    gotoSection("dashboard");
   };
   el("code-new-chat")?.addEventListener("click", newSessionLanding);
   // Reset (rail section headers): back to the agent, full screen.
@@ -3616,7 +3622,15 @@ export function initCode(): void {
   el("code-send")?.addEventListener("click", send);
   // Session head (SessionHeader port): ‹/name → the space's list view; the
   // kebab → Rename / Pin / Delete.
-  el("code-session-back")?.addEventListener("click", () => { if (current()) openSessionListView(); });
+  // BACK = out to the MAIN landing (there was no way back to it from inside
+  // a session). The session survives in history — the head's history
+  // dropdown resumes it; the list view stays reachable from there.
+  el("code-session-back")?.addEventListener("click", () => {
+    if (!current()) return;
+    const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent");
+    if (hosted) { openSessionListView(); return; }   // in a layout, back = the slot's list
+    newSessionLanding();
+  });
   el("code-session-kebab")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     if (headKebabEl) { closeHeadKebab(); return; }
