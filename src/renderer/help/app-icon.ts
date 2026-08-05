@@ -146,6 +146,7 @@ export function appIconInner(app: IconApp, name: string, initialClass: string): 
   // names, else a deterministic hue from the slug — never a bare letter.
   let host = "";
   try { host = app.url ? new URL(app.url).hostname : ""; } catch { host = ""; }
+  if (!host && app.connection?.pipedreamSlug) host = CONNECTOR_DOMAINS[app.connection.pipedreamSlug] || "";
   const plate = brandColor(host) ? `background:${brandColor(host)};color:#fff;` : monogramStyle(app.slug || name || "?");
   const mono = `<span class="${initialClass} icon-monogram" style="${plate}">${initial}</span>`;
   return iconUrl
