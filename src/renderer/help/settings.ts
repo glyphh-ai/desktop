@@ -22,7 +22,45 @@ const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!
 // and loadMcp() (called by navigation on section open) invokes it.
 let mcpSectionRefresh: () => void = () => {};
 
+/** Settings → Desktop: live attach status (ported from the platform's Settings →
+ *  Desktop page). Polls attach.status() through the SDK handle on web; on the
+ *  desktop build the machine IS this app, so it reports attached locally. */
+function initDesktopPanel(): void {
+  const dot = document.getElementById("desktop-attach-dot");
+  const title = document.getElementById("desktop-attach-title");
+  const sub = document.getElementById("desktop-attach-sub");
+  const get = document.getElementById("desktop-attach-get");
+  if (!dot || !title || !sub) return;
+
+  const sdk = (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean; machines?: Array<{ app?: string; version?: string; capabilities?: string[] }> }> } } }).glyphhSdk;
+  const isWeb = typeof document !== "undefined" && document.documentElement.classList.contains("glyphh-web");
+
+  const paint = (attached: boolean, machine?: { app?: string; version?: string; capabilities?: string[] }) => {
+    dot.className = `desktop-attach-dot ${attached ? "on" : "off"}`;
+    title.textContent = attached ? "Desktop attached" : "No desktop attached";
+    sub.textContent = attached
+      ? `${machine?.app || "glyphh-desktop"} ${machine?.version || ""} · ${(machine?.capabilities?.length || 0)} capabilities`.trim()
+      : "Open the Glyphh desktop app and sign in — it connects on its own.";
+    get?.classList.toggle("hidden", attached);
+  };
+
+  if (!isWeb) {
+    // On the desktop build this IS the machine.
+    paint(true, { app: "glyphh-desktop" });
+    return;
+  }
+  const refresh = () => {
+    void sdk?.attach?.status?.()
+      .then((st) => paint(!!st?.attached, st?.machines?.[0]))
+      .catch(() => paint(false));
+  };
+  refresh();
+  // Attach state flips when the desktop app opens/closes — poll while visible.
+  setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+}
+
 function initSettings() {
+  initDesktopPanel();
   document.getElementById("glyphh-agent-compact-save")?.addEventListener("click", () => {
     const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
     const status = document.getElementById("glyphh-agent-compact-status");

@@ -8,6 +8,7 @@
               <button class="settings-nav-item" data-sub="mcp">MCP Server</button>
               <button class="settings-nav-item" data-sub="william">Compaction</button>
               <button class="settings-nav-item" data-sub="drips">Drips</button>
+              <button class="settings-nav-item" data-sub="desktop">Desktop</button>
               <button class="settings-nav-item" data-jump="docs">Docs</button>
               <button class="settings-nav-item" data-sub="about">About</button>
             </nav>
@@ -373,6 +374,21 @@
               <button id="drip-save-btn" class="action-btn primary">Save</button>
             </div>
           </div>
+              </div>
+
+              <!-- Desktop — is the user's Glyphh desktop ATTACHED (outbound socket
+                   live)? Ported from the platform's Settings → Desktop page. -->
+              <div class="settings-panel" data-sub="desktop">
+                <h2>Desktop</h2>
+                <p class="settings-desc">Your Glyphh desktop attaches automatically when the app is open and signed in — that's what lets the web render panels from your own machine.</p>
+                <div class="settings-card desktop-attach-card">
+                  <span class="desktop-attach-dot" id="desktop-attach-dot" aria-hidden="true"></span>
+                  <div class="desktop-attach-text">
+                    <div class="desktop-attach-title" id="desktop-attach-title">Checking…</div>
+                    <div class="desktop-attach-sub" id="desktop-attach-sub">Looking for your machine…</div>
+                  </div>
+                  <a class="btn btn-secondary desktop-attach-get hidden" id="desktop-attach-get" href="#" data-jump="downloads">Get the app</a>
+                </div>
               </div>
 
               <div class="settings-panel" data-sub="about">

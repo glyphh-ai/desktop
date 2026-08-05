@@ -46,7 +46,10 @@ const BRIDGE = '/glyphh-web-bundle.js';
 // SPA fallback paths: the OAuth/magic-link redirect returns to /auth/callback so
 // the boot script can exchange the code — serve the app shell there (no such file
 // exists on disk). Mirrors platform's /auth/callback route.
-const SPA_FALLBACK = new Set(['/auth/callback']);
+// Any NESTED /auth/* route is a client-side path (callback, device, …) — the
+// shell lives at the root, so they all redirect there with the query intact
+// rather than being read off disk (which 404'd with an ENOENT for /auth/device).
+const isNestedAuthRoute = (p) => p.startsWith('/auth/') && p !== '/auth/';
 
 // Client-safe config script, injected before the bridge so window.__GLYPHH_* exist
 // when the SDK client + login screen initialise. Only public values are exposed.
@@ -112,7 +115,7 @@ const server = http.createServer(async (req, res) => {
     // for /auth/styles.css → 404 → a naked, unstyled page. Redirect to the root
     // (which serves the same shell) PRESERVING the query — the boot script reads
     // token/code from location.search wherever it lands.
-    if (SPA_FALLBACK.has(p)) {
+    if (isNestedAuthRoute(p)) {
       const q = new URL(req.url, 'http://x').search;
       res.statusCode = 302;
       res.setHeader('location', `/${q}`);
@@ -161,7 +164,7 @@ const server = http.createServer(async (req, res) => {
     res.end(body);
   } catch (e) {
     res.statusCode = 404;
-    res.end('not found: ' + e.message);
+    res.end('not found');
   }
 });
 

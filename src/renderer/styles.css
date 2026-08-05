@@ -14849,3 +14849,18 @@ body.code-dragging webview { pointer-events: none !important; }
 /* "Check your email" state — same full-bleed treatment (inherits the above). */
 .glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-meta { margin-top: 1.5rem; font-size: 0.9375rem; }
 
+
+/* The auto-updater is an OS-installer concept — a browser tab has none. Hide
+   the About "Check for Updates" control + its progress on the web target. */
+.glyphh-web #about-check-update,
+.glyphh-web #about-progress,
+.glyphh-web .about-check-update { display: none !important; }
+
+/* Settings → Desktop: the attach-status card (ported from the platform page). */
+.desktop-attach-card { display: flex; align-items: center; gap: 12px; padding: 16px 18px; }
+.desktop-attach-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--text-3); }
+.desktop-attach-dot.on { background: #4fae63; }
+.desktop-attach-dot.off { background: #d4a24a; }
+.desktop-attach-text { flex: 1; min-width: 0; }
+.desktop-attach-title { font-weight: 600; }
+.desktop-attach-sub { font-size: 13px; color: var(--text-2); }
