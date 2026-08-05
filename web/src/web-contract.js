@@ -83,6 +83,19 @@ export function buildContract(client, deps) {
     clear() { this._p = null; },
   };
 
+  /** The session-thread cache's localStorage key, scoped to the signed-in user
+   *  (identity resolved once, then pinned). Logged out → the 'anon' key each
+   *  call WITHOUT pinning, so the first authed call still lands per-user. */
+  let _threadCacheKey = null;
+  const threadCacheKey = async () => {
+    if (_threadCacheKey) return _threadCacheKey;
+    try {
+      const me = await client.me();
+      _threadCacheKey = `glyphhThreads:${me?.id || me?.email || 'me'}`;
+      return _threadCacheKey;
+    } catch { return 'glyphhThreads:anon'; }
+  };
+
   /** Run an SDK read → adapt; on ANY throw resolve to the named empty shape. The single
    *  uniform error path (replaces the per-method inline catches). `empty` is a factory. */
   const read = (thunk, adapt, empty) => async (...args) => {
@@ -273,12 +286,30 @@ export function buildContract(client, deps) {
       } catch (err) { return libError(err); }
     },
 
-    // ── Cloud-backed sessions store ────────────────────────────────────────────────
-    // The renderer destructures { chats, currentId } at boot — the contract empty shape
-    // keeps that safe. Real cloud message-session wiring lands in a later slice; until
-    // then the local mirror (localStorage) the renderer falls back to owns persistence.
-    glyphhSessionsLoad: async () => EMPTY.sessions(),
-    glyphhSessionsSave: async () => true,
+    // ── Session-thread OFFLINE CACHE ───────────────────────────────────────────────
+    // The SERVER THREADS SURFACE (client.sessions.threads/pushThread/…) is the source
+    // of truth for chat sessions now — the renderer's thread-store syncs it LWW over
+    // window.glyphhSdk directly. These two methods are its per-surface CACHE layer
+    // (write-through localStorage here; main's sessions.json on desktop). Keyed per
+    // USER so a shared browser can never push one account's cached sessions into
+    // another's thread set; logged out (me() rejects) reads resolve empty and the
+    // key is not pinned, so the first authed read lands on the right entry.
+    glyphhSessionsLoad: async () => {
+      try {
+        const raw = localStorage.getItem(await threadCacheKey());
+        const p = raw ? JSON.parse(raw) : null;
+        return { chats: Array.isArray(p?.chats) ? p.chats : [], currentId: String(p?.currentId || '') };
+      } catch { return EMPTY.sessions(); }
+    },
+    glyphhSessionsSave: async (chats, currentId) => {
+      try {
+        localStorage.setItem(await threadCacheKey(), JSON.stringify({ chats, currentId }));
+        return true;
+      } catch (err) {
+        console.warn('[glyphh-web] session cache write failed:', err?.message ?? String(err));
+        return false; // quota / private mode — the server copy is the truth anyway
+      }
+    },
 
     // ── Local machine-only reads the BOOT path touches ─────────────────────────────
     // No filesystem/machine on web; these return their correct EMPTY contract shape so
