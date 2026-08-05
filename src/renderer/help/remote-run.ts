@@ -142,7 +142,9 @@ function unavailable(stage: string, err: unknown): Unavailable {
 function provisionArgsFor(source: Source | undefined, rotor: unknown): CreateSessionInput {
   const base = { rotor };
   if (source?.kind === "cloud-repo" && source.repo) return { ...base, locus: "remote", repo: source.repo };
-  if (source?.kind === "local" && source.path) return { ...base, locus: "relay", path: source.path };
+  // WEB = the shared CLOUD rotor even for machine-sourced sessions (driving
+  // the attached machine from web is deferred) — provision plain remote.
+  if (source?.kind === "local") return { ...base, locus: "remote", newProject: true };
   return { ...base, locus: "remote", newProject: true };
 }
 

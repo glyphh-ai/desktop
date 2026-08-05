@@ -2,8 +2,9 @@
  * Code — the Glyphh agent surface: agent | workbench rails (sessions live
  * in the Coding Agent panel's history dropdown).
  *
- * Sessions persist in localStorage (moves to a real store as the loop
- * matures); replies stream from the local Glyphh model (llama-server,
+ * Sessions persist on the SERVER THREADS SURFACE via help/thread-store.ts
+ * (LWW sync; the surface's local persistence is the offline cache) — one set
+ * across desktop, web, and every other surface. Replies stream from the local Glyphh model (llama-server,
  * glyphh-agent.ts bridge) — prompt → thinking spinner → streamed response. The right side is the REAL old
  * workbench (code-workbench-bundle.js — Files / Terminal / Diff / Preview /
  * Plan rails with insert/drag/maximize + per-folder layout persistence); the
@@ -20,6 +21,7 @@ import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops } from "./code-source-chip.js";
 import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
+import * as threadStore from "./thread-store.js";
 import { runHeroFlow } from "./dashboard.js";
 import { SPACE_LABEL } from "./space-meta.js";
 
@@ -51,6 +53,12 @@ interface CodeChat {
    *  session id is bound even before the runtime is ready — the session exists
    *  server-side and must not be orphaned. */
   runtime?: { sessionId: string; url: string; token: string };
+  /** LWW clock for the server threads surface — stamped by thread-store on
+   *  every content change (epoch ms). */
+  updatedAt?: number;
+  /** Server-side message count for a lazily-adopted thread whose bodies
+   *  haven't been fetched yet (thread-store.ensureMessages fills them). */
+  messageCount?: number;
 }
 
 /** The session's effective mode (legacy chat flag folds in; default code). */
@@ -763,32 +771,52 @@ const input = () => el<HTMLTextAreaElement>("code-input");
 
 // ── Session store ────────────────────────────────────────────────────────
 let storeLoaded = false;
-/** Sessions live in main's disk store (userData/glyphh/sessions.json) —
- *  localStorage's 5MB cap can't hold real coding sessions. First load
- *  migrates any legacy localStorage sessions up, then clears them. */
+let storeLoading: Promise<void> | null = null;
+/** Sessions live on the SERVER THREADS SURFACE (thread-store.ts), with the
+ *  surface's local persistence as the offline cache — hydrate reconciles the
+ *  two by LWW at boot (the cache's pre-cutover history migrates up once).
+ *  First load also migrates any legacy localStorage sessions, then clears
+ *  them. Single-flight: both boot paths (loadCode + initCode) land here. */
 async function loadStore(): Promise<void> {
   if (storeLoaded) return;
-  try {
-    const s = await window.glyphh.glyphhSessionsLoad?.();
-    chats = ((s?.chats as CodeChat[]) || []);
-    currentId = String(s?.currentId || "");
-  } catch { chats = []; currentId = ""; }
-  if (!chats.length) {
+  if (storeLoading) return storeLoading;
+  storeLoading = (async () => {
     try {
-      const legacy = JSON.parse(localStorage.getItem(STORE_KEY) || "[]") as CodeChat[];
-      if (Array.isArray(legacy) && legacy.length) {
-        chats = legacy;
-        currentId = localStorage.getItem(CURRENT_KEY) || "";
-        await saveStore();
-        localStorage.removeItem(STORE_KEY);
-        localStorage.removeItem(CURRENT_KEY);
-      }
-    } catch { /* no legacy sessions */ }
-  }
-  storeLoaded = true;
+      const s = await threadStore.hydrate();
+      chats = s.chats as CodeChat[];
+      currentId = s.currentId;
+    } catch { chats = []; currentId = ""; }
+    if (!chats.length) {
+      try {
+        const legacy = JSON.parse(localStorage.getItem(STORE_KEY) || "[]") as CodeChat[];
+        if (Array.isArray(legacy) && legacy.length) {
+          chats = legacy;
+          currentId = localStorage.getItem(CURRENT_KEY) || "";
+          await saveStore();
+          localStorage.removeItem(STORE_KEY);
+          localStorage.removeItem(CURRENT_KEY);
+        }
+      } catch { /* no legacy sessions */ }
+    }
+    // A background reconcile (retry timer / another surface's write) changed
+    // the shared array — repaint the lists (never the live thread mid-run).
+    threadStore.onRemoteChange(() => renderHistory());
+    storeLoaded = true;
+  })();
+  return storeLoading;
 }
 function saveStore(): Promise<void> {
-  return Promise.resolve(window.glyphh.glyphhSessionsSave?.(chats, currentId)).then(() => undefined);
+  return threadStore.persist(chats, currentId);
+}
+/** A thread adopted from the server carries only metadata until opened —
+ *  fetch its messages, then repaint whatever is showing it. */
+function hydrateMessagesIfNeeded(id: string): void {
+  if (!id) return;
+  void threadStore.ensureMessages(id).then((loaded) => {
+    if (!loaded) return;
+    renderHistory();
+    if (currentId === id) { renderThread(); refreshCtxMeter(); }
+  });
 }
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
 
@@ -911,6 +939,7 @@ async function deleteChat(chat: CodeChat): Promise<void> {
   }))) return;
   chats = chats.filter((x) => x.id !== chat.id);
   if (currentId === chat.id) currentId = chats[0]?.id || "";
+  threadStore.remove(chat.id); // server tombstone (offline-safe)
   void saveStore();
   renderHistory();
   renderThread();
@@ -1090,16 +1119,6 @@ function renderHistory(): void {
   list.textContent = "";
   cwPaint?.();
   const visible = chats.filter((c) => spaceOf(c) === railTab);
-  const machineVisible = machineSessions.filter((m) => (m.mode === "cowork" ? "cowork" : m.mode === "chat" ? "chat" : "code") === railTab);
-  for (const m of machineVisible) {
-    const row = document.createElement("div");
-    row.className = "code-history-item machine-session";
-    row.innerHTML = `<span class="code-history-title"></span><span class="code-history-sub"></span>`;
-    (row.querySelector(".code-history-title") as HTMLElement).textContent = m.title || "Untitled";
-    (row.querySelector(".code-history-sub") as HTMLElement).textContent = "on your desktop";
-    row.addEventListener("click", () => openMachineSession(m.id));
-    list.appendChild(row);
-  }
   for (const c of visible) {
     const row = document.createElement("div");
     row.className = "code-history-item" + (c.id === currentId ? " active" : "");
@@ -1588,40 +1607,6 @@ function openLocalSession(id: string): void {
   gotoSection("agent");
 }
 
-// ── The attached MACHINE's local sessions, on web ────────────────────────
-// They live only in the desktop's store; a signed-in web session showed none.
-// Fetched over the attach relay, shown in history with the machine locus, and
-// openable as a READ view (running them stays on the machine for now).
-type MachineSessionMeta = { id: string; title: string; createdAt: number; mode: string; messages: number };
-let machineSessions: MachineSessionMeta[] = [];
-function refreshMachineSessions(): void {
-  if (!onWebTarget()) return;
-  const sdk = (window as unknown as { glyphhSdk?: { attach?: { dispatch?: (m: string, p?: Record<string, unknown>) => Promise<unknown> } } }).glyphhSdk;
-  void sdk?.attach?.dispatch?.("sessions.list")
-    .then((r) => {
-      const rows = (r as { sessions?: MachineSessionMeta[] })?.sessions ?? [];
-      machineSessions = rows.filter((m) => !chats.some((c) => c.id === m.id));
-      renderHistory();
-    })
-    .catch(() => { /* machine detached — the local list stands alone */ });
-}
-
-function openMachineSession(id: string): void {
-  const sdk = (window as unknown as { glyphhSdk?: { attach?: { dispatch?: (m: string, p?: Record<string, unknown>) => Promise<unknown> } } }).glyphhSdk;
-  void sdk?.attach?.dispatch?.("sessions.get", { id })
-    .then((r) => {
-      const sess = (r as { session?: { id: string; title: string; createdAt: number; mode: string; messages: Array<{ role: string; text: string; at: number }> } })?.session;
-      if (!sess) return;
-      // Materialize as a read view in the local store shape WITHOUT saving —
-      // it renders like any thread; sends are blocked by the runtime (the
-      // session's runs live on the machine).
-      const c: CodeChat = { id: sess.id, title: sess.title, createdAt: sess.createdAt, messages: sess.messages as CodeChat["messages"], mode: sess.mode as CodeChat["mode"] };
-      if (!chats.some((x) => x.id === c.id)) chats.push(c);
-      openLocalSession(sess.id);
-    })
-    .catch(() => { /* detached mid-open */ });
-}
-
 function renderThread(): void {
   // The composer's working state belongs to the SESSION ON SCREEN — every
   // switch lands here, so recompute (a background session keeps running;
@@ -1640,6 +1625,8 @@ function renderThread(): void {
   // area — a search + filter over this space's session cards.
   if (listView) { renderSessionList(inner); paintSessionHeadLocus(); return; }
   const c = current();
+  // A server-adopted thread paints as soon as its lazily-fetched messages land.
+  if (c) hydrateMessagesIfNeeded(c.id);
   // Code space, no session → the Code HOME (two-column: suggestions LEFT,
   // "Waiting on you" sessions RIGHT), not the bare ghost. Chat/Work land on
   // the dashboard instead, so their empty thread keeps the ghost.
@@ -1972,9 +1959,6 @@ async function checkWorkdirGate(): Promise<void> {
 function initWorkdirGate(): void {
   void checkWorkdirGate();
   initWebFolderChips();
-  refreshMachineSessions();
-  // The machine attaches/detaches while the tab lives — re-list occasionally.
-  if (onWebTarget()) setInterval(() => { if (!document.hidden) refreshMachineSessions(); }, 30_000);
 }
 
 /** Folder + add-files controls follow the SOURCE: a cloud workspace has no
@@ -2543,10 +2527,16 @@ function send(): void {
   // ride the local harness (main's glyphhRun) — it PROVISIONS + STREAMS a Fly
   // runtime through the SDK. Desktop-local and the honest-state fallback keep the
   // glyphhRun path below.
-  if (canRunRemote(src)) { void saveStore().then(() => launchRemote(c, text, src!)); return; }
+  // WEB = the SHARED CLOUD ROTOR, period (Chris, convergence pass): every
+  // tool-bearing web turn rides the remote transport — a machine-sourced
+  // session on web previously fell into the local runner, whose web stub
+  // resolves undefined ("Cannot read properties of undefined (reading
+  // 'runId')"). Driving the attached machine from web is deferred.
+  const webAlwaysRemote = onWebTarget() && modeOf(c) !== "chat" && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
+  if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, text, src ?? { kind: "cloud-new" })); return; }
   const launch = (retried: boolean): Promise<void> =>
     window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), ...(src ? { source: src } : {}) })
-      .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
+      .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("NO_WORKDIR") && !retried) {
