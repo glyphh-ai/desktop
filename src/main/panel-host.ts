@@ -39,6 +39,7 @@ import { BrowserWindow } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-client.js";
 import { toCdp, clampDim } from "./panel-input.js";
+import type { PanelNavAction } from "./panel-source.js";
 import type { InputEvent } from "./panel-input.js";
 import type { PanelSource, PanelSink, PanelOpenOptions, PanelSourceStats } from "./panel-source.js";
 import { maybeStartWebrtc, handleWebrtcSignal, isWebrtcSignal, closeWebrtc, feedJpeg } from "./panel-webrtc.js";
@@ -160,6 +161,17 @@ export class ElectronPanelSource implements PanelSource {
     await this.cdp(cmd.method, cmd.params).catch(() => {});
   }
 
+  async nav(action: PanelNavAction, url?: string): Promise<void> {
+    const wc = this.wc;
+    if (this.closed || !wc) return;
+    try {
+      if (action === "url" && url && /^https?:\/\//i.test(url)) await wc.loadURL(url);
+      else if (action === "back") wc.navigationHistory.goBack();
+      else if (action === "forward") wc.navigationHistory.goForward();
+      else if (action === "reload") wc.reload();
+    } catch { /* a nav that fails mid-teardown is dropped, not thrown */ }
+  }
+
   async resize(width: number, height: number): Promise<void> {
     if (this.closed || !this.wc) return;
     this.width = clampDim(width, 1280);
@@ -272,6 +284,19 @@ export function installPanelHost(): void {
     const panelId = String(p?.panelId ?? "");
     if (!panelId || !p?.event) throw new Error("panel.input requires { panelId, event }");
     await inputPanel(panelId, p.event);
+    return { ok: true };
+  });
+
+  registerRelayHandler("panel.nav", async (params) => {
+    const p = params as { panelId?: string; action?: PanelNavAction; url?: string } | null;
+    const panelId = String(p?.panelId ?? "");
+    const source = sources.get(panelId);
+    if (!source) throw new Error(`panel ${panelId} is not open`);
+    const action = p?.action;
+    if (action !== "url" && action !== "back" && action !== "forward" && action !== "reload") {
+      throw new Error("panel.nav requires an action: url | back | forward | reload");
+    }
+    await source.nav(action, p?.url);
     return { ok: true };
   });
 

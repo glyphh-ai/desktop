@@ -2961,7 +2961,15 @@ async function init(): Promise<void> {
         // SAME way — a workbench panel (__wbOpenApp's web branch). An echo
         // card's <webview> is inert in a browser, so routing here forked the
         // behavior depending on where the user clicked.
-        if (isWebTarget()) { openAppInWorkbench(app, { newPanel: true }); return; }
+        if (isWebTarget()) {
+          // The Browser builtin has no fixed url — open the streamed panel on a
+          // start page; its chrome urlbar takes it anywhere from there.
+          const target = (app.slug || "").trim().toLowerCase() === "browser" && !app.url
+            ? { ...app, url: "https://www.google.com" }
+            : app;
+          openAppInWorkbench(target, { newPanel: true });
+          return;
+        }
         const key = (app.slug || "").trim().toLowerCase();
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
@@ -3582,7 +3590,30 @@ async function init(): Promise<void> {
   function mountStreamedAppView(slot: AppSlot): AppView {
     const holder = document.createElement("div");
     holder.className = "ws-app-holder entering";
-    const streamed = mountStreamedPanel({ url: slot.url });
+    // The SAME chrome as the native app panel (back/fwd/reload/urlbar) —
+    // buildAppChrome is webview-shaped, so a thin adapter maps its verbs onto
+    // the streamed panel and re-emits far-side navs as did-navigate events.
+    const navTarget = new EventTarget();
+    const streamed = mountStreamedPanel({
+      url: slot.url,
+      onNav: (url) => {
+        if (url) slot.url = url;   // persistence follows the far page, as native does
+        navTarget.dispatchEvent(Object.assign(new Event("did-navigate"), { url }));
+      },
+    });
+    const adapter = {
+      loadURL: (u: string) => streamed.navigate(u),
+      goBack: () => streamed.back(),
+      goForward: () => streamed.forward(),
+      reload: () => streamed.reload(),
+      canGoBack: () => true,
+      canGoForward: () => true,
+      getURL: () => streamed.currentUrl(),
+      addEventListener: (type: string, fn: EventListener) => navTarget.addEventListener(type, fn),
+    } as unknown as WebviewEl;
+    const { chrome, urlbar } = buildAppChrome(adapter, () => slot.url);
+    urlbar.value = slot.url;
+    holder.appendChild(chrome);
     streamed.el.style.flex = "1";
     streamed.el.style.minHeight = "0";
     holder.appendChild(streamed.el);

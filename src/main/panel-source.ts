@@ -70,6 +70,9 @@ export interface PanelOpenOptions {
   quality: number;
 }
 
+/** Address-bar navigation verbs relayed from the web chrome. */
+export type PanelNavAction = "url" | "back" | "forward" | "reload";
+
 /** Live counters for the client's stats readout + logs. */
 export interface PanelSourceStats {
   frames: number;
@@ -93,6 +96,9 @@ export interface PanelSource {
 
   /** Replay ONE input event (mouse/key/wheel) into the rendered page. */
   input(ev: InputEvent): Promise<void>;
+
+  /** Address-bar navigation from the web chrome (url / back / forward / reload). */
+  nav(action: PanelNavAction, url?: string): Promise<void>;
 
   /** Re-size the rendered surface + restart the stream at the new dimensions. */
   resize(width: number, height: number): Promise<void>;

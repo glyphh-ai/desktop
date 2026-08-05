@@ -65,6 +65,8 @@ export interface StreamedPanelOptions {
   /** Try to negotiate WebRTC (phase 2). Default true; the JPEG path is the
    *  automatic fallback, so turning this off just forces JPEG. */
   webrtc?: boolean;
+  /** Top-frame navigation on the far side (drives the caller's address bar). */
+  onNav?: (url: string, title: string) => void;
 }
 
 export interface StreamedPanelHandle {
@@ -72,6 +74,13 @@ export interface StreamedPanelHandle {
   readonly el: HTMLElement;
   /** Which transport is currently carrying video. */
   transport(): "webrtc" | "screencast";
+  /** Drive the far page: address-bar navigation + history + reload. */
+  navigate(url: string): void;
+  back(): void;
+  forward(): void;
+  reload(): void;
+  /** The far page's current top-frame URL (last nav push). */
+  currentUrl(): string;
   /** Tear down: close the panel on the far side + the sockets/peer. Idempotent. */
   dispose(): void;
 }
@@ -98,15 +107,11 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   video.autoplay = true; video.muted = true; (video as HTMLVideoElement).playsInline = true;
   video.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none;pointer-events:none;";
 
-  const badge = document.createElement("div");
-  badge.className = "streamed-panel-badge";
-  badge.style.cssText = "position:absolute;top:6px;right:8px;font:11px system-ui,sans-serif;color:#9ad;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:2;";
-
   const overlay = document.createElement("div");
   overlay.className = "streamed-panel-overlay";
   overlay.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#ccc;font:13px system-ui,sans-serif;text-align:center;padding:24px;z-index:3;";
 
-  root.append(canvas, video, badge, overlay);
+  root.append(canvas, video, overlay);
 
   const ctx = canvas.getContext("2d");
   let ws: WebSocket | null = null;
@@ -115,15 +120,13 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   let seq = 0;
   const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   let transport: "webrtc" | "screencast" = "screencast";
+  let lastUrl = opts.url;
   let pc: RTCPeerConnection | null = null;
 
   function setOverlay(html: string | null): void {
     if (html == null) { overlay.style.display = "none"; overlay.innerHTML = ""; return; }
     overlay.style.display = "flex";
     overlay.innerHTML = html;
-  }
-  function setBadge(): void {
-    badge.textContent = transport === "webrtc" ? "live · webrtc" : "live · screencast";
   }
 
   function call(method: string, params: unknown): Promise<unknown> {
@@ -146,7 +149,12 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   function onPush(d: PanelPush): void {
     switch (d.type) {
       case "frame": return drawFrame(d as FramePush);
-      case "nav": return; // address bar is owned by the caller's chrome
+      case "nav": {
+        const nav = push as NavPush;
+        lastUrl = nav.url || lastUrl;
+        opts.onNav?.(nav.url || "", nav.title || "");
+        return;
+      }
       case "offer": return void onOffer(d as OfferPush);
       case "ice": return void onRemoteIce(d as IcePush);
       case "transport": return onTransport(d as TransportPush);
@@ -169,7 +177,6 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     transport = t.transport;
     if (transport === "webrtc") { video.style.display = ""; canvas.style.pointerEvents = "none"; }
     else { video.style.display = "none"; video.srcObject = null; canvas.style.pointerEvents = ""; }
-    setBadge();
   }
 
   // ── phase 2: WebRTC as the client peer ─────────────────────────────────────
@@ -298,7 +305,6 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
           const h1 = Math.max(1, Math.round(after.height));
           if ((w1 !== w0 || h1 !== h0) && w1 > 1 && h1 > 1) input({ type: "resize", width: w1, height: h1 });
           setOverlay(null);
-          setBadge();
           canvas.focus();
           void startWebrtc();
         } catch (err) {
@@ -344,9 +350,18 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     setTimeout(() => { try { ws?.close(); } catch { /* noop */ } }, 100);
   }
 
+  const navCall = (action: "url" | "back" | "forward" | "reload", url?: string): void => {
+    if (!panelId) return;
+    void call("panel.nav", { panelId, action, url }).catch(() => { /* surfaced by nav push absence */ });
+  };
   return {
     el: root,
     transport: () => transport,
+    navigate: (url: string) => navCall("url", url),
+    back: () => navCall("back"),
+    forward: () => navCall("forward"),
+    reload: () => navCall("reload"),
+    currentUrl: () => lastUrl,
     dispose,
   };
 }
