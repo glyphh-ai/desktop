@@ -14912,3 +14912,16 @@ body.code-dragging webview { pointer-events: none !important; }
 .repo-drop-search::placeholder { color: var(--text-3); }
 .repo-drop-search::selection { background: var(--accent); color: var(--accent-ink, #fff); }
 .code-repo-drop-list { max-height: min(300px, 46vh); overflow-y: auto; overscroll-behavior: contain; }
+
+/* WEB: the standalone folder chip, branch mirror, and + are NATIVE-dialog
+   affordances (wb.pickCwd / OS pickers / local git info) — impossible in a
+   browser. Folder picking on web lives in the SOURCE chip (attach fs.list
+   machine browser); the GIT chip covers repos. Landing row on web reads
+   [source][git]. */
+.glyphh-web #dash-wd-btn,
+.glyphh-web #dash-wd-add,
+.glyphh-web #dash-wd-branch-wrap,
+.glyphh-web #code-workdir-btn,
+.glyphh-web #code-workdir-add,
+.glyphh-web #code-workdir-branch-wrap,
+.glyphh-web #code-plus-wrap { display: none !important; }
