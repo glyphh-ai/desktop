@@ -14944,3 +14944,8 @@ body.code-dragging webview { pointer-events: none !important; }
 
 /* The LOOP picker was too narrow for loop names + descriptions. */
 #code-effort-pop { min-width: 300px; }
+
+/* Designed monogram tiles — rounded plate, centered mark; the color comes
+   inline (brand for household names, deterministic hue otherwise). */
+.icon-monogram { display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; border-radius: inherit; font-weight: 650; }

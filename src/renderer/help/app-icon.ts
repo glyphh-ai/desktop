@@ -64,23 +64,59 @@ const yoIcons = (): {
   connectorsGetApps: (slug: string) => Promise<{ apps: Array<{ id: string; icon?: string | null }> }>;
 } }).glyphh;
 
-/** Resolve the icon URL for an app ("" when only the initial fallback applies). */
+// ── Curated brand layer ──────────────────────────────────────────────────
+// The household names get a hand-picked BRAND COLOR behind the server-resolved
+// mark (the resolver's apple-touch icons ARE the official art at 180px, so the
+// curated layer supplies identity color + guaranteed coverage, not redrawn
+// logos). Keyed by hostname suffix.
+const BRAND_COLORS: Array<[string, string]> = [
+  ["gmail.com", "#ea4335"], ["mail.google.com", "#ea4335"],
+  ["calendar.google.com", "#4285f4"], ["drive.google.com", "#fbbc04"],
+  ["docs.google.com", "#4285f4"], ["github.com", "#24292f"],
+  ["slack.com", "#611f69"], ["notion.so", "#191919"],
+  ["figma.com", "#1e1e1e"], ["linear.app", "#5e6ad2"],
+  ["youtube.com", "#ff0000"], ["x.com", "#000000"], ["twitter.com", "#000000"],
+];
+function brandColor(host: string): string {
+  for (const [suffix, color] of BRAND_COLORS) {
+    if (host === suffix || host.endsWith(`.${suffix}`)) return color;
+  }
+  return "";
+}
+
+/** The control-plane origin — desktop preload exposes it, web stamps a global. */
+function apiBase(): string {
+  const w = window as unknown as { __GLYPHH_API_URL__?: string; glyphh?: { serverUrl?: string } };
+  return (w.__GLYPHH_API_URL__ || w.glyphh?.serverUrl || "https://api.glyphh.ai").replace(/\/$/, "");
+}
+
+/** Deterministic monogram hue — the SAME app always wears the same color, and
+ *  the tile reads designed, not "icon missing". */
+export function monogramStyle(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return `background:hsl(${h % 360} 42% 38%);color:#fff;`;
+}
+
+/** Resolve the icon URL for an app ("" when only the monogram applies). */
 export function appIconUrl(app: IconApp): string {
   // The Glyphh system app always shows the brand mark (shipped next to every
   // renderer page that uses this module). Nav apps never resolve a URL —
   // appIconInner inlines their glyph so it can follow the theme.
   if (app.slug === "glyphh") return "brand/glyphh-mark.png";
   const isInternal = app.url?.startsWith("yo://");
-  let favicon = "";
+  // OUR resolver, not Google's favicon service: apple-touch quality, cached in
+  // R2, served first-party (CORS `*`, so WebGL tiles stay untainted).
+  let resolved = "";
   if (app.url && !isInternal) {
-    try { favicon = `https://www.google.com/s2/favicons?domain=${new URL(app.url).hostname}&sz=64`; }
-    catch { favicon = ""; }
+    try { resolved = `${apiBase()}/api/icons?domain=${encodeURIComponent(new URL(app.url).hostname)}`; }
+    catch { resolved = ""; }
   }
   const connectedIcon = app.connection?.accountId && app.connection.pipedreamSlug
     ? connectedIconCache[app.connection.pipedreamSlug] || ""
     : "";
   const nativeIcon = app.execPath ? nativeIconCache[app.execPath] || "" : "";
-  return connectedIcon || favicon || nativeIcon;
+  return connectedIcon || resolved || nativeIcon;
 }
 
 /** Inner markup (img + hidden initial fallback, or just the initial) for one
@@ -91,9 +127,15 @@ export function appIconInner(app: IconApp, name: string, initialClass: string): 
   if (glyph) return glyph;
   const iconUrl = appIconUrl(app);
   const initial = (name || "?").charAt(0).toUpperCase();
+  // The failure state is a DESIGNED monogram: brand color for the household
+  // names, else a deterministic hue from the slug — never a bare letter.
+  let host = "";
+  try { host = app.url ? new URL(app.url).hostname : ""; } catch { host = ""; }
+  const plate = brandColor(host) ? `background:${brandColor(host)};color:#fff;` : monogramStyle(app.slug || name || "?");
+  const mono = `<span class="${initialClass} icon-monogram" style="${plate}">${initial}</span>`;
   return iconUrl
-    ? `<img src="${iconUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="${initialClass}" style="display:none">${initial}</span>`
-    : `<span class="${initialClass}">${initial}</span>`;
+    ? `<img src="${iconUrl}" crossorigin="anonymous" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />${mono.replace('style="', 'style="display:none;')}`
+    : mono;
 }
 
 /** Fetch + cache the OS file icon for any native app (execPath) not already
