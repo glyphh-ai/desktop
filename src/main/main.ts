@@ -73,6 +73,7 @@ import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { installAttachHandlers } from "./attach-handlers";
+import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
@@ -340,6 +341,9 @@ async function boot() {
   // loops.run / skills.run / agents.run / scrape.page — the attach socket's
   // extra capabilities, on the same registry.
   installAttachHandlers();
+  // SPIKE: panel.open/input/close — stream a real on-machine page to a web
+  // client over the attach relay (panel-host.ts). Same registry, same socket.
+  installPanelHost();
   // rpa.* drive an open app panel. The renderer registers each panel's
   // slug → webContents id so main can resolve the live view.
   installRpaHandlers();
@@ -1077,6 +1081,7 @@ let cleanedUp = false;
 function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;
+  try { closeAllPanels(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on
   // its own — a clean teardown exits well before this fires. The UPDATE path

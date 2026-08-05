@@ -100,3 +100,23 @@ export function stopAttach(): void {
 export function isAttached(): boolean {
   return ws?.readyState === WebSocket.OPEN;
 }
+
+/**
+ * SPIKE (panel screencast): push an UNSOLICITED frame up the attach socket.
+ *
+ * The base attach protocol is strict request/response (server → `req`, machine
+ * → `res`). A screencast is the opposite shape: the machine originates a stream
+ * of frames with no request to correlate to. We add ONE new frame kind —
+ * `{ t:"push", channel, data }` — that the server fans out to web clients
+ * subscribed to that channel (the panelId). Returns false when the socket isn't
+ * open so the caller can drop the frame instead of buffering unboundedly.
+ */
+export function pushToAttach(channel: string, data: unknown): boolean {
+  if (ws?.readyState !== WebSocket.OPEN) return false;
+  try {
+    ws.send(JSON.stringify({ t: "push", channel, data }));
+    return true;
+  } catch {
+    return false;
+  }
+}
