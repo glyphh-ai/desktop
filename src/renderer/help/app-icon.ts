@@ -123,7 +123,11 @@ export function appIconUrl(app: IconApp): string {
     ? connectedIconCache[app.connection.pipedreamSlug] || ""
     : "";
   const nativeIcon = app.execPath ? nativeIconCache[app.execPath] || "" : "";
-  return connectedIcon || resolved || nativeIcon;
+  // The RESOLVER leads: it is the one source both surfaces share, so the same
+  // app wears the same icon everywhere. Connected/native icons only exist on
+  // some surfaces (pipedream priming, exec icons) — they are fallbacks, or
+  // the only option for apps with no URL.
+  return resolved || connectedIcon || nativeIcon;
 }
 
 /** Inner markup (img + hidden initial fallback, or just the initial) for one
