@@ -157,6 +157,73 @@ async function handleCallback(shownAt) {
 }
 
 /** Show the login screen (splash comes down behind it). */
+/**
+ * DEVICE GRANT (/auth/device?code=ABCD-1234) — a CLI/TUI sent the user here to
+ * authorize a device. Signed OUT: the same login shell, but with the device
+ * context in the copy (no bounce elsewhere) — after sign-in it re-enters this
+ * view with the code intact. Signed IN: the confirm form → auth.approveDevice.
+ */
+async function showDevice(shownAt) {
+  dismissSplash(shownAt);
+  const code = (new URLSearchParams(window.location.search).get('code') || '').toUpperCase();
+  const sdk = window.glyphhSdk;
+
+  // Verify the session for REAL — a cached user can outlive a dead session and
+  // drop the user on a confirm form that just 401s with no way to sign in.
+  let authed = false;
+  try { authed = !!(await sdk?.auth?.me?.()); } catch { authed = false; }
+
+  if (!authed) {
+    mountLogin({
+      googleClientId: (typeof window !== 'undefined' && window.__GLYPHH_GOOGLE_CLIENT_ID__) || null,
+      origin: window.location.origin,
+      onGoogle: signInWithGoogle,
+      onStartEmailLink: startEmailLink,
+      title: 'Authorize this device',
+      lede: code
+        ? `Sign in to approve the code ${code} from your terminal.`
+        : 'Sign in to approve the device shown in your terminal.',
+      // After signing in, re-run this view (code still in the URL) so the user
+      // lands on the confirm step rather than the workspace.
+      onAuthed: () => { void showDevice(shownAt); },
+    });
+    return;
+  }
+
+  const step = document.getElementById('onboarding-step-auth');
+  const overlay = document.getElementById('onboarding-overlay');
+  if (overlay) overlay.classList.remove('hidden');
+  if (!step) return;
+  step.innerHTML = '';
+  const h = document.createElement('h1'); h.className = 'auth-shell-title'; h.textContent = 'Authorize this device';
+  const lede = document.createElement('p'); lede.className = 'auth-shell-lede';
+  lede.textContent = 'Confirm the code shown in your terminal to authorize this device.';
+  const input = document.createElement('input');
+  input.className = 'auth-shell-input device-code-input'; input.id = 'device-code';
+  input.value = code; input.placeholder = 'ABCD-1234'; input.autocomplete = 'off'; input.spellcheck = false;
+  input.addEventListener('input', () => { input.value = input.value.toUpperCase(); });
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-primary'; btn.type = 'button'; btn.textContent = 'Approve device';
+  const msg = document.createElement('p'); msg.className = 'auth-shell-error'; msg.style.marginTop = '10px';
+  btn.addEventListener('click', async () => {
+    const value = (input.value || '').trim();
+    if (!value) { msg.textContent = 'Enter the code from your terminal.'; return; }
+    btn.disabled = true; btn.textContent = 'Approving…'; msg.textContent = '';
+    try {
+      await sdk.auth.approveDevice(value);
+      step.innerHTML = '';
+      const ok = document.createElement('h1'); ok.className = 'auth-shell-title'; ok.textContent = 'Device approved';
+      const sub = document.createElement('p'); sub.className = 'auth-shell-lede';
+      sub.textContent = 'Return to your terminal — it is signed in now. You can close this tab.';
+      step.append(ok, sub);
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Approve device';
+      msg.textContent = (err && err.message) || 'Could not confirm this code.';
+    }
+  });
+  step.append(h, lede, input, btn, msg);
+}
+
 function showLogin(shownAt, initialError) {
   dismissSplash(shownAt);
   mountLogin({
@@ -203,6 +270,7 @@ export async function startWebBoot(overrides = {}) {
     authenticated: authed,
   });
 
+  if (state === 'device') return showDevice(shownAt);
   if (state === 'callback') return handleCallback(shownAt);
   if (state === 'app') return enterApp(shownAt);
   return showLogin(shownAt);
