@@ -3035,6 +3035,13 @@ async function init(): Promise<void> {
         if (!tile) return;
         const pinned = openList.find((x) => x.tile.sticky && x.card);
         if (pinned) { retargetCard(pinned, tile); return; }
+        // An APP open REPLACES an open layout — the same rule openSection
+        // already applies to nav pages. Without it the new card stacked over
+        // the layout while its grid slots lived on underneath (stale seams
+        // and dividers under the fresh panel, on both surfaces). The reset
+        // saves the layout's memory ("last" resumes it); a PIN above still
+        // captures the open into the pinned location with the layout intact.
+        if (echoGrid) resetEcho();
         activateTile(adHoc(tile));
       },
       openLayout: (layout) => openLayoutInEcho(layout),
