@@ -102,12 +102,13 @@ export function isAttached(): boolean {
 }
 
 /**
- * SPIKE (panel screencast): push an UNSOLICITED frame up the attach socket.
+ * Push an UNSOLICITED frame up the attach socket (the panel screencast + WebRTC
+ * signaling stream).
  *
  * The base attach protocol is strict request/response (server → `req`, machine
  * → `res`). A screencast is the opposite shape: the machine originates a stream
- * of frames with no request to correlate to. We add ONE new frame kind —
- * `{ t:"push", channel, data }` — that the server fans out to web clients
+ * of frames with no request to correlate to. This frame kind —
+ * `{ t:"push", channel, data }` — is the one the server fans out to web clients
  * subscribed to that channel (the panelId). Returns false when the socket isn't
  * open so the caller can drop the frame instead of buffering unboundedly.
  */

@@ -2,10 +2,10 @@
  * panel/input.ts — the PURE client-input → CDP-command mapping.
  *
  * The browser panel takes raw input events off the WS (mouse/key/wheel/resize)
- * and dispatches them into the pod's real browser via CDP. This module holds the
- * pure, side-effect-free translation: `InputEvent` (the wire shape the demo
- * client + app-web canvas send) → a `CdpCommand` (`method` + `params`) the
- * session layer feeds to `CDPSession.send()`. Keeping it pure makes it unit-
+ * and dispatches them into the streamed page's real browser via CDP. This module
+ * holds the pure, side-effect-free translation: `InputEvent` (the wire shape the
+ * app-web canvas sends) → a `CdpCommand` (`method` + `params`) the panel source
+ * feeds to the debugger. Keeping it pure makes it unit-
  * testable with no browser (the input tests fake nothing — they assert the
  * mapping), and keeps the coordinate/modifier/keycode conventions in ONE place.
  *

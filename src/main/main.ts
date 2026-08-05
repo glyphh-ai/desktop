@@ -341,8 +341,9 @@ async function boot() {
   // loops.run / skills.run / agents.run / scrape.page — the attach socket's
   // extra capabilities, on the same registry.
   installAttachHandlers();
-  // SPIKE: panel.open/input/close — stream a real on-machine page to a web
-  // client over the attach relay (panel-host.ts). Same registry, same socket.
+  // panel.open/input/close/stats/webrtc — stream a real on-machine page to a
+  // web client over the attach relay (panel-host.ts). Same registry, same
+  // socket. On web + desktop-attached, an app panel renders here and streams.
   installPanelHost();
   // rpa.* drive an open app panel. The renderer registers each panel's
   // slug → webContents id so main can resolve the live view.

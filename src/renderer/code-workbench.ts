@@ -18,6 +18,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
+import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
@@ -3444,7 +3445,7 @@ async function init(): Promise<void> {
     downloadURL?: (url: string) => void;
     executeJavaScript?: (code: string) => Promise<unknown>;
   };
-  interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string }
+  interface AppView { holder: HTMLDivElement; webview: WebviewEl; slug: string; streamed?: StreamedPanelHandle }
   const appViews = new Map<number, AppView>();
   // ── Echo mode — while an echo slot exists it IS the workspace view. Apps
   // The RPA registration bridge on window.glyphh (slug ↔ panel webContents id).
@@ -3543,7 +3544,39 @@ async function init(): Promise<void> {
     return { chrome, urlbar };
   }
 
+  /** True when running the app-web target (no Electron <webview>). */
+  function isWebTarget(): boolean {
+    return !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+  }
+
+  /**
+   * The WEB drop-in for a URL app panel: a <webview> does nothing on web, so a
+   * streamed panel (canvas/WebRTC of a page rendered on the user's attached
+   * desktop) takes its place. Same holder + chrome shell as the native path, so
+   * syncAppViews positions it identically. Installed Glyphh apps (file:// entry)
+   * aren't streamed here — their entry URL is resolved on-machine and isn't known
+   * to the web client — they keep the native path (and no-op on web).
+   */
+  function mountStreamedAppView(slot: AppSlot): AppView {
+    const holder = document.createElement("div");
+    holder.className = "ws-app-holder entering";
+    const streamed = mountStreamedPanel({ url: slot.url });
+    streamed.el.style.flex = "1";
+    streamed.el.style.minHeight = "0";
+    holder.appendChild(streamed.el);
+    if (slot.urlBarHidden) holder.classList.add("urlbar-hidden");
+    ensureAppLayer().appendChild(holder);
+    requestAnimationFrame(() => requestAnimationFrame(() => holder.classList.remove("entering")));
+    // The <webview> field is unused on this path; a permissive stub keeps the
+    // AppView shape without a real Electron element.
+    const view: AppView = { holder, webview: document.createElement("div") as WebviewEl, slug: slot.slug, streamed };
+    appViews.set(slot.id, view);
+    return view;
+  }
+
   function mountAppView(slot: AppSlot): AppView {
+    if (isWebTarget() && !slot.glyphh) return mountStreamedAppView(slot);
+
     const holder = document.createElement("div");
     holder.className = "ws-app-holder entering";
 
@@ -3636,6 +3669,7 @@ async function init(): Promise<void> {
       let view = appViews.get(slot.id);
       if (view && view.slug !== slot.slug) {   // switched app in place
         rpaYo().rpaUnregister?.(view.slug);
+        view.streamed?.dispose();
         view.holder.remove();
         appViews.delete(slot.id);
         view = undefined;
@@ -3657,11 +3691,11 @@ async function init(): Promise<void> {
       }
     }
     for (const [id, view] of appViews) {
-      if (!live.has(id)) { rpaYo().rpaUnregister?.(view.slug); view.holder.remove(); appViews.delete(id); }
+      if (!live.has(id)) { rpaYo().rpaUnregister?.(view.slug); view.streamed?.dispose(); view.holder.remove(); appViews.delete(id); }
     }
     notifyOpenApps();
     if (slots.length) appSyncRaf = requestAnimationFrame(syncAppViews);
-    else { appSyncRaf = 0; if (appLayer) appLayer.innerHTML = ""; appViews.clear(); }
+    else { appSyncRaf = 0; for (const v of appViews.values()) v.streamed?.dispose(); if (appLayer) appLayer.innerHTML = ""; appViews.clear(); }
   }
   function scheduleAppSync(): void {
     if (!appSyncRaf) appSyncRaf = requestAnimationFrame(syncAppViews);
