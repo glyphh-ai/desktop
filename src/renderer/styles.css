@@ -258,12 +258,12 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --bg: #000000; --bg-raised: #0a0a0a; --surface: #0d0d0d; --surface-2: #141414; --surface-3: #1a1a1a;
   --border: #5a5a5a; --border-2: #7a7a7a; --border-3: #9a9a9a;
   --text: #ffffff; --text-bright: #ffffff; --text-2: #eaeaea; --text-3: #c8c8c8; --text-muted: #b0b0b0; --text-faint: #909090;
-  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(255, 214, 0, 0.16);
-  --accent: #ffd600; --accent-hover: #ffe23d; --accent-text: #ffe23d; --accent-dark: #c7a600; --accent-bg: #2a2600;
+  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(176, 102, 255, 0.20);
+  --accent: #b066ff; --accent-hover: #c68cff; --accent-text: #c68cff; --accent-dark: #8c3bf2; --accent-bg: #221133;
   --danger: #ff2b2b; --danger-soft: #ff5555; --danger-bg: #2a0000; --warning: #ff9500; --success: #00e676; --blue: #00b0ff; --purple: #d500f9;
-  --overlay-bg: rgba(0, 0, 0, 0.8); --shadow: rgba(0, 0, 0, 0.7); --selection: rgba(255, 214, 0, 0.35);
-  --scrollbar: #5a5a5a; --scrollbar-hover: #ffd600; --toast-bg: #0d0d0d; --code-inline: #ffd600;
-  --input-bg: #0d0d0d; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #ffd600, #ff9500);
+  --overlay-bg: rgba(0, 0, 0, 0.8); --shadow: rgba(0, 0, 0, 0.7); --selection: rgba(176, 102, 255, 0.35);
+  --scrollbar: #5a5a5a; --scrollbar-hover: #b066ff; --toast-bg: #0d0d0d; --code-inline: #c68cff;
+  --input-bg: #0d0d0d; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #b066ff, #8c3bf2);
 }
 
 /* ── Claude — Anthropic warm cream + clay ─────────────────────────────── */
@@ -6100,8 +6100,8 @@ select.settings-input {
 .theme-preview-github .tp-content { background: #0d1117; }
 
 .theme-preview-highvis { background: #000; }
-.theme-preview-highvis .tp-sidebar { background: #0d0d0d; border-right: 1px solid #ffd600; }
-.theme-preview-highvis .tp-bar { background: #0d0d0d; border-bottom: 1px solid #ffd600; }
+.theme-preview-highvis .tp-sidebar { background: #0d0d0d; border-right: 1px solid #b066ff; }
+.theme-preview-highvis .tp-bar { background: #0d0d0d; border-bottom: 1px solid #b066ff; }
 .theme-preview-highvis .tp-content { background: #000; }
 
 .theme-preview-claude { background: #f0eee6; }

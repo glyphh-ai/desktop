@@ -30,22 +30,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "src/renderer/skill-flow.tsx",
-    "src/renderer/renderer.ts",
-    "src/renderer/app-window.ts",
-    "src/renderer/layout-window.ts",
-    "src/renderer/help/**",
-    "src/renderer/home.ts",
-    "src/renderer/onboarding.ts",
-    "src/renderer/terminal-renderer.ts",
-    "src/renderer/downloads-ui.ts",
-    "src/renderer/drip-ui.ts",
-    "src/renderer/boot-gate-ui.ts",
-    "src/renderer/tab-bar-ui.ts",
-    "src/renderer/grid-ui.ts",
-    "src/renderer/command-center-ui.ts",
-    "src/renderer/yo-modal.ts",
-    "src/renderer/search-clear.ts",
-    "src/renderer/tsconfig.json"
+    "src/renderer/**",
   ]
 }
