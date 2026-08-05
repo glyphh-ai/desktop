@@ -123,11 +123,13 @@ export function appIconUrl(app: IconApp): string {
     ? connectedIconCache[app.connection.pipedreamSlug] || ""
     : "";
   const nativeIcon = app.execPath ? nativeIconCache[app.execPath] || "" : "";
-  // The RESOLVER leads: it is the one source both surfaces share, so the same
-  // app wears the same icon everywhere. Connected/native icons only exist on
-  // some surfaces (pipedream priming, exec icons) — they are fallbacks, or
-  // the only option for apps with no URL.
-  return resolved || connectedIcon || nativeIcon;
+  // The CONNECTED (Pipedream catalog) icon leads — the brand art Chris judged
+  // correct on desktop. Both surfaces prime it through the same
+  // connectorsGetApps seam (SDK-backed on web), so leading with it is
+  // cross-surface consistent; the resolver covers everything unconnected.
+  // (A resolver-first flip on 2026-08-05 made web and desktop render
+  // DIFFERENT icons for the same connected app — never again.)
+  return connectedIcon || resolved || nativeIcon;
 }
 
 /** Inner markup (img + hidden initial fallback, or just the initial) for one
