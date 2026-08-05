@@ -1646,10 +1646,21 @@ async function init(): Promise<void> {
       if (isWebTarget()) return Promise.resolve(src);
       return iconYo?.webIconFetch?.(src) ?? Promise.resolve("");
     };
-    const loadOne = (src: string, assign: (img: HTMLImageElement) => void, e: TileEntry): void => {
+    const loadOne = (src: string, assign: (img: HTMLImageElement) => void, e: TileEntry, attempt = 0): void => {
       if (!src) return;
       void resolveIconSrc(src).then((u) => (u ? loadImage(u) : null)).then((img) => {
-        if (!img || !body.isConnected) return;
+        if (!body.isConnected) return;
+        if (!img) {
+          // NEVER one-shot a remote icon: a cold resolver cache / mid-deploy
+          // miss left the tile a letter FOREVER (and made two surfaces show
+          // different walls purely by when they loaded). Two spaced retries
+          // converge every surface to the same answer without a manual
+          // close/reopen.
+          if (attempt < 2 && /^https?:/i.test(src)) {
+            setTimeout(() => loadOne(src, assign, e, attempt + 1), attempt === 0 ? 4000 : 15000);
+          }
+          return;
+        }
         assign(img);
         drawTile(e);
       });
