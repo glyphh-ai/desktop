@@ -1355,6 +1355,12 @@ async function init(): Promise<void> {
    * streamed in as they load. View controls: drag pans, wheel + ± zooms,
    * ⟲ resets. That's it — ordering via layouts comes later.
    */
+  function renderEchoFallback(body: HTMLElement, wrap: HTMLElement): void {
+    wrap.dataset.view = "echo";
+    const cards = body.querySelector<HTMLElement>(".echo-cards");
+    if (cards) cards.classList.add("echo-cards-2d");
+  }
+
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
@@ -1383,7 +1389,18 @@ async function init(): Promise<void> {
     const TILE_W = 230, TILE_H = TILE_W * (94 / 104), COL_ARC = (TILE_W + 10) / R, ROW_H = TILE_H + 16;
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, 1, 1, 8000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    } catch (err) {
+      // WebGL context unavailable (headless, GPU-blocked, too many contexts) —
+      // the 3D wall degrades to the flat 2D card fallback instead of crashing
+      // the whole workbench render (which blanked the page + threw the overlay).
+      console.warn("echo wall: WebGL unavailable, using the 2D fallback", err);
+      body.classList.add("echo-nogl");
+      renderEchoFallback(body, wrap);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setClearColor(0x000000, 0);
     stage.appendChild(renderer.domElement);
@@ -5584,8 +5601,10 @@ async function init(): Promise<void> {
     __wbOpenSection?: (section: string) => void;
   };
   wbApp.__wbOpenApp = (app, newPanel) => {
-    if (echoCtl) { echoCtl.openApp(app); return; }
-    openAppInWorkbench(app, { newPanel });
+    // On WEB, open as a streamed workbench panel (openAppInWorkbench →
+    // mountStreamedAppView), NOT an echo card (its <webview> is inert on web).
+    if (echoCtl && !isWebTarget()) { echoCtl.openApp(app); return; }
+    openAppInWorkbench(app, { newPanel: newPanel ?? true });
   };
   wbApp.__wbOpenApps = (apps, layoutName?: string) => {
     // A NAMED layout comes up through the grid path — its definition plus the

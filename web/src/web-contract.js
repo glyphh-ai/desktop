@@ -223,6 +223,13 @@ export function buildContract(client, deps) {
     // on web an app simply OPENS IN A NEW TAB. Native apps need the desktop.
     appLaunch: async (app) => {
       const url = (app && (app.url || app.prodUrl)) || null;
+      // On web an app opens as a STREAMED workbench panel (rendered on the
+      // user's attached desktop, streamed here) — not a new browser tab.
+      const open = (typeof window !== 'undefined') && window.__wbOpenApp;
+      if (open && (url || app.glyphh)) {
+        try { open({ slug: app.slug, name: app.name, url: url || '', glyphh: !!app.glyphh }, true); return { ok: true }; }
+        catch (e) { /* fall through to the tab fallback */ }
+      }
       if (url) {
         try { window.open(url, '_blank', 'noopener'); return { ok: true }; }
         catch { return { ok: false, error: 'popup blocked — allow popups for this site' }; }
