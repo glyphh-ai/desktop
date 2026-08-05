@@ -1,7 +1,7 @@
 name: Deploy app-web
 
 # Deploys the WEB TARGET ONLY (web/serve.mjs + dist/renderer) to Fly as
-# glyphh-ai-app. The check (test:web + build:web) runs HERE before any deploy,
+# glyphh-ai-platform (app-web IS the platform). The check (test:web + build:web) runs HERE before any deploy,
 # so a broken build fails with readable logs instead of inside a remote build.
 #
 # The `@glyphh/sdk: file:../sdk` dependency is a sibling checkout that exists

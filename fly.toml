@@ -8,7 +8,7 @@
 # not in the image) and injects these as window.__GLYPHH_* before the bridge —
 # the SDK talks DIRECTLY to the control-plane API, no proxy here.
 
-app = "glyphh-ai-app"
+app = "glyphh-ai-platform"
 primary_region = "iad"
 
 [env]
