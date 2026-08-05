@@ -3250,15 +3250,20 @@ body.account-locked #dl-btn-wrap {
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
-  /* Vertically centred landing — the column floats mid-page. `safe` is
-     load-bearing: without it an overflowing column centres by pushing its
-     top out of the scroll box, and the greeting disappears upward. */
+  /* The landing column flows from the top; the hero's own top offset (18vh)
+     drops the greeting+composer down the page, cards below (Landing.js). */
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: safe center;
+  justify-content: flex-start;
 }
 @container dash (max-width: 720px) { .dash-scroll { padding: 18px 16px 32px; } }
+
+/* HERO — greeting + composer as one unit, pushed DOWN the page (not centered
+   high): a big top offset drops it lower, cards flow beneath (dash-hero). */
+.dash-hero { display: flex; flex-direction: column; width: 100%; margin-top: 18vh; }
+.dash-hero > .dash-header { margin-bottom: 18px; }
+@container dash (max-width: 720px) { .dash-hero { margin-top: 8vh; } }
 .dash-header {
   display: flex;
   align-items: center;
@@ -3267,7 +3272,7 @@ body.account-locked #dl-btn-wrap {
   margin-bottom: 18px;
   text-align: left;
 }
-.dash-mark { width: 56px; height: 56px; flex: none; }
+.dash-mark { width: 56px; height: 56px; flex: none; border-radius: 12px; }
 .dash-header-text { text-align: left; }
 
 /* App notifications — a quiet slot under the welcome; apps fill it later. */
@@ -3444,7 +3449,7 @@ body[data-rail-space="code"] .app-rail-nav-item[data-space]:not([data-space~="co
   color: var(--text);
   margin: 0;
 }
-.dash-subtitle { font-size: 13px; color: var(--text-3); margin: 4px 0 0; }
+.dash-subtitle { font-size: 15px; color: var(--text-2); margin: 4px 0 0; }
 .dash-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
 .dash-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
