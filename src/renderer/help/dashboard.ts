@@ -207,29 +207,53 @@ let particlesRaf = 0;
 let particlesVariant = "";
 let particlesCleanup: (() => void) | null = null;
 // Three surfaces, three orientations of the ONE HeroFlow engine (web's
-// component verbatim): the splash runs "fan" (home), Work runs "converge"
-// (desktop page), Chat runs "fall" — the CLI page's cascade, streams
-// falling like terminal output in its teal/emerald set.
-const FLOW_VARIANTS = {
+// DashParticles component, verbatim): Work runs "converge" (streams entering
+// from both edges, meeting mid-canvas — purple/amber/pink), Chat runs "fall"
+// (the CLI page's cascade, streams falling like terminal output — teal/
+// emerald), and Code runs "rise" (streams flowing UP — greens, seed 1337).
+export type FlowVariant = "cowork" | "chat" | "code";
+const FLOW_VARIANTS: Record<FlowVariant, { mode: "converge" | "fall" | "rise"; colors: readonly string[]; pulse: string; seed: number }> = {
   cowork: { mode: "converge", colors: ["179, 107, 251", "245, 158, 11", "236, 72, 153"], pulse: "255, 236, 180", seed: 2025 },
   chat: { mode: "fall", colors: ["94, 234, 212", "52, 211, 153", "179, 107, 251"], pulse: "190, 242, 255", seed: 4242 },
-} as const;
-function startDashParticles(): void {
-  const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
-  if (!canvas || particlesRaf) return;
+  code: { mode: "rise", colors: ["52, 211, 153", "110, 231, 183", "134, 239, 172"], pulse: "187, 247, 208", seed: 1337 },
+};
+
+/** Is the ACTIVE theme light? Read from the theme's own --bg rather than a
+ *  theme name, so custom/alt themes classify correctly too. The dark vignette
+ *  reads as a dirty grey smudge on a light ground — this guard skips it. */
+function isLightTheme(): boolean {
+  const bg = (getComputedStyle(document.documentElement).getPropertyValue("--bg") || "").trim();
+  const m = /^#([0-9a-f]{3,8})$/i.exec(bg) || /rgba?\(([^)]+)\)/i.exec(bg);
+  if (!m) return false;
+  let r = 0, g = 0, b = 0;
+  if (bg.startsWith("#")) {
+    const hex = m[1]!.length === 3 ? m[1]!.split("").map((c) => c + c).join("") : m[1]!.slice(0, 6);
+    r = parseInt(hex.slice(0, 2), 16); g = parseInt(hex.slice(2, 4), 16); b = parseInt(hex.slice(4, 6), 16);
+  } else {
+    const parts = m[1]!.split(",").map((v) => parseFloat(v));
+    [r, g, b] = [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+  }
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 128;
+}
+
+/**
+ * Run the HeroFlow engine on ONE canvas for a given variant. Self-contained
+ * (own ResizeObserver + RAF), returns a cleanup that stops it. Used by the
+ * dashboard singleton (Chat/Work) and the Code landing (its own canvas).
+ */
+export function runHeroFlow(canvas: HTMLCanvasElement, variantKey: FlowVariant): () => void {
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (!ctx) return () => { /* no context — nothing to stop */ };
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const variantKey = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
-  particlesVariant = variantKey;
   const V = FLOW_VARIANTS[variantKey];
-  const mode: "converge" | "fall" = V.mode;
+  const mode: "converge" | "fall" | "rise" = V.mode;
   const COLORS: readonly string[] = V.colors;
   const PULSE = V.pulse;
   const WHITE = "255, 255, 255";
   const N = 28;
   const SEED = V.seed;
+  let raf = 0;
 
   const mulberry = (seed: number): (() => number) => () => {
     seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
@@ -277,13 +301,14 @@ function startDashParticles(): void {
   };
   const ro = new ResizeObserver(resize);
   if (canvas.parentElement) ro.observe(canvas.parentElement);
-  particlesCleanup = () => ro.disconnect();
   resize();
 
   type Pt = [number, number];
-  // fall swaps the axes: streams cascade top-down like terminal output
+  // fall cascades top-down; rise flows bottom-up; converge runs edge-inward.
   const mapPt = (S: Stream, run: number, fan: number): Pt =>
-    mode === "fall" ? [fan * w, run * h] : [S.mirror ? (1 - run) * w : run * w, fan * h];
+    mode === "fall" ? [fan * w, run * h]
+      : mode === "rise" ? [fan * w, (1 - run) * h]
+      : [S.mirror ? (1 - run) * w : run * w, fan * h];
   const ctrl = (S: Stream): [Pt, Pt, Pt, Pt] => [
     mapPt(S, 0, S.y0),
     mapPt(S, S.endX * 0.42, S.y0),
@@ -300,7 +325,7 @@ function startDashParticles(): void {
 
   const frame = (now: number): void => {
     if (!canvas.isConnected || canvas.offsetParent === null) {
-      particlesRaf = 0;
+      raf = 0;
       ro.disconnect();
       return;
     }
@@ -329,9 +354,11 @@ function startDashParticles(): void {
       for (const d of S.scatter) {
         const tw = reduced ? 0.8 : 0.45 + 0.55 * Math.sin(now * 0.0018 * d.tr + d.tw);
         const col = d.tint === 3 ? WHITE : COLORS[d.tint];
-        // scatter spreads toward the entering edge for converge, downward for fall
-        const sx = mode === "fall" ? d.dy : (S.mirror ? -d.dx : d.dx);
-        const sy = mode === "fall" ? d.dx : d.dy;
+        // scatter spreads toward the entering edge for converge, along the
+        // flow axis for fall/rise.
+        const axisSwap = mode === "fall" || mode === "rise";
+        const sx = axisSwap ? d.dy : (S.mirror ? -d.dx : d.dx);
+        const sy = axisSwap ? d.dx : d.dy;
         ctx.fillStyle = `rgba(${col}, ${d.a * tw})`;
         ctx.beginPath();
         ctx.arc(ex + sx, ey + sy, d.s / 2, 0, Math.PI * 2);
@@ -352,18 +379,35 @@ function startDashParticles(): void {
     }
     ctx.globalCompositeOperation = "source-over";
 
-    // center vignette so the copy stays legible
-    const vg = ctx.createRadialGradient(w / 2, h * 0.46, 0, w / 2, h * 0.46, h * 0.62);
-    vg.addColorStop(0, "rgba(8, 6, 12, 0.6)");
-    vg.addColorStop(0.55, "rgba(8, 6, 12, 0.12)");
-    vg.addColorStop(1, "rgba(8, 6, 12, 0)");
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, w, h);
+    // Center vignette so the copy stays legible on a DARK ground. On a LIGHT
+    // theme it reads as a dirty grey smudge — skip it entirely there.
+    if (!isLightTheme()) {
+      const vg = ctx.createRadialGradient(w / 2, h * 0.46, 0, w / 2, h * 0.46, h * 0.62);
+      vg.addColorStop(0, "rgba(8, 6, 12, 0.6)");
+      vg.addColorStop(0.55, "rgba(8, 6, 12, 0.12)");
+      vg.addColorStop(1, "rgba(8, 6, 12, 0)");
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, w, h);
+    }
 
-    if (reduced) { particlesRaf = 0; return; }
-    particlesRaf = requestAnimationFrame(frame);
+    if (reduced) { raf = 0; return; } // one static frame honors reduced-motion
+    raf = requestAnimationFrame(frame);
   };
-  particlesRaf = requestAnimationFrame(frame);
+  raf = requestAnimationFrame(frame);
+
+  return () => { if (raf) cancelAnimationFrame(raf); raf = 0; ro.disconnect(); };
+}
+
+/** The dashboard's Chat/Work singleton — one HeroFlow on #dash-particles,
+ *  variant chosen by the active rail space. */
+function startDashParticles(): void {
+  const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
+  if (!canvas || particlesRaf) return;
+  const variantKey: FlowVariant = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
+  particlesVariant = variantKey;
+  particlesRaf = 1; // mark running (the engine owns its own RAF handle)
+  const stop = runHeroFlow(canvas, variantKey);
+  particlesCleanup = () => { stop(); particlesRaf = 0; };
 }
 
 // Switching Chat ↔ Work while the landing is up swaps the flow's orientation
@@ -371,10 +415,9 @@ function startDashParticles(): void {
 window.addEventListener("rail-space-changed", () => {
   const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
   if (!canvas || canvas.offsetParent === null) return;
-  const want = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
+  const want: FlowVariant = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
   if (want === particlesVariant) return;
-  if (particlesRaf) { cancelAnimationFrame(particlesRaf); particlesRaf = 0; }
-  particlesCleanup?.();
+  particlesCleanup?.();       // stops the engine + resets particlesRaf
   particlesCleanup = null;
   startDashParticles();
 });

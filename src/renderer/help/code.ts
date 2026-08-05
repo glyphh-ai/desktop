@@ -20,6 +20,7 @@ import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { createSourceChip, type Source } from "./code-source-chip.js";
 import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
+import { runHeroFlow } from "./dashboard.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -1256,10 +1257,24 @@ function codeGreeting(name: string): string {
   return name ? `Welcome back, ${name}` : "Welcome back";
 }
 
+// The Code landing's own HeroFlow backdrop (rise variant) — a canvas behind
+// the two-column body. Stopped + cleared whenever the thread repaints.
+let codeParticlesStop: (() => void) | null = null;
+function stopCodeParticles(): void { codeParticlesStop?.(); codeParticlesStop = null; }
+
 function renderCodeLanding(host: HTMLElement): void {
   host.classList.add("code-landing-host");
+
+  // Particle backdrop (Code = "rise" — streams flowing up, greens). The
+  // canvas sits behind the landing body; runHeroFlow owns its own RAF + RO.
+  const canvas = document.createElement("canvas");
+  canvas.className = "dash-particles cl-particles";
+  canvas.setAttribute("aria-hidden", "true");
+  host.appendChild(canvas);
+  requestAnimationFrame(() => { codeParticlesStop = runHeroFlow(canvas, "code"); });
+
   const wrap = document.createElement("div");
-  wrap.className = "cl-body";
+  wrap.className = "cl-body cl-scroll";
 
   // Greeting head.
   const head = document.createElement("div");
@@ -1536,6 +1551,7 @@ function renderThread(): void {
   const thread = el<HTMLDivElement>("code-thread");
   if (!thread) return;
   wireThreadScroll(thread);
+  stopCodeParticles();   // tear down the Code landing's backdrop before repaint
   thread.textContent = "";
   const inner = document.createElement("div");
   inner.className = "code-thread-inner";
