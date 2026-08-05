@@ -90,6 +90,17 @@ const server = http.createServer(async (req, res) => {
   securityHeaders(res, (req.headers['x-forwarded-proto'] || '').includes('https'));
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    // KILL-SWITCH service worker: a stale SW from the old PWA install caches old
+    // modules and serves them forever (e.g. a CommonJS app-icon.js against an ESM
+    // importer → "binding not found"). This build ships NO SW; serving a
+    // self-destructing one at /sw.js makes any registered ghost unregister itself
+    // + wipe its caches on its next update check, so clients self-heal.
+    if (p === '/sw.js') {
+      res.setHeader('content-type', 'text/javascript');
+      res.setHeader('cache-control', 'no-store');
+      res.end("self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',async()=>{try{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));await self.registration.unregister();const cs=await self.clients.matchAll();cs.forEach(c=>c.navigate(c.url));}catch(e){}});");
+      return;
+    }
     // LOGIN-FIRST front door (decided 2026-08-03, Claude model — no anonymous app
     // access): the base page is the LOGIN SHELL (index.html carries the splash→auth→
     // login flow: Google + magic-link, same as platform's). web-boot sends an

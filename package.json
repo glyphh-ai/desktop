@@ -18,7 +18,7 @@
     "bench:code-index": "npm run build:main && node dist/main/code-index/benchmark.js",
     "bench:code-index-ab": "npm run build:main && node dist/main/code-index/benchmark-ab.js",
     "start": "electron .",
-    "build:web": "npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:web-bridge",
+    "build:web": "npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:app-libs && npm run build:web-bridge",
     "build:web-bridge": "esbuild web/src/bridge.js --bundle --outfile=dist/renderer/glyphh-web-bundle.js --platform=browser --format=iife --sourcemap",
     "web": "node web/serve.mjs",
     "dev:web": "npm run build:web && npm run web",

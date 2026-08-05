@@ -140,10 +140,6 @@ if (typeof window !== 'undefined') {
   const runWebBoot = () => {
     import('./web-boot.js')
       .then((m) => m.startWebBoot())
-      // startWebBoot() best-effort re-stamps the gating cookie (syncGating) when a
-      // session exists; re-reflect the auth class afterward so the Chat tab's
-      // Work/Code lock affordance settles to the true state without a reload.
-      .then(() => reflectAuthClass())
       .catch((err) => console.error('[glyphh-web] boot failed', err));
   };
   // Guard the real-browser wiring so bridge.js stays importable under `node --test`
