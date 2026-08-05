@@ -83,7 +83,7 @@ export function sourceLabel(source: Source, sessionId?: string | null, machineNa
 }
 
 // ── Chip factory ────────────────────────────────────────────────────────────
-type ViewName = "root" | "repos" | "local";
+type ViewName = "root";
 
 interface ChipController {
   el: HTMLElement;
@@ -148,7 +148,6 @@ export function createSourceChip(opts: {
     if (!menu) return;
     menu.textContent = "";
     if (v === "root") renderRoot(menu, opts, pick, (view, m) => { if (m) selectedMachine = m; showView(view); });
-    else if (v === "local") renderLocal(menu, opts, selectedMachine, pick, () => showView("root"));
   };
 
   btn.addEventListener("click", (e) => {
@@ -248,6 +247,51 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
   document.addEventListener("mousedown", away, true);
 }
 
+/** The "+" chip: NEW FOLDER only — no browsing. Creates one directory inside
+ *  the source's current folder (Home when unset) on the machine and picks it. */
+export function openNewFolderDrop(anchor: HTMLElement, opts: {
+  getSource: () => Source;
+  onPick: (s: Source) => void;
+}): void {
+  const wrap = anchor.parentElement || anchor;
+  wrap.querySelector(".ws-source-drop")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "code-drop-up ws-source-drop";
+  (wrap as HTMLElement).style.position ||= "relative";
+  wrap.appendChild(menu);
+  const close = (): void => menu.remove();
+  const src = opts.getSource();
+  const parent = src.kind === "local" && src.path ? src.path : undefined;
+  menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>New folder${parent ? ` in ${lastSeg(parent)}` : " in Home"}</span></div>`);
+  const nf = document.createElement("div");
+  nf.className = "ws-fs-newfolder";
+  nf.innerHTML = `<input class="loop-drop-search repo-drop-search" placeholder="Folder name…" spellcheck="false" autocomplete="off"><button type="button" class="action-btn primary">Create</button><span class="ws-fs-newfolder-err"></span>`;
+  menu.appendChild(nf);
+  const input = nf.querySelector("input") as HTMLInputElement;
+  const btn = nf.querySelector("button") as HTMLButtonElement;
+  const err = nf.querySelector(".ws-fs-newfolder-err") as HTMLElement;
+  input.addEventListener("mousedown", (ev) => ev.stopPropagation());
+  const create = (): void => {
+    const name = input.value.trim();
+    if (!name) return;
+    btn.disabled = true; err.textContent = "";
+    void (sdk()?.attach?.dispatch?.("fs.mkdir", { ...(parent ? { path: parent } : {}), name }) ?? Promise.reject(new Error("no attached machine")))
+      .then((made) => {
+        const mid = src.kind === "local" ? src.machineId : undefined;
+        opts.onPick({ kind: "local", path: (made as { path: string }).path, ...(mid ? { machineId: mid } : {}) });
+        close();
+      })
+      .catch((e2) => { btn.disabled = false; err.textContent = (e2 as Error).message || "could not create"; });
+  };
+  btn.addEventListener("click", create);
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") create(); });
+  requestAnimationFrame(() => input.focus());
+  const away = (e: MouseEvent): void => {
+    if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
+  };
+  document.addEventListener("mousedown", away, true);
+}
+
 // ── Root view: CLOUD + LOCAL sections ────────────────────────────────────
 function renderRoot(
   menu: HTMLElement,
@@ -287,17 +331,19 @@ function renderRoot(
       machinesHost.appendChild(install);
       return;
     }
-    machines.forEach((m, i) => {
+    machines.forEach((m) => {
       const name = m.name || m.app || "Glyphh desktop";
       const selected = isLocal && (s.machineId === m.id || s.machineId === undefined);
-      const primary = isLocal && s.path && selected ? lastSeg(s.path) : name;
-      const sub = isLocal && s.path && selected ? s.path : `A folder on ${name} · ${(m.capabilities?.length || 0)} capabilities`;
-      const row = drillItem(primary, sub, CHEV);
-      row.classList.add("ws-drill");
+      // The source chip picks WHERE only — the folder chip beside it owns the
+      // folder (no browsing in here). Picking a machine keeps a folder already
+      // chosen on it; otherwise the session runs from Home.
+      const row = drillItem(name, "Runs sessions on this machine", selected ? CHECK : "");
       if (selected) row.classList.add("selected");
-      row.addEventListener("click", () => onView("local", m));
+      row.addEventListener("click", () => {
+        const keep = isLocal && s.machineId === m.id && s.path ? s.path : "";
+        pick({ kind: "local", path: keep, ...(m.id ? { machineId: m.id } : {}) });
+      });
       machinesHost.appendChild(row);
-      void i;
     });
   });
 }

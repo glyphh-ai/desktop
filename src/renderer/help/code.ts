@@ -18,7 +18,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop } from "./code-source-chip.js";
 import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
 import { runHeroFlow } from "./dashboard.js";
 import { SPACE_LABEL } from "./space-meta.js";
@@ -1953,14 +1953,16 @@ function onWebTarget(): boolean {
  *  pick stamps the SOURCE (session-scoped), never the machine's own cwd. */
 function initWebFolderChips(): void {
   if (!onWebTarget()) return;
-  for (const id of ["dash-wd-btn", "dash-wd-add"]) {
+  const wire = (id: string, open: (anchor: HTMLElement, o: { getSource: typeof activeSource; onPick: typeof pickSource }) => void): void => {
     const chip = document.getElementById(id);
     chip?.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();   // the workbench's native-picker handler must not run
-      openMachineFolderBrowser(chip, { getSource: activeSource, onPick: pickSource });
+      open(chip, { getSource: activeSource, onPick: pickSource });
     }, true);
-  }
+  };
+  wire("dash-wd-btn", openMachineFolderBrowser);   // folder chip = the browser
+  wire("dash-wd-add", openNewFolderDrop);          // + = new folder ONLY
 }
 
 // ── Composer attachments ─────────────────────────────────────────────────
