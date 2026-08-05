@@ -12,6 +12,7 @@
 
 import WebSocket from "ws";
 import { app } from "electron";
+import { hostname } from "node:os";
 import { SERVER_URL } from "./glyphh-client.js";
 import { getAuthToken, isAuthenticated } from "./auth.js";
 import { dispatchRelayMethod, listRelayMethods } from "./relay-client.js";
@@ -52,6 +53,7 @@ function connect(): void {
       t: "hello",
       app: "glyphh-desktop",
       version: app.getVersion(),
+      name: hostname(),
       capabilities: listRelayMethods(),
     }));
   });

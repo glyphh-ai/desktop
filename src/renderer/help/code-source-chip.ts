@@ -55,7 +55,9 @@ interface WbHandle {
 
 const sdk = (): SdkHandle | undefined => (window as unknown as { glyphhSdk?: SdkHandle }).glyphhSdk;
 const wbh = (): WbHandle | undefined => (window as unknown as { wb?: WbHandle }).wb;
-const isWeb = (): boolean => !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+const isWeb = (): boolean =>
+  !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__
+  || (typeof document !== "undefined" && document.documentElement.classList.contains("glyphh-web"));
 
 // ── SVG glyphs ────────────────────────────────────────────────────────────
 const CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
@@ -68,8 +70,13 @@ function shortId(id?: string | null): string { return id ? String(id).replace(/^
 
 /** The compact label the chip shows for a source. Remote → `Fly · <id> · <folder>`,
  *  local → `Desktop · <folder>`. */
-export function sourceLabel(source: Source, sessionId?: string | null): string {
-  if (source.kind === "local" && source.path) return `Desktop · ${lastSeg(source.path)}`;
+export function sourceLabel(source: Source, sessionId?: string | null, machineName?: string): string {
+  if (source.kind === "local") {
+    // The MACHINE'S NAME, not a generic "Desktop" — cloud labels are reserved
+    // for remote runs. No explicit folder → the default root (Home).
+    const who = machineName || (isWeb() ? "Desktop" : "This machine");
+    return `${who} · ${source.path ? lastSeg(source.path) : "Home"}`;
+  }
   const folder = source.kind === "cloud-repo" && source.repo ? lastSeg(source.repo) : "workspace";
   const id = shortId(sessionId);
   if (id) return `Fly · ${id} · ${folder}`;
@@ -102,13 +109,22 @@ export function createSourceChip(opts: {
 
   let menu: HTMLElement | null = null;
   let selectedMachine: AttachedMachine | null = null;
+  let known: AttachedMachine[] = [];
 
+  const nameFor = (s: Source): string => {
+    if (s.kind !== "local") return "";
+    const m = (s.machineId && known.find((k) => k.id === s.machineId)) || known.find((k) => k.name) || known[0];
+    return m?.name || m?.app || "";
+  };
   const paintChip = (): void => {
     const s = opts.getSource();
     const dotLive = s.kind === "local" ? "" : ` data-live="1"`;
     btn.innerHTML = `<span class="cl-runtime-dot"${dotLive}></span><span class="cl-runtime-lbl"></span>${CHEV}`;
-    (btn.querySelector(".cl-runtime-lbl") as HTMLElement).textContent = sourceLabel(s, opts.getSessionId());
+    (btn.querySelector(".cl-runtime-lbl") as HTMLElement).textContent = sourceLabel(s, opts.getSessionId(), nameFor(s));
   };
+  // The attached machines' hostnames label a local source ("chris-mbp · Home") —
+  // resolved per source.machineId since several desktops can be attached.
+  void listMachines().then((machines) => { known = machines; paintChip(); });
 
   const closeMenu = (): void => { menu?.remove(); menu = null; };
 

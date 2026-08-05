@@ -1911,7 +1911,12 @@ function initWorkdirGate(): void {
  *  R2 project root exists to browse). Local keeps them live. */
 function paintSourceDependents(): void {
   const cloud = activeSource().kind !== "local";
-  for (const id of ["dash-wd-btn", "dash-wd-add", "code-workdir-btn", "code-workdir-add", "code-plus-chip"]) {
+  // Landing row: folder + add VANISH for a remote run (nothing local applies).
+  for (const id of ["dash-wd-btn", "dash-wd-add"]) {
+    document.getElementById(id)?.classList.toggle("hidden", cloud);
+  }
+  // Agent-screen originals just sleep (the layout there shouldn't jump).
+  for (const id of ["code-workdir-btn", "code-workdir-add", "code-plus-chip"]) {
     const el2 = document.getElementById(id);
     if (!el2) continue;
     el2.classList.toggle("chip-disabled", cloud);
@@ -3499,9 +3504,13 @@ export function initCode(): void {
     };
     const cw = coerce(sw); if (cw) sourceBySpace.cowork = cw;
     const cc = coerce(sc); if (cc) sourceBySpace.code = cc;
-    // No stored pick → LOCAL machine when one exists (the desktop itself, or
-    // the web's attached machine), cloud only as the fallback.
-    if (!cw || !cc) {
+    // LOCAL machine wins whenever one exists (the desktop itself, or the
+    // web's attached machine) — "Cloud" is reserved for genuinely remote
+    // runs, so an unpinned cloud-NEW pick upgrades too; an explicit
+    // cloud-REPO pick is respected.
+    const cwPinned = cw && cw.kind !== "cloud-new";
+    const ccPinned = cc && cc.kind !== "cloud-new";
+    if (!cwPinned || !ccPinned) {
       void (async () => {
         let local: Source | null = null;
         const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__ || document.documentElement.classList.contains("glyphh-web");
@@ -3513,8 +3522,8 @@ export function initCode(): void {
           } catch { /* stays cloud */ }
         }
         if (!local) return;
-        if (!cw) sourceBySpace.cowork = { ...local };
-        if (!cc) sourceBySpace.code = { ...local };
+        if (!cwPinned) sourceBySpace.cowork = { ...local };
+        if (!ccPinned) sourceBySpace.code = { ...local };
         sourceChip?.setSource(activeSource());
         paintSourceDependents();
       })();
