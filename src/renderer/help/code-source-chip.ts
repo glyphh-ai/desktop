@@ -495,25 +495,8 @@ function renderLocal(
       list.appendChild(row);
     }
     if (!dirs.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No sub-folders here.</div>`);
-    // "+ new folder": inline name input → fs.mkdir on the machine → walk into it.
-    const nf = document.createElement("div");
-    nf.className = "ws-fs-newfolder";
-    nf.innerHTML = `<input class="loop-drop-search repo-drop-search" placeholder="New folder name…" spellcheck="false" autocomplete="off"><button type="button" class="action-btn">Create</button><span class="ws-fs-newfolder-err"></span>`;
-    const nfInput = nf.querySelector("input") as HTMLInputElement;
-    const nfBtn = nf.querySelector("button") as HTMLButtonElement;
-    const nfErr = nf.querySelector(".ws-fs-newfolder-err") as HTMLElement;
-    nfInput.addEventListener("mousedown", (ev) => ev.stopPropagation());
-    const create = (): void => {
-      const name = nfInput.value.trim();
-      if (!name) return;
-      nfBtn.disabled = true; nfErr.textContent = "";
-      void (sdk()?.attach?.dispatch?.("fs.mkdir", { path: listing.path, name }) ?? Promise.reject(new Error("not available")))
-        .then((made) => walk((made as { path: string }).path))
-        .catch((err) => { nfBtn.disabled = false; nfErr.textContent = (err as Error).message || "could not create"; });
-    };
-    nfBtn.addEventListener("click", create);
-    nfInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") create(); });
-    body.appendChild(nf);
+    // Browse + pick ONLY — creating a folder is the '+' chip's job
+    // (openNewFolderDrop), not the picker's.
     const use = document.createElement("button");
     use.type = "button";
     use.className = "action-btn primary ws-use-folder";
