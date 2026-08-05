@@ -89,6 +89,12 @@ const TYPES = {
 // monaco/xterm before it can go on without bricking the app — tracked for the
 // hardening pass, deliberately not shipped half-configured here.
 function securityHeaders(res, isHttps) {
+  // DEV SERVER LAW: nothing is EVER cacheable. Stale layers (browser HTTP
+  // cache, SW caches, heuristic caching on unversioned assets) served
+  // yesterday's modules and yesterday's 404s while the code on disk was
+  // fixed — hours of "still broken" that no code change could reach. Fresh
+  // bytes on every request, every time.
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
