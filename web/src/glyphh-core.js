@@ -15,6 +15,17 @@ export const USER_KEY = 'glyphh_user';
  *  SPA fallback). Mirrors platform's /auth/callback. */
 export const CALLBACK_PATH = '/auth/callback';
 
+/** The device-grant approval page (`?code=ABCD-1234`), where a CLI/TUI sends the user
+ *  to authorize a device. Mirrors platform's /auth/device; serve.mjs serves the shell
+ *  in place here so the pathname survives to decideBootState(). */
+export const DEVICE_PATH = '/auth/device';
+
+/** Path compare that ignores a trailing slash (`/auth/device/` === `/auth/device`). */
+function samePath(pathname, route) {
+  const p = typeof pathname === 'string' ? pathname.replace(/\/+$/, '') : '';
+  return (p || '/') === route;
+}
+
 /** The phone breakpoint, keyed off the SMALLER viewport dimension (not width).
  *  ~600px cleanly separates a phone (smaller-dim ≤ ~430) from an iPad (smaller-dim
  *  ≥ 768): iPad — portrait OR landscape, and a full-screen PWA — always stays FULL. */
@@ -92,18 +103,25 @@ export function parseCallbackParams(search) {
  * Decide what the WEB boot should do next, given the current path and whether a
  * session resolved. Pure so the whole boot state machine is unit-testable with no
  * browser, SDK, or server (glyphh-core.js style).
- *   - 'callback' — we're on the /auth/callback path with a token/code to exchange
+ *   - 'device'   — the /auth/device approval page (its `?code=` is a DEVICE code)
+ *   - 'callback' — a returning OAuth/magic-link with a token/code to exchange
  *   - 'app'      — a live session exists → dismiss splash, enter the app
  *   - 'login'    — no session → show the platform-style Google + magic-link screen
- * The callback path is decided BEFORE auth so a returning link always gets exchanged
- * (the user may have no session yet on this device — that's the whole point).
+ * Both device and callback are decided BEFORE auth: a returning link must always get
+ * exchanged (the user may have no session yet on this device — that's the point), and
+ * the device page owns its own signed-out sign-in.
  * @param {{ pathname:string, search:string, authenticated:boolean }} input
- * @returns {'callback'|'app'|'login'}
+ * @returns {'device'|'callback'|'app'|'login'}
  */
 export function decideBootState({ pathname, search, authenticated }) {
-  // The callback is identified by its PAYLOAD, not its path: serve.mjs 302s the
-  // nested /auth/callback to '/' (relative-asset fix), so the token/code arrives
-  // at the root. Any page carrying a token/code is a returning sign-in.
+  // DEVICE FIRST — by PATH, and ahead of the payload heuristic below. `?code=` on
+  // /auth/device is a device USER code (ABCD-1234), not an OAuth exchange code;
+  // without this branch the callback heuristic swallows it and tries to redeem it
+  // as a sign-in, which always fails. serve.mjs keeps this pathname intact.
+  if (samePath(pathname, DEVICE_PATH)) return 'device';
+  // Otherwise the callback is identified by its PAYLOAD, not its path: a magic link
+  // may land at the root (/?token=…) as well as at /auth/callback. Any other page
+  // carrying a token/code is a returning sign-in.
   const { token, code } = parseCallbackParams(search);
   if (token || code) return 'callback';
   return authenticated ? 'app' : 'login';

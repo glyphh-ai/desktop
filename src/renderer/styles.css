@@ -14864,3 +14864,22 @@ body.code-dragging webview { pointer-events: none !important; }
 .desktop-attach-text { flex: 1; min-width: 0; }
 .desktop-attach-title { font-weight: 600; }
 .desktop-attach-sub { font-size: 13px; color: var(--text-2); }
+
+/* Starter cards: TWO ROWS (3 across), title leads the top row with its pill. */
+.dash-starters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.dash-starter-top { display: flex; align-items: center; gap: 8px; }
+.dash-starter-title { flex: 1; min-width: 0; font-weight: 600; }
+@media (max-width: 900px) { .dash-starters { grid-template-columns: repeat(2, 1fr); } }
+
+/* SPACE pill INSIDE the input — bottom-left; send/stop is bottom-right. The
+   input reserves bottom padding so typed text never runs under the pill. */
+.code-input-wrap { position: relative; }
+.code-input-wrap .code-input { padding-bottom: 42px; }
+.code-space-pill { position: absolute; left: 10px; bottom: 8px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; }
+.code-space-opt { padding: 5px 11px; border: 0; border-radius: 7px; background: transparent;
+  color: var(--text-3); font-size: 12.5px; font-weight: 550; font-family: inherit; cursor: pointer; }
+.code-space-opt:hover { color: var(--text); background: var(--hover); }
+.code-space-opt.active { background: var(--accent); color: var(--accent-ink, #fff); }
+@media (pointer: coarse) { .code-space-opt { font-size: 15px; padding: 8px 14px; } }

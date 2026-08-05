@@ -572,16 +572,13 @@ function renderStarters(): void {
     card.className = `dash-starter dash-starter-${s.space}`;
     card.innerHTML =
       `<span class="dash-starter-top">` +
-      `<span class="dash-starter-mascot">${mascotSvg(s.mascot)}</span>` +
-      `<span class="dash-starter-name"></span>` +
+      `<span class="dash-starter-title"></span>` +
       spacePillHtml(s.space) +
       `</span>` +
-      `<span class="dash-starter-title"></span>` +
       `<span class="dash-starter-blurb"></span>`;
-    card.querySelector(".dash-starter-name")!.textContent = s.mascot.name;
     card.querySelector(".dash-starter-title")!.textContent = s.title;
     card.querySelector(".dash-starter-blurb")!.textContent = s.blurb;
-    card.title = `${s.mascot.name} · opens in ${SPACE_LABEL[s.space]}`;
+    card.title = `Opens in ${SPACE_LABEL[s.space]}`;
     card.addEventListener("click", () => { void runStarter(s); });
     host.appendChild(card);
   }

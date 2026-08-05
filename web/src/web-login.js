@@ -63,8 +63,8 @@ async function renderGoogleButton(container, clientId, onCredential, onError) {
   });
 }
 
-/** Small DOM helper. */
-function el(tag, className, text) {
+/** Small DOM helper. Shared with web-device.js, which renders into the same shell. */
+export function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
@@ -104,6 +104,11 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * @param {() => Promise<void>} deps.onAuthed               run after any successful in-page sign-in (Google)
  * @param {string|null} deps.googleClientId                 GIS client id (null hides the Google button)
  * @param {string} deps.origin                              page origin, for building the callback redirectUri
+ * @param {string} [deps.redirectUri]                       override where the magic link returns (device page)
+ * @param {string} [deps.title]                             heading override (device page: "Authorize your device")
+ * @param {string} [deps.lede]                              sub-heading override
+ * @param {(doc:Document) => Node} [deps.intro]             extra node rendered above the form (the device code)
+ * @param {string} [deps.initialError]                      error to surface on first paint
  * @param {Document} [deps.doc]                             injectable for tests (defaults to document)
  */
 export function mountLogin(deps) {
@@ -113,12 +118,19 @@ export function mountLogin(deps) {
   if (!overlay || !step) return; // not the main shell (home.html has no onboarding markup)
 
   overlay.classList.remove('hidden');
-  const redirectUri = `${deps.origin}${CALLBACK_PATH}`;
+  // Surfaced ONCE, on first paint (e.g. "this sign-in link has expired" after a failed
+  // callback exchange) — not re-shown when the user re-renders the form.
+  let pendingError = deps.initialError || '';
+  // Normally the magic link returns to /auth/callback and lands in the app; the
+  // DEVICE page passes its own redirectUri so the link comes back to the pending
+  // approval (code preserved) instead.
+  const redirectUri = deps.redirectUri || `${deps.origin}${CALLBACK_PATH}`;
 
   const render = () => {
     step.innerHTML = '';
-    step.append(el('h1', 'auth-shell-title', 'Sign in'));
-    step.append(el('p', 'auth-shell-lede', 'Enter your email for a magic link, or continue with a provider.'));
+    step.append(el('h1', 'auth-shell-title', deps.title || 'Sign in'));
+    step.append(el('p', 'auth-shell-lede', deps.lede || 'Enter your email for a magic link, or continue with a provider.'));
+    if (deps.intro) step.append(deps.intro(doc));
 
     let loading = '';
 

@@ -123,6 +123,13 @@ export async function exchangeCode(code) {
   await glyphh().auth.exchange(code);
 }
 
+/** Approve a pending DEVICE user code (ABCD-1234) as the signed-in user — the browser
+ *  half of the RFC 8628 grant a CLI/TUI is blocked polling on. Requires a live session
+ *  (the SDK throws otherwise), which is why the device page verifies with me() first. */
+export async function approveDevice(userCode) {
+  await glyphh().auth.approveDevice(userCode);
+}
+
 /** Sign out this device, clear local state, signal the app to show login. */
 export async function signOut() {
   try {

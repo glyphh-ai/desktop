@@ -3411,8 +3411,12 @@ export function initCode(): void {
   // bridge bounces anonymous visitors to the login shell), so the old per-tab
   // Work/Code sign-in gating + lock affordances are gone — every tab switches
   // freely on web exactly as on desktop.
+  // The SPACE is now chosen from the composer's bottom-left pill (the rail's
+  // top tabs are gone). Keep painting both — railTabs is null once removed.
+  const spacePill = el("code-space-pill");
   const paintRailTabs = (): void => {
     railTabs?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === railTab));
+    spacePill?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => b.classList.toggle("active", b.dataset.space === railTab));
     // the nav below scopes to the space (data-space items + the More menu)
     document.body.dataset.railSpace = railTab;
     // the command-center wall re-scopes too
@@ -3439,6 +3443,15 @@ export function initCode(): void {
     const next = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
     railTab = next;
     enterSpace(true);
+  }));
+  // The composer pill is the space switch now. It does NOT navigate away — the
+  // new-chat page stays put and just re-scopes (chips + the columns below).
+  spacePill?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => b.addEventListener("click", () => {
+    const next = b.dataset.space === "code" ? "code" : b.dataset.space === "cowork" ? "cowork" : "chat";
+    if (railTab === next) return;
+    railTab = next;
+    enterSpace(false);
+    paintCw();
   }));
   // A layout ACTIVATES ITS OWN SPACE (code-workbench dispatches on open):
   // the tab, lists, and menus follow the layout — without navigating away

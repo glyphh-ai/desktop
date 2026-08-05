@@ -43,13 +43,22 @@ const ROOT = fileURLToPath(new URL('../dist/renderer/', import.meta.url));
 const PORT = ENV.PORT || 3002;
 const BRIDGE = '/glyphh-web-bundle.js';
 
-// SPA fallback paths: the OAuth/magic-link redirect returns to /auth/callback so
-// the boot script can exchange the code — serve the app shell there (no such file
-// exists on disk). Mirrors platform's /auth/callback route.
-// Any NESTED /auth/* route is a client-side path (callback, device, …) — the
-// shell lives at the root, so they all redirect there with the query intact
-// rather than being read off disk (which 404'd with an ENOENT for /auth/device).
-const isNestedAuthRoute = (p) => p.startsWith('/auth/') && p !== '/auth/';
+// SPA fallback paths — client-side routes with no file on disk, mirroring the
+// platform's: /auth/callback (OAuth + magic-link return) and /auth/device (the
+// device-grant approval page). They serve the LOGIN SHELL (index.html) IN PLACE,
+// so the browser STAYS on the URL the boot script routes off. That is the whole
+// point for /auth/device: a 302 to /?code=… made the device code arrive looking
+// exactly like an OAuth callback code, and web-boot exchanged it as one.
+// index.html's asset URLs are relative, so a shell served at a NESTED path also
+// gets `<base href="/">` injected — that, not a redirect, is what keeps
+// styles.css / brand/* resolving (the ENOENT + naked-page problem).
+const SHELL_ROUTES = new Set([
+  '/', '/login', '/auth', '/auth/',
+  '/auth/callback', '/auth/callback/',
+  '/auth/device', '/auth/device/',
+]);
+/** A shell route BELOW the root needs <base href="/"> for its relative assets. */
+const isNestedShellRoute = (p) => SHELL_ROUTES.has(p) && p !== '/' && p !== '/login';
 
 // Client-safe config script, injected before the bridge so window.__GLYPHH_* exist
 // when the SDK client + login screen initialise. Only public values are exposed.
@@ -110,19 +119,12 @@ const server = http.createServer(async (req, res) => {
     // already-authed session straight through to /home, so returning users never see
     // the login. home.html (the Chat tab) is the AUTHED app surface at /home; the
     // bridge bounces an anonymous visitor there back here.
-    // NESTED fallback paths (/auth/callback) must NOT serve the shell in place:
-    // index.html's asset URLs are relative, so at a nested path the browser asks
-    // for /auth/styles.css → 404 → a naked, unstyled page. Redirect to the root
-    // (which serves the same shell) PRESERVING the query — the boot script reads
-    // token/code from location.search wherever it lands.
-    if (isNestedAuthRoute(p)) {
-      const q = new URL(req.url, 'http://x').search;
-      res.statusCode = 302;
-      res.setHeader('location', `/${q}`);
-      res.end();
-      return;
-    }
-    if (p === '/' || p === '/auth' || p === '/auth/' || p === '/login') {
+    // The nested client-side routes (/auth/callback, /auth/device) serve the SAME
+    // shell IN PLACE — no redirect — with <base href="/"> injected below so their
+    // relative assets still resolve from the root. web-boot then routes off the
+    // real pathname + query (device vs. callback).
+    const nested = isNestedShellRoute(p);
+    if (SHELL_ROUTES.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
     }
     if (p === '/home' || p === '/home/') {
@@ -151,13 +153,17 @@ const server = http.createServer(async (req, res) => {
           (m) => `${m}\n  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">`,
         );
       }
-      // Inject the client-safe config THEN the bridge as the first things in <head>,
-      // so window.__GLYPHH_* and window.glyphh (the SDK client) exist before any
-      // renderer script executes. Config must precede the bridge — the SDK reads
-      // window.__GLYPHH_API_URL__ at import time.
+      // Inject, as the FIRST things in <head>: (1) on a nested shell route, a
+      // <base href="/"> so index.html's relative asset URLs (styles.css, brand/*,
+      // the renderer module) resolve from the root instead of /auth/… — this is
+      // what makes serving the shell in place at /auth/device work; (2) the
+      // client-safe config; (3) the bridge. Config must precede the bridge — the
+      // SDK reads window.__GLYPHH_API_URL__ at import time — and <base> must
+      // precede everything relative.
+      const base = nested ? '\n  <base href="/">' : '';
       body = body.replace(
         /<head(\s[^>]*)?>/i,
-        (m) => `${m}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`,
+        (m) => `${m}${base}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`,
       );
     }
     res.setHeader('content-type', TYPES[ext] || 'application/octet-stream');
