@@ -1637,8 +1637,15 @@ async function init(): Promise<void> {
     // Cross-origin icons (favicons) arrive as data URLs via the main process —
     // a tainted <img> can't feed a WebGL texture.
     const iconYo = (window as unknown as { glyphh?: { webIconFetch?: (u: string) => Promise<string> } }).glyphh;
-    const resolveIconSrc = (src: string): Promise<string> =>
-      /^https?:/i.test(src) ? (iconYo?.webIconFetch?.(src) ?? Promise.resolve("")) : Promise.resolve(src);
+    const resolveIconSrc = (src: string): Promise<string> => {
+      if (!/^https?:/i.test(src)) return Promise.resolve(src);
+      // DESKTOP: bytes ride the main process (no CORS there) → data: URL.
+      // WEB: webIconFetch is a NATIVE STUB that returns nothing — every wall
+      // tile silently fell to its letter. Our resolver serves CORS `*`, so the
+      // web loads the URL DIRECTLY and the texture stays untainted.
+      if (isWebTarget()) return Promise.resolve(src);
+      return iconYo?.webIconFetch?.(src) ?? Promise.resolve("");
+    };
     const loadOne = (src: string, assign: (img: HTMLImageElement) => void, e: TileEntry): void => {
       if (!src) return;
       void resolveIconSrc(src).then((u) => (u ? loadImage(u) : null)).then((img) => {
