@@ -5,7 +5,9 @@ import { defineConfig } from 'vitest/config';
 // web bridge grows we can add a happy-dom project for DOM-touching units.
 export default defineConfig({
   test: {
-    include: ['web/test/**/*.test.js'],
+    // Web-target JS units + the pure main-process panel units (transport
+    // decision, signaling validation, ffmpeg argv — no Electron, no browser).
+    include: ['web/test/**/*.test.js', 'test/main/**/*.test.ts'],
     environment: 'node',
     coverage: {
       provider: 'v8',
