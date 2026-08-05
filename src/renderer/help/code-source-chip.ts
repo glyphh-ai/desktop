@@ -131,6 +131,7 @@ export function createSourceChip(opts: {
 
   const openMenu = (): void => {
     closeMenu();
+    closeAllDrops();
     menu = document.createElement("div");
     menu.className = "code-drop-up ws-source-drop";
     wrap.appendChild(menu);
@@ -203,6 +204,7 @@ export function createGitChip(opts: {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (menu) { closeMenu(); return; }
+    closeAllDrops();
     menu = document.createElement("div");
     menu.className = "code-drop-up ws-source-drop";
     wrap.appendChild(menu);
@@ -228,6 +230,7 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
 }): void {
   const wrap = anchor.parentElement || anchor;
   wrap.querySelector(".ws-source-drop")?.remove();
+  closeAllDrops();
   const menu = document.createElement("div");
   menu.className = "code-drop-up ws-source-drop ws-drop-flex";
   (wrap as HTMLElement).style.position ||= "relative";
@@ -247,6 +250,16 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
   document.addEventListener("mousedown", away, true);
 }
 
+/** ONE picker at a time, anywhere: hide the composer pops, remove the
+ *  source-family drops — every opener calls this before showing its own. */
+export function closeAllDrops(except?: HTMLElement | null): void {
+  document.querySelectorAll<HTMLElement>(".code-drop-up").forEach((m) => {
+    if (except && (m === except || m.contains(except))) return;
+    if (m.classList.contains("ws-source-drop")) m.remove();
+    else m.classList.add("hidden");
+  });
+}
+
 /** A drop-UP must fit the space ABOVE its anchor — unclamped it runs past the
  *  top of the page. */
 function clampDropUp(menu: HTMLElement, anchor: HTMLElement): void {
@@ -262,6 +275,7 @@ export function openNewFolderDrop(anchor: HTMLElement, opts: {
 }): void {
   const wrap = anchor.parentElement || anchor;
   wrap.querySelector(".ws-source-drop")?.remove();
+  closeAllDrops();
   const menu = document.createElement("div");
   menu.className = "code-drop-up ws-source-drop";
   (wrap as HTMLElement).style.position ||= "relative";

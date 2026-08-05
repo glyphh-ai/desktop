@@ -14941,3 +14941,6 @@ body.code-dragging webview { pointer-events: none !important; }
 .code-drop-up .code-repo-drop-list,
 .code-drop-up .ws-fs-list,
 .code-drop-up .loop-drop-list { margin-right: -5px; padding-right: 5px; scrollbar-gutter: stable; }
+
+/* The LOOP picker was too narrow for loop names + descriptions. */
+#code-effort-pop { min-width: 300px; }

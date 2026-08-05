@@ -18,7 +18,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops } from "./code-source-chip.js";
 import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
 import { runHeroFlow } from "./dashboard.js";
 import { SPACE_LABEL } from "./space-meta.js";
@@ -498,9 +498,17 @@ function refreshCtxMeter(): void {
 function openChipDropUp(menu: HTMLElement): void {
   const wrap = menu.parentElement;
   if (!wrap) return;
-  menu.style.left = "auto";
-  menu.style.right = "0px";
+  closeAllDrops(menu);   // one picker at a time, across BOTH chip families
   const wrapBox = wrap.getBoundingClientRect();
+  // Align to the chip's side of the bar: a LEFT-side chip (permission mode)
+  // grows rightward — right-anchoring it shoved the pane far off to the left.
+  if (wrapBox.left < window.innerWidth / 2) {
+    menu.style.left = "0px";
+    menu.style.right = "auto";
+  } else {
+    menu.style.left = "auto";
+    menu.style.right = "0px";
+  }
   // bottom: calc(100% + 8px) — the menu's bottom sits 8px above the chip.
   const room = Math.max(140, wrapBox.top - 8 - 12);
   menu.style.maxHeight = `${Math.round(room)}px`;
@@ -509,6 +517,10 @@ function openChipDropUp(menu: HTMLElement): void {
   if (menuBox.left < 8) {
     menu.style.right = "auto";
     menu.style.left = `${Math.round(8 - wrapBox.left)}px`;
+  }
+  if (menuBox.right > window.innerWidth - 8) {
+    menu.style.left = "auto";
+    menu.style.right = `${Math.round(8 - (window.innerWidth - wrapBox.right))}px`;
   }
 }
 
@@ -604,6 +616,12 @@ function initComposerControls(): void {
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
+    // Source-family drops (source/folder/git/+) fall to an outside click too —
+    // their own away-handlers cover most paths; this catches the rest.
+    document.querySelectorAll<HTMLElement>(".ws-source-drop").forEach((m) => {
+      const holder = m.parentElement;
+      if (holder && !holder.contains(t as HTMLElement)) m.remove();
+    });
   });
 }
 
