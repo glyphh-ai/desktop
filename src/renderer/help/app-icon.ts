@@ -84,10 +84,17 @@ function brandColor(host: string): string {
   return "";
 }
 
-/** The control-plane origin — desktop preload exposes it, web stamps a global. */
-function apiBase(): string {
-  const w = window as unknown as { __GLYPHH_API_URL__?: string; glyphh?: { serverUrl?: string } };
-  return (w.__GLYPHH_API_URL__ || w.glyphh?.serverUrl || "https://api.glyphh.ai").replace(/\/$/, "");
+/** The resolver URL for a domain — THROUGH THE SDK on web (the SDK is the
+ *  only client of the server); the desktop renderer holds no SDK handle, so
+ *  it uses the SDK-configured origin the preload exposes (serverUrl). */
+function resolverUrlFor(host: string): string {
+  const w = window as unknown as {
+    glyphhSdk?: { icons?: { urlFor: (d: string) => string } };
+    glyphh?: { serverUrl?: string };
+  };
+  if (w.glyphhSdk?.icons?.urlFor) return w.glyphhSdk.icons.urlFor(host);
+  const base = (w.glyphh?.serverUrl || "https://api.glyphh.ai").replace(/\/$/, "");
+  return `${base}/api/icons?domain=${encodeURIComponent(host)}`;
 }
 
 /** Deterministic monogram hue — the SAME app always wears the same color, and
@@ -109,7 +116,7 @@ export function appIconUrl(app: IconApp): string {
   // R2, served first-party (CORS `*`, so WebGL tiles stay untainted).
   let resolved = "";
   if (app.url && !isInternal) {
-    try { resolved = `${apiBase()}/api/icons?domain=${encodeURIComponent(new URL(app.url).hostname)}`; }
+    try { resolved = resolverUrlFor(new URL(app.url).hostname); }
     catch { resolved = ""; }
   }
   const connectedIcon = app.connection?.accountId && app.connection.pipedreamSlug
