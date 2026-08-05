@@ -1090,6 +1090,16 @@ function renderHistory(): void {
   list.textContent = "";
   cwPaint?.();
   const visible = chats.filter((c) => spaceOf(c) === railTab);
+  const machineVisible = machineSessions.filter((m) => (m.mode === "cowork" ? "cowork" : m.mode === "chat" ? "chat" : "code") === railTab);
+  for (const m of machineVisible) {
+    const row = document.createElement("div");
+    row.className = "code-history-item machine-session";
+    row.innerHTML = `<span class="code-history-title"></span><span class="code-history-sub"></span>`;
+    (row.querySelector(".code-history-title") as HTMLElement).textContent = m.title || "Untitled";
+    (row.querySelector(".code-history-sub") as HTMLElement).textContent = "on your desktop";
+    row.addEventListener("click", () => openMachineSession(m.id));
+    list.appendChild(row);
+  }
   for (const c of visible) {
     const row = document.createElement("div");
     row.className = "code-history-item" + (c.id === currentId ? " active" : "");
@@ -1578,6 +1588,40 @@ function openLocalSession(id: string): void {
   gotoSection("agent");
 }
 
+// ── The attached MACHINE's local sessions, on web ────────────────────────
+// They live only in the desktop's store; a signed-in web session showed none.
+// Fetched over the attach relay, shown in history with the machine locus, and
+// openable as a READ view (running them stays on the machine for now).
+type MachineSessionMeta = { id: string; title: string; createdAt: number; mode: string; messages: number };
+let machineSessions: MachineSessionMeta[] = [];
+function refreshMachineSessions(): void {
+  if (!onWebTarget()) return;
+  const sdk = (window as unknown as { glyphhSdk?: { attach?: { dispatch?: (m: string, p?: Record<string, unknown>) => Promise<unknown> } } }).glyphhSdk;
+  void sdk?.attach?.dispatch?.("sessions.list")
+    .then((r) => {
+      const rows = (r as { sessions?: MachineSessionMeta[] })?.sessions ?? [];
+      machineSessions = rows.filter((m) => !chats.some((c) => c.id === m.id));
+      renderHistory();
+    })
+    .catch(() => { /* machine detached — the local list stands alone */ });
+}
+
+function openMachineSession(id: string): void {
+  const sdk = (window as unknown as { glyphhSdk?: { attach?: { dispatch?: (m: string, p?: Record<string, unknown>) => Promise<unknown> } } }).glyphhSdk;
+  void sdk?.attach?.dispatch?.("sessions.get", { id })
+    .then((r) => {
+      const sess = (r as { session?: { id: string; title: string; createdAt: number; mode: string; messages: Array<{ role: string; text: string; at: number }> } })?.session;
+      if (!sess) return;
+      // Materialize as a read view in the local store shape WITHOUT saving —
+      // it renders like any thread; sends are blocked by the runtime (the
+      // session's runs live on the machine).
+      const c: CodeChat = { id: sess.id, title: sess.title, createdAt: sess.createdAt, messages: sess.messages as CodeChat["messages"], mode: sess.mode as CodeChat["mode"] };
+      if (!chats.some((x) => x.id === c.id)) chats.push(c);
+      openLocalSession(sess.id);
+    })
+    .catch(() => { /* detached mid-open */ });
+}
+
 function renderThread(): void {
   // The composer's working state belongs to the SESSION ON SCREEN — every
   // switch lands here, so recompute (a background session keeps running;
@@ -1928,6 +1972,9 @@ async function checkWorkdirGate(): Promise<void> {
 function initWorkdirGate(): void {
   void checkWorkdirGate();
   initWebFolderChips();
+  refreshMachineSessions();
+  // The machine attaches/detaches while the tab lives — re-list occasionally.
+  if (onWebTarget()) setInterval(() => { if (!document.hidden) refreshMachineSessions(); }, 30_000);
 }
 
 /** Folder + add-files controls follow the SOURCE: a cloud workspace has no
@@ -3508,9 +3555,12 @@ export function initCode(): void {
   const enterSpace = (navigate: boolean): void => {
     listView = false;
     paintRailTabs();
-    // NEVER carry a session across spaces: resume THIS space's last
-    // selection, or land on the new (no record until the user types).
-    const last = chats.find((c) => c.id === lastBySpace[railTab] && spaceOf(c) === railTab);
+    // NEVER carry a session across spaces. On the LANDING (the pill's only
+    // home) the screen IS the pending new session — resuming the space's
+    // last record here made the next send APPEND to an old session that was
+    // never on screen. Resume-last only applies to navigating entries.
+    const onHome = document.body.classList.contains("composer-on-home");
+    const last = onHome ? undefined : chats.find((c) => c.id === lastBySpace[railTab] && spaceOf(c) === railTab);
     currentId = last?.id || "";
     void saveStore();
     renderHistory();

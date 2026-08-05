@@ -18,6 +18,7 @@ import { homedir } from "node:os";
 import { readdirSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
+import { loadSessions } from "./glyphh-agent-context.js";
 import { runLoopBySlug, runSkillBySlug, runTaskNow } from "./agent-scheduler.js";
 import { listInstalledApps, findInstalledApp, launchInstalledApp } from "./installed-apps.js";
 
@@ -31,6 +32,27 @@ function obj(params: unknown, key: string): Record<string, unknown> {
 }
 
 export function installAttachHandlers(): void {
+  // ── sessions.list / sessions.get: the WEB's view of THIS MACHINE's local
+  // sessions (they live only in this app's store — signed-in web showed none).
+  // list = metadata; get = one session's messages for a read view. ──
+  registerRelayHandler("sessions.list", async () => {
+    const { chats } = loadSessions();
+    return {
+      sessions: chats.map((c) => ({
+        id: c.id, title: c.title, createdAt: c.createdAt,
+        mode: (c as { mode?: string }).mode ?? "code",
+        messages: c.messages?.length ?? 0,
+      })),
+    };
+  });
+  registerRelayHandler("sessions.get", async (params) => {
+    const id = str(params, "id");
+    if (!id) throw new Error("sessions.get requires { id }");
+    const c = loadSessions().chats.find((x) => x.id === id);
+    if (!c) throw new Error(`no local session ${id}`);
+    return { session: { id: c.id, title: c.title, createdAt: c.createdAt, mode: (c as { mode?: string }).mode ?? "code", messages: (c.messages ?? []).slice(-200) } };
+  });
+
   // ── fs.list: the web's folder browser (source chip → Local). DIRECTORIES
   // only, dotfiles skipped, git roots flagged — capped at the user's home so
   // the cloud can browse where sessions may run, never the whole disk. ──

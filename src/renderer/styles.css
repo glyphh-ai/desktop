@@ -14957,3 +14957,6 @@ body.code-dragging webview { pointer-events: none !important; }
    <body> — so the veil covers BOTH containers until home.ts lifts it. */
 .wb-booting .code-workbench,
 .wb-booting #code-wb-applayer { visibility: hidden !important; }
+
+/* Machine sessions in the web history — same row, quiet "on your desktop" tag. */
+.code-history-item.machine-session .code-history-sub { font-size: 10.5px; color: var(--text-3); }
