@@ -963,8 +963,10 @@ function paintSessionHeadLocus(): void {
   const back = el("code-session-back");
   if (!locus || !back) return;
   const c = current();
-  // No open session (a landing) → the head is a plain title, no back/locus.
+  // No open session (a landing) → the head is a plain title, no back/locus,
+  // and no kebab (the platform renders SessionHeader only for an open session).
   back.classList.toggle("headless", !c);
+  back.closest(".code-agent-head")?.classList.toggle("head-landing", !c);
   if (!c) { locus.innerHTML = ""; return; }
   const remote = !!c.source && c.source.kind !== "local";
   locus.innerHTML = remote ? HEAD_LOCUS_REMOTE : HEAD_LOCUS_LOCAL;
@@ -1017,24 +1019,30 @@ function toggleCurrentPin(): void {
 let headKebabEl: HTMLDivElement | null = null;
 function closeHeadKebab(): void { headKebabEl?.remove(); headKebabEl = null; }
 
+// Kebab item icons (SessionHeader port: IcRename / IcPin / IcTrash).
+const IC_RENAME = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+const IC_PIN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>`;
+const IC_TRASH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+
 function openHeadKebab(anchor: HTMLElement): void {
   closeHeadKebab();
   const c = current();
   if (!c) return;
   const m = document.createElement("div");
   m.className = "code-menu session-head-menu";
-  const mk = (label: string, danger: boolean, on: () => void): HTMLButtonElement => {
+  const mk = (icon: string, label: string, danger: boolean, on: () => void): HTMLButtonElement => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "code-menu-item" + (danger ? " danger" : "");
-    b.textContent = label;
+    b.innerHTML = `${icon}<span></span>`;
+    (b.querySelector("span") as HTMLElement).textContent = label;
     b.addEventListener("click", () => { closeHeadKebab(); on(); });
     return b;
   };
   m.append(
-    mk("Rename", false, renameCurrentInline),
-    mk(c.pinned ? "Unpin" : "Pin", false, toggleCurrentPin),
-    mk("Delete", true, () => { void deleteChat(c); }),
+    mk(IC_RENAME, "Rename", false, renameCurrentInline),
+    mk(IC_PIN, c.pinned ? "Unpin" : "Pin", false, toggleCurrentPin),
+    mk(IC_TRASH, "Delete", true, () => { void deleteChat(c); }),
   );
   const r = anchor.getBoundingClientRect();
   m.style.top = `${r.bottom + 4}px`;

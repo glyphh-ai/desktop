@@ -12035,7 +12035,13 @@ select:focus {
   -webkit-app-region: no-drag;
 }
 .session-head-menu { min-width: 150px; }
+/* Kebab items lead with an icon (SessionHeader: IcRename / IcPin / IcTrash). */
+.session-head-menu .code-menu-item { display: flex; align-items: center; gap: 8px; }
+.session-head-menu .code-menu-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-3); }
+.session-head-menu .code-menu-item.danger svg { color: #e5484d; }
 .session-head-kebab { -webkit-app-region: no-drag; }
+/* No open session (a landing): hide the kebab — SessionHeader isn't rendered. */
+.code-agent-head.head-landing #code-session-kebab-wrap { display: none; }
 .code-icon-btn {
   display: inline-flex;
   align-items: center;
