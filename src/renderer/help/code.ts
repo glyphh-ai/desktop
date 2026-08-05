@@ -21,6 +21,7 @@ import { openLayoutInWorkbench } from "./layouts.js";
 import { createSourceChip, type Source } from "./code-source-chip.js";
 import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
 import { runHeroFlow } from "./dashboard.js";
+import { SPACE_LABEL } from "./space-meta.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -1432,7 +1433,7 @@ function renderSessionList(host: HTMLElement): void {
   const search = document.createElement("input");
   search.type = "text";
   search.className = "session-list-search-input";
-  search.placeholder = `Search ${railTab === "code" ? "code" : railTab === "cowork" ? "work" : "chat"} sessions…`;
+  search.placeholder = `Search ${SPACE_LABEL[railTab]} sessions…`;
   search.value = listQuery;
   search.spellcheck = false;
   searchWrap.appendChild(search);
