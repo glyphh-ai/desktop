@@ -47,16 +47,20 @@
     <div id="dash-starters" class="dash-starters"></div>
 
     <!-- Under the chart: prompt starters LEFT, the cross-agent schedule RIGHT. -->
+    <!-- Work/Code landing: two bare columns — header + cards, NO card wrapper
+         around them. Right column is Recent runs in Work, recent SESSIONS in
+         Code (dashboard.ts swaps content on rail-space-changed). -->
     <div class="dash-two-col">
-      <div class="dash-card">
+      <div class="dash-col">
         <div class="dash-card-label">Recommended for you</div>
         <div id="dash-recs" class="dash-recs"></div>
       </div>
-      <div class="dash-card">
-        <div class="dash-card-label">Recent runs</div>
+      <div class="dash-col">
+        <div class="dash-card-label" id="dash-right-label">Recent runs</div>
         <input id="dash-tasks-search" class="crud-search dash-tasks-search" type="text" placeholder="Search runs..." spellcheck="false" autocomplete="off" />
         <div id="dash-tasks-list" class="dash-tasks-list"></div>
         <div id="dash-tasks-pager"></div>
+        <div id="dash-sessions-list" class="dash-tasks-list hidden"></div>
       </div>
     </div>
 

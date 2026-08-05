@@ -2957,6 +2957,11 @@ async function init(): Promise<void> {
     };
     const ctl: EchoCtlType = {
       openApp: (app) => {
+        // WEB: every entry point (rail, palette, echo tile, popup) opens the
+        // SAME way — a workbench panel (__wbOpenApp's web branch). An echo
+        // card's <webview> is inert in a browser, so routing here forked the
+        // behavior depending on where the user clicked.
+        if (isWebTarget()) { openAppInWorkbench(app, { newPanel: true }); return; }
         const key = (app.slug || "").trim().toLowerCase();
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite

@@ -36,7 +36,7 @@ function initDesktopPanel(): void {
   const isWeb = typeof document !== "undefined" && document.documentElement.classList.contains("glyphh-web");
 
   const paint = (attached: boolean, machine?: { app?: string; version?: string; capabilities?: string[] }) => {
-    dot.className = `desktop-attach-dot ${attached ? "on" : "off"}`;
+    dot.className = `connection-status-dot ${attached ? "connected" : "disconnected"}`;
     title.textContent = attached ? "Desktop attached" : "No desktop attached";
     sub.textContent = attached
       ? `${machine?.app || "glyphh-desktop"} ${machine?.version || ""} · ${(machine?.capabilities?.length || 0)} capabilities`.trim()

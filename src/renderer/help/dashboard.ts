@@ -410,9 +410,60 @@ function startDashParticles(): void {
   particlesCleanup = () => { stop(); particlesRaf = 0; };
 }
 
+/** Code's right column: the user's SESSIONS (pending + recent), newest first —
+ *  a click resumes one. Reads the live store via the __agentSessions bridge. */
+function renderSessionsList(): void {
+  const host = document.getElementById("dash-sessions-list");
+  if (!host) return;
+  const api = (window as unknown as {
+    __agentSessions?: { list(): Array<{ id: string; title: string; createdAt: number; mode: string }>; switch(id: string): void };
+  }).__agentSessions;
+  const sessions = (api?.list() || []).filter((s2) => s2.mode === "code")
+    .sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
+  host.innerHTML = "";
+  if (!sessions.length) {
+    const empty = document.createElement("div");
+    empty.className = "dash-tasks-empty";
+    empty.textContent = "No sessions yet — start one below.";
+    host.appendChild(empty);
+    return;
+  }
+  for (const sess of sessions) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "dash-rec dash-session-row";
+    row.innerHTML = `<span class="dash-rec-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span><span class="dash-rec-text"></span><span class="dash-session-when"></span>`;
+    (row.querySelector(".dash-rec-text") as HTMLElement).textContent = sess.title || "Untitled session";
+    (row.querySelector(".dash-session-when") as HTMLElement).textContent = agoLabel(sess.createdAt);
+    row.addEventListener("click", () => api?.switch(sess.id));
+    host.appendChild(row);
+  }
+}
+
+function agoLabel(ts: number): string {
+  const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+/** Swap the two-col content to match the space: Work → runs, Code → sessions. */
+function paintSpaceColumns(): void {
+  const isCode = document.body.dataset.railSpace === "code";
+  document.getElementById("dash-right-label")!.textContent = isCode ? "Sessions" : "Recent runs";
+  document.getElementById("dash-tasks-list")?.classList.toggle("hidden", isCode);
+  document.getElementById("dash-tasks-search")?.classList.toggle("hidden", isCode);
+  document.getElementById("dash-tasks-pager")?.classList.toggle("hidden", isCode);
+  document.getElementById("dash-sessions-list")?.classList.toggle("hidden", !isCode);
+  renderRecommendations();
+  if (isCode) renderSessionsList();
+}
+
 // Switching Chat ↔ Work while the landing is up swaps the flow's orientation
 // (fall ↔ converge) — restart the engine with the new variant.
 window.addEventListener("rail-space-changed", () => {
+  paintSpaceColumns();
   const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
   if (!canvas || canvas.offsetParent === null) return;
   const want: FlowVariant = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
@@ -436,7 +487,7 @@ export async function loadDashboard(): Promise<void> {
     adoptComposer(document.getElementById("dash-composer-slot"));
 
     renderStarters();
-    renderRecommendations();
+    paintSpaceColumns();
     void loadRuns();
   } catch (err) {
     console.error("[dashboard] load failed", err);
@@ -483,6 +534,8 @@ export async function loadUsageMetrics(): Promise<void> {
 
 // ── Recommended for you: three starters; a click = a fresh session with the
 // prompt injected, ready to send. ──
+// Per-SPACE prompt sets — the left column must speak the space's language:
+// Chat/Work get task prompts, Code gets engineering prompts.
 const RECOMMENDATIONS: Array<{ prompt: string; icon: string }> = [
   {
     prompt: "Read my inbox and give me a brief of what actually needs me today",
@@ -584,10 +637,27 @@ function renderStarters(): void {
   }
 }
 
+const CODE_RECOMMENDATIONS: Array<{ prompt: string; icon: string }> = [
+  {
+    prompt: "Review my working branch and flag anything risky before I open the PR",
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>`,
+  },
+  {
+    prompt: "Find and fix the failing tests in this repo",
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>`,
+  },
+  {
+    prompt: "Explain this codebase — architecture, key modules, where things live",
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
+  },
+];
+
 function renderRecommendations(): void {
   const host = document.getElementById("dash-recs");
-  if (!host || host.childElementCount) return;
-  for (const rec of RECOMMENDATIONS) {
+  if (!host) return;
+  host.innerHTML = "";
+  const set = document.body.dataset.railSpace === "code" ? CODE_RECOMMENDATIONS : RECOMMENDATIONS;
+  for (const rec of set) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "dash-rec";

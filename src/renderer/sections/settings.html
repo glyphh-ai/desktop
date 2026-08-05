@@ -376,18 +376,22 @@
           </div>
               </div>
 
-              <!-- Desktop — is the user's Glyphh desktop ATTACHED (outbound socket
-                   live)? Ported from the platform's Settings → Desktop page. -->
+              <!-- Desktop — is the user's Glyphh desktop ATTACHED (outbound
+                   socket live)? Ported from the platform's Settings → Desktop.
+                   Idiom matches the other panels: h2 + section-desc + a row
+                   using the connection-status-dot pattern. -->
               <div class="settings-panel" data-sub="desktop">
                 <h2>Desktop</h2>
-                <p class="settings-desc">Your Glyphh desktop attaches automatically when the app is open and signed in — that's what lets the web render panels from your own machine.</p>
-                <div class="settings-card desktop-attach-card">
-                  <span class="desktop-attach-dot" id="desktop-attach-dot" aria-hidden="true"></span>
-                  <div class="desktop-attach-text">
-                    <div class="desktop-attach-title" id="desktop-attach-title">Checking…</div>
-                    <div class="desktop-attach-sub" id="desktop-attach-sub">Looking for your machine…</div>
+                <p class="section-desc">Your Glyphh desktop attaches automatically while the app is open and signed in — that link is what lets the web reach your machine (panels, files, local tools).</p>
+                <div class="settings-form">
+                  <div class="desktop-attach-row">
+                    <span class="connection-status-dot disconnected" id="desktop-attach-dot" aria-hidden="true"></span>
+                    <div class="desktop-attach-text">
+                      <div class="desktop-attach-title" id="desktop-attach-title">Checking…</div>
+                      <div class="desktop-attach-sub" id="desktop-attach-sub">Looking for your machine…</div>
+                    </div>
+                    <a class="action-btn hidden" id="desktop-attach-get" href="https://glyphh.ai/downloads" target="_blank" rel="noopener">Get the app</a>
                   </div>
-                  <a class="btn btn-secondary desktop-attach-get hidden" id="desktop-attach-get" href="#" data-jump="downloads">Get the app</a>
                 </div>
               </div>
 
