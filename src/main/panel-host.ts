@@ -16,7 +16,7 @@
  *     frames, and the web component are written against it and do not care where
  *     frames come from.
  *   • {@link ElectronPanelSource} (this file) satisfies it for the DESKTOP: a
- *     real off-screen Electron BrowserView, captured via Chromium's built-in CDP
+ *     real offscreen Electron page, captured via offscreen-rendering paint events
  *     (webContents.debugger + Page.startScreencast → JPEG), input replayed via
  *     Input.dispatch*.
  *   • A future PodPanelSource (session pod) satisfies the SAME contract by
@@ -35,36 +35,29 @@
  * negotiates a WebRTC peer for the media and falls back to this automatically.
  */
 
-import { BrowserWindow, BrowserView } from "electron";
+import { BrowserWindow } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-client.js";
-import { toCdp, resizeMetrics, clampDim } from "./panel-input.js";
+import { toCdp, clampDim } from "./panel-input.js";
 import type { InputEvent } from "./panel-input.js";
 import type { PanelSource, PanelSink, PanelOpenOptions, PanelSourceStats } from "./panel-source.js";
 import { maybeStartWebrtc, handleWebrtcSignal, isWebrtcSignal, closeWebrtc, feedJpeg } from "./panel-webrtc.js";
-
-/** A raw CDP `Page.screencastFrame` payload (the fields we use). */
-interface ScreencastFramePayload {
-  data: string;
-  sessionId: number;
-  metadata?: { deviceWidth?: number; deviceHeight?: number };
-}
 
 /**
  * ElectronPanelSource — the DESKTOP {@link PanelSource}: a real, off-screen
  * Electron page rendered with the user's persistent session, captured over CDP.
  *
- * "Off-screen" here means the capture surface is a {@link BrowserView} parented
- * to a hidden, unshown host {@link BrowserWindow} — a genuine, GPU-backed,
- * imageful, persistent-partition page (the user's real cookies apply), never
- * painted to the user's display. It is NOT `webPreferences.offscreen` (that
- * path is software-rendered and drops GPU acceleration); the CDP screencast is
- * what carries the pixels, and it works on a real on-GPU view that simply has no
- * on-screen window.
+ * The capture surface IS `webPreferences.offscreen` (paint events → JPEG).
+ * The earlier design — CDP `Page.startScreencast` against a `show:false`
+ * window — produced ZERO frames in practice: Chromium marks an unshown window
+ * occluded and pauses its compositor, so the cast never emits (nav + input
+ * worked, pixels never came — the "black panel"). Offscreen rendering paints
+ * regardless of window visibility; software rendering is an acceptable cost
+ * for a JPEG stream. The persistent default partition still applies (the
+ * user's real logged-in cookies), and CDP stays attached for INPUT + nav.
  */
 export class ElectronPanelSource implements PanelSource {
-  private host: BrowserWindow | null = null;
-  private view: BrowserView | null = null;
+  private win: BrowserWindow | null = null;
   private quality = 70;
   private width = 1280;
   private height = 800;
@@ -76,7 +69,7 @@ export class ElectronPanelSource implements PanelSource {
   constructor(readonly id: string, private readonly sink: PanelSink) {}
 
   private get wc(): Electron.WebContents | null {
-    return this.view && !this.view.webContents.isDestroyed() ? this.view.webContents : null;
+    return this.win && !this.win.isDestroyed() && !this.win.webContents.isDestroyed() ? this.win.webContents : null;
   }
 
   /** CDP send over the view's debugger, typed loosely (Electron types it unknown). */
@@ -93,84 +86,71 @@ export class ElectronPanelSource implements PanelSource {
     this.height = clampDim(opts.height, 800);
     this.startedAt = Date.now();
 
-    // A hidden host window to parent the capture view. show:false keeps it off
-    // the user's display; the page still renders on the GPU (this is not
-    // software offscreen). The default partition → the user's persistent
-    // session, which is the whole point: their real logged-in cookies apply.
-    const host = new BrowserWindow({ show: false, width: this.width, height: this.height });
-    this.host = host;
-    const view = new BrowserView({
-      webPreferences: { sandbox: false, contextIsolation: true, javascript: true, images: true },
+    // OFFSCREEN window: paints via 'paint' events regardless of visibility (a
+    // show:false window is occluded → compositor paused → a CDP screencast
+    // never emits; that was the black panel). Default partition → the user's
+    // persistent session: their real logged-in cookies apply.
+    const win = new BrowserWindow({
+      show: false,
+      width: this.width,
+      height: this.height,
+      webPreferences: { offscreen: true, sandbox: false, contextIsolation: true, javascript: true, images: true },
     });
-    this.view = view;
-    host.setBrowserView(view);
-    view.setBounds({ x: 0, y: 0, width: this.width, height: this.height });
+    this.win = win;
+
+    win.webContents.on("paint", (_e, _dirty, image) => {
+      if (this.closed) return;
+      const jpeg = image.toJPEG(this.quality);
+      const data = jpeg.toString("base64");
+      const size = image.getSize();
+      this.frames++;
+      this.bytes += data.length;
+      // Tee the SAME frame to a live WebRTC encoder (no-op when none) so the
+      // H.264 path reuses the capture instead of grabbing pixels twice.
+      feedJpeg(this.id, data);
+      this.sink({
+        type: "frame",
+        data,
+        format: "jpeg",
+        meta: { deviceWidth: size.width, deviceHeight: size.height },
+        at: Date.now(),
+      });
+    });
+    win.webContents.setFrameRate(15);
 
     // Load the page FIRST, then attach CDP. Attaching the debugger + `Page.enable`
     // on a webContents that has never navigated (still at the initial empty doc)
     // makes Electron's `sendCommand` hang indefinitely — the CDP session never
     // acknowledges. A committed navigation first avoids that entirely.
-    await view.webContents.loadURL(opts.url).catch((err) => {
+    await win.webContents.loadURL(opts.url).catch((err) => {
       this.sink({ type: "nav", url: opts.url, title: `load error: ${(err as Error).message}` });
     });
     if (this.closed) return;
 
+    // CDP stays for INPUT (Input.dispatch*) + top-frame nav events — pixels
+    // come from the paint events above, not a screencast.
     try {
-      view.webContents.debugger.attach("1.3");
+      win.webContents.debugger.attach("1.3");
     } catch (err) {
       this.teardownSurface();
       throw new Error(`could not attach debugger: ${(err as Error).message}`);
     }
-
-    view.webContents.debugger.on("message", (_e, method, params) => {
-      if (method === "Page.screencastFrame") {
-        const p = params as ScreencastFramePayload;
-        this.frames++;
-        this.bytes += p.data?.length ?? 0;
-        // Tee the SAME frame to a live WebRTC encoder (no-op when none) so the
-        // H.264 path reuses the capture instead of grabbing pixels twice.
-        feedJpeg(this.id, p.data);
-        this.sink({
-          type: "frame",
-          data: p.data,
-          format: "jpeg",
-          meta: {
-            deviceWidth: p.metadata?.deviceWidth ?? this.width,
-            deviceHeight: p.metadata?.deviceHeight ?? this.height,
-          },
-          at: Date.now(),
-        });
-        // Mandatory: Chromium stalls the cast until each frame is ACKed.
-        void this.cdp("Page.screencastFrameAck", { sessionId: p.sessionId }).catch(() => {});
-      } else if (method === "Page.frameNavigated") {
+    win.webContents.debugger.on("message", (_e, method, params) => {
+      if (method === "Page.frameNavigated") {
         const nav = params as { frame?: { parentId?: string; url?: string } };
         if (nav.frame && !nav.frame.parentId) {
           this.sink({ type: "nav", url: nav.frame.url ?? this.wc?.getURL() ?? "", title: this.wc?.getTitle() ?? "" });
         }
       }
     });
-
     await this.cdp("Page.enable");
-    await this.startScreencast(this.width, this.height);
 
-    // Force at least one frame for a STATIC page: the screencast only emits on a
-    // visual change, and a page that finished painting before the cast started
-    // would otherwise produce nothing until the user interacts. invalidate()
-    // schedules a repaint → a keyframe.
+    // Force the first paint for a page that finished rendering before the
+    // paint listener was hot.
     try { this.wc?.invalidate(); } catch { /* noop */ }
 
     // Announce the first nav so the web client's address bar tracks reality.
     this.sink({ type: "nav", url: this.wc?.getURL() || opts.url, title: this.wc?.getTitle() ?? "" });
-  }
-
-  private startScreencast(width: number, height: number): Promise<unknown> {
-    return this.cdp("Page.startScreencast", {
-      format: "jpeg",
-      quality: this.quality,
-      maxWidth: clampDim(width, 1280),
-      maxHeight: clampDim(height, 800),
-      everyNthFrame: 1,
-    });
   }
 
   async input(ev: InputEvent): Promise<void> {
@@ -184,35 +164,26 @@ export class ElectronPanelSource implements PanelSource {
     if (this.closed || !this.wc) return;
     this.width = clampDim(width, 1280);
     this.height = clampDim(height, 800);
-    this.view?.setBounds({ x: 0, y: 0, width: this.width, height: this.height });
-    const metrics = resizeMetrics(this.width, this.height);
-    await this.cdp(metrics.method, metrics.params).catch(() => {});
-    // Restart the cast at the new size, then force a keyframe (the resize alone
-    // may not repaint a static page).
-    await this.startScreencast(this.width, this.height).catch(() => {});
+    // A real content resize re-lays-out the offscreen surface; invalidate
+    // forces the repaint a static page would otherwise skip.
+    try { this.win?.setContentSize(this.width, this.height); } catch { /* noop */ }
     try { this.wc?.invalidate(); } catch { /* noop */ }
   }
 
   private teardownSurface(): void {
-    const view = this.view;
-    this.view = null;
-    if (view && !view.webContents.isDestroyed()) {
-      try { view.webContents.debugger.detach(); } catch { /* not attached */ }
-      try { (view.webContents as unknown as { close?: () => void }).close?.(); } catch { /* noop */ }
-    }
-    const host = this.host;
-    this.host = null;
-    if (host && !host.isDestroyed()) {
-      try { if (view) host.removeBrowserView(view); } catch { /* already gone */ }
-      try { host.destroy(); } catch { /* noop */ }
+    const win = this.win;
+    this.win = null;
+    if (win && !win.isDestroyed()) {
+      if (!win.webContents.isDestroyed()) {
+        try { win.webContents.debugger.detach(); } catch { /* not attached */ }
+      }
+      try { win.destroy(); } catch { /* noop */ }
     }
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    // Stop the cast before detaching so no frame is emitted mid-teardown.
-    void this.cdp("Page.stopScreencast").catch(() => {});
     this.teardownSurface();
   }
 
