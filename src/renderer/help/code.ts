@@ -3541,12 +3541,13 @@ export function initCode(): void {
     };
     const cw = coerce(sw); if (cw) sourceBySpace.cowork = cw;
     const cc = coerce(sc); if (cc) sourceBySpace.code = cc;
-    // LOCAL machine wins whenever one exists (the desktop itself, or the
-    // web's attached machine) — "Cloud" is reserved for genuinely remote
-    // runs, so an unpinned cloud-NEW pick upgrades too; an explicit
-    // cloud-REPO pick is respected.
-    const cwPinned = cw && cw.kind !== "cloud-new";
-    const ccPinned = cc && cc.kind !== "cloud-new";
+    // LOCAL machine wins whenever one exists — Chris's rule verbatim:
+    // "Default to local machine if available, then to cloud." A stored CLOUD
+    // pick (new OR repo) applies only when no machine is attached; picking
+    // cloud stays a per-visit choice from the chip, never a sticky default
+    // that buries the folder picker.
+    const cwPinned = cw && cw.kind === "local";
+    const ccPinned = cc && cc.kind === "local";
     if (!cwPinned || !ccPinned) {
       void (async () => {
         let local: Source | null = null;
