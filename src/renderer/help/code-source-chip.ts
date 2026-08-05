@@ -316,17 +316,16 @@ function renderRepos(
     body.textContent = "";
     const list = document.createElement("div");
     list.className = "code-repo-drop-list";
-    let search: HTMLInputElement | null = null;
-    if (repos.length > 8) {
-      search = document.createElement("input");
-      search.type = "text";
-      search.className = "loop-drop-search";
-      search.placeholder = "Search repositories…";
-      search.spellcheck = false;
-      search.autocomplete = "off";
-      search.addEventListener("mousedown", (ev) => ev.stopPropagation());
-      body.appendChild(search);
-    }
+    // Search is ALWAYS present (not just past 8 repos) and stays pinned while
+    // the LIST scrolls beneath it.
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "loop-drop-search repo-drop-search";
+    search.placeholder = "Search repositories…";
+    search.spellcheck = false;
+    search.autocomplete = "off";
+    search.addEventListener("mousedown", (ev) => ev.stopPropagation());
+    body.appendChild(search);
     body.appendChild(list);
     const draw = (): void => {
       list.textContent = "";
@@ -343,9 +342,9 @@ function renderRepos(
         list.appendChild(it);
       }
     };
-    search?.addEventListener("input", draw);
+    search.addEventListener("input", draw);
     draw();
-    if (search) requestAnimationFrame(() => search!.focus());
+    requestAnimationFrame(() => search.focus());
   };
 
   const load = async (): Promise<boolean> => {

@@ -14901,3 +14901,14 @@ body.code-dragging webview { pointer-events: none !important; }
 /* Cloud source: no machine folder to pick, nothing to attach from — the
    folder + add controls sleep (visible, explained by title, not clickable). */
 .chip-disabled { opacity: 0.45; pointer-events: none; }
+
+/* Repo drop (git chip): search pinned on top with the ACCENT focus treatment
+   (the base loop search only shifts a border, which read as unthemed), the
+   list scrolling beneath it inside the drop's own height. */
+.repo-drop-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg, rgba(176, 102, 255, 0.18));
+}
+.repo-drop-search::placeholder { color: var(--text-3); }
+.repo-drop-search::selection { background: var(--accent); color: var(--accent-ink, #fff); }
+.code-repo-drop-list { max-height: min(300px, 46vh); overflow-y: auto; overscroll-behavior: contain; }
