@@ -37,8 +37,9 @@ export interface StoredChat {
   mode?: "chat" | "cowork" | "code";
   /** Legacy pre-mode flag (chat sessions only) — read, never written. */
   chat?: boolean;
-  /** Per-chat LWW stamp, main-owned: set on every content change and used
-   *  by the server upsert so an old machine can't clobber a newer one. */
+  /** Per-chat LWW stamp — RENDERER-owned (thread-store.ts stamps it on every
+   *  content change); rides the cache verbatim so the server push can't be
+   *  clobbered by an old machine. */
   updatedAt?: number;
   messages: StoredMsg[];
 }
@@ -104,15 +105,17 @@ function baseUrl(): string {
 }
 
 // ── Session store ──────────────────────────────────────────────────────────
+//
+// sessions.json is the desktop's OFFLINE CACHE of the server threads surface
+// (renderer help/thread-store.ts owns the sync: LWW stamps, push queue, and
+// tombstones live there; the transport is threads-ipc.ts → the main SDK
+// client). The old main-process `messageSessions` library sync is gone with
+// the cutover — this file just reads/writes the renderer's contract verbatim
+// (chats carry the renderer-stamped `updatedAt` LWW clocks).
 
-// The on-disk shape: renderer contract (chats + currentId) plus sync
-// bookkeeping the renderer never sees — tombstones for offline deletes and
-// the queue of chats with unconfirmed local edits.
 interface SessionsFile {
   chats: StoredChat[];
   currentId: string;
-  deleted?: Record<string, number>;
-  pendingPush?: string[];
 }
 
 function readSessionsFile(): SessionsFile {
@@ -121,11 +124,9 @@ function readSessionsFile(): SessionsFile {
     return {
       chats: Array.isArray(raw.chats) ? raw.chats : [],
       currentId: String(raw.currentId || ""),
-      deleted: raw.deleted && typeof raw.deleted === "object" ? raw.deleted : {},
-      pendingPush: Array.isArray(raw.pendingPush) ? raw.pendingPush : [],
     };
   } catch {
-    return { chats: [], currentId: "", deleted: {}, pendingPush: [] };
+    return { chats: [], currentId: "" };
   }
 }
 
@@ -139,188 +140,15 @@ export function loadSessions(): { chats: StoredChat[]; currentId: string } {
 }
 
 export function saveSessions(chats: StoredChat[], currentId: string): void {
-  // Diff against the previous file: changed/new chats get a fresh LWW stamp
-  // and queue for the server; vanished ids tombstone so a delete made
-  // offline still lands. The renderer keeps its simple whole-array contract.
-  const prev = readSessionsFile();
-  const prevById = new Map(prev.chats.map((c) => [c.id, c]));
-  const now = Date.now();
-  const pending = new Set(prev.pendingPush);
-  const deleted = { ...prev.deleted };
-  for (const c of chats) {
-    const old = prevById.get(c.id);
-    const changed = !old
-      || old.title !== c.title
-      || old.messages.length !== c.messages.length
-      || JSON.stringify(old.messages) !== JSON.stringify(c.messages);
-    if (changed) { c.updatedAt = now; pending.add(c.id); }
-    else if (!c.updatedAt && old?.updatedAt) c.updatedAt = old.updatedAt;
-    delete deleted[c.id]; // a re-created id un-tombstones
-  }
-  const ids = new Set(chats.map((c) => c.id));
-  for (const old of prev.chats) {
-    if (!ids.has(old.id)) { deleted[old.id] = now; pending.delete(old.id); }
-  }
-  writeSessionsFile({ chats, currentId, deleted, pendingPush: [...pending] });
-  scheduleChatFlush();
+  writeSessionsFile({ chats, currentId });
   // Summaries of deleted chats go with them.
+  const ids = new Set(chats.map((c) => c.id));
   const summaries = loadSummaries();
   let dirty = false;
   for (const id of Object.keys(summaries)) {
     if (!ids.has(id)) { delete summaries[id]; dirty = true; }
   }
   if (dirty) saveSummaries(summaries);
-}
-
-// ── Session sync — local-first ↔ /api/me/chats ─────────────────────────────
-//
-// sessions.json stays the working copy. A debounced flush pushes queued
-// chats (LWW upsert server-side) and tombstoned deletes; syncChatsWithServer
-// (auth + user switch) pushes FIRST so offline edits beat stale server rows,
-// then pulls whatever another machine wrote newer, then re-flushes anything
-// the pull proved the server is missing. Offline, everything just stays
-// queued in the file — nothing is ever lost locally.
-
-const CHAT_FLUSH_DEBOUNCE_MS = 2000;
-let chatFlushTimer: NodeJS.Timeout | null = null;
-
-function scheduleChatFlush(): void {
-  if (chatFlushTimer) clearTimeout(chatFlushTimer);
-  chatFlushTimer = setTimeout(() => { chatFlushTimer = null; void flushChatSync(); }, CHAT_FLUSH_DEBOUNCE_MS);
-}
-
-// Chats live in the server library (kind `message_session`); library items
-// carry SERVER ids, while chats keep their local ids inside `data.chatId` —
-// this index maps one to the other so pushes update instead of duplicating.
-const chatItemIds = new Map<string, string>();
-
-interface ChatItemData {
-  chatId: string;
-  createdAtMs: number;
-  updatedAtMs: number;
-  messages: StoredMsg[];
-}
-
-async function refreshChatItemIndex(): Promise<Array<{ id: string; name: string; data: ChatItemData }>> {
-  const { getClient } = await import("./glyphh-client");
-  const items = await getClient().messageSessions.list();
-  chatItemIds.clear();
-  const chats: Array<{ id: string; name: string; data: ChatItemData }> = [];
-  for (const item of items) {
-    const data = item.data as Partial<ChatItemData> | null;
-    if (!data || typeof data.chatId !== "string") continue;
-    chatItemIds.set(data.chatId, item.id);
-    chats.push({
-      id: item.id,
-      name: item.name,
-      data: {
-        chatId: data.chatId,
-        createdAtMs: data.createdAtMs || 0,
-        updatedAtMs: data.updatedAtMs || 0,
-        messages: Array.isArray(data.messages) ? data.messages : [],
-      },
-    });
-  }
-  return chats;
-}
-
-async function flushChatSync(): Promise<void> {
-  const f = readSessionsFile();
-  const pendingIds = [...new Set(f.pendingPush)];
-  const deletedIds = Object.keys(f.deleted ?? {});
-  if (!pendingIds.length && !deletedIds.length) return;
-  let client: import("@glyphh/sdk").Client;
-  try { client = (await import("./glyphh-client")).getClient(); } catch { return; }
-  // Refresh the id index when a queued chat isn't mapped yet — pushing an
-  // unmapped chat without it would CREATE a duplicate library item.
-  if ([...pendingIds, ...deletedIds].some((id) => !chatItemIds.has(id))) {
-    try { await refreshChatItemIndex(); } catch { return; } // offline — retry next flush
-  }
-  const byId = new Map(f.chats.map((c) => [c.id, c]));
-  const sentStamps = new Map<string, number>();
-  for (const id of pendingIds) {
-    const c = byId.get(id);
-    if (!c) { sentStamps.set(id, Number.MAX_SAFE_INTEGER); continue; } // gone — nothing to push
-    const stamp = c.updatedAt ?? c.createdAt;
-    try {
-      const itemId = chatItemIds.get(id);
-      const saved = await client.messageSessions.save({
-        name: c.title,
-        data: { chatId: id, createdAtMs: c.createdAt, updatedAtMs: stamp, messages: c.messages } satisfies ChatItemData,
-        ...(itemId ? { id: itemId } : {}),
-      });
-      chatItemIds.set(id, saved.id);
-      sentStamps.set(id, stamp);
-    } catch { /* offline / oversized — stays pending */ }
-  }
-  const deletedOk: string[] = [];
-  for (const id of deletedIds) {
-    try {
-      const itemId = chatItemIds.get(id);
-      if (itemId) await client.messageSessions.delete(itemId);
-      chatItemIds.delete(id);
-      deletedOk.push(id);
-    } catch { /* offline — tombstone stays */ }
-  }
-  // Re-read before persisting queue state: the renderer may have saved new
-  // edits mid-flight, and those must stay pending.
-  const cur = readSessionsFile();
-  const curById = new Map(cur.chats.map((c) => [c.id, c]));
-  const nextPending = new Set(cur.pendingPush);
-  for (const [id, stamp] of sentStamps) {
-    const c = curById.get(id);
-    if (!c || (c.updatedAt ?? c.createdAt) <= stamp) nextPending.delete(id);
-  }
-  const nextDeleted = { ...cur.deleted };
-  for (const id of deletedOk) delete nextDeleted[id];
-  writeSessionsFile({ ...cur, pendingPush: [...nextPending], deleted: nextDeleted });
-}
-
-/** Full reconcile — call after auth lands and on user switch (before the
- *  renderer reload re-reads the store, so merged chats just appear). */
-export async function syncChatsWithServer(): Promise<void> {
-  await flushChatSync();
-  let items: Array<{ id: string; name: string; data: ChatItemData }>;
-  try {
-    items = await refreshChatItemIndex();
-  } catch { return; } // offline / signed out — local store stands
-  const f = readSessionsFile();
-  const byId = new Map(f.chats.map((c) => [c.id, c]));
-  const pending = new Set(f.pendingPush);
-  let dirty = false;
-  // Pull: server-newer chats replace local (LWW), unknown ones are adopted.
-  // The library list carries full payloads — no per-chat follow-up fetch.
-  for (const item of items) {
-    const chatId = item.data.chatId;
-    if (f.deleted?.[chatId] !== undefined) continue; // deleted here — flush retries the server delete
-    const local = byId.get(chatId);
-    const localStamp = local ? (local.updatedAt ?? local.createdAt) : 0;
-    if (item.data.updatedAtMs <= localStamp) continue;
-    const merged: StoredChat = {
-      id: chatId,
-      title: item.name,
-      createdAt: item.data.createdAtMs || Date.now(),
-      updatedAt: item.data.updatedAtMs,
-      messages: item.data.messages,
-    };
-    if (local) f.chats[f.chats.indexOf(local)] = merged;
-    else f.chats.push(merged);
-    byId.set(chatId, merged);
-    pending.delete(chatId); // server copy won — nothing local left to push
-    dirty = true;
-  }
-  // Push: local chats the server lacks or has older.
-  const serverStamp = new Map(items.map((item) => [item.data.chatId, item.data.updatedAtMs]));
-  for (const c of f.chats) {
-    if ((c.updatedAt ?? c.createdAt) > (serverStamp.get(c.id) ?? -1) && !pending.has(c.id)) {
-      pending.add(c.id);
-      dirty = true;
-    }
-  }
-  if (dirty) {
-    writeSessionsFile({ ...f, pendingPush: [...pending] });
-    await flushChatSync();
-  }
 }
 
 function loadSummaries(): Record<string, SummaryEntry> {
