@@ -110,7 +110,11 @@ const server = http.createServer(async (req, res) => {
     if (p === '/sw.js') {
       res.setHeader('content-type', 'text/javascript');
       res.setHeader('cache-control', 'no-store');
-      res.end("self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',async()=>{try{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));await self.registration.unregister();const cs=await self.clients.matchAll();cs.forEach(c=>c.navigate(c.url));}catch(e){}});");
+      // NOTE: no clients.navigate() here — a stale page that still registers
+      // /sw.js would re-install this on every load, and navigate() turned that
+      // into an infinite reload loop (frantic flicker). Unregister + clear
+      // caches only; the user's next natural reload gets fresh content.
+      res.end("self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',async()=>{try{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));await self.registration.unregister();}catch(e){}});");
       return;
     }
     // LOGIN-FIRST front door (decided 2026-08-03, Claude model — no anonymous app
