@@ -14913,14 +14913,10 @@ body.code-dragging webview { pointer-events: none !important; }
 .repo-drop-search::selection { background: var(--accent); color: var(--accent-ink, #fff); }
 .code-repo-drop-list { max-height: min(300px, 46vh); overflow-y: auto; overscroll-behavior: contain; }
 
-/* WEB: the standalone folder chip, branch mirror, and + are NATIVE-dialog
-   affordances (wb.pickCwd / OS pickers / local git info) — impossible in a
-   browser. Folder picking on web lives in the SOURCE chip (attach fs.list
-   machine browser); the GIT chip covers repos. Landing row on web reads
-   [source][git]. */
-.glyphh-web #dash-wd-btn,
-.glyphh-web #dash-wd-add,
-.glyphh-web #dash-wd-branch-wrap,
+/* WEB: the landing row's folder chip + '+' WORK over the attach relay
+   (fs.list browser / fs.mkdir) — only the AGENT HEADER's workdir controls and
+   the composer '+' stay hidden on web, because those still drive native OS
+   pickers/attachment dialogs a browser cannot run. */
 .glyphh-web #code-workdir-btn,
 .glyphh-web #code-workdir-add,
 .glyphh-web #code-workdir-branch-wrap,
