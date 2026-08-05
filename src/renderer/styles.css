@@ -12756,6 +12756,46 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
 .ws-note-body { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
 .ws-source-drop .drop-empty { font-size: 12px; color: var(--text-3); padding: 8px 10px; }
 
+/* ── Code HOME (CodeLanding port) — greeting + two-column, composer stays at
+   the bottom of .code-agent. Rendered into #code-thread's inner. ─────────── */
+.code-thread-inner.code-landing-host,
+.code-landing-host { width: 100%; }
+.cl-body { max-width: 860px; margin: 0 auto; padding: 24px 20px 8px; width: 100%; }
+.cl-head { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.cl-mark { width: 34px; height: 34px; opacity: 0.95; }
+.cl-greeting { font-size: 22px; font-weight: 600; color: var(--text); margin: 0; }
+.cl-two-col { align-items: start; }
+.cl-sessions { margin-top: 10px; }
+.dash-tasks-empty { font-size: 12.5px; color: var(--text-3); padding: 10px 2px; }
+
+/* Session cards (Code home RIGHT column + the per-space session list) —
+   2-row, left-justified, locus icon leading. */
+.session-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+  width: 100%; text-align: left; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-2, var(--hover));
+  border-radius: 10px; padding: 10px 12px;
+}
+.session-card:hover { border-color: var(--border-2); background: var(--hover); }
+.session-card-row1 { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+.session-card-locus { color: var(--text-3); flex-shrink: 0; display: inline-flex; }
+.session-card-title {
+  font-size: 13.5px; font-weight: 550; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;
+}
+.session-card-pin { font-size: 11px; flex-shrink: 0; }
+.session-card-row2 { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-3); min-width: 0; width: 100%; }
+.session-card-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
+.session-card-dot.busy { background: var(--accent); }
+.session-card-dot.input { background: #f59e0b; }
+.session-card-dot.ready { background: #10b981; }
+.session-card-dot.err { background: #ef4444; }
+.session-card-status.busy { color: var(--accent); }
+.session-card-status.input { color: #f59e0b; }
+.session-card-sep { opacity: 0.5; }
+.session-card-snippet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.session-card-age { margin-left: auto; flex-shrink: 0; opacity: 0.8; }
+
 /* Permission-modes explainer — the one dialog that runs wider than the
    standard 420px confirm box: five modes with real paragraphs need room. */
 .mode-info-box { width: min(560px, 90vw) !important; text-align: left !important; }

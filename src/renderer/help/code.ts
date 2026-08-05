@@ -1090,6 +1090,155 @@ function pinThreadToBottom(): void {
   if (thread) thread.scrollTop = thread.scrollHeight;
 }
 
+// ── Code HOME (CodeLanding port) ───────────────────────────────────────────
+// The Code space's landing: greeting + a two-column body (code prompt
+// suggestions LEFT that seed the composer, a "Waiting on you" session list
+// RIGHT). The composer stays pinned at the bottom of .code-agent. Scoped to
+// this app's LOCAL code-space sessions (there is no SDK runtime-session list
+// here — sessions are the local store); ranked working-first, then pinned,
+// then last-active.
+const CODE_PROMPTS = [
+  "Fix a bug — point me at the symptom",
+  "Build a feature in this repo",
+  "Refactor a file without changing behavior",
+  "Write tests for a function or flow",
+  "Explain how part of the codebase works",
+  "Review the changes on a branch",
+];
+
+const IC_REMOTE = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19Z"/></svg>`;
+const IC_LOCAL = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+
+/** "3m", "2h", "5d" — a compact age from a ms timestamp. */
+function timeAgo(ms: number): string {
+  if (!ms) return "";
+  const s = Math.floor((Date.now() - ms) / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24); return `${d}d ago`;
+}
+
+function codeGreeting(name: string): string {
+  return name ? `Welcome back, ${name}` : "Welcome back";
+}
+
+function renderCodeLanding(host: HTMLElement): void {
+  host.classList.add("code-landing-host");
+  const wrap = document.createElement("div");
+  wrap.className = "cl-body";
+
+  // Greeting head.
+  const head = document.createElement("div");
+  head.className = "cl-head";
+  head.innerHTML = `<img class="cl-mark" src="brand/glyphh-mark.png" alt="" /><h1 class="cl-greeting"></h1>`;
+  wrap.appendChild(head);
+  const nameEl = head.querySelector<HTMLElement>(".cl-greeting")!;
+  nameEl.textContent = codeGreeting("");
+  // Fill the name from account info if the bridge has it.
+  void window.glyphh.getAccountInfo?.()
+    .then((d) => { if (d?.firstName) nameEl.textContent = codeGreeting(d.firstName); })
+    .catch(() => { /* keep the generic greeting */ });
+
+  // Two-column body.
+  const cols = document.createElement("div");
+  cols.className = "dash-two-col cl-two-col";
+
+  // LEFT — suggestions (seed the composer).
+  const left = document.createElement("div");
+  left.innerHTML = `<div class="dash-card-label">Suggestions</div>`;
+  const recs = document.createElement("div");
+  recs.className = "dash-recs";
+  for (const p of CODE_PROMPTS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "dash-rec";
+    b.innerHTML = `<span class="dash-rec-text"></span>`;
+    (b.querySelector(".dash-rec-text") as HTMLElement).textContent = p;
+    b.addEventListener("click", () => seedComposer(`${p}: `));
+    recs.appendChild(b);
+  }
+  left.appendChild(recs);
+
+  // RIGHT — "Waiting on you": this space's local sessions.
+  const right = document.createElement("div");
+  right.innerHTML = `<div class="dash-card-label">Waiting on you</div>`;
+  const list = document.createElement("div");
+  list.className = "dash-tasks-list cl-sessions";
+  right.appendChild(list);
+
+  const ranked = chats
+    .filter((x) => spaceOf(x) === "code")
+    .slice()
+    .sort((a, b) => {
+      const aw = liveRuns.has(a.id) ? 1 : 0, bw = liveRuns.has(b.id) ? 1 : 0;
+      if (aw !== bw) return bw - aw;
+      const ap = a.pinned ? 1 : 0, bp = b.pinned ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      const at = a.messages[a.messages.length - 1]?.at || a.createdAt;
+      const bt = b.messages[b.messages.length - 1]?.at || b.createdAt;
+      return bt - at;
+    })
+    .slice(0, 8);
+
+  if (!ranked.length) {
+    list.innerHTML = `<div class="dash-tasks-empty">No active sessions yet.</div>`;
+  } else {
+    for (const s of ranked) {
+      const working = liveRuns.has(s.id);
+      const local = !s.source || s.source.kind === "local";
+      const last = s.messages[s.messages.length - 1]?.at || s.createdAt;
+      const snippet = s.source?.kind === "cloud-repo" ? s.source.repo
+        : s.workdir ? (s.workdir.split("/").filter(Boolean).pop() || s.workdir)
+          : local ? "local runtime" : "cloud runtime";
+      const tone = working ? "busy" : "idle";
+      const label = working ? "Working" : "Idle";
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "cl-row session-card";
+      row.innerHTML =
+        `<span class="session-card-row1">` +
+          `<span class="session-card-locus" title="${local ? "Runs on your machine" : "Runs in the cloud"}">${local ? IC_LOCAL : IC_REMOTE}</span>` +
+          `<span class="session-card-title"></span>` +
+          `${s.pinned ? `<span class="session-card-pin" title="Pinned">📌</span>` : ""}` +
+        `</span>` +
+        `<span class="session-card-row2">` +
+          `<span class="session-card-dot ${tone}"></span>` +
+          `<span class="session-card-status ${tone}"></span>` +
+          `<span class="session-card-sep">·</span>` +
+          `<span class="session-card-snippet"></span>` +
+          `<span class="session-card-age"></span>` +
+        `</span>`;
+      (row.querySelector(".session-card-title") as HTMLElement).textContent = s.title;
+      (row.querySelector(".session-card-status") as HTMLElement).textContent = label;
+      (row.querySelector(".session-card-snippet") as HTMLElement).textContent = snippet;
+      (row.querySelector(".session-card-age") as HTMLElement).textContent = timeAgo(last);
+      row.addEventListener("click", () => { openLocalSession(s.id); });
+      list.appendChild(row);
+    }
+  }
+
+  cols.append(left, right);
+  wrap.appendChild(cols);
+  host.appendChild(wrap);
+}
+
+/** Open a local session by id (used by the Code home + session list). */
+function openLocalSession(id: string): void {
+  if (!chats.some((x) => x.id === id)) return;
+  currentId = id;
+  const c = current();
+  if (c) { lastBySpace[spaceOf(c)] = c.id; void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id); }
+  threadPinned = true;
+  void saveStore();
+  ensureCodeSection();
+  renderHistory();
+  renderThread();
+  refreshCtxMeter();
+  void checkWorkdirGate();
+  gotoSection("agent");
+}
+
 function renderThread(): void {
   // The composer's working state belongs to the SESSION ON SCREEN — every
   // switch lands here, so recompute (a background session keeps running;
@@ -1104,6 +1253,13 @@ function renderThread(): void {
   thread.appendChild(inner);
   stopGhostRotation();
   const c = current();
+  // Code space, no session → the Code HOME (two-column: suggestions LEFT,
+  // "Waiting on you" sessions RIGHT), not the bare ghost. Chat/Work land on
+  // the dashboard instead, so their empty thread keeps the ghost.
+  if (!c && railTab === "code") {
+    renderCodeLanding(inner);
+    return;
+  }
   if (!c || !c.messages.length) {
     const ghost = document.createElement("div");
     ghost.className = "code-ghost";
