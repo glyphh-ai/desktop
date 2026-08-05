@@ -19,6 +19,7 @@ import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { createSourceChip, type Source } from "./code-source-chip.js";
+import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -42,6 +43,12 @@ interface CodeChat {
    *  or local (a folder on the machine). Stamped from the source chip when the
    *  session is born; threaded into provisioning (glyphhRun). */
   source?: Source;
+  /** The bound REMOTE runtime (web/cloud sources only): the provisioned session
+   *  id + data-plane url + one-time runtime token. Written by remote-run.ts on
+   *  the first turn and reused for every later turn (no re-provision). The
+   *  session id is bound even before the runtime is ready — the session exists
+   *  server-side and must not be orphaned. */
+  runtime?: { sessionId: string; url: string; token: string };
 }
 
 /** The session's effective mode (legacy chat flag folds in; default code). */
@@ -650,6 +657,30 @@ function runEntry(runId: string): [string, LiveRun] | null {
   return null;
 }
 const currentRun = (): LiveRun | null => liveRuns.get(currentId) ?? null;
+
+// Streamed tokens re-render the CURRENT chat's live block as MARKDOWN, throttled
+// to one paint per animation frame — smooth at token rate, code fences and lists
+// take shape as they arrive. Module-scoped so BOTH run paths share it: the local
+// glyphhRun deltas (onGlyphhAgentDelta) and the web remote turn (remote-run.ts).
+let streamPaintQueued = false;
+function paintStream(): void {
+  streamPaintQueued = false;
+  const run = currentRun();
+  const thread = el<HTMLDivElement>("code-thread");
+  if (run?.bubble && run.bubble.isConnected) {
+    run.bubble.innerHTML = formatMarkdown(run.text);
+    if (thread && threadPinned) thread.scrollTop = thread.scrollHeight;
+  } else {
+    renderThread(); // first token — adds the live block under the spinner
+  }
+}
+/** Coalesce a stream repaint to the next frame (only when the run is current). */
+function queueStreamPaint(chatId: string): void {
+  if (currentId === chatId && !streamPaintQueued) {
+    streamPaintQueued = true;
+    requestAnimationFrame(paintStream);
+  }
+}
 
 function broadcastTimeline(running: boolean): void {
   try {
@@ -2155,6 +2186,9 @@ function stopThinking(): void {
   // Abort the CURRENT chat's stream — main answers with glyphh-agent:done
   // { stopped: true } for that run; other sessions keep working.
   void window.glyphh.glyphhStop?.(currentId);
+  // A REMOTE (web/cloud) turn has no main-side run — abort its own signal, which
+  // fires runRemoteTurn's onStopped → finishRun(stopped) for this chat.
+  remoteAborters.get(currentId)?.abort();
 }
 
 /** `.dip <app-or-layout>` — the ONE mechanism, callable from any input in the
@@ -2348,6 +2382,11 @@ function send(): void {
   // remote runtime. Chat carries no source. main reads what it supports and
   // ignores the rest (older builds just run local, as before).
   const src = modeOf(c) === "chat" ? undefined : (c.source ?? sourceBySpace[modeOf(c) as "cowork" | "code"]);
+  // A REMOTE source on WEB (cloud-new / cloud-repo, window.glyphhSdk present) can't
+  // ride the local harness (main's glyphhRun) — it PROVISIONS + STREAMS a Fly
+  // runtime through the SDK. Desktop-local and the honest-state fallback keep the
+  // glyphhRun path below.
+  if (canRunRemote(src)) { void saveStore().then(() => launchRemote(c, text, src!)); return; }
   const launch = (retried: boolean): Promise<void> =>
     window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), ...(src ? { source: src } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r.runId; })
@@ -2364,6 +2403,97 @@ function send(): void {
         finishRun(c.id, `⚠ ${msg}`);
       });
   void saveStore().then(() => launch(false));
+}
+
+// ── Remote (web/cloud) run path ───────────────────────────────────────────────
+// One AbortController per live remote run, keyed by chat id — stopThinking()
+// aborts the CURRENT chat's turn (the turn's own AbortSignal), other sessions
+// keep streaming. The runtime binding lives on the chat record (remote-run.ts
+// provisions once, reuses it for later turns), persisted via saveStore.
+const remoteAborters = new Map<string, AbortController>();
+
+/** Provision (or reuse) a Fly runtime for this chat's remote source and stream
+ *  the turn through it, driving the SAME liveRuns entry the local path uses so
+ *  the thread renders identically. Any unavailable stage lands the app's honest
+ *  "runtime not connected" state — never a fake reply. */
+function launchRemote(c: CodeChat, prompt: string, src: Source): void {
+  const chatId = c.id;
+  const ac = new AbortController();
+  remoteAborters.set(chatId, ac);
+  const bindSave = (): void => { void saveStore(); };
+  // A synthetic run id so runEntry()/liveRuns bookkeeping stays consistent with
+  // the local path (there's no main-side ack to stamp one here).
+  const run = liveRuns.get(chatId);
+  if (run && !run.runId) run.runId = `r-remote-${chatId}`;
+
+  const pushStep = (label: string): void => {
+    const chat = chats.find((ch) => ch.id === chatId);
+    const r = liveRuns.get(chatId);
+    if (!chat || !r) return;
+    // Commit streamed text before the breadcrumb, then start a fresh block —
+    // text → step → text flows DOWN the page (same order the local path keeps).
+    if (r.text.trim()) { chat.messages.push({ role: "assistant", text: r.text, at: Date.now() }); r.text = ""; r.bubble = null; }
+    r.steps.push(label);
+    chat.messages.push({ role: "assistant", kind: "tool", text: label, at: Date.now() });
+    void saveStore();
+    if (chatId === currentId) { broadcastTimeline(true); renderThread(); }
+  };
+
+  void runRemoteTurn(
+    c as unknown as RemoteChat,
+    prompt,
+    bindSave,
+    {
+      onStep: (step) => {
+        const r = liveRuns.get(chatId);
+        if (!r) return;
+        pushStep(`⚙ ${step.type}${step.status ? ` — ${step.status}` : ""}${step.error ? ` — ${step.error}` : ""}`);
+      },
+      onToken: (delta) => {
+        const r = liveRuns.get(chatId);
+        if (!r) return;
+        r.text += delta;
+        queueStreamPaint(chatId);
+      },
+      onDone: (text) => { finishRun(chatId, text); },
+      onStopped: () => { finishRun(chatId, liveRuns.get(chatId)?.text || "", true); },
+      onError: (detail) => {
+        const r = liveRuns.get(chatId);
+        const prefix = r?.text ? `${r.text}\n\n` : "";
+        finishRun(chatId, `${prefix}⚠ ${detail}`);
+      },
+    },
+    // No model override — the loop resolves its own model server-side (matches
+    // the local path, where main resolves the loop's roles).
+    { rotor: glyphhLoop, signal: ac.signal },
+  ).then((outcome) => {
+    remoteAborters.delete(chatId);
+    // An UNAVAILABLE stage is the honest "runtime not connected" state: the
+    // runtime for the org's region isn't deployed/routed yet. Render the
+    // designed message, never a fake reply. onError already committed for the
+    // { error } case; only unavailable needs its own copy here.
+    if ("unavailable" in outcome && outcome.unavailable && !liveRuns.get(chatId)?.text) {
+      finishRun(chatId, remoteUnavailableMessage(outcome.stage, outcome.detail));
+    } else if (liveRuns.has(chatId)) {
+      // A callback path we didn't already finish (defensive) — land whatever text exists.
+      finishRun(chatId, liveRuns.get(chatId)?.text || "");
+    }
+  }).catch((err) => {
+    remoteAborters.delete(chatId);
+    if (liveRuns.has(chatId)) finishRun(chatId, `⚠ ${err instanceof Error ? err.message : String(err)}`);
+  });
+}
+
+/** The app's honest not-connected copy for a remote turn that couldn't reach a
+ *  live runtime. The session EXISTS server-side (remote-run bound its id); a
+ *  runtime just isn't deployed + routed for the org's region yet. */
+function remoteUnavailableMessage(stage: string, detail: string): string {
+  const why =
+    stage === "provision" || stage === "provision-poll" ? "the cloud runtime couldn't be provisioned"
+    : stage === "not-ready" ? "the cloud runtime didn't come up in time"
+    : stage === "open" || stage === "stream" ? "the cloud runtime is unreachable from here"
+    : "the cloud runtime isn't connected";
+  return `⚠ Cloud runtime not connected — ${why}. Remote sessions need a Fly runtime deployed and routed for your org's region. (${detail})`;
 }
 
 // Stopping isn't failure — it's a choice. All peace, no violence.
@@ -2627,21 +2757,6 @@ function initGlyphhAgentEvents(): void {
     void saveStore();
     if (currentId === runChatId) renderThread();
   });
-  // Streamed tokens re-render the live block as MARKDOWN, throttled to one
-  // paint per animation frame — smooth at token rate, code fences and lists
-  // take shape as they arrive.
-  let streamPaintQueued = false;
-  const paintStream = () => {
-    streamPaintQueued = false;
-    const run = currentRun();
-    const thread = el<HTMLDivElement>("code-thread");
-    if (run?.bubble && run.bubble.isConnected) {
-      run.bubble.innerHTML = formatMarkdown(run.text);
-      if (thread && threadPinned) thread.scrollTop = thread.scrollHeight;
-    } else {
-      renderThread(); // first token — adds the live block under the spinner
-    }
-  };
   window.glyphh.onGlyphhAgentConnect?.((p) => {
     // the card belongs to the session whose run asked — with parallel runs
     // that's the single live one, else the current session
@@ -2663,10 +2778,7 @@ function initGlyphhAgentEvents(): void {
     const e = runEntry(d.runId);
     if (!e) return;
     e[1].text += d.delta;
-    if (currentId === e[0] && !streamPaintQueued) {
-      streamPaintQueued = true;
-      requestAnimationFrame(paintStream);
-    }
+    queueStreamPaint(e[0]);
   });
   window.glyphh.onGlyphhAgentDone?.((d) => {
     const e = runEntry(d.runId);
