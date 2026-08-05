@@ -109,10 +109,17 @@ void (async () => {
   // Lift the boot veil only once the LANDING is actually hosted — the wall
   // mounts first and its bare paint was the flash between splash and Home.
   let veilTries = 0;
+  let settled = 0;
   const lift = (): void => {
-    const hosted = document.querySelector('.help-section[data-section="dashboard"].wb-hosted, .help-section[data-section="dashboard"].active');
-    if (hosted || veilTries++ > 120) {
-      requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("wb-booting")));
+    // The landing is UP when its section holds real layout boxes — but frame
+    // ONE of the card's zoom is mostly bare wall, which was still the flash.
+    // Wait until the box is present AND stable for ~20 frames so the first
+    // visible frame is the settled new-chat screen, then lift.
+    const dash = document.querySelector('.help-section[data-section="dashboard"]');
+    const up = !!dash && dash.getClientRects().length > 0;
+    settled = up ? settled + 1 : 0;
+    if (settled >= 20 || veilTries++ > 360) {
+      document.body.classList.remove("wb-booting");
       return;
     }
     requestAnimationFrame(lift);

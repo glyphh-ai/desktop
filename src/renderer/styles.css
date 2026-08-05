@@ -14952,6 +14952,8 @@ body.code-dragging webview { pointer-events: none !important; }
 
 /* BOOT VEIL: nothing between the splash and the NEW CHAT screen. The wall
    mounts before the landing card does, and that bare-wall paint was the
-   "echo command page flash" on every load — the workbench stays invisible
-   until the landing is hosted (home.ts lifts the class). */
-.wb-booting .code-workbench { visibility: hidden !important; }
+   "echo command page flash" on every load. The wall's canvas does NOT live
+   inside .code-workbench — echo renders in the app layer stitched onto
+   <body> — so the veil covers BOTH containers until home.ts lifts it. */
+.wb-booting .code-workbench,
+.wb-booting #code-wb-applayer { visibility: hidden !important; }
