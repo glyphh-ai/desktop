@@ -68,3 +68,69 @@ function button(v: unknown): MouseButton {
   return typeof v === "string" && VALID_BUTTONS.has(v) ? (v as MouseButton) : "none";
 }
 
+/**
+ * Map ONE input event to its CDP command, or `null` when the event is malformed
+ * or is a `resize` (which the session handles specially via
+ * {@link resizeMetrics}, not a screencast-stream command). Never throws — a bad
+ * event is dropped, not fatal, so a noisy client can't take a panel down.
+ */
+export function toCdp(ev: InputEvent): CdpCommand | null {
+  switch (ev?.type) {
+    case "mouse": {
+      const t = MOUSE_TYPE[ev.action];
+      if (!t) return null;
+      const btn = button(ev.button);
+      return {
+        method: "Input.dispatchMouseEvent",
+        params: {
+          type: t,
+          x: coord(ev.x),
+          y: coord(ev.y),
+          button: btn,
+          // `buttons` is the bitmask of currently-pressed buttons; default to the
+          // single pressed button on down so drags register.
+          buttons: Number.isFinite(ev.buttons) ? Number(ev.buttons) : btn === "left" && ev.action === "down" ? 1 : 0,
+          modifiers: mods(ev.mods),
+          clickCount: ev.action === "up" || ev.action === "down" ? Math.max(1, Number(ev.clickCount) || 1) : 0,
+        },
+      };
+    }
+    case "wheel":
+      return {
+        method: "Input.dispatchMouseEvent",
+        params: {
+          type: "mouseWheel",
+          x: coord(ev.x),
+          y: coord(ev.y),
+          deltaX: Number.isFinite(ev.dx) ? Number(ev.dx) : 0,
+          deltaY: Number.isFinite(ev.dy) ? Number(ev.dy) : 0,
+          modifiers: mods(ev.mods),
+        },
+      };
+    case "key": {
+      const t = KEY_TYPE[ev.action];
+      if (!t) return null;
+      const params: Record<string, unknown> = { type: t, modifiers: mods(ev.mods) };
+      if (typeof ev.key === "string" && ev.key) params.key = ev.key;
+      if (typeof ev.code === "string" && ev.code) params.code = ev.code;
+      // `text` makes a keyDown produce a character (CDP inserts it); only on down.
+      if (ev.action === "down" && typeof ev.text === "string" && ev.text) {
+        params.text = ev.text;
+        params.unmodifiedText = ev.text;
+      }
+      return { method: "Input.dispatchKeyEvent", params };
+    }
+    case "resize":
+      return null; // handled by the source's real window resize — no CDP command
+    default:
+      return null;
+  }
+}
+
+/** Clamp a viewport dimension to a sane bounded integer (px). Guards against a
+ *  client sending 0 / NaN / an absurd size that would OOM the compositor. */
+export function clampDim(v: unknown, fallback: number, max = 4096): number {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(max, Math.max(1, n));
+}
