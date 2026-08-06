@@ -16,36 +16,68 @@
  */
 
 import { ipcMain, app, type WebContents } from "electron";
-import { spawn, type ChildProcess } from "child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname, sep } from "node:path";
-import { homedir } from "node:os";
 import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { getPreference } from "./stores/preferences-db";
 import { glyphhPath } from "./app-paths";
-import { runModel, runMaxOutputTokens, currentLoop, resolveRoles } from "./loop-selections";
+import { runModel, runMaxOutputTokens } from "./loop-selections";
 import { glyphhMode, registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { executeGlyphhTool, glyphhToolDefs, connectorWireTools, setRunAttachments, clearRunAttachments, activeAgentRuns, type ConnectorWireDef } from "./glyphh-agent-tools";
 import { selectConnectorTools } from "./tool-vectors";
 import {
   pickAttachments, classifyPaths, saveClipboardImage, validAttachments,
-  attachmentPromptBlock, attachmentVisionBlocks, type AttachRef,
+  attachmentVisionBlocks, type AttachRef,
 } from "./glyphh-agent-attachments";
-import { indexChatTurns, shortTermRecallBlock, pruneTurnVectors } from "./glyphh-agent-recall";
-import { refreshWorkspaceIndex, relevantFilesHint } from "./workspace-index";
+import { indexChatTurns, pruneTurnVectors } from "./glyphh-agent-recall";
+import { refreshWorkspaceIndex } from "./workspace-index";
 import { stopEmbedServer } from "./glyphh-agent-embeddings";
-import { GLYPHH_APP_SPEC } from "@glyphh/sdk";
-import { fetchOrgApps } from "./org-apps";
 import { assemblePrompt, compactIfNeeded, compactNow, loadSessions, registerGlyphhContextIpc } from "./glyphh-agent-context";
 import { registerThreadsIpc } from "./threads-ipc";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { getClient } from "./glyphh-client";
 import { startInterceptor, type Interceptor } from "@glyphh/sdk/runtime";
+import { brandError, composeTurn, skillSeedFor, type ChatMessage } from "./glyphh-agent-prompt";
+import { harnessRun } from "./glyphh-harness-run";
+import { closeBridge } from "./harness-mcp-bridge";
 
-export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
+export type { ChatMessage };
+
+/**
+ * THE CONVERGENCE FLAG. `GLYPHH_LOCAL_ROTOR=1` routes tool-bearing turns to the
+ * machine's LOCAL HARNESS POD (glyphh-harness-run.ts) instead of the in-process
+ * Agent SDK loop below — one harness everywhere, the desktop reduced to the
+ * machine and the tool surface.
+ *
+ * It is OFF by default because the pod path is not yet at parity. What blocks
+ * the flip, exactly:
+ *
+ *  1. WORKDIR. rrotor's `resolveRunConfig` computes the run's cwd itself
+ *     (`HARNESS_HOME/sessions/<session>/workspace`) — `POST /run` has no field
+ *     for a caller-chosen folder. The desktop's LENT tools do work in the
+ *     user's real folder (the bridge passes the session workdir into
+ *     executeGlyphhTool), but the pod's OWN preset tools — Bash, Read, Edit,
+ *     Glob, Grep — anchor in its sandbox. For a Code session that is a silent
+ *     wrong answer, not a missing feature. Needs a `workdir` on the run body,
+ *     pod-side.
+ *  2. CREDITS. `glyphh-agent:credits` comes from the local interceptor's usage
+ *     stream; the pod calls the gateway directly and rrotor's v1 emits no
+ *     `credits` frame (the vocabulary exists, the emit site does not), so the
+ *     composer's per-run price goes blank.
+ *  3. IMAGE ATTACHMENTS. The run body's `prompt` is a string — there is no
+ *     vision-block channel — so pasted/attached images ride as PATHS only.
+ *     Text attachments are fine (the manifest + the lent read_file).
+ *
+ * Everything else is wired and verified: streaming deltas, tool activity with
+ * the desktop's own gate titles, ask/approval round-trips through the existing
+ * IPC, stop, and token progress.
+ */
+export function localRotorEnabled(): boolean {
+  return process.env.GLYPHH_LOCAL_ROTOR === "1";
+}
 
 // One live run PER SESSION (chatId) — sessions are independent: an agent
 // working in one session never blocks a send in another. `stop` targets a
@@ -79,17 +111,6 @@ let interceptor: Interceptor | null = null;
 // sends. An untagged frame (older subprocess) falls back to the only sink
 // when exactly one run is live — ambiguous otherwise, so it drops.
 const usageSinks = new Map<string, (u: { creditsMicro: number; inputTokens: number; outputTokens: number }) => void>();
-
-/** The hosted harness speaks as "Claude Code" and hints at ITS OWN CLI flags —
- *  neither exists for Glyphh users. Re-voice harness errors as Glyphh's own
- *  before they reach the chat. Model ids like "claude-sonnet-5" are data, not
- *  branding, and pass through untouched. */
-function brandError(message: string): string {
-  return message
-    .replaceAll("Claude Code", "Glyphh")
-    .replace(/Run --model to pick a different model\.?/g, "Pick a different model from the composer's model chip.")
-    .replace(/Run \/login[^.]*\./g, "Sign in again from Settings.");
-}
 
 /** The agent subprocess's OWN config home — never the user's ~/.claude. */
 function agentConfigDir(): string {
@@ -161,6 +182,10 @@ export function shutdownGlyphh(): void {
   stopEmbedServer();
   void interceptor?.close().catch(() => { /* already down */ });
   interceptor = null;
+  // The lent tool surface dies with the app — its tools ARE this process.
+  // The POD does not: it is a machine service (shared with the CLI, started
+  // detached by the supervisor) and stays up for the next client.
+  closeBridge();
 }
 
 // ── External access gate ──────────────────────────────────────────────────
@@ -220,9 +245,13 @@ export function registerGlyphhIpc(): void {
     // CHAT mode: a plain completion — the same lifecycle events the renderer
     // already speaks, but NO tools, no agent harness, no packet — a fraction
     // of the tokens of a Work turn.
+    // CHAT mode is a plain completion either way — it never touches a harness.
+    // Tool-bearing modes go to the LOCAL POD when the convergence flag is on,
+    // otherwise to this process's own Agent SDK loop.
+    const toolRun = localRotorEnabled() ? harnessRun : sdkRun;
     const runner = mode === "chat"
       ? chatRun(e.sender, id, messages, ctrl, replyBudget)
-      : sdkRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode);
+      : toolRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode);
     void runner.finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
       if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);
@@ -320,51 +349,6 @@ export async function effectiveModel(): Promise<string | null> {
 // Tools ride as an in-process MCP server; the gate (mode model + approval
 // cards) fires inside each execution exactly as before.
 
-/** Extra workspace context appended to the system prompt (app library +
- *  connected accounts) so open_app and connector tools target real names. */
-async function workspaceExtras(): Promise<string> {
-  let appList = "";
-  try {
-    const apps = await fetchOrgApps();
-    appList = apps.slice(0, 48).map((a) => a.slug || a.name).join(", ");
-  } catch { /* offline — open_app still resolves by name */ }
-  let connList = "";
-  try {
-    const { getClient } = await import("./glyphh-client");
-    const connections = await getClient().connections.list();
-    connList = [...new Set(connections.map((c) => String(c.slug || "")).filter(Boolean))].join(", ");
-  } catch { /* signed out */ }
-  // The ACTIVE loop's role→model bindings are the user's standing instruction
-  // for who does what — without this block the agent runs everything itself
-  // and has to be TOLD "use mistral for the build" every session.
-  let loopBlock = "";
-  try {
-    const loop = currentLoop();
-    const roles = await resolveRoles(loop);
-    if (roles.length > 1) {
-      const lead = roles[0]!;
-      const others = roles.slice(1).map((r) => `"${r.name}" → ${r.modelId ?? "(no model bound)"}`).join(", ");
-      loopBlock =
-        `ACTIVE LOOP: "${loop}". Your own turns run as its "${lead.name}" role (${lead.modelId ?? "default model"}). ` +
-        `The user bound the other roles to specific models on purpose: ${others}. ` +
-        `Work that belongs to another role — e.g. implementation/build packets when there is a "builder" or "worker" role — ` +
-        `MUST be delegated with run_role(role, task) instead of done by you, automatically, without the user asking. ` +
-        `Say which role executed what in your reply.`;
-    }
-  } catch { /* offline — the loop block is advisory */ }
-  return [
-    appList ? `The user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "",
-    connList ? `Connected accounts: ${connList} — each one's API tools are FIRST-CLASS tools in your toolset (real schemas; call them directly, never invent names).` : "",
-    loopBlock,
-    "RULE: the working folder ROOT holds the current app's project — build it there, then call update_app() to ship it (it packages the built dist/, never your source). After any change, rebuild + update_app or tool calls run the stale installed version.",
-    "RULE: to SHOW the user an app you built or deployed, open it in the Browser panel — open_browser(<deployed URL>) — never the raw app panel. Only fall back to open_app(<slug>) when there is no reachable URL (local-only install, or the deployed app requires a login the embedded browser lacks).",
-    "RULE: update_app() is the ONLY way to ship — never a CLI, never npx, and NEVER any login/device-auth flow. Your session is already authenticated; initiating authentication is forbidden.",
-    GLYPHH_APP_SPEC,
-    "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
-    "MEMORY: you have layers — Ada (long-term facts), the rolling summary (mid-term), and <relevant_earlier_context> blocks (short-term recall of this session's own turns). On unfamiliar code, semantic_search(query) FIRST — it finds the right spans by meaning; read_file the spans it names instead of whole files.",
-  ].filter(Boolean).join("\n\n");
-}
-
 /** A CHAT turn: one tool-less STREAMING turn on the gateway's Messages
  *  edge — the same wire the agent loop rides, minus the tools. Deltas land
  *  in the thread token by token, exactly like Work/Code. */
@@ -382,15 +366,7 @@ async function chatRun(
     // SKILLS work in chat — a skill is INSTRUCTIONS, not a tool. A leading
     // /slug resolves to the skill's prompt body and rides the system prompt;
     // unknown slugs pass through (the text may just be a path).
-    const ask = String(messages[messages.length - 1]?.content ?? "");
-    const slashRef = /^\/([a-z0-9_-]+)\b/.exec(ask.trim());
-    let skillSeed = "";
-    if (slashRef) {
-      try {
-        const skill = await getClient().skills.get(slashRef[1]!);
-        skillSeed = `## Skill: ${skill.name}\n${skill.prompt}`;
-      } catch { /* not a skill — send as typed */ }
-    }
+    const skillSeed = await skillSeedFor(String(messages[messages.length - 1]?.content ?? ""));
     const model = await effectiveModel();
     if (!model) throw new Error("no model available — your workspace allows none, or you're signed out");
     // Anthropic shape: system is a TOP-LEVEL param, the messages array is
@@ -491,20 +467,10 @@ async function sdkRun(
   // prefix), so the ask selects a subset from the pre-encoded catalog;
   // find_tools/call_tool built-ins reach everything else mid-run.
   const connCatalog = await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
-  const ask = String(base[base.length - 1]?.content ?? "");
-
-  // A leading /slug is a SKILL reference (the composer's "/" menu, or a
-  // "Create with AI" seed): resolve it to the skill's instruction body so the
-  // model runs the skill instead of guessing what the token means. Unknown
-  // slugs pass through untouched — the text may just be a path.
-  let skillSeed = "";
-  const slashRef = /^\/([a-z0-9_-]+)\b/.exec(ask.trim());
-  if (slashRef) {
-    try {
-      const skill = await getClient().skills.get(slashRef[1]!);
-      skillSeed = `## Skill: ${skill.name}\n${skill.prompt}`;
-    } catch { /* not a skill — send as typed */ }
-  }
+  // One assembly for both run paths (glyphh-agent-prompt.ts): persona +
+  // workspace extras as the cache-stable system prefix, prior turns + layered
+  // memory + skill body + attachments on the churning user turn.
+  const { system, lastUser, ask } = await composeTurn(base, chatId, attachments);
   const connDefs = mode === "code"
     ? []   // code pays for TWO connector defs (find_tools/call_tool), not a catalog subset
     : await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
@@ -545,42 +511,9 @@ async function sdkRun(
     return { content: [{ type: "text" as const, text: outcome.result }], isError: outcome.result.startsWith("ERROR") };
   });
 
-  // System prompt = assembled base system (persona + memory + summary) +
-  // workspace extras — and NOTHING that changes per turn. Anthropic's
-  // prompt cache is prefix-based (tools → system → messages): keeping this
-  // block byte-stable between runs means every send within the cache TTL
-  // re-reads the big prefix at 10% price instead of re-writing it. Prior
-  // turns ride the USER message instead (messages churn anyway).
-  const history = base.slice(1, -1)
-    .map((m) => `${m.role === "user" ? "User" : "Glyphh"}: ${m.content}`)
-    .join("\n");
-  const system = [
-    base[0]?.content ?? "",
-    await workspaceExtras(),
-  ].filter(Boolean).join("\n\n");
-  // Attachments append a path manifest to the user turn; attached images
-  // ALSO ride as real vision blocks (the router sees them and escalates —
-  // local models are text-only).
-  const attBlock = attachmentPromptBlock(attachments);
-  // Layered memory, injected on the USER turn (messages churn anyway — the
-  // cached system prefix stays untouched): short-term recall brings back
-  // verbatim earlier turns that match this ask; the workspace hint points
-  // at the semantically closest files before the first tool call.
-  const [recallBlock, filesHint] = await Promise.all([
-    chatId ? shortTermRecallBlock(chatId, ask).catch(() => "") : Promise.resolve(""),
-    (async () => {
-      const wd = getExplicitWorkingDirectory();
-      return wd ? relevantFilesHint(wd, ask).catch(() => "") : "";
-    })(),
-  ]);
-  const lastUser = [
-    history ? `<conversation_so_far>\n${history}\n</conversation_so_far>` : "",
-    recallBlock,
-    skillSeed,
-    ask,
-    attBlock,
-    filesHint,
-  ].filter(Boolean).join("\n\n");
+  // Attached images ride as real vision blocks alongside the composed turn's
+  // path manifest (the in-process path can carry them; see the harness flag's
+  // note for why the pod path can't yet).
   const visionBlocks = attachmentVisionBlocks(attachments);
   const prompt: string | AsyncIterable<SDKUserMessage> = visionBlocks.length
     ? (async function* (): AsyncGenerator<SDKUserMessage> {
