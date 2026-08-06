@@ -1877,7 +1877,17 @@ async function init(): Promise<void> {
         toolView: "preview",
       };
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
-      const midBand = [browserTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      // GLYPHH is the wall's FIRST, FIXED tile: the mascot mark, opening the
+      // + New Session screen. It is not an installed app — it can't be
+      // reordered out of first place, edited, or deleted (no app row backs it).
+      const glyphhTile: EchoTile = {
+        name: "Glyphh",
+        slug: "glyphh-home",
+        iconUrl: "brand/glyphh-mark.png",
+        kind: "app",
+        sticky: true,
+      };
+      const midBand = [glyphhTile, browserTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       buildWall([midBand]);
     }).catch(() => buildWall([]));
 
@@ -3021,6 +3031,11 @@ async function init(): Promise<void> {
     const ctl: EchoCtlType = {
       openApp: (app) => {
         const key = (app.slug || "").trim().toLowerCase();
+        // The fixed GLYPHH tile is the + New Session front door, not an app.
+        if (key === "glyphh-home") {
+          (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+          return;
+        }
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
         // its src on every open, so "open 5 sites" left one page and no tabs).
@@ -3228,7 +3243,10 @@ async function init(): Promise<void> {
     const draggableBand = (i: number): boolean => i === MID_BAND;
     /** Glyphh owns the first slot — it never moves and nothing lands on it
      *  (the command center locked it the same way). */
-    const movable = (e: TileEntry): boolean => e.tile.kind !== "agent" && draggableBand(bandOf(e));
+    // The fixed GLYPHH tile is not draggable — it holds first place. (It also
+    // carries no orderKey, so it can never enter the persisted order.)
+    const movable = (e: TileEntry): boolean =>
+      e.tile.kind !== "agent" && e.tile.slug !== "glyphh-home" && draggableBand(bandOf(e));
     const setEditMode = (on: boolean): void => {
       if (editMode === on) return;
       editMode = on;

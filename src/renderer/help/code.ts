@@ -3698,6 +3698,9 @@ export function initCode(): void {
     gotoSection("dashboard");
   };
   el("code-new-chat")?.addEventListener("click", newSessionLanding);
+  // The wall's fixed GLYPHH tile is the same front door (the bundle can't
+  // import this module, so it calls through the window bridge).
+  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionLanding;
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.
