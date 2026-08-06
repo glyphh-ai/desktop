@@ -163,9 +163,14 @@ function provisionArgsFor(source: Source | undefined, rotor: unknown): CreateSes
 export async function ensureRuntime(
   chat: RemoteChat,
   save: () => void,
-  opts: { rotor?: unknown; signal?: AbortSignal } = {},
+  opts: { rotor?: unknown; signal?: AbortSignal; forceFresh?: boolean } = {},
 ): Promise<{ ok: true; runtime: RuntimeBinding } | Unavailable | { ok: false; stopped: true }> {
-  if (chat.runtime?.url && chat.runtime?.token) return { ok: true, runtime: chat.runtime };
+  // A cached binding is reused — EXCEPT when the caller knows it's dead
+  // (forceFresh). Without that escape a binding minted against an old pod
+  // URL/port, a stopped session, or a pre-CORS pod is permanent: every later
+  // turn in that chat fails identically and no reload can heal it.
+  if (!opts.forceFresh && chat.runtime?.url && chat.runtime?.token) return { ok: true, runtime: chat.runtime };
+  if (opts.forceFresh) { chat.runtime = undefined; save(); }
 
   const handle = sdk();
   if (!handle?.sessions?.create || !handle.sessions.get) {
@@ -311,8 +316,25 @@ export async function runRemoteTurn(
   callbacks: RemoteRunCallbacks = {},
   opts: { rotor?: unknown; model?: string; signal?: AbortSignal } = {},
 ): Promise<RemoteRunOutcome> {
+  // ONE silent retry on a dead binding: attempt 1 swallows its error, drops
+  // the cached runtime, re-provisions, and runs again. Only the second
+  // failure reaches the user.
+  const first = await runRemoteTurnOnce(chat, prompt, save, { ...callbacks, onError: undefined }, opts, false);
+  if (!("unavailable" in first)) return first;
+  if (!chat.runtime && first.stage === "provision") { callbacks.onError?.(first.detail); return first; }
+  return runRemoteTurnOnce(chat, prompt, save, callbacks, opts, true);
+}
+
+async function runRemoteTurnOnce(
+  chat: RemoteChat,
+  prompt: string,
+  save: () => void,
+  callbacks: RemoteRunCallbacks,
+  opts: { rotor?: unknown; model?: string; signal?: AbortSignal },
+  forceFresh: boolean,
+): Promise<RemoteRunOutcome> {
   const rotor = opts.rotor ?? DEFAULT_ROTOR;
-  const ensured = await ensureRuntime(chat, save, { rotor, signal: opts.signal });
+  const ensured = await ensureRuntime(chat, save, { rotor, signal: opts.signal, forceFresh });
   if (!ensured.ok) {
     if ("stopped" in ensured) { callbacks.onStopped?.(); return ensured; }
     callbacks.onError?.(ensured.detail);
