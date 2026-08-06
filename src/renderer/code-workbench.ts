@@ -2972,6 +2972,12 @@ async function init(): Promise<void> {
       sec.classList.add("active", "wb-hosted");
       body.appendChild(sec);
       (window as unknown as { __wbSectionLoad?: (sn: string) => void }).__wbSectionLoad?.(section);
+      // HOME hosts the LIVE composer: the agent element it normally lives in is
+      // parked (display:none) while a page card is up, so the landing rendered
+      // with no input at all until the adoption re-ran here.
+      if (section === "dashboard") {
+        (window as unknown as { __adoptComposerToHome?: () => void }).__adoptComposerToHome?.();
+      }
     };
     // ── The agent drives Echo too: while Echo is mounted, EVERY panel tool
     // (open / list / close / focus / clear / terminal / browser / files)

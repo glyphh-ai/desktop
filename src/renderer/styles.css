@@ -14967,3 +14967,52 @@ body.code-dragging webview { pointer-events: none !important; }
    <body> — so the veil covers BOTH containers until home.ts lifts it. */
 .wb-booting .code-workbench,
 .wb-booting #code-wb-applayer { visibility: hidden !important; }
+
+/* ── Composer sizing by SURFACE ──────────────────────────────────────────
+   The + New Session screen gets the tall inviting box; an AGENT (full screen
+   or hosted in a layout) starts at ONE LINE and grows as you type. */
+.code-input { min-height: 0; }
+body:not(.composer-on-home) .code-input,
+.echo-card .code-input,
+.ws-rail-slot .code-input { min-height: 38px; }
+
+/* ── The space pill (landing only) — smaller, and it must never overlap the
+   text above it on a narrow/touch viewport (iPad): the input reserves room
+   for the pill row rather than the pill floating over the text. ── */
+.code-space-pill { padding: 1px; border-radius: 8px; gap: 1px; }
+.code-space-opt { padding: 3px 9px; font-size: 11.5px; border-radius: 6px; }
+@media (pointer: coarse) { .code-space-opt { font-size: 12.5px; padding: 5px 10px; } }
+.code-input-wrap .code-input { padding-bottom: 38px; }
+@media (pointer: coarse) { .code-input-wrap .code-input { padding-bottom: 44px; } }
+/* The pill only exists on the landing, so only the landing pays for the room. */
+body:not(.composer-on-home) .code-input-wrap .code-input { padding-bottom: 10px; }
+
+/* ── The workspace chips (source · folder · git · +) sit ABOVE the input on
+   EVERY surface, and compress the way the composer-bar chips do. ── */
+.dash-wd-chips, .code-source-slot {
+  display: flex; align-items: center; gap: 4px; flex-wrap: nowrap;
+  min-width: 0; overflow: hidden; margin: 0 0 6px;
+}
+.dash-wd-chips > *, .code-source-slot > * { min-width: 0; flex: 0 1 auto; }
+.dash-wd-chips .code-wd-btn span, .code-source-slot .cl-runtime-lbl {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .dash-wd-chips .code-wd-btn span { max-width: 90px; }
+  .code-source-slot .cl-runtime-lbl { max-width: 110px; }
+}
+
+/* The agent's chips row is hidden in CHAT (no workspace) and shows the same
+   [source][folder][git][+] set everywhere else — matching the landing row. */
+body[data-session-space="chat"] .code-source-slot { display: none; }
+.code-source-slot .code-wd-btn,
+.code-source-slot .code-icon-btn { flex: 0 0 auto; }
+
+/* A layout-hosted agent's empty thread is the MASCOT + text only — no
+   starters, no columns, nothing borrowed from the landing. */
+.echo-card .code-thread .dash-landing,
+.echo-card .code-thread .dash-starters,
+.echo-card .code-thread .dash-two-col,
+.ws-rail-slot .code-thread .dash-landing,
+.ws-rail-slot .code-thread .dash-starters,
+.ws-rail-slot .code-thread .dash-two-col { display: none !important; }

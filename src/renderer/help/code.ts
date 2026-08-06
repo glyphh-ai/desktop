@@ -3642,18 +3642,34 @@ export function initCode(): void {
    *  selection and shows the space's landing. Both entry points use this:
    *  the rail's "+ New session" and the agent header's +, which used to call
    *  startNew() and leave an empty "New session" row behind. */
-  const newSessionLanding = (): void => {
+  /** The AGENT's own + — a generic new session OF THIS AGENT'S TYPE, in place.
+   *  A layout-hosted agent stays in its slot with its arrangement intact; the
+   *  thread empties to the bare mascot state and the composer keeps its chips. */
+  const newSessionInPlace = (): void => {
     currentId = "";
     void saveStore();
     renderHistory();
     renderThread();
     void checkWorkdirGate();
-    // A LAYOUT-HOSTED agent starts its new session IN ITS SLOT — same space,
-    // bare thread, composer chips intact; the arrangement was deliberate.
     const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent");
     if (hosted) return;
-    // Every other new session lands on THE main new-session screen — one
-    // front door for all three spaces (the pill picks chat/work/code there).
+    gotoSection("dashboard");
+  };
+
+  /** The RAIL's "+ New session" — the FULL reset: every panel closes, the
+   *  layout clears, the agent type resets, and the new-session screen loads. */
+  const newSessionLanding = (): void => {
+    currentId = "";
+    railTab = "chat";
+    void saveStore();
+    document.body.dataset.railSpace = railTab;
+    window.dispatchEvent(new CustomEvent("rail-space-changed"));
+    // NOTE: no explicit echo reset here — opening the dashboard section already
+    // closes every panel (openSectionInWorkbench resets first). Calling reset
+    // as well raced that teardown and left the surface with no composer.
+    renderHistory();
+    renderThread();
+    void checkWorkdirGate();
     gotoSection("dashboard");
   };
   el("code-new-chat")?.addEventListener("click", newSessionLanding);
@@ -3830,12 +3846,9 @@ export function initCode(): void {
   // BACK = out to the MAIN landing (there was no way back to it from inside
   // a session). The session survives in history — the head's history
   // dropdown resumes it; the list view stays reachable from there.
-  el("code-session-back")?.addEventListener("click", () => {
-    if (!current()) return;
-    const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent");
-    if (hosted) { openSessionListView(); return; }   // in a layout, back = the slot's list
-    newSessionLanding();
-  });
+  // ‹ ALWAYS opens THIS agent's session list (scoped to its type by
+  // renderSessionList/renderHistory) — never the global landing.
+  el("code-session-back")?.addEventListener("click", () => { if (current()) openSessionListView(); });
   el("code-session-kebab")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     if (headKebabEl) { closeHeadKebab(); return; }
@@ -3848,7 +3861,7 @@ export function initCode(): void {
   // hidden): + starts a new session, the clock drops the history list.
   type HeadSessionsApi = { list(): Array<{ id: string; title: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
   const sessApi = (): HeadSessionsApi | undefined => (window as unknown as { __agentSessions?: HeadSessionsApi }).__agentSessions;
-  el("code-session-new")?.addEventListener("click", newSessionLanding);
+  el("code-session-new")?.addEventListener("click", newSessionInPlace);
   el("code-session-history")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     const anchor = ev.currentTarget as HTMLElement;
@@ -4125,6 +4138,17 @@ export function adoptComposer(host: HTMLElement | null): void {
 // The workbench bundle can't import this module — openAgentCard calls the
 // bridge so an agent adoption NEVER runs while the footer sits on Home.
 (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome = () => adoptComposer(null);
+// The workbench calls this when the HOME card mounts: pull the live composer
+// into the landing's slot (the bundle can't import this module).
+(window as unknown as { __adoptComposerToHome?: () => void }).__adoptComposerToHome = () => {
+  let tries = 0;
+  const go = (): void => {
+    const slot = document.getElementById("dash-composer-slot");
+    if (slot && document.querySelector(".code-composer")) { adoptComposer(slot); return; }
+    if (tries++ < 60) setTimeout(go, 50);
+  };
+  go();
+};
 
 export function seedComposer(text: string): void {
   gotoSection("agent");

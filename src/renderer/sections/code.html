@@ -16,17 +16,6 @@
                 <!-- Workdir controls (old workbench header): folder picker +
                      git branch (shown once a repo is picked) + add-folder.
                      Wiring lands with the William loop. -->
-                <button id="code-workdir-btn" class="code-wd-btn" title="Pick the working folder" type="button">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
-                  <span id="code-workdir-name">Pick a folder</span>
-                </button>
-                <span class="code-wd-branch" id="code-workdir-branch-wrap" style="display:none;">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>
-                  <span id="code-workdir-branch"></span>
-                </span>
-                <button id="code-workdir-add" class="code-icon-btn" title="Add folder" type="button">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-                </button>
 
                 <div class="code-spacer"></div>
 
@@ -92,7 +81,23 @@
                 <div id="code-attach-chips" class="code-attach-chips" hidden></div>
                 <!-- Workspace-source chip (Work + Code only) — where the next
                      session RUNS + what it works on. Hidden in Chat via CSS. -->
-                <div id="code-source-slot" class="code-source-slot"></div>
+                <!-- Workspace chips — ONE row above the input on every surface:
+                     [source] [folder] [git] [+]. They used to split between the
+                     agent header and here, so Work/Code looked different from
+                     the landing. -->
+                <div id="code-source-slot" class="code-source-slot">
+                <button id="code-workdir-btn" class="code-wd-btn" title="Pick the working folder" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                  <span id="code-workdir-name">Pick a folder</span>
+                </button>
+                <span class="code-wd-branch" id="code-workdir-branch-wrap" style="display:none;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>
+                  <span id="code-workdir-branch"></span>
+                </span>
+                <button id="code-workdir-add" class="code-icon-btn" title="Add folder" type="button">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                </button>
+                </div>
                 <div class="code-input-wrap">
                   <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
                   <!-- SPACE pill INSIDE the input, bottom-left (send/stop sits
