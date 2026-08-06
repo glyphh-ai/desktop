@@ -15030,7 +15030,11 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
 
 /* The Code agent has ONE ⋯: the workbench "More" menu, which now carries the
    session actions. Its own kebab would be a second identical control. */
-.code-root:has(#code-view-more) #code-session-kebab-wrap { display: none; }
+/* ONE ⋯ per surface. The Code agent's session actions live in the workbench
+   "More" menu, so its own kebab hides — but ONLY there: #code-view-more is in
+   the DOM on every space (Chat/Work merely hide the toggles), so keying off
+   its existence hid the kebab everywhere and Chat/Work lost their menu. */
+body[data-session-space="code"] #code-session-kebab-wrap { display: none; }
 .code-view-session-actions { border-top: 1px solid var(--border-2); margin-top: 4px; padding-top: 4px; }
 .code-view-session-actions .danger { color: var(--danger, #e5484d); }
 
@@ -15042,3 +15046,11 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
    spacer); the title/back stay left. */
 .code-agent-head .session-head-actions { margin-left: 0; margin-right: 2px; }
 .code-agent-head .code-spacer { flex: 1 1 auto; }
+
+/* Header actions order: [recents] [+] [⋯] — recents first, + right of it, and
+   the three dots FAR RIGHT. (The kebab had no order and defaulted to 0, so it
+   jumped ahead of both.) */
+.session-head-actions { display: inline-flex; flex-direction: row; align-items: center; }
+.session-head-actions #code-session-history { order: 1; }
+.session-head-actions #code-session-new { order: 2; }
+.session-head-actions #code-session-kebab-wrap { order: 3; }

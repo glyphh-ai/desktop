@@ -867,6 +867,7 @@ function ensureCodeSection(): void {
     // landing must open the Work agent, not whatever space the pill was left on.
     railTab = spaceOf(target);
     document.body.dataset.railSpace = railTab;
+    syncSpaceAttrs();
     window.dispatchEvent(new CustomEvent("rail-space-changed"));
     void saveStore();
     syncThinking();   // this session's own run state, not the last one's
@@ -927,6 +928,17 @@ function ensureCodeSection(): void {
 /** A folder a layout asked for while no session existed — applied to the
  *  session the next send creates. */
 let pendingWorkdir = "";
+
+/** Keep body[data-session-space] in lockstep with the active space. The CSS for
+ *  the chips row, the view toggles and the session kebab all key off it, and it
+ *  was ONLY written by paintCw — which doesn't run on boot or when the landing
+ *  mounts, so the + New Session screen came up unstyled until the user clicked
+ *  a tab (which called paintCw and "fixed" it). */
+function syncSpaceAttrs(): void {
+  const cur = current();
+  document.body.dataset.sessionSpace = cur ? modeOf(cur) : railTab;
+}
+(window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs = syncSpaceAttrs;
 
 function newChat(): void {
   listView = false;
@@ -3478,6 +3490,7 @@ export function openCommandCenter(_opts: { forceInline?: boolean } = {}): void {
 }
 
 export function initCode(): void {
+  syncSpaceAttrs();   // styled from the first frame, tab click or not
   if (inited) return;
   inited = true;
   // "/" in the composer pops the installed-skill menu at the caret.
@@ -3586,6 +3599,7 @@ export function initCode(): void {
     railTab = "chat";
     void saveStore();
     document.body.dataset.railSpace = railTab;
+    syncSpaceAttrs();
     window.dispatchEvent(new CustomEvent("rail-space-changed"));
     // CLOSE EVERYTHING FIRST: every open card, panel and layout goes, then the
     // landing mounts. (Ordering matters — a reset AFTER the section opens tore
@@ -3647,6 +3661,7 @@ export function initCode(): void {
     spacePill?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => b.classList.toggle("active", b.dataset.space === railTab));
     // the nav below scopes to the space (data-space items + the More menu)
     document.body.dataset.railSpace = railTab;
+    syncSpaceAttrs();
     // the command-center wall re-scopes too
     window.dispatchEvent(new CustomEvent("rail-space-changed"));
   };

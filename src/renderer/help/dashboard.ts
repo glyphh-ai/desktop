@@ -478,6 +478,9 @@ function agoLabel(ts: number): string {
 
 /** Swap the two-col content to match the space: Work → runs, Code → sessions. */
 function paintSpaceColumns(): void {
+  // The landing's chrome is CSS-driven off body[data-session-space]; keep it
+  // correct whenever the landing repaints (boot included).
+  (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs?.();
   const isCode = document.body.dataset.railSpace === "code";
   // WORK and CODE both show their own sessions (pinned, alphabetical, paged);
   // Chat's landing keeps the runs column.
