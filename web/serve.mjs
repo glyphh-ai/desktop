@@ -82,7 +82,14 @@ const TYPES = {
   '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
   '.gif': 'image/gif', '.ico': 'image/x-icon', '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json',
 };
+
+// The mobile web app (web/src/mobile.tsx → /glyphh-mobile.js) is its own React
+// surface, served at /m. Unlike the desktop shells it does NOT get the renderer
+// bridge injected — it loads its own bundle — but it still needs the client-safe
+// config so the SDK knows the API url.
+const MOBILE_ROUTES = new Set(['/m', '/m/']);
 
 // Baseline security headers (mirror platform's middleware). A strict CSP is the
 // real XSS mitigation but must be audited against the renderer's inline scripts +
@@ -113,7 +120,10 @@ const server = http.createServer(async (req, res) => {
     // importer → "binding not found"). This build ships NO SW; serving a
     // self-destructing one at /sw.js makes any registered ghost unregister itself
     // + wipe its caches on its next update check, so clients self-heal.
-    if (p === '/sw.js') {
+    if (p === '/sw.js' && !(await exists(join(ROOT, 'sw.js')))) {
+      // No real SW shipped yet → self-destruct any ghost from a prior PWA install.
+      // Once the mobile build drops dist/renderer/sw.js, we fall through and serve
+      // that real (network-first) worker as a normal static asset instead.
       res.setHeader('content-type', 'text/javascript');
       res.setHeader('cache-control', 'no-store');
       // NOTE: no clients.navigate() here — a stale page that still registers
@@ -134,6 +144,10 @@ const server = http.createServer(async (req, res) => {
     // relative assets still resolve from the root. web-boot then routes off the
     // real pathname + query (device vs. callback).
     const nested = isNestedShellRoute(p);
+    const isMobileShell = MOBILE_ROUTES.has(p);
+    if (isMobileShell) {
+      p = '/mobile.html';
+    }
     if (SHELL_ROUTES.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
     }
@@ -171,9 +185,14 @@ const server = http.createServer(async (req, res) => {
       // SDK reads window.__GLYPHH_API_URL__ at import time — and <base> must
       // precede everything relative.
       const base = nested ? '\n  <base href="/">' : '';
+      // The mobile shell loads its OWN React bundle (declared in mobile.html) and
+      // must not get the desktop renderer bridge — only the client-safe config.
+      const inject = isMobileShell
+        ? configScript()
+        : `${configScript()}\n  <script src="${BRIDGE}"></script>`;
       body = body.replace(
         /<head(\s[^>]*)?>/i,
-        (m) => `${m}${base}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`,
+        (m) => `${m}${base}\n  ${inject}`,
       );
     }
     res.setHeader('content-type', TYPES[ext] || 'application/octet-stream');

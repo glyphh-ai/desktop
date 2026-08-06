@@ -1,0 +1,128 @@
+/* mobile.css — the mobile web app's token + reset layer.
+ *
+ * LAW (see the app): everything uses these tokens; the theme owns the accent;
+ * login is the one surface a theme never overrides. These values MIRROR the
+ * canonical set in src/renderer/styles.css (:root + [data-theme]) — keep them in
+ * sync; the intent is a single shared token source once the mobile app matures.
+ * No component here may hardcode a brand hex — use var(--…).
+ */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Courier New', monospace;
+
+  --bg: #f5f5f5;
+  --bg-raised: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --surface-3: #f0f0f0;
+  --border: #e5e5e5;
+  --border-2: #d4d4d4;
+  --text: #1f2937;
+  --text-bright: #111111;
+  --text-2: #4b5563;
+  --text-3: #6b7280;
+  --text-muted: #6b7280;
+  --text-faint: #9ca3af;
+  --hover: #f0f0f0;
+  --accent: #8c3bf2;
+  --accent-hover: #a855f7;
+  --accent-text: #b975f9;
+  --accent-bg: #f5ecfd;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #16a34a;
+  --overlay-bg: rgba(0, 0, 0, 0.3);
+  --card-bg: var(--surface);
+  --input-bg: var(--surface-2);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1a1c;
+  --bg-raised: #202023;
+  --surface: #252528;
+  --surface-2: #2e2e32;
+  --surface-3: #29292c;
+  --border: #3f3f46;
+  --border-2: #4a4a52;
+  --text: #f1f1f1;
+  --text-bright: #ffffff;
+  --text-2: #c4c4c4;
+  --text-3: #a7a7a7;
+  --text-muted: #828282;
+  --text-faint: #808080;
+  --hover: #303035;
+  --accent: #8c3bf2;
+  --accent-hover: #a855f7;
+  --accent-text: #b975f9;
+  --accent-bg: #241a2e;
+  --danger: #ff5f57;
+  --warning: #f0a030;
+  --success: #28c840;
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --card-bg: var(--surface-3);
+  --input-bg: var(--surface);
+}
+
+/* Safe-area passthrough for notch / home indicator. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+#glyphh-mobile-root { min-height: 100dvh; }
+
+/* ── App frame ─────────────────────────────────────────────────────────────
+   A left rail + a main content area. Everything tokenised. */
+.m-app {
+  display: flex;
+  height: 100dvh;
+}
+
+.m-rail {
+  flex: 0 0 220px;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: calc(var(--safe-top) + 18px) 16px 16px calc(var(--safe-left) + 18px);
+}
+
+.m-rail-brand {
+  display: flex;
+  align-items: center;
+}
+
+/* The words-only wordmark. The asset is black-on-transparent, so on a dark
+   theme we render it white; on a light theme it stays black. */
+.m-wordmark {
+  height: 22px;
+  width: auto;
+  display: block;
+}
+[data-theme="dark"] .m-wordmark {
+  filter: brightness(0) invert(1);
+}
+
+.m-main {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+}
