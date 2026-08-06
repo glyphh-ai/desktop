@@ -1368,6 +1368,11 @@ async function init(): Promise<void> {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
       <div class="echo-stage"></div>
+      <div class="echo-space-tabs" role="tablist" aria-label="Agent">
+        <button type="button" class="echo-space-opt" data-space="chat">Chat</button>
+        <button type="button" class="echo-space-opt" data-space="cowork">Work</button>
+        <button type="button" class="echo-space-opt" data-space="code">Code</button>
+      </div>
       <div class="echo-topbar">
         <div class="echo-search-wrap">
           <svg class="echo-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2152,7 +2157,25 @@ async function init(): Promise<void> {
       const shadowOn = cardsLayer.classList.contains("echo-shadow");
       const hidden = layoutUp && !shadowOn;
       canvas.style.visibility = hidden ? "hidden" : "";
-      const bar = body.querySelector<HTMLElement>(".echo-topbar");
+      // The wall's own space tabs — big targets above the search. They drive the
+    // SAME space switch the rail tabs do (help/code.ts listens), so the wall,
+    // the rail lists and the next new session all agree.
+    const spaceTabs = body.querySelector<HTMLElement>(".echo-space-tabs");
+    const paintSpaceTabs = (): void => {
+      const active = document.body.dataset.railSpace || "chat";
+      spaceTabs?.querySelectorAll<HTMLElement>(".echo-space-opt")
+        .forEach((b) => b.classList.toggle("active", b.dataset.space === active));
+    };
+    spaceTabs?.querySelectorAll<HTMLElement>(".echo-space-opt").forEach((b) => {
+      b.addEventListener("click", () => {
+        const next = b.dataset.space === "code" ? "code" : b.dataset.space === "cowork" ? "cowork" : "chat";
+        window.dispatchEvent(new CustomEvent("glyphh:activate-space", { detail: next }));
+        paintSpaceTabs();
+      });
+    });
+    window.addEventListener("rail-space-changed", paintSpaceTabs);
+    paintSpaceTabs();
+    const bar = body.querySelector<HTMLElement>(".echo-topbar");
       if (bar) bar.style.visibility = hidden ? "hidden" : "";
     };
     // ── Top bar: search filters the WALL live (dim the rest, Enter opens

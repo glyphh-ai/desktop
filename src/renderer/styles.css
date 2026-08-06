@@ -15078,3 +15078,21 @@ body[data-session-space="chat"] .code-source-slot { display: none !important; }
 .app-rail-section-head .code-rail-label { color: var(--text); }
 .app-rail-tile .tile-name { color: var(--text-2); }
 .app-rail-tile:hover .tile-name { color: var(--text); }
+
+/* The wall's agent tabs — above the search, deliberately BIG and easy to hit
+   (this is a lean-back surface, often at a distance or on touch). */
+.echo-space-tabs {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  z-index: 4; display: inline-flex; align-items: center; gap: 4px; padding: 4px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.28);
+}
+.echo-space-opt {
+  padding: 10px 22px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--text-2); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.echo-space-opt:hover { background: var(--hover); color: var(--text); }
+.echo-space-opt.active { background: var(--accent); color: var(--accent-ink, #fff); }
+/* The search sits BELOW the tabs. */
+.ws-echo-body .echo-topbar { margin-top: 64px; }
+@media (pointer: coarse) { .echo-space-opt { padding: 12px 26px; font-size: 15px; } }
