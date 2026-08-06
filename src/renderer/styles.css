@@ -15095,9 +15095,16 @@ body[data-session-space="chat"] .code-source-slot { display: none !important; }
 @media (pointer: coarse) { .echo-space-opt { padding: 11px 20px; font-size: 15px; } }
 
 /* The panel bar STACKS: agent tabs on their own row ABOVE the search. */
+/* The tabs row spans the bar so it can CENTRE the pill; the pill itself
+   shrink-wraps to its three buttons (it was stretching the full width). */
 .echo-topbar-stacked { flex-wrap: wrap; justify-content: center; }
-.echo-topbar-stacked .echo-space-tabs { flex-basis: 100%; justify-content: center; margin: 0 0 10px; }
+.echo-topbar-stacked .echo-space-row { flex-basis: 100%; display: flex; justify-content: center; margin: 0 0 10px; }
+.echo-space-tabs { width: auto; flex: 0 0 auto; }
 
 /* The rail's mark is the HOME button. */
 .app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }
 .app-rail-mark-btn:hover { opacity: 0.85; }
+
+/* HOME leads the rail's app list and is never draggable/paged. */
+.app-rail-tile-home { order: -1; }
+.app-rail-tile-home img { width: 22px; height: 22px; object-fit: contain; }

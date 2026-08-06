@@ -3183,6 +3183,11 @@ async function loadRecentApps(): Promise<void> {
     railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.appArchetype !== "glyphh-self" && (a.url || a.isBrowser === false));
     railLayouts = (layouts || []) as unknown as RailLayout[];
     railRecentTs = {};
+    // the wall's arranged order (same preference the command centre writes)
+    try {
+      const pref = await window.glyphh.getPreference?.("ccIconOrder", []);
+      railCcOrder = Array.isArray(pref) ? pref.map(String) : [];
+    } catch { railCcOrder = []; }
     for (const r of recents || []) {
       const key = `${r.kind}:${r.id}`;
       railRecentTs[key] = Math.max(railRecentTs[key] || 0, r.ts || 0);
@@ -3200,7 +3205,14 @@ async function loadRecentApps(): Promise<void> {
 
 /** Both rail sections. Apps and Layouts each own a search + pagination and live
  *  under their own collapsible header (see initRailSections). */
+let railCcOrder: string[] = [];
 function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); }
+// The wall re-saves its order on every drag — mirror it into the rail at once,
+// so the two lists can never disagree about what the user arranged.
+window.addEventListener("glyphh:cc-order-changed", (e) => {
+  const keys = (e as CustomEvent).detail;
+  if (Array.isArray(keys)) { railCcOrder = keys.map(String); renderRecentApps(); }
+});
 
 /** The empty state for a rail grid: a short "No matches." while searching,
  *  otherwise a single ACTION — the sentence that used to sit here ("Your
@@ -3235,18 +3247,45 @@ function renderRailApps(): void {
   const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
   list.textContent = "";
 
-  // Recency-first, name OR slug match — palette parity.
+  // ORDER FOLLOWS THE COMMAND CENTRE: the wall is where apps are dragged, and
+  // its saved order (ccIconOrder) is the one the user arranged — the rail was
+  // sorting by recency instead, so the two disagreed. Anything not in that
+  // order falls in after it, recency-first.
+  const order = railCcOrder;
+  const rank = (a: RailApp): number => {
+    const i = order.indexOf(`app:${(a.slug || a.id || "").toLowerCase()}`);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
   const apps = railApps
     .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q))
     .sort((a, b) => {
-      // The built-in Glyphh app is ALWAYS first, ahead of recency.
-      const ga = a.appArchetype === "glyphh-self" ? 1 : 0;
-      const gb = b.appArchetype === "glyphh-self" ? 1 : 0;
-      if (ga !== gb) return gb - ga;
+      const ra = rank(a), rb = rank(b);
+      if (ra !== rb) return ra - rb;
       const ta = railRecentTs[`app:${a.id}`] || 0;
       const tb = railRecentTs[`app:${b.id}`] || 0;
       return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
     });
+  // HOME is a FIXED first tile — same control as the wall's, not an installed
+  // app: it can't be reordered, paged away, edited or deleted.
+  const home = document.createElement("button");
+  home.className = "app-rail-tile app-rail-tile-home";
+  home.type = "button";
+  home.title = "Home — new session";
+  const homeIcon = document.createElement("div");
+  homeIcon.className = "tile-icon";
+  const homeImg = document.createElement("img");
+  homeImg.src = "brand/glyphh-mark.png";
+  homeImg.alt = "";
+  homeIcon.appendChild(homeImg);
+  const homeName = document.createElement("div");
+  homeName.className = "tile-name";
+  homeName.textContent = "Home";
+  home.append(homeIcon, homeName);
+  home.addEventListener("click", () => {
+    (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+  });
+  list.appendChild(home);
+
   const ap = railPaginate(apps, railAppsPage, RAIL_APPS_PER_PAGE);
   railAppsPage = ap.page;
   for (const a of ap.items) {

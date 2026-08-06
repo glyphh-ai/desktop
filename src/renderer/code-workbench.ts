@@ -1369,10 +1369,12 @@ async function init(): Promise<void> {
     body.innerHTML = `
       <div class="echo-stage"></div>
       <div class="echo-topbar echo-topbar-stacked">
-        <div class="echo-space-tabs" role="tablist" aria-label="Agent">
-          <button type="button" class="echo-space-opt" data-space="chat">Chat</button>
-          <button type="button" class="echo-space-opt" data-space="cowork">Work</button>
-          <button type="button" class="echo-space-opt" data-space="code">Code</button>
+        <div class="echo-space-row">
+          <div class="echo-space-tabs" role="tablist" aria-label="Agent">
+            <button type="button" class="echo-space-opt" data-space="chat">Chat</button>
+            <button type="button" class="echo-space-opt" data-space="cowork">Work</button>
+            <button type="button" class="echo-space-opt" data-space="code">Code</button>
+          </div>
         </div>
         <div class="echo-search-wrap">
           <svg class="echo-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2936,6 +2938,13 @@ async function init(): Promise<void> {
     let openingLayout = false;
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
+      // HOME — the fixed first tile. The wall activates tiles DIRECTLY (this
+      // path), not through ctl.openApp, which is why routing it only there
+      // left the tile inert.
+      if (t.slug === "glyphh-home") {
+        (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+        return;
+      }
       if (t.kind === "agent") {
         // the wall's Glyphh tile IS the universal chat icon too
         if (!(openList.length === 1 && openList[0]!.tile.kind === "agent")) resetEcho();
@@ -3335,7 +3344,11 @@ async function init(): Promise<void> {
     const persistOrder = (band: number): void => {
       const yo = (window as unknown as { glyphh?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).glyphh;
       const keys = (wallBands[band] ?? []).map((x) => x.tile.orderKey).filter((k): k is string => !!k);
-      if (band === MID_BAND) void yo?.setPreference?.("ccIconOrder", keys);
+      if (band === MID_BAND) {
+        void yo?.setPreference?.("ccIconOrder", keys);
+        // the LEFT RAIL mirrors this order — tell it to repaint now
+        window.dispatchEvent(new CustomEvent("glyphh:cc-order-changed", { detail: keys }));
+      }
     };
     // an invisible cylinder at the wall's radius — the drag rides its surface
     const dragSurface = new THREE.Mesh(
