@@ -15,7 +15,7 @@
 
 import { BrowserWindow } from "electron";
 import { homedir } from "node:os";
-import { readdirSync, existsSync, mkdirSync } from "node:fs";
+import { readdirSync, existsSync, mkdirSync, statSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
 import { loadSessions } from "./glyphh-agent-context.js";
@@ -53,6 +53,32 @@ export function installAttachHandlers(): void {
     return { session: { id: c.id, title: c.title, createdAt: c.createdAt, mode: (c as { mode?: string }).mode ?? "code", messages: (c.messages ?? []).slice(-200) } };
   });
 
+
+/**
+ * Is this folder already a git repo, and on what branch? Read straight off
+ * `.git` rather than shelling out to git: the answer is needed the moment a
+ * folder is picked (including from the WEB over the relay, where there is no
+ * shell at all), and HEAD is a one-line file.
+ *
+ * Worktrees and submodules use a `.git` FILE pointing at the real dir; both
+ * still mean "git is enabled here", which is what the caller is asking.
+ */
+function gitStateOf(dir: string): { isRepo: boolean; branch?: string } {
+  const dot = join(dir, ".git");
+  if (!existsSync(dot)) return { isRepo: false };
+  try {
+    const gitDir = statSync(dot).isDirectory()
+      ? dot
+      : join(dir, (readFileSync(dot, "utf8").match(/^gitdir:\s*(.+)$/m)?.[1] ?? "").trim());
+    const head = readFileSync(join(gitDir, "HEAD"), "utf8").trim();
+    const ref = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+    // Detached HEAD has no branch name — the short sha is the honest answer.
+    return { isRepo: true, branch: ref ? ref[1] : head.slice(0, 7) };
+  } catch {
+    return { isRepo: true };   // .git exists but is unreadable — still a repo
+  }
+}
+
   // ── fs.list: the web's folder browser (source chip → Local). DIRECTORIES
   // only, dotfiles skipped, git roots flagged — capped at the user's home so
   // the cloud can browse where sessions may run, never the whole disk. ──
@@ -73,7 +99,22 @@ export function installAttachHandlers(): void {
     } catch (err) {
       throw new Error(`could not list ${path}: ${(err as Error).message}`);
     }
-    return { path, parent: path === home ? null : dirname(path), entries };
+    // The listed folder's OWN git state travels with the listing, so "Use this
+    // folder" can be validated without a second round trip.
+    // `root` is the ceiling the browser walks up to. Without it the client fell
+    // back to "the first folder I listed", which meant no ‹ up row at all when
+    // the picker opened deep in the tree.
+    return { path, parent: path === home ? null : dirname(path), root: home, entries, git: gitStateOf(path) };
+  });
+
+  // ── fs.gitInfo: is git already enabled on THIS folder? The web's folder
+  // picker validates a chosen directory with it (the desktop has wb.gitInfo);
+  // capped at the machine root we expose, like every other fs handler. ──
+  registerRelayHandler("fs.gitInfo", async (params) => {
+    const home = homedir();
+    const path = str(params, "path") || home;
+    if (!path.startsWith(home)) throw new Error("fs.gitInfo is capped at your home folder");
+    return { path, ...gitStateOf(path) };
   });
 
   // ── fs.mkdir: the web's "+ new folder" — create ONE directory under home

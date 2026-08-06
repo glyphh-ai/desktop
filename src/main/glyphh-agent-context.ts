@@ -41,6 +41,13 @@ export interface StoredChat {
    *  content change); rides the cache verbatim so the server push can't be
    *  clobbered by an old machine. */
   updatedAt?: number;
+  /** Where the session RUNS — the renderer's workspace Source, verbatim. An
+   *  absent or `local` source runs on this machine's pod; a cloud one runs on
+   *  a provisioned remote pod. */
+  source?: { kind: string; path?: string; machineId?: string; repo?: string };
+  /** A cloud session's provisioned pod: bound on its first turn and reused by
+   *  every later one, since re-provisioning would abandon its workspace. */
+  runtime?: { sessionId: string; url: string; token: string };
   messages: StoredMsg[];
 }
 interface SummaryEntry { summary: string; upTo: number }

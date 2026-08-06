@@ -6,7 +6,7 @@
  * drop-up with two sections:
  *
  *   CLOUD (remote runtime, the default)
- *     · New project (empty)  — an empty git-init'd cloud workspace, no GitHub
+ *     · Cloud                 — an empty git-init'd cloud workspace, no GitHub
  *       (sessions.create({ newProject:true }) on web).
  *     · GitHub repo  →        — a repo picker over git.repos(); not connected →
  *       a Connect-GitHub row (git.connect() OAuth URL, then poll git.status()).
@@ -79,7 +79,32 @@ export function sourceLabel(source: Source, sessionId?: string | null, machineNa
   const folder = source.kind === "cloud-repo" && source.repo ? lastSeg(source.repo) : "workspace";
   const id = shortId(sessionId);
   if (id) return `Fly · ${id} · ${folder}`;
-  return `Cloud · ${source.kind === "cloud-repo" && source.repo ? lastSeg(source.repo) : "new project"}`;
+  // Plain "Cloud" with no session yet — the repo, when there is one, is the
+  // only thing worth qualifying it with.
+  return source.kind === "cloud-repo" && source.repo ? `Cloud · ${lastSeg(source.repo)}` : "Cloud";
+}
+
+
+/**
+ * Is git already enabled on this folder, and on what branch?
+ *
+ * ONE answer on both surfaces: the desktop asks its own FS bridge, the web
+ * asks the machine over the attach relay (`fs.gitInfo`). Returns null when
+ * neither transport can answer — the caller shows nothing rather than
+ * guessing "no repo" at a folder it never actually checked.
+ */
+export async function gitStateFor(path: string): Promise<{ isRepo: boolean; branch?: string } | null> {
+  if (!path) return null;
+  const local = wbh()?.gitInfo;
+  if (local) {
+    try { return await local(path); } catch { return null; }
+  }
+  const dispatch = sdk()?.attach?.dispatch;
+  if (!dispatch) return null;
+  try {
+    const r = await dispatch("fs.gitInfo", { path }) as { isRepo?: boolean; branch?: string } | null;
+    return r ? { isRepo: !!r.isRepo, ...(r.branch ? { branch: r.branch } : {}) } : null;
+  } catch { return null; }
 }
 
 // ── Chip factory ────────────────────────────────────────────────────────────
@@ -136,13 +161,9 @@ export function createSourceChip(opts: {
     menu.className = "code-drop-up ws-source-drop";
     wrap.appendChild(menu);
     showView("root");
-    // Anchor the drop-up up-and-left of the chip (mirrors openChipDropUp).
-    menu.style.left = "auto"; menu.style.right = "0px";
-    const wb = wrap.getBoundingClientRect();
-    menu.style.maxHeight = `${Math.max(160, Math.round(wb.top - 8 - 12))}px`;
-    menu.style.overflowY = "auto";
-    const mb = menu.getBoundingClientRect();
-    if (mb.left < 8) { menu.style.right = "auto"; menu.style.left = `${Math.round(8 - wb.left)}px`; }
+    // Side + clamping are decided by clampDropX (edge alignment, one rule).
+    clampDropUp(menu, btn);
+    clampDropX(menu, btn);
   };
 
   const showView = (v: ViewName): void => {
@@ -190,10 +211,12 @@ export function createGitChip(opts: {
   let menu: HTMLElement | null = null;
   const closeMenu = (): void => { menu?.remove(); menu = null; };
 
+  // VISIBILITY IS THE SPACE'S CALL, not this chip's — Code shows every chip,
+  // Work and Chat show no repo chip at all. Hiding itself on a local source
+  // (as it used to) meant a Code session working on a machine folder had no
+  // GitHub control anywhere.
   const paint = (): void => {
     const s = opts.getSource();
-    if (s.kind === "local") { wrap.style.display = "none"; return; }
-    wrap.style.display = "";
     const label = s.kind === "cloud-repo" && s.repo ? lastSeg(s.repo) : "Connect GitHub";
     btn.innerHTML = `${BRANCH_SVG}<span class="cl-runtime-lbl"></span>${CHEV}`;
     (btn.querySelector(".cl-runtime-lbl") as HTMLElement).textContent = label;
@@ -210,8 +233,8 @@ export function createGitChip(opts: {
     wrap.appendChild(menu);
     menu.classList.add("ws-drop-flex");
     renderRepos(menu, opts, pick, closeMenu);
-    menu.style.left = "0px"; menu.style.right = "auto";
     clampDropUp(menu, btn);
+    clampDropX(menu, btn);
   });
   document.addEventListener("mousedown", (e) => {
     if (menu && !wrap.contains(e.target as Node)) closeMenu();
@@ -236,6 +259,7 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
   (wrap as HTMLElement).style.position ||= "relative";
   wrap.appendChild(menu);
   clampDropUp(menu, anchor);
+  clampDropX(menu, anchor);
   const close = (): void => menu.remove();
   const pick = (next: Source): void => { opts.onPick(next); close(); };
   void listMachines().then((machines) => {
@@ -262,9 +286,86 @@ export function closeAllDrops(except?: HTMLElement | null): void {
 
 /** A drop-UP must fit the space ABOVE its anchor — unclamped it runs past the
  *  top of the page. */
+/** The box a drop actually has to live in: the intersection of every CLIPPING
+ *  ancestor, not the viewport. A chip on the landing sits inside a card whose
+ *  top edge is far below y=0, so measuring against the window let a drop-up
+ *  run straight off the top of that card. */
+function clipBoxFor(anchor: HTMLElement): { top: number; bottom: number; left: number; right: number } {
+  let top = 0;
+  let bottom = window.innerHeight;
+  let left = 0;
+  let right = window.innerWidth;
+  for (let p = anchor.parentElement; p && p !== document.body; p = p.parentElement) {
+    const s = getComputedStyle(p);
+    if (/hidden|clip|auto|scroll/.test(s.overflow + s.overflowX + s.overflowY)) {
+      const r = p.getBoundingClientRect();
+      top = Math.max(top, r.top);
+      bottom = Math.min(bottom, r.bottom);
+      left = Math.max(left, r.left);
+      right = Math.min(right, r.right);
+    }
+  }
+  return { top, bottom, left, right };
+}
+
+/** Slide a drop horizontally so it sits inside its clip box. A drop anchored
+ *  to the chip's right edge hangs LEFT, which runs off the edge of a narrow
+ *  layout panel — there it has to move right instead. */
+export function clampDropX(menu: HTMLElement, anchor: HTMLElement): void {
+  const a = anchor.getBoundingClientRect();
+  const wrap = (anchor.parentElement || anchor).getBoundingClientRect();
+
+  // EDGE ALIGNMENT. A drop lines up with the edge of its chip that faces the
+  // middle of the screen: chips on the left of their row hang left-to-left,
+  // chips on the right hang right-to-right. Anything else throws the menu out
+  // over the surface it belongs to.
+  const row = anchor.closest<HTMLElement>(".code-composer-bar, .dash-wd-chips, .code-source-slot, .code-chips");
+  const rowRect = row?.getBoundingClientRect();
+  const onRight = !!rowRect && a.left + a.width / 2 > rowRect.left + rowRect.width / 2;
+  if (onRight) {
+    menu.style.left = "auto";
+    menu.style.right = `${Math.round(wrap.right - a.right)}px`;
+  } else {
+    menu.style.right = "auto";
+    menu.style.left = `${Math.round(a.left - wrap.left)}px`;
+  }
+
+  // ...then keep it inside the surface, whichever edge it was hung from.
+  const m = menu.getBoundingClientRect();
+  if (m.left < clip0(anchor).left + 8) {
+    menu.style.right = "auto";
+    menu.style.left = `${Math.round(clip0(anchor).left + 8 - wrap.left)}px`;
+  } else if (m.right > clip0(anchor).right - 8) {
+    menu.style.left = "auto";
+    menu.style.right = `${Math.round(wrap.right - (clip0(anchor).right - 8))}px`;
+  }
+}
+const clip0 = clipBoxFor;
+
+/** The tallest any chip drop may be — the folder picker's height. Every drop
+ *  shares it so the source menu can never out-grow the files menu and spill
+ *  past the top of the surface it opens in. */
+const DROP_MAX_PX = 320;
+
+/** Size a drop to the room it has, and FLIP it below the chip when the room
+ *  above can't hold a usable menu. */
 function clampDropUp(menu: HTMLElement, anchor: HTMLElement): void {
-  const top = anchor.getBoundingClientRect().top;
-  menu.style.maxHeight = `${Math.max(180, Math.round(top - 16))}px`;
+  const a = anchor.getBoundingClientRect();
+  const clip = clipBoxFor(anchor);
+  const above = a.top - clip.top - 16;
+  const below = clip.bottom - a.bottom - 16;
+  // NO minimum height. A floor is what let a drop spill past the top of a
+  // short window: it claimed room the surface did not have. Take the roomier
+  // side and never exceed what is actually there — a cramped menu scrolls,
+  // it does not overflow.
+  // ALWAYS UPWARD. These chips sit on a composer; a menu that drops down covers
+  // the input the user is about to type in. When the room above is short the
+  // menu gets short and SCROLLS — it never flips and never overflows.
+  void below;
+  menu.style.bottom = "";
+  menu.style.top = "";
+  menu.style.maxHeight = `${Math.min(DROP_MAX_PX, Math.max(0, Math.round(above)))}px`;
+  menu.style.overflowY = "auto";
 }
 
 /** The "+" chip: NEW FOLDER only — no browsing. Creates one directory inside
@@ -288,6 +389,11 @@ export function openNewFolderDrop(anchor: HTMLElement, opts: {
   nf.className = "ws-fs-newfolder";
   nf.innerHTML = `<input class="loop-drop-search repo-drop-search" placeholder="Folder name…" spellcheck="false" autocomplete="off"><button type="button" class="action-btn primary">Create</button><span class="ws-fs-newfolder-err"></span>`;
   menu.appendChild(nf);
+  // Same edge rule as every other chip drop: hang from the CHIP's edge, not
+  // the row's. Without these it inherited the stylesheet's `left: 0`, which is
+  // the chips ROW — so the new-folder drop sat left of the + it belongs to.
+  clampDropUp(menu, anchor);
+  clampDropX(menu, anchor);
   const input = nf.querySelector("input") as HTMLInputElement;
   const btn = nf.querySelector("button") as HTMLButtonElement;
   const err = nf.querySelector(".ws-fs-newfolder-err") as HTMLElement;
@@ -314,6 +420,87 @@ export function openNewFolderDrop(anchor: HTMLElement, opts: {
 }
 
 // ── Root view: CLOUD + LOCAL sections ────────────────────────────────────
+
+// ── Reachability ──────────────────────────────────────────────────────────
+//
+// A session has to START by connecting somewhere. An option you cannot reach
+// is not a choice — offering it just moves the failure to the first send, so
+// each one is probed and DISABLED with the reason when it is down.
+
+/** `null` = NOT YET KNOWN (the transport isn't up), which is different from
+ *  `false` = tried and failed. Conflating them made a still-booting bridge
+ *  read as "Cloud unavailable". */
+export interface SourceReach { local: boolean | null; cloud: boolean | null }
+let reachCache: { at: number; value: SourceReach } | null = null;
+const REACH_TTL_MS = 15_000;
+
+/** Did the server ANSWER? An HTTP status — 401, 403, 500, anything — means we
+ *  reached it. Only a transport-level failure (DNS, refused, offline, CORS)
+ *  means unreachable. Treating an expired token as "the cloud is down" told
+ *  the user to switch runtimes when all they needed was a refresh. */
+function answered(err: unknown): boolean {
+  const e = err as { status?: number; statusCode?: number; response?: { status?: number }; message?: string };
+  if (typeof e?.status === "number" || typeof e?.statusCode === "number") return true;
+  if (typeof e?.response?.status === "number") return true;
+  return /\b(4\d{2}|5\d{2})\b/.test(String(e?.message ?? ""));
+}
+
+/** Can we reach an attached machine? Web asks the relay; on the desktop the
+ *  machine is this process, so the only question is whether it can list. */
+async function probeLocal(): Promise<boolean | null> {
+  if (!isWeb()) return !!wbh()?.listDir;
+  // Call it ON its resource — `const f = sdk().attach.status; f()` detaches the
+  // method and the SDK reaches for `this.http`, which throws a TypeError that
+  // looks exactly like an outage. Third time this bug has bitten today.
+  const attach = sdk()?.attach;
+  if (!attach?.status) return null;   // SDK bridge not up yet
+  // Only a SUCCESSFUL status call can say whether a machine is attached.
+  // `attached: false` is a real answer; a thrown error is not — a 401 or a
+  // dropped connection tells us nothing about the user's desktop, so it stays
+  // UNKNOWN rather than accusing a machine that may be sitting right there.
+  try { return !!(await attach.status())?.attached; } catch { return null; }
+}
+
+/**
+ * Can we reach the cloud runtime surface? The session list is the cheapest
+ * authenticated call that proves the whole path (auth + control plane).
+ *
+ * On WEB this must go through the SDK handle and nothing else: `window.glyphh`
+ * there is a Proxy that fabricates a function for ANY name, so a desktop-style
+ * fallback looks present, gets called, and fails — reporting the cloud down
+ * while it was perfectly reachable.
+ */
+async function probeCloud(): Promise<boolean | null> {
+  if (isWeb()) {
+    const sessions = sdk()?.sessions;
+    if (!sessions?.list) return null;   // bridge not up yet — unknown, not down
+    try { await sessions.list(); return true; } catch (err) { return answered(err); }
+  }
+  const g = (window as unknown as { glyphh?: { threadsList?: () => Promise<unknown> } }).glyphh;
+  if (typeof g?.threadsList !== "function") return null;
+  try { await g.threadsList(); return true; } catch (err) { return answered(err); }
+}
+
+/** Probe both, cached briefly so opening the menu twice is not two round trips.
+ *  An UNKNOWN result is never cached — the next paint asks again. */
+export async function probeSources(force = false): Promise<SourceReach> {
+  if (!force && reachCache && Date.now() - reachCache.at < REACH_TTL_MS) return reachCache.value;
+  if (force) reachCache = null;
+  const [local, cloud] = await Promise.all([probeLocal(), probeCloud()]);
+  const value = { local, cloud };
+  if (local !== null && cloud !== null) reachCache = { at: Date.now(), value };
+  return value;
+}
+
+/** Mark a row unreachable: not clickable, and it says why. */
+function markUnreachable(row: HTMLElement, why: string): void {
+  row.classList.add("ws-unreachable");
+  row.setAttribute("aria-disabled", "true");
+  row.setAttribute("title", why);
+  const sub = row.querySelector<HTMLElement>(".drop-lines span:last-child");
+  if (sub) sub.textContent = why;
+}
+
 function renderRoot(
   menu: HTMLElement,
   opts: { getSource: () => Source },
@@ -328,10 +515,13 @@ function renderRoot(
   menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>Workspace source</span></div>`);
   menu.insertAdjacentHTML("beforeend", `<div class="ws-sec-label">Cloud runtime</div>`);
 
-  // New project (empty).
-  const np = drillItem("New project (empty)", "Git-init'd in the cloud — no GitHub needed", isNew ? CHECK : "");
-  np.addEventListener("click", () => pick({ kind: "cloud-new" }));
+  // The cloud runtime itself — the chip's label and this row read the same.
+  const np = drillItem("Cloud", "Git-init'd in the cloud — no GitHub needed", isNew ? CHECK : "");
+  np.addEventListener("click", () => { if (!np.classList.contains("ws-unreachable")) pick({ kind: "cloud-new" }); });
   menu.appendChild(np);
+  void probeSources().then((reach) => {
+    if (reach.cloud === false) markUnreachable(np, "Can't reach the cloud runtime right now");
+  });
 
   menu.insertAdjacentHTML("beforeend", `<div class="ws-sec-label">Connected machines</div>`);
   const machinesHost = document.createElement("div");
@@ -352,6 +542,11 @@ function renderRoot(
       machinesHost.appendChild(install);
       return;
     }
+    void probeSources().then((reach) => {
+      if (reach.local !== false) return;
+      machinesHost.querySelectorAll<HTMLElement>(".code-drop-item")
+        .forEach((row) => markUnreachable(row, "This machine isn't connected right now"));
+    });
     machines.forEach((m) => {
       const name = m.name || m.app || "Glyphh desktop";
       const selected = isLocal && (s.machineId === m.id || s.machineId === undefined);
@@ -418,8 +613,10 @@ function renderRepos(
     search.spellcheck = false;
     search.autocomplete = "off";
     search.addEventListener("mousedown", (ev) => ev.stopPropagation());
-    body.appendChild(search);
+    // The search sits at the BOTTOM of the drop, closest to the chip it opened
+    // from — the list grows away from your hand rather than pushing past it.
     body.appendChild(list);
+    body.appendChild(search);
     const draw = (): void => {
       list.textContent = "";
       const q = (search?.value || "").trim().toLowerCase();
@@ -499,8 +696,15 @@ function renderLocal(
     const list = document.createElement("div");
     list.className = "code-repo-drop-list ws-fs-list";
     body.appendChild(list);
-    if (!root) root = listing.root || listing.path;
-    if (listing.parent && root && listing.path !== root && listing.parent.length >= root.length) {
+    // The MACHINE's root wins whenever the listing states it — pinning root to
+    // the first path listed capped the walk at wherever the picker happened to
+    // open, so a session already set deep in the tree could never go up.
+    if (listing.root) root = listing.root;
+    else if (!root) root = listing.path;
+    const canGoUp = !!listing.parent
+      && listing.path !== root
+      && (!root || listing.parent === root || listing.parent.startsWith(root));
+    if (canGoUp) {
       const up = drillItem("‹ up", "", "");
       up.classList.add("ws-fs-up");
       up.addEventListener("click", () => walk(listing.parent!));

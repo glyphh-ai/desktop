@@ -7,7 +7,9 @@
  */
 
 import { $a, cssVar, escapeHtml, paginate, renderPaginationBar } from "./shared.js";
-import { openUrlInWorkbench, seedNewSession, openRunSession, adoptComposer } from "./code.js";
+import { seedNewSession, openRunSession, adoptComposer } from "./code.js";
+import { gotoSection } from "./navigation.js";
+import { accountApi } from "./settings-api.js";
 import { SPACE_LABEL, spacePillHtml, type Space } from "./space-meta.js";
 import { mascotSvg, type Mascot } from "./mascots.js";
 import { openStarterLayout, type STARTER_LAYOUTS } from "./starter-layouts.js";
@@ -165,9 +167,12 @@ export async function loadUsageChart(): Promise<void> {
   const daysSel = document.getElementById("dash-usage-days") as HTMLSelectElement | null;
   const groupSel = document.getElementById("dash-usage-group") as HTMLSelectElement | null;
   const filterSel = document.getElementById("dash-usage-filter") as HTMLSelectElement | null;
+  const memberSel = document.getElementById("dash-usage-member") as HTMLSelectElement | null;
   const win = parseInt(daysSel?.value || "30", 10);
   const groupBy = groupSel?.value === "source" ? "source" : "model";
-  const env = await window.glyphh.usageSeries?.(win, groupBy);
+  // The member narrowing is org_admin-only; an empty value means "everyone",
+  // which is also what a non-admin always sends.
+  const env = await window.glyphh.usageSeries?.(win, groupBy, memberSel?.value || "");
   if (!env?.ok || !env.data) return;
   const series = env.data as SeriesData;
 
@@ -497,20 +502,38 @@ function paintSpaceColumns(): void {
 
 // Switching Chat ↔ Work while the landing is up swaps the flow's orientation
 // (fall ↔ converge) — restart the engine with the new variant.
-window.addEventListener("rail-space-changed", () => {
-  paintSpaceColumns();
+/**
+ * Reconcile the landing's flow with the active space. Safe to call on every
+ * landing paint — a no-op when the right variant is already running.
+ *
+ * A space switch made while the landing was COVERED (an open command centre,
+ * a card, a populated workbench) used to be dropped on the floor: the handler
+ * saw a canvas with no offsetParent and returned, leaving the previous
+ * space's engine running against a zero-sized canvas. Coming back via Home
+ * then showed a frozen backdrop belonging to the tab you left. Hidden now
+ * means TEAR DOWN, so the next paint starts the current variant clean.
+ */
+export function syncDashParticles(): void {
   const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
-  if (!canvas || canvas.offsetParent === null) return;
+  if (!canvas) return;
+  const stop = (): void => { particlesCleanup?.(); particlesCleanup = null; particlesVariant = ""; };
+  if (canvas.offsetParent === null) { stop(); return; }
   const sp = document.body.dataset.railSpace;
   const want: FlowVariant = sp === "chat" ? "chat" : sp === "code" ? "code" : "cowork";
-  if (want === particlesVariant) return;
-  particlesCleanup?.();       // stops the engine + resets particlesRaf
-  particlesCleanup = null;
+  if (particlesRaf && want === particlesVariant) return;
+  stop();
   startDashParticles();
+}
+
+// Switching spaces while the landing is up swaps the flow's orientation
+// (fall ↔ converge ↔ rise) — restart the engine with the new variant.
+window.addEventListener("rail-space-changed", () => {
+  paintSpaceColumns();
+  syncDashParticles();
 });
 
 export async function loadDashboard(): Promise<void> {
-  startDashParticles();
+  syncDashParticles();
 
   // The landing's STRUCTURE never waits on the server: composer adoption,
   // starters, and the space columns paint first — a failed/slow data call only
@@ -534,6 +557,35 @@ export async function loadDashboard(): Promise<void> {
     if (data) $a("dash-greeting").textContent = greeting(data.name);
   } catch (err) {
     console.error("[dashboard] data failed (landing already painted)", err);
+  }
+}
+
+/**
+ * The usage chart's MEMBER filter — the one control the platform's dashboard
+ * had and this app didn't. The roster is org_admin-only server-side, so a
+ * member's rejected call simply leaves the dropdown hidden; there is nothing
+ * to explain because there is nothing they could have chosen.
+ */
+export async function loadUsageMembers(): Promise<void> {
+  const sel = document.getElementById("dash-usage-member") as HTMLSelectElement | null;
+  if (!sel) return;
+  try {
+    const members = await accountApi().members();
+    if (!members?.length) { sel.classList.add("hidden"); return; }
+    const prev = sel.value;
+    sel.innerHTML = `<option value="">All members</option>`;
+    for (const m of members) {
+      const opt = document.createElement("option");
+      opt.value = m.userId;
+      opt.textContent = m.name || m.email;
+      sel.appendChild(opt);
+    }
+    if (Array.from(sel.options).some((o) => o.value === prev)) sel.value = prev;
+    sel.classList.remove("hidden");
+  } catch {
+    // Not an admin (or offline) — no roster, no filter. The chart still shows
+    // exactly what the server scopes to this caller.
+    sel.classList.add("hidden");
   }
 }
 
@@ -776,16 +828,17 @@ export function initDashboardEvents(): void {
   if (wired) return;
   wired = true;
 
-  // Billing opens INSIDE the app as a workbench panel — the same mechanics
-  // Settings → Manage Account uses — never the external browser.
+  // Billing is a NATIVE panel now (Settings › Billing) — it used to open the
+  // platform's /billing page in a workbench browser; there's nothing left over
+  // there that this app can't do itself.
   document.getElementById("dash-add-funds")?.addEventListener("click", () => {
-    openUrlInWorkbench("Billing", `${window.glyphh.platformUrl}/billing`);
+    gotoSection("settings", "billing");
   });
   // the refresh button rides the chart card in Settings › Usage
   document.getElementById("dash-refresh")?.addEventListener("click", () => {
     void loadUsageChart();
   });
-  for (const id of ["dash-usage-days", "dash-usage-group", "dash-usage-filter"]) {
+  for (const id of ["dash-usage-days", "dash-usage-group", "dash-usage-filter", "dash-usage-member"]) {
     document.getElementById(id)?.addEventListener("change", () => { void loadUsageChart(); });
   }
   document.getElementById("dash-tasks-search")?.addEventListener("input", () => { runsPage = 0; renderRuns(); });

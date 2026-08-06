@@ -81,7 +81,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
 
   // The stacked usage chart's feed: day × (model | source) cells over the last
   // N days. Credits leave here as WHOLE credits — the renderer never sees micro.
-  ipcMain.handle("usage-series", async (_e, days: number, groupBy: string) => {
+  ipcMain.handle("usage-series", async (_e, days: number, groupBy: string, userId?: string) => {
     try {
       const MICRO = 1_000_000;
       const ymd = (d: Date) =>
@@ -90,9 +90,13 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       const win = Math.max(1, Math.min(Number(days) || 30, 365));
       const start = new Date(now); start.setDate(now.getDate() - (win - 1));
       const gb = groupBy === "source" ? "source" as const : "model" as const;
+      // A member narrowing is org_admin-only server-side; pass it only when set
+      // so a member's request stays exactly what it was.
+      const member = typeof userId === "string" && userId ? { userId } : {};
       const { points } = await getClient().usage.series({
         from: ymd(start), to: ymd(now), groupBy: gb,
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...member,
       });
       return {
         ok: true,

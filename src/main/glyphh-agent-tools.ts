@@ -39,7 +39,7 @@ import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
 import { indexConnectorTools } from "./ada/indexer";
 import { indexToolVectors, rankConnectorTools } from "./tool-vectors";
-import { updateAppFromWorkdir, deployAppFromWorkdir } from "./glyphh-app-builder";
+import { updateAppFromWorkdir } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
@@ -520,16 +520,14 @@ const TOOLS: ToolDef[] = [
       return `updated "${r.name}" (${r.slug}) from source${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files.`;
     },
   },
-  {
-    name: "deploy_app",
-    doc: "deploy_app() — PUBLISH the app in the working folder to the web at <slug>.glyphh.app. Build the Vite project first (`npm run build`), then call this: it packages the compiled dist/, cuts a release, builds it on the server, and deploys it live. Returns the public URL, or the build error to fix. (update_app installs it LOCALLY on this machine; deploy_app puts it on the internet.) Then SHOW the user: open_browser(<returned URL>).",
-    action: () => ({ kind: "edit", title: "Publish app to <slug>.glyphh.app" }),
-    run: async () => {
-      const r = await deployAppFromWorkdir();
-      if (r.status !== "ready") return `build FAILED for "${r.slug}" v${r.version}: ${r.error ?? "unknown error"}`;
-      return `deployed "${r.slug}" v${r.version} → ${r.url ?? "(URL provisioning)"}`;
-    },
-  },
+  // NO `deploy_app` HERE, deliberately. Publishing belongs to the control
+  // plane, and the pod now lends itself that surface (rrotor glyphh-apps.ts →
+  // POST /api/runtime/mcp) on the desktop and in the cloud alike. A second,
+  // desktop-only `deploy_app` that took no arguments and read the working
+  // folder would put two tools of the same NAME and different SHAPES into one
+  // toolset — precisely the desktop/cloud divergence that left a cloud agent
+  // unable to publish at all. `deployAppFromWorkdir` still backs the Releases
+  // tab's button (apps-ipc.ts); it is simply not an agent tool any more.
   {
     name: "git_init",
     doc: "git_init() — version-control the working folder: init the repo (if needed), write a .gitignore (node_modules/, dist/, .env), ensure a git identity, and make the first commit. Call this BEFORE building a new app.",
@@ -617,7 +615,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "open_browser",
-    doc: "open_browser(url) — open the tabbed Browser panel at a URL beside this conversation (address bar, tabs, DevTools). THE way to show a built or deployed app: after deploy_app, open the returned <slug>.glyphh.app URL here. Falls back: if the page needs a login the embedded browser doesn't have (a non-public app), open the installed app with open_app instead.",
+    doc: "open_browser(url) — open the tabbed Browser panel at a URL beside this conversation (address bar, tabs, DevTools). THE way to show a built or deployed app: after build_app publishes it, open the returned <slug>.glyphh.app URL here. Falls back: if the page needs a login the embedded browser doesn't have (a non-public app), open the installed app with open_app instead.",
     action: (a) => ({ kind: "command", title: `Open browser at ${String(a.url ?? "")}` }),
     run: async (a) => {
       const url = String(a.url ?? "").trim();
@@ -1126,7 +1124,7 @@ const CODE_EXCLUDED = new Set([
   "app_list_tools", "app_call_tool",
 ]);
 const COWORK_EXCLUDED = new Set([
-  "run_command", "update_app", "deploy_app",
+  "run_command", "update_app",
   "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
 ]);
 
@@ -1175,7 +1173,7 @@ async function runRolePacket(
   const PACKET_TOOLS = new Set([
     "list_dir", "read_file", "write_file", "search_files", "run_command",
     "semantic_search", "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
-    "update_app", "deploy_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
+    "update_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
   ]);
   const tools = TOOLS.filter((t) => PACKET_TOOLS.has(t.name) && !ROLE_RUN_EXCLUDED.has(t.name)).map((t) => ({
     name: t.name,

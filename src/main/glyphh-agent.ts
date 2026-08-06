@@ -37,7 +37,7 @@ import { getClient } from "./glyphh-client";
 import { getPreference } from "./stores/preferences-db";
 import { runModel } from "./loop-selections";
 import { brandError, skillSeedFor, type ChatMessage } from "./glyphh-agent-prompt";
-import { harnessRun } from "./glyphh-harness-run";
+import { harnessRun, isCloudSource, type RunSource } from "./glyphh-harness-run";
 import { closeBridge } from "./harness-mcp-bridge";
 
 export type { ChatMessage };
@@ -89,7 +89,7 @@ export function registerGlyphhIpc(): void {
   registerGlyphhContextIpc();
   // The renderer's transport to the server threads surface (thread-store.ts).
   registerThreadsIpc();
-  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code" }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; source?: RunSource }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
@@ -105,9 +105,15 @@ export function registerGlyphhIpc(): void {
     const stored = loadSessions().chats.find((c) => c.id === chatId);
     const mode = stored?.mode ?? (stored?.chat ? "chat" : undefined) ?? payload?.mode ?? (payload?.chat ? "chat" : "code");
     const runWorkdir = (typeof payload?.workdir === "string" && payload.workdir) || getExplicitWorkingDirectory();
+    // Where the session RUNS. The record wins over the payload for the same
+    // reason `mode` does; a cloud session runs on its provisioned pod, from
+    // the desktop just as it does from the web.
+    const source = stored?.source ?? payload?.source;
+    const onCloud = isCloudSource(source);
     // A CHAT run executes no tools — it has no use for a folder, so it never
-    // demands one. Tool-bearing modes still require the user's explicit pick.
-    if (!runWorkdir && mode !== "chat") throw new Error("NO_WORKDIR: pick a working folder to start");
+    // demands one. Neither does a cloud run: its folder is the pod's own
+    // project workspace, not a path on this machine.
+    if (!runWorkdir && mode !== "chat" && !onCloud) throw new Error("NO_WORKDIR: pick a working folder to start");
     // Composer attachments: validate paths, then whitelist them for reads
     // (attach = consent) for the duration of this run.
     const attachments = validAttachments(payload?.attachments);
@@ -127,7 +133,7 @@ export function registerGlyphhIpc(): void {
     // harness pod. There is no third branch and no in-process loop left.
     const runner = mode === "chat"
       ? chatRun(e.sender, id, messages, ctrl, replyBudget)
-      : harnessRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode);
+      : harnessRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode, source);
     void runner.finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
       if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);

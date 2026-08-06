@@ -33,7 +33,8 @@ import { join } from "node:path";
 import { ensureLocalHarnessPod } from "@glyphh/sdk/runtime";
 import type { HarnessWireFrame } from "@glyphh/sdk";
 import { getClient, SERVER_URL } from "./glyphh-client";
-import { runModel } from "./loop-selections";
+import { loadSessions, saveSessions } from "./glyphh-agent-context";
+import { runModel, currentLoop } from "./loop-selections";
 import { glyphhMode, registerRemotePause } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { glyphhToolDefs, connectorWireTools, type ConnectorWireDef } from "./glyphh-agent-tools";
@@ -98,6 +99,72 @@ async function ensurePod(): Promise<string> {
   return pod.url;
 }
 
+// ── Cloud pods ─────────────────────────────────────────────────────────────
+//
+// A session whose source is cloud runs on a PROVISIONED remote pod, from the
+// desktop exactly as it does from the web: same SDK calls, same harness wire.
+// The desktop is not limited to this machine — it drives cloud sessions too.
+
+/** The renderer's workspace Source, as far as a run needs to read it. */
+export interface RunSource { kind: string; repo?: string }
+
+/** Where a run's pod lives. A cloud pod authenticates (its own runtime token);
+ *  the local one runs auth-off on loopback. */
+interface PodTarget { url: string; token?: string; cloud: boolean }
+
+export const isCloudSource = (s?: RunSource): boolean => !!s && s.kind !== "local";
+
+const PROVISION_TIMEOUT_MS = 90_000;
+const PROVISION_POLL_MS = 1_500;
+
+/** Persist a chat's pod binding. Re-read immediately before writing: the
+ *  renderer owns this file too, and a run can outlive several of its saves. */
+function bindRuntime(chatId: string, runtime: { sessionId: string; url: string; token: string }): void {
+  try {
+    const { chats, currentId } = loadSessions();
+    const chat = chats.find((c) => c.id === chatId);
+    if (!chat) return;
+    chat.runtime = runtime;
+    saveSessions(chats, currentId);
+  } catch (err) {
+    // A binding that fails to persist costs a re-provision next launch, not
+    // the run in flight — never fatal.
+    console.warn("[harness] could not persist the runtime binding:", err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** The chat's cloud pod: its existing binding when it has one, else a freshly
+ *  provisioned session polled to `ready`. */
+async function ensureCloudPod(chatId: string, source: RunSource): Promise<PodTarget> {
+  const bound = loadSessions().chats.find((c) => c.id === chatId)?.runtime;
+  if (bound?.url && bound.token) return { url: bound.url, token: bound.token, cloud: true };
+
+  const client = getClient();
+  const { session, runtimeToken } = await client.sessions.create({
+    // The user's selected agent loop — the same one a local run resolves its
+    // model through.
+    rotor: currentLoop(),
+    locus: "remote",
+    ...(source.kind === "cloud-repo" && source.repo ? { repo: source.repo } : { newProject: true }),
+  });
+
+  let live = session;
+  const deadline = Date.now() + PROVISION_TIMEOUT_MS;
+  while (live.status === "provisioning" && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, PROVISION_POLL_MS));
+    live = await client.sessions.get(session.id);
+  }
+  if (live.status !== "ready" || !live.runtimeUrl) {
+    throw new Error(
+      live.status === "provisioning"
+        ? "the cloud runtime is still starting — try again in a moment"
+        : `the cloud runtime could not start (${live.status})`,
+    );
+  }
+  bindRuntime(chatId, { sessionId: live.id, url: live.runtimeUrl, token: runtimeToken });
+  return { url: live.runtimeUrl, token: runtimeToken, cloud: true };
+}
+
 // ── The run ────────────────────────────────────────────────────────────────
 
 /**
@@ -114,7 +181,9 @@ export async function harnessRun(
   chatId = "",
   runWorkdir?: string,
   mode: "cowork" | "code" = "code",
+  source?: RunSource,
 ): Promise<void> {
+  const cloud = isCloudSource(source);
   const emit = (channel: string, data: Record<string, unknown>): void => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
   };
@@ -142,17 +211,21 @@ export async function harnessRun(
     // 3. The tool surface. Builtins for the mode; connectors as first-class
     //    tools with their real schemas (code mode pays for find_tools/call_tool
     //    instead of a catalog subset — the same trade the in-process path makes).
-    const defs = glyphhToolDefs(mode);
-    const connCatalog = await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
-    const connDefs = mode === "code"
+    //    A CLOUD pod works in its own sandbox and cannot reach this machine's
+    //    loopback bridge, so it is lent nothing and brings its own tools.
+    const defs = cloud ? [] : glyphhToolDefs(mode);
+    const connCatalog = cloud ? [] : await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
+    const connDefs = cloud || mode === "code"
       ? []
       : await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
 
     // 4. Pod + bridge, in parallel — neither depends on the other.
     const knownTools = new Set([...defs.map((d) => d.name), ...connDefs.map((d) => d.name)]);
-    const [podUrl, surface] = await Promise.all([
-      ensurePod(),
-      lendToolSurface({
+    const [target, surface] = await Promise.all([
+      cloud
+        ? ensureCloudPod(chatId, source as RunSource)
+        : ensurePod().then((url): PodTarget => ({ url, cloud: false })),
+      cloud ? Promise.resolve(null) : lendToolSurface({
         wc,
         signal: ctrl.signal,
         ...(runWorkdir ? { workdir: runWorkdir } : {}),
@@ -170,7 +243,10 @@ export async function harnessRun(
     //    already constrained to what their workspace allows (loop-selections);
     //    an unresolved one lets the pod fall back to its own default.
     const model = await runModel("default").catch(() => null);
-    const pod = getClient().harness({ url: podUrl });
+    const pod = getClient().harness({
+      url: target.url,
+      ...(target.token ? { token: async (): Promise<string> => target.token as string } : {}),
+    });
     const run = pod.start({
       prompt: lastUser,
       system,
@@ -187,14 +263,28 @@ export async function harnessRun(
       // Bash/Read/Edit/Glob/Grep — there; a cloud pod 400s the field, which is
       // exactly the boundary we want. Without it those tools worked inside the
       // pod's empty sandbox while the user's folder sat untouched.
-      ...(runWorkdir ? { workdir: runWorkdir } : {}),
+      ...(!cloud && runWorkdir ? { workdir: runWorkdir } : {}),
       // Pasted screenshots as vision blocks ahead of the prompt text. Pod-side
       // caps (8 × ~7.5MiB) sit above the decoder's, so an accepted turn is
       // never one the pod rejects.
       ...(images.length ? { images } : {}),
+      // The gateway is named on EVERY run, cloud included. A pod needs it for
+      // two things now: model egress, and deriving the control plane's app
+      // tool surface (scaffold_app/create_app_entry/build_app/deploy_app),
+      // which it lends itself so a run can actually PUBLISH what it built.
+      // Without it a cloud agent writes an app and has nowhere to put it.
       gatewayUrl: `${SERVER_URL}/api/gateway`,
-      runtimeToken,
-      mcpServers: [{ name: surface.name, url: surface.url, headers: surface.headers }],
+      // The CREDENTIAL differs, and only the credential. A cloud pod already
+      // holds its session's own `gy_rk_` (it arrives as this request's bearer
+      // and the pod falls back to it), so handing it this machine's token
+      // would re-attribute the turn to the wrong principal. A LOCAL pod runs
+      // auth-off and has none, so it is passed the user's access token — which
+      // the control plane resolves to the same person either way.
+      ...(cloud ? {} : { runtimeToken }),
+      // The desktop's own machine tools reach the pod over loopback, which a
+      // cloud pod cannot use. App tools are NOT lent here by either surface —
+      // the pod derives them from `gatewayUrl` above, so both get the same set.
+      ...(surface ? { mcpServers: [{ name: surface.name, url: surface.url, headers: surface.headers }] } : {}),
       signal: ctrl.signal,
     });
 
