@@ -15016,3 +15016,10 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
 .ws-rail-slot .code-thread .dash-landing,
 .ws-rail-slot .code-thread .dash-starters,
 .ws-rail-slot .code-thread .dash-two-col { display: none !important; }
+
+/* Agent header, LEFT group: [+ new] [recents] [⋯] — the same trio on every
+   agent view (full screen and layout-hosted), left of the spacer. */
+.session-head-actions { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
+.session-head-actions + #code-session-kebab-wrap { margin-left: 0; }
+/* The history dropdown hangs off its button in the header's left group. */
+.session-head-actions { position: relative; }

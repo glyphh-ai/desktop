@@ -3876,7 +3876,12 @@ export function initCode(): void {
       menu.innerHTML = "";
       const cur = currentId;
       // Pinned first (stable — recency holds within each group).
-      const rows = [...chats].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 20);
+      // SCOPED TO THIS AGENT'S TYPE: a session's space decides whether it
+      // belongs in this agent's recents at all (a layout-hosted Code agent
+      // must never offer to swap in a Chat session).
+      const space = current() ? spaceOf(current()!) : railTab;
+      const rows = chats.filter((c) => spaceOf(c) === space)
+        .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 20);
       for (const c of rows) {
         const row = document.createElement("div");
         row.className = "wb-session-row" + (c.id === cur ? " selected" : "");
