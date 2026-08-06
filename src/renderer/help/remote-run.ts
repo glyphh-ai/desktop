@@ -59,12 +59,19 @@ interface HarnessRunHandle {
   stop(): Promise<void>;
 }
 
+/** The pod's permission modes — verbatim from the desktop (MODES in code.ts,
+ *  enforced by glyphh-agent-permissions.ts locally / rrotor harness/gate.ts in
+ *  the pod). Sent per RUN: the pod's own default is `auto`, so a session left
+ *  in Ask mode would silently run unattended if we didn't say so. */
+export type RemotePermission = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
+
 interface HarnessPod {
   start(opts: {
     prompt: string;
     threadId?: string;
     mode?: "chat" | "cowork" | "code";
     model?: string;
+    permission?: RemotePermission;
     signal?: AbortSignal;
   }): HarnessRunHandle;
 }
@@ -115,7 +122,65 @@ const DEFAULT_ROTOR = "default";
 const READY_POLL_MS = 1500;
 const READY_POLL_TRIES = 10;
 
+/** How long the runtime waits before deciding FOR the user. Mirrored from the
+ *  pod (rrotor `harness/gate.ts`) — and identical to the desktop's local gate
+ *  (`glyphh-agent-permissions.ts`), so the dock's countdown is honest on BOTH
+ *  paths and there is one set of numbers in the UI. */
+export const APPROVAL_TIMEOUT_MS = 120_000;
+export const ASK_TIMEOUT_MS = 10 * 60_000;
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+// ── The answer seam ───────────────────────────────────────────────────────────
+//
+// A parked `approval`/`ask` frame is answered on the RUN HANDLE that streamed it
+// (`run.answer(id, …)` → POST /runs/:id/answer). The handle is owned by
+// runRemoteTurnOnce and must not leak into the UI, so a parked frame registers
+// its id here and the renderer answers BY ID — exactly the shape the desktop's
+// local path has (`window.glyphh.glyphhApprovalRespond(id, allow)` → main's
+// pending map). code.ts therefore routes both paths through one call: try this
+// registry, and an id it doesn't know is a LOCAL card and goes over IPC.
+//
+// Entries are dropped the moment they're answered and swept when their run
+// settles, so a stopped/finished run leaves nothing behind.
+
+interface PendingAnswer { run: HarnessRunHandle; kind: "approval" | "ask"; deadline: number }
+const pending = new Map<string, PendingAnswer>();
+
+/** What answering did: `sent` reached the pod, `late` means the pod had already
+ *  resolved it on its own (its timeout fired first — a 404 we swallow), and
+ *  `unknown` means this id was never a REMOTE card (the caller should try the
+ *  local IPC path). Never throws — a dead pod must not break a click. */
+export type AnswerRouting = "sent" | "late" | "unknown";
+
+/** The wall-clock instant the runtime decides on its own, for a parked id. */
+export function pendingDeadline(id: string): number | undefined {
+  return pending.get(id)?.deadline;
+}
+
+/** Answer a parked REMOTE approval (`{allow}`) or ask (`{answers}`). */
+export async function answerPending(
+  id: string,
+  reply: { allow?: boolean; answers?: string[] },
+): Promise<AnswerRouting> {
+  const entry = pending.get(id);
+  if (!entry) return "unknown";
+  // Drop it FIRST: a double-click must not post twice, and a failed post means
+  // the pod already moved on — there is nothing left to answer either way.
+  pending.delete(id);
+  try {
+    await entry.run.answer(id, reply);
+    return "sent";
+  } catch (err) {
+    try { console.warn("[remote-run] answer landed too late", { id, detail: err instanceof Error ? err.message : String(err) }); } catch { /* no console */ }
+    return "late";
+  }
+}
+
+/** Forget every id parked on a run that has settled (done/stopped/failed). */
+function forgetPending(run: HarnessRunHandle): void {
+  for (const [id, entry] of pending) if (entry.run === run) pending.delete(id);
+}
 
 /** A session's source is remote iff it runs in the cloud (cloud-new/cloud-repo). */
 export function isRemoteSource(source?: Source): boolean {
@@ -249,7 +314,17 @@ export interface RemoteRunCallbacks {
   onDone?: (fullText: string) => void;
   onStopped?: () => void;
   onError?: (detail: string) => void;
+  /** A tool wants permission — the run is PARKED until `answerPending(id,
+   *  {allow})` (or the runtime's own deadline). Same payload the desktop's
+   *  `glyphh-agent:approval` IPC carries, plus the deadline. */
+  onApproval?: (a: RemoteApprovalRequest) => void;
+  /** The agent is asking the user — parked until `answerPending(id, {answers})`
+   *  (or the deadline). Mirrors `glyphh-agent:ask`. */
+  onAsk?: (a: RemoteAskRequest) => void;
 }
+
+export interface RemoteApprovalRequest { id: string; kind: string; title: string; detail: string; deadline: number }
+export interface RemoteAskRequest { id: string; questions: Array<{ question: string; options?: string[] }>; deadline: number }
 
 export type RemoteRunOutcome =
   | { ok: true; text: string; runtime: RuntimeBinding; error?: string }
@@ -258,14 +333,17 @@ export type RemoteRunOutcome =
   | Unavailable;
 
 /** Map one harness frame onto the UI callbacks. `delta` appends; `tool` leaves a
- *  breadcrumb on start (and on a denied/failed finish); `approval`/`ask` have no
- *  web UI yet, so they surface as honestly-labeled breadcrumbs and ride the
- *  POD's timeout semantics (approval → denied after ~2min; ask → answered empty
- *  after ~10min, the agent re-plans). progress/credits/setup: no UI mapping. */
+ *  breadcrumb on start (and on a denied/failed finish); `approval`/`ask` PARK the
+ *  run — the id is registered on the answer seam and handed to the UI, which
+ *  answers it through `answerPending`. A caller with no approval UI (no
+ *  onApproval/onAsk) still gets an honest breadcrumb and rides the POD's timeout
+ *  (approval → denied after ~2min; ask → answered empty after ~10min, the agent
+ *  re-plans). progress/credits/setup: no UI mapping. */
 function dispatchFrame(
   frame: HarnessWireFrame,
   cb: RemoteRunCallbacks,
   state: { text: string; error: string | null },
+  run: HarnessRunHandle,
 ): void {
   switch (frame.type) {
     case "delta":
@@ -280,20 +358,37 @@ function dispatchFrame(
         cb.onStep?.({ id: `${frame.name}#${frame.seq}`, type: frame.name, status: frame.denied ? "denied" : "failed", ...(frame.title ? { error: frame.title } : {}) });
       }
       return;
-    case "approval":
-      cb.onStep?.({
-        id: frame.id,
-        type: "approval",
-        status: `${frame.title} — no approval UI here yet; auto-denied by the runtime if unanswered`,
-      });
+    case "approval": {
+      if (!cb.onApproval) {
+        cb.onStep?.({
+          id: frame.id,
+          type: "approval",
+          status: `${frame.title} — nothing here can answer; auto-denied by the runtime if unanswered`,
+        });
+        return;
+      }
+      // The deadline is measured from RECEIPT, not the frame's pod-side `at`:
+      // the two clocks are unrelated, and overshooting by the network hop is
+      // the safe direction for a countdown the user acts on.
+      const deadline = Date.now() + APPROVAL_TIMEOUT_MS;
+      pending.set(frame.id, { run, kind: "approval", deadline });
+      cb.onApproval({ id: frame.id, kind: frame.kind, title: frame.title, detail: frame.detail, deadline });
       return;
-    case "ask":
-      cb.onStep?.({
-        id: frame.id,
-        type: "question",
-        status: `${frame.questions.map((q) => q.question).join(" · ")} — no answer UI here yet; the agent continues without one after the runtime's timeout`,
-      });
+    }
+    case "ask": {
+      if (!cb.onAsk) {
+        cb.onStep?.({
+          id: frame.id,
+          type: "question",
+          status: `${frame.questions.map((q) => q.question).join(" · ")} — nothing here can answer; the agent continues without one after the runtime's timeout`,
+        });
+        return;
+      }
+      const deadline = Date.now() + ASK_TIMEOUT_MS;
+      pending.set(frame.id, { run, kind: "ask", deadline });
+      cb.onAsk({ id: frame.id, questions: frame.questions, deadline });
       return;
+    }
     case "error":
       state.error = frame.error || "the runtime reported an error";
       return;
@@ -314,7 +409,7 @@ export async function runRemoteTurn(
   prompt: string,
   save: () => void,
   callbacks: RemoteRunCallbacks = {},
-  opts: { rotor?: unknown; model?: string; signal?: AbortSignal } = {},
+  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal } = {},
 ): Promise<RemoteRunOutcome> {
   // ONE silent retry on a dead binding: attempt 1 swallows its error, drops
   // the cached runtime, re-provisions, and runs again. Only the second
@@ -330,7 +425,7 @@ async function runRemoteTurnOnce(
   prompt: string,
   save: () => void,
   callbacks: RemoteRunCallbacks,
-  opts: { rotor?: unknown; model?: string; signal?: AbortSignal },
+  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal },
   forceFresh: boolean,
 ): Promise<RemoteRunOutcome> {
   const rotor = opts.rotor ?? DEFAULT_ROTOR;
@@ -354,6 +449,8 @@ async function runRemoteTurnOnce(
       threadId: chat.id,
       mode: modeFor(chat),
       ...(opts.model ? { model: opts.model } : {}),
+      // The pod defaults to `auto`; the SESSION's picked mode is what governs.
+      ...(opts.permission ? { permission: opts.permission } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
   } catch (err) {
@@ -365,7 +462,7 @@ async function runRemoteTurnOnce(
   const state = { text: "", error: null as string | null };
   const off = run.on((frame) => {
     if (opts.signal?.aborted) return;
-    dispatchFrame(frame, callbacks, state);
+    dispatchFrame(frame, callbacks, state, run);
   });
 
   let stopped = false;
@@ -375,6 +472,7 @@ async function runRemoteTurnOnce(
     if (result.error && !state.error) state.error = result.error;
   } catch (err) {
     off();
+    forgetPending(run);
     if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime }; }
     // A run that never streamed (unreachable pod, 401 bearer, 409 at-capacity,
     // wire mismatch) is the honest not-connected state; mid-stream loss with
@@ -388,6 +486,8 @@ async function runRemoteTurnOnce(
     state.error = err instanceof Error ? err.message : String(err);
   }
   off();
+  // The run is over: any card still parked on it can never be answered.
+  forgetPending(run);
 
   if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime }; }
   if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime }; }

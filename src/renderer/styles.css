@@ -13063,6 +13063,16 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
   padding: 4px 2px;
 }
 .cad-skip:hover { color: var(--text); text-decoration: underline; }
+/* The gate decides on its own when the countdown runs out (approval → denied,
+   ask → carried on) — say so quietly under the actions, without competing. */
+.cad-timeout {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cad-timeout[hidden] { display: none; }
 
 /* Prompt modal textarea (skill-ask-user — restored for compact/steer) */
 #skill-ask-user-answer {

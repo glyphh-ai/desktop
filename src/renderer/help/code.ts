@@ -20,7 +20,11 @@ import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops } from "./code-source-chip.js";
-import { canRunRemote, runRemoteTurn, type RemoteChat } from "./remote-run.js";
+import {
+  canRunRemote, runRemoteTurn, answerPending,
+  APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
+  type RemoteChat,
+} from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
 import { runHeroFlow } from "./dashboard.js";
 import { SPACE_LABEL } from "./space-meta.js";
@@ -102,9 +106,17 @@ let glyphhMode: (typeof MODES)[number]["id"] = "ask";
 // Approval cards awaiting a decision (rendered inline in the thread).
 // Ask dock queue — approvals and agent questions render one at a time in a
 // card docked just above the composer (never inline in the thread).
+//
+// The SAME queue and the SAME card serve a LOCAL run (main's permission gate,
+// over `glyphh-agent:approval`/`:ask` IPC) and a REMOTE one (the pod's frames,
+// via remote-run.ts). Only two fields differ per source: `deadline` (when the
+// gate decides on its own — the same 2min/10min either way) and `chatId` (the
+// session a late-answer note belongs to). Answering routes through
+// respondToDock, which asks remote-run first and falls back to IPC.
+interface AskDockCommon { runId?: string; chatId?: string; deadline?: number }
 type AskDockItem =
-  | { type: "approval"; id: string; kind: string; title: string; detail: string; runId?: string }
-  | { type: "ask"; id: string; questions: Array<{ question: string; options?: string[] }>; answers: string[]; step: number; runId?: string };
+  | ({ type: "approval"; id: string; kind: string; title: string; detail: string } & AskDockCommon)
+  | ({ type: "ask"; id: string; questions: Array<{ question: string; options?: string[] }>; answers: string[]; step: number } & AskDockCommon);
 let askQueue: AskDockItem[] = [];
 
 function paintChips(): void {
@@ -2532,7 +2544,12 @@ function send(): void {
   // session on web previously fell into the local runner, whose web stub
   // resolves undefined ("Cannot read properties of undefined (reading
   // 'runId')"). Driving the attached machine from web is deferred.
-  const webAlwaysRemote = onWebTarget() && modeOf(c) !== "chat" && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
+  // WEB = the shared cloud rotor for EVERY space, chat included. Excluding chat
+  // sent those turns to window.glyphh.glyphhRun — a method the web bridge does
+  // not implement — so a Chat turn spun forever with no answer and no error
+  // (Work and Code worked, which is exactly why it hid). The pod runs chat as a
+  // tool-less completion, the same shape the desktop's chatRun produced.
+  const webAlwaysRemote = onWebTarget() && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
   if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, text, src ?? { kind: "cloud-new" })); return; }
   const launch = (retried: boolean): Promise<void> =>
     window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), ...(src ? { source: src } : {}) })
@@ -2602,6 +2619,18 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         r.text += delta;
         queueStreamPaint(chatId);
       },
+      // A parked pod frame lands in the SAME ask dock a local run uses — the
+      // card is answered through respondToDock, which routes back to this run's
+      // handle via remote-run's pending registry. runId is the SYNTHETIC one
+      // liveRuns carries, so finishRun clears this run's cards (and only those).
+      onApproval: (a) => {
+        askQueue.push({ type: "approval", id: a.id, kind: a.kind, title: a.title, detail: a.detail, runId: liveRuns.get(chatId)?.runId ?? undefined, chatId, deadline: a.deadline });
+        paintAskDock();
+      },
+      onAsk: (a) => {
+        askQueue.push({ type: "ask", id: a.id, questions: a.questions, answers: [], step: 0, runId: liveRuns.get(chatId)?.runId ?? undefined, chatId, deadline: a.deadline });
+        paintAskDock();
+      },
       onDone: (text) => { finishRun(chatId, text); },
       onStopped: () => { finishRun(chatId, liveRuns.get(chatId)?.text || "", true); },
       onError: (detail) => {
@@ -2611,8 +2640,10 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
       },
     },
     // No model override — the loop resolves its own model server-side (matches
-    // the local path, where main resolves the loop's roles).
-    { rotor: glyphhLoop, signal: ac.signal },
+    // the local path, where main resolves the loop's roles). The permission mode
+    // DOES ride the turn: the pod's own default is `auto`, so without it a
+    // session left in Ask mode would run unattended.
+    { rotor: glyphhLoop, permission: glyphhMode, signal: ac.signal },
   ).then((outcome) => {
     remoteAborters.delete(chatId);
     // An UNAVAILABLE stage is the honest "runtime not connected" state: the
@@ -2669,7 +2700,8 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   }
   void saveStore();
   liveRuns.delete(chatId);
-  // This run's pending cards vanish; other runs' stay queued.
+  // This run's pending cards vanish; other runs' stay queued. (paintAskDock
+  // restarts the countdown for whatever card is now on top, or stops it.)
   if (run?.runId) askQueue = askQueue.filter((q) => q.runId !== run.runId);
   paintAskDock();
   stopRunTickerIfIdle();
@@ -2693,6 +2725,91 @@ function finishRun(chatId: string, text: string, stopped = false): void {
 function askDockShift(): void {
   askQueue.shift();
   paintAskDock();
+}
+
+/**
+ * Answer the dock's card — the ONE call both sources go through.
+ *
+ * remote-run holds the parked ids it streamed, so it answers a REMOTE card on
+ * its own run handle; an id it doesn't know is a LOCAL card and goes over the
+ * desktop IPC exactly as before. The dock's buttons never branch on source.
+ *
+ * A `late` routing means the runtime's own deadline beat the click — the pod
+ * already denied/answered and there is nothing left to resolve. That is not an
+ * error: it's swallowed and noted in the session so the transcript stays honest.
+ */
+function respondToDock(item: AskDockItem, reply: { allow?: boolean; answers?: string[] }): void {
+  void answerPending(item.id, reply).then((routing) => {
+    if (routing === "unknown") {
+      if (reply.answers) void window.glyphh.glyphhAskRespond?.(item.id, reply.answers);
+      else void window.glyphh.glyphhApprovalRespond?.(item.id, !!reply.allow);
+      return;
+    }
+    if (routing === "late") {
+      pushDockNote(item.chatId, item.type === "approval"
+        ? "⏳ That answer arrived after the runtime's deadline — it had already denied the action."
+        : "⏳ That answer arrived after the runtime's deadline — Glyphh had already carried on without one.");
+    }
+  });
+}
+
+/** Land a quiet breadcrumb in a session's transcript (used for late answers and
+ *  gate timeouts). Falls back to the session in view when the card carried none. */
+function pushDockNote(chatId: string | undefined, text: string): void {
+  const chat = chats.find((c) => c.id === chatId) ?? chats.find((c) => c.id === currentId);
+  if (!chat) return;
+  chat.messages.push({ role: "assistant", kind: "tool", text, at: Date.now() });
+  void saveStore();
+  if (chat.id === currentId) renderThread();
+}
+
+// The dock's countdown ticks once a second while a card with a deadline is up.
+// Both gates decide FOR the user when it runs out (approval → denied, ask →
+// answered empty), so the card says so rather than sitting there implying the
+// run waits forever.
+let dockTicker: number | null = null;
+
+function stopDockTicker(): void {
+  if (dockTicker !== null) { clearInterval(dockTicker); dockTicker = null; }
+}
+
+const mmss = (ms: number): string => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+/** The quiet "it decides on its own" line + its live countdown. Returns the
+ *  element, and drives expiry: at the deadline the actions go dead (the gate
+ *  has already ruled) and the card clears itself a beat later. */
+function dockTimeoutNote(item: AskDockItem, actions: HTMLElement): HTMLElement {
+  const note = document.createElement("div");
+  note.className = "cad-timeout";
+  const deadline = item.deadline;
+  if (!deadline) { note.hidden = true; return note; }
+  let expired = false;
+  const tick = (): void => {
+    const left = deadline - Date.now();
+    if (left > 0) {
+      note.textContent = item.type === "approval"
+        ? `Denied automatically in ${mmss(left)} if you don't answer.`
+        : `Glyphh carries on without an answer in ${mmss(left)}.`;
+      return;
+    }
+    if (expired) return;
+    expired = true;
+    stopDockTicker();
+    note.textContent = item.type === "approval"
+      ? "Timed out — the runtime denied this on its own."
+      : "Timed out — Glyphh carried on without an answer.";
+    actions.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+    // Let the user read the outcome, then clear the card — the run has moved on
+    // (a denied tool leaves its own ✕ breadcrumb in the thread).
+    setTimeout(() => { if (askQueue[0] === item) askDockShift(); }, 2500);
+  };
+  tick();
+  stopDockTicker();
+  dockTicker = setInterval(tick, 1000) as unknown as number;
+  return note;
 }
 
 function dockHead(label: string, tone: string, item: AskDockItem): HTMLElement {
@@ -2723,6 +2840,7 @@ function paintAskDock(): void {
   const item = askQueue[0];
   dock.hidden = !item;
   dock.textContent = "";
+  stopDockTicker();
   if (!item) return;
 
   if (item.type === "approval") {
@@ -2758,13 +2876,14 @@ function paintAskDock(): void {
       b.className = `action-btn ${cls}`;
       b.textContent = label;
       b.addEventListener("click", () => {
-        void window.glyphh.glyphhApprovalRespond?.(item.id, allow);
+        respondToDock(item, { allow });
         askDockShift();
       });
       return b;
     };
     actions.append(mk("Deny", false, "secondary"), mk("Approve", true, "primary"));
     dock.appendChild(actions);
+    dock.appendChild(dockTimeoutNote(item, actions));
     return;
   }
 
@@ -2779,7 +2898,7 @@ function paintAskDock(): void {
     item.answers[item.step] = value;
     item.step += 1;
     if (item.step >= item.questions.length) {
-      void window.glyphh.glyphhAskRespond?.(item.id, item.questions.map((_x, i) => item.answers[i] ?? ""));
+      respondToDock(item, { answers: item.questions.map((_x, i) => item.answers[i] ?? "") });
       askDockShift();
     } else {
       paintAskDock();
@@ -2819,6 +2938,7 @@ function paintAskDock(): void {
   skip.addEventListener("click", () => answer(""));
   custom.append(inp, sendBtn, skip);
   dock.appendChild(custom);
+  dock.appendChild(dockTimeoutNote(item, custom));
   if (!q.options?.length) inp.focus();
 }
 
@@ -2857,12 +2977,16 @@ function initGlyphhAgentEvents(): void {
     e[1].outTok = d.outTokens;
     if (e[0] === currentId) paintRunMeta();
   });
+  // A LOCAL gate parks in main with the same deadlines the pod uses
+  // (glyphh-agent-permissions.ts), so the card counts down identically.
+  // A LOCAL gate parks in main with the same deadlines the pod uses
+  // (glyphh-agent-permissions.ts), so the card counts down identically.
   window.glyphh.onGlyphhAgentApproval?.((a) => {
-    askQueue.push({ type: "approval", ...a });
+    askQueue.push({ type: "approval", ...a, deadline: Date.now() + APPROVAL_TIMEOUT_MS });
     paintAskDock();
   });
   window.glyphh.onGlyphhAgentAsk?.((d) => {
-    askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0, runId: (d as { runId?: string }).runId });
+    askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0, runId: (d as { runId?: string }).runId, deadline: Date.now() + ASK_TIMEOUT_MS });
     paintAskDock();
   });
   // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
