@@ -15060,7 +15060,11 @@ body[data-session-space="code"] #code-session-kebab-wrap { display: none; }
 /* Layout editor: the agent tabs at the top — same pill as the new-session
    screen, so "which agent rides this layout" reads identically. */
 .layout-space-tabs { display: inline-flex; align-items: center; gap: 2px; padding: 2px;
-  margin: 0 0 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; }
+  margin: 0 0 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; }
+.layout-space-tabs .code-space-opt { padding: 5px 12px; font-size: 12px; border-radius: 7px;
+  border: 0; background: transparent; color: var(--text-3); font-family: inherit; cursor: pointer; }
+.layout-space-tabs .code-space-opt:hover { color: var(--text); background: var(--hover); }
+.layout-space-tabs .code-space-opt.active { background: var(--accent); color: var(--accent-ink, #fff); }
 
 /* CHAT has no workspace: no folder, no tools, no loop — the MODEL stays. */
 body[data-session-space="chat"] #code-plus-wrap,

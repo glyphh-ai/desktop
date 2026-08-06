@@ -12,16 +12,6 @@
           </div>
           <div id="layouts-list" class="crud-cards"></div>
           <div id="layout-editor" class="crud-inline-form hidden">
-            
-            <!-- WHICH AGENT rides this layout — the same three tabs the new
-                 session screen uses. Opening the layout loads that agent. -->
-            <div class="layout-space-tabs" role="tablist" aria-label="Agent">
-              <button type="button" class="code-space-opt" data-space="chat">Chat</button>
-              <button type="button" class="code-space-opt" data-space="cowork">Work</button>
-              <button type="button" class="code-space-opt" data-space="code">Code</button>
-              <button type="button" class="code-space-opt" data-space="">Auto</button>
-            </div>
-            <input type="hidden" id="layout-space" value="" />
 <div class="crud-inline-header">
               <a class="crud-breadcrumb-back" id="layout-back-link">&larr; Layouts</a>
               <div class="crud-spacer"></div>
@@ -34,7 +24,20 @@
             </div>
             <div class="app-builder-split">
             <div class="app-builder-controls">
-            <label class="settings-label">Name</label>
+            <!-- WHICH AGENT rides this layout — the same three tabs the rail
+                 uses. Opening the layout loads that agent; Auto derives it
+                 from the panels (dev tools ⇒ Code). -->
+            <label class="settings-label">Agent</label>
+            <div class="settings-hint" style="margin:-2px 0 8px;">Which agent opens with this layout.</div>
+            <div class="layout-space-tabs" role="tablist" aria-label="Agent">
+              <button type="button" class="code-space-opt" data-space="chat">Chat</button>
+              <button type="button" class="code-space-opt" data-space="cowork">Work</button>
+              <button type="button" class="code-space-opt" data-space="code">Code</button>
+              <button type="button" class="code-space-opt" data-space="">Auto</button>
+            </div>
+            <input type="hidden" id="layout-space" value="" />
+
+            <label class="settings-label" style="margin-top:16px;">Name</label>
             <input id="layout-new-name" type="text" class="settings-input" placeholder="layout name" spellcheck="false" autocomplete="off" />
 
             <label class="settings-label" style="margin-top:8px;">Grid</label>
