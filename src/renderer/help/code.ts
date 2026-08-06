@@ -3700,10 +3700,18 @@ export function initCode(): void {
   window.addEventListener("glyphh:activate-space", (e) => {
     const s = (e as CustomEvent).detail;
     if (s !== "chat" && s !== "cowork" && s !== "code") return;
-    if (railTab === s) return;
     railTab = s;
+    // THE LAYOUT'S TYPE WINS: a session of a DIFFERENT space must not ride a
+    // layout that declares one (a Chat session inside a Code layout would get
+    // Chat's tool-less pack while the layout's dev panels sat there useless).
+    // Drop to the pending-new state so the first send creates a session of the
+    // layout's own type.
+    const cur = current();
+    if (cur && spaceOf(cur) !== s) { currentId = ""; void saveStore(); }
     paintRailTabs();
+    syncSpaceAttrs();
     renderHistory();
+    renderThread();
     paintCw();
     void checkWorkdirGate();
   });
