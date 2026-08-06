@@ -76,6 +76,16 @@ if (typeof window !== 'undefined') {
   // A class so CSS can hide OS-only chrome (window controls) that has no meaning
   // in a browser tab. Set before renderer scripts run, so there's no flash.
   if (typeof document !== 'undefined') document.documentElement.classList.add('glyphh-web');
+  // A ghost service worker from the retired PWA install can intercept fetches
+  // (including the cross-origin POST to the runtime) and fail them opaquely.
+  // This build ships no SW at all, so unregister anything still registered.
+  try {
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+      void navigator.serviceWorker.getRegistrations()
+        .then((rs) => rs.forEach((r) => { void r.unregister(); }))
+        .catch(() => {});
+    }
+  } catch { /* no SW API */ }
 
   // ── LOGIN-FIRST wall (2026-08-03, Claude model — no anonymous app access) ────
   // `/` serves the login shell; `/home` is the AUTHED app surface. `isAuthed()`

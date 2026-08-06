@@ -2657,7 +2657,14 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
     // designed message, never a fake reply. onError already committed for the
     // { error } case; only unavailable needs its own copy here.
     if ("unavailable" in outcome && outcome.unavailable && !liveRuns.get(chatId)?.text) {
-      finishRun(chatId, remoteUnavailableMessage(outcome.stage, outcome.detail, (c as { runtime?: { url?: string } }).runtime?.url));
+      // SELF-DIAGNOSE: probe the runtime we just failed to reach and say WHICH
+      // layer broke — reachable/unreachable, and whether it's a CORS block (a
+      // browser reports those as an opaque network error, which is why "POST
+      // /run failed" told nobody anything).
+      const rtUrl = (c as { runtime?: { url?: string } }).runtime?.url;
+      void probeRuntime(rtUrl).then((probe) => {
+        finishRun(chatId, remoteUnavailableMessage(outcome.stage, outcome.detail, rtUrl, probe));
+      });
     } else if (liveRuns.has(chatId)) {
       // A callback path we didn't already finish (defensive) — land whatever text exists.
       finishRun(chatId, liveRuns.get(chatId)?.text || "");
@@ -2671,7 +2678,27 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
 /** The app's honest not-connected copy for a remote turn that couldn't reach a
  *  live runtime. The session EXISTS server-side (remote-run bound its id); a
  *  runtime just isn't deployed + routed for the org's region yet. */
-function remoteUnavailableMessage(stage: string, detail: string, runtimeUrl?: string): string {
+/** Probe the runtime the turn couldn't use: reachable? CORS-blocked? down?
+ *  Runs only on the failure path, bounded, never throws. */
+async function probeRuntime(url?: string): Promise<string> {
+  if (!url) return "";
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 4000);
+    try {
+      const res = await fetch(`${url.replace(/\/$/, "")}/healthz`, { signal: ctl.signal });
+      return res.ok ? "the runtime IS reachable from this browser — the failure is auth or capacity, not the network"
+        : `the runtime answered ${res.status} on /healthz`;
+    } finally { clearTimeout(t); }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return /abort/i.test(msg)
+      ? "the runtime did not answer within 4s (down, or blocked before it could reply)"
+      : `this browser could not reach the runtime at all (${msg}) — a blocked cross-origin request or nothing listening`;
+  }
+}
+
+function remoteUnavailableMessage(stage: string, detail: string, runtimeUrl?: string, probe?: string): string {
   const why =
     stage === "provision" || stage === "provision-poll" ? "the cloud runtime couldn't be provisioned"
     : stage === "not-ready" ? "the cloud runtime didn't come up in time"
@@ -2685,7 +2712,7 @@ function remoteUnavailableMessage(stage: string, detail: string, runtimeUrl?: st
   const server = api.__GLYPHH_API_URL__ || api.glyphh?.serverUrl || "";
   const where = [server && `control plane ${server}`, runtimeUrl && `runtime ${runtimeUrl}`]
     .filter(Boolean).join(" · ");
-  return `⚠ Cloud runtime not connected — ${why} (at ${stage}).${where ? ` ${where}.` : ""} (${detail})`;
+  return `⚠ Cloud runtime not connected — ${why} (at ${stage}).${where ? ` ${where}.` : ""}${probe ? ` Diagnosis: ${probe}.` : ""} (${detail})`;
 }
 
 // Stopping isn't failure — it's a choice. All peace, no violence.
