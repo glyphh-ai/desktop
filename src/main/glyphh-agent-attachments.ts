@@ -104,24 +104,29 @@ export function attachmentPromptBlock(atts: AttachRef[]): string {
   ].join("\n");
 }
 
-export interface VisionBlock {
-  type: "image";
-  source: { type: "base64"; media_type: string; data: string };
-}
+/** An attached image, decoded for the wire: the harness run body's `images`
+ *  shape (`{mediaType, data}`, base64, no `data:` prefix). */
+export interface ImageAttachment { mediaType: string; data: string }
 
-/** Attached images as API vision blocks (base64), size- and count-capped.
- *  Oversize or unreadable images just stay path refs in the manifest. */
-export function attachmentVisionBlocks(atts: AttachRef[]): VisionBlock[] {
-  const blocks: VisionBlock[] = [];
+/**
+ * Attached images as base64 payloads, size- and count-capped. Oversize,
+ * unreadable, or non-image attachments just stay path refs in the manifest —
+ * the agent can still read them with read_file, it simply can't SEE them.
+ *
+ * The caps sit under the pod's own (8 images, ~7.5 MiB of base64 each), so a
+ * turn this side accepts is never one the pod will reject.
+ */
+export function attachmentImageRefs(atts: AttachRef[]): ImageAttachment[] {
+  const images: ImageAttachment[] = [];
   for (const a of atts) {
-    if (a.kind !== "image" || blocks.length >= MAX_VISION_BLOCKS) continue;
-    const media = IMAGE_EXT[extname(a.path).toLowerCase()];
-    if (!media) continue;
+    if (a.kind !== "image" || images.length >= MAX_VISION_BLOCKS) continue;
+    const mediaType = IMAGE_EXT[extname(a.path).toLowerCase()];
+    if (!mediaType) continue;
     try {
       const buf = readFileSync(a.path);
       if (!buf.length || buf.length > MAX_VISION_BYTES) continue;
-      blocks.push({ type: "image", source: { type: "base64", media_type: media, data: buf.toString("base64") } });
+      images.push({ mediaType, data: buf.toString("base64") });
     } catch { /* unreadable — path ref still in the manifest */ }
   }
-  return blocks;
+  return images;
 }

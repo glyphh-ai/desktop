@@ -38,7 +38,7 @@ import { glyphhMode, registerRemotePause } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { glyphhToolDefs, connectorWireTools, type ConnectorWireDef } from "./glyphh-agent-tools";
 import { selectConnectorTools } from "./tool-vectors";
-import type { AttachRef } from "./glyphh-agent-attachments";
+import { attachmentImageRefs, type AttachRef } from "./glyphh-agent-attachments";
 import { composeTurn, brandError, type ChatMessage } from "./glyphh-agent-prompt";
 import { lendToolSurface, BRIDGE_TOOL_PREFIX, type LentSurface } from "./harness-mcp-bridge";
 
@@ -134,8 +134,10 @@ export async function harnessRun(
     const runtimeToken = await getClient().token();
     if (!runtimeToken) throw new Error("sign in to run a turn — the local harness needs your access token to reach the gateway");
 
-    // 2. The turn, assembled exactly as the in-process path assembles it.
+    // 2. The turn, assembled exactly as the in-process path assembles it —
+    //    the path manifest in the text, the images as real vision blocks.
     const { system, lastUser, ask } = await composeTurn(base, chatId, attachments);
+    const images = attachmentImageRefs(attachments);
 
     // 3. The tool surface. Builtins for the mode; connectors as first-class
     //    tools with their real schemas (code mode pays for find_tools/call_tool
@@ -180,6 +182,16 @@ export async function harnessRun(
       mode,
       permission: glyphhMode(),
       ...(model ? { model } : {}),
+      // The SESSION'S REAL FOLDER as the run's cwd. A LOCAL (auth-off,
+      // loopback) pod honours this and anchors its OWN preset tools —
+      // Bash/Read/Edit/Glob/Grep — there; a cloud pod 400s the field, which is
+      // exactly the boundary we want. Without it those tools worked inside the
+      // pod's empty sandbox while the user's folder sat untouched.
+      ...(runWorkdir ? { workdir: runWorkdir } : {}),
+      // Pasted screenshots as vision blocks ahead of the prompt text. Pod-side
+      // caps (8 × ~7.5MiB) sit above the decoder's, so an accepted turn is
+      // never one the pod rejects.
+      ...(images.length ? { images } : {}),
       gatewayUrl: `${SERVER_URL}/api/gateway`,
       runtimeToken,
       mcpServers: [{ name: surface.name, url: surface.url, headers: surface.headers }],
