@@ -65,13 +65,30 @@ export async function workspaceExtras(): Promise<string> {
         `Say which role executed what in your reply.`;
     }
   } catch { /* offline — the loop block is advisory */ }
+  // WHERE THE AGENT IS. Without this the model has filesystem/shell access to
+  // the picked folder but is never told it's on the user's Desktop or which
+  // folder is the project root — so it asks "which folder?" or refuses local
+  // work it can actually do. The UI shows the folder chip; the agent must know
+  // the same thing. Folder-scoped, so it only invalidates the prompt cache when
+  // the user actually switches folders (a genuinely new context).
+  const wd = getExplicitWorkingDirectory();
+  const envLine = wd
+    ? `ENVIRONMENT: You are running on the user's Desktop machine, with direct access to its local filesystem and shell. Your working folder — the current app's project ROOT — is "${wd.split(/[\\/]/).filter(Boolean).pop() || wd}" at ${wd}. Read, write, and run commands there directly; never ask the user where you are or which folder to use.`
+    : `ENVIRONMENT: You are running on the user's Desktop machine, with direct access to its local filesystem and shell. No working folder is picked yet — ask the user to choose one with the folder chip before building or editing files.`;
   return [
+    envLine,
     appList ? `The user's app library (use these names with open_app — prefer the specific app over 'browser'): ${appList}` : "",
     connList ? `Connected accounts: ${connList} — each one's API tools are FIRST-CLASS tools in your toolset (real schemas; call them directly, never invent names).` : "",
     loopBlock,
-    "RULE: the working folder ROOT holds the current app's project — build it there, then call update_app() to ship it (it packages the built dist/, never your source). After any change, rebuild + update_app or tool calls run the stale installed version.",
-    "RULE: to SHOW the user an app you built or deployed, open it in the Browser panel — open_browser(<deployed URL>) — never the raw app panel. Only fall back to open_app(<slug>) when there is no reachable URL (local-only install, or the deployed app requires a login the embedded browser lacks).",
-    "RULE: update_app() is the ONLY way to ship — never a CLI, never npx, and NEVER any login/device-auth flow. Your session is already authenticated; initiating authentication is forbidden.",
+    "RULE: the working folder ROOT holds the current app's project — build it there. To install it as a LOCAL panel app on this machine, call update_app() (it packages the built dist/, never your source). After any change, rebuild + update_app or tool calls run the stale installed version.",
+    // PUBLISHING is deliberately not described here. The pod lends itself the
+    // control plane's app tools and appends its own publish policy (rrotor
+    // glyphh-apps.ts), so the scaffold → build → create_app_entry → build_app
+    // flow is stated ONCE, in the place both the desktop and a cloud pod read
+    // it. Repeating it here is how the two surfaces would drift.
+    "RULE: to SHOW the user an app, open it in the Browser panel — open_browser(<published URL>) — never the raw app panel. Only fall back to open_app(<slug>) when there is no reachable URL (a local-only install, or a published app that needs a login the embedded browser lacks).",
+    "RULE: NEVER start a local web server to show something — no `python3 -m http.server`, no `npx serve`, no `vite preview`. Publish the app and open its URL instead.",
+    "RULE: shipping goes through the tools — never a CLI, never npx, and NEVER any login/device-auth flow. Your session is already authenticated; initiating authentication is forbidden.",
     GLYPHH_APP_SPEC,
     "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
     "MEMORY: you have layers — Ada (long-term facts), the rolling summary (mid-term), and <relevant_earlier_context> blocks (short-term recall of this session's own turns). On unfamiliar code, semantic_search(query) FIRST — it finds the right spans by meaning; read_file the spans it names instead of whole files.",
