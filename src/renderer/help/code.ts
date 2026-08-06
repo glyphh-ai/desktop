@@ -2611,7 +2611,13 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
       onStep: (step) => {
         const r = liveRuns.get(chatId);
         if (!r) return;
-        pushStep(`⚙ ${step.type}${step.status ? ` — ${step.status}` : ""}${step.error ? ` — ${step.error}` : ""}`);
+        // Match the LOCAL path's grammar exactly (✓ done / ✕ denied-or-failed /
+        // ⚙ started) — remote breadcrumbs were rendering every outcome as ⚙,
+        // so a denial read like a tool that was merely starting.
+        const bad = step.status === "denied" || step.status === "failed" || !!step.error;
+        const glyph = bad ? "✕" : step.status ? "✓" : "⚙";
+        const detail = step.error || (step.status && step.status !== "ok" ? step.status : "");
+        pushStep(`${glyph} ${step.type}${detail ? ` — ${detail}` : ""}`);
       },
       onToken: (delta) => {
         const r = liveRuns.get(chatId);
