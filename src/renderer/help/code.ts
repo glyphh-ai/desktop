@@ -858,15 +858,28 @@ function ensureCodeSection(): void {
   currentId: (): string | null => currentId,
   currentTitle: (): string => current()?.title ?? "New session",
   switch: (id: string): void => {
-    if (!chats.some((c) => c.id === id)) return;
+    const target = chats.find((c) => c.id === id);
+    if (!target) return;
     listView = false;
     currentId = id;
     threadPinned = true;
+    // The session's OWN space comes with it — clicking a Work session from the
+    // landing must open the Work agent, not whatever space the pill was left on.
+    railTab = spaceOf(target);
+    document.body.dataset.railSpace = railTab;
+    window.dispatchEvent(new CustomEvent("rail-space-changed"));
     void saveStore();
     syncThinking();   // this session's own run state, not the last one's
     renderHistory();
     renderThread();
     broadcastTimeline(!!currentRun());
+    // SURFACE THE AGENT: called from the + New Session screen's session column,
+    // this used to set the session and repaint a thread nobody could see — the
+    // click read as doing nothing at all.
+    if (document.body.classList.contains("composer-on-home")) {
+      ensureCodeSection();
+      gotoSection("agent");
+    }
   },
   startNew: (): void => {
     // LAZY, like both + buttons: clear the selection and repaint. The record
