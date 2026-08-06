@@ -15023,3 +15023,13 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
 .session-head-actions + #code-session-kebab-wrap { margin-left: 0; }
 /* The history dropdown hangs off its button in the header's left group. */
 .session-head-actions { position: relative; }
+
+/* The Code agent has ONE ⋯: the workbench "More" menu, which now carries the
+   session actions. Its own kebab would be a second identical control. */
+.code-root:has(#code-view-more) #code-session-kebab-wrap { display: none; }
+.code-view-session-actions { border-top: 1px solid var(--border-2); margin-top: 4px; padding-top: 4px; }
+.code-view-session-actions .danger { color: var(--danger, #e5484d); }
+
+/* Landing session column: pager under the rows. */
+.dash-sessions-pager { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+.dash-sessions-page-at { font-size: 11px; color: var(--text-3); }

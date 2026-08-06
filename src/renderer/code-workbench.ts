@@ -5369,6 +5369,11 @@ async function init(): Promise<void> {
   const moreMenu = document.getElementById("code-view-more-menu");
   moreBtn?.addEventListener("click", (ev) => {
     ev.stopPropagation();
+    // Session actions (Rename / Pin / Delete) live in THIS menu on the Code
+    // agent — a second ⋯ beside it was pure duplication. code.ts owns the
+    // actions; it paints them into the menu's session section on open.
+    (window as unknown as { __paintSessionActions?: (host: HTMLElement) => void })
+      .__paintSessionActions?.(moreMenu as HTMLElement);
     moreMenu?.classList.toggle("hidden");
   });
   document.addEventListener("click", (ev) => {

@@ -403,7 +403,8 @@ export function runHeroFlow(canvas: HTMLCanvasElement, variantKey: FlowVariant):
 function startDashParticles(): void {
   const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
   if (!canvas || particlesRaf) return;
-  const variantKey: FlowVariant = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
+  const space = document.body.dataset.railSpace;
+  const variantKey: FlowVariant = space === "chat" ? "chat" : space === "code" ? "code" : "cowork";
   particlesVariant = variantKey;
   particlesRaf = 1; // mark running (the engine owns its own RAF handle)
   const stop = runHeroFlow(canvas, variantKey);
@@ -412,14 +413,24 @@ function startDashParticles(): void {
 
 /** Code's right column: the user's SESSIONS (pending + recent), newest first —
  *  a click resumes one. Reads the live store via the __agentSessions bridge. */
+let sessionsPage = 0;
+const SESSIONS_PER_PAGE = 6;
+
 function renderSessionsList(): void {
   const host = document.getElementById("dash-sessions-list");
   if (!host) return;
   const api = (window as unknown as {
-    __agentSessions?: { list(): Array<{ id: string; title: string; createdAt: number; mode: string }>; switch(id: string): void };
+    __agentSessions?: { list(): Array<{ id: string; title: string; createdAt: number; mode: string; pinned?: boolean }>; switch(id: string): void };
   }).__agentSessions;
-  const sessions = (api?.list() || []).filter((s2) => s2.mode === "code")
-    .sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
+  // The column belongs to the ACTIVE space (Work or Code) — PINNED first, then
+  // alphabetical by title, paginated. A click opens that agent.
+  const space = document.body.dataset.railSpace === "code" ? "code" : "cowork";
+  const all = (api?.list() || []).filter((s2) => s2.mode === space)
+    .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
+      || (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }));
+  const pages = Math.max(1, Math.ceil(all.length / SESSIONS_PER_PAGE));
+  if (sessionsPage >= pages) sessionsPage = pages - 1;
+  const sessions = all.slice(sessionsPage * SESSIONS_PER_PAGE, (sessionsPage + 1) * SESSIONS_PER_PAGE);
   host.innerHTML = "";
   if (!sessions.length) {
     const empty = document.createElement("div");
@@ -438,6 +449,23 @@ function renderSessionsList(): void {
     row.addEventListener("click", () => api?.switch(sess.id));
     host.appendChild(row);
   }
+  if (pages > 1) {
+    const pager = document.createElement("div");
+    pager.className = "dash-sessions-pager";
+    const mk = (label: string, delta: number, disabled: boolean): HTMLButtonElement => {
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "code-icon-btn"; btn.textContent = label;
+      btn.disabled = disabled;
+      btn.addEventListener("click", () => { sessionsPage += delta; renderSessionsList(); });
+      return btn;
+    };
+    pager.append(mk("‹", -1, sessionsPage === 0));
+    const at = document.createElement("span");
+    at.className = "dash-sessions-page-at";
+    at.textContent = `${sessionsPage + 1} / ${pages}`;
+    pager.append(at, mk("›", 1, sessionsPage >= pages - 1));
+    host.appendChild(pager);
+  }
 }
 
 function agoLabel(ts: number): string {
@@ -451,13 +479,17 @@ function agoLabel(ts: number): string {
 /** Swap the two-col content to match the space: Work → runs, Code → sessions. */
 function paintSpaceColumns(): void {
   const isCode = document.body.dataset.railSpace === "code";
-  document.getElementById("dash-right-label")!.textContent = isCode ? "Sessions" : "Recent runs";
-  document.getElementById("dash-tasks-list")?.classList.toggle("hidden", isCode);
-  document.getElementById("dash-tasks-search")?.classList.toggle("hidden", isCode);
-  document.getElementById("dash-tasks-pager")?.classList.toggle("hidden", isCode);
-  document.getElementById("dash-sessions-list")?.classList.toggle("hidden", !isCode);
+  // WORK and CODE both show their own sessions (pinned, alphabetical, paged);
+  // Chat's landing keeps the runs column.
+  const chat = document.body.dataset.railSpace === "chat";
+  document.getElementById("dash-right-label")!.textContent = chat ? "Recent runs" : "Sessions";
+  document.getElementById("dash-tasks-list")?.classList.toggle("hidden", !chat);
+  document.getElementById("dash-tasks-search")?.classList.toggle("hidden", !chat);
+  document.getElementById("dash-tasks-pager")?.classList.toggle("hidden", !chat);
+  document.getElementById("dash-sessions-list")?.classList.toggle("hidden", chat);
   renderRecommendations();
-  if (isCode) renderSessionsList();
+  sessionsPage = 0;
+  if (!chat) renderSessionsList();
 }
 
 // Switching Chat ↔ Work while the landing is up swaps the flow's orientation
@@ -466,7 +498,8 @@ window.addEventListener("rail-space-changed", () => {
   paintSpaceColumns();
   const canvas = document.getElementById("dash-particles") as HTMLCanvasElement | null;
   if (!canvas || canvas.offsetParent === null) return;
-  const want: FlowVariant = document.body.dataset.railSpace === "chat" ? "chat" : "cowork";
+  const sp = document.body.dataset.railSpace;
+  const want: FlowVariant = sp === "chat" ? "chat" : sp === "code" ? "code" : "cowork";
   if (want === particlesVariant) return;
   particlesCleanup?.();       // stops the engine + resets particlesRaf
   particlesCleanup = null;
