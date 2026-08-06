@@ -208,7 +208,10 @@ async function reconcile(): Promise<void> {
   // Tombstoned-here deletes land first — a delete made offline still wins.
   for (const id of Object.keys(deleted)) {
     try { await t.del(id); delete deleted[id]; }
-    catch { needsReconcile = true; }
+    catch (err) {
+      if ((err as { httpStatus?: number })?.httpStatus === 404) { delete deleted[id]; continue; }
+      needsReconcile = true;
+    }
   }
 
   const serverById = new Map(serverList.map((m) => [m.id, m]));
@@ -359,7 +362,13 @@ export function remove(id: string): void {
   if (!t) return;
   t.del(id)
     .then(() => { delete deleted[id]; saveMeta(); })
-    .catch((err) => { warnOffline(err); needsReconcile = true; });
+    .catch((err) => {
+      // 404 = never reached the server (local-only) or already tombstoned:
+      // the goal state holds, so retire the tombstone instead of retrying it
+      // on every reconcile forever.
+      if ((err as { httpStatus?: number })?.httpStatus === 404) { delete deleted[id]; saveMeta(); return; }
+      warnOffline(err); needsReconcile = true;
+    });
 }
 
 // ── Lazy message bodies ───────────────────────────────────────────────────

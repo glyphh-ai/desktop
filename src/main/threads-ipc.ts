@@ -28,5 +28,14 @@ export function registerThreadsIpc(): void {
     if (!id || !p?.body || typeof p.body.updatedAt !== "number") throw new Error("threadsPush requires { id, body.updatedAt }");
     return getClient().sessions.pushThread(id, p.body);
   });
-  ipcMain.handle("glyphh-threads-delete", (_e, id: string) => getClient().sessions.deleteThread(String(id || "")));
+  // DELETE IS IDEMPOTENT: a thread that never reached the server (local-only,
+  // or already tombstoned) must not throw — the caller's goal state (gone) is
+  // already true. A raw 404 here surfaced as an unhandled IPC rejection.
+  ipcMain.handle("glyphh-threads-delete", async (_e, id: string) => {
+    try {
+      await getClient().sessions.deleteThread(String(id || ""));
+    } catch (err) {
+      if ((err as { httpStatus?: number }).httpStatus !== 404) throw err;
+    }
+  });
 }
