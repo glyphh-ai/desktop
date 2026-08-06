@@ -2657,7 +2657,7 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
     // designed message, never a fake reply. onError already committed for the
     // { error } case; only unavailable needs its own copy here.
     if ("unavailable" in outcome && outcome.unavailable && !liveRuns.get(chatId)?.text) {
-      finishRun(chatId, remoteUnavailableMessage(outcome.stage, outcome.detail));
+      finishRun(chatId, remoteUnavailableMessage(outcome.stage, outcome.detail, (c as { runtime?: { url?: string } }).runtime?.url));
     } else if (liveRuns.has(chatId)) {
       // A callback path we didn't already finish (defensive) — land whatever text exists.
       finishRun(chatId, liveRuns.get(chatId)?.text || "");
@@ -2671,13 +2671,21 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
 /** The app's honest not-connected copy for a remote turn that couldn't reach a
  *  live runtime. The session EXISTS server-side (remote-run bound its id); a
  *  runtime just isn't deployed + routed for the org's region yet. */
-function remoteUnavailableMessage(stage: string, detail: string): string {
+function remoteUnavailableMessage(stage: string, detail: string, runtimeUrl?: string): string {
   const why =
     stage === "provision" || stage === "provision-poll" ? "the cloud runtime couldn't be provisioned"
     : stage === "not-ready" ? "the cloud runtime didn't come up in time"
     : stage === "open" || stage === "stream" ? "the cloud runtime is unreachable from here"
     : "the cloud runtime isn't connected";
-  return `⚠ Cloud runtime not connected — ${why}. Remote sessions need a Fly runtime deployed and routed for your org's region. (${detail})`;
+  // NAME THE ENDPOINT. The old copy blamed "your org's region" for every
+  // failure, which is useless when the real cause is which SERVER this build
+  // talks to (a control plane without the harness routes provisions a runtime
+  // nothing can run on). Stage + address turns a mystery into a diagnosis.
+  const api = (window as unknown as { __GLYPHH_API_URL__?: string; glyphh?: { serverUrl?: string } });
+  const server = api.__GLYPHH_API_URL__ || api.glyphh?.serverUrl || "";
+  const where = [server && `control plane ${server}`, runtimeUrl && `runtime ${runtimeUrl}`]
+    .filter(Boolean).join(" · ");
+  return `⚠ Cloud runtime not connected — ${why} (at ${stage}).${where ? ` ${where}.` : ""} (${detail})`;
 }
 
 // Stopping isn't failure — it's a choice. All peace, no violence.
