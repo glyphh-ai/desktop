@@ -155,6 +155,35 @@ export function requestInlineConnect(wc: WebContents, app: ConnectCardApp): Prom
   });
 }
 
+// ── Remote pauses (the LOCAL HARNESS POD) ──────────────────────────────────
+//
+// When a tool-bearing turn runs on the pod, the approval/ask cards are still
+// the desktop's — but the PAUSE lives in the pod, resolved by
+// `POST /runs/:id/answer` (HarnessRun.answer). The renderer must not learn a
+// second protocol for that: it keeps answering on the same two IPC channels,
+// and a remote pause registered here intercepts the reply and forwards it.
+// Ids are pod-minted (`apr-*`/`ask-*`, same shape) and never collide with the
+// in-process maps — the handlers check this registry first.
+
+export interface RemoteAnswer { allow?: boolean; answers?: string[] }
+
+const remotePauses = new Map<string, (reply: RemoteAnswer) => void>();
+
+/** Register a pod-side pause. Returns its cancel (drop on run end). */
+export function registerRemotePause(id: string, resolve: (reply: RemoteAnswer) => void): () => void {
+  remotePauses.set(id, resolve);
+  return () => { remotePauses.delete(id); };
+}
+
+/** Try to answer a pod-side pause; false when the id isn't one. */
+function answerRemote(id: string, reply: RemoteAnswer): boolean {
+  const entry = remotePauses.get(id);
+  if (!entry) return false;
+  remotePauses.delete(id);
+  try { entry(reply); } catch { /* a dead run must not break the IPC reply */ }
+  return true;
+}
+
 export function registerGlyphhPermissionIpc(): void {
   ipcMain.handle("glyphh-agent-connect-respond", (_e, p: { id?: string; connected?: boolean; reason?: string }) => {
     const entry = pendingConnects.get(String(p?.id ?? ""));
@@ -164,17 +193,22 @@ export function registerGlyphhPermissionIpc(): void {
     return true;
   });
   ipcMain.handle("glyphh-agent-approval-respond", (_e, p: { id?: string; allow?: boolean }) => {
-    const entry = pending.get(String(p?.id ?? ""));
+    const id = String(p?.id ?? "");
+    if (answerRemote(id, { allow: !!p?.allow })) return true;
+    const entry = pending.get(id);
     if (!entry) return false;
-    pending.delete(String(p?.id));
+    pending.delete(id);
     entry(!!p?.allow);
     return true;
   });
   ipcMain.handle("glyphh-agent-ask-respond", (_e, p: { id?: string; answers?: unknown[] }) => {
-    const entry = pendingAsks.get(String(p?.id ?? ""));
+    const id = String(p?.id ?? "");
+    const answers = (Array.isArray(p?.answers) ? p.answers : []).map(String);
+    if (answerRemote(id, { answers })) return true;
+    const entry = pendingAsks.get(id);
     if (!entry) return false;
-    pendingAsks.delete(String(p?.id));
-    entry((Array.isArray(p?.answers) ? p.answers : []).map(String));
+    pendingAsks.delete(id);
+    entry(answers);
     return true;
   });
 }
