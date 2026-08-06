@@ -14019,16 +14019,24 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 
 /* Link treatment: same row, no button chrome. Accent in light mode; plain
    WHITE in dark — a purple link at the rail's top read as noise there. */
+/* + New session is the rail's PRIMARY action — a filled accent button, not a
+   text link. (It was a borderless link that read as secondary next to the
+   nav rows it sits above.) */
 .code-new-session.code-new-session-link {
-  border: none; background: none; padding: 8px 6px; border-radius: 6px;
-  color: var(--accent); font-weight: 500;
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-weight: 600;
+  justify-content: flex-start;
 }
-
-[data-theme="dark"] .code-new-session.code-new-session-link,
-[data-theme="purple"] .code-new-session.code-new-session-link,
-[data-theme="aurora"] .code-new-session.code-new-session-link {
-  color: #fff;
+.code-new-session.code-new-session-link:hover {
+  background: var(--accent-hover, var(--accent));
+  border-color: transparent;
+  color: var(--accent-ink, #fff);
 }
+.code-new-session.code-new-session-link svg { opacity: 0.95; }
 
 .code-new-session.code-new-session-link:hover { color: var(--text-bright); background: var(--hover); }
 

@@ -3574,9 +3574,10 @@ export function initCode(): void {
     void saveStore();
     document.body.dataset.railSpace = railTab;
     window.dispatchEvent(new CustomEvent("rail-space-changed"));
-    // NOTE: no explicit echo reset here — opening the dashboard section already
-    // closes every panel (openSectionInWorkbench resets first). Calling reset
-    // as well raced that teardown and left the surface with no composer.
+    // CLOSE EVERYTHING FIRST: every open card, panel and layout goes, then the
+    // landing mounts. (Ordering matters — a reset AFTER the section opens tore
+    // down the landing's own card and left the surface with no composer.)
+    (window as unknown as { __wbCloseAllForNewSession?: () => void }).__wbCloseAllForNewSession?.();
     renderHistory();
     renderThread();
     void checkWorkdirGate();

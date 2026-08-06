@@ -5866,6 +5866,17 @@ async function init(): Promise<void> {
     openEchoSurface();
     echoCtl?.reset();
   };
+  /** "+ New session" / the fixed Glyphh tile: CLOSE EVERYTHING — every echo
+   *  card, every panel, any open layout (its memory saved by the reset) and
+   *  every rail slot — leaving a bare surface for the landing to mount into.
+   *  Unlike __wbEchoReset this does not re-open the wall: the caller is about
+   *  to navigate to the + New Session screen. */
+  (window as unknown as { __wbCloseAllForNewSession?: () => void }).__wbCloseAllForNewSession = () => {
+    echoCtl?.reset();
+    for (let i = rails.length - 1; i >= 0; i--) rails.splice(i, 1);
+    renderRails();
+    saveLayout();
+  };
   // ⌘W (the menu's Close) closes the TOP PANEL first; only with nothing
   // open does it fall through to closing the window (the old behavior).
   // Esc no longer closes panels — it's real input to whatever is inside.
