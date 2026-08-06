@@ -12808,13 +12808,9 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
 
 /* ── Code HOME (CodeLanding port) — greeting + two-column, composer stays at
    the bottom of .code-agent. Rendered into #code-thread's inner. ─────────── */
-.code-thread-inner.code-landing-host,
-.code-landing-host { width: 100%; position: relative; min-height: 100%; }
 /* The landing goes full-bleed (bypasses the thread's 780px reading cap) so the
    rise backdrop fills the space; the body keeps its own centered max-width. */
-.code-thread-inner.code-landing-host { max-width: none; }
 /* The Code landing's HeroFlow backdrop (rise) — behind the body, click-through. */
-.cl-particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .cl-body { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; padding: 24px 20px 8px; width: 100%; }
 .cl-head { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
 .cl-mark { width: 34px; height: 34px; opacity: 0.95; }
@@ -15033,3 +15029,8 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
 /* Landing session column: pager under the rows. */
 .dash-sessions-pager { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 .dash-sessions-page-at { font-size: 11px; color: var(--text-3); }
+
+/* Agent header: [+ new] [recents] [⋯] ride the RIGHT edge (they sit after the
+   spacer); the title/back stay left. */
+.code-agent-head .session-head-actions { margin-left: 0; margin-right: 2px; }
+.code-agent-head .code-spacer { flex: 1 1 auto; }
