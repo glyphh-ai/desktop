@@ -15409,10 +15409,6 @@ body.code-dragging webview { pointer-events: none !important; }
   padding: 1rem 1.05rem;
   border-radius: 14px;
 }
-.glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-input:focus {
-  border-color: var(--phone-ember);
-  box-shadow: 0 0 0 1px var(--phone-ember);
-}
 
 /* Buttons: ≥44px touch targets, full-width, roomy stacking. */
 .glyphh-web.glyphh-phone #onboarding-overlay .btn-lg {
@@ -15422,21 +15418,9 @@ body.code-dragging webview { pointer-events: none !important; }
 }
 .glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-actions { gap: 1rem; }
 
-/* Primary CTA goes amber (Ember) on phone — resting amber, not the desktop
-   white→purple wipe. Text stays dark for contrast on amber. */
-.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary {
-  background: var(--phone-ember);
-  color: #1a1206;
-}
-.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary::before {
-  background: var(--phone-grad-ember);
-}
-.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary:hover:not(:disabled),
-.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary:active:not(:disabled),
-.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary:focus-visible:not(:disabled),
-.glyphh-web.glyphh-phone #onboarding-overlay .btn-primary:disabled {
-  color: #1a1206;
-}
+/* Login is the ONE surface themes don't override — it holds a fixed brand look.
+   So the phone login CTA inherits the desktop primary (white) rather than the
+   one-off amber it used to carry; no --phone-ember here. */
 
 /* Google button + its GIS face fill the width and match the 52px height. */
 .glyphh-web.glyphh-phone #onboarding-overlay .google-btn { height: 52px; }
