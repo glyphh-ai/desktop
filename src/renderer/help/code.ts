@@ -3614,9 +3614,20 @@ export function initCode(): void {
   // The rail's + honors the ACTIVE TAB: a new session of that type, straight
   // to its agent.
   el("code-new-chat")?.addEventListener("click", () => newSessionLanding());
-  // The GLYPHH tile (app list + echo wall) is the SAME control as the rail's
-  // + New session — close everything, new session of the active type.
-  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = () => newSessionLanding();
+  /** HOME — the rail's mark and the wall's first tile. ALWAYS returns to the
+   *  + New Session landing (everything closes first); the typed shortcut is
+   *  the rail's + New session, which honors the active tab. */
+  const goHome = (): void => {
+    currentId = "";
+    void saveStore();
+    (window as unknown as { __wbCloseAllForNewSession?: () => void }).__wbCloseAllForNewSession?.();
+    renderHistory();
+    renderThread();
+    void checkWorkdirGate();
+    gotoSection("dashboard");
+  };
+  el("rail-home-btn")?.addEventListener("click", goHome);
+  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = goHome;
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.

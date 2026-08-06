@@ -15093,3 +15093,11 @@ body[data-session-space="chat"] .code-source-slot { display: none !important; }
 .echo-space-opt:hover { background: var(--hover); color: var(--text); }
 .echo-space-opt.active { background: var(--accent); color: var(--accent-ink, #fff); }
 @media (pointer: coarse) { .echo-space-opt { padding: 11px 20px; font-size: 15px; } }
+
+/* The panel bar STACKS: agent tabs on their own row ABOVE the search. */
+.echo-topbar-stacked { flex-wrap: wrap; justify-content: center; }
+.echo-topbar-stacked .echo-space-tabs { flex-basis: 100%; justify-content: center; margin: 0 0 10px; }
+
+/* The rail's mark is the HOME button. */
+.app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }
+.app-rail-mark-btn:hover { opacity: 0.85; }

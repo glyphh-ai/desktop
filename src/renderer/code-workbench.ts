@@ -1368,7 +1368,7 @@ async function init(): Promise<void> {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
       <div class="echo-stage"></div>
-      <div class="echo-topbar">
+      <div class="echo-topbar echo-topbar-stacked">
         <div class="echo-space-tabs" role="tablist" aria-label="Agent">
           <button type="button" class="echo-space-opt" data-space="chat">Chat</button>
           <button type="button" class="echo-space-opt" data-space="cowork">Work</button>
@@ -1882,11 +1882,11 @@ async function init(): Promise<void> {
         toolView: "preview",
       };
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
-      // GLYPHH is the wall's FIRST, FIXED tile: the mascot mark, opening the
-      // + New Session screen. It is not an installed app — it can't be
+      // HOME is the wall's FIRST, FIXED tile: the mascot mark, always back to
+      // the + New Session landing. It is not an installed app — it can't be
       // reordered out of first place, edited, or deleted (no app row backs it).
       const glyphhTile: EchoTile = {
-        name: "Glyphh",
+        name: "Home",
         slug: "glyphh-home",
         iconUrl: "brand/glyphh-mark.png",
         kind: "app",
