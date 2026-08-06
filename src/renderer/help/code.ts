@@ -3685,13 +3685,15 @@ export function initCode(): void {
     else gotoSection(railTab === "code" ? "agent" : "dashboard");
     paintCw();
   };
-  // The composer pill is the space switch now. It does NOT navigate away — the
-  // new-chat page stays put and just re-scopes (chips + the columns below).
-  spacePill?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => b.addEventListener("click", () => {
-    const next = b.dataset.space === "code" ? "code" : b.dataset.space === "cowork" ? "cowork" : "chat";
+  // THE RAIL TABS are the space switch: they scope the rail's lists AND decide
+  // which agent a new session becomes. On the landing they re-scope in place;
+  // elsewhere they navigate to that space (enterSpace decides).
+  railTabs?.querySelectorAll<HTMLElement>("button").forEach((b) => b.addEventListener("click", () => {
+    const next = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
     if (railTab === next) return;
     railTab = next;
-    enterSpace(false);
+    const onHome = document.body.classList.contains("composer-on-home");
+    enterSpace(!onHome);
     paintCw();
   }));
   // A layout ACTIVATES ITS OWN SPACE (code-workbench dispatches on open):

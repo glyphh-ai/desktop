@@ -14019,24 +14019,18 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 
 /* Link treatment: same row, no button chrome. Accent in light mode; plain
    WHITE in dark — a purple link at the rail's top read as noise there. */
-/* + New session is the rail's PRIMARY action — a filled accent button, not a
-   text link. (It was a borderless link that read as secondary next to the
-   nav rows it sits above.) */
+/* + New session is a LINK again — the rail's three tabs are the prominent
+   control up top; a filled button competed with them for the eye and ate
+   vertical space the apps/layouts lists need. */
 .code-new-session.code-new-session-link {
-  border: 1px solid transparent;
-  background: var(--accent);
-  color: var(--accent-ink, #fff);
-  padding: 8px 12px;
-  border-radius: 9px;
-  font-weight: 600;
-  justify-content: flex-start;
+  border: none; background: none; padding: 8px 6px; border-radius: 6px;
+  color: var(--accent); font-weight: 500;
 }
-.code-new-session.code-new-session-link:hover {
-  background: var(--accent-hover, var(--accent));
-  border-color: transparent;
-  color: var(--accent-ink, #fff);
+[data-theme="dark"] .code-new-session.code-new-session-link,
+[data-theme="purple"] .code-new-session.code-new-session-link,
+[data-theme="aurora"] .code-new-session.code-new-session-link {
+  color: #fff;
 }
-.code-new-session.code-new-session-link svg { opacity: 0.95; }
 
 .code-new-session.code-new-session-link:hover { color: var(--text-bright); background: var(--hover); }
 
@@ -14354,7 +14348,18 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 /* Open section bodies SHARE the rail space below Recents (two open → split
    evenly). A collapsed body is display:none, so its space flows to the other
    open body — or, when both are closed, to Recents (see syncRailLayout). */
-.app-rail-section-body { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; }
+/* An OPEN section must always show its list. `flex: 1 1 0` with `min-height: 0`
+   let both bodies shrink to nothing when the rail ran short (a laptop window,
+   or once "+ New session" grew into a primary button) — the apps and layouts
+   lists rendered their tiles into a 0-30px box, so the rail looked empty while
+   the DOM was full. A floor keeps them usable; the rail scrolls instead. */
+.app-rail-section-body {
+  display: flex; flex-direction: column;
+  flex: 1 1 auto; min-height: 132px; overflow: hidden;
+}
+/* Below ~620px of rail there isn't room for two lists AND recents — let the
+   rail itself scroll rather than crushing the lists to nothing. */
+#app-rail { overflow-y: auto; overscroll-behavior: contain; }
 
 .rail-label-btn {
   display: inline-flex;
@@ -14903,9 +14908,6 @@ body.code-dragging webview { pointer-events: none !important; }
 .dash-col { min-width: 0; }
 .dash-session-row .dash-session-when { flex: none; font-size: 11px; color: var(--text-3); }
 
-/* The SPACE pill exists ONLY on the landing (composer adopted onto Home). */
-.code-space-pill { display: none; }
-.composer-on-home .dash-composer-slot .code-space-pill { display: inline-flex; }
 
 /* Landing chips row: source chip first, then folder/git/+ — one row, left. */
 .dash-source-slot { display: contents; }
@@ -15064,3 +15066,11 @@ body[data-session-space="code"] #code-session-kebab-wrap { display: none; }
 body[data-session-space="chat"] #code-plus-wrap,
 body[data-session-space="chat"] #code-effort-wrap,
 body[data-session-space="chat"] .code-source-slot { display: none !important; }
+
+/* Rail section titles + app tile names are CONTENT, not links — they follow
+   the standard text colors in every theme rather than picking up the accent
+   from an ancestor (which read purple). */
+.app-rail-section-head .code-rail-disclosure,
+.app-rail-section-head .code-rail-label { color: var(--text); }
+.app-rail-tile .tile-name { color: var(--text-2); }
+.app-rail-tile:hover .tile-name { color: var(--text); }
