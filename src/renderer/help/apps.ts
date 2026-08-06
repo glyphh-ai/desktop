@@ -15,7 +15,6 @@ declare const Chart: any;
 // ── Apps (unified: apps + MCP + connections) ────────────
 
 let appsPage = 0;
-const APPS_PER_PAGE = 24;
 const appsList = document.getElementById("apps-list")!;
 const appDetail = document.getElementById("app-detail")!;
 const appAddForm = document.getElementById("app-add-form")!;
@@ -371,7 +370,7 @@ function renderAppsList() {
     return;
   }
 
-  const { items: pageApps, state } = paginate(filtered, appsPage, APPS_PER_PAGE);
+  const { items: pageApps, state } = paginate(filtered, appsPage);
   appsPage = state.page;
   appsList.innerHTML = "";
 

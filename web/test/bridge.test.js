@@ -150,16 +150,6 @@ describe('bridge KNOWN wiring', () => {
     expect(out).toMatchObject({ email: 'a@b.co', orgName: 'Acme', tier: 'pro', billingStatus: 'active' });
   });
 
-  it('userTimezoneGet → profile.get().timezone', async () => {
-    expect(await glyphh.userTimezoneGet()).toBe('America/New_York');
-  });
-
-  it('userTimezoneSet → profile.update({timezone})', async () => {
-    const out = await glyphh.userTimezoneSet('UTC');
-    expect(fake.profile.update).toHaveBeenCalledWith({ timezone: 'UTC' });
-    expect(out).toEqual({ ok: true });
-  });
-
   it('submitSupportTicket → support.ticket, {ok:true}', async () => {
     const out = await glyphh.submitSupportTicket({ subject: 's', description: 'd' });
     expect(fake.support.ticket).toHaveBeenCalledWith({ subject: 's', description: 'd' });

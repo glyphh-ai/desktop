@@ -3,16 +3,23 @@
  */
 
 import { confirmAction } from "./shared.js";
-import { loadUsageChart, loadUsageMetrics } from "./dashboard.js";
-import { openUrlInWorkbench } from "./code.js";
+import { loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
+import { initBilling, loadBilling } from "./settings-billing.js";
+import { initProfile, loadProfile } from "./settings-profile.js";
+import { initOrg, loadOrg } from "./settings-org.js";
+import { initMembers, loadMembers } from "./settings-members.js";
+import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
+
+// The account panels are big enough to own their own modules; Settings just
+// initialises them and re-exports their loaders for navigation.ts.
+export { loadBilling, loadProfile, loadOrg, loadMembers, loadWorkspacesPanel };
 
 // ── Settings ─────────────────────────────────────────────
 
-const settingsSaveBtn = document.getElementById("settings-save") as HTMLButtonElement;
-const settingsStatus = document.getElementById("settings-status")!;
+// General has no footer Save — every control in it (compaction guidance,
+// toggles) owns its own save.
 
 const toggleAutoUpdate = document.getElementById("toggle-auto-update") as HTMLInputElement;
-const settingsTimezone = document.getElementById("settings-timezone") as HTMLSelectElement;
 const settingsBrowserHome = document.getElementById("settings-browser-home") as HTMLSelectElement;
 const settingsBrowserHomeUrl = document.getElementById("settings-browser-home-url") as HTMLInputElement;
 const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!;
@@ -61,6 +68,13 @@ function initDesktopPanel(): void {
 
 function initSettings() {
   initDesktopPanel();
+  // Billing / Organization / Account-profile own their wiring; they're
+  // idempotent, so init here and let the sub-nav trigger their loads.
+  initBilling();
+  initProfile();
+  initOrg();
+  initMembers();
+  initWorkspaces();
   document.getElementById("glyphh-agent-compact-save")?.addEventListener("click", () => {
     const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
     const status = document.getElementById("glyphh-agent-compact-status");
@@ -68,8 +82,6 @@ function initSettings() {
       if (status) { status.textContent = "Saved."; setTimeout(() => { status.textContent = ""; }, 1800); }
     });
   });
-
-  settingsSaveBtn.addEventListener("click", saveSettings);
 
   // Theme picker
   const themePicker = document.getElementById("theme-picker");
@@ -266,11 +278,6 @@ function initSettings() {
   // Show URL Bar toggle removed — only the Browser panel shows a URL bar
   // now; everything else (Agent, Plan, Workbench, internal yo://) doesn't.
 
-  // Timezone — persists to the user's server profile (shared with platform).
-  settingsTimezone.addEventListener("change", () => {
-    void window.glyphh.userTimezoneSet(settingsTimezone.value);
-  });
-
   // Browser homepage
   settingsBrowserHome.addEventListener("change", () => {
     const val = settingsBrowserHome.value;
@@ -303,25 +310,19 @@ function initSettings() {
 
   // (Glyphh Skill export moved to its own Skills page — see help/skills.ts.)
 
-  // Manage Account — open the platform as a WORKBENCH browser panel (beside the
-  // agent), not the retired BrowserView. Shared mechanics (openUrlInWorkbench).
-  document.getElementById("account-dashboard-btn")?.addEventListener("click", () => {
-    openUrlInWorkbench("Manage Account", window.glyphh.platformUrl);
-  });
+  // "Manage account" is gone from the identity header — this panel IS that
+  // page, so a button opening the platform's copy of it was a loop.
 
   // Refresh plan status — after an in-app upgrade/downgrade the cached session
   // tier is stale until the next heartbeat (or re-login). This forces a fresh
-  // heartbeat and repaints the Plan value, no re-auth needed.
-  document.getElementById("account-refresh-tier")?.addEventListener("click", async () => {
+  // heartbeat and repaints the Plan chip, no re-auth needed.
+  document.getElementById("account-refresh-tier")?.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
     const btn = document.getElementById("account-refresh-tier");
-    const tierEl = document.getElementById("account-tier");
     btn?.classList.add("spinning");
     try {
       const r = await window.glyphh.refreshAuth();
-      if (tierEl && r?.tier) {
-        tierEl.textContent = r.tier;
-        tierEl.className = `license-value ${r.tier !== "free" ? "active" : ""}`;
-      }
+      if (r?.tier) paintPlanChip(r.tier);
     } catch { /* offline — leave the current value */ }
     finally { setTimeout(() => btn?.classList.remove("spinning"), 400); }
   });
@@ -331,6 +332,16 @@ function initSettings() {
     document.getElementById("help-overlay")!.classList.add("hidden");
     await window.glyphh.logout();
   });
+
+}
+
+/** The plan chip — highlighted only when the plan is a paid one. */
+function paintPlanChip(tier?: string | null): void {
+  const el = document.getElementById("account-tier");
+  const chip = el?.closest(".acct-chip-plan");
+  if (!el) return;
+  el.textContent = tier || "—";
+  chip?.classList.toggle("paid", !!tier && tier !== "free");
 }
 
 
@@ -338,55 +349,34 @@ async function loadSettings() {
   // Settings › Usage owns the usage chart + metric cards now.
   void loadUsageChart();
   void loadUsageMetrics();
+  void loadUsageMembers();
+  // Account's profile form and the org section sit under the same panel as the
+  // identity header, so they load with Settings rather than waiting on a
+  // sub-nav click. loadOrg hides its section unless the caller is an org admin.
+  void loadProfile();
+  void loadOrg();
+  // Members hides its own nav item unless the caller is an org admin, so this
+  // has to run on Settings open, not only when the tab is clicked.
+  void loadMembers();
+  // Workspaces hides its own nav item unless the caller is an org admin.
+  void loadWorkspacesPanel();
   // Glyphh: standing compaction guidance + training capture
   const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
   if (wcp) wcp.value = String((await window.glyphh.getPreference?.("glyphhCompactionPrompt", "")) || "");
 
-  settingsStatus.textContent = "";
+  // The Account header's ORG + PLAN chips. Name, email, role and the avatar
+  // come from the server profile via loadProfile() — one painter each, so the
+  // two loads can't race over the same element.
   const accountInfo = await window.glyphh.getAccountInfo();
-
-  // Account info
-  const emailEl = document.getElementById("account-email")!;
-  const nameEl = document.getElementById("account-name")!;
   const orgEl = document.getElementById("account-org")!;
-  const tierEl = document.getElementById("account-tier")!;
-
-  if (accountInfo) {
-    emailEl.textContent = accountInfo.email;
-    nameEl.textContent = `${accountInfo.firstName} ${accountInfo.lastName}`;
-    orgEl.textContent = accountInfo.orgName;
-    tierEl.textContent = accountInfo.tier || "free";
-    tierEl.className = `license-value ${accountInfo.tier !== "free" ? "active" : ""}`;
-  } else {
-    emailEl.textContent = "Not signed in";
-    nameEl.textContent = "—";
-    orgEl.textContent = "—";
-    tierEl.textContent = "—";
-  }
+  orgEl.textContent = accountInfo?.orgName || "—";
+  paintPlanChip(accountInfo?.tier);
 
   // Load toggle states
   toggleAutoUpdate.checked = await window.glyphh.getPreference("autoUpdate", true) as boolean;
 
   const mcpSectionWrap = document.getElementById("mcp-section-wrap")!;
   mcpSectionWrap.classList.remove("hidden");
-
-  // Timezone dropdown — same option list as the platform's Settings > Profile
-  // page (Intl.supportedValuesOf), value read from the user's server profile
-  // (users.timezone), not a local preference.
-  try {
-    const allTz = (Intl as any).supportedValuesOf("timeZone") as string[];
-    settingsTimezone.innerHTML = "";
-    for (const tz of allTz.includes("UTC") ? allTz : ["UTC", ...allTz]) {
-      const opt = document.createElement("option");
-      opt.value = tz;
-      opt.textContent = tz.replace(/_/g, " ");
-      settingsTimezone.appendChild(opt);
-    }
-  } catch {
-    settingsTimezone.innerHTML = `<option value="UTC">UTC</option>`;
-  }
-  const serverTz = await window.glyphh.userTimezoneGet().catch(() => null);
-  settingsTimezone.value = serverTz || "UTC";
 
   // Browser homepage
   const homePref = await window.glyphh.getPreference("browserHomepage", "claude") as string;
@@ -397,20 +387,6 @@ async function loadSettings() {
   }
   const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
   if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
-}
-
-async function saveSettings() {
-  // Model selection moved to Agent Defaults — General now only owns timezone +
-  // toggles, which save inline via their own change handlers. The Save button
-  // is kept as a no-op confirmation for now.
-  settingsSaveBtn.disabled = true;
-  settingsSaveBtn.textContent = "Saved!";
-  settingsStatus.textContent = "Saved!";
-  settingsStatus.className = "settings-success";
-  setTimeout(() => {
-    settingsSaveBtn.disabled = false;
-    settingsSaveBtn.textContent = "Save";
-  }, 1000);
 }
 
 /** MCP is its own top-level dashboard tab (data-section="mcp"). navigation.ts

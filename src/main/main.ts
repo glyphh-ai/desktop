@@ -82,7 +82,9 @@ import { DripManager, setDripManagerInstance } from "./drip-manager";
 import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
+import { registerAccountIpc } from "./account-ipc";
 import { registerModelsIpc } from "./models-ipc";
+import { registerWorkspacesIpc } from "./workspaces-ipc";
 import { getClient } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
@@ -819,6 +821,7 @@ async function boot() {
 
   // ── Extracted IPC modules ──────────────────────────────
   registerModelsIpc();
+  registerWorkspacesIpc();
   registerSettingsIpc({
     getPreference, setPreference, broadcastTheme,
     startAuthFlow, isAuthenticated,
@@ -828,6 +831,10 @@ async function boot() {
     getMainWindow: () => mainWindow,
     hidePanels: () => { if (mainWindow) homeView.hide(mainWindow); },
   });
+
+  // Settings › Billing / Organization / Account — the customer-facing account
+  // surfaces, straight through the main-process SDK client.
+  registerAccountIpc();
 
   registerAppsIpc({
     layoutManager, dripManager,

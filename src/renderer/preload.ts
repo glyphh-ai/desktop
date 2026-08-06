@@ -69,6 +69,87 @@ export interface AppReleaseRow {
   updatedAt: string;
 }
 
+// ── Account surfaces (Settings › Billing / Organization / Account) ──────────
+// The wire shapes of the SDK's billing/org/profile resources, mirrored here so
+// the desktop contract is self-describing. Money is USD cents, credits are
+// MICRO-credits (1 credit = 1e6) exactly as the server reports them — the
+// renderer's settings-api.ts is the one place that converts for display.
+
+/** A plan in the server-driven catalog (super-admin plans + their pricing). */
+export interface AccountBillingPlan {
+  tier: string;
+  displayName: string;
+  monthlyUsdCents: number;
+  /** The TRUE active Stripe price, when resolvable — prefer this for display. */
+  activeUsdCents?: number;
+  monthlyCredits: number;
+  maxSeats: number;
+  sso: boolean;
+  /** A PROVISIONED per-org plan: a real invoiced deal, not the generic tier. */
+  bespoke?: boolean;
+}
+
+export interface AccountSubscription {
+  tier: string;
+  billingStatus: string;  // trial | active | past_due | canceled | none
+  seats: number;
+  maxSeats: number;
+}
+
+/** The org's credit balance by lot kind, in MICRO-credits. */
+export interface AccountCredits {
+  balance: number;
+  allowance: number;
+  grants: number;
+  purchases: number;
+}
+
+/** The org's auto-top-up rule (MICRO-credits). */
+export interface AccountAutotopup {
+  enabled: boolean;
+  thresholdCredits: number;
+  topupCredits: number;
+}
+
+/** One normalized Stripe invoice (USD cents; `created` in unix seconds). */
+export interface AccountInvoice {
+  id: string;
+  number: string | null;
+  amountDue: number;
+  amountPaid: number;
+  status: string | null;
+  hostedUrl: string | null;
+  created: number;
+}
+
+export interface AccountAddress {
+  line1: string; line2?: string; city: string; state: string; postalCode: string; country: string;
+}
+
+export interface AccountOrg {
+  id: string;
+  name: string;
+  tier: string;
+  maxSeats: number;
+  seatsUsed: number;
+  address: AccountAddress | null;
+  billingAddress: AccountAddress | null;
+  billingSameAsAddress: boolean;
+  billingContact: { name: string; email: string; phone?: string } | null;
+}
+
+/** The caller's own editable profile. */
+export interface AccountProfile {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  timezone: string;
+  role: string;
+  imageUrl: string | null;
+  avatarUrl: string;
+}
+
 // Fields the create/update calls forward to /api/panel-apps. Kept as a named
 // type so preload + renderer stay in sync on the accepted keys.
 export interface PanelAppInput {
@@ -160,6 +241,18 @@ contextBridge.exposeInMainWorld("glyphh", {
    *  falls back to windowClose when nothing is open. */
   onCloseGesture: (cb: () => void) => { ipcRenderer.on("close-gesture", () => cb()); },
   windowMinimize: () => ipcRenderer.send("window-minimize"),
+  // Org-admin Workspaces page (mirrors the platform's Configure → Workspaces).
+  // Everything is `{ ok, data }` — the renderer paints the server's refusal
+  // rather than assuming the caller is allowed.
+  workspacesList: () => ipcRenderer.invoke("workspaces-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
+  workspacesCreate: (input: unknown) => ipcRenderer.invoke("workspaces-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  workspacesUpdate: (id: string, input: unknown) => ipcRenderer.invoke("workspaces-update", id, input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  workspacesDelete: (id: string) => ipcRenderer.invoke("workspaces-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  workspacesModelCatalog: () => ipcRenderer.invoke("workspaces-model-catalog") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
+  workspacesOrgConnectors: () => ipcRenderer.invoke("workspaces-org-connectors") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  workspacesOrgToolCap: () => ipcRenderer.invoke("workspaces-org-tool-cap") as Promise<{ ok: boolean; data?: Record<string, string[]>; error?: string }>,
+  workspacesConnTools: (slug: string) => ipcRenderer.invoke("workspaces-conn-tools", slug) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  workspacesAppSearch: (search: string, limit?: number) => ipcRenderer.invoke("workspaces-app-search", search, limit) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   // Org-admin Models page (mirrors the platform's Configure → Models).
   orgModelsList: () => ipcRenderer.invoke("org-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
   orgModelsSetSupported: (id: string, supported: boolean) => ipcRenderer.invoke("org-models-set-supported", id, supported) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
@@ -301,7 +394,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   onGotoSection: (cb: (section: string) => void) => {
     ipcRenderer.on("home:goto-section", (_e, section: string) => cb(section));
   },
-  usageSeries: (days: number, groupBy: string) => ipcRenderer.invoke("usage-series", days, groupBy) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  // `userId` narrows the series to one member — org_admin only (the server
+  // rejects it for anyone else); "" / omitted means the caller's own scope.
+  usageSeries: (days: number, groupBy: string, userId?: string) =>
+    ipcRenderer.invoke("usage-series", days, groupBy, userId) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   panelAppsCreate: (input: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-create", input) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsUpdate: (id: string, patch: PanelAppInput) =>
@@ -378,9 +474,40 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.on("device-login-prompt", (_e, prompt) => cb(prompt));
   },
   getAccountInfo: () => ipcRenderer.invoke("get-account-info") as Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string } | null>,
-  // Server-profile timezone (users.timezone) — same field the platform edits.
-  userTimezoneGet: () => ipcRenderer.invoke("user-timezone-get") as Promise<string | null>,
-  userTimezoneSet: (tz: string) => ipcRenderer.invoke("user-timezone-set", tz) as Promise<{ ok: boolean; error?: string }>,
+  // ── Account surfaces (Settings › Billing / Organization / Account) — the
+  // MAIN-process SDK client executes these (account-ipc.ts). The renderer
+  // mirrors their shapes structurally in help/settings-api.ts, which also owns
+  // the web target's SDK-handle transport. Reads REJECT on failure so the
+  // panel can show an honest error; writes answer with { ok, error }. ──
+  billingPlans: () => ipcRenderer.invoke("billing-plans") as Promise<AccountBillingPlan[]>,
+  billingStatus: () => ipcRenderer.invoke("billing-status") as Promise<AccountSubscription>,
+  billingCredits: () => ipcRenderer.invoke("billing-credits") as Promise<AccountCredits>,
+  billingInvoices: () => ipcRenderer.invoke("billing-invoices") as Promise<AccountInvoice[]>,
+  billingAutotopupGet: () => ipcRenderer.invoke("billing-autotopup-get") as Promise<AccountAutotopup>,
+  billingAutotopupSet: (input: AccountAutotopup) =>
+    ipcRenderer.invoke("billing-autotopup-set", input) as Promise<{ ok: boolean; config?: AccountAutotopup; error?: string }>,
+  billingSubscribe: (tier: string) =>
+    ipcRenderer.invoke("billing-subscribe", tier) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  billingChangePlan: (tier: string) =>
+    ipcRenderer.invoke("billing-change-plan", tier) as Promise<{ ok: boolean; change?: { tier: string; effect: string; url?: string }; error?: string }>,
+  billingTopup: (credits: number) =>
+    ipcRenderer.invoke("billing-topup", credits) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  billingPortal: () => ipcRenderer.invoke("billing-portal") as Promise<{ ok: boolean; url?: string; error?: string }>,
+  accountOrgGet: () => ipcRenderer.invoke("account-org-get") as Promise<AccountOrg>,
+  accountOrgUpdate: (patch: Record<string, unknown>) =>
+    ipcRenderer.invoke("account-org-update", patch) as Promise<{ ok: boolean; org?: AccountOrg; error?: string }>,
+  accountProfileGet: () => ipcRenderer.invoke("account-profile-get") as Promise<AccountProfile>,
+  accountProfileUpdate: (patch: Record<string, unknown>) =>
+    ipcRenderer.invoke("account-profile-update", patch) as Promise<{ ok: boolean; profile?: AccountProfile; error?: string }>,
+  accountMembersList: () => ipcRenderer.invoke("account-members-list") as Promise<Array<{ userId: string; email: string; name: string | null; role: string }>>,
+  accountMembersInvite: (email: string, role: string) =>
+    ipcRenderer.invoke("account-members-invite", email, role) as Promise<{ ok: boolean; invite?: { acceptUrl?: string }; error?: string }>,
+  accountMembersRemove: (userId: string) =>
+    ipcRenderer.invoke("account-members-remove", userId) as Promise<{ ok: boolean; error?: string }>,
+  accountMembersSetRole: (userId: string, role: string) =>
+    ipcRenderer.invoke("account-members-set-role", userId, role) as Promise<{ ok: boolean; error?: string }>,
+  accountMembersUpdateProfile: (userId: string, patch: { firstName?: string; lastName?: string }) =>
+    ipcRenderer.invoke("account-members-update-profile", userId, patch) as Promise<{ ok: boolean; error?: string }>,
   // AI Gateway — escalation models (org-governed), slicer usage, org governance.
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {

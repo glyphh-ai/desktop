@@ -19,14 +19,14 @@ import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending,
   APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
   type RemoteChat,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
-import { runHeroFlow } from "./dashboard.js";
+import { runHeroFlow, syncDashParticles } from "./dashboard.js";
 import { SPACE_LABEL } from "./space-meta.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
@@ -860,7 +860,6 @@ function ensureCodeSection(): void {
   switch: (id: string): void => {
     const target = chats.find((c) => c.id === id);
     if (!target) return;
-    listView = false;
     currentId = id;
     threadPinned = true;
     // The session's OWN space comes with it — clicking a Work session from the
@@ -886,7 +885,6 @@ function ensureCodeSection(): void {
     // LAZY, like both + buttons: clear the selection and repaint. The record
     // is born on the first send (a layout that asked for a new session gets
     // its folder via pendingWorkdir below, so nothing is lost by waiting).
-    listView = false;
     currentId = "";
     void saveStore();
     renderHistory();
@@ -937,11 +935,19 @@ let pendingWorkdir = "";
 function syncSpaceAttrs(): void {
   const cur = current();
   document.body.dataset.sessionSpace = cur ? modeOf(cur) : railTab;
+  // The chip row's inventory is per-space (chat: source only; work: no repo
+  // chip; code: all of them) — it has to repaint with the space, not just on
+  // a pick, or a tab switch leaves the previous space's chips on screen.
+  sourceChip?.setSource(activeSource());
+  paintSourceDependents();
 }
 (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs = syncSpaceAttrs;
 
 function newChat(): void {
-  listView = false;
+  // The ACTIVE TAB types the session, once, at birth. A session's mode is
+  // never rewritten afterwards — the tool pack, the chips and the runtime all
+  // key off it, so a late change would mean a session running with a pack it
+  // wasn't created for.
   const mode: CodeChat["mode"] = railTab;
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
@@ -967,6 +973,62 @@ function newChat(): void {
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────
+
+
+/**
+ * Leave the open session for its tab's + New Session screen — the MAIN one,
+ * every time. Backing out of a session and closing one both mean "I am done
+ * here", so they land on the same screen a fresh start does, whether the agent
+ * was full-screen or hosted in a layout.
+ */
+function leaveSessionToLanding(): void {
+  currentId = "";
+  void saveStore();
+  renderHistory();
+  renderThread();
+  void checkWorkdirGate();
+  syncSpaceAttrs();
+  gotoSection("dashboard");
+}
+
+/**
+ * The session is no longer CURRENT for its space.
+ *
+ * Closing a session — by hand, or because a layout replaced the agent panel —
+ * ends it as the space's resume target: the next visit to that tab opens a
+ * fresh + New Session instead of silently reopening what was closed. Deleting
+ * one lands here too, for the same reason.
+ */
+function forgetCurrentSession(space?: "chat" | "cowork" | "code"): void {
+  const cur = current();
+  const sp = space ?? (cur ? spaceOf(cur) : railTab);
+  // BOTH the in-memory resume target and its persisted twin — clearing only
+  // the first let the session come back on the next launch.
+  lastBySpace[sp] = "";
+  void window.glyphh.setPreference?.(SPACE_PREF[sp], "");
+  // ...AND the workspace state that belonged to it. The source + folder were
+  // sticky PER SPACE, so a closed session left its folder behind and the next
+  // new session inherited it — a folder on a machine that may not even be
+  // connected. Closing a session resets its space to the default source.
+  if (sp !== "chat") {
+    sourceBySpace[sp] = { ...DEFAULT_SOURCE };
+    void window.glyphh.setPreference?.(SOURCE_PREF[sp], null);
+  }
+  pendingWorkdir = "";
+  sourceChip?.setSource(activeSource());
+  paintSourceDependents();
+  // Closing the session you were in leaves you on that tab's landing, not on
+  // an empty agent screen.
+  if (cur && spaceOf(cur) === sp) leaveSessionToLanding();
+  else { renderHistory(); renderThread(); }
+}
+// The workbench closes PANELS; it has no idea which session was in one.
+(window as unknown as { __glyphhForgetSession?: (s?: "chat" | "cowork" | "code") => void })
+  .__glyphhForgetSession = forgetCurrentSession;
+// The WORKBENCH owns the panels, so it is what notices a seat closing.
+(window as unknown as { __glyphhSessionClosed?: (s?: "chat" | "cowork" | "code") => void })
+  .__glyphhSessionClosed = forgetCurrentSession;
+
 async function deleteChat(chat: CodeChat): Promise<void> {
   if (!(await confirmAction({
     title: `Delete “${chat.title}”?`,
@@ -975,6 +1037,8 @@ async function deleteChat(chat: CodeChat): Promise<void> {
     danger: true,
   }))) return;
   chats = chats.filter((x) => x.id !== chat.id);
+  // A deleted session can never be a space's resume target again.
+  if (lastBySpace[spaceOf(chat)] === chat.id) forgetCurrentSession(spaceOf(chat));
   if (currentId === chat.id) currentId = chats[0]?.id || "";
   threadStore.remove(chat.id); // server tombstone (offline-safe)
   void saveStore();
@@ -1029,6 +1093,13 @@ function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
     if (label) beginRename(chat, label);
   });
   m.appendChild(ren);
+  // Pin — the same toggle the row's leading icon runs, so the menu and the
+  // icon can never disagree about what pinning does.
+  const pin = document.createElement("button");
+  pin.className = "code-menu-item";
+  pin.textContent = chat.pinned ? "Unpin" : "Pin";
+  pin.addEventListener("click", () => { closeMenu(); togglePin(chat); });
+  m.appendChild(pin);
   const del = document.createElement("button");
   del.className = "code-menu-item danger";
   del.textContent = "Delete";
@@ -1099,14 +1170,20 @@ function renameCurrentInline(): void {
   field.focus(); field.select();
 }
 
-/** Toggle the current session's pin (chat.pinned — floats it in the lists). */
-function toggleCurrentPin(): void {
-  const c = current();
-  if (!c) return;
+/** Toggle a session's pin (chat.pinned — floats it in the lists). The rail's
+ *  leading icon and the session menu's Pin both land here, so the two can't
+ *  drift apart. */
+function togglePin(c: CodeChat): void {
   c.pinned = !c.pinned;
   void saveStore();
   renderHistory();
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+}
+
+/** The open session's pin — the head kebab's Pin item. */
+function toggleCurrentPin(): void {
+  const c = current();
+  if (c) togglePin(c);
 }
 
 let headKebabEl: HTMLDivElement | null = null;
@@ -1180,57 +1257,144 @@ function renderHistory(): void {
   if (!list) return;
   list.textContent = "";
   cwPaint?.();
-  const visible = chats.filter((c) => spaceOf(c) === railTab);
-  for (const c of visible) {
-    const row = document.createElement("div");
-    row.className = "code-history-item" + (c.id === currentId ? " active" : "");
-    const label = document.createElement("span");
-    label.className = "code-history-title";
-    label.textContent = c.title;
-    const cMode = modeOf(c);
-    label.title = cMode === "chat" ? `${c.title} — Chat (no tools)` : cMode === "cowork" ? `${c.title} — Co-work` : c.title;
-    // Rename is a menu action (⋯ → Rename), not a click on the title — a
-    // selection-gated title click fought the row's own select handler and
-    // never reliably fired. The label is now just a label.
-    // Leading slot: the RUNNING pulse while live, the session TYPE's icon
-    // when idle (no emojis).
-    const working = liveRuns.has(c.id);
-    const dot = document.createElement("span");
-    if (working) {
-      dot.className = "code-chat-dot working";
-      dot.title = "Working";
-    } else {
-      dot.className = "code-sess-ic";
-      dot.title = cMode === "chat" ? "Chat" : cMode === "cowork" ? "Co-work" : "Code";
-      dot.innerHTML = cMode === "chat"
-        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
-        : cMode === "cowork"
-          ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`
-          : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
-    }
-    const menuBtn = document.createElement("button");
-    menuBtn.className = "code-chat-menu-btn";
-    menuBtn.title = "More";
-    menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
-    menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openChatMenu(menuBtn, c); });
-    row.append(dot, label, menuBtn);
-    row.addEventListener("click", () => {
-      listView = false;
-      currentId = c.id;
-      lastBySpace[spaceOf(c)] = c.id;
-      void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
-      threadPinned = true;
-      void saveStore();
-      ensureCodeSection();
-      renderHistory();
-      renderThread();
-      refreshCtxMeter();
-      void checkWorkdirGate();
-      // a rail session press behaves like the Glyphh icon: chat ALONE
-      gotoSection("agent");
-    });
-    list.appendChild(row);
+  const q = recentsQuery.trim().toLowerCase();
+  const inSpace = chats.filter((c) => spaceOf(c) === railTab);
+  const visible = inSpace.filter((c) => !q || c.title.toLowerCase().includes(q));
+  // Rows in the SPACE, not rows surviving the filter — a search that matches
+  // nothing must keep its own box on screen to be cleared.
+  paintRecentsSearch(inSpace.length);
+
+  // Pinned sessions leave their normal group and sit at the top under one
+  // heading — in EVERY space, chat included. Nothing pinned, no heading: an
+  // empty "Pinned" would be a permanent reminder of a feature you aren't using.
+  const pinned = visible.filter((c) => c.pinned);
+  const rest = visible.filter((c) => !c.pinned);
+  if (pinned.length) {
+    list.appendChild(recentsHead("Pinned", "Pinned sessions"));
+    for (const c of pinned) list.appendChild(historyRow(c));
   }
+
+  // Chat always runs in the cloud, so the rest has nothing to divide by: one
+  // plain list, which only needs its own heading once Pinned is above it.
+  // Work and Code split by WHERE a session runs — Cloud, then a group per
+  // local folder. A folder whose sessions are all pinned drops out entirely,
+  // because the groups are built from what's left.
+  if (railTab === "chat") {
+    if (pinned.length && rest.length) list.appendChild(recentsHead("Recent", "Everything else"));
+    for (const c of rest) list.appendChild(historyRow(c));
+    return;
+  }
+  for (const g of groupRecents(rest)) {
+    list.appendChild(recentsHead(g.label, g.title));
+    for (const c of g.rows) list.appendChild(historyRow(c));
+  }
+}
+
+/** Where a session runs, as a grouping key. Anything not explicitly local is
+ *  cloud — a session born before the source chip existed has no `source`. */
+function locusKey(c: CodeChat): string {
+  const src = c.source;
+  if (src && src.kind === "local") return `local:${src.path || c.workdir || ""}`;
+  return "cloud";
+}
+
+/** The last path segment, for a heading. Handles both separators — a Windows
+ *  workdir must not render as one long unbroken string. */
+function folderName(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return (cut === -1 ? trimmed : trimmed.slice(cut + 1)) || path;
+}
+
+interface RecentsGroup { key: string; label: string; title: string; rows: CodeChat[] }
+
+/**
+ * Cloud first, then one group per local folder. Folders keep the order their
+ * first session appears in — `chats` is already ordered the way the rail wants
+ * to read, so this never re-sorts anyone.
+ */
+function groupRecents(rows: CodeChat[]): RecentsGroup[] {
+  const byKey = new Map<string, RecentsGroup>();
+  for (const c of rows) {
+    const key = locusKey(c);
+    let g = byKey.get(key);
+    if (!g) {
+      const path = key === "cloud" ? "" : key.slice("local:".length);
+      g = key === "cloud"
+        ? { key, label: "Cloud", title: "Runs in the cloud", rows: [] }
+        : { key, label: path ? folderName(path) : "Local", title: path || "On this machine", rows: [] };
+      byKey.set(key, g);
+    }
+    g.rows.push(c);
+  }
+  const all = [...byKey.values()];
+  const cloud = all.filter((g) => g.key === "cloud");
+  return [...cloud, ...all.filter((g) => g.key !== "cloud")];
+}
+
+function recentsHead(label: string, title: string): HTMLDivElement {
+  const head = document.createElement("div");
+  head.className = "code-history-sec";
+  head.textContent = label;
+  head.title = title;
+  return head;
+}
+
+/** One recents row. Its leading icon is the PIN control — the same toggle the
+ *  session menu offers — and carries a dot while pinned. */
+function historyRow(c: CodeChat): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "code-history-item" + (c.id === currentId ? " active" : "");
+  const label = document.createElement("span");
+  label.className = "code-history-title";
+  label.textContent = c.title;
+  const cMode = modeOf(c);
+  label.title = cMode === "chat" ? `${c.title} — Chat (no tools)` : cMode === "cowork" ? `${c.title} — Co-work` : c.title;
+  // Rename is a menu action (⋯ → Rename), not a click on the title — a
+  // selection-gated title click fought the row's own select handler and
+  // never reliably fired. The label is now just a label.
+  // Leading slot: the RUNNING pulse while live, the session TYPE's icon
+  // when idle (no emojis). Either way it TOGGLES THE PIN on click.
+  const working = liveRuns.has(c.id);
+  const dot = document.createElement("span");
+  if (working) {
+    dot.className = "code-chat-dot working";
+  } else {
+    dot.className = "code-sess-ic";
+    dot.innerHTML = cMode === "chat"
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
+      : cMode === "cowork"
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+  }
+  dot.classList.toggle("pinned", !!c.pinned);
+  const typeName = working ? "Working" : cMode === "chat" ? "Chat" : cMode === "cowork" ? "Co-work" : "Code";
+  dot.title = `${typeName} — click to ${c.pinned ? "unpin" : "pin"}`;
+  dot.addEventListener("click", (e) => {
+    e.stopPropagation();   // pinning must not also open the session
+    togglePin(c);
+  });
+  const menuBtn = document.createElement("button");
+  menuBtn.className = "code-chat-menu-btn";
+  menuBtn.title = "More";
+  menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
+  menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openChatMenu(menuBtn, c); });
+  row.append(dot, label, menuBtn);
+  row.addEventListener("click", () => {
+    currentId = c.id;
+    lastBySpace[spaceOf(c)] = c.id;
+    void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
+    threadPinned = true;
+    void saveStore();
+    ensureCodeSection();
+    renderHistory();
+    renderThread();
+    refreshCtxMeter();
+    void checkWorkdirGate();
+    // a rail session press behaves like the Glyphh icon: chat ALONE
+    gotoSection("agent");
+  });
+  return row;
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
@@ -1386,165 +1550,9 @@ function codeGreeting(name: string): string {
 // the two-column body. Stopped + cleared whenever the thread repaints.
 
 
-// ── Per-space session LIST VIEW (SessionList port) ─────────────────────────
-// Reached from the in-thread head's ‹. Card rows (2-row, left-justified, locus
-// icon) for THIS space's sessions, a SEARCH input top-left + a FILTER menu
-// top-right, and a New action. Scoped to the local store (this app's sessions
-// are local records, not SDK runtime sessions).
-type ListFilter = "all" | "pinned" | "working" | "idle";
-const LIST_FILTERS: Array<{ id: ListFilter; label: string }> = [
-  { id: "all", label: "All sessions" },
-  { id: "pinned", label: "Pinned" },
-  { id: "working", label: "Working" },
-  { id: "idle", label: "Idle" },
-];
-let listQuery = "";
-let listFilter: ListFilter = "all";
-
-function openSessionListView(): void {
-  listView = true;
-  closeHeadKebab();
-  renderThread();
-}
-
-function matchesListFilter(f: ListFilter, c: CodeChat): boolean {
-  const working = liveRuns.has(c.id);
-  switch (f) {
-    case "pinned": return !!c.pinned;
-    case "working": return working;
-    case "idle": return !working;
-    default: return true;
-  }
-}
-
-function renderSessionList(host: HTMLElement): void {
-  host.classList.add("session-list-host");
-  const wrap = document.createElement("div");
-  wrap.className = "session-list";
-
-  // Top bar: search (left) + filter (right) + New.
-  const bar = document.createElement("div");
-  bar.className = "session-list-bar";
-  const searchWrap = document.createElement("div");
-  searchWrap.className = "session-list-search";
-  searchWrap.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
-  const search = document.createElement("input");
-  search.type = "text";
-  search.className = "session-list-search-input";
-  search.placeholder = `Search ${SPACE_LABEL[railTab]} sessions…`;
-  search.value = listQuery;
-  search.spellcheck = false;
-  searchWrap.appendChild(search);
-  bar.appendChild(searchWrap);
-
-  const filterWrap = document.createElement("div");
-  filterWrap.className = "code-chipwrap session-list-filterwrap";
-  const filterBtn = document.createElement("button");
-  filterBtn.type = "button";
-  filterBtn.className = "code-icon-btn session-list-filter" + (listFilter !== "all" ? " on" : "");
-  filterBtn.title = `Filter — ${LIST_FILTERS.find((f) => f.id === listFilter)?.label}`;
-  filterBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`;
-  filterWrap.appendChild(filterBtn);
-  bar.appendChild(filterWrap);
-
-  const newBtn = document.createElement("button");
-  newBtn.type = "button";
-  newBtn.className = "action-btn primary session-list-new";
-  newBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New</span>`;
-  newBtn.addEventListener("click", () => {
-    listView = false;
-    currentId = "";
-    void saveStore();
-    renderHistory();
-    renderThread();
-    void checkWorkdirGate();
-    input()?.focus();
-  });
-  bar.appendChild(newBtn);
-  wrap.appendChild(bar);
-
-  const scroll = document.createElement("div");
-  scroll.className = "session-list-scroll";
-  wrap.appendChild(scroll);
-
-  const paintRows = (): void => {
-    scroll.textContent = "";
-    const q = listQuery.trim().toLowerCase();
-    const rows = chats
-      .filter((c) => spaceOf(c) === railTab)
-      .filter((c) => matchesListFilter(listFilter, c))
-      .filter((c) => !q || c.title.toLowerCase().includes(q))
-      .sort((a, b) => {
-        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
-        const at = a.messages[a.messages.length - 1]?.at || a.createdAt;
-        const bt = b.messages[b.messages.length - 1]?.at || b.createdAt;
-        return bt - at;
-      });
-    if (!rows.length) {
-      scroll.innerHTML = `<div class="session-list-empty">${q || listFilter !== "all" ? "No sessions match." : "No sessions in this space yet."}</div>`;
-      return;
-    }
-    for (const s of rows) {
-      const working = liveRuns.has(s.id);
-      const local = !s.source || s.source.kind === "local";
-      const last = s.messages[s.messages.length - 1]?.at || s.createdAt;
-      const snippet = s.source?.kind === "cloud-repo" ? s.source.repo
-        : s.workdir ? (s.workdir.split("/").filter(Boolean).pop() || s.workdir)
-          : local ? "local runtime" : "cloud runtime";
-      const tone = working ? "busy" : "idle";
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "session-card";
-      row.innerHTML =
-        `<span class="session-card-row1">` +
-          `<span class="session-card-locus" title="${local ? "Runs on your machine" : "Runs in the cloud"}">${local ? IC_LOCAL : IC_REMOTE}</span>` +
-          `<span class="session-card-title"></span>` +
-          `${s.pinned ? `<span class="session-card-pin" title="Pinned">📌</span>` : ""}` +
-        `</span>` +
-        `<span class="session-card-row2">` +
-          `<span class="session-card-dot ${tone}"></span>` +
-          `<span class="session-card-status ${tone}"></span>` +
-          `<span class="session-card-sep">·</span>` +
-          `<span class="session-card-snippet"></span>` +
-          `<span class="session-card-age"></span>` +
-        `</span>`;
-      (row.querySelector(".session-card-title") as HTMLElement).textContent = s.title;
-      (row.querySelector(".session-card-status") as HTMLElement).textContent = working ? "Working" : "Idle";
-      (row.querySelector(".session-card-snippet") as HTMLElement).textContent = snippet;
-      (row.querySelector(".session-card-age") as HTMLElement).textContent = timeAgo(last);
-      row.addEventListener("click", () => { listView = false; openLocalSession(s.id); });
-      scroll.appendChild(row);
-    }
-  };
-
-  search.addEventListener("input", () => { listQuery = search.value; paintRows(); });
-  filterBtn.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const existing = filterWrap.querySelector(".session-list-filter-menu");
-    if (existing) { existing.remove(); return; }
-    const menu = document.createElement("div");
-    menu.className = "code-menu session-list-filter-menu";
-    for (const f of LIST_FILTERS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "code-menu-item" + (f.id === listFilter ? " selected" : "");
-      b.textContent = f.label;
-      b.addEventListener("click", () => { listFilter = f.id; menu.remove(); renderThread(); });
-      menu.appendChild(b);
-    }
-    filterWrap.appendChild(menu);
-    const off = (e: MouseEvent): void => { if (!filterWrap.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", off, true); } };
-    setTimeout(() => document.addEventListener("mousedown", off, true), 0);
-  });
-
-  paintRows();
-  host.appendChild(wrap);
-}
-
-/** Open a local session by id (used by the Code home + session list). */
+/** Open a local session by id (the Code home + the rail's recents). */
 function openLocalSession(id: string): void {
   if (!chats.some((x) => x.id === id)) return;
-  listView = false;
   currentId = id;
   const c = current();
   if (c) { lastBySpace[spaceOf(c)] = c.id; void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id); }
@@ -1571,9 +1579,6 @@ function renderThread(): void {
   inner.className = "code-thread-inner";
   thread.appendChild(inner);
   stopGhostRotation();
-  // The per-space LIST VIEW (reached from the head's ‹) takes over the thread
-  // area — a search + filter over this space's session cards.
-  if (listView) { renderSessionList(inner); paintSessionHeadLocus(); return; }
   const c = current();
   // A server-adopted thread paints as soon as its lazily-fetched messages land.
   if (c) hydrateMessagesIfNeeded(c.id);
@@ -1778,17 +1783,44 @@ let workdirReady = true; // painted by checkWorkdirGate
 let railTab: "chat" | "cowork" | "code" = "chat";
 /** Each space remembers ITS last-selected session — switching tabs never
  *  carries a session across (persisted per space). */
+
+/**
+ * Rail search behaviour: type to filter, Esc to clear.
+ *
+ * The × belongs to search-clear.ts, which already enhances every
+ * `input.rail-recents-search` and dispatches `input` when it clears — so this
+ * only listens. (A second × of my own ended up orphaned outside the wrapper
+ * that enhancer injects.)
+ */
+function wireRailSearch(input: HTMLInputElement | null, onChange: (v: string) => void): void {
+  if (!input) return;
+  input.addEventListener("input", () => onChange(input.value));
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !input.value) return;
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+/** The Recents search only earns its space when Recents is OPEN and actually
+ *  has rows to filter. */
+function paintRecentsSearch(rows: number): void {
+  const input = el<HTMLInputElement>("recents-search");
+  const box = input?.closest<HTMLElement>(".app-rail-search");
+  if (!box) return;
+  const collapsed = !!el("recents-toggle")?.classList.contains("closed");
+  const show = !collapsed && (rows > 0 || !!recentsQuery.trim());
+  box.classList.toggle("hidden", !show);
+}
+
+/** The rail's Recents filter — session titles, this space only. */
+let recentsQuery = "";
 const lastBySpace: Record<"chat" | "cowork" | "code", string> = { chat: "", cowork: "", code: "" };
 const spaceOf = (c: CodeChat): "chat" | "cowork" | "code" => modeOf(c);
 const SPACE_PREF: Record<"chat" | "cowork" | "code", string> = { chat: "lastSessionChat", cowork: "lastSessionCowork", code: "lastSessionCode" };
 /** Repaints the Chat/Work toggle — set by initComposerControls, called on
  *  session switches so the control always shows the CURRENT session's mode. */
 let cwPaint: (() => void) | null = null;
-/** The per-space LIST VIEW is open (reached from the head's ‹). While true the
- *  thread area shows SessionList instead of the open session. Cleared on open
- *  / new / space-switch. */
-let listView = false;
-
 // ── Workspace SOURCE (the location chip on Work + Code) ───────────────────
 // Where the next session runs + what it works on. Persisted PER SPACE (a
 // code session defaults to a folder/repo; a work session to a cloud project),
@@ -1799,17 +1831,25 @@ const SOURCE_PREF: Record<"cowork" | "code", string> = { cowork: "workspaceSourc
 let sourceChip: ReturnType<typeof createSourceChip> | null = null;
 let gitChip: ReturnType<typeof createGitChip> | null = null;
 
+/** The space the chips describe right now. On the LANDING that is the rail's
+ *  tab (the chips describe the NEXT session) — never a resumed session's space,
+ *  because switching tabs on Home binds currentId to that space's last session.
+ *
+ *  READ AND WRITE MUST AGREE. When pickSource resolved the space differently
+ *  from activeSource, a pick on the landing landed in one space's bucket while
+ *  the chip re-read another's — the label snapped straight back and every chip
+ *  looked frozen. */
+function activeSpace(): "chat" | "cowork" | "code" {
+  const cur = document.body.classList.contains("composer-on-home") ? null : current();
+  return cur ? modeOf(cur) : railTab;
+}
+
 /** The source for the ACTIVE surface — the current session's stamped source,
- *  else the active space's pending pick (chat has none → cloud-new). */
+ *  else the active space's pending pick (chat has none → cloud). */
 function activeSource(): Source {
-  // On the LANDING the chips describe the NEXT session — the space's pending
-  // pick — never a resumed session's old stamp. (Switching spaces on Home
-  // binds currentId to the space's last session, whose stale cloud stamp was
-  // hijacking the whole chips row.)
-  const onHome = document.body.classList.contains("composer-on-home");
-  const cur = onHome ? null : current();
+  const cur = document.body.classList.contains("composer-on-home") ? null : current();
   if (cur?.source) return cur.source;
-  const space = cur ? modeOf(cur) : railTab;
+  const space = activeSpace();
   if (space === "chat") return { ...DEFAULT_SOURCE };
   return sourceBySpace[space];
 }
@@ -1818,9 +1858,12 @@ function activeSource(): Source {
  *  before its first send — after that the runtime is bound), else remember it
  *  as the active space's pending pick. Persisted either way. */
 function pickSource(next: Source): void {
-  const cur = current();
-  const space = cur ? modeOf(cur) : railTab;
-  if (space === "chat") return; // chat carries no source
+  const space = activeSpace();
+  const cur = space === "chat" ? null : current();
+  if (space === "chat") return; // chat is always cloud
+  // An OPEN session keeps the source it was born with. Guarded here as well as
+  // in the chip, because the folder browser and the repo picker call this too.
+  if (cur && !document.body.classList.contains("composer-on-home")) return;
   sourceBySpace[space] = next;
   paintSourceDependents();
   void window.glyphh.setPreference?.(SOURCE_PREF[space], next);
@@ -1841,7 +1884,8 @@ function mountSourceChip(): void {
   sourceChip = createSourceChip({
     getSource: activeSource,
     onPick: pickSource,
-    getSessionId: () => current()?.id ?? null,
+    // Chat's chip reads a flat "Cloud" — never a per-session runtime address.
+    getSessionId: () => (activeSpace() === "chat" ? null : current()?.id ?? null),
   });
   host.appendChild(sourceChip.el);
   // The GIT chip sits AFTER the folder in the landing row: repo picker on a
@@ -1908,32 +1952,258 @@ function initWorkdirGate(): void {
   initWebFolderChips();
 }
 
-/** Folder + add-files controls follow the SOURCE: a cloud workspace has no
- *  machine folder to pick and nothing local to attach — they sleep (until the
- *  R2 project root exists to browse). Local keeps them live. */
-function paintSourceDependents(): void {
-  const cloud = activeSource().kind !== "local";
-  // Landing row: folder + add VANISH for a remote run (nothing local applies).
-  for (const id of ["dash-wd-btn", "dash-wd-add"]) {
-    document.getElementById(id)?.classList.toggle("hidden", cloud);
+/**
+ * Chips follow the SPACE, not the source:
+ *   chat   — the source chip alone, reading "Cloud", inert (chat always runs there)
+ *   cowork — source + folder + add; no repo chip
+ *   code   — all of them
+ *
+ * The source state no longer disables anything. Picking a folder on a machine
+ * is HOW a session moves cloud→local, so greying the folder chip out whenever
+ * the source was cloud (the default) left every chip dead with no way back —
+ * exactly what Chris hit: "the chips are not editable anywhere".
+ */
+const CHIP_TITLES: Record<string, string> = {
+  "dash-wd-btn": "Pick the working folder",
+  "dash-wd-add": "Add folder",
+  "code-workdir-btn": "Pick the working folder",
+  "code-workdir-add": "Add folder",
+  "code-plus-chip": "Attach files",
+};
+
+/**
+ * Move the source + repo chips into whichever composer row is on screen.
+ *
+ * There is ONE of each, and they used to be appended to whichever row existed
+ * when prefs finished loading — so the AGENT view could come up with no source
+ * chip and no repo chip at all while the landing held both. The composer moves
+ * between Home and the thread; its chips have to move with it.
+ */
+function homeChips(): void {
+  const onHome = document.body.classList.contains("composer-on-home");
+  const host = document.getElementById(onHome ? "dash-source-slot" : "code-source-slot");
+  // FIRST in the row, always — `<source> <folder> <git> <+>`. Checking only
+  // the parent left it wherever it was appended, which put the source chip
+  // last in the agent row.
+  if (host && sourceChip && host.firstElementChild !== sourceChip.el) host.prepend(sourceChip.el);
+  // The repo chip sits AFTER the folder, so it anchors off that row's branch
+  // mirror rather than the slot itself.
+  const mirror = document.getElementById(onHome ? "dash-wd-branch-wrap" : "code-workdir-branch-wrap");
+  if (mirror && gitChip && gitChip.el.previousElementSibling !== mirror) {
+    mirror.insertAdjacentElement("afterend", gitChip.el);
   }
-  // Agent-screen originals just sleep (the layout there shouldn't jump).
-  for (const id of ["code-workdir-btn", "code-workdir-add", "code-plus-chip"]) {
+}
+
+
+/**
+ * Validate the picked folder: is git ALREADY enabled there?
+ *
+ * Runs on both surfaces (desktop FS bridge / attach relay), so a web session
+ * driving a machine gets the same answer as the desktop. A repo shows its
+ * branch; a plain folder says so, which is the signal that a session started
+ * here would be starting from no history. An unreachable machine shows
+ * nothing at all rather than claiming "no repo" about a folder we never read.
+ */
+let gitStateSeq = 0;
+function paintGitState(): void {
+  const src = activeSource();
+  const onHome = document.body.classList.contains("composer-on-home");
+  const wrap = document.getElementById(onHome ? "dash-wd-branch-wrap" : "code-workdir-branch-wrap");
+  const label = document.getElementById(onHome ? "dash-wd-branch" : "code-workdir-branch");
+  if (!wrap || !label) return;
+  const hide = (): void => { (wrap as HTMLElement).style.display = "none"; };
+  if (src.kind !== "local") { hide(); return; }
+  const seq = ++gitStateSeq;
+  // The DESKTOP's local source carries no path — the machine's own working
+  // directory is the folder in play there, so fall back to it.
+  const dirOf = async (): Promise<string> => src.path
+    || (await (wb() as unknown as { getCwdExplicit?: () => Promise<string | null> })?.getCwdExplicit?.().catch(() => null)) || "";
+  void dirOf().then((dir) => (dir ? gitStateFor(dir) : null)).then((git) => {
+    if (seq !== gitStateSeq) return;   // a newer pick landed while we asked
+    if (!git) { hide(); return; }
+    (wrap as HTMLElement).style.display = "";
+    wrap.classList.toggle("no-git", !git.isRepo);
+    label.textContent = git.isRepo ? (git.branch || "git") : "No git";
+    wrap.setAttribute("title", git.isRepo
+      ? `Git repository${git.branch ? ` on ${git.branch}` : ""}`
+      : "No git repository in this folder yet");
+  });
+}
+
+
+
+/** An unreachable source means the turn cannot run — the composer says so and
+ *  refuses the send rather than accepting a prompt that would fail. */
+function paintComposerReach(state: "connecting" | "live" | "down", src: Source): void {
+  const ta = input();
+  const send = el("code-send");
+  const wrap = document.querySelector<HTMLElement>(".code-input-wrap");
+  // Disabled WHILE CONNECTING, everywhere — you cannot send to a source that
+  // has not answered yet. A FAILED source only blocks a bound session: on the
+  // landing a dead source falls back to Cloud instead, so it never parks there
+  // with a dead box.
+  // Identical on both screens: the composer is blocked ONLY while the source
+  // is being reached. A source that cannot be reached resolves by falling back
+  // (below), never by leaving a dead box behind.
+  const blocked = state === "connecting";
+  if (ta) {
+    ta.disabled = blocked;
+    ta.placeholder = state === "connecting"
+      ? "Connecting to your source…"
+      : state === "down"
+        ? (src.kind === "local"
+            ? "Machine unavailable — pick another source to start"
+            : "Cloud unavailable — pick another source to start")
+        : readyPlaceholder();
+  }
+  send?.toggleAttribute("disabled", blocked);
+  wrap?.classList.toggle("gated", blocked);
+}
+
+/**
+ * Reflect REACHABILITY on the chip itself. A session that cannot connect
+ * anywhere must not look ready to run: the chip goes quiet and says so, rather
+ * than letting the failure surface on the first send.
+ */
+let reachSeq = 0;
+function paintSourceReach(): void {
+  const chip = sourceChip?.el.querySelector<HTMLElement>(".cl-runtime-chip");
+  if (!chip) return;
+  const src = activeSource();
+  const seq = ++reachSeq;
+  const setLabel = (text: string): void => {
+    const lbl = chip.querySelector<HTMLElement>(".cl-runtime-lbl");
+    if (lbl) lbl.textContent = text;
+  };
+
+  // CONNECTING — the attempt is visible while it happens. A source that
+  // silently sat there looking ready told the user nothing about whether the
+  // machine was actually reachable.
+  chip.classList.remove("cl-runtime-down", "cl-runtime-live");
+  chip.classList.add("cl-runtime-connecting");
+  // Keep the source's NAME and append the state — "Cloud · Connecting…" —
+  // rather than replacing it, so you never lose track of what is being reached.
+  sourceChip?.setSource(src);
+  const baseName = (chip.querySelector<HTMLElement>(".cl-runtime-lbl")?.textContent ?? "")
+    .replace(/\s*·\s*Connecting….*$/, "").trim();
+  setLabel(baseName ? `${baseName} · Connecting…` : "Connecting…");
+  chip.setAttribute("title", src.kind === "local"
+    ? "Connecting to your machine…"
+    : "Connecting to the cloud runtime…");
+  paintComposerReach("connecting", src);
+
+  const settle = (attempt: number): void => void probeSources(attempt > 0).then((reach) => {
+    if (seq !== reachSeq) return;   // a newer source landed mid-probe
+    const ok = src.kind === "local" ? reach.local : reach.cloud;
+    // STILL UNKNOWN — the bridge hasn't finished booting. Stay on
+    // "Connecting…" and ask again rather than declaring a failure we haven't
+    // actually observed.
+    // UNKNOWN (bridge still booting) or a FIRST failure — neither is a verdict.
+    // A probe fired before the SDK has its token throws once and would
+    // otherwise be cached as "unavailable" for the full TTL.
+    // On the LANDING the connect must resolve FAST — a long retry window there
+    // holds the composer disabled on a source that is probably fine (the cloud
+    // probe is known to under-report). A bound session can afford to wait.
+    // ~7s of genuine trying before we call it failed. A machine that is waking,
+    // a relay reconnecting or an SDK still bootstrapping all answer within
+    // that; anything shorter reports a failure the user could have waited out.
+    const patience = 8;
+    if ((ok === null || ok === false) && attempt < patience) {
+      // The SDK client answers calls before its token has finished
+      // bootstrapping, so the first second or two of failures are about US not
+      // being ready, not about the runtime being down.
+      setTimeout(() => settle(attempt + 1), attempt < 4 ? 400 : 1200);
+      return;
+    }
+    chip.classList.remove("cl-runtime-connecting");
+    if (ok) {
+      // LIVE — the chip goes back to naming the source it connected to.
+      chip.classList.remove("cl-runtime-down");
+      chip.classList.add("cl-runtime-live");
+      sourceChip?.setSource(src);   // back to the bare name
+      chip.setAttribute("title", "Where this session runs and what it works on");
+      paintComposerReach("live", src);
+      return;
+    }
+    // Only a DEFINITIVE failure earns the red state. `attach.status()` is
+    // authoritative — it answers "is a machine attached" and nothing else. A
+    // failing sessions.list() is not: it can throw for auth-bootstrap reasons
+    // that have nothing to do with the runtime's health, and claiming the
+    // cloud is down when it is serving fine is a worse lie than staying quiet.
+    if (ok === null) {
+      // Never ANSWERED (transport never came up) — that is not a failure we
+      // observed, so say nothing rather than accuse a runtime that may be fine.
+      chip.classList.remove("cl-runtime-down");
+      sourceChip?.setSource(src);
+      chip.setAttribute("title", "Where this session runs and what it works on");
+      try { console.warn("[source] reachability never confirmed — chip left neutral"); } catch { /* no console */ }
+      paintComposerReach("live", src);
+      return;
+    }
+    // FAILED — the source the USER chose could not be reached, and it says so.
+    // It is NEVER silently reassigned: switching someone's session to Cloud
+    // behind their back moves where their work runs and hides the real
+    // problem (an unattached desktop) behind a chip that looks fine.
+    chip.classList.add("cl-runtime-down");
+    setLabel(src.kind === "local" ? "Machine unavailable" : "Cloud unavailable");
+    chip.setAttribute("title", src.kind === "local"
+      ? "Couldn't reach your machine — open the Glyphh desktop, or switch to Cloud"
+      : "Couldn't reach the cloud runtime — switch to a connected machine");
+    paintComposerReach("down", src);
+  });
+  settle(0);
+}
+
+function paintSourceDependents(): void {
+  homeChips();
+  paintSourceReach();
+  const space = activeSpace();
+  const cloud = activeSource().kind !== "local";
+  // A CLOUD source has no machine folder to browse and nowhere to put a new
+  // one — the folder chip and its + go away entirely rather than sitting there
+  // inert. Chat has no folder chips at all.
+  const FOLDER_CHIPS = new Set(["dash-wd-btn", "dash-wd-add", "code-workdir-btn", "code-workdir-add"]);
+  for (const [id, title] of Object.entries(CHIP_TITLES)) {
     const el2 = document.getElementById(id);
     if (!el2) continue;
-    el2.classList.toggle("chip-disabled", cloud);
-    if (cloud) el2.setAttribute("title", "Runs in the cloud — folder + attachments come from the project workspace");
+    el2.classList.remove("chip-disabled");
+    el2.classList.toggle("hidden", space === "chat" || (cloud && FOLDER_CHIPS.has(id)));
+    el2.setAttribute("title", title);
   }
-  // GIT position: local → the passive branch mirror; cloud → the repo chip.
+  // The source chip shows everywhere, but it is only a CONTROL while the
+  // session is still pending. Chat never has a choice, and an EXISTING session's
+  // source is fixed at birth: the runtime, the workspace and the transcript are
+  // all bound to it, so re-pointing a live session would silently move where
+  // its work runs. It reads as a label from then on.
+  const bound = !document.body.classList.contains("composer-on-home") && !!current();
+  sourceChip?.el.classList.toggle("cl-chip-static", space === "chat" || bound);
+  paintGitState();
+  // GIT position: local → the passive branch mirror; cloud → the repo chip,
+  // and only in Code (Work carries no GitHub).
   const mirror = document.getElementById("dash-wd-branch-wrap");
   if (mirror && cloud) (mirror as HTMLElement).style.display = "none";
   gitChip?.refresh();
+  // The repo picker chooses what a CLOUD workspace checks out — on a local
+  // folder there is nothing for it to pick, and the folder's real git state
+  // (branch, or none) is already on the branch chip via paintGitState.
+  if (gitChip) gitChip.el.style.display = space === "code" && cloud ? "" : "none";
   // WEB: the folder chip shows the SESSION source's folder (the machine's cwd
   // concept doesn't reach a browser) — Home until a pick lands.
-  if (onWebTarget()) {
+  // The folder chip names the folder the session is IN — the last segment of
+  // the picked path, not the root it was browsed from. Painted on BOTH rows and
+  // both surfaces from the SOURCE, so a machine's cwd can't overwrite the pick.
+  {
     const src = activeSource();
-    const name = document.getElementById("dash-wd-name");
-    if (name && src.kind === "local") name.textContent = src.path ? (src.path.split("/").filter(Boolean).pop() || src.path) : "Home";
+    if (src.kind === "local" && src.path) {
+      const leaf = src.path.replace(/\/+$/, "").split("/").filter(Boolean).pop() || src.path;
+      for (const id of ["dash-wd-name", "code-workdir-name"]) {
+        const nameEl = document.getElementById(id);
+        if (nameEl) nameEl.textContent = leaf;
+      }
+      for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+        document.getElementById(id)?.setAttribute("title", `working directory: ${src.path}`);
+      }
+    }
   }
 }
 
@@ -1957,8 +2227,13 @@ function initWebFolderChips(): void {
       open(chip, { getSource: activeSource, onPick: pickSource });
     }, true);
   };
-  wire("dash-wd-btn", openMachineFolderBrowser);   // folder chip = the browser
-  wire("dash-wd-add", openNewFolderDrop);          // + = new folder ONLY
+  // BOTH rows — the landing's and the agent's. They are the same controls on
+  // two surfaces, and the agent view is where a session actually changes its
+  // folder mid-flight.
+  wire("dash-wd-btn", openMachineFolderBrowser);    // folder chip = the browser
+  wire("dash-wd-add", openNewFolderDrop);           // + = new folder ONLY
+  wire("code-workdir-btn", openMachineFolderBrowser);
+  wire("code-workdir-add", openNewFolderDrop);
 }
 
 // ── Composer attachments ─────────────────────────────────────────────────
@@ -3135,8 +3410,8 @@ let railAppsPage = 0;
 let railLayoutsPage = 0;
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
 // as one system rather than two differently-sized lists.
-const RAIL_APPS_PER_PAGE = 9;
-const RAIL_LAYOUTS_PER_PAGE = 9;
+const RAIL_APPS_PER_PAGE = 15;
+const RAIL_LAYOUTS_PER_PAGE = 15;
 
 /** Slice items to a page, clamping in-range (palette parity). */
 function railPaginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; totalPages: number } {
@@ -3421,18 +3696,14 @@ function initRailApps(): void {
   initRailSections();
 
   // Apps search — its own page; Enter runs the text as a command (palette parity).
-  el<HTMLInputElement>("recent-apps-search")?.addEventListener("input", () => {
-    railAppsPage = 0; renderRailApps();
-  });
+  wireRailSearch(el<HTMLInputElement>("recent-apps-search"), () => { railAppsPage = 0; renderRailApps(); });
   el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     const text = (e.target as HTMLInputElement).value.trim();
     if (text) void window.glyphh.execCommand(text.replace(/^\./, ""));
   });
   // Layouts search — its own page + list.
-  el<HTMLInputElement>("recent-layouts-search")?.addEventListener("input", () => {
-    railLayoutsPage = 0; renderRailLayouts();
-  });
+  wireRailSearch(el<HTMLInputElement>("recent-layouts-search"), () => { railLayoutsPage = 0; renderRailLayouts(); });
 }
 
 
@@ -3611,7 +3882,9 @@ export function initCode(): void {
   el("recents-toggle")?.addEventListener("click", () => {
     const open = el("recents-toggle")!.classList.contains("closed");
     setRecentsOpen(open, true);
+    renderHistory();   // the search box follows the disclosure
   });
+  wireRailSearch(el<HTMLInputElement>("recents-search"), (v) => { recentsQuery = v; renderHistory(); });
   initRailApps();
   /** NEW creates NOTHING — the record is born on the first send. Clears the
    *  selection and shows the space's landing. Both entry points use this:
@@ -3663,7 +3936,12 @@ export function initCode(): void {
     renderHistory();
     renderThread();
     void checkWorkdirGate();
+    syncSpaceAttrs();
     gotoSection("dashboard");
+    // The landing was covered until this moment, so its flow engine is either
+    // stopped or running the space the user left. Reconcile once it is on
+    // screen — a frame later, when offsetParent is real again.
+    requestAnimationFrame(() => syncDashParticles());
   };
   el("rail-home-btn")?.addEventListener("click", goHome);
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = goHome;
@@ -3684,6 +3962,23 @@ export function initCode(): void {
   // session-scoped chrome honest (chat sessions strip the work chrome). ──
   const paintCw = (): void => {
     const cur = current();
+    // HARD TYPING: a session's mode is fixed at birth and the rail tab must
+    // agree with whatever is OPEN. Without this the two could drift — the tab
+    // said Code while a Chat session was on screen — and the next + New
+    // session would inherit the wrong type from the tab.
+    //
+    // Only ever against an OPEN session. On the LANDING `current()` still
+    // resolves whichever session was last visited, so typing off it snapped
+    // the rail straight back to that session's space on every repaint: the
+    // Work and Code tabs could not be selected at all, and their chips stayed
+    // in chat's inert state. The landing's space is the TAB's, full stop.
+    const open = document.body.classList.contains("composer-on-home") ? null : cur;
+    if (open && railTab !== modeOf(open)) {
+      railTab = modeOf(open);
+      railTabs?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === railTab));
+      document.body.dataset.railSpace = railTab;
+      window.dispatchEvent(new CustomEvent("rail-space-changed"));
+    }
     // The agent orients by where its session CAME FROM: the session's own
     // mode, or — before the first send creates one — the active tab. CSS
     // keys the head chrome off this (chat = title only; work = folder but
@@ -3719,14 +4014,13 @@ export function initCode(): void {
     window.dispatchEvent(new CustomEvent("rail-space-changed"));
   };
   const enterSpace = (navigate: boolean): void => {
-    listView = false;
     paintRailTabs();
-    // NEVER carry a session across spaces. On the LANDING (the pill's only
-    // home) the screen IS the pending new session — resuming the space's
-    // last record here made the next send APPEND to an old session that was
-    // never on screen. Resume-last only applies to navigating entries.
-    const onHome = document.body.classList.contains("composer-on-home");
-    const last = onHome ? undefined : chats.find((c) => c.id === lastBySpace[railTab] && spaceOf(c) === railTab);
+    // NEVER carry a session across spaces, and resume the space's last one
+    // ONLY when we are navigating to it. Staying put (the landing's own pill)
+    // must leave currentId empty — the screen IS the pending new session
+    // there, and binding it to an old record made the next send APPEND to a
+    // session that was never on screen.
+    const last = navigate ? chats.find((c) => c.id === lastBySpace[railTab] && spaceOf(c) === railTab) : undefined;
     currentId = last?.id || "";
     void saveStore();
     renderHistory();
@@ -3734,21 +4028,46 @@ export function initCode(): void {
     refreshCtxMeter();
     void checkWorkdirGate();
     if (!navigate) return;
+    // No session to resume → that tab's + New Session screen, for EVERY space.
+    // Code used to jump straight to a bare agent, which is what made a cleared
+    // session look like it had come back as an empty one.
     if (last) gotoSection("agent");
-    else gotoSection(railTab === "code" ? "agent" : "dashboard");
+    else gotoSection("dashboard");
     paintCw();
   };
   // THE RAIL TABS are the space switch: they scope the rail's lists AND decide
   // which agent a new session becomes. On the landing they re-scope in place;
   // elsewhere they navigate to that space (enterSpace decides).
-  railTabs?.querySelectorAll<HTMLElement>("button").forEach((b) => b.addEventListener("click", () => {
-    const next = b.dataset.tab === "code" ? "code" : b.dataset.tab === "cowork" ? "cowork" : "chat";
-    if (railTab === next) return;
+  /** Switch spaces. `navigate` decides the destination: GO to the space (its
+   *  live session if it has one, else its + New Session page), or just re-type
+   *  the pending session in place. */
+  const switchSpace = (next: "chat" | "cowork" | "code", navigate: boolean): void => {
+    // A navigating click on the ALREADY-active tab still goes — "take me to my
+    // Work session" shouldn't depend on which tab happens to be lit.
+    if (railTab === next && !navigate) return;
     railTab = next;
-    const onHome = document.body.classList.contains("composer-on-home");
-    enterSpace(!onHome);
+    enterSpace(navigate);
     paintCw();
+  };
+  const spaceOfBtn = (v?: string): "chat" | "cowork" | "code" =>
+    v === "code" ? "code" : v === "cowork" ? "cowork" : "chat";
+  // THE RAIL TABS navigate, exactly as the command centre's do.
+  railTabs?.querySelectorAll<HTMLElement>("button").forEach((b) => b.addEventListener("click", () => {
+    switchSpace(spaceOfBtn(b.dataset.tab), true);
   }));
+  // The landing's pill TYPES the session you are about to start — it never
+  // navigates away from the screen you are filling in.
+  spacePill?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => b.addEventListener("click", () => {
+    switchSpace(spaceOfBtn(b.dataset.space), false);
+  }));
+  // The COMMAND CENTRE's tabs: the panel has already closed itself, so this
+  // always navigates — enterSpace resumes the space's last session when it has
+  // one and lands on its new-session screen when it does not.
+  window.addEventListener("glyphh:enter-space", (e) => {
+    const s = (e as CustomEvent).detail;
+    if (s !== "chat" && s !== "cowork" && s !== "code") return;
+    switchSpace(s, true);
+  });
   // A layout ACTIVATES ITS OWN SPACE (code-workbench dispatches on open):
   // the tab, lists, and menus follow the layout — without navigating away
   // from it, and without resetting the session the layout is about to bind.
@@ -3852,8 +4171,10 @@ export function initCode(): void {
   // a session). The session survives in history — the head's history
   // dropdown resumes it; the list view stays reachable from there.
   // ‹ ALWAYS opens THIS agent's session list (scoped to its type by
-  // renderSessionList/renderHistory) — never the global landing.
-  el("code-session-back")?.addEventListener("click", () => { if (current()) openSessionListView(); });
+  // renderHistory) — never the global landing.
+  // ‹ — back to this tab's + New Session screen. (It used to open the session
+  // LIST, which is reachable from the rail's recents.)
+  el("code-session-back")?.addEventListener("click", () => { if (current()) forgetCurrentSession(); });
   el("code-session-kebab")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     if (headKebabEl) { closeHeadKebab(); return; }

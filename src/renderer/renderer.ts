@@ -154,7 +154,8 @@ declare global {
       marketplaceInstall: (id: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
       dashboardData: () => Promise<{ name: string; plan: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number }>;
-      usageSeries: (days: number, groupBy: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      // `userId` narrows to one member (org_admin only); "" = the caller's scope.
+      usageSeries: (days: number, groupBy: string, userId?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       dashboardRuns: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       homeGotoSection: (section: string) => Promise<{ ok: boolean }>;
       onGotoSection: (cb: (section: string) => void) => void;
@@ -218,8 +219,6 @@ declare global {
       openDeviceApproval: (url: string) => Promise<{ ok: boolean }>;
       onDeviceLoginPrompt: (cb: (prompt: { userCode: string; verificationUri: string; verificationUriComplete?: string; expiresIn: number }) => void) => void;
       getAccountInfo: () => Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string } | null>;
-      userTimezoneGet: () => Promise<string | null>;
-      userTimezoneSet: (tz: string) => Promise<{ ok: boolean; error?: string }>;
       logout: () => Promise<void>;
       onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => void;
       onThemeChanged: (callback: (theme: string) => void) => void;
@@ -303,6 +302,15 @@ declare global {
       loopRoles: (loop: string, force?: boolean) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       // Org-admin Models page.
+      workspacesList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
+      workspacesCreate: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      workspacesUpdate: (id: string, input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      workspacesDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      workspacesModelCatalog: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
+      workspacesOrgConnectors: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      workspacesOrgToolCap: () => Promise<{ ok: boolean; data?: Record<string, string[]>; error?: string }>;
+      workspacesConnTools: (slug: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      workspacesAppSearch: (search: string, limit?: number) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       orgModelsSetSupported: (id: string, supported: boolean) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgCustomModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;

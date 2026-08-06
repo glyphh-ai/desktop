@@ -94,16 +94,9 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
 
   ipcMain.handle("get-account-info", () => getAccountInfo());
 
-  // Timezone lives on the user's server profile (users.timezone) — same
-  // value the platform's Settings > Profile page edits. Not a local pref.
-  ipcMain.handle("user-timezone-get", async () => {
-    try {
-      const me = await getClient().profile.get();
-      return me.timezone || "UTC";
-    } catch {
-      return null;
-    }
-  });
+  // Timezone lives on the user's server profile (users.timezone) and is edited
+  // only through Settings › Account (account-ipc's account-profile-update).
+
   // Rail collapse — shrink the app to just the left rail (and back).
   ipcMain.handle("rail-collapse-get", () => isRailCollapsed());
   ipcMain.handle("rail-collapse-toggle", () => toggleRailCollapsed());
@@ -113,15 +106,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   // parks the agent back in its home column (see resetWorkspace). It no longer
   // touches the OS window (size, position, fullscreen) or the rail — a layout
   // is workspace state, not window state.
-
-  ipcMain.handle("user-timezone-set", async (_e, timezone: string) => {
-    try {
-      await getClient().profile.update({ timezone });
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : "save failed" };
-    }
-  });
 
   // Per-user usage + credit balance, straight from the server (the proxy meters
   // this org/user). Replaces the old local UsageTracker numbers on the dashboard.

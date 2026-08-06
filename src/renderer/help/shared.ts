@@ -204,7 +204,23 @@ export function promptAction(message: string, defaultValue = "", placeholder = "
 
 // ── Pagination utility ──────────────────────────────────────
 
-export const PAGE_SIZE = 50;
+export const PAGE_SIZE = 25;
+
+/**
+ * The platform's web origin, as a STRING.
+ *
+ * `window.glyphh.platformUrl` is a real string on the desktop build (preload
+ * sets it), but on web `window.glyphh` is a Proxy that fabricates a FUNCTION for
+ * any name it doesn't know — so reading it there yields a function, and
+ * `.replace(...)` on it throws. Every caller goes through here.
+ */
+export function platformUrl(): string {
+  const raw = (window as unknown as { glyphh?: { platformUrl?: unknown } }).glyphh?.platformUrl;
+  if (typeof raw === "string" && raw) return raw.replace(/\/+$/, "");
+  // On web the app is served beside the platform; fall back to this origin so a
+  // hand-off still lands somewhere real rather than "undefined/billing".
+  try { return window.location.origin.replace(/\/+$/, ""); } catch { return ""; }
+}
 
 export interface PaginationState {
   page: number;

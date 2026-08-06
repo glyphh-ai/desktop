@@ -144,14 +144,8 @@ export function buildContract(client, deps) {
       catch { return { status: 'anonymous' }; }
     },
     getAppVersion: async () => '',
-    // Server-profile timezone (users.timezone) — same field the platform edits.
-    userTimezoneGet: async () => {
-      try { return (await client.profile.get()).timezone ?? null; } catch { return null; }
-    },
-    userTimezoneSet: async (tz) => {
-      try { await client.profile.update({ timezone: tz }); return { ok: true }; }
-      catch (err) { return libError(err); }
-    },
+    // Timezone (users.timezone) is edited only through Settings › Account,
+    // which goes straight at client.profile.update via the account API.
 
     // ── Chat-tab landing (dashboard) ────────────────────────────────────────────
     // The composer + starters render ONLY when dashboardData() resolves truthy, so this
@@ -172,6 +166,33 @@ export function buildContract(client, deps) {
     // per-task runs). EXPLICIT stub → the correct empty `{ ok, data:[] }` envelope the
     // dashboard's runs list reads, not a silent undefined. Wire when the endpoint lands.
     dashboardRuns: async () => ({ ok: true, data: [] }),
+    // The stacked usage chart's feed (Settings › Usage), matching home-ipc.ts's
+    // desktop handler exactly: an N-day window bucketed in this device's zone,
+    // credits converted from MICRO to WHOLE so the renderer never sees micro.
+    // `userId` narrows to one member and is org_admin-only server-side, so it
+    // is sent only when the caller actually picked someone.
+    usageSeries: async (days, groupBy, userId) => {
+      try {
+        const MICRO = 1_000_000;
+        const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const now = new Date();
+        const win = Math.max(1, Math.min(Number(days) || 30, 365));
+        const start = new Date(now);
+        start.setDate(now.getDate() - (win - 1));
+        const from = ymd(start);
+        const to = ymd(now);
+        const { points } = await client.usage.series({
+          from,
+          to,
+          groupBy: groupBy === 'source' ? 'source' : 'model',
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          ...(userId ? { userId } : {}),
+        });
+        return { ok: true, data: { from, to, points: (points || []).map((pt) => ({ ...pt, credits: pt.credits / MICRO })) } };
+      } catch (err) {
+        return { ok: false, error: err?.message ?? String(err) };
+      }
+    },
 
     // ── Prefs / theme ───────────────────────────────────────────────────────────
     // Server-backed (org→user in the stator) via profile.prefs/setPrefs. The whole

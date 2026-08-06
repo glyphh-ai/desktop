@@ -17,6 +17,8 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
+import { browserErrorPage, type BrowserErrorInfo, type ErrorPalette } from "./browser-error-page.js";
+import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { Terminal } from "@xterm/xterm";
@@ -174,6 +176,67 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
 };
+
+// ── Browser panel: start page + error pages ─────────────────────────────
+//
+// Both read state that lives OUTSIDE the workbench (the user's preferences,
+// the active theme), so they sit here as plain helpers rather than being
+// threaded through every webview call site.
+
+const prefsYo = (): { getPreference?: (k: string, d?: unknown) => Promise<unknown> } =>
+  (window as unknown as { glyphh?: { getPreference?: (k: string, d?: unknown) => Promise<unknown> } }).glyphh ?? {};
+
+/**
+ * The configured start page. Cached after the first read so the paint path
+ * stays synchronous — `primeBrowserHome()` refreshes it whenever a Browser
+ * panel renders, so a settings change lands on the next open.
+ */
+let browserHomeUrl = "";
+
+async function primeBrowserHome(): Promise<string> {
+  try {
+    const [pref, custom] = await Promise.all([
+      prefsYo().getPreference?.("browserHomepage", "claude"),
+      prefsYo().getPreference?.("browserHomepageUrl", ""),
+    ]);
+    browserHomeUrl = resolveBrowserHome(pref as string, custom as string);
+  } catch {
+    // Preferences unreachable (web boot, signed out) — the built-in default
+    // still beats opening a blank panel.
+    browserHomeUrl = resolveBrowserHome(undefined, undefined);
+  }
+  return browserHomeUrl;
+}
+
+/** The start page for a tab that has nothing in it yet. */
+function browserHome(): string {
+  return browserHomeUrl || resolveBrowserHome(undefined, undefined);
+}
+
+/** The live theme's colours, resolved for a page that can't see our CSS. */
+function themePalette(): ErrorPalette {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name: string, fallback: string): string => (cs.getPropertyValue(name) || "").trim() || fallback;
+  return {
+    bg: v("--bg", "#101014"),
+    surface: v("--surface", "#17171c"),
+    border: v("--border", "#2a2a32"),
+    text: v("--text", "#e6e6ea"),
+    dim: v("--text-3", "#8a8a95"),
+    accent: v("--accent", "#8c3bf2"),
+    danger: v("--danger", "#ef4444"),
+    warning: v("--warning", "#f59e0b"),
+  };
+}
+
+/** ERR_ABORTED (-3) is what a normal in-flight navigation cancel looks like —
+ *  never an error page, or every fast click flashes one. */
+const isRealLoadFailure = (code: number | undefined): boolean => !!code && code !== -3;
+
+/** Point a webview at the themed error page for a failure. */
+function showBrowserError(wv: { setAttribute: (n: string, v: string) => void }, info: BrowserErrorInfo): void {
+  wv.setAttribute("src", browserErrorPage(info, themePalette()));
+}
 
 /** Panel titles for hosted sections (slot headers + layout minis). */
 const SECTION_TITLES: Record<string, string> = {
@@ -628,22 +691,29 @@ async function init(): Promise<void> {
     });
   }
 
+  /** The NEW SESSION landing stands in for the agent. It is the same seat —
+   *  the session you are about to start — so it survives another panel opening
+   *  and keeps its own column, exactly as the running agent does. Every other
+   *  internal section is still a full-screen page. */
+  const isAgentSeat = (s: Slot): boolean =>
+    s.view === "coding" || (s.view === "section" && s.section === "dashboard");
+
   function placeSlot(slot: Slot): void {
     // Internal section panels render FULL SCREEN, period — they never share
     // the grid. Placing anything else first closes any hosted section
-    // (renderRails parks its DOM back to the pen).
+    // (renderRails parks its DOM back to the pen). The agent seat is exempt.
     if (slot.view !== "section") {
       for (let i = rails.length - 1; i >= 0; i--) {
-        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "section");
+        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "section" || isAgentSeat(sl));
         if (!rails[i].slots.length) rails.splice(i, 1);
       }
     }
     for (const rail of rails) {
-      // Never auto-stack under the hosted agent: a rail holding the coding
-      // tile keeps its column to itself, so the first new item opens BESIDE
-      // the agent, not squeezed beneath it. (Deliberate drag-drop placement
-      // is a different path and can still stack anywhere.)
-      if (rail.slots.some((s) => s.view === "coding")) continue;
+      // Never auto-stack under the agent seat: a rail holding it keeps its
+      // column, so the first new item opens BESIDE the agent — one slot to its
+      // right — not squeezed beneath it. (Deliberate drag-drop placement is a
+      // different path and can still stack anywhere.)
+      if (rail.slots.some(isAgentSeat)) continue;
       if (rail.slots.length < 2) { rail.slots.push(slot); renderRails(); saveLayout(); return; }
     }
     rails.push({ id: nextRailId++, slots: [slot] });
@@ -830,6 +900,17 @@ async function init(): Promise<void> {
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
+  /**
+   * The agent seat just went away — closed by hand, or replaced by a layout
+   * that has no agent in it. The session it held stops being its space's
+   * resume target, so the next visit to that tab opens + New Session rather
+   * than silently reopening what the user closed.
+   */
+  function notifySeatClosed(): void {
+    if (rails.some((r) => r.slots.some(isAgentSeat))) return;
+    (window as unknown as { __glyphhForgetSession?: () => void }).__glyphhForgetSession?.();
+  }
+
   function closeSlot(slotId: number): void {
     for (let i = 0; i < rails.length; i++) {
       const r = rails[i];
@@ -837,7 +918,9 @@ async function init(): Promise<void> {
       if (idx >= 0) {
         const wasSection = r.slots[idx].view === "section";
         const wasEcho = r.slots[idx].view === "echo";
+        const wasSeat = isAgentSeat(r.slots[idx]);
         r.slots.splice(idx, 1);
+        if (wasSeat) queueMicrotask(notifySeatClosed);
         if (r.slots.length === 0) rails.splice(i, 1);
         // Leaving Echo does NOT spawn an agent session (see closeAllOfView).
         void wasEcho;
@@ -887,7 +970,14 @@ async function init(): Promise<void> {
 
   /** Close EVERY workbench panel (the right-click "Clear all" + `.dip clear`).
    *  Guards unsaved editor work first — clearing is otherwise silent data loss. */
-  async function clearAllPanels(): Promise<boolean> {
+  /**
+   * Wipe the workspace. `keepAgentSeat` spares the agent seat — the running
+   * agent or the + New Session landing — because "the app replaces the
+   * workspace" was never meant to close the session you are in or the one you
+   * are about to start. The seat keeps its own rail, so the incoming app lands
+   * in the column beside it.
+   */
+  async function clearAllPanels(keepAgentSeat = false): Promise<boolean> {
     // No flushEditorModel here — it's scoped to the Monaco renderer, and the
     // dirty FLAG is already set on the first keystroke, so the count is accurate
     // without folding the live buffer back (we're discarding content anyway).
@@ -904,7 +994,9 @@ async function init(): Promise<void> {
       });
       if (!ok) return false;
     }
+    const seat = keepAgentSeat ? rails.flatMap((r) => r.slots).find(isAgentSeat) : undefined;
     rails.length = 0;
+    if (seat) rails.push({ id: nextRailId++, slots: [seat] });
     maximizedSlotId = null;
     activeLayoutName = null;
     renderRails();
@@ -2171,8 +2263,13 @@ async function init(): Promise<void> {
     spaceTabs?.querySelectorAll<HTMLElement>(".echo-space-opt").forEach((b) => {
       b.addEventListener("click", () => {
         const next = b.dataset.space === "code" ? "code" : b.dataset.space === "cowork" ? "cowork" : "chat";
-        window.dispatchEvent(new CustomEvent("glyphh:activate-space", { detail: next }));
         paintSpaceTabs();
+        // Close the panel and GO: that space's live session if it has one,
+        // else its new-session landing with the tab already active. (The
+        // layout-activation event is a different thing — it re-scopes in
+        // place and must not navigate.)
+        closeEchoSurface();
+        window.dispatchEvent(new CustomEvent("glyphh:enter-space", { detail: next }));
       });
     });
     window.addEventListener("rail-space-changed", paintSpaceTabs);
@@ -2374,6 +2471,12 @@ async function init(): Promise<void> {
     const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean }): void => {
       const card = e.card;
       if (!card) return;
+      // The AGENT card IS the session. Closing it must un-current that session
+      // for its space — the card path bypasses closeSlot entirely, which is
+      // why closing on web left the session as the tab's resume target.
+      if (e.tile.kind === "agent" || card.querySelector(".code-agent")) {
+        (window as unknown as { __glyphhForgetSession?: () => void }).__glyphhForgetSession?.();
+      }
       e.card = undefined;
       e.open = false;
       drawTile(e);
@@ -2875,8 +2978,14 @@ async function init(): Promise<void> {
         wv.setAttribute("partition", "persist:yo");
         wv.setAttribute("allowpopups", "true");
         wv.addEventListener("did-fail-load", (ev) => {
-          const err = ev as unknown as { errorCode?: number; errorDescription?: string };
-          if (err.errorCode && err.errorCode !== -3) console.warn(`[echo] "${t.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
+          const err = ev as unknown as { errorCode?: number; errorDescription?: string; validatedURL?: string; isMainFrame?: boolean };
+          if (!isRealLoadFailure(err.errorCode) || err.isMainFrame === false) return;
+          console.warn(`[echo] "${t.name}" failed to load (${err.errorCode} ${err.errorDescription || ""})`);
+          showBrowserError(wv, {
+            url: err.validatedURL || t.url || "",
+            errorCode: err.errorCode,
+            description: err.errorDescription,
+          });
         });
         if (t.glyphh && t.slug) {
           // Installed Glyphh app — the SAME preview-open flow as mountAppView:
@@ -3105,6 +3214,9 @@ async function init(): Promise<void> {
         // The reset saves the layout's memory ("last" resumes it), same as
         // the universal chat icon.
         if (echoGrid) resetEcho();
+        // SETTINGS opens ALONE, so the single card fills the wall — full
+        // screen, but still a card with its own header and close.
+        if (section === "settings") resetEcho();
         openSectionCard(section);
       },
       openAgent: () => { void openAgentCard(); },
@@ -3769,15 +3881,19 @@ async function init(): Promise<void> {
         paintFullscreenClasses();
       }
     });
-    // Some sites refuse to embed (X-Frame-Options/CSP) — surface that (to the
-    // main terminal too), since it looks identical to "blank" otherwise.
+    // Some sites refuse to embed (X-Frame-Options/CSP) — say so in the panel
+    // AND in the main terminal, since it looks identical to "blank" otherwise.
     webview.addEventListener("did-fail-load", (e) => {
-      const err = e as unknown as { errorCode?: number; errorDescription?: string };
-      if (err.errorCode && err.errorCode !== -3) {
-        const m = `[wb] "${slot.name}" failed to load (${err.errorCode} ${err.errorDescription || ""}) — it may block embedding.`;
-        console.warn(m);
-        (window as unknown as { glyphh?: { wbLog?: (s: string) => void } }).glyphh?.wbLog?.(m);
-      }
+      const err = e as unknown as { errorCode?: number; errorDescription?: string; validatedURL?: string; isMainFrame?: boolean };
+      if (!isRealLoadFailure(err.errorCode) || err.isMainFrame === false) return;
+      const m = `[wb] "${slot.name}" failed to load (${err.errorCode} ${err.errorDescription || ""}) — it may block embedding.`;
+      console.warn(m);
+      (window as unknown as { glyphh?: { wbLog?: (s: string) => void } }).glyphh?.wbLog?.(m);
+      showBrowserError(webview, {
+        url: err.validatedURL || slot.url || "",
+        errorCode: err.errorCode,
+        description: err.errorDescription,
+      });
     });
 
     // Browser chrome: back / fwd / reload + address bar. It lives inside the
@@ -3868,6 +3984,26 @@ async function init(): Promise<void> {
     if (!appSyncRaf) appSyncRaf = requestAnimationFrame(syncAppViews);
   }
 
+  /**
+   * Open an app. There is exactly ONE way: an ECHO CARD.
+   *
+   * Echo is the workbench, not a mode of it — if the wall is down the answer is
+   * to raise it, never to open somewhere else. The old fallback opened a rail
+   * slot instead, which meant two implementations of "open an app" drifting
+   * apart: layouts rendered as flat slots with no grid, and the web took the
+   * slot path for a `<webview>` reason that stopped being true once
+   * mountAppIntoCard grew its own web branch (streamed panel / iframe — same
+   * card, same chrome, different transport).
+   *
+   * echoCtl is published while the echo view renders, so a freshly-raised wall
+   * may not have it yet; retry on the next frame rather than branching.
+   */
+  function openAppCard(app: WbAppRef, tries = 0): void {
+    openEchoSurface();
+    if (echoCtl) { echoCtl.openApp(app); return; }
+    if (tries < 40) requestAnimationFrame(() => openAppCard(app, tries + 1));
+  }
+
   let lastAppsJson = "";
   function notifyOpenApps(): void {
     const open = [...appSlots().map((s) => ({ slug: s.slug, name: s.name })), ...(echoCtl?.list() ?? [])];
@@ -3880,72 +4016,6 @@ async function init(): Promise<void> {
   interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
   interface WbLayoutCell extends WbAppRef { col: number; row: number; span?: number; sticky?: boolean; tool?: string; config?: { url?: string; cmd?: string; keepAlive?: boolean } }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
-
-  /** Open an app in the workbench. Default = STACK a new panel, so apps
-   *  accumulate. The switch (reuse one panel) is the EXCEPTION, and happens only
-   *  when a layout PINNED a section (a sticky slot — that section is the
-   *  designated swap target) or the caller asks to switch the active panel
-   *  (`replaceActive`, e.g. `.dip .`). newPanel forces a fresh slot even past a pin. */
-  function openAppInWorkbench(app: WbAppRef, opts: { newPanel?: boolean; replaceActive?: boolean; replaceWorkspace?: boolean } = {}): void {
-    const existing = appSlots().find((s) => s.slug === app.slug);
-    // The Browser builtin is MULTI-INSTANCE — every open is a new window.
-    if (existing && app.slug !== "browser") { focusAppSlot(existing.id); return; }
-    // Opening an individual app means the workbench is no longer "the named
-    // layout" — stop writing geometry into that layout's memory.
-    activeLayoutName = null;
-    // A pinned (sticky) section always wins as the swap target — on ANY slot
-    // kind: a pinned Browser band means "apps land here". Absent a pin,
-    // switch the active panel ONLY when asked (.dip .); otherwise stack.
-    const pinned = rails.flatMap((r) => r.slots).find((s) => s.sticky);
-    // Command-bar semantics: the app REPLACES the workspace — unless a layout
-    // pinned a landing section (the pin wins, below) or the caller stacks.
-    if (opts.replaceWorkspace && !opts.newPanel && !pinned) {
-      void clearAllPanels().then((cleared) => {
-        if (!cleared) return;   // the user kept unsaved work — abort the open
-        const slot: AppSlot = { id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url, glyphh: app.glyphh, urlBarHidden: urlBarHiddenDefault() };
-        placeSlot(slot);
-        scheduleAppSync();
-      });
-      return;
-    }
-    const target = opts.newPanel ? undefined : (pinned ?? (opts.replaceActive ? appSlots()[0] : undefined));
-    if (target && target.view !== "app") {
-      // A pinned TOOL panel is REPLACED by the app at the same spot, pin
-      // carried over so the NEXT open lands here too.
-      for (const rail of rails) {
-        const idx = rail.slots.indexOf(target);
-        if (idx < 0) continue;
-        rail.slots[idx] = {
-          id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url,
-          glyphh: app.glyphh, sticky: true, urlBarHidden: urlBarHiddenDefault(),
-        };
-        renderRails();
-        saveLayout();
-        scheduleAppSync();
-        return;
-      }
-    }
-    if (target && target.view === "app") {
-      const view = appViews.get(target.id);
-      const apply = (): void => {
-        target.slug = app.slug;
-        target.name = app.name;
-        target.url = app.url;
-        target.glyphh = app.glyphh;
-        renderRails();   // header title; syncAppViews swaps the webview
-        saveLayout();
-        scheduleAppSync();
-      };
-      if (view) {
-        view.holder.classList.add("leaving");   // slide out (→ left)
-        setTimeout(apply, 150);
-      } else apply();
-      return;
-    }
-    const slot: AppSlot = { id: nextSlotId++, view: "app", slug: app.slug, name: app.name, url: app.url, glyphh: app.glyphh, urlBarHidden: urlBarHiddenDefault() };
-    placeSlot(slot);
-    scheduleAppSync();
-  }
 
   function focusAppSlot(slotId: number): void {
     if (maximizedSlotId !== null && maximizedSlotId !== slotId) {
@@ -3971,6 +4041,15 @@ async function init(): Promise<void> {
   // manager. Opening "the switcher" now means opening Echo.
   function openEchoSurface(): void {
     if (!viewIsOpen("echo")) placeView("echo");
+  }
+
+  /** Close the command centre wherever it is open. Picking an agent from it is
+   *  a decision, not a browse — the panel gets out of the way. */
+  function closeEchoSurface(): void {
+    // Collect the ids FIRST: closeSlot splices `rails` when a rail empties, so
+    // iterating it live would skip entries.
+    const ids = rails.flatMap((r) => r.slots.filter((s) => s.view === "echo").map((s) => s.id));
+    for (const id of ids) closeSlot(id);
   }
 
   // ── Files view ──
@@ -4863,6 +4942,9 @@ async function init(): Promise<void> {
     // most of the web). Tabs swap by visibility — a webview reloads if its DOM
     // node moves, so every tab keeps its own guest and history.
     previewTabs(slot);
+    // Re-read the start page on every open so a settings change takes effect
+    // without a restart. paintFrames() below puts it in any empty tab.
+    await primeBrowserHome();
     body.innerHTML = `
       <div class="ws-preview-tabs">
         <div class="wpt-list"></div>
@@ -4882,10 +4964,6 @@ async function init(): Promise<void> {
       </div>
       <div class="ws-preview-body">
         <div class="ws-preview-frames"></div>
-        <div class="ws-preview-stub">
-          <div class="ws-preview-stub-title">Nothing open</div>
-          <div class="ws-preview-stub-sub">Enter a URL above — e.g. http://localhost:3000 — or open a file from disk.</div>
-        </div>
       </div>
     `;
     const list = body.querySelector(".wpt-list") as HTMLElement;
@@ -4895,7 +4973,6 @@ async function init(): Promise<void> {
     const downloadBtn = body.querySelector(".ws-preview-download") as HTMLButtonElement;
     const openFileBtn = body.querySelector(".ws-preview-openfile") as HTMLButtonElement;
     const frames = body.querySelector(".ws-preview-frames") as HTMLElement;
-    const stub = body.querySelector(".ws-preview-stub") as HTMLElement;
 
     const views = new Map<number, WebviewEl & HTMLElement>();
     const active = (): PreviewTab => previewTabs(slot)[slot.activeTab ?? 0];
@@ -4982,12 +5059,43 @@ async function init(): Promise<void> {
       // previews) is registered there only. "plugins" = native PDF viewer.
       wv.setAttribute("allowpopups", "");
       wv.setAttribute("plugins", "");
+      // ── Failures become a PAGE, not a blank rectangle ──
+      // Two different signals: did-fail-load means no document arrived at all,
+      // so it always stands in. An HTTP 4xx/5xx did arrive — the server just
+      // answered with an error — and plenty of sites serve a real page with
+      // one, so that case is held until the load settles and only replaces a
+      // body that turned out to be empty.
+      let pendingStatus: { status: number; statusText?: string; url: string } | null = null;
+      wv.addEventListener("did-start-loading", () => { pendingStatus = null; });
       wv.addEventListener("did-fail-load", (e) => {
-        const err = e as unknown as { errorCode?: number; errorDescription?: string };
-        if (err.errorCode && err.errorCode !== -3) {
-          (window as unknown as { glyphh?: { wbLog?: (m: string) => void } }).glyphh?.wbLog?.(
-            `[wb] Browser tab failed to load (${err.errorCode} ${err.errorDescription || ""}).`);
-        }
+        const err = e as unknown as { errorCode?: number; errorDescription?: string; validatedURL?: string; isMainFrame?: boolean };
+        if (!isRealLoadFailure(err.errorCode) || err.isMainFrame === false) return;
+        pendingStatus = null;
+        (window as unknown as { glyphh?: { wbLog?: (m: string) => void } }).glyphh?.wbLog?.(
+          `[wb] Browser tab failed to load (${err.errorCode} ${err.errorDescription || ""}).`);
+        showBrowserError(wv, {
+          url: err.validatedURL || t.url || "",
+          errorCode: err.errorCode,
+          description: err.errorDescription,
+        });
+      });
+      wv.addEventListener("did-frame-navigate", (e) => {
+        const r = e as unknown as { httpResponseCode?: number; httpStatusText?: string; isMainFrame?: boolean; url?: string };
+        if (!r.isMainFrame || !r.httpResponseCode || r.httpResponseCode < 400) return;
+        pendingStatus = { status: r.httpResponseCode, statusText: r.httpStatusText, url: r.url || t.url || "" };
+      });
+      wv.addEventListener("did-stop-loading", () => {
+        const hit = pendingStatus;
+        pendingStatus = null;
+        if (!hit) return;
+        // Their error page wins if they actually wrote one — replacing a real
+        // 404 page with ours would hide the site's own navigation and copy.
+        void wv.executeJavaScript?.("(document.body&&document.body.innerText||'').trim().length")
+          .then((len) => {
+            if (typeof len !== "number" || len > 40) return;
+            showBrowserError(wv, { url: hit.url, status: hit.status, statusText: hit.statusText });
+          })
+          .catch(() => showBrowserError(wv, { url: hit.url, status: hit.status, statusText: hit.statusText }));
       });
       wv.addEventListener("did-navigate", (e) => {
         const u = (e as unknown as { url?: string }).url;
@@ -5018,8 +5126,18 @@ async function init(): Promise<void> {
     };
     const paintFrames = (): void => {
       const a = active();
+      // A tab with nothing in it opens the configured start page — the ONE
+      // place that covers every route to an empty tab (a fresh Browser panel,
+      // the + button, "close all", a layout cell with no URL), so the panel
+      // always comes up on the page the user chose. This replaced a "Nothing
+      // open" placeholder that no path can reach any more.
+      if (!a.url && !a.html) {
+        a.url = browserHome();
+        a.title = undefined;
+        syncLegacy();
+        paintTabs();
+      }
       const hasContent = !!(a.url || a.html);
-      stub.hidden = hasContent;
       if (hasContent) {
         const wv = ensureView(a);
         // tab switches retarget RPA at the newly active tab (register overwrites)
@@ -5723,6 +5841,7 @@ async function init(): Promise<void> {
   }
 
   function openLayoutInWorkbench(layout: WbGridLayout): void {
+    const hadSeat = rails.some((r) => r.slots.some(isAgentSeat));
     rails.length = 0;
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
@@ -5793,6 +5912,8 @@ async function init(): Promise<void> {
       scheduleAppSync();
     });
     saveLayout();
+    // A layout that carries no agent CLOSES the one that was open.
+    if (hadSeat) notifySeatClosed();
   }
 
   const wbApp = window as unknown as {
@@ -5808,12 +5929,7 @@ async function init(): Promise<void> {
     __wbToggleAppSwitcher?: () => void;
     __wbOpenSection?: (section: string) => void;
   };
-  wbApp.__wbOpenApp = (app, newPanel) => {
-    // On WEB, open as a streamed workbench panel (openAppInWorkbench →
-    // mountStreamedAppView), NOT an echo card (its <webview> is inert on web).
-    if (echoCtl && !isWebTarget()) { echoCtl.openApp(app); return; }
-    openAppInWorkbench(app, { newPanel: newPanel ?? true });
-  };
+  wbApp.__wbOpenApp = (app, _newPanel) => openAppCard(app);
   wbApp.__wbOpenApps = (apps, layoutName?: string) => {
     // A NAMED layout comes up through the grid path — its definition plus the
     // user's remembered geometry — never as a flat stack. The old fallback
@@ -5824,11 +5940,11 @@ async function init(): Promise<void> {
         if (ok) return;
         // Unknown name (deleted layout?) — flat open, but write no named memory.
         activeLayoutName = null;
-        for (const a of apps) { if (echoCtl) echoCtl.openApp(a); else openAppInWorkbench(a, { newPanel: true }); }
+        for (const a of apps) openAppCard(a);
       });
       return;
     }
-    for (const a of apps) { if (echoCtl) echoCtl.openApp(a); else openAppInWorkbench(a, { newPanel: true }); }
+    for (const a of apps) openAppCard(a);
   };
   // An anonymous grid (no name) must not write into whatever named layout was
   // active before — openLayoutInWorkbench ends in saveLayout().
@@ -5893,8 +6009,7 @@ async function init(): Promise<void> {
     let name = "Popup";
     try { name = new URL(url).hostname.replace(/^www\./, "") || "Popup"; } catch { /* keep */ }
     const ref: WbAppRef = { slug: `popup-${++popupSeq}`, name, url };
-    if (echoCtl) { echoCtl.openApp(ref); return; }
-    openAppInWorkbench(ref, { newPanel: true });
+    openAppCard(ref);
   };
   // The rail's reset buttons: same move as Echo's ⟲ — everything closes,
   // the bare wall comes back.

@@ -16,6 +16,7 @@ import { fetchOrgApps } from "./org-apps.js";
 import { fetchServerLayouts } from "./layout-manager.js";
 import { applyLoopConfig } from "./loop-selections.js";
 import { getPreference } from "./stores/preferences-db.js";
+import { resolveBrowserHome } from "../shared/browser-home.js";
 import { normKey, isSubsequence, findInstalledApp, launchInstalledApp } from "./installed-apps.js";
 import { isGlyphhAppRow } from "./glyphh-app-host.js";
 import { getMainWindowRef } from "./main-window-ref.js";
@@ -36,16 +37,11 @@ export interface ServerApp {
 interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
 
 // ── Browser homepage (the built-in "browser" app's start page) ──
-const BROWSER_HOMES: Record<string, string> = {
-  claude: "https://claude.ai",
-  chatgpt: "https://chatgpt.com",
-  gemini: "https://gemini.google.com",
-};
-
 export function resolveBrowserHomeUrl(): string {
-  const pref = getPreference<string>("browserHomepage", "claude");
-  if (pref === "custom") return getPreference<string>("browserHomepageUrl", "") || BROWSER_HOMES.claude;
-  return BROWSER_HOMES[pref] || BROWSER_HOMES.claude;
+  return resolveBrowserHome(
+    getPreference<string>("browserHomepage", "claude"),
+    getPreference<string>("browserHomepageUrl", ""),
+  );
 }
 
 // ── Open-panel registry (renderer-reported) ──

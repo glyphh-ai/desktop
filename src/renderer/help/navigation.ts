@@ -6,7 +6,7 @@ import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning }
 import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps } from "./apps.js";
-import { loadSettings, initSettings } from "./settings.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadOrg, loadMembers, loadWorkspacesPanel } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
@@ -94,7 +94,6 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "apps") loadApps();
   else if (sec === "code") loadCode();
   else if (sec === "connections") void loadConnections();
-  else if (sec === "models") loadModelsAdmin();
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
   else if (sec === "support") loadSupport();
@@ -106,6 +105,8 @@ export function loadActiveSection(explicit?: string) {
  * truth. (The old #help-nav sidebar — hidden but load-bearing — is deleted.)
  */
 export function gotoSection(section: string, sub?: string): void {
+  const moved = SECTION_ALIAS[section];
+  if (moved) { section = moved.section; sub = sub || moved.sub; }
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
   if (["apps", "connections", "layouts", "settings"].includes(section)) {
@@ -127,15 +128,50 @@ export function gotoSection(section: string, sub?: string): void {
     if (!sub) return;
     if (section === "docs") showDocPanel(sub);
     else if (section === "settings") {
+      const target = settingsSubAlias(sub);
       const navBtns = document.querySelectorAll<HTMLButtonElement>(
         ".help-section[data-section='settings'] .settings-nav-item");
       const panels = document.querySelectorAll<HTMLDivElement>(
         ".help-section[data-section='settings'] .settings-panel");
-      navBtns.forEach((n) => n.classList.toggle("active", n.dataset.sub === sub));
-      panels.forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
+      navBtns.forEach((n) => n.classList.toggle("active", n.dataset.sub === target));
+      panels.forEach((p) => p.classList.toggle("active", p.dataset.sub === target));
+      // A DEEP LINK must populate the panel too — showing an empty Billing
+      // page because nobody clicked the tab is the same bug as not loading it.
+      loadSettingsSub(target);
     }
   };
   go();
+}
+
+/**
+ * Retired sub-panels, pointed at wherever they went. A saved nav app or a
+ * remembered `homeLastSub` that names "organization" must still land somewhere
+ * — without this, every nav item and panel deactivates and Settings opens
+ * blank.
+ */
+const SETTINGS_SUB_ALIAS: Record<string, string> = { organization: "account" };
+
+/** Retired top-level sections, redirected to the Settings sub-panel that
+ *  absorbed them — a rail item or `homeLastSection` naming "models" must not
+ *  open a section that no longer exists. */
+const SECTION_ALIAS: Record<string, { section: string; sub: string }> = {
+  models: { section: "settings", sub: "models" },
+};
+const settingsSubAlias = (sub: string): string => SETTINGS_SUB_ALIAS[sub] || sub;
+
+/** Settings sub-panels that fetch on show. Shared by the sub-nav click handler
+ *  and gotoSection's deep-link path so both populate identically. */
+function loadSettingsSub(sub: string): void {
+  if (sub === "support") loadSupport();
+  else if (sub === "about") loadAbout();
+  else if (sub === "drips") loadDrips();
+  else if (sub === "billing") void loadBilling();
+  // Organization is a section INSIDE Account now (org admins only), so it
+  // loads with the profile rather than from a tab of its own.
+  else if (sub === "account") { void loadProfile(); void loadOrg(); }
+  else if (sub === "members") void loadMembers();
+  else if (sub === "workspaces") void loadWorkspacesPanel();
+  else if (sub === "models") loadModelsAdmin();
 }
 
 // ── Docs inner sub-navigation ────────────────────────────
@@ -181,10 +217,7 @@ export function initHelp() {
       btn.classList.add("active");
       const target = document.querySelector(`.help-section[data-section='settings'] .settings-panel[data-sub="${sub}"]`);
       if (target) target.classList.add("active");
-      // Support / About / Drips live inside Settings — populate on show.
-      if (sub === "support") loadSupport();
-      else if (sub === "about") loadAbout();
-      else if (sub === "drips") loadDrips();
+      loadSettingsSub(sub);
     });
   });
 
@@ -211,7 +244,6 @@ export function initHelp() {
     { section: "loops", label: "Loops", space: "code", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg>` },
     { section: "skills", label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg>` },
     { section: "agents", label: "Agents", space: "code", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>` },
-    { section: "models", label: "Models", space: "code", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   ];
   const moreToggle = document.getElementById("rail-more-toggle");
   let moreMenu: HTMLDivElement | null = null;

@@ -25,6 +25,8 @@
  * stopped — carries on. A small badge surfaces which transport is live.
  */
 
+import { panelStateFragment, type PanelStateKey } from "./browser-error-page.js";
+
 // ── the SDK handle the web bridge exposes (window.glyphhSdk) ─────────────────
 
 interface SdkAttachStatus { attached: boolean; machines?: unknown[] }
@@ -127,6 +129,13 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     if (html == null) { overlay.style.display = "none"; overlay.innerHTML = ""; return; }
     overlay.style.display = "flex";
     overlay.innerHTML = html;
+    // Any card carrying a retry button re-runs the whole connect sequence —
+    // the common case (desktop offline) is fixed by the user in another app,
+    // and reopening the panel by hand to pick that up is busywork.
+    overlay.querySelector<HTMLButtonElement>("[data-panel-retry]")?.addEventListener("click", () => {
+      if (disposed) return;
+      void boot();
+    });
   }
 
   function call(method: string, params: unknown): Promise<unknown> {
@@ -150,7 +159,10 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     switch (d.type) {
       case "frame": return drawFrame(d as FramePush);
       case "nav": {
-        const nav = push as NavPush;
+        // `d` is the frame — an earlier rename left this reading a `push`
+        // identifier that does not exist, so every nav frame threw a
+        // ReferenceError and took the panel down with it.
+        const nav = d as NavPush;
         lastUrl = nav.url || lastUrl;
         opts.onNav?.(nav.url || "", nav.title || "");
         return;
@@ -268,18 +280,18 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   // ── connect + open ─────────────────────────────────────────────────────────
   async function boot(): Promise<void> {
     const client = sdk();
-    if (!client) { setOverlay(offlineHtml("Sign in to view this panel.")); return; }
+    if (!client) { setOverlay(offlineHtml("signed-out")); return; }
     setOverlay(`<div>Connecting to your desktop…</div>`);
 
     // Honest offline state: check attach BEFORE opening a socket.
     let attached = false;
     try { attached = (await client.attach.status()).attached; } catch { attached = false; }
     if (disposed) return;
-    if (!attached) { setOverlay(offlineHtml("Connect your desktop to view this live.")); return; }
+    if (!attached) { setOverlay(offlineHtml("desktop-offline")); return; }
 
     const token = await client.token().catch(() => null);
     if (disposed) return;
-    if (!token) { setOverlay(offlineHtml("Sign in to view this panel.")); return; }
+    if (!token) { setOverlay(offlineHtml("signed-out")); return; }
 
     await connect(token);
   }
@@ -308,11 +320,11 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
           canvas.focus();
           void startWebrtc();
         } catch (err) {
-          setOverlay(offlineHtml((err as Error).message || "Could not open the panel."));
+          setOverlay(offlineHtml("failed", (err as Error).message || undefined));
         }
         resolve();
       };
-      socket.onclose = () => { if (!disposed) setOverlay(offlineHtml("Desktop disconnected.")); };
+      socket.onclose = () => { if (!disposed) setOverlay(offlineHtml("disconnected")); };
       socket.onerror = () => { /* onclose follows */ };
       socket.onmessage = (ev) => {
         let f: { t?: string; id?: string; ok?: boolean; result?: unknown; error?: string; channel?: string; data?: PanelPush };
@@ -327,9 +339,13 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     });
   }
 
-  function offlineHtml(msg: string): string {
-    return `<div style="font-size:15px;color:#eee">${escapeHtml(msg)}</div>
-      <div style="max-width:320px;color:#888">This app runs in your own browser session on your desktop. Open the Glyphh desktop app and sign in, then reopen this panel.</div>`;
+  /**
+   * A dead-end state as the same card the Browser panel shows for a failed
+   * page — mascot, badge, themed. `data-panel-retry` is what makes it a way
+   * back rather than a notice: setOverlay wires it to another boot().
+   */
+  function offlineHtml(state: PanelStateKey, detail?: string): string {
+    return panelStateFragment(state, { detail, retryAttrs: 'data-panel-retry="1"' });
   }
 
   void boot();
@@ -364,8 +380,4 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     currentUrl: () => lastUrl,
     dispose,
   };
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
 }

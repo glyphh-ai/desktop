@@ -3291,11 +3291,14 @@ body[data-rail-space="chat"] .dash-sub-chat { display: inline; }
 body[data-rail-space="cowork"] .dash-sub-cowork { display: inline; }
 body[data-rail-space="code"] .dash-sub-code { display: inline; }
 
-/* Work landing: the agent header's folder chips (sans git) above the
-   composer's top-left. Hidden everywhere but the Work tab. */
-.dash-wd-chips { display: none; align-items: center; gap: 4px; margin: 0 0 6px; }
-body[data-rail-space="cowork"] .dash-wd-chips,
-body[data-rail-space="code"] .dash-wd-chips { display: flex; }
+/* The landing's chip row above the composer's top-left. It shows in EVERY
+   space — chat keeps the source chip alone (reading "Cloud"), and paints the
+   folder/add chips `.hidden` itself; work and code fill the rest of the row. */
+.dash-wd-chips { display: flex; align-items: center; gap: 4px; margin: 0 0 6px; }
+
+/* A chip that states a fact rather than offering a choice (chat's source). */
+.cl-chip-static .cl-runtime-btn { pointer-events: none; }
+.cl-chip-static .ws-chev { display: none; }
 
 /* ── Chat landing starters ─────────────────────────────────────────────
    Six characters, each a front door to a space. Chat only — Work and Code
@@ -3414,6 +3417,49 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 /* session rows: the TYPE's icon when idle (the working pulse replaces it) */
 .code-sess-ic { display: inline-flex; flex-shrink: 0; margin-left: 2px; color: var(--text-3); }
 .code-sess-ic svg { width: 13px; height: 13px; }
+
+/* The leading icon IS the pin control, so it has to read as pressable. */
+.code-history-item .code-sess-ic,
+.code-history-item .code-chat-dot { cursor: pointer; border-radius: 4px; }
+.code-history-item .code-sess-ic:hover { color: var(--text); }
+
+/* Pinned: a dot off the icon's top-right corner. Positioned on the row (which
+   already establishes a stacking context) rather than the icon, so the pulse
+   variant and the svg variant mark identically. */
+.code-history-item .code-sess-ic,
+.code-history-item .code-chat-dot { position: relative; }
+.code-sess-ic.pinned::after,
+.code-chat-dot.pinned::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Recents section heading — Cloud, then a heading per local folder. Quiet on
+   purpose: it matches the rail's "More" disclosure exactly (same colour, same
+   per-theme dimming), because both are chrome rather than destinations. */
+.code-history-sec {
+  padding: 0 10px;
+  margin: 10px 0 3px;
+  color: var(--text-2);
+  opacity: 0.85;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
+.code-history-sec:first-child { margin-top: 2px; }
+
+[data-theme="dark"] .code-history-sec { opacity: 0.55; }
 
 /* The nav scopes to the active SPACE (data-space = word list of spaces
    that show the item; untagged = all). CHAT can't navigate or do anything:
@@ -5779,41 +5825,65 @@ ol.docs-list li::before {
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 160px;
+  gap: 1px;
+  width: 184px;
   flex-shrink: 0;
-  padding: 8px 16px 8px 0;
+  padding: 8px 12px 12px 0;
   border-right: 1px solid var(--border);
+  overflow-y: auto;
 }
 
+/* Group heading — the rail is a dozen items long, and "which of these is about
+   ME vs the org vs this machine" is the question it kept failing to answer. */
+.settings-nav-group {
+  padding: 0 12px;
+  margin: 14px 0 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  user-select: none;
+}
+.settings-nav-group:first-child { margin-top: 2px; }
+
 .settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   background: none;
   border: none;
   color: var(--text-3);
   font-size: 13px;
   font-weight: 500;
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 7px 12px;
+  border-radius: 7px;
   cursor: pointer;
   text-align: left;
   transition: color 0.15s, background 0.15s;
+}
+
+/* The icon carries the row's colour, so it lifts with the label rather than
+   sitting at a fixed grey while the text brightens. */
+.settings-nav-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  opacity: 0.75;
+  transition: opacity 0.15s;
 }
 
 .settings-nav-item:hover {
   color: var(--text);
   background: var(--active-bg);
 }
+.settings-nav-item:hover .settings-nav-icon { opacity: 1; }
 
 .settings-nav-item.active {
   color: var(--white);
   background: var(--active-bg);
 }
-
-.settings-nav-sep {
-  height: 1px;
-  background: var(--border);
-  margin: 8px 12px 8px 0;
-}
+.settings-nav-item.active .settings-nav-icon { opacity: 1; color: var(--accent); }
 
 .settings-panels {
   flex: 1;
@@ -5905,6 +5975,12 @@ select.settings-input {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+/* The input in an inline row takes the slack; the button beside it keeps its
+   label on one line instead of being squeezed into a two-line block. */
+.settings-inline > .action-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .settings-input-sm {
@@ -6347,78 +6423,545 @@ select.settings-input {
   margin-bottom: 4px;
 }
 
-/* ── License info (settings) ──────────────────────────────── */
+/* ── Account: the identity header ─────────────────────────── */
+/* One statement of who you are — avatar, name, sign-in email, then role / org
+   / plan as chips. Replaced a label:value row list that repeated the email and
+   name the profile form below already showed. */
 
-.license-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px 20px;
-  max-width: 420px;
-  margin-top: 12px;
-}
-
-.license-row {
+.acct-identity {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 6px 0;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
 }
 
-.license-label {
-  font-size: 12px;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.acct-id-face {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
 }
 
-.license-value {
-  font-size: 13px;
-  color: var(--text);
-  font-family: var(--font-mono);
-}
-
-.license-value.active { color: var(--text); }
-.license-value.expired { color: var(--danger); }
-
-.license-plan { display: inline-flex; align-items: center; gap: 8px; }
-.license-refresh {
-  background: none; border: none; color: var(--text-3); cursor: pointer;
-  padding: 2px; display: inline-flex; align-items: center; border-radius: 4px;
-  transition: color var(--transition), background var(--transition);
-}
-.license-refresh:hover { color: var(--text); background: var(--hover); }
-.license-refresh.spinning svg { animation: license-spin 0.6s linear infinite; }
-@keyframes license-spin { to { transform: rotate(360deg); } }
-
-.license-input-row {
-  gap: 8px;
-  margin-top: 4px;
-}
-.license-input-row .settings-input {
-  flex: 1;
-  height: 32px;
-  font-size: 13px;
-}
-.license-input-row .action-btn {
+/* The avatar and its initials fallback occupy the SAME box, so swapping one
+   for the other can't shift the row. */
+.acct-avatar-slot {
+  position: relative;
+  width: 60px;
+  height: 60px;
   flex-shrink: 0;
 }
 
-.license-activate-status {
-  font-size: 12px;
-  min-height: 18px;
-  padding: 2px 0;
+.acct-initials,
+.acct-avatar {
+  position: absolute;
+  inset: 0;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
 }
-.license-activate-status.success { color: var(--text); }
-.license-activate-status.error { color: var(--danger); }
 
-.license-actions {
+.acct-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-bg, var(--surface-2));
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.acct-avatar {
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.acct-id-text { min-width: 0; }
+
+.acct-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.acct-email {
+  font-size: 13px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.acct-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.acct-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+/* A paid plan is the one chip worth reading first. */
+.acct-chip-plan { padding-right: 5px; }
+.acct-chip-plan.paid {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-text, var(--accent));
+}
+
+.acct-chip-refresh {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity var(--transition), background var(--transition);
+}
+.acct-chip-refresh:hover { opacity: 1; background: var(--hover); }
+.acct-chip-refresh.spinning svg { animation: acct-spin 0.6s linear infinite; }
+@keyframes acct-spin { to { transform: rotate(360deg); } }
+
+.acct-id-actions {
   display: flex;
   gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
+
+/* ── Account: compact field rows ──────────────────────────── */
+/* The stacked label/input column made a short form read as a long one — every
+   field a full-width block. These rows put related fields side by side and
+   wrap on their own, so the panel is scanned rather than scrolled. */
+
+.acct-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.acct-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.acct-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1 1 170px;
+  min-width: 0;
+}
+/* Names and postcodes want a box; addresses and URLs want the rest of the row. */
+.acct-field-wide { flex: 2 1 280px; }
+/* Alone on its row, a field would stretch the full panel — the zone picker and
+   its button read as one control only if the row stops where they do. */
+.acct-field-solo { flex: 0 1 420px; }
+
+.acct-field .settings-label { margin: 0; }
+.acct-field .settings-input { width: 100%; }
+
+/* A quiet divider-heading inside a section (Address, Billing address…) — the
+   subheading weight would compete with the section titles above it. */
+.acct-row-head {
+  margin: 6px 0 -2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Account: the organization bar ────────────────────────── */
+/* Full width, name left, id right — the id is what support and the API ask
+   for, so it is one click to copy rather than something to go hunting for. */
+
+/* The bar: one full-width row that heads a section — something on the left,
+   something on the right. `.set-fold-bar` is the same box plus disclosure
+   behaviour, so the two never drift apart. */
+.set-bar,
+.set-fold-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+
+.set-bar-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.set-bar-sub { font-size: 12px; color: var(--text-3); }
+
+.set-fold-bar {
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+.set-fold-bar:hover { background: var(--hover); border-color: var(--border-2); }
+
+.set-fold-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.set-fold-chevron {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--text-3);
+  transition: transform 160ms ease;
+}
+.set-fold-bar[aria-expanded="true"] .set-fold-chevron { transform: rotate(90deg); }
+
+.set-fold-body { padding-top: 4px; }
+
+/* ── Account: the auto-save state line ────────────────────── */
+/* No Save button anywhere in this panel — this is the whole report, sat beside
+   the section heading it belongs to. Weight is deliberately low: a save that
+   worked should be confirmable, not announced. */
+.set-save-state {
+  margin-left: 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.set-save-state.success { color: var(--success); }
+.set-save-state.error { color: var(--danger); }
+
+.set-fold-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-fold-aside {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.set-fold-aside code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+}
+
+.set-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+.set-copy-btn svg { width: 14px; height: 14px; }
+.set-copy-btn:hover { color: var(--text); background: var(--hover); border-color: var(--border-2); }
+/* Copied: the icon swaps to a tick via CSS so the button never reflows. */
+.set-copy-btn.copied { color: var(--success); }
+.set-copy-btn.copied svg { display: none; }
+.set-copy-btn.copied::after {
+  content: '✓';
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* ── Workspaces ───────────────────────────────────────────── */
+/* A workspace narrows what the org already allows, so the editor is three
+   tabs of allow-lists. Rows reuse the Members row rhythm; the model and
+   connection grids reuse the Models page's card grid. */
+
+.ws-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(200px, 2fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.ws-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-bright);
+  min-width: 0;
+}
+
+.ws-row-meta {
+  font-size: 11.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Back out of the editor / the tool drill-down. */
+.ws-back {
+  display: inline-block;
+  margin: 4px 0 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.ws-back:hover { color: var(--text); }
+
+.ws-tab { display: none; }
+.ws-tab.active { display: block; }
+
+/* A model card in the editor is the Models page's card plus a checkbox; the
+   dimming says "excluded" without removing it from the list. */
+.ws-model-card { cursor: pointer; }
+.ws-model-card.off { opacity: 0.45; }
+.ws-model-card input[type="checkbox"] { margin-bottom: 6px; }
+
+.ws-conn-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-conn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+}
+.ws-conn-icon img { width: 100%; height: 100%; object-fit: contain; }
+
+/* The per-connection tool list. Long, so it scrolls on its own rather than
+   pushing the tab's chrome off screen. */
+.ws-tools {
+  max-height: 420px;
+  overflow-y: auto;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.ws-tool-row {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 200px) 1fr;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.ws-tool-row:last-child { border-bottom: none; }
+.ws-tool-row:hover { background: var(--hover); }
+
+.ws-tool-all {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.ws-tool-name { font-size: 12.5px; color: var(--text); font-family: var(--font-mono); }
+.ws-tool-desc {
+  font-size: 11.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ws-conn-picker {
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+#ws-conn-picker .mdl-grid { margin-top: 10px; }
+
+@media (max-width: 720px) {
+  .ws-row { grid-template-columns: 1fr auto; }
+  .ws-row-meta { grid-column: 1 / -1; }
+  .ws-tool-row { grid-template-columns: auto 1fr; }
+  .ws-tool-desc { grid-column: 2; }
+}
+
+/* ── Members ──────────────────────────────────────────────── */
+/* A row, not a table cell: name is an input that saves itself, role is a live
+   select, and Remove sits at the end. A <table> would have meant a second
+   editing mode on top of the one every other Settings field now uses. */
+
+.mbr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.mbr-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.2fr) minmax(180px, 1.6fr) 130px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.mbr-email {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mbr-name,
+.mbr-role { width: 100%; }
+.mbr-remove { justify-self: end; }
+
+@media (max-width: 720px) {
+  .mbr-row { grid-template-columns: 1fr 1fr; }
+  .mbr-email { grid-column: 1 / -1; }
+}
+
+/* ── Account / Organization forms ───────────────────────── */
+
+
+/* Read-only field values (email, role, seat ceiling) — the display twin of
+   .settings-input so a locked field lines up with the editable ones instead of
+   collapsing to a bare line of text. */
+.settings-readonly {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+/* ── Billing ────────────────────────────────────────────── */
+/* Everything here reuses the app's existing surfaces (dash-card for the credit
+   split, lib-table for invoices, action-btn for every control); only the three
+   layouts below — top-up presets, the seat meter, and the plan grid — have no
+   existing equivalent. */
+
+.billing-topup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.billing-topup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.billing-topup-card:hover:not(:disabled) { border-color: var(--accent); background: var(--hover); }
+.billing-topup-card:disabled { opacity: 0.5; cursor: default; }
+.billing-topup-credits { font-size: 20px; font-weight: 600; color: var(--text-bright); }
+.billing-topup-unit { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.billing-topup-price { margin-top: 6px; font-size: 13px; color: var(--text-2); }
+
+.billing-seats { max-width: 420px; margin-top: 10px; }
+/* The meter reads first; the count is the caption under it. */
+.billing-seats-count { margin: 6px 0 0; }
+.billing-seats-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.billing-seats-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+.billing-seats-fill.full { background: var(--danger); }
+
+
+/* The invoice table is five even-ish columns, not the library's name/desc
+   shape — override .lib-table's fixed widths rather than fork the component. */
+.lib-table.billing-invoices th,
+.lib-table.billing-invoices td { width: auto; }
+.lib-table.billing-invoices tbody tr { cursor: default; }
+.lib-table.billing-invoices tbody tr:hover td { background: transparent; }
+.lib-table.billing-invoices .billing-invoice-link { text-align: right; }
 
 /* ── Support ────────────────────────────────────────────── */
 
@@ -10671,9 +11214,6 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
 .mkt-cs-inner p { margin: 0; font-size: 13.5px; line-height: 1.6; }
 /* Ada fallback — semantic memory hits when nothing matches by name. */
 
-.ws-preview-stub { text-align: center; color: var(--ws-text-faint); }
-.ws-preview-stub-title { font-size: 14px; color: var(--ws-text-muted); margin-bottom: 4px; }
-.ws-preview-stub-sub { font-size: 12px; }
 
 /* ── Terminal view (stub session) ── */
 .ws-terminal {
@@ -12433,6 +12973,10 @@ body.wb-max .ws-right-rails { width: 100%; }
 #panel-wc,
 #panel-wc * { -webkit-app-region: no-drag; }
 #panel-wc .app-rail-mark { width: 20px; height: 20px; margin-left: 14px; cursor: pointer; }
+/* The rail-top brand is the WORDMARK (the platform rail's asset), not the
+   mascot: it reads as the product name at a glance and matches the web. It
+   sizes by HEIGHT with a free width — the mark's square box would squash it. */
+#panel-wc .app-rail-mark.app-rail-wordmark { width: auto; height: 26px; }
 #panel-wc .code-icon-btn { width: 26px; height: 26px; }
 .app-rail-top {
   flex: 0 0 38px;
@@ -12750,21 +13294,35 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .drop-info-btn:hover { color: var(--text); border-color: var(--text-3); }
 
 /* ── Workspace-source chip (RuntimeLocationChip port) ─────────────────────
-   Sits above the composer on Work + Code; a drop-up picks cloud/local source.
-   Hidden in Chat — that surface carries no source. */
+   Sits above the composer in every space; a drop-up picks cloud/local source.
+   In Chat it is inert (.cl-chip-static) and just states "Cloud". */
 .code-source-slot { padding: 0 4px; margin-bottom: 6px; }
-body[data-session-space="chat"] .code-source-slot { display: none; }
 .cl-runtime-chip-wrap { position: relative; display: inline-flex; }
+/* Compact: this chip sits in a row with the folder and repo chips, so it earns
+   only the space its label needs. */
 .cl-runtime-chip {
-  display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; gap: 5px;
   border: 1px solid var(--border); background: var(--surface-2, var(--hover));
-  color: var(--text-2); font-size: 12px; padding: 5px 10px; border-radius: 999px;
-  cursor: pointer; max-width: 100%; min-width: 0;
+  color: var(--text-2); font-size: 11.5px; padding: 3px 8px; border-radius: 999px;
+  cursor: pointer; max-width: 100%; min-width: 0; line-height: 1.5;
 }
+.cl-runtime-chip .ws-chev { width: 11px; height: 11px; opacity: 0.7; }
+
+/* The whole chip row is one compact scale — folder, repo and + match the
+   source chip rather than each carrying their own padding. */
+.dash-wd-chips .code-wd-btn, .code-source-slot .code-wd-btn {
+  font-size: 11.5px; padding: 3px 8px; gap: 5px; border-radius: 999px; line-height: 1.5;
+}
+.dash-wd-chips .code-icon-btn, .code-source-slot .code-icon-btn {
+  width: 25px; height: 25px; border-radius: 999px;
+}
+.dash-wd-chips .code-wd-btn svg, .code-source-slot .code-wd-btn svg { width: 13px; height: 13px; }
+/* Search pinned to the bottom of a flex drop, list scrolling above it. */
+.ws-drop-flex .repo-drop-search, .ws-drop-flex .ws-fs-search { margin: 6px 0 0; flex: 0 0 auto; }
 .cl-runtime-chip:hover { border-color: var(--border-2); color: var(--text); }
 .cl-runtime-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .cl-runtime-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
   background: var(--text-faint);
 }
 .cl-runtime-dot[data-live] { background: var(--accent); box-shadow: 0 0 5px rgba(140, 59, 242, 0.5); }
@@ -12775,14 +13333,39 @@ body[data-session-space="chat"] .code-source-slot { display: none; }
   bottom: calc(100% + 8px); top: auto;
   width: 300px; max-width: 84vw;
 }
+/* Section headers inside the chip drops ("Cloud runtime", "Connected
+   machines"). They were the same grey as the row subtitles and read as just
+   more list text — brighter and heavier so they land as headers. */
 .ws-sec-label {
-  font-size: 10.5px; font-weight: 600; color: var(--text-3);
-  text-transform: uppercase; letter-spacing: 0.04em;
-  padding: 8px 10px 3px;
+  font-size: 10.5px; font-weight: 700; color: var(--text);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 10px 10px 4px;
 }
+.code-drop-up .code-drop-head { font-weight: 700; color: var(--text); }
 .ws-drill .ws-chev { opacity: 0.6; }
 .ws-source-drop .ws-main { color: inherit; }
 .ws-install { opacity: 0.95; }
+/* An unreachable source: still listed (so the user knows it exists) but not
+   selectable, and its subtitle says why rather than describing what it does. */
+.code-drop-item.ws-unreachable { opacity: 0.45; cursor: not-allowed; }
+.code-drop-item.ws-unreachable:hover { background: transparent; }
+/* The chip when its own source is down — the live dot stops claiming a
+   connection that isn't there. */
+.cl-runtime-chip.cl-runtime-down { opacity: 0.6; }
+.cl-runtime-chip.cl-runtime-down .cl-runtime-dot { background: var(--text-3); box-shadow: none; animation: none; }
+/* CONNECTING — the dot pulses while the source is being reached. */
+.cl-runtime-chip.cl-runtime-connecting .cl-runtime-dot {
+  background: var(--accent); box-shadow: none; animation: cl-runtime-pulse 1s ease-in-out infinite;
+}
+@keyframes cl-runtime-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+/* CONNECTED — a green dot beside the source's name. */
+.cl-runtime-chip.cl-runtime-live .cl-runtime-dot { background: #22c55e; box-shadow: 0 0 0 2px color-mix(in srgb, #22c55e 22%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .cl-runtime-chip.cl-runtime-connecting .cl-runtime-dot { animation: none; opacity: 0.7; }
+}
+/* FAILED — the chip reads as a problem, not as a live connection. */
+.cl-runtime-chip.cl-runtime-down { color: var(--danger, #ef4444); opacity: 0.9; }
+.cl-runtime-chip.cl-runtime-down .cl-runtime-dot { background: var(--danger, #ef4444); }
 .ws-back-head { gap: 6px; justify-content: flex-start; }
 .ws-back {
   border: none; background: none; color: var(--text-2); cursor: pointer;
@@ -14216,6 +14799,7 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 
 .app-rail-search { padding: 0 10px 6px; }
 
+
 .app-rail-search input {
   width: 100%;
   box-sizing: border-box;
@@ -14930,13 +15514,10 @@ body.code-dragging webview { pointer-events: none !important; }
 .repo-drop-search::selection { background: var(--accent); color: var(--accent-ink, #fff); }
 .code-repo-drop-list { max-height: min(300px, 46vh); overflow-y: auto; overscroll-behavior: contain; }
 
-/* WEB: the landing row's folder chip + '+' WORK over the attach relay
-   (fs.list browser / fs.mkdir) — only the AGENT HEADER's workdir controls and
-   the composer '+' stay hidden on web, because those still drive native OS
-   pickers/attachment dialogs a browser cannot run. */
-.glyphh-web #code-workdir-btn,
-.glyphh-web #code-workdir-add,
-.glyphh-web #code-workdir-branch-wrap,
+/* WEB: the folder chip + '+' WORK over the attach relay (fs.list browser /
+   fs.mkdir) in BOTH rows — the agent view carries the same chips as the
+   landing. Only the composer '+' stays hidden, because it drives a native
+   attachment dialog a browser cannot run. */
 .glyphh-web #code-plus-wrap { display: none !important; }
 
 /* Machine folder browser: the "+ new folder" row (input + Create + error). */
@@ -14992,14 +15573,39 @@ body:not(.composer-on-home) .code-input,
 @media (pointer: coarse) { .code-input-wrap .code-input { padding-bottom: 44px; } }
 /* The pill only exists on the landing, so only the landing pays for the room. */
 body:not(.composer-on-home) .code-input-wrap .code-input { padding-bottom: 10px; }
+body:not(.composer-on-home) .code-space-pill { display: none; }
+
+/* Folder git state. A repo shows its branch in the normal chip voice; a folder
+   with no git reads as an absence, not an error — it is a fine way to start. */
+.code-wd-branch.no-git { opacity: 0.62; font-style: italic; }
 
 /* ── The workspace chips (source · folder · git · +) sit ABOVE the input on
    EVERY surface, and compress the way the composer-bar chips do. ── */
+/* The row must NEVER clip: every chip in it opens an absolutely-positioned
+   drop-up, and a 28px-tall `overflow: hidden` row cut those menus down to an
+   invisible strip — the chip read as live, clicked, and nothing appeared.
+   Truncation belongs to the chip LABELS below, which own it already. */
 .dash-wd-chips, .code-source-slot {
   display: flex; align-items: center; gap: 4px; flex-wrap: nowrap;
-  min-width: 0; overflow: hidden; margin: 0 0 6px;
+  min-width: 0; overflow: visible; margin: 0 0 6px;
 }
 .dash-wd-chips > *, .code-source-slot > * { min-width: 0; flex: 0 1 auto; }
+/* COMPRESSION. These rows live inside layout panels, so a viewport media query
+   never fires for them — a narrow panel is narrow while the window is wide.
+   Shrinking therefore has to come from the flex box itself: every chip may
+   shrink to nothing, its LABEL ellipses, and its icons never give up a pixel. */
+.dash-wd-chips .code-wd-btn, .code-source-slot .code-wd-btn,
+.dash-wd-chips .cl-runtime-chip, .code-source-slot .cl-runtime-chip,
+.dash-wd-chips .cl-runtime-chip-wrap, .code-source-slot .cl-runtime-chip-wrap {
+  min-width: 0; overflow: hidden;
+}
+.dash-wd-chips .cl-runtime-lbl, .code-source-slot .cl-runtime-lbl,
+.dash-wd-chips .code-wd-btn span, .code-source-slot .code-wd-btn span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dash-wd-chips svg, .code-source-slot svg { flex: 0 0 auto; }
+/* The chip WRAP must not clip its own drop — only the chip button inside it. */
+.dash-wd-chips .cl-runtime-chip-wrap, .code-source-slot .cl-runtime-chip-wrap { overflow: visible; }
 .dash-wd-chips .code-wd-btn span, .code-source-slot .cl-runtime-lbl {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -15008,9 +15614,8 @@ body:not(.composer-on-home) .code-input-wrap .code-input { padding-bottom: 10px;
   .code-source-slot .cl-runtime-lbl { max-width: 110px; }
 }
 
-/* The agent's chips row is hidden in CHAT (no workspace) and shows the same
-   [source][folder][git][+] set everywhere else — matching the landing row. */
-body[data-session-space="chat"] .code-source-slot { display: none; }
+/* The agent's chips row mirrors the landing row: [source] in chat,
+   [source][folder][+] in work, [source][folder][git][+] in code. */
 .code-source-slot .code-wd-btn,
 .code-source-slot .code-icon-btn { flex: 0 0 auto; }
 
@@ -15066,10 +15671,10 @@ body[data-session-space="code"] #code-session-kebab-wrap { display: none; }
 .layout-space-tabs .code-space-opt:hover { color: var(--text); background: var(--hover); }
 .layout-space-tabs .code-space-opt.active { background: var(--accent); color: var(--accent-ink, #fff); }
 
-/* CHAT has no workspace: no folder, no tools, no loop — the MODEL stays. */
+/* CHAT has no workspace: no folder, no tools, no loop — the MODEL stays, and
+   the source chip stays as the inert "Cloud" label. */
 body[data-session-space="chat"] #code-plus-wrap,
-body[data-session-space="chat"] #code-effort-wrap,
-body[data-session-space="chat"] .code-source-slot { display: none !important; }
+body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 
 /* Rail section titles + app tile names are CONTENT, not links — they follow
    the standard text colors in every theme rather than picking up the accent
