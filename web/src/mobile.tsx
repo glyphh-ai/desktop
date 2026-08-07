@@ -12,7 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
 import { NAV, RECENTS, ALL_SESSIONS, USER, type SpaceId } from './mock';
 
-type IconName = SpaceId | 'menu' | 'plus' | 'chevron';
+type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search';
 
 /* ── Icons (stroke = currentColor, so they inherit the token color) ───────── */
 const ICON: Record<IconName, React.ReactNode> = {
@@ -24,6 +24,8 @@ const ICON: Record<IconName, React.ReactNode> = {
   menu: <><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   chevron: <path d="M9 6l6 6-6 6" />,
+  filter: <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />,
+  search: <><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></>,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -108,23 +110,42 @@ function App() {
       <div className="m-scrim" onClick={() => setDrawer(false)} />
       <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
       <main className="m-main">
-        {/* No header. Phone-only floating toggle to reveal the rail drawer. */}
-        <button className="m-drawer-toggle" aria-label="Open menu" onClick={() => setDrawer(true)}>
-          <Icon name="menu" />
-        </button>
-        <div className="m-content">
-          {view === 'all-chats' && (
-            <div className="m-sessions">
-              <div className="m-sessions-title">All Chats</div>
+        {view === 'all-chats' ? (
+          <div className="m-chats">
+            <header className="m-chats-head">
+              <button className="m-chats-icon" aria-label="Open menu" onClick={() => setDrawer(true)}>
+                <Icon name="menu" />
+              </button>
+              <span className="m-chats-title">Chats</span>
+              <button className="m-chats-icon" aria-label="Filter">
+                <Icon name="filter" />
+              </button>
+            </header>
+            <div className="m-chats-list">
               {ALL_SESSIONS.map((s) => (
-                <button key={s.id} className="m-session" onClick={() => openRecent(s.id)}>
-                  <span className="m-session-title">{s.title}</span>
-                  <span className="m-session-when">{s.when}</span>
+                <button key={s.id} className="m-chat-row" onClick={() => openRecent(s.id)}>
+                  <span className="m-chat-text">
+                    <span className="m-chat-title">{s.title}</span>
+                    <span className="m-chat-when">{s.when}</span>
+                  </span>
+                  <Icon name="chevron" />
                 </button>
               ))}
             </div>
-          )}
-        </div>
+            <button className="m-fab btn btn-primary" onClick={newChat}>
+              <Icon name="plus" /><span>New chat</span>
+            </button>
+            <div className="m-search"><Icon name="search" /><span>Search</span></div>
+          </div>
+        ) : (
+          <>
+            {/* No header. Phone-only floating toggle to reveal the rail drawer. */}
+            <button className="m-drawer-toggle" aria-label="Open menu" onClick={() => setDrawer(true)}>
+              <Icon name="menu" />
+            </button>
+            <div className="m-content" />
+          </>
+        )}
       </main>
     </div>
   );
