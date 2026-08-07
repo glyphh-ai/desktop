@@ -89,38 +89,96 @@ body {
 #glyphh-mobile-root { min-height: 100dvh; }
 
 /* ── App frame ─────────────────────────────────────────────────────────────
-   A left rail + a main content area. Everything tokenised. */
+   A left rail + a main content area. Two behaviours at the 768px breakpoint:
+   • PHONE  (<768px): the rail is an off-canvas DRAWER (hamburger in the top
+     bar opens it over a scrim); content is full-width.
+   • TABLET (≥768px): the rail is a PERSISTENT wider sidebar (iPad-app feel),
+     no top bar, bigger wordmark.
+   Everything tokenised. */
 .m-app {
   display: flex;
   height: 100dvh;
+  position: relative;
 }
 
+/* PHONE default: off-canvas drawer. */
 .m-rail {
-  flex: 0 0 220px;
-  width: 220px;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 280px;
+  max-width: 82vw;
+  z-index: 30;
+  transform: translateX(-100%);
+  transition: transform 0.24s ease;
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: calc(var(--safe-top) + 18px) 16px 16px calc(var(--safe-left) + 18px);
+  padding: calc(var(--safe-top) + 20px) 20px 20px calc(var(--safe-left) + 20px);
 }
+.m-app[data-drawer="open"] .m-rail { transform: translateX(0); }
 
-.m-rail-brand {
-  display: flex;
-  align-items: center;
-}
+.m-rail-brand { display: flex; align-items: center; }
 
-/* The words-only wordmark — rendered EXACTLY as app-web's rail does it
-   (styles.css .app-rail-wordmark): height 26px, auto width, no filter. The
-   asset carries its own outline, so it reads on the dark rail as-is. */
-.m-wordmark {
-  height: 26px;
-  width: auto;
-  display: block;
+/* Wordmark — rendered like app-web's .app-rail-wordmark (no filter, auto width;
+   the asset carries its own outline). Bigger on tablet. */
+.m-wordmark { height: 28px; width: auto; display: block; }
+
+/* Scrim behind the open drawer (phone only). */
+.m-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: var(--overlay-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.24s ease;
 }
+.m-app[data-drawer="open"] .m-scrim { opacity: 1; pointer-events: auto; }
 
 .m-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
+}
+
+/* Phone top bar with the drawer toggle. */
+.m-topbar {
+  flex: 0 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--safe-top) 12px 0 calc(var(--safe-left) + 8px);
+  border-bottom: 1px solid var(--border);
+}
+.m-menu-btn {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.m-menu-btn:active { background: var(--hover); }
+
+/* ── TABLET+ : persistent sidebar, no drawer/top bar ──────────────────────── */
+@media (min-width: 768px) {
+  .m-rail {
+    position: static;
+    transform: none;
+    z-index: auto;
+    flex: 0 0 280px;
+    width: 280px;
+    max-width: none;
+    padding: calc(var(--safe-top) + 28px) 24px 24px calc(var(--safe-left) + 28px);
+  }
+  .m-scrim { display: none; }
+  .m-topbar { display: none; }
+  .m-wordmark { height: 36px; }
 }
