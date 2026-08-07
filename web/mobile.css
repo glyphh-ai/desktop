@@ -35,7 +35,7 @@ body { overflow: hidden; overscroll-behavior: none; }
   flex-direction: column;
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: 4px 3px 0 calc(var(--safe-left) + 3px);
+  padding: 0 3px 0 calc(var(--safe-left) + 3px);
 }
 .m-app[data-drawer="open"] .m-rail { transform: translateX(0); }
 
@@ -171,7 +171,7 @@ body { overflow: hidden; overscroll-behavior: none; }
     flex: 0 0 320px;
     width: 320px;
     max-width: none;
-    padding: 4px 3px 0 calc(var(--safe-left) + 3px);
+    padding: 0 3px 0 calc(var(--safe-left) + 3px);
   }
   .m-scrim { display: none; }
   .m-drawer-toggle { display: none; }
