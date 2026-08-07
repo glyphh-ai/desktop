@@ -10,9 +10,9 @@
 
 import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
-import { NAV, RECENTS, ALL_SESSIONS, USER, type SpaceId } from './mock';
+import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, USER, type SpaceId, type Recent } from './mock';
 
-type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search';
+type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send';
 
 /* ── Icons (stroke = currentColor, so they inherit the token color) ───────── */
 const ICON: Record<IconName, React.ReactNode> = {
@@ -26,6 +26,9 @@ const ICON: Record<IconName, React.ReactNode> = {
   chevron: <path d="M9 6l6 6-6 6" />,
   filter: <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />,
   search: <><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></>,
+  back: <path d="M15 6l-6 6 6 6" />,
+  dots: <><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></>,
+  send: <path d="M12 19V5M5 12l7-7 7 7" />,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -94,50 +97,84 @@ function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat
   );
 }
 
+/* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
+function ChatsView({ onMenu, onOpen, onNewChat }: {
+  onMenu: () => void;
+  onOpen: (s: Recent) => void;
+  onNewChat: () => void;
+}) {
+  return (
+    <div className="m-chats">
+      <header className="m-chats-head">
+        <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
+        <span className="m-chats-title">Chats</span>
+        <button className="m-chats-icon" aria-label="Filter"><Icon name="filter" /></button>
+      </header>
+      <div className="m-chats-list">
+        {ALL_SESSIONS.map((s) => (
+          <button key={s.id} className="m-chat-row" onClick={() => onOpen(s)}>
+            <span className="m-chat-text">
+              <span className="m-chat-title">{s.title}</span>
+              <span className="m-chat-when">{s.when}</span>
+            </span>
+            <Icon name="chevron" />
+          </button>
+        ))}
+      </div>
+      <button className="m-fab btn btn-primary" onClick={onNewChat}><Icon name="plus" /><span>New chat</span></button>
+      <div className="m-search"><Icon name="search" /><span>Search</span></div>
+    </div>
+  );
+}
+
+/* ── Session: the standard Glyphh agent view (transparent blurred header,
+   messages, composer pinned at the bottom). ─────────────────────────────── */
+function SessionView({ session, onBack }: { session: Recent; onBack: () => void }) {
+  return (
+    <div className="m-sv">
+      <header className="m-sv-head">
+        <button className="m-chats-icon" aria-label="Back" onClick={onBack}><Icon name="back" /></button>
+        <span className="m-sv-name">{session.title}</span>
+        <button className="m-chats-icon" aria-label="Options"><Icon name="dots" /></button>
+      </header>
+      <div className="m-sv-messages">
+        {MESSAGES.map((m) => (
+          <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
+        ))}
+      </div>
+      <div className="m-composer">
+        <div className="m-composer-box">
+          <span className="m-composer-ph">Message Glyphh…</span>
+          <button className="m-composer-send" aria-label="Send"><Icon name="send" /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [active, setActive] = useState<SpaceId>('chat');
   const [drawer, setDrawer] = useState(false);
-  const [view, setView] = useState<'home' | 'all-chats'>('home');
+  const [screen, setScreen] = useState<'home' | 'list' | 'session'>('home');
+  const [session, setSession] = useState<Recent | null>(null);
 
-  const selectSpace = (id: SpaceId) => { setActive(id); setView('home'); setDrawer(false); };
-  const openRecent = (_id: string) => { setView('home'); setDrawer(false); /* session view lands here later */ };
-  const allChats = () => { setView('all-chats'); setDrawer(false); };
+  const selectSpace = (id: SpaceId) => { setActive(id); setScreen('home'); setSession(null); setDrawer(false); };
+  const openSession = (s: Recent) => { setSession(s); setScreen('session'); setDrawer(false); };
+  const openRecent = (id: string) => {
+    const s = ALL_SESSIONS.find((x) => x.id === id) || RECENTS.find((x) => x.id === id);
+    if (s) openSession(s);
+  };
+  const allChats = () => { setScreen('list'); setDrawer(false); };
+  const backToList = () => { setScreen('list'); };
   const account = () => { setDrawer(false); /* account view lands here later */ };
-  const newChat = () => { setActive('chat'); setView('home'); setDrawer(false); /* new chat lands here later */ };
+  const newChat = () => { setActive('chat'); setScreen('home'); setSession(null); setDrawer(false); };
 
   return (
     <div className="m-app" data-drawer={drawer ? 'open' : 'closed'}>
       <div className="m-scrim" onClick={() => setDrawer(false)} />
       <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
       <main className="m-main">
-        {view === 'all-chats' ? (
-          <div className="m-chats">
-            <header className="m-chats-head">
-              <button className="m-chats-icon" aria-label="Open menu" onClick={() => setDrawer(true)}>
-                <Icon name="menu" />
-              </button>
-              <span className="m-chats-title">Chats</span>
-              <button className="m-chats-icon" aria-label="Filter">
-                <Icon name="filter" />
-              </button>
-            </header>
-            <div className="m-chats-list">
-              {ALL_SESSIONS.map((s) => (
-                <button key={s.id} className="m-chat-row" onClick={() => openRecent(s.id)}>
-                  <span className="m-chat-text">
-                    <span className="m-chat-title">{s.title}</span>
-                    <span className="m-chat-when">{s.when}</span>
-                  </span>
-                  <Icon name="chevron" />
-                </button>
-              ))}
-            </div>
-            <button className="m-fab btn btn-primary" onClick={newChat}>
-              <Icon name="plus" /><span>New chat</span>
-            </button>
-            <div className="m-search"><Icon name="search" /><span>Search</span></div>
-          </div>
-        ) : (
+        {screen === 'home' && (
           <>
             {/* No header. Phone-only floating toggle to reveal the rail drawer. */}
             <button className="m-drawer-toggle" aria-label="Open menu" onClick={() => setDrawer(true)}>
@@ -145,6 +182,18 @@ function App() {
             </button>
             <div className="m-content" />
           </>
+        )}
+        {(screen === 'list' || screen === 'session') && (
+          <div className="m-nav" data-screen={screen}>
+            <div className="m-nav-track">
+              <section className="m-nav-panel">
+                <ChatsView onMenu={() => setDrawer(true)} onOpen={openSession} onNewChat={newChat} />
+              </section>
+              <section className="m-nav-panel">
+                {session && <SessionView session={session} onBack={backToList} />}
+              </section>
+            </div>
+          </div>
         )}
       </main>
     </div>

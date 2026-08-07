@@ -47,6 +47,20 @@ export const RECENTS: Recent[] = [
   { id: 'r10', title: 'WorkOS SSO provisioning', when: 'Jul 28' },
 ];
 
+/** A mock conversation for the session (agent) view. SDK later → session.turn(). */
+export interface Message {
+  id: string;
+  role: 'user' | 'glyphh';
+  text: string;
+}
+export const MESSAGES: Message[] = [
+  { id: 'm1', role: 'user', text: 'Build a landing page for a Texas pool supply company.' },
+  { id: 'm2', role: 'glyphh', text: 'On it. I’ll scaffold a clean single-page site: a hero with a pool photo and a "Get a free quote" CTA, a products strip (chemicals, pumps, cleaners), a service-area map for South Texas, and a contact form wired to email.' },
+  { id: 'm3', role: 'user', text: 'Make the hero headline about crystal-clear water.' },
+  { id: 'm4', role: 'glyphh', text: 'Updated the hero to “Crystal-clear water, all season long.” with a subhead on same-day delivery across the Rio Grande Valley. Want me to publish it so you can see it live?' },
+  { id: 'm5', role: 'user', text: 'Yes, publish it.' },
+];
+
 /** The full session history — shown in the main content when "All Chats" opens.
  *  Mock now; SDK later → glyphh().sessions.list(). */
 export const ALL_SESSIONS: Recent[] = [
