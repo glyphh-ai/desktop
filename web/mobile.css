@@ -17,7 +17,9 @@ html, body { height: 100dvh; }
 body { overflow: hidden; overscroll-behavior: none; }
 #glyphh-mobile-root { height: 100dvh; }
 
-.m-app { display: flex; height: 100dvh; position: relative; }
+/* Pinned to the viewport (top-left, edge to edge) so nothing in the document
+   flow — or the desktop styles.css — can push the app down and leave a top gap. */
+.m-app { position: fixed; inset: 0; display: flex; }
 
 /* PHONE: rail is an off-canvas drawer. Horizontal padding is TINY (3px) so an
    item's highlight fills the rail width minus ~3px on each side. */
