@@ -220,10 +220,6 @@ function App() {
         <main className="m-main">
           {screen === 'home' && (
             <div className="m-home">
-              {/* Circular hamburger — slides with the rail (inside the shell). */}
-              <button className="m-hamburger" aria-label="Menu" onClick={toggleDrawer}>
-                <Icon name="menu" />
-              </button>
               {/* New chat: the Glyphh agent welcome — mark + greeting + saying. */}
               <div className="m-home-hero">
                 <img className="m-home-mark" src="/brand/glyphh-mark.png" alt="" />
@@ -247,6 +243,13 @@ function App() {
           )}
           {/* Blurs the pushed-out content while the drawer is open; tap to close. */}
           <div className="m-scrim" onClick={() => setDrawer(false)} />
+          {/* Hamburger sits ABOVE the blur scrim (rendered after it). Slides with
+              the rail. Toggles the drawer. */}
+          {screen === 'home' && (
+            <button className="m-hamburger" aria-label="Menu" onClick={toggleDrawer}>
+              <Icon name="menu" />
+            </button>
+          )}
         </main>
       </div>
     </div>
