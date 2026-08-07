@@ -116,11 +116,12 @@ body {
   flex-direction: column;
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: calc(var(--safe-top) + 20px) 20px 0 calc(var(--safe-left) + 20px);
+  padding: calc(var(--safe-top) + 14px) 16px 0 calc(var(--safe-left) + 16px);
 }
 .m-app[data-drawer="open"] .m-rail { transform: translateX(0); }
 
-.m-rail-brand { display: flex; align-items: center; }
+/* Brand nudged in so the wordmark lines up with the nav icons below it. */
+.m-rail-brand { display: flex; align-items: center; padding-left: 10px; }
 
 /* Wordmark — rendered like app-web's .app-rail-wordmark (no filter, auto width;
    the asset carries its own outline). Bigger on tablet. */
@@ -172,41 +173,40 @@ body {
 .m-topbar-title { font: 600 17px/1 var(--font-sans); color: var(--text); }
 
 /* Rail: spaces nav. */
-.m-rail-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 22px; }
+.m-rail-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 18px; }
 .m-nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 11px 10px;
   border: 0;
   border-radius: 10px;
   background: none;
   color: var(--text-2);
-  font: 500 15px/1 var(--font-sans);
+  font: 500 16px/1 var(--font-sans);
   text-align: left;
   cursor: pointer;
 }
 .m-nav-item:hover { background: var(--hover); color: var(--text); }
 .m-nav-item[aria-current="page"] { background: var(--accent-bg); color: var(--accent-text); }
-.m-nav-item svg { width: 20px; height: 20px; flex: 0 0 20px; }
+.m-nav-item svg { width: 22px; height: 22px; flex: 0 0 22px; }
 
 /* Rail: Recents — fills the rest of the rail and scrolls. */
 .m-recents { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 22px; }
 .m-recents-label {
-  padding: 0 12px 8px;
-  font: 600 11px/1 var(--font-sans);
-  letter-spacing: 0.06em;
+  padding: 0 10px 8px;
+  font: 600 13px/1 var(--font-sans);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-faint);
 }
 .m-recents-list { overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
 .m-recent {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
   width: 100%;
-  padding: 9px 12px;
+  padding: 10px 10px;
   border: 0;
   border-radius: 8px;
   background: none;
@@ -215,13 +215,12 @@ body {
 }
 .m-recent:hover { background: var(--hover); }
 .m-recent-title {
-  font: 400 14px/1.3 var(--font-sans);
+  font: 400 15px/1.3 var(--font-sans);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.m-recent-when { font: 400 12px/1 var(--font-sans); color: var(--text-faint); }
 
 /* Rail footer: profile circle (left) + New Chat (right). Pinned to the bottom. */
 .m-rail-footer {
@@ -277,13 +276,15 @@ body {
     flex: 0 0 280px;
     width: 280px;
     max-width: none;
-    padding: calc(var(--safe-top) + 28px) 24px 0 calc(var(--safe-left) + 28px);
+    padding: calc(var(--safe-top) + 20px) 22px 0 calc(var(--safe-left) + 22px);
   }
   .m-scrim { display: none; }
   .m-topbar { display: none; }
   .m-wordmark { height: 36px; }
-  .m-rail-nav { margin-top: 30px; gap: 3px; }
-  .m-nav-item { padding: 11px 14px; font-size: 16px; gap: 14px; }
-  .m-nav-item svg { width: 22px; height: 22px; flex-basis: 22px; }
-  .m-recents { margin-top: 28px; }
+  .m-rail-nav { margin-top: 22px; gap: 3px; }
+  .m-nav-item { padding: 12px 10px; font-size: 17px; gap: 14px; }
+  .m-nav-item svg { width: 24px; height: 24px; flex-basis: 24px; }
+  .m-recents { margin-top: 26px; }
+  .m-recents-label { font-size: 14px; }
+  .m-recent-title { font-size: 16px; }
 }

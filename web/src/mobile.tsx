@@ -68,7 +68,6 @@ function Rail({ active, onSelect, onOpenRecent, onAccount, onNewChat }: {
           {RECENTS.map((r) => (
             <button key={r.id} className="m-recent" onClick={() => onOpenRecent(r.id)}>
               <span className="m-recent-title">{r.title}</span>
-              <span className="m-recent-when">{r.when}</span>
             </button>
           ))}
         </div>
