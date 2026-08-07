@@ -117,7 +117,7 @@ body { overflow: hidden; overscroll-behavior: none; }
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 10px 10px;
+  padding: 7px 10px;
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
@@ -157,7 +157,7 @@ body { overflow: hidden; overscroll-behavior: none; }
   cursor: pointer;
 }
 .m-avatar:hover { color: var(--text); }
-.m-rail-footer .btn { flex: 1; }
+.m-rail-footer .btn { flex: 0 0 auto; }
 .m-rail-footer .btn svg { width: 18px; height: 18px; }
 
 /* Main content placeholder (until the mock screens land). */
