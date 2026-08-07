@@ -41,6 +41,27 @@ function Icon({ name }: { name: IconName }) {
   );
 }
 
+/* A light physical tap. Android/others: Vibration API. iOS 17.4+: toggling a
+   hidden <input switch> inside the user gesture emits a subtle system haptic.
+   Best-effort — silently no-ops where unsupported. */
+let hapticSwitch: HTMLInputElement | null = null;
+function haptic() {
+  try { (navigator as Navigator & { vibrate?: (n: number) => boolean }).vibrate?.(10); } catch { /* */ }
+  try {
+    if (!hapticSwitch) {
+      const label = document.createElement('label');
+      label.setAttribute('aria-hidden', 'true');
+      label.style.cssText = 'position:fixed;top:-100px;left:-100px;width:0;height:0;opacity:0;pointer-events:none;';
+      hapticSwitch = document.createElement('input');
+      hapticSwitch.type = 'checkbox';
+      hapticSwitch.setAttribute('switch', '');
+      label.appendChild(hapticSwitch);
+      document.body.appendChild(label);
+    }
+    hapticSwitch.click();
+  } catch { /* */ }
+}
+
 /* ── Left rail: brand → spaces → recents ──────────────────────────────────── */
 function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat }: {
   active: SpaceId;
@@ -165,35 +186,38 @@ function App() {
   const [screen, setScreen] = useState<'home' | 'list' | 'session'>('home');
   const [session, setSession] = useState<Recent | null>(null);
 
-  const selectSpace = (id: SpaceId) => { setActive(id); setScreen('home'); setSession(null); setDrawer(false); };
-  const openSession = (s: Recent) => { setSession(s); setScreen('session'); setDrawer(false); };
+  const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
+  const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('home'); setSession(null); setDrawer(false); };
+  const openSession = (s: Recent) => { haptic(); setSession(s); setScreen('session'); setDrawer(false); };
   const openRecent = (id: string) => {
     const s = ALL_SESSIONS.find((x) => x.id === id) || RECENTS.find((x) => x.id === id);
     if (s) openSession(s);
   };
-  const allChats = () => { setScreen('list'); setDrawer(false); };
-  const backToList = () => { setScreen('list'); };
+  const allChats = () => { haptic(); setScreen('list'); setDrawer(false); };
+  const backToList = () => { haptic(); setScreen('list'); };
   const account = () => { setDrawer(false); /* account view lands here later */ };
-  const newChat = () => { setActive('chat'); setScreen('home'); setSession(null); setDrawer(false); };
+  const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); setDrawer(false); };
 
   return (
     <div className="m-app" data-drawer={drawer ? 'open' : 'closed'}>
-      {/* Persistent circular hamburger (home) — toggles the push drawer, stays
-          put while the content slides past it. Matches the session back circle. */}
-      {screen === 'home' && (
-        <button className="m-hamburger" aria-label="Menu" onClick={() => setDrawer((d) => !d)}>
-          <Icon name="menu" />
-        </button>
-      )}
       <div className="m-shell">
         <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
         <main className="m-main">
-          {screen === 'home' && <div className="m-content" />}
+          {screen === 'home' && (
+            <>
+              {/* Circular hamburger — sits at the content's top-left and slides
+                  WITH the rail (it lives inside the shell). Toggles the drawer. */}
+              <button className="m-hamburger" aria-label="Menu" onClick={toggleDrawer}>
+                <Icon name="menu" />
+              </button>
+              <div className="m-content" />
+            </>
+          )}
           {(screen === 'list' || screen === 'session') && (
             <div className="m-nav" data-screen={screen}>
               <div className="m-nav-track">
                 <section className="m-nav-panel">
-                  <ChatsView onMenu={() => setDrawer(true)} onOpen={openSession} onNewChat={newChat} />
+                  <ChatsView onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} />
                 </section>
                 <section className="m-nav-panel">
                   {session && <SessionView session={session} onBack={backToList} />}
@@ -201,6 +225,8 @@ function App() {
               </div>
             </div>
           )}
+          {/* Blurs the pushed-out content while the drawer is open; tap to close. */}
+          <div className="m-scrim" onClick={() => setDrawer(false)} />
         </main>
       </div>
     </div>

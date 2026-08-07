@@ -135,17 +135,16 @@ body {
 }
 .m-main { flex: 0 0 100vw; width: 100vw; display: flex; flex-direction: column; background: var(--bg); position: relative; }
 
-/* Left room for the hamburger, which sits over the rail's top-left when open. */
-.m-rail-brand { display: flex; align-items: center; padding: 14px 0 8px 56px; }
+.m-rail-brand { display: flex; align-items: center; padding: 14px 0 8px 26px; }
 .m-wordmark { height: 30px; width: auto; display: block; }
 
-/* Persistent circular hamburger (home) — same circle as the session back
-   button; fixed while the content slides past it. Toggles the drawer. */
+/* Circular hamburger (home) — same circle as the session back button. It lives
+   inside the shell, so it SLIDES WITH the rail. Toggles the drawer. */
 .m-hamburger {
-  position: fixed;
+  position: absolute;
   top: calc(var(--safe-top) + 12px);
   left: calc(var(--safe-left) + 12px);
-  z-index: 40;
+  z-index: 20;
   width: 44px;
   height: 44px;
   border: 0;
@@ -159,6 +158,20 @@ body {
 }
 .m-hamburger:active { background: var(--hover); }
 .m-hamburger svg { width: 24px; height: 24px; }
+
+/* Blurs the pushed-out content while the drawer is open; tap to close. */
+.m-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--bg) 22%, transparent);
+}
+.m-app[data-drawer="open"] .m-scrim { opacity: 1; pointer-events: auto; }
 
 /* Spaces nav. */
 .m-rail-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
@@ -468,7 +481,7 @@ body {
   /* No push drawer on tablet: the shell is a no-op and the rail is a persistent
      fixed sidebar (fixed positioning is what keeps it flush to the top). */
   .m-shell { display: contents; }
-  .m-hamburger { display: none; }
+  .m-hamburger, .m-scrim { display: none; }
   .m-rail {
     position: fixed;
     inset: 0 auto 0 0;
