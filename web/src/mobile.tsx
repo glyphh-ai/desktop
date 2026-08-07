@@ -11,7 +11,7 @@
 import { createRoot } from 'react-dom/client';
 import { useState, useEffect, useRef } from 'react';
 import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, GHOST_QUOTES, USER, DESKTOPS, CODE_SESSIONS, WORK_GROUPS,
-  SETTINGS_GROUPS, MODELS, MORE_MODELS, ALL_MODELS, LOOPS, PERMISSIONS,
+  SETTINGS_GROUPS, MODELS, MODEL_TOP_N, LOOP_ROLES, DEFAULT_ROLE, LOOPS, PERMISSIONS,
   type SpaceId, type Recent, type CodeSession, type Task } from './mock';
 
 // Injected at build time from package.json (esbuild --define). Guarded so a
@@ -32,7 +32,7 @@ type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'b
   | 'circle' | 'progress' | 'check'
   | 'close' | 'info' | 'user' | 'dollar' | 'chart' | 'bell' | 'shield' | 'link'
   | 'sliders' | 'grid' | 'perms' | 'voice'
-  | 'camera' | 'image' | 'filedoc' | 'tick' | 'external';
+  | 'camera' | 'image' | 'filedoc' | 'tick' | 'external' | 'pin' | 'chats';
 
 /* ── Icons (stroke = currentColor, so they inherit the token color) ───────── */
 const ICON: Record<IconName, React.ReactNode> = {
@@ -76,6 +76,8 @@ const ICON: Record<IconName, React.ReactNode> = {
   filedoc: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M8.5 13.5c1-.9 2 .9 3.5 0M8.5 16.5c1-.9 2 .9 3.5 0" /></>,
   tick: <path d="M20 6L9 17l-5-5" />,
   external: <><rect x="4" y="4" width="16" height="16" rx="3.5" /><path d="M10 14l5-5" /><path d="M11 9h4v4" /></>,
+  pin: <><path d="M12 17v5" /><path d="M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.7l-1.8-.9A2 2 0 0 1 15 10.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></>,
+  chats: <><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></>,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -106,6 +108,24 @@ function haptic() {
     }
     hapticSwitch.click();
   } catch { /* */ }
+}
+
+/* ── Loop role helpers (shared by the composer chip + the selector) ───────── */
+function rolesForLoop(loopId: string) { return LOOP_ROLES[loopId] ?? [DEFAULT_ROLE]; }
+function seedRoleModels(loopId: string): Record<string, string> {
+  const rm: Record<string, string> = {};
+  for (const r of rolesForLoop(loopId)) rm[r.id] = r.defaultModel;
+  return rm;
+}
+function modelNameOf(id: string) { return MODELS.find((m) => m.id === id)?.name ?? ''; }
+/** "Default | Sonnet 5 +1" — loop name plus the primary role's model (and a
+ *  +N when the loop has multiple role slots). */
+function loopModelText(loopId: string, roleModels: Record<string, string>): string {
+  const roles = rolesForLoop(loopId);
+  const loopName = LOOPS.find((l) => l.id === loopId)?.name ?? '';
+  const primary = modelNameOf(roleModels[roles[0]?.id] ?? '');
+  const models = roles.length > 1 ? `${primary} +${roles.length - 1}` : primary;
+  return `${loopName} / ${models}`;
 }
 
 /* ── Left rail: brand → spaces → recents ──────────────────────────────────── */
@@ -165,11 +185,12 @@ function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat
   );
 }
 
-/* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions. */
-function Composer({ onPlus, onSelector, permLabel }: {
+/* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
+   One config chip shows loop / model (single line, never wraps). */
+function Composer({ onPlus, onSelector, loopModelLabel }: {
   onPlus: () => void;
   onSelector: () => void;
-  permLabel: string;
+  loopModelLabel: string;
 }) {
   return (
     <div className="m-composer">
@@ -177,7 +198,7 @@ function Composer({ onPlus, onSelector, permLabel }: {
         <div className="m-composer-input"><span className="m-composer-ph">Message Glyphh…</span></div>
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
-          <button className="m-tool-pill" onClick={onSelector}><Icon name="code" /><span>{permLabel}</span></button>
+          <button className="m-tool-pill m-pill-cfg" onClick={onSelector}><span>{loopModelLabel}</span></button>
           <span className="m-composer-spacer" />
           <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
           <button className="m-composer-send" aria-label="Send"><Icon name="send" /></button>
@@ -207,6 +228,37 @@ function Ghost() {
   );
 }
 
+/* ── Header filter: a dropdown under the funnel — "All <things>" (checked) vs
+   "Pinned". Closes on outside tap. Used by Chats / Work / Code. ──────────── */
+function FilterMenu({ allLabel, allIcon }: { allLabel: string; allIcon: IconName }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'pinned'>('all');
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: Event) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', onDoc);
+    return () => document.removeEventListener('pointerdown', onDoc);
+  }, [open]);
+  const row = (id: 'all' | 'pinned', icon: IconName, label: string) => (
+    <button className="m-filter-row" onClick={() => { haptic(); setFilter(id); setOpen(false); }}>
+      <span className="m-filter-check">{filter === id && <Icon name="tick" />}</span>
+      <Icon name={icon} /><span>{label}</span>
+    </button>
+  );
+  return (
+    <div className="m-filter" ref={ref}>
+      <button className="m-chats-icon" aria-label="Filter" onClick={() => { haptic(); setOpen((v) => !v); }}><Icon name="filter" /></button>
+      {open && (
+        <div className="m-filter-menu" role="menu">
+          {row('all', allIcon, allLabel)}
+          {row('pinned', 'pin', 'Pinned')}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
 function ChatsView({ title, onMenu, onOpen, onNewChat }: {
   title: string;
@@ -221,7 +273,7 @@ function ChatsView({ title, onMenu, onOpen, onNewChat }: {
       <header className="m-chats-head">
         <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
         <span className="m-chats-title">{title}</span>
-        <button className="m-chats-icon" aria-label="Filter"><Icon name="filter" /></button>
+        <FilterMenu allLabel="All chats" allIcon="chats" />
       </header>
       <div className="m-chats-list">
         {ALL_SESSIONS.map((s) => (
@@ -277,7 +329,7 @@ function CodeView({ onMenu, onOpen, onNewSession }: {
       <header className="m-chats-head">
         <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
         <span className="m-chats-title">Code</span>
-        <button className="m-chats-icon" aria-label="Filter"><Icon name="filter" /></button>
+        <FilterMenu allLabel="All sessions" allIcon="code" />
       </header>
       <div className="m-code-scroll">
         <div className="m-code-label">Desktops</div>
@@ -335,7 +387,7 @@ function WorkView({ onMenu, onOpen, onNewTask }: {
       <header className="m-chats-head">
         <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
         <span className="m-chats-title">Work</span>
-        <button className="m-chats-icon" aria-label="Filter"><Icon name="filter" /></button>
+        <FilterMenu allLabel="All tasks" allIcon="work" />
       </header>
       <div className="m-work-scroll">
         {WORK_GROUPS.map((g) => (
@@ -367,7 +419,7 @@ function WorkView({ onMenu, onOpen, onNewTask }: {
 
 /* ── Session: the standard Glyphh agent view (transparent blurred header,
    messages, composer pinned at the bottom). ─────────────────────────────── */
-interface CompProps { onPlus: () => void; onSelector: () => void; permLabel: string; }
+interface CompProps { onPlus: () => void; onSelector: () => void; loopModelLabel: string; }
 
 function SessionView({ session, onBack, comp }: { session: Recent; onBack: () => void; comp: CompProps }) {
   return (
@@ -658,27 +710,36 @@ function OptionList({ items, selected, onPick }: { items: { id: string; name: st
   );
 }
 
-function SelectorSheet({ open, onClose, model, setModel, loop, setLoop, perm, setPerm }: {
+function SelectorSheet({ open, onClose, loop, setLoop, perm, setPerm, roleModels, setRoleModels }: {
   open: boolean;
   onClose: () => void;
-  model: string; setModel: (v: string) => void;
   loop: string; setLoop: (v: string) => void;
   perm: string; setPerm: (v: string) => void;
+  roleModels: Record<string, string>; setRoleModels: (fn: (m: Record<string, string>) => Record<string, string>) => void;
 }) {
-  // Depth-based track: 0 = the three sections, 1 = a section's tray, 2 = the
-  // "More models" list under Models. `tray` persists during slide-backs.
+  // The chosen loop's role slots (Planner/Builder/…) drive the Models tray.
+  const roles = rolesForLoop(loop);
+  const topModels = MODELS.slice(0, MODEL_TOP_N);      // shown per role
+  const moreModels = MODELS.slice(MODEL_TOP_N);        // the rest → "More models"
+
+  // Depth track: 0 = sections, 1 = a section tray, 2 = More models (per role).
   const [tray, setTray] = useState<'loop' | 'models' | 'permission'>('models');
   const [depth, setDepth] = useState(0);
-  useEffect(() => {
-    if (open) return;
-    const t = setTimeout(() => setDepth(0), 260);
-    return () => clearTimeout(t);
-  }, [open]);
+  const [moreRole, setMoreRole] = useState('');
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});   // undefined → expanded
+
+  // Reset to the sections after the sheet has slid away.
+  useEffect(() => { if (open) return; const t = setTimeout(() => setDepth(0), 260); return () => clearTimeout(t); }, [open]);
 
   const nameOf = (arr: { id: string; name: string }[], id: string) => arr.find((x) => x.id === id)?.name ?? '';
+  const modelName = (id: string) => nameOf(MODELS, id);
   const openTray = (t: 'loop' | 'models' | 'permission') => { haptic(); setTray(t); setDepth(1); };
-  const trayTitle = tray === 'loop' ? 'Loop' : tray === 'models' ? 'Select model' : 'Permission';
-  const pickModel = (id: string) => { haptic(); setModel(id); setDepth(0); };
+  const trayTitle = tray === 'loop' ? 'Loop' : tray === 'models' ? 'Models' : 'Permission';
+  const modelsSummary = roles.length === 1 ? modelName(roleModels[roles[0].id]) : `${roles.length} models`;
+  const setRoleModel = (roleId: string, id: string) => { haptic(); setRoleModels((m) => ({ ...m, [roleId]: id })); };
+  const toggleRole = (roleId: string) => { haptic(); setExpanded((e) => ({ ...e, [roleId]: !(e[roleId] ?? true) })); };
+  const openMore = (roleId: string) => { haptic(); setMoreRole(roleId); setDepth(2); };
+  const moreRoleName = nameOf(roles, moreRole);
 
   return (
     <div className="m-sel-overlay" data-open={open ? 'true' : 'false'}>
@@ -695,19 +756,13 @@ function SelectorSheet({ open, onClose, model, setModel, loop, setLoop, perm, se
             <div className="m-sel-body">
               <div className="m-sel-group">
                 <button className="m-sel-row" onClick={() => openTray('loop')}>
-                  <span className="m-sel-row-label">Loop</span>
-                  <span className="m-sel-row-val">{nameOf(LOOPS, loop)}</span>
-                  <Icon name="chevron" />
+                  <span className="m-sel-row-label">Loop</span><span className="m-sel-row-val">{nameOf(LOOPS, loop)}</span><Icon name="chevron" />
                 </button>
                 <button className="m-sel-row" onClick={() => openTray('models')}>
-                  <span className="m-sel-row-label">Models</span>
-                  <span className="m-sel-row-val">{nameOf(ALL_MODELS, model)}</span>
-                  <Icon name="chevron" />
+                  <span className="m-sel-row-label">Models</span><span className="m-sel-row-val">{modelsSummary}</span><Icon name="chevron" />
                 </button>
                 <button className="m-sel-row" onClick={() => openTray('permission')}>
-                  <span className="m-sel-row-label">Permission</span>
-                  <span className="m-sel-row-val">{nameOf(PERMISSIONS, perm)}</span>
-                  <Icon name="chevron" />
+                  <span className="m-sel-row-label">Permission</span><span className="m-sel-row-val">{nameOf(PERMISSIONS, perm)}</span><Icon name="chevron" />
                 </button>
               </div>
             </div>
@@ -726,12 +781,30 @@ function SelectorSheet({ open, onClose, model, setModel, loop, setLoop, perm, se
               {tray === 'models' && (
                 <>
                   <div className="m-sel-search"><Icon name="search" /><span>Search</span></div>
-                  <OptionList items={MODELS} selected={model} onPick={pickModel} />
-                  {/* Effort removed — the SDK turn API has no effort/reasoning param.
-                      "More models" opens the rest of the resolved catalog (panel 2). */}
-                  <div className="m-sel-group">
-                    <button className="m-sel-row" onClick={() => { haptic(); setDepth(2); }}><span className="m-sel-row-label">More models</span><Icon name="chevron" /></button>
-                  </div>
+                  {/* One collapsible section per loop role; each lists its top N,
+                      then "More models" → the rest of the pool (panel 2). */}
+                  {roles.map((r) => (
+                    <div key={r.id} className="m-role" data-open={(expanded[r.id] ?? true) ? 'true' : 'false'}>
+                      <button className="m-role-head" onClick={() => toggleRole(r.id)}>
+                        <span className="m-role-name">{r.name}</span>
+                        <span className="m-role-val">{modelName(roleModels[r.id])}</span>
+                        <Icon name="caret" />
+                      </button>
+                      {(expanded[r.id] ?? true) && (
+                        <div className="m-sel-group">
+                          {topModels.map((m) => (
+                            <button key={m.id} className="m-opt" onClick={() => setRoleModel(r.id, m.id)}>
+                              <span className="m-opt-text"><span className="m-opt-name">{m.name}</span><span className="m-opt-desc">{m.desc}</span></span>
+                              {roleModels[r.id] === m.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
+                            </button>
+                          ))}
+                          <button className="m-sel-row" onClick={() => openMore(r.id)}>
+                            <span className="m-sel-row-label">More models</span><Icon name="chevron" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </>
               )}
               {tray === 'permission' && (
@@ -740,15 +813,15 @@ function SelectorSheet({ open, onClose, model, setModel, loop, setLoop, perm, se
             </div>
           </section>
 
-          {/* Panel 2 — More models (nested under Models; back returns to it). */}
+          {/* Panel 2 — More models for a role: the pool minus that role's top N. */}
           <section className="m-sel-panel">
             <div className="m-sel-head">
               <button className="m-sheet-btn" aria-label="Back" onClick={() => { haptic(); setDepth(1); }}><Icon name="back" /></button>
-              <span className="m-sel-title">More models</span>
+              <span className="m-sel-title">{moreRoleName ? `${moreRoleName} · more` : 'More models'}</span>
             </div>
             <div className="m-sel-body">
               <div className="m-sel-search"><Icon name="search" /><span>Search all models</span></div>
-              <OptionList items={MORE_MODELS} selected={model} onPick={pickModel} />
+              <OptionList items={moreModels} selected={roleModels[moreRole]} onPick={(id) => { setRoleModel(moreRole, id); setDepth(1); }} />
             </div>
           </section>
         </div>
@@ -766,13 +839,13 @@ function App() {
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
   const [selector, setSelector] = useState(false);
-  const [model, setModel] = useState('sonnet-5');
   const [loop, setLoop] = useState('default');
   const [perm, setPerm] = useState('accept-edits');
+  const [roleModels, setRoleModels] = useState<Record<string, string>>(() => seedRoleModels('default'));
   const comp: CompProps = {
     onPlus: () => { haptic(); setAttach(true); },
     onSelector: () => { haptic(); setSelector(true); },
-    permLabel: PERMISSIONS.find((p) => p.id === perm)?.name ?? 'Accept edits',
+    loopModelLabel: loopModelText(loop, roleModels),
   };
 
   // Splash on load → then the new-chat screen.
@@ -780,6 +853,9 @@ function App() {
     const t = setTimeout(() => setSplash(false), 2200);
     return () => clearTimeout(t);
   }, []);
+
+  // Loop change → the role set changes; reseed each slot to its default model.
+  useEffect(() => { setRoleModels(seedRoleModels(loop)); }, [loop]);
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
   const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('list'); setSession(null); setDrawer(false); };
@@ -844,9 +920,9 @@ function App() {
       <SelectorSheet
         open={selector}
         onClose={() => { haptic(); setSelector(false); }}
-        model={model} setModel={setModel}
         loop={loop} setLoop={setLoop}
         perm={perm} setPerm={setPerm}
+        roleModels={roleModels} setRoleModels={setRoleModels}
       />
     </div>
   );

@@ -58,15 +58,13 @@ export const GHOST_QUOTES: string[] = [
 /** Composer selector data: the model list mirrors the Glyphh agent's model
  *  picker; loops + permissions are the other two selector sections. Mock now. */
 export interface ModelOption { id: string; name: string; desc: string; }
+/** The full model pool (ordered best-first). Each loop role shows its TOP_N,
+ *  and "More models" opens the remainder. Mock now; SDK later → role.choices. */
 export const MODELS: ModelOption[] = [
   { id: 'fable-5', name: 'Fable 5', desc: 'For your toughest challenges' },
   { id: 'opus-5', name: 'Opus 5', desc: 'For complex tasks' },
   { id: 'sonnet-5', name: 'Sonnet 5', desc: 'Most efficient for everyday tasks' },
   { id: 'haiku-4-5', name: 'Haiku 4.5', desc: 'Fastest for quick answers' },
-];
-/** The rest of the resolved catalog — what "More models ›" opens. Mock now;
- *  SDK later → the role's remaining choices + org/BYOK catalog additions. */
-export const MORE_MODELS: ModelOption[] = [
   { id: 'opus-4-8', name: 'Opus 4.8', desc: 'Previous flagship' },
   { id: 'sonnet-4-5', name: 'Sonnet 4.5', desc: 'Previous balanced default' },
   { id: 'glyphh-coder', name: 'Glyphh Coder', desc: 'On-device open weights' },
@@ -74,8 +72,19 @@ export const MORE_MODELS: ModelOption[] = [
   { id: 'llama-3-70b', name: 'Llama 3 70B', desc: 'Open-weight generalist' },
   { id: 'qwen-coder', name: 'Qwen2.5 Coder', desc: 'Open-weight code model' },
 ];
-/** Every selectable model — used for name lookup regardless of which list it's in. */
-export const ALL_MODELS: ModelOption[] = [...MODELS, ...MORE_MODELS];
+export const MODEL_TOP_N = 5;
+
+/** A loop's model slots. The chosen loop decides which roles appear in the
+ *  Models tray; each is a collapsible section. Mock now; SDK later → loopRoles(). */
+export interface LoopRole { id: string; name: string; defaultModel: string; }
+export const LOOP_ROLES: Record<string, LoopRole[]> = {
+  default:  [{ id: 'planner', name: 'Planner', defaultModel: 'opus-5' }, { id: 'builder', name: 'Builder', defaultModel: 'sonnet-5' }],
+  build:    [{ id: 'planner', name: 'Planner', defaultModel: 'opus-5' }, { id: 'builder', name: 'Builder', defaultModel: 'sonnet-5' }, { id: 'reviewer', name: 'Reviewer', defaultModel: 'haiku-4-5' }],
+  plan:     [{ id: 'planner', name: 'Planner', defaultModel: 'fable-5' }],
+  research: [{ id: 'researcher', name: 'Researcher', defaultModel: 'opus-5' }, { id: 'synthesizer', name: 'Synthesizer', defaultModel: 'sonnet-5' }],
+};
+/** Fallback when a loop declares no roles — a single Agent slot. */
+export const DEFAULT_ROLE: LoopRole = { id: 'agent', name: 'Agent', defaultModel: 'sonnet-5' };
 export interface NamedOption { id: string; name: string; desc?: string; }
 export const LOOPS: NamedOption[] = [
   { id: 'default', name: 'Default', desc: 'The standard agent loop' },
