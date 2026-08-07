@@ -144,14 +144,23 @@ const server = http.createServer(async (req, res) => {
     // relative assets still resolve from the root. web-boot then routes off the
     // real pathname + query (device vs. callback).
     const nested = isNestedShellRoute(p);
-    const isMobileShell = MOBILE_ROUTES.has(p);
+    // Device routing: the mobile app owns the authed experience on PHONES. /m is
+    // always the mobile app; a SIGNED-IN phone (glyphh_logged_in cookie) also
+    // gets it for the app shell + /home, so login lands in the mobile ui instead
+    // of the desktop rail. Signed-out phones still see the working login shell,
+    // and /auth/* stays on the shell so magic-link/device token exchange runs.
+    const ua = req.headers['user-agent'] || '';
+    const isPhoneUA = /iPhone|iPod|Android.+Mobile/i.test(ua);
+    const authedCookie = /(?:^|;\s*)glyphh_logged_in=1\b/.test(req.headers.cookie || '');
+    const isAuthRoute = p === '/auth' || p.startsWith('/auth/');
+    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute
+      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/');
+    const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
     if (isMobileShell) {
       p = '/mobile.html';
-    }
-    if (SHELL_ROUTES.has(p)) {
+    } else if (SHELL_ROUTES.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
-    }
-    if (p === '/home' || p === '/home/') {
+    } else if (p === '/home' || p === '/home/') {
       p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
     }
     const file = normalize(join(ROOT, p));
