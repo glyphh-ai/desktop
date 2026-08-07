@@ -252,15 +252,19 @@ body {
 
 /* ── TABLET+ (iPad) : persistent sidebar, bigger type ── */
 @media (min-width: 768px) {
+  /* Fixed to the viewport top-left (same as the phone rail, which has no gap),
+     just always visible instead of a drawer. Main is offset by its width. */
   .m-rail {
-    position: static;
+    position: fixed;
+    inset: 0 auto 0 0;
     transform: none;
-    z-index: auto;
-    flex: 0 0 320px;
+    z-index: 30;
+    flex: none;
     width: 320px;
     max-width: none;
     padding: 0 3px 0 calc(var(--safe-left) + 3px);
   }
+  .m-main { margin-left: 320px; }
   .m-scrim { display: none; }
   .m-drawer-toggle { display: none; }
   .m-rail-brand { padding: 0 0 8px 30px; }
