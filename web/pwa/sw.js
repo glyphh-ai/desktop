@@ -8,7 +8,7 @@
 //
 // The API and auth flows are never touched — they must always hit the live origin.
 
-const CACHE = 'glyphh-mobile-v1';
+const CACHE = 'glyphh-mobile-v2';
 const SHELL = [
   '/m',
   '/glyphh-mobile.js',
