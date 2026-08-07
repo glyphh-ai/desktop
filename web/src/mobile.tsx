@@ -12,7 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
 import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, USER, type SpaceId, type Recent } from './mock';
 
-type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send';
+type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send' | 'mic';
 
 /* ── Icons (stroke = currentColor, so they inherit the token color) ───────── */
 const ICON: Record<IconName, React.ReactNode> = {
@@ -29,6 +29,7 @@ const ICON: Record<IconName, React.ReactNode> = {
   back: <path d="M15 6l-6 6 6 6" />,
   dots: <><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></>,
   send: <path d="M12 19V5M5 12l7-7 7 7" />,
+  mic: <><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" /></>,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -144,8 +145,14 @@ function SessionView({ session, onBack }: { session: Recent; onBack: () => void 
       </div>
       <div className="m-composer">
         <div className="m-composer-box">
-          <span className="m-composer-ph">Message Glyphh…</span>
-          <button className="m-composer-send" aria-label="Send"><Icon name="send" /></button>
+          <div className="m-composer-input"><span className="m-composer-ph">Message Glyphh…</span></div>
+          <div className="m-composer-tools">
+            <button className="m-tool-btn" aria-label="Add"><Icon name="plus" /></button>
+            <button className="m-tool-pill"><Icon name="code" /><span>Accept edits</span></button>
+            <span className="m-composer-spacer" />
+            <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
+            <button className="m-composer-send" aria-label="Send"><Icon name="send" /></button>
+          </div>
         </div>
       </div>
     </div>
