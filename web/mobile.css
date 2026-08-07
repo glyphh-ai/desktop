@@ -166,6 +166,64 @@ body {
   cursor: pointer;
 }
 .m-menu-btn:active { background: var(--hover); }
+.m-menu-btn svg { width: 22px; height: 22px; }
+.m-topbar-title { font: 600 17px/1 var(--font-sans); color: var(--text); }
+
+/* Rail: spaces nav. */
+.m-rail-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 22px; }
+.m-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-2);
+  font: 500 15px/1 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.m-nav-item:hover { background: var(--hover); color: var(--text); }
+.m-nav-item[aria-current="page"] { background: var(--accent-bg); color: var(--accent-text); }
+.m-nav-item svg { width: 20px; height: 20px; flex: 0 0 20px; }
+
+/* Rail: Recents — fills the rest of the rail and scrolls. */
+.m-recents { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 22px; }
+.m-recents-label {
+  padding: 0 12px 8px;
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.m-recents-list { overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.m-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.m-recent:hover { background: var(--hover); }
+.m-recent-title {
+  font: 400 14px/1.3 var(--font-sans);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-recent-when { font: 400 12px/1 var(--font-sans); color: var(--text-faint); }
+
+/* Main content (placeholder until the mock screens land). */
+.m-content { flex: 1; min-height: 0; display: grid; place-items: center; }
+.m-placeholder { font: 600 15px/1 var(--font-sans); color: var(--text-faint); }
 
 /* ── TABLET+ : persistent sidebar, no drawer/top bar ──────────────────────── */
 @media (min-width: 768px) {
@@ -181,4 +239,8 @@ body {
   .m-scrim { display: none; }
   .m-topbar { display: none; }
   .m-wordmark { height: 36px; }
+  .m-rail-nav { margin-top: 30px; gap: 3px; }
+  .m-nav-item { padding: 11px 14px; font-size: 16px; gap: 14px; }
+  .m-nav-item svg { width: 22px; height: 22px; flex-basis: 22px; }
+  .m-recents { margin-top: 28px; }
 }
