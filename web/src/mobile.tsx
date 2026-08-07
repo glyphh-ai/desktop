@@ -77,7 +77,7 @@ function Rail({ active, onSelect, onOpenRecent, onAccount, onNewChat }: {
         <button className="m-avatar" aria-label={USER.name} title={USER.name} onClick={onAccount}>
           {USER.initials}
         </button>
-        <button className="m-new-chat" onClick={onNewChat}>
+        <button className="btn btn-primary btn-lg" onClick={onNewChat}>
           <Icon name="plus" />
           <span>New Chat</span>
         </button>

@@ -31,8 +31,11 @@
   --accent-hover: #a855f7;
   --accent-text: #b975f9;
   --accent-bg: #f5ecfd;
-  --on-accent: #ffffff;
   --danger: #ef4444;
+  --radius: 10px;
+  --radius-sm: 8px;
+  --transition: 0.15s ease;
+  --grad-accent: linear-gradient(to top right, #8c3bf2, #ec4899);
   --warning: #f59e0b;
   --success: #16a34a;
   --overlay-bg: rgba(0, 0, 0, 0.3);
@@ -60,7 +63,6 @@
   --accent-hover: #a855f7;
   --accent-text: #b975f9;
   --accent-bg: #241a2e;
-  --on-accent: #ffffff;
   --danger: #ff5f57;
   --warning: #f0a030;
   --success: #28c840;
@@ -90,6 +92,57 @@ body {
 }
 #glyphh-mobile-root { min-height: 100dvh; }
 
+/* ── Buttons — VERBATIM from src/renderer/styles.css (.btn / .btn-primary).
+   The mobile app reuses the app's real components; it does not invent its own. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-full { width: 100%; }
+.btn-lg {
+  padding: 0.875rem 1.25rem;
+  font-size: 0.9375rem;
+  border-radius: 10px;
+}
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #ffffff;
+  color: #000;
+  border: none;
+  transition: color 220ms ease, opacity var(--transition);
+}
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--grad-accent, linear-gradient(to top right, #8c3bf2, #ec4899));
+  transform: translateX(-100%);
+  transition: none;
+}
+.btn-primary:hover:not(:disabled)::before,
+.btn-primary:active:not(:disabled)::before,
+.btn-primary:focus-visible:not(:disabled)::before {
+  transform: translateX(0);
+  transition: transform 280ms ease;
+}
+.btn-primary:disabled::before { transform: translateX(0); transition: none; }
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled),
+.btn-primary:focus-visible:not(:disabled) { color: #000; }
+
 /* ── App frame ─────────────────────────────────────────────────────────────
    A left rail + a main content area. Two behaviours at the 768px breakpoint:
    • PHONE  (<768px): the rail is an off-canvas DRAWER (hamburger in the top
@@ -107,8 +160,8 @@ body {
 .m-rail {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 280px;
-  max-width: 82vw;
+  width: 300px;
+  max-width: 86vw;
   z-index: 30;
   transform: translateX(-100%);
   transition: transform 0.24s ease;
@@ -246,22 +299,9 @@ body {
   cursor: pointer;
 }
 .m-avatar:hover { color: var(--text); }
-.m-new-chat {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 40px;
-  border: 0;
-  border-radius: 12px;
-  background: var(--accent);
-  color: var(--on-accent);
-  font: 600 14px/1 var(--font-sans);
-  cursor: pointer;
-}
-.m-new-chat:hover { background: var(--accent-hover); }
-.m-new-chat svg { width: 18px; height: 18px; }
+/* New Chat is the app's real .btn-primary; the footer just lets it fill. */
+.m-rail-footer .btn { flex: 1; }
+.m-rail-footer .btn svg { width: 18px; height: 18px; }
 
 /* Main content (placeholder until the mock screens land). */
 .m-content { flex: 1; min-height: 0; display: grid; place-items: center; }
@@ -273,8 +313,8 @@ body {
     position: static;
     transform: none;
     z-index: auto;
-    flex: 0 0 280px;
-    width: 280px;
+    flex: 0 0 320px;
+    width: 320px;
     max-width: none;
     padding: calc(var(--safe-top) + 20px) 22px 0 calc(var(--safe-left) + 22px);
   }
