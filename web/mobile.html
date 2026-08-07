@@ -1,9 +1,20 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Glyphh</title>
+  <script>
+    // Apply the USER'S theme synchronously before paint — same script the app
+    // shells use (index/home.template.html). No hardcoded theme.
+    try {
+      var t = localStorage.getItem('yoTheme') || 'dark';
+      var r = t === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        : t;
+      document.documentElement.setAttribute('data-theme', r);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  </script>
   <meta name="theme-color" content="#1a1a1c">
   <meta name="color-scheme" content="dark light">
   <meta name="mobile-web-app-capable" content="yes">
@@ -13,6 +24,9 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/brand/icons/icon-180.png">
   <link rel="icon" href="/brand/glyphh-mark.png">
+  <!-- The app's REAL design system: tokens, all themes, fonts (Inter), components. -->
+  <link rel="stylesheet" href="/styles.css">
+  <!-- Mobile LAYOUT only (uses the tokens above; invents nothing). -->
   <link rel="stylesheet" href="/mobile.css">
 </head>
 <body>
