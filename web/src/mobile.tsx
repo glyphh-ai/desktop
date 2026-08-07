@@ -178,31 +178,31 @@ function App() {
 
   return (
     <div className="m-app" data-drawer={drawer ? 'open' : 'closed'}>
-      <div className="m-scrim" onClick={() => setDrawer(false)} />
-      <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
-      <main className="m-main">
-        {screen === 'home' && (
-          <>
-            {/* No header. Phone-only floating toggle to reveal the rail drawer. */}
-            <button className="m-drawer-toggle" aria-label="Open menu" onClick={() => setDrawer(true)}>
-              <Icon name="menu" />
-            </button>
-            <div className="m-content" />
-          </>
-        )}
-        {(screen === 'list' || screen === 'session') && (
-          <div className="m-nav" data-screen={screen}>
-            <div className="m-nav-track">
-              <section className="m-nav-panel">
-                <ChatsView onMenu={() => setDrawer(true)} onOpen={openSession} onNewChat={newChat} />
-              </section>
-              <section className="m-nav-panel">
-                {session && <SessionView session={session} onBack={backToList} />}
-              </section>
+      {/* Persistent circular hamburger (home) — toggles the push drawer, stays
+          put while the content slides past it. Matches the session back circle. */}
+      {screen === 'home' && (
+        <button className="m-hamburger" aria-label="Menu" onClick={() => setDrawer((d) => !d)}>
+          <Icon name="menu" />
+        </button>
+      )}
+      <div className="m-shell">
+        <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
+        <main className="m-main">
+          {screen === 'home' && <div className="m-content" />}
+          {(screen === 'list' || screen === 'session') && (
+            <div className="m-nav" data-screen={screen}>
+              <div className="m-nav-track">
+                <section className="m-nav-panel">
+                  <ChatsView onMenu={() => setDrawer(true)} onOpen={openSession} onNewChat={newChat} />
+                </section>
+                <section className="m-nav-panel">
+                  {session && <SessionView session={session} onBack={backToList} />}
+                </section>
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
