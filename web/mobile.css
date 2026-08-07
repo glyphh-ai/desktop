@@ -378,7 +378,7 @@ body {
 /* ── Sliding nav stack: home → list slides in from the left; list ↔ session
    slides horizontally. ────────────────────────────────────────────────────── */
 .m-nav { position: absolute; inset: 0; overflow: hidden; animation: m-nav-in 0.28s ease; }
-@keyframes m-nav-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes m-nav-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .m-nav-track { display: flex; width: 200%; height: 100%; transition: transform 0.3s ease; }
 .m-nav[data-screen="session"] .m-nav-track { transform: translateX(-50%); }
 .m-nav-panel { flex: 0 0 50%; width: 50%; height: 100%; position: relative; overflow: hidden; }
