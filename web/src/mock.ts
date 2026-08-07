@@ -10,8 +10,37 @@ export type SpaceId = 'chat' | 'work' | 'code' | 'files' | 'desktop';
 export interface User {
   name: string;
   initials: string;
+  email: string;
 }
-export const USER: User = { name: 'Chris Timmerman', initials: 'CT' };
+export const USER: User = { name: 'Chris Timmerman', initials: 'CT', email: 'chris.timmerman@glyphh.ai' };
+
+/** Settings sheet rows, grouped. `icon` is an Icon name; `value` is the trailing
+ *  detail (e.g. the plan). Mock now; SDK later. */
+export interface SettingRow {
+  icon: string;
+  label: string;
+  value?: string;
+}
+export interface SettingGroup {
+  label: string;
+  rows: SettingRow[];
+}
+export const SETTINGS_GROUPS: SettingGroup[] = [
+  { label: 'Account', rows: [
+    { icon: 'user', label: 'Profile' },
+    { icon: 'dollar', label: 'Billing', value: 'Max plan' },
+    { icon: 'chart', label: 'Usage' },
+    { icon: 'bell', label: 'Notifications' },
+    { icon: 'shield', label: 'Privacy' },
+    { icon: 'link', label: 'Shared links' },
+  ] },
+  { label: 'App', rows: [
+    { icon: 'sliders', label: 'Capabilities' },
+    { icon: 'grid', label: 'Connectors' },
+    { icon: 'perms', label: 'Permissions' },
+    { icon: 'voice', label: 'Voice' },
+  ] },
+];
 
 /** The agent's new-session "sayings" — VERBATIM from the app's generic empty
  *  agent state (help/code.ts GHOST_QUOTES). Rotates one at a time. */
@@ -26,6 +55,41 @@ export const GHOST_QUOTES: string[] = [
   'First, do the loveliest math: care.',
 ];
 
+/** Composer selector data: the model list mirrors the Glyphh agent's model
+ *  picker; loops + permissions are the other two selector sections. Mock now. */
+export interface ModelOption { id: string; name: string; desc: string; }
+export const MODELS: ModelOption[] = [
+  { id: 'fable-5', name: 'Fable 5', desc: 'For your toughest challenges' },
+  { id: 'opus-5', name: 'Opus 5', desc: 'For complex tasks' },
+  { id: 'sonnet-5', name: 'Sonnet 5', desc: 'Most efficient for everyday tasks' },
+  { id: 'haiku-4-5', name: 'Haiku 4.5', desc: 'Fastest for quick answers' },
+];
+/** The rest of the resolved catalog — what "More models ›" opens. Mock now;
+ *  SDK later → the role's remaining choices + org/BYOK catalog additions. */
+export const MORE_MODELS: ModelOption[] = [
+  { id: 'opus-4-8', name: 'Opus 4.8', desc: 'Previous flagship' },
+  { id: 'sonnet-4-5', name: 'Sonnet 4.5', desc: 'Previous balanced default' },
+  { id: 'glyphh-coder', name: 'Glyphh Coder', desc: 'On-device open weights' },
+  { id: 'mistral-large', name: 'Mistral Large', desc: 'Open-weight, strong reasoning' },
+  { id: 'llama-3-70b', name: 'Llama 3 70B', desc: 'Open-weight generalist' },
+  { id: 'qwen-coder', name: 'Qwen2.5 Coder', desc: 'Open-weight code model' },
+];
+/** Every selectable model — used for name lookup regardless of which list it's in. */
+export const ALL_MODELS: ModelOption[] = [...MODELS, ...MORE_MODELS];
+export interface NamedOption { id: string; name: string; desc?: string; }
+export const LOOPS: NamedOption[] = [
+  { id: 'default', name: 'Default', desc: 'The standard agent loop' },
+  { id: 'research', name: 'Deep research', desc: 'Explore widely, then synthesize' },
+  { id: 'build', name: 'Build & verify', desc: 'Make the change, then check it' },
+  { id: 'plan', name: 'Plan first', desc: 'Draft a plan before acting' },
+];
+export const PERMISSIONS: NamedOption[] = [
+  { id: 'ask', name: 'Ask every time', desc: 'Approve each action' },
+  { id: 'accept-edits', name: 'Accept edits', desc: 'Auto-approve file edits' },
+  { id: 'plan', name: 'Plan mode', desc: 'Read-only — propose a plan' },
+  { id: 'full', name: 'Full access', desc: 'Run without asking' },
+];
+
 export interface NavItem {
   id: SpaceId;
   label: string;
@@ -36,7 +100,6 @@ export const NAV: NavItem[] = [
   { id: 'work', label: 'Work' },
   { id: 'code', label: 'Code' },
   { id: 'files', label: 'Files' },
-  { id: 'desktop', label: 'Desktop' },
 ];
 
 /** Recents = the user's recent CHAT sessions (the ones shown on the main).
@@ -72,6 +135,69 @@ export const MESSAGES: Message[] = [
   { id: 'm3', role: 'user', text: 'Make the hero headline about crystal-clear water.' },
   { id: 'm4', role: 'glyphh', text: 'Updated the hero to “Crystal-clear water, all season long.” with a subhead on same-day delivery across the Rio Grande Valley. Want me to publish it so you can see it live?' },
   { id: 'm5', role: 'user', text: 'Yes, publish it.' },
+];
+
+/** Attached desktops (the machines the agent can reach). Mock now; SDK later →
+ *  the attach registry (glyphh().desktops / attached machines). */
+export interface Desktop {
+  id: string;
+  name: string;
+  status: 'connected' | 'offline';
+}
+export const DESKTOPS: Desktop[] = [
+  { id: 'd1', name: 'Christophers-Mac-Studio', status: 'connected' },
+];
+
+/** A code session. `where` distinguishes the runtime:
+ *  - 'connected'    → running on an attached desktop (locus: relay), reachable now
+ *  - 'disconnected' → was on a desktop that's no longer reachable
+ *  - 'cloud'        → running in the cloud runtime (locus: remote)
+ *  `kind` picks the leading glyph (a plain ghost placeholder vs a git branch). */
+export type CodeWhere = 'connected' | 'disconnected' | 'cloud';
+export interface CodeSession {
+  id: string;
+  title: string;
+  when: string;
+  where: CodeWhere;
+  location: string;   // desktop name (local) or owner/repo (cloud)
+  kind?: 'plain' | 'branch';
+}
+export const CODE_SESSIONS: CodeSession[] = [
+  { id: 'c1', title: 'Glyphh apps agent integration audit', when: '1h', where: 'connected', location: 'Christophers-Mac-Studio' },
+  { id: 'c2', title: 'Server logs: missing user usage', when: '4d', where: 'connected', location: 'Christophers-Mac-Studio' },
+  { id: 'c3', title: 'christophers-mac-studio-local sync', when: '5d', where: 'connected', location: 'Christophers-Mac-Studio' },
+  { id: 'c4', title: 'Remove dead marketing-site routes', when: '5d', where: 'disconnected', location: 'glyphh-ai/web' },
+  { id: 'c5', title: 'Desktop app clarity', when: 'Jul 29', where: 'cloud', location: 'glyphh-ai/web' },
+  { id: 'c6', title: 'Character/word model weights', when: 'Jul 29', where: 'cloud', location: 'timmetim/thinktank', kind: 'branch' },
+];
+
+/** Work (Cowork) tasks, grouped by time bucket. `state` drives the status glyph
+ *  (todo → empty circle, doing → arc, done → check). Mock now; SDK later. */
+export type TaskState = 'todo' | 'doing' | 'done';
+export interface Task {
+  id: string;
+  title: string;
+  when: string;
+  state: TaskState;
+  note?: string;
+}
+export interface TaskGroup {
+  label: string;
+  tasks: Task[];
+}
+export const WORK_GROUPS: TaskGroup[] = [
+  { label: 'This week', tasks: [
+    { id: 't1', title: 'Meeting prep', when: '2d', state: 'doing', note: 'Working on it…' },
+  ] },
+  { label: 'Last week', tasks: [
+    { id: 't2', title: 'Glyphh product overview', when: 'Jul 29', state: 'todo' },
+  ] },
+  { label: 'July', tasks: [
+    { id: 't3', title: 'RRotor naming research', when: 'Jul 17', state: 'todo' },
+    { id: 't4', title: 'While loops in agentic engines', when: 'Jul 16', state: 'todo', note: 'DAGs, single-shot with better planning, something else?' },
+    { id: 't5', title: 'Local sandbox server security', when: 'Jul 14', state: 'todo' },
+    { id: 't6', title: 'Anthropic purchase options', when: 'Jul 9', state: 'todo' },
+  ] },
 ];
 
 /** The full session history — shown in the main content when "All Chats" opens.

@@ -31,6 +31,8 @@
   --accent-hover: #a855f7;
   --accent-text: #b975f9;
   --accent-bg: #f5ecfd;
+  --success: #16a34a;        /* connected-green (matches styles.css light) */
+  --danger: #e5484d;         /* matches styles.css light */
   --overlay-bg: rgba(0, 0, 0, 0.3);
   --grad-accent: linear-gradient(to top right, #8c3bf2, #ec4899);
   --radius: 10px;
@@ -55,6 +57,8 @@
   --accent-hover: #a855f7;
   --accent-text: #b975f9;
   --accent-bg: #241a2e;
+  --success: #3fb950;        /* connected-green (matches styles.css dark) */
+  --danger: #f85149;         /* matches styles.css dark */
   --overlay-bg: rgba(0, 0, 0, 0.6);
 }
 :root {
@@ -322,20 +326,19 @@ body {
   padding: 24px;
 }
 .m-ghost-mark {
-  width: 96px;
-  height: 96px;
-  opacity: 0.10;
-  filter: grayscale(1);
+  width: 104px;
+  height: 104px;
+  opacity: 0.82;             /* the real mascot, lightly softened */
   user-select: none;
   -webkit-user-drag: none;
 }
 .m-ghost-quote {
-  max-width: 440px;
+  max-width: 460px;
   text-align: center;
   color: var(--white);
-  opacity: 0.8;
-  font-size: 13.5px;
-  line-height: 1.65;
+  opacity: 0.85;
+  font-size: 18px;
+  line-height: 1.6;
   transition: opacity 0.5s ease;
 }
 
@@ -460,6 +463,169 @@ body {
   font: 400 18px/1 var(--font-sans);
 }
 .m-search svg { width: 20px; height: 20px; }
+
+/* ── Code view: Desktops strip + Sessions list ───────────────────────────── */
+/* Header + footer reuse the chats classes (.m-chats-head / .m-chats-fade /
+   .m-search / .m-fab); only the scroll body is bespoke. Top/bottom padding
+   matches .m-chats-list so content clears the shared header + search. */
+.m-code { position: relative; height: 100%; }
+.m-code-scroll {
+  height: 100%;
+  overflow-y: auto;
+  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 108px) calc(var(--safe-left) + 16px);
+}
+.m-code-label { font: 500 17px/1 var(--font-sans); color: var(--text-3); margin: 4px 2px 12px; }
+
+/* Desktops — a horizontally-scrollable strip of machine cards. */
+.m-desktops {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -16px 26px;
+  padding: 2px 16px;
+}
+.m-desktops::-webkit-scrollbar { display: none; }
+.m-desktop {
+  flex: 0 0 auto;
+  width: 208px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.m-desktop-icon { position: relative; width: 30px; height: 30px; color: var(--text-2); margin-bottom: 4px; }
+.m-desktop-icon svg { width: 30px; height: 30px; }
+.m-desktop-badge {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  border: 2px solid var(--surface);
+}
+.m-desktop[data-status="connected"] .m-desktop-badge { background: var(--success); }
+.m-desktop-name { font: 600 21px/1.2 var(--font-sans); color: var(--text); }
+.m-desktop-status { font: 500 16px/1 var(--font-sans); color: var(--text-faint); }
+.m-desktop[data-status="connected"] .m-desktop-status { color: var(--success); }
+
+/* Sessions — label + filter, then a stack of cards. */
+.m-code-sessions-head { display: flex; align-items: center; justify-content: space-between; }
+.m-code-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: 600 17px/1 var(--font-sans);
+  color: var(--text-2);
+  margin: 4px 2px 12px;
+}
+.m-code-filter svg { width: 18px; height: 18px; }
+
+.m-code-list { display: flex; flex-direction: column; gap: 12px; }
+.m-code-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 15px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+.m-code-card:active { background: var(--hover); }
+.m-code-thumb {
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.m-code-thumb[data-kind="plain"] { border: 1.6px dashed var(--border-2); background: var(--surface-2); }
+.m-code-thumb[data-kind="branch"] { background: var(--accent-bg); color: var(--accent); }
+.m-code-thumb svg { width: 22px; height: 22px; }
+.m-code-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.m-code-top { display: flex; align-items: baseline; gap: 10px; }
+.m-code-name {
+  flex: 1;
+  min-width: 0;
+  font: 600 20px/1.2 var(--font-sans);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.m-code-when { flex: 0 0 auto; font: 400 15px/1 var(--font-sans); color: var(--text-faint); }
+.m-code-meta { display: flex; align-items: center; gap: 6px; font: 400 15px/1 var(--font-sans); color: var(--text-faint); min-width: 0; }
+.m-code-meta svg { flex: 0 0 16px; width: 16px; height: 16px; }
+.m-code-meta[data-where="connected"] svg { color: var(--success); }
+.m-code-state { font-weight: 500; }
+.m-code-meta[data-where="connected"] .m-code-state { color: var(--success); }
+.m-code-dot { color: var(--text-faint); }
+.m-code-loc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Work view: time-bucketed task cards ─────────────────────────────────────
+   Header + footer reuse the chats classes; only the scroll body is bespoke. */
+.m-work { position: relative; height: 100%; }
+.m-work-scroll {
+  height: 100%;
+  overflow-y: auto;
+  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 108px) calc(var(--safe-left) + 16px);
+}
+.m-work-label { font: 500 17px/1 var(--font-sans); color: var(--text-3); margin: 22px 2px 12px; }
+.m-work-section:first-child .m-work-label { margin-top: 4px; }
+.m-work-group { display: flex; flex-direction: column; gap: 12px; }
+.m-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+.m-task:active { background: var(--hover); }
+.m-task-check {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+}
+.m-task-check svg { width: 22px; height: 22px; }
+.m-task-check[data-state="doing"] { color: var(--text-2); }
+.m-task-check[data-state="done"] { color: var(--success); }
+.m-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+.m-task-top { display: flex; align-items: baseline; gap: 10px; }
+.m-task-title {
+  flex: 1;
+  min-width: 0;
+  font: 600 22px/1.2 var(--font-sans);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.m-task-when { flex: 0 0 auto; font: 400 15px/1 var(--font-sans); color: var(--text-faint); }
+.m-task-note { font: 400 17px/1.4 var(--font-sans); color: var(--text-3); }
 
 /* ── Sliding nav stack: home → list slides in from the left; list ↔ session
    slides horizontally. ────────────────────────────────────────────────────── */
@@ -608,3 +774,275 @@ body {
   .m-recent { padding: 12px 16px; }
   .m-recent-title { font-size: 19px; }
 }
+
+/* ── Settings bottom sheet: slides up over the app, back down on close ────── */
+.m-sheet-overlay { position: fixed; inset: 0; z-index: 200; pointer-events: none; }
+.m-sheet-overlay[data-open="true"] { pointer-events: auto; }
+.m-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.34s ease;
+}
+.m-sheet-overlay[data-open="true"] .m-sheet-scrim { opacity: 1; }
+.m-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 20%;                                /* ~80% tall — not all the way up */
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34);
+  overflow: hidden;                        /* clip the off-screen panel */
+  transform: translateY(100%);
+  transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.m-sheet-overlay[data-open="true"] .m-sheet { transform: translateY(0); }
+
+/* Horizontal track: main list ↔ a sub-screen (Profile), sliding both ways. */
+.m-sheet-track { flex: 1 1 auto; min-height: 0; display: flex; width: 200%; transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
+.m-sheet-track[data-open="true"] { transform: translateX(-50%); }
+.m-sheet-panel { flex: 0 0 50%; width: 50%; min-height: 0; display: flex; flex-direction: column; }
+
+.m-sheet-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  flex: 0 0 auto;
+}
+.m-sheet-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+  font: 700 21px/1 var(--font-sans);
+  color: var(--text);
+}
+.m-sheet-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.m-sheet-btn:active { background: var(--hover); }
+.m-sheet-btn svg { width: 22px; height: 22px; }
+
+.m-sheet-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 16px calc(var(--safe-bottom) + 28px); }
+.m-set-email {
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--surface);
+  font: 600 21px/1.2 var(--font-sans);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 14px;
+}
+.m-set-section { margin-top: 24px; }
+.m-set-section:first-of-type { margin-top: 10px; }
+.m-set-label { font: 500 16px/1 var(--font-sans); color: var(--text-3); margin: 0 4px 10px; }
+.m-set-group { background: var(--surface); border-radius: 16px; overflow: hidden; }
+.m-set-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.m-set-row:active { background: var(--hover); }
+.m-set-row:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 58px;              /* aligns the divider under the label, past the icon */
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--border);
+}
+.m-set-ico { flex: 0 0 24px; width: 24px; height: 24px; display: flex; color: var(--text-2); }
+.m-set-ico svg { width: 24px; height: 24px; }
+.m-set-name { flex: 1; min-width: 0; font: 500 20px/1 var(--font-sans); color: var(--text); }
+.m-set-val { font: 400 18px/1 var(--font-sans); color: var(--text-faint); }
+.m-set-row > svg { flex: 0 0 20px; width: 20px; height: 20px; color: var(--text-faint); }
+
+/* ── Composer attachment menu: a frosted popover above the + ──────────────── */
+.m-attach-overlay { position: fixed; inset: 0; z-index: 210; pointer-events: none; }
+.m-attach-overlay[data-open="true"] { pointer-events: auto; }
+.m-attach-scrim { position: absolute; inset: 0; }
+.m-attach-menu {
+  position: absolute;
+  left: calc(var(--safe-left) + 12px);
+  bottom: calc(var(--safe-bottom) + 96px);
+  min-width: 258px;
+  max-width: min(340px, 84vw);
+  padding: 8px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  -webkit-backdrop-filter: blur(26px) saturate(1.7);
+  backdrop-filter: blur(26px) saturate(1.7);
+  border: 1px solid var(--border);
+  box-shadow: 0 14px 44px var(--overlay-bg);
+  /* Slide up from below on open; slide back down on close (matches the sheets). */
+  transform: translateY(100%);
+  opacity: 0;
+  transition: opacity 0.22s ease, transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.m-attach-overlay[data-open="true"] .m-attach-menu { opacity: 1; transform: translateY(0); }
+.m-attach-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 15px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: 500 20px/1.25 var(--font-sans);
+  color: var(--text);
+}
+.m-attach-row:active { background: var(--hover); }
+.m-attach-row svg { flex: 0 0 24px; width: 24px; height: 24px; color: var(--text-2); }
+
+/* ── Composer selector sheet: Loop / Models / Permission + sliding trays ──── */
+.m-sel-overlay { position: fixed; inset: 0; z-index: 210; pointer-events: none; }
+.m-sel-overlay[data-open="true"] { pointer-events: auto; }
+.m-sel-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.34s ease;
+}
+.m-sel-overlay[data-open="true"] .m-sel-scrim { opacity: 1; }
+.m-sel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 72vh;                        /* tall enough for the model + permission trays */
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34);
+  overflow: hidden;                        /* clip the off-screen panel */
+  padding-bottom: calc(var(--safe-bottom) + 16px);
+  transform: translateY(100%);
+  transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.m-sel-overlay[data-open="true"] .m-sel { transform: translateY(0); }
+.m-sel-grip { flex: 0 0 auto; width: 40px; height: 5px; border-radius: 3px; background: var(--border-2); margin: 8px auto 2px; }
+.m-sel-head { position: relative; display: flex; align-items: center; gap: 12px; padding: 8px 16px 14px; flex: 0 0 auto; }
+.m-sel-title { position: absolute; left: 0; right: 0; text-align: center; pointer-events: none; font: 700 20px/1 var(--font-sans); color: var(--text); }
+.m-sel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 16px; }
+/* Horizontal track by depth: 0 = sections, 1 = a section tray, 2 = More models.
+   Three equal panels of a 300%-wide track; back/forward both slide. */
+.m-sel-track { flex: 1 1 auto; min-height: 0; display: flex; width: 300%; transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
+.m-sel-track[data-depth="0"] { transform: translateX(0); }
+.m-sel-track[data-depth="1"] { transform: translateX(-33.3333%); }
+.m-sel-track[data-depth="2"] { transform: translateX(-66.6666%); }
+.m-sel-panel { flex: 0 0 33.3333%; width: 33.3333%; min-height: 0; display: flex; flex-direction: column; }
+.m-sel-group { background: var(--surface); border-radius: 16px; overflow: hidden; margin-bottom: 12px; }
+.m-sel-row { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 18px; border: 0; background: none; cursor: pointer; text-align: left; }
+.m-sel-row:active { background: var(--hover); }
+.m-sel-row:not(:last-child)::after { content: ""; position: absolute; left: 18px; right: 0; bottom: 0; height: 1px; background: var(--border); }
+.m-sel-row-label { flex: 1; font: 500 20px/1 var(--font-sans); color: var(--text); }
+.m-sel-row-val { font: 400 19px/1 var(--font-sans); color: var(--text-faint); }
+.m-sel-row > svg { flex: 0 0 20px; width: 20px; height: 20px; color: var(--text-faint); }
+.m-sel-search { display: flex; align-items: center; gap: 10px; padding: 14px 16px; margin-bottom: 12px; border-radius: 14px; background: var(--surface); color: var(--text-faint); font: 400 18px/1 var(--font-sans); }
+.m-sel-search svg { width: 20px; height: 20px; }
+.m-opt { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 16px 18px; border: 0; background: none; cursor: pointer; text-align: left; }
+.m-opt:active { background: var(--hover); }
+.m-opt:not(:last-child)::after { content: ""; position: absolute; left: 18px; right: 0; bottom: 0; height: 1px; background: var(--border); }
+.m-opt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.m-opt-name { font: 500 21px/1.1 var(--font-sans); color: var(--text); }
+.m-opt-desc { font: 400 16px/1.2 var(--font-sans); color: var(--text-3); }
+.m-opt-tick { flex: 0 0 24px; display: flex; color: var(--accent); }
+.m-opt-tick svg { width: 24px; height: 24px; }
+
+/* ── Settings › Profile tray ─────────────────────────────────────────────── */
+.m-profile-top { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 18px 0 24px; }
+.m-profile-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--grad-accent);
+  color: #fff;
+  font: 700 34px/1 var(--font-sans);
+  margin-bottom: 6px;
+}
+.m-profile-name { font: 700 24px/1.1 var(--font-sans); color: var(--text); }
+.m-profile-email { font: 400 17px/1 var(--font-sans); color: var(--text-faint); }
+.m-profile-signout {
+  width: 100%;
+  margin-top: 20px;
+  padding: 16px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--danger);
+  font: 600 20px/1 var(--font-sans);
+  cursor: pointer;
+}
+.m-profile-signout:active { background: var(--hover); }
+
+/* ── Settings info "i" + About/legal dropdown ────────────────────────────── */
+.m-sheet-info svg { width: 25px; height: 25px; }   /* a tad bigger than the default */
+.m-info-scrim { position: absolute; inset: 0; z-index: 5; }
+.m-info-menu {
+  position: absolute;
+  top: 60px;
+  right: 8px;
+  z-index: 6;
+  min-width: 268px;
+  max-width: 80%;
+  padding: 8px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  -webkit-backdrop-filter: blur(26px) saturate(1.7);
+  backdrop-filter: blur(26px) saturate(1.7);
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 44px var(--overlay-bg);
+  transform-origin: top right;
+  animation: m-info-in 0.16s ease;
+}
+@keyframes m-info-in { from { opacity: 0; transform: scale(0.95) translateY(-8px); } to { opacity: 1; transform: none; } }
+.m-info-ver { padding: 14px 16px 12px; font: 600 22px/1.25 var(--font-sans); color: var(--text); }
+.m-info-sep { height: 1px; background: var(--border); margin: 2px 10px; }
+.m-info-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 12px;
+  border-radius: 14px;
+  text-decoration: none;
+  color: var(--text);
+  font: 500 20px/1.2 var(--font-sans);
+}
+.m-info-row:active { background: var(--hover); }
+.m-info-row svg { flex: 0 0 24px; width: 24px; height: 24px; color: var(--text-2); }
