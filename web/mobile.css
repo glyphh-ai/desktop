@@ -1,11 +1,60 @@
-/* mobile.css — LAYOUT ONLY for the mobile web app.
- *
- * The real design system — tokens, all 11 themes, fonts (Inter), components like
- * .btn-primary — comes from styles.css, loaded BEFORE this file. This file adds
- * only the mobile layout and consumes real var(--…) tokens; it never redefines a
- * color, font, radius, or component.
- */
+/* mobile.css — the mobile web app's OWN stylesheet. Self-contained: real Inter
+ * font, real token VALUES (copied from the design system, not invented), real
+ * button, and the mobile layout. NO desktop CSS. */
 
+/* ── Real font (so type isn't the thin system fallback) ───────────────────── */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url(/fonts/Inter-latin.woff2) format('woff2');
+}
+
+/* ── Tokens (values from the design system) ───────────────────────────────── */
+:root, [data-theme="light"] {
+  color-scheme: light;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --surface-3: #f0f0f0;
+  --border: #e5e5e5;
+  --border-2: #d4d4d4;
+  --text: #1f2937;
+  --text-2: #4b5563;
+  --text-3: #6b7280;
+  --text-faint: #9ca3af;
+  --hover: #f0f0f0;
+  --accent: #8c3bf2;
+  --accent-hover: #a855f7;
+  --accent-text: #b975f9;
+  --accent-bg: #f5ecfd;
+  --overlay-bg: rgba(0, 0, 0, 0.3);
+  --grad-accent: linear-gradient(to top right, #8c3bf2, #ec4899);
+  --radius: 10px;
+  --radius-sm: 8px;
+  --transition: 0.15s ease;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1a1c;
+  --surface: #252528;
+  --surface-2: #2e2e32;
+  --surface-3: #29292c;
+  --border: #3f3f46;
+  --border-2: #4a4a52;
+  --text: #f1f1f1;
+  --text-2: #c4c4c4;
+  --text-3: #a7a7a7;
+  --text-faint: #808080;
+  --hover: #303035;
+  --accent: #8c3bf2;
+  --accent-hover: #a855f7;
+  --accent-text: #b975f9;
+  --accent-bg: #241a2e;
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+}
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -13,16 +62,58 @@
   --safe-right: env(safe-area-inset-right, 0px);
 }
 
+/* ── Reset ────────────────────────────────────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100dvh; }
-body { overflow: hidden; overscroll-behavior: none; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
 #glyphh-mobile-root { height: 100dvh; }
 
-/* Pinned to the viewport (top-left, edge to edge) so nothing in the document
-   flow — or the desktop styles.css — can push the app down and leave a top gap. */
+/* ── Button (the real .btn-primary) ───────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font: 600 0.8125rem var(--font-sans);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.btn-lg { padding: 0.875rem 1.25rem; font-size: 0.9375rem; border-radius: 10px; }
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #ffffff;
+  color: #000;
+  border: none;
+}
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--grad-accent);
+  transform: translateX(-100%);
+}
+.btn-primary:hover:not(:disabled)::before,
+.btn-primary:active:not(:disabled)::before { transform: translateX(0); transition: transform 280ms ease; }
+
+/* ── App frame ── */
 .m-app { position: fixed; inset: 0; display: flex; }
 
-/* PHONE: rail is an off-canvas drawer. Horizontal padding is TINY (3px) so an
-   item's highlight fills the rail width minus ~3px on each side. */
+/* PHONE: rail is an off-canvas drawer. Tiny horizontal padding (3px) so an
+   item's highlight fills the rail width minus ~3px each side. */
 .m-rail {
   position: fixed;
   inset: 0 auto 0 0;
@@ -42,7 +133,6 @@ body { overflow: hidden; overscroll-behavior: none; }
 .m-rail-brand { display: flex; align-items: center; padding: 0 0 8px 26px; }
 .m-wordmark { height: 30px; width: auto; display: block; }
 
-/* Scrim behind the open drawer (phone only). */
 .m-scrim {
   position: fixed;
   inset: 0;
@@ -56,7 +146,7 @@ body { overflow: hidden; overscroll-behavior: none; }
 
 .m-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 
-/* No header bar. Phone-only floating drawer toggle (hidden on tablet). */
+/* Phone-only floating drawer toggle (hidden on tablet). */
 .m-drawer-toggle {
   position: absolute;
   top: calc(var(--safe-top) + 10px);
@@ -75,9 +165,7 @@ body { overflow: hidden; overscroll-behavior: none; }
 .m-drawer-toggle:active { background: var(--hover); }
 .m-drawer-toggle svg { width: 22px; height: 22px; }
 
-/* Spaces nav. Item spans full width (minus the rail's 3px); text/icon indent
-   comes from the item's own padding. Selected = neutral --hover background,
-   font color unchanged. */
+/* Spaces nav. */
 .m-rail-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
 .m-nav-item {
   display: flex;
@@ -97,7 +185,7 @@ body { overflow: hidden; overscroll-behavior: none; }
 .m-nav-item[aria-current="page"] { background: var(--hover); }
 .m-nav-item svg { width: 18px; height: 18px; flex: 0 0 18px; }
 
-/* Recents. Label is small; rows are large with generous spacing (mobile). */
+/* Recents. */
 .m-recents { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 20px; }
 .m-recents-label {
   padding: 0 14px 10px;
