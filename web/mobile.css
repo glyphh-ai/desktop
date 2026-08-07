@@ -110,15 +110,13 @@ body {
   align-items: center;
 }
 
-/* The words-only wordmark. The asset is black-on-transparent, so on a dark
-   theme we render it white; on a light theme it stays black. */
+/* The words-only wordmark — rendered EXACTLY as app-web's rail does it
+   (styles.css .app-rail-wordmark): height 26px, auto width, no filter. The
+   asset carries its own outline, so it reads on the dark rail as-is. */
 .m-wordmark {
-  height: 22px;
+  height: 26px;
   width: auto;
   display: block;
-}
-[data-theme="dark"] .m-wordmark {
-  filter: brightness(0) invert(1);
 }
 
 .m-main {

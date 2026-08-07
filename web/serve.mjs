@@ -194,11 +194,20 @@ const server = http.createServer(async (req, res) => {
       // SDK reads window.__GLYPHH_API_URL__ at import time — and <base> must
       // precede everything relative.
       const base = nested ? '\n  <base href="/">' : '';
+      // Device routing, part 2 (the client-side half). Server UA sniffing catches
+      // phones but NOT tablets — an iPad reports as "Macintosh". So on the desktop
+      // shells we run a tiny pre-bridge script: any TOUCH device (coarse primary
+      // pointer = phone or tablet, incl. iPad-as-Mac) that is signed in replaces
+      // to the mobile app. Desktops (fine pointer) and signed-out users stay put.
+      const touchRedirect =
+        "<script>try{if(matchMedia('(pointer: coarse)').matches"
+        + "&&document.cookie.indexOf('glyphh_logged_in=1')>=0)"
+        + "location.replace('/m')}catch(e){}</script>";
       // The mobile shell loads its OWN React bundle (declared in mobile.html) and
       // must not get the desktop renderer bridge — only the client-safe config.
       const inject = isMobileShell
         ? configScript()
-        : `${configScript()}\n  <script src="${BRIDGE}"></script>`;
+        : `${touchRedirect}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`;
       body = body.replace(
         /<head(\s[^>]*)?>/i,
         (m) => `${m}${base}\n  ${inject}`,
