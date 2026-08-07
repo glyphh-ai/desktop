@@ -158,7 +158,8 @@ function Ghost() {
 }
 
 /* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
-function ChatsView({ onMenu, onOpen, onNewChat }: {
+function ChatsView({ title, onMenu, onOpen, onNewChat }: {
+  title: string;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onNewChat: () => void;
@@ -167,7 +168,7 @@ function ChatsView({ onMenu, onOpen, onNewChat }: {
     <div className="m-chats">
       <header className="m-chats-head">
         <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
-        <span className="m-chats-title">Chats</span>
+        <span className="m-chats-title">{title}</span>
         <button className="m-chats-icon" aria-label="Filter"><Icon name="filter" /></button>
       </header>
       <div className="m-chats-list">
@@ -212,9 +213,16 @@ function App() {
   const [drawer, setDrawer] = useState(false);
   const [screen, setScreen] = useState<'home' | 'list' | 'session'>('home');
   const [session, setSession] = useState<Recent | null>(null);
+  const [splash, setSplash] = useState(true);
+
+  // Splash on load → then the new-chat screen.
+  useEffect(() => {
+    const t = setTimeout(() => setSplash(false), 1300);
+    return () => clearTimeout(t);
+  }, []);
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
-  const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('home'); setSession(null); setDrawer(false); };
+  const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('list'); setSession(null); setDrawer(false); };
   const openSession = (s: Recent) => { haptic(); setSession(s); setScreen('session'); setDrawer(false); };
   const openRecent = (id: string) => {
     const s = ALL_SESSIONS.find((x) => x.id === id) || RECENTS.find((x) => x.id === id);
@@ -227,6 +235,12 @@ function App() {
 
   return (
     <div className="m-app" data-drawer={drawer ? 'open' : 'closed'}>
+      {splash && (
+        <div className="m-splash">
+          <img className="m-splash-logo m-splash-logo-black" src="/brand/glyphh-logo-black.png" alt="Glyphh" />
+          <img className="m-splash-logo m-splash-logo-white" src="/brand/glyphh-logo-white.png" alt="" />
+        </div>
+      )}
       <div className="m-shell">
         <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
         <main className="m-main">
@@ -240,7 +254,7 @@ function App() {
             <div className="m-nav" data-screen={screen}>
               <div className="m-nav-track">
                 <section className="m-nav-panel">
-                  <ChatsView onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} />
+                  <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} />
                 </section>
                 <section className="m-nav-panel">
                   {session && <SessionView session={session} onBack={backToList} />}
