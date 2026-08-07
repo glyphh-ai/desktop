@@ -25,6 +25,7 @@
   --text-2: #4b5563;
   --text-3: #6b7280;
   --text-faint: #9ca3af;
+  --white: #111111;
   --hover: #f0f0f0;
   --accent: #8c3bf2;
   --accent-hover: #a855f7;
@@ -48,6 +49,7 @@
   --text-2: #c4c4c4;
   --text-3: #a7a7a7;
   --text-faint: #808080;
+  --white: #ffffff;
   --hover: #303035;
   --accent: #8c3bf2;
   --accent-hover: #a855f7;
@@ -279,23 +281,36 @@ body {
   padding: 12px 16px calc(var(--safe-bottom) + 16px);
 }
 
-/* New-chat home — the Glyphh agent welcome (mark + greeting + saying). */
+/* New-chat home — the agent's ghost empty state. VERBATIM from the app's
+   .code-ghost / .code-ghost-mark / .code-ghost-quote (help/code.ts). */
 .m-home { position: relative; height: 100%; display: flex; flex-direction: column; }
-.m-home-hero {
+.m-ghost {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  padding: calc(var(--safe-top) + 56px) 24px 8px;
-  text-align: center;
+  gap: 20px;
+  padding: 24px;
 }
-.m-home-mark { width: 68px; height: auto; display: block; }
-[data-theme="dark"] .m-home-mark { filter: invert(1); }
-.m-home-greeting { font: 700 28px/1.2 var(--font-sans); color: var(--text); }
-.m-home-saying { font: 400 19px/1.4 var(--font-sans); color: var(--text-2); }
+.m-ghost-mark {
+  width: 96px;
+  height: 96px;
+  opacity: 0.10;
+  filter: grayscale(1);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.m-ghost-quote {
+  max-width: 440px;
+  text-align: center;
+  color: var(--white);
+  opacity: 0.8;
+  font-size: 13.5px;
+  line-height: 1.65;
+  transition: opacity 0.5s ease;
+}
 
 /* All Chats — the Chats list view (matches the reference). */
 .m-chats { display: flex; flex-direction: column; height: 100%; position: relative; }

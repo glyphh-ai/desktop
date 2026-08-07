@@ -9,16 +9,8 @@
 // shapes. Served at /m by web/serve.mjs; bundled by `npm run build:web-mobile`.
 
 import { createRoot } from 'react-dom/client';
-import { useState } from 'react';
-import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, SAYINGS, USER, type SpaceId, type Recent } from './mock';
-
-/** Time-based greeting — same rule as the app's dashboard (help/dashboard.ts). */
-function greeting(): string {
-  const h = new Date().getHours();
-  const part = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
-  const first = USER.name.split(' ')[0];
-  return first ? `${part}, ${first}` : 'Welcome back';
-}
+import { useState, useEffect } from 'react';
+import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, GHOST_QUOTES, USER, type SpaceId, type Recent } from './mock';
 
 type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send' | 'mic';
 
@@ -145,6 +137,26 @@ function Composer() {
   );
 }
 
+/* ── Agent new-session empty state — the mark + a rotating quote. Matches the
+   app's generic agent ghost (help/code.ts .code-ghost / GHOST_QUOTES). ────── */
+function Ghost() {
+  const [idx, setIdx] = useState(0);
+  const [fading, setFading] = useState(false);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setFading(true);
+      setTimeout(() => { setIdx((i) => (i + 1) % GHOST_QUOTES.length); setFading(false); }, 500);
+    }, 7000);
+    return () => clearInterval(iv);
+  }, []);
+  return (
+    <div className="m-ghost">
+      <img className="m-ghost-mark" src="/brand/glyphh-mark.png" alt="" />
+      <div className="m-ghost-quote" style={fading ? { opacity: 0 } : undefined}>{GHOST_QUOTES[idx]}</div>
+    </div>
+  );
+}
+
 /* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
 function ChatsView({ onMenu, onOpen, onNewChat }: {
   onMenu: () => void;
@@ -220,12 +232,7 @@ function App() {
         <main className="m-main">
           {screen === 'home' && (
             <div className="m-home">
-              {/* New chat: the Glyphh agent welcome — mark + greeting + saying. */}
-              <div className="m-home-hero">
-                <img className="m-home-mark" src="/brand/glyphh-mark.png" alt="" />
-                <h1 className="m-home-greeting">{greeting()}</h1>
-                <p className="m-home-saying">{SAYINGS[active]}</p>
-              </div>
+              <Ghost />
               <Composer />
             </div>
           )}

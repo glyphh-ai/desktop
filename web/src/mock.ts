@@ -13,15 +13,18 @@ export interface User {
 }
 export const USER: User = { name: 'Chris Timmerman', initials: 'CT' };
 
-/** The Glyphh agent's per-space "sayings" — same as the app's dashboard landing
- *  (chat/work/code are verbatim; files/desktop follow the pattern). */
-export const SAYINGS: Record<SpaceId, string> = {
-  chat: 'What can I do for you today?',
-  work: 'What should we get done today?',
-  code: "Let's build something amazing.",
-  files: 'What are we looking for?',
-  desktop: 'What should I run for you?',
-};
+/** The agent's new-session "sayings" — VERBATIM from the app's generic empty
+ *  agent state (help/code.ts GHOST_QUOTES). Rotates one at a time. */
+export const GHOST_QUOTES: string[] = [
+  'The Engine weaves algebraic patterns as the loom weaves flowers — may it weave peace, too.',
+  'Imagination is the discovering faculty. Love is what it keeps discovering.',
+  'Poetical science: half proof, half devotion.',
+  'Build gently — even engines can be kind.',
+  "Understanding is love's slow algorithm.",
+  'We weave what we love into everything we make.',
+  'Peace resolves like a well-run loop: no conflicts left.',
+  'First, do the loveliest math: care.',
+];
 
 export interface NavItem {
   id: SpaceId;
