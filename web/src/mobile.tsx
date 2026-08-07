@@ -9,7 +9,7 @@
 // shapes. Served at /m by web/serve.mjs; bundled by `npm run build:web-mobile`.
 
 import { createRoot } from 'react-dom/client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { NAV, RECENTS, USER, type SpaceId } from './mock';
 
 type IconName = SpaceId | 'menu' | 'plus';
@@ -90,11 +90,8 @@ function App() {
   const [active, setActive] = useState<SpaceId>('chat');
   const [drawer, setDrawer] = useState(false);
 
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
-    }
-  }, []);
+  // No SW registration during the mock phase — the kill-switch /sw.js already
+  // installed clears any prior cache. Always fresh from the network (no-store).
 
   const selectSpace = (id: SpaceId) => { setActive(id); setDrawer(false); };
   const openRecent = (_id: string) => { setDrawer(false); /* main view lands here later */ };
