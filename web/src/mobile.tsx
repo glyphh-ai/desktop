@@ -9,7 +9,7 @@
 // shapes. Served at /m by web/serve.mjs; bundled by `npm run build:web-mobile`.
 
 import { createRoot } from 'react-dom/client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, GHOST_QUOTES, USER, type SpaceId, type Recent } from './mock';
 
 type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send' | 'mic';
@@ -166,6 +166,8 @@ function ChatsView({ title, onMenu, onOpen, onNewChat }: {
 }) {
   return (
     <div className="m-chats">
+      {/* Blur zone (top): the list scrolls fuzzily up under the header. */}
+      <div className="m-chats-fade m-chats-fade-top" />
       <header className="m-chats-head">
         <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
         <span className="m-chats-title">{title}</span>
@@ -182,7 +184,9 @@ function ChatsView({ title, onMenu, onOpen, onNewChat }: {
           </button>
         ))}
       </div>
-      <button className="m-fab btn btn-primary" onClick={onNewChat}><Icon name="plus" /><span>New chat</span></button>
+      {/* Blur zone: the list scrolls fuzzily under the New chat + search. */}
+      <div className="m-chats-fade" />
+      <button className="m-fab btn btn-primary btn-lg" onClick={onNewChat}><Icon name="plus" /><span>New chat</span></button>
       <div className="m-search"><Icon name="search" /><span>Search</span></div>
     </div>
   );
@@ -208,6 +212,147 @@ function SessionView({ session, onBack }: { session: Recent; onBack: () => void 
   );
 }
 
+/* ── Splash backdrop: the desktop app's #splash-flow canvas, ported VERBATIM
+   from index.template.html (HeroFlow — flowing data streams, "fan" mode, the
+   home purples). Runs over a solid var(--bg) ground while the splash holds,
+   and tears itself down when the splash unmounts. ───────────────────────── */
+function SplashFlow() {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const COLORS = ['179, 107, 251', '140, 59, 242', '236, 72, 153'];
+    const PULSE = '255, 236, 180';
+    const N = 28;
+    let seed = 1337;
+    function rand() {
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    const streams: any[] = [];
+    for (let i = 0; i < N; i++) {
+      const st: any = {
+        y0: 0.5 + (rand() - 0.5) * 0.14,
+        endX: 0.42 + rand() * 0.56,
+        y1: 0.5 + (rand() - 0.5) * 0.95,
+        alpha: 0.12 + rand() * 0.24,
+        tint: rand() < 0.72 ? 0 : rand() < 0.6 ? 1 : 2,
+        dashSpeed: 0.02 + rand() * 0.05,
+        dashPhase: rand() * 40,
+        pulse: rand() < 0.5,
+        pSpeed: 0.0001 + rand() * 0.00014,
+        pPhase: rand(),
+        scatter: [] as any[],
+      };
+      const n = 4 + Math.floor(rand() * 7);
+      for (let j = 0; j < n; j++) {
+        st.scatter.push({
+          dx: rand() * 46, dy: (rand() - 0.5) * 26,
+          s: 1 + rand() * 2, a: 0.3 + rand() * 0.6,
+          tw: rand() * Math.PI * 2, tr: 0.5 + rand() * 1.5,
+          tint: rand() < 0.5 ? 0 : rand() < 0.5 ? 2 : 3,
+        });
+      }
+      streams.push(st);
+    }
+    let w = 0, h = 0;
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth; h = window.innerHeight;
+      canvas!.width = Math.round(w * dpr);
+      canvas!.height = Math.round(h * dpr);
+      canvas!.style.width = w + 'px';
+      canvas!.style.height = h + 'px';
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    function ctrl(S: any) {
+      return [
+        [0, S.y0 * h],
+        [S.endX * 0.42 * w, S.y0 * h],
+        [S.endX * 0.72 * w, S.y1 * h],
+        [S.endX * w, S.y1 * h],
+      ];
+    }
+    function pointAt(P: any, t: number) {
+      const u = 1 - t;
+      return [
+        u * u * u * P[0][0] + 3 * u * u * t * P[1][0] + 3 * u * t * t * P[2][0] + t * t * t * P[3][0],
+        u * u * u * P[0][1] + 3 * u * u * t * P[1][1] + 3 * u * t * t * P[2][1] + t * t * t * P[3][1],
+      ];
+    }
+    let running = true;
+    let raf = 0;
+    function frame(now: number) {
+      if (!running) return;
+      raf = requestAnimationFrame(frame);
+      ctx!.clearRect(0, 0, w, h);
+      ctx!.lineWidth = 1;
+      ctx!.lineCap = 'round';
+      for (let i = 0; i < streams.length; i++) {
+        const S = streams[i], P = ctrl(S);
+        ctx!.setLineDash([2, 5]);
+        ctx!.lineDashOffset = reduced ? 0 : -(now * S.dashSpeed) - S.dashPhase;
+        ctx!.strokeStyle = 'rgba(' + COLORS[S.tint] + ', ' + S.alpha + ')';
+        ctx!.beginPath();
+        ctx!.moveTo(P[0][0], P[0][1]);
+        ctx!.bezierCurveTo(P[1][0], P[1][1], P[2][0], P[2][1], P[3][0], P[3][1]);
+        ctx!.stroke();
+      }
+      ctx!.setLineDash([]);
+      ctx!.globalCompositeOperation = 'lighter';
+      for (let i2 = 0; i2 < streams.length; i2++) {
+        const S2 = streams[i2], P2 = ctrl(S2);
+        const ex = P2[3][0], ey = P2[3][1];
+        for (let k = 0; k < S2.scatter.length; k++) {
+          const d = S2.scatter[k];
+          const tw = reduced ? 0.8 : 0.45 + 0.55 * Math.sin(now * 0.0018 * d.tr + d.tw);
+          const col = d.tint === 3 ? '255, 255, 255' : COLORS[d.tint];
+          ctx!.fillStyle = 'rgba(' + col + ', ' + d.a * tw + ')';
+          ctx!.beginPath();
+          ctx!.arc(ex + d.dx, ey + d.dy, d.s / 2, 0, Math.PI * 2);
+          ctx!.fill();
+        }
+        if (S2.pulse && !reduced) {
+          const t = (now * S2.pSpeed + S2.pPhase) % 1;
+          const pt = pointAt(P2, t);
+          const g = Math.sin(t * Math.PI);
+          ctx!.fillStyle = 'rgba(' + PULSE + ', ' + 0.9 * g + ')';
+          ctx!.shadowColor = 'rgba(' + COLORS[S2.tint] + ', 0.9)';
+          ctx!.shadowBlur = 10;
+          ctx!.beginPath();
+          ctx!.arc(pt[0], pt[1], 1.7, 0, Math.PI * 2);
+          ctx!.fill();
+          ctx!.shadowBlur = 0;
+        }
+      }
+      ctx!.globalCompositeOperation = 'source-over';
+      if (document.documentElement.getAttribute('data-theme') !== 'light') {
+        const vg = ctx!.createRadialGradient(w / 2, h * 0.46, 0, w / 2, h * 0.46, h * 0.62);
+        vg.addColorStop(0, 'rgba(8, 6, 12, 0.6)');
+        vg.addColorStop(0.55, 'rgba(8, 6, 12, 0.12)');
+        vg.addColorStop(1, 'rgba(8, 6, 12, 0)');
+        ctx!.fillStyle = vg;
+        ctx!.fillRect(0, 0, w, h);
+      }
+      if (reduced) running = false;
+    }
+    raf = requestAnimationFrame(frame);
+    return () => {
+      running = false;
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+  return <canvas ref={ref} className="m-splash-flow" aria-hidden="true" />;
+}
+
 function App() {
   const [active, setActive] = useState<SpaceId>('chat');
   const [drawer, setDrawer] = useState(false);
@@ -217,7 +362,7 @@ function App() {
 
   // Splash on load → then the new-chat screen.
   useEffect(() => {
-    const t = setTimeout(() => setSplash(false), 1300);
+    const t = setTimeout(() => setSplash(false), 2200);
     return () => clearTimeout(t);
   }, []);
 
@@ -237,6 +382,7 @@ function App() {
     <div className="m-app" data-drawer={drawer ? 'open' : 'closed'}>
       {splash && (
         <div className="m-splash">
+          <SplashFlow />
           <img className="m-splash-logo m-splash-logo-black" src="/brand/glyphh-logo-black.png" alt="Glyphh" />
           <img className="m-splash-logo m-splash-logo-white" src="/brand/glyphh-logo-white.png" alt="" />
         </div>

@@ -180,16 +180,27 @@ body {
   position: absolute;
   inset: 0;
   z-index: 100;
-  background: var(--bg);
+  background: var(--bg);     /* exactly like the desktop #splash */
   display: grid;
   place-items: center;
-  animation: m-splash-out 1.3s ease forwards;
+  animation: m-splash-out 2.2s ease forwards;
 }
-@keyframes m-splash-out { 0%, 68% { opacity: 1; } 100% { opacity: 0; } }
-.m-splash-logo { grid-area: 1 / 1; width: 220px; max-width: 62vw; height: auto; display: block; }
-.m-splash-logo-white { display: none; }
-[data-theme="dark"] .m-splash-logo-black { display: none; }
-[data-theme="dark"] .m-splash-logo-white { display: block; }
+/* The desktop splash's flowing-data-streams backdrop (#splash-flow), behind
+   the wordmark. The canvas paints its own tint + vignette. */
+.m-splash-flow { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+@keyframes m-splash-out { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+.m-splash-logo {
+  grid-area: 1 / 1;
+  position: relative;
+  z-index: 1;                /* above the vignette */
+  width: 288px;
+  max-width: 76vw;
+  height: auto;
+  display: block;
+}
+/* The muse ground is always dark → always the white wordmark. */
+.m-splash-logo-black { display: none; }
+.m-splash-logo-white { display: block; }
 
 /* Spaces nav. */
 .m-rail-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
@@ -337,14 +348,12 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 5;
+  z-index: 6;                 /* title + icons ride ABOVE the top blur band */
   display: flex;
   align-items: center;
   gap: 12px;
   padding: calc(var(--safe-top) + 10px) 16px 12px calc(var(--safe-left) + 16px);
-  background: color-mix(in srgb, var(--bg) 55%, transparent);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  backdrop-filter: blur(18px) saturate(1.4);
+  background: transparent;    /* the masked blur band supplies the frost */
 }
 .m-chats-icon {
   flex: 0 0 44px;
@@ -366,7 +375,9 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: calc(var(--safe-top) + 74px) 16px 0 calc(var(--safe-left) + 16px);
+  /* Bottom pad clears the floating New chat + search so the last row can sit
+     above them — yet still scrolls fuzzily *under* the blur zone. */
+  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 108px) calc(var(--safe-left) + 16px);
 }
 .m-chat-row {
   display: flex;
@@ -391,24 +402,60 @@ body {
 .m-chat-when { font: 400 15px/1 var(--font-sans); color: var(--text-faint); }
 .m-chat-row > svg { flex: 0 0 20px; width: 20px; height: 20px; color: var(--text-faint); }
 
-/* Floating New chat + bottom search bar. */
+/* Blur zone: a backdrop-blurred band pinned to the bottom that the list scrolls
+   fuzzily under. Masked so the blur fades IN toward the bottom (crisp at the
+   top edge, full frost behind the search). pointer-events off so taps fall
+   through to the New chat + search that float on top. */
+.m-chats-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--safe-bottom) + 108px);
+  z-index: 4;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(6.5px);
+  backdrop-filter: blur(6.5px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 42%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 42%);
+}
+/* Mirror of the bottom band, pinned to the TOP: same masked frost, flipped so
+   the list dissolves upward under the header. */
+.m-chats-fade-top {
+  bottom: auto;
+  top: 0;
+  height: calc(var(--safe-top) + 56px);
+  -webkit-mask-image: linear-gradient(to top, transparent 0%, #000 42%);
+  mask-image: linear-gradient(to top, transparent 0%, #000 42%);
+}
+
+/* Floating New chat + bottom search bar (both ride ABOVE the blur zone). */
+/* Exact twin of the rail's New Chat button: .btn .btn-primary .btn-lg + 18px
+   icon (position/shadow are the only extras). */
 .m-fab {
   position: absolute;
   right: 16px;
   bottom: calc(var(--safe-bottom) + 78px);
-  z-index: 5;
+  z-index: 6;
   box-shadow: 0 6px 20px var(--overlay-bg);
 }
 .m-fab svg { width: 18px; height: 18px; }
 .m-search {
-  flex: 0 0 auto;
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--safe-bottom) + 12px);
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 8px 16px calc(var(--safe-bottom) + 12px);
   padding: 14px 16px;
   border-radius: 999px;
-  background: var(--surface-2);
+  /* Translucent pill — the frosted list shows through behind it. */
+  background: color-mix(in srgb, var(--surface-2) 74%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   color: var(--text-faint);
   font: 400 18px/1 var(--font-sans);
 }
