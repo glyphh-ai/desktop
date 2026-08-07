@@ -177,19 +177,19 @@ body {
   border-radius: var(--radius-sm);
   background: none;
   color: var(--text-2);
-  font: 700 18px/1 var(--font-sans);
+  font: 700 20px/1 var(--font-sans);
   text-align: left;
   cursor: pointer;
 }
 .m-nav-item:hover { background: var(--hover); color: var(--text); }
 .m-nav-item[aria-current="page"] { background: var(--hover); }
-.m-nav-item svg { width: 18px; height: 18px; flex: 0 0 18px; }
+.m-nav-item svg { width: 22px; height: 22px; flex: 0 0 22px; }
 
 /* Recents. */
 .m-recents { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 20px; }
 .m-recents-label {
   padding: 0 14px 10px;
-  font: 700 12px/1 var(--font-sans);
+  font: 700 13px/1 var(--font-sans);
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -208,7 +208,7 @@ body {
 }
 .m-recent:hover { background: var(--hover); }
 .m-recent-title {
-  font: 600 18px/1.3 var(--font-sans);
+  font: 600 20px/1.3 var(--font-sans);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -227,7 +227,7 @@ body {
   border-radius: var(--radius-sm);
   background: none;
   color: var(--text-2);
-  font: 700 16px/1 var(--font-sans);
+  font: 700 18px/1 var(--font-sans);
   text-align: left;
   cursor: pointer;
 }
@@ -291,13 +291,13 @@ body {
 }
 .m-session:hover { background: var(--hover); }
 .m-session-title {
-  font: 500 16px/1.3 var(--font-sans);
+  font: 500 18px/1.3 var(--font-sans);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.m-session-when { flex: 0 0 auto; font: 400 14px/1 var(--font-sans); color: var(--text-faint); }
+.m-session-when { flex: 0 0 auto; font: 400 15px/1 var(--font-sans); color: var(--text-faint); }
 
 /* ── TABLET+ (iPad) : persistent sidebar, bigger type ── */
 @media (min-width: 768px) {
