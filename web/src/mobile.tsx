@@ -10,9 +10,9 @@
 
 import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
-import { NAV, RECENTS, USER, type SpaceId } from './mock';
+import { NAV, RECENTS, ALL_SESSIONS, USER, type SpaceId } from './mock';
 
-type IconName = SpaceId | 'menu' | 'plus';
+type IconName = SpaceId | 'menu' | 'plus' | 'chevron';
 
 /* ── Icons (stroke = currentColor, so they inherit the token color) ───────── */
 const ICON: Record<IconName, React.ReactNode> = {
@@ -23,6 +23,7 @@ const ICON: Record<IconName, React.ReactNode> = {
   desktop: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>,
   menu: <><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
+  chevron: <path d="M9 6l6 6-6 6" />,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -35,10 +36,11 @@ function Icon({ name }: { name: IconName }) {
 }
 
 /* ── Left rail: brand → spaces → recents ──────────────────────────────────── */
-function Rail({ active, onSelect, onOpenRecent, onAccount, onNewChat }: {
+function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat }: {
   active: SpaceId;
   onSelect: (id: SpaceId) => void;
   onOpenRecent: (id: string) => void;
+  onAllChats: () => void;
   onAccount: () => void;
   onNewChat: () => void;
 }) {
@@ -70,6 +72,10 @@ function Rail({ active, onSelect, onOpenRecent, onAccount, onNewChat }: {
               <span className="m-recent-title">{r.title}</span>
             </button>
           ))}
+          <button className="m-all-chats" onClick={onAllChats}>
+            <span>All Chats</span>
+            <Icon name="chevron" />
+          </button>
         </div>
       </div>
 
@@ -89,25 +95,36 @@ function Rail({ active, onSelect, onOpenRecent, onAccount, onNewChat }: {
 function App() {
   const [active, setActive] = useState<SpaceId>('chat');
   const [drawer, setDrawer] = useState(false);
+  const [view, setView] = useState<'home' | 'all-chats'>('home');
 
-  // No SW registration during the mock phase — the kill-switch /sw.js already
-  // installed clears any prior cache. Always fresh from the network (no-store).
-
-  const selectSpace = (id: SpaceId) => { setActive(id); setDrawer(false); };
-  const openRecent = (_id: string) => { setDrawer(false); /* main view lands here later */ };
+  const selectSpace = (id: SpaceId) => { setActive(id); setView('home'); setDrawer(false); };
+  const openRecent = (_id: string) => { setView('home'); setDrawer(false); /* session view lands here later */ };
+  const allChats = () => { setView('all-chats'); setDrawer(false); };
   const account = () => { setDrawer(false); /* account view lands here later */ };
-  const newChat = () => { setActive('chat'); setDrawer(false); /* new chat lands here later */ };
+  const newChat = () => { setActive('chat'); setView('home'); setDrawer(false); /* new chat lands here later */ };
 
   return (
     <div className="m-app" data-drawer={drawer ? 'open' : 'closed'}>
       <div className="m-scrim" onClick={() => setDrawer(false)} />
-      <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAccount={account} onNewChat={newChat} />
+      <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
       <main className="m-main">
         {/* No header. Phone-only floating toggle to reveal the rail drawer. */}
         <button className="m-drawer-toggle" aria-label="Open menu" onClick={() => setDrawer(true)}>
           <Icon name="menu" />
         </button>
-        <div className="m-content">{/* mock screens fill from the top */}</div>
+        <div className="m-content">
+          {view === 'all-chats' && (
+            <div className="m-sessions">
+              <div className="m-sessions-title">All Chats</div>
+              {ALL_SESSIONS.map((s) => (
+                <button key={s.id} className="m-session" onClick={() => openRecent(s.id)}>
+                  <span className="m-session-title">{s.title}</span>
+                  <span className="m-session-when">{s.when}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

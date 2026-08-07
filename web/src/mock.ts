@@ -43,4 +43,20 @@ export const RECENTS: Recent[] = [
   { id: 'r6', title: 'Model catalog redesign', when: 'Mon' },
   { id: 'r7', title: 'Connector file bridge', when: 'Aug 1' },
   { id: 'r8', title: 'Weekend research: HDC memory', when: 'Jul 30' },
+  { id: 'r9', title: 'Ember palette rollout', when: 'Jul 29' },
+  { id: 'r10', title: 'WorkOS SSO provisioning', when: 'Jul 28' },
+];
+
+/** The full session history — shown in the main content when "All Chats" opens.
+ *  Mock now; SDK later → glyphh().sessions.list(). */
+export const ALL_SESSIONS: Recent[] = [
+  ...RECENTS,
+  { id: 's11', title: 'Anthropic ↔ OpenAI translator', when: 'Jul 27' },
+  { id: 's12', title: 'rrotor runtime spec', when: 'Jul 26' },
+  { id: 's13', title: 'Attach protocol design', when: 'Jul 24' },
+  { id: 's14', title: 'Guest anonymous model', when: 'Jul 23' },
+  { id: 's15', title: 'Scoped membership + impersonation', when: 'Jul 21' },
+  { id: 's16', title: 'RotorSpec standard draft', when: 'Jul 19' },
+  { id: 's17', title: 'AdaL memory GTM pivot', when: 'Jul 16' },
+  { id: 's18', title: 'glyphh-client SDK phases', when: 'Jul 14' },
 ];
