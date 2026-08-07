@@ -6,6 +6,13 @@
 
 export type SpaceId = 'chat' | 'work' | 'code' | 'files' | 'desktop';
 
+/** The signed-in user (mock; SDK later → glyphh().me()). */
+export interface User {
+  name: string;
+  initials: string;
+}
+export const USER: User = { name: 'Chris Timmerman', initials: 'CT' };
+
 export interface NavItem {
   id: SpaceId;
   label: string;

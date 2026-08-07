@@ -31,6 +31,7 @@
   --accent-hover: #a855f7;
   --accent-text: #b975f9;
   --accent-bg: #f5ecfd;
+  --on-accent: #ffffff;
   --danger: #ef4444;
   --warning: #f59e0b;
   --success: #16a34a;
@@ -59,6 +60,7 @@
   --accent-hover: #a855f7;
   --accent-text: #b975f9;
   --accent-bg: #241a2e;
+  --on-accent: #ffffff;
   --danger: #ff5f57;
   --warning: #f0a030;
   --success: #28c840;
@@ -114,7 +116,7 @@ body {
   flex-direction: column;
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: calc(var(--safe-top) + 20px) 20px 20px calc(var(--safe-left) + 20px);
+  padding: calc(var(--safe-top) + 20px) 20px 0 calc(var(--safe-left) + 20px);
 }
 .m-app[data-drawer="open"] .m-rail { transform: translateX(0); }
 
@@ -221,6 +223,47 @@ body {
 }
 .m-recent-when { font: 400 12px/1 var(--font-sans); color: var(--text-faint); }
 
+/* Rail footer: profile circle (left) + New Chat (right). Pinned to the bottom. */
+.m-rail-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px 0 calc(var(--safe-bottom) + 14px);
+  border-top: 1px solid var(--border);
+}
+.m-avatar {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border-2);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font: 600 13px/1 var(--font-sans);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.m-avatar:hover { color: var(--text); }
+.m-new-chat {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 600 14px/1 var(--font-sans);
+  cursor: pointer;
+}
+.m-new-chat:hover { background: var(--accent-hover); }
+.m-new-chat svg { width: 18px; height: 18px; }
+
 /* Main content (placeholder until the mock screens land). */
 .m-content { flex: 1; min-height: 0; display: grid; place-items: center; }
 .m-placeholder { font: 600 15px/1 var(--font-sans); color: var(--text-faint); }
@@ -234,7 +277,7 @@ body {
     flex: 0 0 280px;
     width: 280px;
     max-width: none;
-    padding: calc(var(--safe-top) + 28px) 24px 24px calc(var(--safe-left) + 28px);
+    padding: calc(var(--safe-top) + 28px) 24px 0 calc(var(--safe-left) + 28px);
   }
   .m-scrim { display: none; }
   .m-topbar { display: none; }
