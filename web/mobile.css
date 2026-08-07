@@ -58,30 +58,24 @@ body { overflow: hidden; overscroll-behavior: none; }
 
 .m-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 
-/* Phone top bar (hidden on tablet). */
-.m-topbar {
-  flex: 0 0 auto;
-  height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: var(--safe-top) 12px 0 calc(var(--safe-left) + 8px);
-  border-bottom: 1px solid var(--border);
-}
-.m-menu-btn {
+/* No header bar. Phone-only floating drawer toggle (hidden on tablet). */
+.m-drawer-toggle {
+  position: absolute;
+  top: calc(var(--safe-top) + 10px);
+  left: calc(var(--safe-left) + 10px);
+  z-index: 10;
   width: 40px;
   height: 40px;
-  border: 0;
-  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
   color: var(--text);
   display: grid;
   place-items: center;
-  border-radius: var(--radius);
   cursor: pointer;
 }
-.m-menu-btn:active { background: var(--hover); }
-.m-menu-btn svg { width: 22px; height: 22px; }
-.m-topbar-title { font: 700 18px/1 var(--font-sans); color: var(--text); }
+.m-drawer-toggle:active { background: var(--hover); }
+.m-drawer-toggle svg { width: 22px; height: 22px; }
 
 /* Spaces nav. */
 .m-rail-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 20px; }
@@ -160,9 +154,13 @@ body { overflow: hidden; overscroll-behavior: none; }
 .m-rail-footer .btn { flex: 0 0 auto; }
 .m-rail-footer .btn svg { width: 18px; height: 18px; }
 
-/* Main content placeholder (until the mock screens land). */
-.m-content { flex: 1; min-height: 0; display: grid; place-items: center; }
-.m-placeholder { font: 600 15px/1 var(--font-sans); color: var(--text-faint); }
+/* Main content — no header; fills from the top. */
+.m-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: calc(var(--safe-top) + 12px) 16px calc(var(--safe-bottom) + 16px);
+}
 
 /* ── TABLET+ : persistent sidebar, no drawer/top bar ── */
 @media (min-width: 768px) {
@@ -176,7 +174,7 @@ body { overflow: hidden; overscroll-behavior: none; }
     padding: calc(var(--safe-top) + 12px) 22px 0 calc(var(--safe-left) + 22px);
   }
   .m-scrim { display: none; }
-  .m-topbar { display: none; }
+  .m-drawer-toggle { display: none; }
   .m-rail-brand { padding-left: 18px; }
   .m-wordmark { height: 36px; }
   .m-rail-nav { margin-top: 22px; gap: 3px; }

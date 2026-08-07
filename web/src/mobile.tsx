@@ -101,22 +101,16 @@ function App() {
   const account = () => { setDrawer(false); /* account view lands here later */ };
   const newChat = () => { setActive('chat'); setDrawer(false); /* new chat lands here later */ };
 
-  const label = NAV.find((n) => n.id === active)?.label ?? '';
-
   return (
     <div className="m-app" data-drawer={drawer ? 'open' : 'closed'}>
       <div className="m-scrim" onClick={() => setDrawer(false)} />
       <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAccount={account} onNewChat={newChat} />
       <main className="m-main">
-        <div className="m-topbar">
-          <button className="m-menu-btn" aria-label="Open menu" onClick={() => setDrawer(true)}>
-            <Icon name="menu" />
-          </button>
-          <span className="m-topbar-title">{label}</span>
-        </div>
-        <div className="m-content">
-          <span className="m-placeholder">{label}</span>
-        </div>
+        {/* No header. Phone-only floating toggle to reveal the rail drawer. */}
+        <button className="m-drawer-toggle" aria-label="Open menu" onClick={() => setDrawer(true)}>
+          <Icon name="menu" />
+        </button>
+        <div className="m-content">{/* mock screens fill from the top */}</div>
       </main>
     </div>
   );
