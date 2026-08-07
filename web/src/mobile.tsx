@@ -10,7 +10,15 @@
 
 import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
-import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, USER, type SpaceId, type Recent } from './mock';
+import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, SAYINGS, USER, type SpaceId, type Recent } from './mock';
+
+/** Time-based greeting — same rule as the app's dashboard (help/dashboard.ts). */
+function greeting(): string {
+  const h = new Date().getHours();
+  const part = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  const first = USER.name.split(' ')[0];
+  return first ? `${part}, ${first}` : 'Welcome back';
+}
 
 type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send' | 'mic';
 
@@ -119,6 +127,24 @@ function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat
   );
 }
 
+/* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions. */
+function Composer() {
+  return (
+    <div className="m-composer">
+      <div className="m-composer-box">
+        <div className="m-composer-input"><span className="m-composer-ph">Message Glyphh…</span></div>
+        <div className="m-composer-tools">
+          <button className="m-tool-btn" aria-label="Add"><Icon name="plus" /></button>
+          <button className="m-tool-pill"><Icon name="code" /><span>Accept edits</span></button>
+          <span className="m-composer-spacer" />
+          <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
+          <button className="m-composer-send" aria-label="Send"><Icon name="send" /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
 function ChatsView({ onMenu, onOpen, onNewChat }: {
   onMenu: () => void;
@@ -164,18 +190,7 @@ function SessionView({ session, onBack }: { session: Recent; onBack: () => void 
           <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
         ))}
       </div>
-      <div className="m-composer">
-        <div className="m-composer-box">
-          <div className="m-composer-input"><span className="m-composer-ph">Message Glyphh…</span></div>
-          <div className="m-composer-tools">
-            <button className="m-tool-btn" aria-label="Add"><Icon name="plus" /></button>
-            <button className="m-tool-pill"><Icon name="code" /><span>Accept edits</span></button>
-            <span className="m-composer-spacer" />
-            <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
-            <button className="m-composer-send" aria-label="Send"><Icon name="send" /></button>
-          </div>
-        </div>
-      </div>
+      <Composer />
     </div>
   );
 }
@@ -204,14 +219,19 @@ function App() {
         <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
         <main className="m-main">
           {screen === 'home' && (
-            <>
-              {/* Circular hamburger — sits at the content's top-left and slides
-                  WITH the rail (it lives inside the shell). Toggles the drawer. */}
+            <div className="m-home">
+              {/* Circular hamburger — slides with the rail (inside the shell). */}
               <button className="m-hamburger" aria-label="Menu" onClick={toggleDrawer}>
                 <Icon name="menu" />
               </button>
-              <div className="m-content" />
-            </>
+              {/* New chat: the Glyphh agent welcome — mark + greeting + saying. */}
+              <div className="m-home-hero">
+                <img className="m-home-mark" src="/brand/glyphh-mark.png" alt="" />
+                <h1 className="m-home-greeting">{greeting()}</h1>
+                <p className="m-home-saying">{SAYINGS[active]}</p>
+              </div>
+              <Composer />
+            </div>
           )}
           {(screen === 'list' || screen === 'session') && (
             <div className="m-nav" data-screen={screen}>

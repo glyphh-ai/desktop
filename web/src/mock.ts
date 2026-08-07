@@ -13,6 +13,16 @@ export interface User {
 }
 export const USER: User = { name: 'Chris Timmerman', initials: 'CT' };
 
+/** The Glyphh agent's per-space "sayings" — same as the app's dashboard landing
+ *  (chat/work/code are verbatim; files/desktop follow the pattern). */
+export const SAYINGS: Record<SpaceId, string> = {
+  chat: 'What can I do for you today?',
+  work: 'What should we get done today?',
+  code: "Let's build something amazing.",
+  files: 'What are we looking for?',
+  desktop: 'What should I run for you?',
+};
+
 export interface NavItem {
   id: SpaceId;
   label: string;
