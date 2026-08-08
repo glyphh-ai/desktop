@@ -11,9 +11,9 @@
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef } from 'react';
-import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, WORK_GROUPS,
+import { NAV, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, WORK_GROUPS,
   SETTINGS_GROUPS, MODELS, MODEL_TOP_N, LOOP_ROLES, DEFAULT_ROLE, LOOPS, PERMISSIONS,
-  type SpaceId, type Recent, type CodeSession, type Task } from './mock';
+  type SpaceId, type Recent, type Message, type CodeSession, type Task } from './mock';
 // Real auth + client — the same SDK wiring app-web uses (localStorage token store,
 // gating cookies, refresh, signed-out event). We reuse it; we don't fork the client.
 import {
@@ -194,11 +194,42 @@ function modelSummaryText(loopId: string, roleModels: Record<string, string>): s
   return roles.length > 1 ? `${primary} +${roles.length - 1}` : primary;
 }
 
+/* ── Sessions (chat threads) — real SDK data (glyphh().sessions.threads()).
+   One thread = one chat; its `mode` buckets it into Chat / Work / Code. ────── */
+interface ThreadMeta { id: string; title: string; mode: string; createdAt: number; updatedAt: number; messageCount: number; }
+interface ThreadMsg { role: string; text?: string; [k: string]: unknown; }
+
+/** Relative "when" label from an epoch-ms timestamp (now / 2h / Yesterday / Aug 1). */
+function rel(ms: number): string {
+  if (!ms) return '';
+  const secs = Math.max(0, (Date.now() - ms) / 1000);
+  if (secs < 45) return 'now';
+  const mins = secs / 60; if (mins < 60) return `${Math.floor(mins)}m`;
+  const hrs = mins / 60; if (hrs < 24) return `${Math.floor(hrs)}h`;
+  const days = hrs / 24;
+  if (days < 2) return 'Yesterday';
+  if (days < 7) return `${Math.floor(days)}d`;
+  const d = new Date(ms);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+}
+/** SDK thread → the Recent shape the list rows + rail render. */
+function threadToRecent(t: ThreadMeta): Recent { return { id: t.id, title: t.title?.trim() || 'New chat', when: rel(t.updatedAt) }; }
+/** Newest-first threads of one mode, mapped for the list. */
+function threadsFor(threads: ThreadMeta[] | null, mode: string): Recent[] {
+  return (threads ?? []).filter((t) => t.mode === mode).sort((a, b) => b.updatedAt - a.updatedAt).map(threadToRecent);
+}
+/** A thread's messages → the session view's {role, text}. assistant → 'glyphh'. */
+function normalizeMsg(m: ThreadMsg, i: number): Message {
+  return { id: `m${i}`, role: m.role === 'user' ? 'user' : 'glyphh', text: typeof m.text === 'string' ? m.text : '' };
+}
+
 /* ── Left rail: brand → spaces → recents ──────────────────────────────────── */
-function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat, user }: {
+function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, onNewChat, user }: {
   active: SpaceId;
   onSelect: (id: SpaceId) => void;
-  onOpenRecent: (id: string) => void;
+  onOpenRecent: (r: Recent) => void;
+  recents: Recent[];
   onAllChats: () => void;
   onAccount: () => void;
   onNewChat: () => void;
@@ -227,8 +258,8 @@ function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat
       <div className="m-recents">
         <div className="m-recents-label">Recents</div>
         <div className="m-recents-list">
-          {RECENTS.map((r) => (
-            <button key={r.id} className="m-recent" onClick={() => onOpenRecent(r.id)}>
+          {recents.map((r) => (
+            <button key={r.id} className="m-recent" onClick={() => onOpenRecent(r)}>
               <span className="m-recent-title">{r.title}</span>
             </button>
           ))}
@@ -328,8 +359,10 @@ function FilterMenu({ allLabel, allIcon }: { allLabel: string; allIcon: IconName
 }
 
 /* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
-function ChatsView({ title, onMenu, onOpen, onNewChat, onSearch }: {
+function ChatsView({ title, sessions, loading, onMenu, onOpen, onNewChat, onSearch }: {
   title: string;
+  sessions: Recent[];
+  loading: boolean;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onNewChat: () => void;
@@ -345,15 +378,19 @@ function ChatsView({ title, onMenu, onOpen, onNewChat, onSearch }: {
         <FilterMenu allLabel="All chats" allIcon="chats" />
       </header>
       <div className="m-chats-list">
-        {ALL_SESSIONS.map((s) => (
-          <button key={s.id} className="m-chat-row" onClick={() => onOpen(s)}>
-            <span className="m-chat-text">
-              <span className="m-chat-title">{s.title}</span>
-              <span className="m-chat-when">{s.when}</span>
-            </span>
-            <Icon name="chevron" />
-          </button>
-        ))}
+        {loading
+          ? <div className="m-list-note">Loading…</div>
+          : sessions.length === 0
+          ? <div className="m-list-note">No chats yet — start a new one.</div>
+          : sessions.map((s) => (
+            <button key={s.id} className="m-chat-row" onClick={() => onOpen(s)}>
+              <span className="m-chat-text">
+                <span className="m-chat-title">{s.title}</span>
+                <span className="m-chat-when">{s.when}</span>
+              </span>
+              <Icon name="chevron" />
+            </button>
+          ))}
       </div>
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewChat}><Icon name="plus" /><span>New chat</span></button>
       <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
@@ -499,6 +536,7 @@ function SessionView({ session, onBack, comp }: { session: Recent; onBack: () =>
   const [menu, setMenu] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const [msgs, setMsgs] = useState<Message[] | null>(null);   // null = loading
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!menu) return;
@@ -506,6 +544,15 @@ function SessionView({ session, onBack, comp }: { session: Recent; onBack: () =>
     document.addEventListener('pointerdown', onDoc);
     return () => document.removeEventListener('pointerdown', onDoc);
   }, [menu]);
+  // Load the thread's real messages whenever the open session changes.
+  useEffect(() => {
+    let on = true;
+    setMsgs(null);
+    glyphh().sessions.thread(session.id)
+      .then((t: { messages?: ThreadMsg[] }) => { if (on) setMsgs((t.messages ?? []).map(normalizeMsg)); })
+      .catch(() => { if (on) setMsgs([]); });
+    return () => { on = false; };
+  }, [session.id]);
 
   return (
     <div className="m-sv">
@@ -539,9 +586,13 @@ function SessionView({ session, onBack, comp }: { session: Recent; onBack: () =>
         </div>
       </header>
       <div className="m-sv-messages">
-        {MESSAGES.map((m) => (
-          <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
-        ))}
+        {msgs === null
+          ? <div className="m-list-note">Loading…</div>
+          : msgs.length === 0
+          ? <div className="m-list-note">No messages yet.</div>
+          : msgs.map((m) => (
+            <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
+          ))}
       </div>
       <Composer {...comp} />
 
@@ -2012,6 +2063,7 @@ function App() {
   const [minSplash, setMinSplash] = useState(false);   // hold the splash for its full beat
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
+  const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
   const [selectorAt, setSelectorAt] = useState<'sections' | 'loop' | 'models' | null>(null);
   const [permOpen, setPermOpen] = useState(false);
   const [loop, setLoop] = useState('default');
@@ -2074,13 +2126,21 @@ function App() {
   // Loop change → the role set changes; reseed each slot to its default model.
   useEffect(() => { setRoleModels(seedRoleModels(loop)); }, [loop]);
 
+  // Load the user's chat threads once signed in (feeds the rail + chats list).
+  useEffect(() => {
+    if (authState !== 'in') return;
+    let on = true;
+    glyphh().sessions.threads()
+      .then((t: ThreadMeta[]) => { if (on) setThreads(Array.isArray(t) ? t : []); })
+      .catch(() => { if (on) setThreads([]); });
+    return () => { on = false; };
+  }, [authState]);
+  const chatRecents = threadsFor(threads, 'chat');
+
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
   const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('list'); setSession(null); setDrawer(false); };
   const openSession = (s: Recent) => { haptic(); setSession(s); setScreen('session'); setDrawer(false); };
-  const openRecent = (id: string) => {
-    const s = ALL_SESSIONS.find((x) => x.id === id) || RECENTS.find((x) => x.id === id);
-    if (s) openSession(s);
-  };
+  const openRecent = (r: Recent) => openSession(r);
   const allChats = () => { haptic(); setScreen('list'); setDrawer(false); };
   const backToList = () => { haptic(); setScreen('list'); };
   const account = () => { haptic(); setSettings(true); };  /* leave the rail open behind the sheet */
@@ -2098,7 +2158,7 @@ function App() {
       {authState === 'in' && (
       <>
       <div className="m-shell">
-        <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} user={user} />
+        <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} recents={chatRecents.slice(0, 12)} onAllChats={allChats} onAccount={account} onNewChat={newChat} user={user} />
         <main className="m-main">
           {screen === 'home' && (
             <div className="m-home">
@@ -2126,7 +2186,7 @@ function App() {
                     ? <CodeView onMenu={toggleDrawer} onOpen={openSession} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
                     ? <WorkView onMenu={toggleDrawer} onOpen={openSession} onNewTask={newSession} onSearch={openSearch} />
-                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
+                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
                   {session && <SessionView session={session} onBack={backToList} comp={comp} />}

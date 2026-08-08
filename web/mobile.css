@@ -361,6 +361,8 @@ body {
      above them — yet still scrolls fuzzily *under* the blur zone. */
   padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 108px) calc(var(--safe-left) + 16px);
 }
+/* Loading / empty placeholder for lists + the session message area. */
+.m-list-note { padding: 32px 16px; text-align: center; color: var(--text-3); font: 400 16px/1.45 var(--font-sans); }
 .m-chat-row {
   display: flex;
   align-items: center;
