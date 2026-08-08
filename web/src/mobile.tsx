@@ -147,7 +147,7 @@ const LEGAL = {
 };
 
 type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send' | 'mic'
-  | 'laptop' | 'monitor' | 'monitor-off' | 'cloud' | 'branch' | 'caret'
+  | 'laptop' | 'monitor' | 'monitor-off' | 'cloud' | 'branch' | 'caret' | 'arrowdown'
   | 'circle' | 'progress' | 'check'
   | 'close' | 'info' | 'user' | 'dollar' | 'chart' | 'bell' | 'shield' | 'link'
   | 'sliders' | 'grid' | 'perms' | 'voice'
@@ -176,6 +176,7 @@ const ICON: Record<IconName, React.ReactNode> = {
   cloud: <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />,
   branch: <><line x1="6" y1="4" x2="6" y2="15" /><circle cx="18" cy="7" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 10a9 9 0 0 1-9 9" /></>,
   caret: <path d="M6 9l6 6 6-6" />,
+  arrowdown: <path d="M12 5v14M5 12l7 7 7-7" />,
   circle: <circle cx="12" cy="12" r="8" />,
   progress: <path d="M12 4a8 8 0 1 0 7.5 5.3" />,
   check: <><circle cx="12" cy="12" r="8" /><path d="M8.5 12l2.5 2.5 4.5-5" /></>,
@@ -650,12 +651,18 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
   const [confirm, setConfirm] = useState(false);
   const [pinned, setPinned] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [atBottom, setAtBottom] = useState(true);
   useEffect(() => {
     if (!menu) return;
     const onDoc = (e: Event) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false); };
     document.addEventListener('pointerdown', onDoc);
     return () => document.removeEventListener('pointerdown', onDoc);
   }, [menu]);
+  const onScroll = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80); };
+  const scrollToBottom = (smooth: boolean) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
+  // Follow the stream when already at the bottom; leave the user alone if scrolled up.
+  useEffect(() => { if (atBottom) scrollToBottom(false); }, [msgs, atBottom]);
 
   return (
     <div className="m-sv">
@@ -688,7 +695,7 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
           )}
         </div>
       </header>
-      <div className="m-sv-messages">
+      <div className="m-sv-messages" ref={scrollRef} onScroll={onScroll}>
         {msgs === null
           ? <div className="m-list-note">Loading…</div>
           : (
@@ -705,6 +712,11 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
             </>
           )}
       </div>
+      {/* Frosted bottom band — the transcript scrolls fuzzily under the composer. */}
+      <div className="m-sv-fade" />
+      {!atBottom && msgs && msgs.length > 0 && (
+        <button className="m-scrolldown" aria-label="Scroll to latest" onClick={() => scrollToBottom(true)}><Icon name="arrowdown" /></button>
+      )}
       <Composer {...comp} />
 
       {/* Delete confirmation (app modal, never a native confirm). */}
