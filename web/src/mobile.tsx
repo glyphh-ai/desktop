@@ -127,6 +127,7 @@ const ICON: Record<IconName, React.ReactNode> = {
   swap: <><path d="M16 3l4 4-4 4" /><path d="M20 7H8a4 4 0 0 0-4 4" /><path d="M8 21l-4-4 4-4" /><path d="M4 17h12a4 4 0 0 0 4-4" /></>,
   loop: <><path d="M17 2l4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></>,
   contrast: <><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" /></>,
+  help: <><circle cx="12" cy="12" r="9" /><path d="M9.2 9.2a2.8 2.8 0 0 1 5.5.8c0 1.9-2.7 2-2.7 3.5" /><path d="M12 17h.01" /></>,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -999,6 +1000,114 @@ function ConnectionsTray() {
   );
 }
 
+/* Help & Support — the real SDK ticket system (list → new → thread + replies). */
+function HelpTray() {
+  type Msg = { id: string; authorKind: 'user' | 'admin'; body: string; createdAt: string };
+  type Ticket = { id: string; subject: string; status: string; updatedAt: string; lastMessage?: Msg | null; unread?: boolean };
+  type Thread = Ticket & { messages: Msg[] };
+  const [view, setView] = useState<'list' | 'new' | 'thread'>('list');
+  const [tickets, setTickets] = useState<Ticket[] | null>(null);
+  const [thread, setThread] = useState<Thread | null>(null);
+  const [subject, setSubject] = useState('');
+  const [msg, setMsg] = useState('');
+  const [reply, setReply] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const refresh = async () => { try { setTickets(await glyphh().support.tickets()); } catch { setTickets([]); } };
+  useEffect(() => { void refresh(); }, []);
+
+  const openThread = async (id: string) => {
+    haptic(); setErr(''); setThread(null); setView('thread');
+    try {
+      const t = await glyphh().support.thread(id) as Thread;
+      setThread(t);
+      void glyphh().support.markTicketRead(id).then(() => void refresh()).catch(() => {});
+    } catch { setErr('Could not load this request.'); }
+  };
+  const submitNew = async () => {
+    const s = subject.trim(), m = msg.trim();
+    if (!s || !m) return;
+    setBusy(true); setErr('');
+    try {
+      const t = await glyphh().support.createTicket({ subject: s, message: m }) as Thread;
+      setSubject(''); setMsg(''); await refresh(); setThread(t); setView('thread');
+    } catch { setErr('Could not submit. Try again.'); } finally { setBusy(false); }
+  };
+  const sendReply = async () => {
+    if (!thread) return;
+    const b = reply.trim(); if (!b) return;
+    setBusy(true); setErr('');
+    try { const t = await glyphh().support.reply(thread.id, b) as Thread; setThread(t); setReply(''); }
+    catch { setErr('Could not send.'); } finally { setBusy(false); }
+  };
+
+  if (view === 'new') {
+    return (
+      <>
+        <button className="m-conn-back" onClick={() => { haptic(); setView('list'); setErr(''); }}><Icon name="back" /><span>Help &amp; Support</span></button>
+        <div className="m-set-form">
+          <label className="m-field"><span className="m-field-l">Subject</span>
+            <input className="m-field-in" value={subject} onChange={(e) => setSubject(e.currentTarget.value)} placeholder="What do you need help with?" /></label>
+          <label className="m-field"><span className="m-field-l">Message</span>
+            <textarea className="m-field-in m-field-area" value={msg} onChange={(e) => setMsg(e.currentTarget.value)} placeholder="Describe the issue…" rows={6} /></label>
+        </div>
+        <button className="m-login-primary m-help-submit" disabled={busy || !subject.trim() || !msg.trim()} onClick={submitNew}>{busy ? 'Sending…' : 'Submit request'}</button>
+        {err && <div className="m-field-err">{err}</div>}
+      </>
+    );
+  }
+  if (view === 'thread') {
+    return (
+      <div className="m-help-thread">
+        <button className="m-conn-back" onClick={() => { haptic(); setView('list'); setThread(null); }}><Icon name="back" /><span>Help &amp; Support</span></button>
+        {!thread ? <div className="m-set-loading">Loading…</div> : (
+          <>
+            <div className="m-help-thread-head">
+              <div className="m-help-thread-subject">{thread.subject}</div>
+              <span className="m-help-status" data-s={thread.status}>{thread.status}</span>
+            </div>
+            <div className="m-help-msgs">
+              {thread.messages.map((m) => (
+                <div key={m.id} className={`m-msg ${m.authorKind === 'user' ? 'm-msg-user' : 'm-msg-glyphh'}`}>{m.body}</div>
+              ))}
+            </div>
+            <div className="m-help-reply">
+              <input className="m-field-in" value={reply} onChange={(e) => setReply(e.currentTarget.value)} placeholder="Reply…" onKeyDown={(e) => { if (e.key === 'Enter') void sendReply(); }} />
+              <button className="m-help-send" aria-label="Send" disabled={busy || !reply.trim()} onClick={sendReply}><Icon name="send" /></button>
+            </div>
+            {err && <div className="m-field-err">{err}</div>}
+          </>
+        )}
+      </div>
+    );
+  }
+  return (
+    <>
+      <a className="m-field-btn m-help-docs" href={LEGAL.help} target="_blank" rel="noopener noreferrer"><Icon name="external" /><span>Browse the docs</span></a>
+      <div className="m-set-label">Your requests</div>
+      {tickets == null ? <div className="m-set-loading">Loading…</div>
+        : tickets.length === 0 ? <div className="m-conn-empty">No requests yet. Open one and we’ll get back to you.</div>
+        : (
+          <div className="m-sel-group">
+            {tickets.map((t) => (
+              <button key={t.id} className="m-opt" onClick={() => openThread(t.id)}>
+                <span className="m-opt-text">
+                  <span className="m-opt-name">{t.subject}{t.unread && <span className="m-help-dot" />}</span>
+                  {t.lastMessage && <span className="m-opt-desc">{t.lastMessage.body}</span>}
+                </span>
+                <span className="m-help-status" data-s={t.status}>{t.status}</span>
+                <Icon name="chevron" />
+              </button>
+            ))}
+          </div>
+        )}
+      <button className="m-field-btn" onClick={() => { haptic(); setView('new'); setErr(''); }}>+ New request</button>
+      {err && <div className="m-field-err">{err}</div>}
+    </>
+  );
+}
+
 const THEMES: { id: string; name: string; desc?: string }[] = [
   { id: 'system', name: 'System', desc: 'Match your device' },
   { id: 'light', name: 'Light' },
@@ -1033,7 +1142,7 @@ function AppearanceTray() {
   );
 }
 
-type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections';
+type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help';
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
   const [subOpen, setSubOpen] = useState(false);   // drives the track; sub persists during slide-back
@@ -1045,7 +1154,7 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
   }, [open]);
   const openSub = (s: SettingsSub) => { haptic(); setSub(s); setSubOpen(true); };
   const title = sub === 'profile' ? 'Profile' : sub === 'billing' ? 'Billing' : sub === 'usage' ? 'Usage'
-    : sub === 'connections' ? 'Connections' : 'Appearance';
+    : sub === 'connections' ? 'Connections' : sub === 'help' ? 'Help & Support' : 'Appearance';
 
   const legalRow = (href: string, label: string) => (
     <a className="m-info-row" href={href} target="_blank" rel="noopener noreferrer" onClick={() => setInfo(false)}>
@@ -1099,6 +1208,7 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
               {sub === 'usage' && <UsageTray />}
               {sub === 'connections' && <ConnectionsTray />}
               {sub === 'appearance' && <AppearanceTray />}
+              {sub === 'help' && <HelpTray />}
             </div>
           </section>
         </div>
@@ -1114,8 +1224,6 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
               {legalRow(LEGAL.terms, 'Terms of Service')}
               {legalRow(LEGAL.privacy, 'Privacy Policy')}
               {legalRow(LEGAL.refund, 'Refund Policy')}
-              <div className="m-info-sep" />
-              {legalRow(LEGAL.help, 'Help & Support')}
             </div>
           </>
         )}

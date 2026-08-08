@@ -1572,3 +1572,37 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
   display: flex; align-items: center; justify-content: center;
 }
 .m-theme-sw::after { content: ""; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); }
+
+/* ── Help & Support tray ─────────────────────────────────────────────────── */
+.m-help-docs { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 18px; }
+.m-help-docs svg { width: 20px; height: 20px; }
+.m-field-area { height: auto; min-height: 130px; padding: 12px 16px; line-height: 1.5; resize: none; font-family: var(--font-sans); }
+.m-help-submit { margin-top: 8px; }
+.m-help-status {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-3);
+  font: 500 12px/1 var(--font-sans);
+  text-transform: capitalize;
+}
+.m-help-status[data-s="open"], .m-help-status[data-s="pending"] { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+.m-help-status[data-s="resolved"], .m-help-status[data-s="closed"] { color: var(--text-faint); }
+.m-help-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: 8px; vertical-align: middle; }
+
+.m-help-thread { display: flex; flex-direction: column; min-height: 0; }
+.m-help-thread-head { display: flex; align-items: center; gap: 10px; padding: 2px 2px 14px; }
+.m-help-thread-subject { flex: 1; min-width: 0; font: 700 20px/1.25 var(--font-sans); color: var(--text); }
+.m-help-msgs { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
+.m-help-reply { display: flex; align-items: center; gap: 8px; padding-top: 10px; }
+.m-help-reply .m-field-in { flex: 1; height: 48px; }
+.m-help-send {
+  flex: 0 0 48px; width: 48px; height: 48px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%;
+  background: var(--accent); color: #fff; cursor: pointer;
+}
+.m-help-send:disabled { opacity: 0.4; }
+.m-help-send svg { width: 20px; height: 20px; }

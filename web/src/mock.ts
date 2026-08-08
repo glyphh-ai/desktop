@@ -14,7 +14,7 @@ export interface SettingRow {
   icon: string;
   label: string;
   value?: string;
-  sub: 'profile' | 'billing' | 'usage' | 'appearance' | 'connections';   // which tray the row opens
+  sub: 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help';   // which tray the row opens
 }
 export interface SettingGroup {
   label: string;
@@ -32,6 +32,9 @@ export const SETTINGS_GROUPS: SettingGroup[] = [
   { label: 'App', rows: [
     { icon: 'grid', label: 'Connections', sub: 'connections' },
     { icon: 'contrast', label: 'Appearance', sub: 'appearance' },
+  ] },
+  { label: 'Support', rows: [
+    { icon: 'help', label: 'Help & Support', sub: 'help' },
   ] },
 ];
 
