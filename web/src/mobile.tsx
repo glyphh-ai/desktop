@@ -1717,9 +1717,10 @@ function AttachMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-/* ── Composer selector: a bottom sheet with three sections — Loop / Models /
-   Permission. Each row's chevron slides open that section's tray, which has a
-   < back. (Models tray mirrors the Glyphh agent's model picker.) ─────────── */
+/* ── Loop & models selector: a bottom sheet with two sections — Loop / Models.
+   Each row's chevron slides open that section's tray, which has a < back. Opened
+   by the new-session dropdown and by a session's "Change model / loop". Permission
+   lives in its own PermissionSheet (below), reached from the composer. ──────── */
 function OptionList({ items, selected, onPick }: { items: { id: string; name: string; desc?: string }[]; selected: string; onPick: (id: string) => void }) {
   return (
     <div className="m-sel-group">
@@ -1736,12 +1737,11 @@ function OptionList({ items, selected, onPick }: { items: { id: string; name: st
   );
 }
 
-function SelectorSheet({ open, section, onClose, loop, setLoop, perm, setPerm, roleModels, setRoleModels }: {
+function SelectorSheet({ open, section, onClose, loop, setLoop, roleModels, setRoleModels }: {
   open: boolean;
-  section: 'loop' | 'models' | 'permission' | null;   // deep-link entry point
+  section: 'loop' | 'models' | null;   // deep-link entry point
   onClose: () => void;
   loop: string; setLoop: (v: string) => void;
-  perm: string; setPerm: (v: string) => void;
   roleModels: Record<string, string>; setRoleModels: (fn: (m: Record<string, string>) => Record<string, string>) => void;
 }) {
   // The chosen loop's role slots (Planner/Builder/…) drive the Models tray.
@@ -1750,7 +1750,7 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, perm, setPerm, r
   const moreModels = MODELS.slice(MODEL_TOP_N);        // the rest → "More models"
 
   // Depth track: 0 = sections, 1 = a section tray, 2 = More models (per role).
-  const [tray, setTray] = useState<'loop' | 'models' | 'permission'>('models');
+  const [tray, setTray] = useState<'loop' | 'models'>('models');
   const [depth, setDepth] = useState(0);
   const [moreRole, setMoreRole] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});   // undefined → expanded
@@ -1764,8 +1764,8 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, perm, setPerm, r
 
   const nameOf = (arr: { id: string; name: string }[], id: string) => arr.find((x) => x.id === id)?.name ?? '';
   const modelName = (id: string) => nameOf(MODELS, id);
-  const openTray = (t: 'loop' | 'models' | 'permission') => { haptic(); setTray(t); setDepth(1); };
-  const trayTitle = tray === 'loop' ? 'Loop' : tray === 'models' ? 'Models' : 'Permission';
+  const openTray = (t: 'loop' | 'models') => { haptic(); setTray(t); setDepth(1); };
+  const trayTitle = tray === 'loop' ? 'Loop' : 'Models';
   const modelsSummary = roles.length === 1 ? modelName(roleModels[roles[0].id]) : `${roles.length} models`;
   const setRoleModel = (roleId: string, id: string) => { haptic(); setRoleModels((m) => ({ ...m, [roleId]: id })); };
   const toggleRole = (roleId: string) => { haptic(); setExpanded((e) => ({ ...e, [roleId]: !(e[roleId] ?? true) })); };
@@ -1782,7 +1782,7 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, perm, setPerm, r
           <section className="m-sel-panel">
             <div className="m-sel-head">
               <button className="m-sheet-btn" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
-              <span className="m-sel-title">Model &amp; runtime</span>
+              <span className="m-sel-title">Loop &amp; models</span>
             </div>
             <div className="m-sel-body">
               <div className="m-sel-group">
@@ -1791,9 +1791,6 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, perm, setPerm, r
                 </button>
                 <button className="m-sel-row" onClick={() => openTray('models')}>
                   <span className="m-sel-row-label">Models</span><span className="m-sel-row-val">{modelsSummary}</span><Icon name="chevron" />
-                </button>
-                <button className="m-sel-row" onClick={() => openTray('permission')}>
-                  <span className="m-sel-row-label">Permission</span><span className="m-sel-row-val">{nameOf(PERMISSIONS, perm)}</span><Icon name="chevron" />
                 </button>
               </div>
             </div>
@@ -1838,9 +1835,6 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, perm, setPerm, r
                   ))}
                 </>
               )}
-              {tray === 'permission' && (
-                <OptionList items={PERMISSIONS} selected={perm} onPick={(id) => { haptic(); setPerm(id); setDepth(0); }} />
-              )}
             </div>
           </section>
 
@@ -1855,6 +1849,31 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, perm, setPerm, r
               <OptionList items={moreModels} selected={roleModels[moreRole]} onPick={(id) => { setRoleModel(moreRole, id); setDepth(1); }} />
             </div>
           </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Permission selector: its own content-height bottom sheet (never nested in
+   the loop/models sheet). Reached from the composer's shield pill. ─────────── */
+function PermissionSheet({ open, onClose, perm, setPerm }: {
+  open: boolean;
+  onClose: () => void;
+  perm: string; setPerm: (v: string) => void;
+}) {
+  return (
+    <div className="m-sel-overlay" data-open={open ? 'true' : 'false'}>
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel m-sel-fit" role="dialog" aria-modal="true">
+        <div className="m-sel-grip" />
+        <div className="m-sel-head">
+          <button className="m-sheet-btn" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+          <span className="m-sel-title">Permission</span>
+        </div>
+        <div className="m-sel-body">
+          <div className="m-sel-note">How much can Glyphh do on its own before it checks with you?</div>
+          <OptionList items={PERMISSIONS} selected={perm} onPick={(id) => { haptic(); setPerm(id); onClose(); }} />
         </div>
       </div>
     </div>
@@ -1983,7 +2002,8 @@ function App() {
   const [minSplash, setMinSplash] = useState(false);   // hold the splash for its full beat
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
-  const [selectorAt, setSelectorAt] = useState<SelSection | null>(null);
+  const [selectorAt, setSelectorAt] = useState<'sections' | 'loop' | 'models' | null>(null);
+  const [permOpen, setPermOpen] = useState(false);
   const [loop, setLoop] = useState('default');
   const [perm, setPerm] = useState('accept-edits');
   const [roleModels, setRoleModels] = useState<Record<string, string>>(() => seedRoleModels('default'));
@@ -1994,7 +2014,7 @@ function App() {
   const closeSearch = () => { haptic(); searchInputRef.current?.blur(); setSearch(false); };
   const comp: CompProps = {
     onPlus: () => { haptic(); setAttach(true); },
-    onOpenSelector: (s) => { haptic(); setSelectorAt(s); },
+    onOpenSelector: (s) => { haptic(); if (s === 'permission') setPermOpen(true); else setSelectorAt(s); },
     permLabel: PERMISSIONS.find((p) => p.id === perm)?.name ?? 'Accept edits',
     modelSummary: modelSummaryText(loop, roleModels),
     loopName: loopNameOf(loop),
@@ -2114,9 +2134,9 @@ function App() {
         section={selectorAt === 'sections' ? null : selectorAt}
         onClose={() => { haptic(); setSelectorAt(null); }}
         loop={loop} setLoop={setLoop}
-        perm={perm} setPerm={setPerm}
         roleModels={roleModels} setRoleModels={setRoleModels}
       />
+      <PermissionSheet open={permOpen} onClose={() => { haptic(); setPermOpen(false); }} perm={perm} setPerm={setPerm} />
       <SearchOverlay open={search} inputRef={searchInputRef} onClose={closeSearch} />
       </>
       )}
