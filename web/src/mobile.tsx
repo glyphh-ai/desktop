@@ -814,6 +814,16 @@ function UsageTray() {
   );
 }
 
+/** An iOS-style toggle switch. `ind` = indeterminate (knob centered). */
+function Switch({ on, ind, onClick }: { on: boolean; ind?: boolean; onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <button className="m-switch" data-on={on ? 'true' : 'false'} data-ind={ind ? 'true' : 'false'}
+      role="switch" aria-checked={on} onClick={onClick}>
+      <span className="m-switch-knob" />
+    </button>
+  );
+}
+
 /** App-icon cache, resolved by slug the way the desktop does — search the catalog
  *  for the app whose id === slug and take its icon URL. */
 const _connIcon: Record<string, string | null> = {};
@@ -919,12 +929,19 @@ function ConnectionsTray() {
       setAllowed(cap == null ? new Set(list.map((x) => x.name)) : new Set(cap));
     } catch { setTools([]); }
   };
+  const writeTools = (c: Conn, next: Set<string>) => {
+    setAllowed(next);
+    void glyphh().connections.setPersonalConnectionTools(c.appSlug, [...next]).catch(() => setErr('Could not update tools.'));
+  };
   const toggleTool = (c: Conn, name: string) => {
     haptic();
     const next = new Set(allowed);
     if (next.has(name)) next.delete(name); else next.add(name);
-    setAllowed(next);
-    void glyphh().connections.setPersonalConnectionTools(c.appSlug, [...next]).catch(() => setErr('Could not update tools.'));
+    writeTools(c, next);
+  };
+  const toggleAll = (c: Conn, all: boolean) => {
+    haptic();
+    writeTools(c, all ? new Set((tools || []).map((t) => t.name)) : new Set());
   };
   const rename = (c: Conn, label: string) => {
     const v = label.trim();
@@ -954,7 +971,9 @@ function ConnectionsTray() {
       {/* Add-a-connection catalog — its own sliding tray (portaled so fixed
           positioning escapes the settings track's transform). */}
       {view === 'catalog' && createPortal(
-        <div className="m-subtray">
+        <div className="m-subtray-overlay">
+          <div className="m-subtray-scrim" onClick={() => { haptic(); setView('list'); setErr(''); }} />
+          <div className="m-subtray">
           <header className="m-subtray-head">
             <button className="m-sheet-btn" aria-label="Back" onClick={() => { haptic(); setView('list'); setErr(''); }}><Icon name="back" /></button>
             <span className="m-sheet-title">Add a connection</span>
@@ -975,13 +994,16 @@ function ConnectionsTray() {
             )}
             {err && <div className="m-field-err">{err}</div>}
           </div>
+          </div>
         </div>,
         document.body,
       )}
 
       {/* Connection detail (edit) — its own sliding tray (portaled). */}
       {view === 'detail' && sel && createPortal(
-        <div className="m-subtray">
+        <div className="m-subtray-overlay">
+          <div className="m-subtray-scrim" onClick={() => { haptic(); setView('list'); setSel(null); setErr(''); }} />
+          <div className="m-subtray">
           <header className="m-subtray-head">
             <button className="m-sheet-btn" aria-label="Back" onClick={() => { haptic(); setView('list'); setSel(null); setErr(''); }}><Icon name="back" /></button>
             <span className="m-sheet-title">{sel.label || sel.appName}</span>
@@ -1002,28 +1024,35 @@ function ConnectionsTray() {
             <div className="m-set-label">Tools your agent can use</div>
             {tools == null ? <div className="m-set-loading">Loading tools…</div>
               : tools.length === 0 ? <div className="m-conn-empty">This app publishes no tools yet.</div>
-              : (
-                <div className="m-sel-group">
-                  {tools.map((t) => {
-                    const id = t.key || t.name;
-                    const open = toolsOpen.has(id);
-                    return (
-                      <div key={id} className="m-tool" data-open={open ? 'true' : 'false'}>
-                        <div className="m-tool-head" onClick={() => (t.description ? toggleToolOpen(id) : toggleTool(sel, t.name))}>
-                          <span className="m-tool-name">{t.name}</span>
-                          {t.description && <span className="m-tool-caret"><Icon name="caret" /></span>}
-                          <button className="m-toolcheck" data-on={allowed.has(t.name) ? 'true' : 'false'}
-                            aria-label={allowed.has(t.name) ? 'Allowed — tap to block' : 'Blocked — tap to allow'}
-                            onClick={(e) => { e.stopPropagation(); toggleTool(sel, t.name); }}>
-                            {allowed.has(t.name) && <Icon name="tick" />}
-                          </button>
-                        </div>
-                        {open && t.description && <div className="m-tool-desc">{t.description}</div>}
+              : (() => {
+                const allOn = tools.every((t) => allowed.has(t.name));
+                const noneOn = tools.every((t) => !allowed.has(t.name));
+                return (
+                  <div className="m-sel-group">
+                    <div className="m-tool m-tool-all">
+                      <div className="m-tool-head" onClick={() => toggleAll(sel, !allOn)}>
+                        <span className="m-tool-name">Select all</span>
+                        <span className="m-tool-count">{allowed.size}/{tools.length}</span>
+                        <Switch on={allOn} ind={!allOn && !noneOn} onClick={(e) => { e.stopPropagation(); toggleAll(sel, !allOn); }} />
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+                    {tools.map((t) => {
+                      const id = t.key || t.name;
+                      const open = toolsOpen.has(id);
+                      return (
+                        <div key={id} className="m-tool" data-open={open ? 'true' : 'false'}>
+                          <div className="m-tool-head" onClick={() => (t.description ? toggleToolOpen(id) : toggleTool(sel, t.name))}>
+                            <span className="m-tool-name">{t.name}</span>
+                            {t.description && <span className="m-tool-caret"><Icon name="caret" /></span>}
+                            <Switch on={allowed.has(t.name)} onClick={(e) => { e.stopPropagation(); toggleTool(sel, t.name); }} />
+                          </div>
+                          {open && t.description && <div className="m-tool-desc">{t.description}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             <button className="m-field-btn m-field-danger" onClick={() => { haptic(); setDel(sel); }}>Disconnect</button>
             {err && <div className="m-field-err">{err}</div>}
           </div>
@@ -1041,6 +1070,7 @@ function ConnectionsTray() {
               </div>
             </div>
           )}
+          </div>
         </div>,
         document.body,
       )}

@@ -1437,22 +1437,36 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 .m-conn-detail-name { font: 700 22px/1.2 var(--font-sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-conn-detail-status { font: 400 15px/1.2 var(--font-sans); color: var(--success); }
 .m-conn-detail-status.bad { color: var(--danger); }
-.m-toolcheck {
-  flex: 0 0 26px;
-  width: 26px;
-  height: 26px;
+/* Toggle switch (tool allow + select-all). */
+.m-switch {
+  flex: 0 0 46px;
+  width: 46px;
+  height: 28px;
   padding: 0;
-  border-radius: 8px;
-  border: 1.5px solid var(--border-2);
-  background: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border-2);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
+  position: relative;
+  transition: background 0.18s ease;
 }
-.m-toolcheck[data-on="true"] { background: var(--accent); border-color: var(--accent); }
-.m-toolcheck svg { width: 18px; height: 18px; }
+.m-switch[data-on="true"] { background: var(--accent); }
+.m-switch[data-ind="true"] { background: color-mix(in srgb, var(--accent) 45%, var(--border-2)); }
+.m-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.18s ease;
+}
+.m-switch[data-on="true"] .m-switch-knob { transform: translateX(18px); }
+.m-switch[data-ind="true"] .m-switch-knob { transform: translateX(9px); }
+.m-tool-all .m-tool-head { cursor: pointer; }
+.m-tool-count { font: 400 14px/1 var(--font-sans); color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
 /* Expandable tool row (description collapsed by default). */
 .m-tool { border-bottom: 1px solid var(--border); }
@@ -1621,15 +1635,25 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 .m-help-send:disabled { opacity: 0.4; }
 .m-help-send svg { width: 20px; height: 20px; }
 
-/* ── Generic sliding sub-tray (connection catalog + detail) ──────────────── */
+/* ── Generic sub-tray (connection catalog + detail): 80% bottom sheet, matches
+   the Settings sheet. Scrim behind; slides up. ───────────────────────────── */
+.m-subtray-overlay { position: fixed; inset: 0; z-index: 250; }
+.m-subtray-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); animation: m-fade-in 0.25s ease; }
+@keyframes m-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes m-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .m-subtray {
-  position: fixed;
-  inset: 0;
-  z-index: 250;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 20%;                                /* ~80% tall — matches Settings */
   background: var(--bg);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: m-nav-in 0.28s ease;
+  animation: m-sheet-up 0.34s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .m-subtray-head {
   flex: 0 0 auto;
