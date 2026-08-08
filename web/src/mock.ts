@@ -11,7 +11,7 @@ export type SpaceId = 'chat' | 'work' | 'code' | 'files' | 'desktop';
 /** Settings sheet rows, grouped. `icon` is an Icon name; `value` is the trailing
  *  detail (e.g. the plan). Mock now; SDK later. */
 export type SettingSub =
-  | 'profile' | 'billing' | 'usage' | 'general' | 'apikeys'
+  | 'profile' | 'billing' | 'usage' | 'general' | 'apikeys' | 'runtime'
   | 'connections' | 'appearance' | 'help'
   | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces';   // 'org*/models/workspaces' = admin
 export interface SettingRow {
@@ -38,6 +38,7 @@ export const SETTINGS_GROUPS: SettingGroup[] = [
     { icon: 'users', label: 'Members', sub: 'members', admin: true },
   ] },
   { label: 'App', rows: [
+    { icon: 'cloud', label: 'Runtime', sub: 'runtime' },
     { icon: 'sliders', label: 'General', sub: 'general' },
     { icon: 'grid', label: 'Connections', sub: 'connections' },
     { icon: 'contrast', label: 'Appearance', sub: 'appearance' },
