@@ -371,7 +371,7 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, sending, onPlus, onOpenSelector, permLabel }: CompProps) {
+function Composer({ draft, setDraft, onSend, sending, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
@@ -387,7 +387,9 @@ function Composer({ draft, setDraft, onSend, sending, onPlus, onOpenSelector, pe
           autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" />
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
-          <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
+          {mode === 'chat'
+            ? <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
+            : <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>}
           <span className="m-composer-spacer" />
           <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
           <button className="m-composer-send" aria-label="Send" disabled={!canSend} onClick={submit}>
@@ -644,6 +646,7 @@ interface CompProps {
   setDraft: (v: string) => void;
   onSend: () => void;
   sending: boolean;                 // a turn is in flight
+  mode: 'chat' | 'cowork' | 'code'; // chat → loop/model chip; work/code → permission chip
 }
 
 function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTogglePin, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; onBack: () => void; onDelete: () => void; onTogglePin: () => void; comp: CompProps }) {
@@ -672,15 +675,20 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
           <button className="m-chats-icon" aria-label="Options" onClick={() => { haptic(); setMenu((v) => !v); }}><Icon name="dots" /></button>
           {menu && (
             <div className="m-sv-menu" role="menu">
-              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
-                <Icon name="swap" />
-                <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change model</span><span className="m-sv-menu-s">{comp.modelSummary}</span></span>
-              </button>
-              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
-                <Icon name="loop" />
-                <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change loop</span><span className="m-sv-menu-s">{comp.loopName}</span></span>
-              </button>
-              <div className="m-sv-menu-sep" />
+              {/* Chat uses the composer chip for loop/model; Work/Code keep it here. */}
+              {comp.mode !== 'chat' && (
+                <>
+                  <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
+                    <Icon name="swap" />
+                    <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change model</span><span className="m-sv-menu-s">{comp.modelSummary}</span></span>
+                  </button>
+                  <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
+                    <Icon name="loop" />
+                    <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change loop</span><span className="m-sv-menu-s">{comp.loopName}</span></span>
+                  </button>
+                  <div className="m-sv-menu-sep" />
+                </>
+              )}
               <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); /* rename (mock) */ }}>
                 <Icon name="pencil" /><span>Rename</span>
               </button>
@@ -2443,6 +2451,7 @@ function App() {
     draft, setDraft,
     onSend: () => { void sendPrompt(); },
     sending: streaming,
+    mode: curMode,
   };
 
   // Hold the splash for its full beat regardless of how fast auth resolves.
@@ -2563,10 +2572,13 @@ function App() {
               <header className="m-chats-head m-home-head">
                 <button className="m-chats-icon" aria-label="Open menu" onClick={toggleDrawer}><Icon name="menu" /></button>
                 <div className="m-home-center">
-                  <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
-                    <span>{comp.loopName} / {comp.modelSummary}</span>
-                    <Icon name="caret" />
-                  </button>
+                  {/* Chat picks loop/model on the composer chip; Work/Code keep the top dropdown. */}
+                  {active !== 'chat' && (
+                    <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
+                      <span>{comp.loopName} / {comp.modelSummary}</span>
+                      <Icon name="caret" />
+                    </button>
+                  )}
                 </div>
                 <span className="m-home-head-spacer" aria-hidden="true" />
               </header>
