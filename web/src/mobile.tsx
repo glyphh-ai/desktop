@@ -129,6 +129,9 @@ const ICON: Record<IconName, React.ReactNode> = {
   loop: <><path d="M17 2l4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></>,
   contrast: <><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" /></>,
   help: <><circle cx="12" cy="12" r="9" /><path d="M9.2 9.2a2.8 2.8 0 0 1 5.5.8c0 1.9-2.7 2-2.7 3.5" /><path d="M12 17h.01" /></>,
+  key: <><circle cx="7.5" cy="15.5" r="4" /><path d="M10.3 12.7L20 3" /><path d="M16 7l3 3" /><path d="M13 10l2.5 2.5" /></>,
+  building: <><rect x="4" y="3" width="16" height="18" rx="1.5" /><path d="M9 7h2M13 7h2M9 11h2M13 11h2M10 21v-4h4v4" /></>,
+  users: <><circle cx="9" cy="9" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M16 6.4a3 3 0 0 1 0 5.5M20.5 19a5.5 5.5 0 0 0-4-5.3" /></>,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -1201,6 +1204,222 @@ function HelpTray() {
   );
 }
 
+/* A confirm dialog, portaled to body so it clears the sheet's transformed track. */
+function Confirm({ title, message, confirmLabel, onCancel, onConfirm }: { title: string; message: string; confirmLabel: string; onCancel: () => void; onConfirm: () => void }) {
+  return createPortal(
+    <div className="m-confirm-overlay" style={{ position: 'fixed' }} role="dialog" aria-modal="true">
+      <div className="m-confirm-scrim" onClick={onCancel} />
+      <div className="m-confirm">
+        <div className="m-confirm-title">{title}</div>
+        <div className="m-confirm-msg">{message}</div>
+        <div className="m-confirm-actions">
+          <button className="m-confirm-btn" onClick={onCancel}>Cancel</button>
+          <button className="m-confirm-btn m-confirm-danger" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>, document.body);
+}
+
+function GeneralTray() {
+  const [prefs, setPrefs] = useState<Record<string, unknown> | null>(null);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { glyphh().profile.prefs().then((p: Record<string, unknown>) => setPrefs(p)).catch(() => setPrefs({})); }, []);
+  const save = (patch: Record<string, unknown>) => {
+    glyphh().profile.setPrefs(patch).then((p: Record<string, unknown>) => { setPrefs(p); setSaved(true); setTimeout(() => setSaved(false), 1300); }).catch(() => {});
+  };
+  if (!prefs) return <div className="m-set-loading">Loading…</div>;
+  return (
+    <>
+      <div className="m-set-label">Compaction guidance {saved && <span className="m-saved">Saved</span>}</div>
+      <div className="m-set-form">
+        <textarea className="m-field-in m-field-area" defaultValue={(prefs.glyphhCompactionPrompt as string) || ''} rows={5}
+          placeholder="Extra instructions for the agent when it compacts a long conversation…"
+          onBlur={(e) => save({ glyphhCompactionPrompt: e.currentTarget.value })} />
+      </div>
+      <div className="m-field-note">Handed to the agent whenever it compacts its context.</div>
+    </>
+  );
+}
+
+function ApiKeysTray() {
+  type Key = { id: string; label: string; prefix: string; createdAt: string; expiresAt: string | null };
+  const [keys, setKeys] = useState<Key[] | null>(null);
+  const [label, setLabel] = useState('');
+  const [token, setToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [del, setDel] = useState<Key | null>(null);
+  const [err, setErr] = useState('');
+  const refresh = () => glyphh().apiKeys.list().then((k: Key[]) => setKeys(k)).catch(() => setKeys([]));
+  useEffect(() => { refresh(); }, []);
+  const create = async () => {
+    const l = label.trim(); if (!l) return;
+    setBusy(true); setErr('');
+    try { const r = await glyphh().apiKeys.create({ label: l }); setToken(r.token); setLabel(''); refresh(); }
+    catch { setErr('Could not create the key.'); } finally { setBusy(false); }
+  };
+  const revoke = async (k: Key) => { setDel(null); try { await glyphh().apiKeys.revoke(k.id); refresh(); } catch { setErr('Could not revoke.'); } };
+  const copy = () => { if (token) void navigator.clipboard?.writeText(token).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
+  return (
+    <>
+      {token && (
+        <div className="m-key-new">
+          <div className="m-key-new-t">Copy your key now — it won’t be shown again.</div>
+          <code className="m-key-token">{token}</code>
+          <button className="m-field-btn" onClick={copy}>{copied ? 'Copied' : 'Copy key'}</button>
+        </div>
+      )}
+      <div className="m-set-label">New key</div>
+      <div className="m-set-form">
+        <input className="m-field-in" value={label} onChange={(e) => setLabel(e.currentTarget.value)} placeholder="Label (e.g. CI deploy)" />
+        <button className="m-login-primary" disabled={busy || !label.trim()} onClick={create}>{busy ? 'Creating…' : 'Create key'}</button>
+      </div>
+      <div className="m-set-label">Your keys</div>
+      {keys == null ? <div className="m-set-loading">Loading…</div>
+        : keys.length === 0 ? <div className="m-conn-empty">No keys yet.</div>
+        : (
+          <div className="m-sel-group">
+            {keys.map((k) => (
+              <div key={k.id} className="m-opt">
+                <span className="m-opt-text"><span className="m-opt-name">{k.label}</span><span className="m-opt-desc">{k.prefix} · {new Date(k.createdAt).toLocaleDateString()}</span></span>
+                <button className="m-key-revoke" onClick={() => setDel(k)}>Revoke</button>
+              </div>
+            ))}
+          </div>
+        )}
+      {err && <div className="m-field-err">{err}</div>}
+      {del && <Confirm title={`Revoke “${del.label}”?`} message="Any client using this key immediately loses access." confirmLabel="Revoke" onCancel={() => setDel(null)} onConfirm={() => revoke(del)} />}
+    </>
+  );
+}
+
+function OrganizationTray() {
+  const [org, setOrg] = useState<Record<string, unknown> | null>(null);
+  const [addr, setAddr] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState('');
+  const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1300); };
+  useEffect(() => {
+    glyphh().org.get().then((o: Record<string, unknown>) => { setOrg(o); setAddr((o.address as Record<string, string>) || {}); }).catch(() => setErr('Could not load your organization.'));
+  }, []);
+  const save = (patch: Record<string, unknown>) => { glyphh().org.update(patch).then((o: Record<string, unknown>) => { setOrg(o); flash(); }).catch(() => setErr('Could not save.')); };
+  const saveAddr = () => save({ address: (addr.line1 || addr.city || addr.postalCode) ? addr : null });
+  const af = (k: string, ph: string) => (
+    <input className="m-field-in" value={addr[k] || ''} placeholder={ph} onChange={(e) => setAddr({ ...addr, [k]: e.currentTarget.value })} onBlur={saveAddr} />
+  );
+  if (!org) return err ? <div className="m-field-err">{err}</div> : <div className="m-set-loading">Loading…</div>;
+  return (
+    <>
+      <div className="m-set-label">Organization {saved && <span className="m-saved">Saved</span>}</div>
+      <div className="m-set-form">
+        <label className="m-field"><span className="m-field-l">Name</span>
+          <input className="m-field-in" defaultValue={org.name as string} onBlur={(e) => save({ name: e.currentTarget.value.trim() })} /></label>
+      </div>
+      <div className="m-bill-cards">
+        <div className="m-bill-card"><span className="m-bill-v">{String(org.seatsUsed ?? '—')}/{String(org.maxSeats ?? '—')}</span><span className="m-bill-l">Seats</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{cap(String(org.tier || '—'))}</span><span className="m-bill-l">Plan</span></div>
+      </div>
+      <div className="m-set-label">Address</div>
+      <div className="m-set-form">
+        {af('line1', 'Address line 1')}
+        {af('line2', 'Line 2 (optional)')}
+        {af('city', 'City')}
+        {af('state', 'State / province')}
+        {af('postalCode', 'Postal code')}
+        {af('country', 'Country')}
+      </div>
+      {err && <div className="m-field-err">{err}</div>}
+    </>
+  );
+}
+
+function MembersTray() {
+  type Member = { userId: string; email: string; name: string | null; role: string };
+  const [members, setMembers] = useState<Member[] | null>(null);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('user');
+  const [invite, setInvite] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [del, setDel] = useState<Member | null>(null);
+  const [err, setErr] = useState('');
+  const refresh = () => glyphh().members.list().then((m: Member[]) => setMembers(m)).catch(() => setMembers([]));
+  useEffect(() => { refresh(); }, []);
+  const doInvite = async () => {
+    const e = email.trim(); if (!e) return;
+    setBusy(true); setErr('');
+    try { const r = await glyphh().members.invite(e, role); setInvite(r.acceptUrl || null); setEmail(''); refresh(); }
+    catch { setErr('Could not send the invite.'); } finally { setBusy(false); }
+  };
+  const setMemberRole = (m: Member, r: string) => { void glyphh().members.setRole(m.userId, r).then(() => void refresh()).catch(() => setErr('Could not update role.')); };
+  const remove = async (m: Member) => { setDel(null); try { await glyphh().members.remove(m.userId); refresh(); } catch { setErr('Could not remove.'); } };
+  const isAdminRole = (r: string) => r === 'org_admin' || r === 'super_admin';
+  return (
+    <>
+      <div className="m-set-label">Invite a teammate</div>
+      <div className="m-set-form">
+        <input className="m-field-in" type="email" inputMode="email" value={email} onChange={(e) => setEmail(e.currentTarget.value)} placeholder="teammate@work.com" />
+        <select className="m-field-in" value={role} onChange={(e) => setRole(e.currentTarget.value)}><option value="user">User</option><option value="admin">Admin</option></select>
+        <button className="m-login-primary" disabled={busy || !email.trim()} onClick={doInvite}>{busy ? 'Inviting…' : 'Send invite'}</button>
+      </div>
+      {invite && <div className="m-key-new"><div className="m-key-new-t">Invite link — share it:</div><code className="m-key-token">{invite}</code></div>}
+      <div className="m-set-label">Members</div>
+      {members == null ? <div className="m-set-loading">Loading…</div>
+        : (
+          <div className="m-sel-group">
+            {members.map((m) => (
+              <div key={m.userId} className="m-opt">
+                <span className="m-opt-text"><span className="m-opt-name">{m.name || m.email}</span><span className="m-opt-desc">{m.email}</span></span>
+                {isAdminRole(m.role) ? <span className="m-chip">Owner</span> : (
+                  <>
+                    <select className="m-member-role" value={m.role} onChange={(e) => setMemberRole(m, e.currentTarget.value)}><option value="user">User</option><option value="admin">Admin</option></select>
+                    <button className="m-key-revoke" onClick={() => setDel(m)}>Remove</button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      {err && <div className="m-field-err">{err}</div>}
+      {del && <Confirm title={`Remove ${del.name || del.email}?`} message="They lose access to the workspace immediately." confirmLabel="Remove" onCancel={() => setDel(null)} onConfirm={() => remove(del)} />}
+    </>
+  );
+}
+
+function GuardrailsTray() {
+  const [pol, setPol] = useState<Record<string, number> | null | undefined>(undefined);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { glyphh().org.guardrails().then((g: { guardrails_policy: Record<string, number> | null }) => setPol(g.guardrails_policy)).catch(() => setPol(null)); }, []);
+  const fields: [string, string][] = [
+    ['maxInputTokens', 'Max input tokens'],
+    ['maxOutputTokens', 'Max output tokens'],
+    ['maxConcurrent', 'Max concurrent runs'],
+    ['windowSeconds', 'Rate window (seconds)'],
+    ['windowTokens', 'Tokens per window'],
+    ['windowCalls', 'Calls per window'],
+  ];
+  const save = (key: string, val: string) => {
+    const next: Record<string, number> = { ...(pol || {}) };
+    const n = val.trim() === '' ? NaN : Number(val);
+    if (Number.isNaN(n)) delete next[key]; else next[key] = n;
+    const policy = Object.keys(next).length ? next : null;
+    setPol(policy);
+    glyphh().org.setGuardrails(policy).then((g: { guardrails_policy: Record<string, number> | null }) => { setPol(g.guardrails_policy); setSaved(true); setTimeout(() => setSaved(false), 1300); }).catch(() => {});
+  };
+  if (pol === undefined) return <div className="m-set-loading">Loading…</div>;
+  return (
+    <>
+      <div className="m-set-label">Limits {saved && <span className="m-saved">Saved</span>}</div>
+      <div className="m-set-form">
+        {fields.map(([k, lbl]) => (
+          <label className="m-field" key={k}><span className="m-field-l">{lbl}</span>
+            <input className="m-field-in" type="number" inputMode="numeric" defaultValue={pol?.[k] ?? ''} placeholder="No limit" onBlur={(e) => save(k, e.currentTarget.value)} /></label>
+        ))}
+      </div>
+      <div className="m-field-note">Blank means no limit. Applies to every member of your org.</div>
+    </>
+  );
+}
+
 const THEMES: { id: string; name: string; desc?: string }[] = [
   { id: 'system', name: 'System', desc: 'Match your device' },
   { id: 'light', name: 'Light' },
@@ -1235,7 +1454,13 @@ function AppearanceTray() {
   );
 }
 
-type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help';
+type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help'
+  | 'general' | 'apikeys' | 'org' | 'members' | 'guardrails';
+const SUB_TITLE: Record<SettingsSub, string> = {
+  profile: 'Profile', billing: 'Billing', usage: 'Usage', appearance: 'Appearance',
+  connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
+  org: 'Organization', members: 'Members', guardrails: 'Guardrails',
+};
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
   const [subOpen, setSubOpen] = useState(false);   // drives the track; sub persists during slide-back
@@ -1246,8 +1471,8 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
     return () => clearTimeout(t);
   }, [open]);
   const openSub = (s: SettingsSub) => { haptic(); setSub(s); setSubOpen(true); };
-  const title = sub === 'profile' ? 'Profile' : sub === 'billing' ? 'Billing' : sub === 'usage' ? 'Usage'
-    : sub === 'connections' ? 'Connections' : sub === 'help' ? 'Help & Support' : 'Appearance';
+  const isAdmin = user.role === 'org_admin' || user.role === 'super_admin';
+  const title = SUB_TITLE[sub];
 
   const legalRow = (href: string, label: string) => (
     <a className="m-info-row" href={href} target="_blank" rel="noopener noreferrer" onClick={() => setInfo(false)}>
@@ -1269,21 +1494,25 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
             </header>
             <div className="m-sheet-scroll">
               <div className="m-set-email">{user.email}</div>
-              {SETTINGS_GROUPS.map((g) => (
-                <div key={g.label} className="m-set-section">
-                  <div className="m-set-label">{g.label}</div>
-                  <div className="m-set-group">
-                    {g.rows.map((r) => (
-                      <button key={r.label} className="m-set-row" onClick={() => openSub(r.sub)}>
-                        <span className="m-set-ico"><Icon name={r.icon as IconName} /></span>
-                        <span className="m-set-name">{r.label}</span>
-                        {r.value && <span className="m-set-val">{r.value}</span>}
-                        <Icon name="chevron" />
-                      </button>
-                    ))}
+              {SETTINGS_GROUPS.map((g) => {
+                const rows = g.rows.filter((r) => !r.admin || isAdmin);
+                if (!rows.length) return null;
+                return (
+                  <div key={g.label} className="m-set-section">
+                    <div className="m-set-label">{g.label}</div>
+                    <div className="m-set-group">
+                      {rows.map((r) => (
+                        <button key={r.label} className="m-set-row" onClick={() => openSub(r.sub as SettingsSub)}>
+                          <span className="m-set-ico"><Icon name={r.icon as IconName} /></span>
+                          <span className="m-set-name">{r.label}</span>
+                          {r.value && <span className="m-set-val">{r.value}</span>}
+                          <Icon name="chevron" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <button className="m-profile-signout" onClick={() => { haptic(); onSignOut(); }}>Sign out</button>
             </div>
           </section>
@@ -1299,6 +1528,11 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
               {sub === 'profile' && <ProfileTray user={user} onUpdated={onUserChanged} />}
               {sub === 'billing' && <BillingTray />}
               {sub === 'usage' && <UsageTray />}
+              {sub === 'general' && <GeneralTray />}
+              {sub === 'apikeys' && <ApiKeysTray />}
+              {sub === 'org' && <OrganizationTray />}
+              {sub === 'members' && <MembersTray />}
+              {sub === 'guardrails' && <GuardrailsTray />}
               {sub === 'connections' && <ConnectionsTray />}
               {sub === 'appearance' && <AppearanceTray />}
               {sub === 'help' && <HelpTray />}

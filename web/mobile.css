@@ -1672,3 +1672,31 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
   overflow-y: auto;
   padding: 16px calc(var(--safe-right) + 16px) calc(var(--safe-bottom) + 24px) calc(var(--safe-left) + 16px);
 }
+
+/* ── Settings batch: General / API keys / Members ────────────────────────── */
+.m-field-note { margin-top: 10px; padding: 0 2px; font: 400 14px/1.45 var(--font-sans); color: var(--text-faint); }
+.m-key-new {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px; margin-bottom: 18px;
+  border-radius: 14px; background: var(--accent-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+.m-key-new-t { font: 500 15px/1.4 var(--font-sans); color: var(--accent-text); }
+.m-key-token {
+  font: 500 15px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text); word-break: break-all;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px;
+}
+.m-key-revoke, .m-member-role {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 7px 13px;
+  font: 500 14px/1 var(--font-sans);
+  cursor: pointer;
+}
+.m-key-revoke { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
+.m-member-role { appearance: none; -webkit-appearance: none; }

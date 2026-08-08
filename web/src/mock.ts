@@ -10,11 +10,16 @@ export type SpaceId = 'chat' | 'work' | 'code' | 'files' | 'desktop';
 
 /** Settings sheet rows, grouped. `icon` is an Icon name; `value` is the trailing
  *  detail (e.g. the plan). Mock now; SDK later. */
+export type SettingSub =
+  | 'profile' | 'billing' | 'usage' | 'general' | 'apikeys'
+  | 'connections' | 'appearance' | 'help'
+  | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces';   // 'org*/models/workspaces' = admin
 export interface SettingRow {
   icon: string;
   label: string;
   value?: string;
-  sub: 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help';   // which tray the row opens
+  sub: SettingSub;
+  admin?: boolean;   // org_admin-only
 }
 export interface SettingGroup {
   label: string;
@@ -28,10 +33,17 @@ export const SETTINGS_GROUPS: SettingGroup[] = [
     { icon: 'user', label: 'Profile', sub: 'profile' },
     { icon: 'dollar', label: 'Billing', sub: 'billing' },
     { icon: 'chart', label: 'Usage', sub: 'usage' },
+    { icon: 'key', label: 'API keys', sub: 'apikeys' },
+    { icon: 'building', label: 'Organization', sub: 'org', admin: true },
+    { icon: 'users', label: 'Members', sub: 'members', admin: true },
   ] },
   { label: 'App', rows: [
+    { icon: 'sliders', label: 'General', sub: 'general' },
     { icon: 'grid', label: 'Connections', sub: 'connections' },
     { icon: 'contrast', label: 'Appearance', sub: 'appearance' },
+  ] },
+  { label: 'Admin', rows: [
+    { icon: 'shield', label: 'Guardrails', sub: 'guardrails', admin: true },
   ] },
   { label: 'Support', rows: [
     { icon: 'help', label: 'Help & Support', sub: 'help' },
