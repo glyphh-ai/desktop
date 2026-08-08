@@ -85,7 +85,10 @@ function proxyHttp(req, res, targetBase, strip, rewrite) {
 // (which keeps handing back whatever localhost address it's configured with).
 function rewriteRuntimeUrl(j, url) {
   const fix = (o) => { if (o && typeof o === 'object' && typeof o.runtimeUrl === 'string' && o.runtimeUrl) { o.runtimeUrl = url; if (o.status && o.status !== 'ready') o.status = 'ready'; } };
-  if (Array.isArray(j)) j.forEach(fix); else { fix(j); if (j && typeof j === 'object') fix(j.session); }
+  // Server responses are enveloped as { data: … } — unwrap before rewriting.
+  const d = j && typeof j === 'object' && 'data' in j ? j.data : j;
+  if (Array.isArray(d)) d.forEach(fix);
+  else if (d && typeof d === 'object') { fix(d); fix(d.session); }
 }
 
 // SPA fallback paths — client-side routes with no file on disk, mirroring the
