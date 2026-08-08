@@ -10,9 +10,25 @@
 
 import { createRoot } from 'react-dom/client';
 import { useState, useEffect, useRef } from 'react';
-import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, GHOST_QUOTES, USER, DESKTOPS, CODE_SESSIONS, WORK_GROUPS,
+import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, WORK_GROUPS,
   SETTINGS_GROUPS, MODELS, MODEL_TOP_N, LOOP_ROLES, DEFAULT_ROLE, LOOPS, PERMISSIONS,
   type SpaceId, type Recent, type CodeSession, type Task } from './mock';
+// Real auth + client — the same SDK wiring app-web uses (localStorage token store,
+// gating cookies, refresh, signed-out event). We reuse it; we don't fork the client.
+import {
+  syncGating, isAuthenticated, signInWithGoogle, startEmailLink,
+  verifyEmailLink, exchangeCode, signOut as sdkSignOut, cachedUser,
+} from './glyphh-web.js';
+
+/* ── Current user (derived from the SDK identity / cached legacy user) ─────── */
+interface DisplayUser { name: string; email: string; initials: string; avatarUrl: string | null; }
+function toDisplayUser(u: { name?: string | null; email?: string | null; avatarUrl?: string | null } | null): DisplayUser {
+  const name = (u?.name || u?.email || 'You').trim();
+  const email = u?.email || '';
+  const parts = name.split(/\s+/).filter(Boolean);
+  const initials = (parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : (name[0] || 'U')).toUpperCase();
+  return { name, email, initials, avatarUrl: u?.avatarUrl || null };
+}
 
 // Injected at build time from package.json (esbuild --define). Guarded so a
 // bundle built without the define still renders.
@@ -132,13 +148,14 @@ function modelSummaryText(loopId: string, roleModels: Record<string, string>): s
 }
 
 /* ── Left rail: brand → spaces → recents ──────────────────────────────────── */
-function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat }: {
+function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat, user }: {
   active: SpaceId;
   onSelect: (id: SpaceId) => void;
   onOpenRecent: (id: string) => void;
   onAllChats: () => void;
   onAccount: () => void;
   onNewChat: () => void;
+  user: DisplayUser;
 }) {
   return (
     <aside className="m-rail">
@@ -176,8 +193,8 @@ function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat
       </div>
 
       <div className="m-rail-footer">
-        <button className="m-avatar" aria-label={USER.name} title={USER.name} onClick={onAccount}>
-          {USER.initials}
+        <button className="m-avatar" aria-label={user.name} title={user.name} onClick={onAccount}>
+          {user.initials}
         </button>
         <button className="btn btn-primary btn-lg" onClick={onNewChat}>
           <Icon name="plus" />
@@ -647,7 +664,7 @@ function SplashFlow() {
 /* ── Settings: a bottom sheet that slides up over the app and back down on
    close. Rows slide into their sub-screen on a horizontal track (Profile is
    wired); the < back slides that tray back to the main list. ─────────────── */
-function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+function SettingsSheet({ open, onClose, user, onSignOut }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void }) {
   const [profile, setProfile] = useState(false);
   const [info, setInfo] = useState(false);
   useEffect(() => {
@@ -675,7 +692,7 @@ function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }
               <button className="m-sheet-btn m-sheet-info" aria-label="About" onClick={() => { haptic(); setInfo((v) => !v); }}><Icon name="info" /></button>
             </header>
             <div className="m-sheet-scroll">
-              <div className="m-set-email">{USER.email}</div>
+              <div className="m-set-email">{user.email}</div>
               {SETTINGS_GROUPS.map((g) => (
                 <div key={g.label} className="m-set-section">
                   <div className="m-set-label">{g.label}</div>
@@ -703,18 +720,16 @@ function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }
             </header>
             <div className="m-sheet-scroll">
               <div className="m-profile-top">
-                <div className="m-profile-avatar">{USER.initials}</div>
-                <div className="m-profile-name">{USER.name}</div>
-                <div className="m-profile-email">{USER.email}</div>
+                <div className="m-profile-avatar">{user.initials}</div>
+                <div className="m-profile-name">{user.name}</div>
+                <div className="m-profile-email">{user.email}</div>
               </div>
               <div className="m-set-label">Details</div>
               <div className="m-sel-group">
-                <button className="m-sel-row"><span className="m-sel-row-label">Full name</span><span className="m-sel-row-val">{USER.name}</span><Icon name="chevron" /></button>
-                <button className="m-sel-row"><span className="m-sel-row-label">Display name</span><span className="m-sel-row-val">Chris</span><Icon name="chevron" /></button>
-                <button className="m-sel-row"><span className="m-sel-row-label">Email</span><span className="m-sel-row-val">{USER.email}</span><Icon name="chevron" /></button>
-                <button className="m-sel-row"><span className="m-sel-row-label">Organization</span><span className="m-sel-row-val">Glyphh</span><Icon name="chevron" /></button>
+                <button className="m-sel-row"><span className="m-sel-row-label">Full name</span><span className="m-sel-row-val">{user.name}</span><Icon name="chevron" /></button>
+                <button className="m-sel-row"><span className="m-sel-row-label">Email</span><span className="m-sel-row-val">{user.email}</span><Icon name="chevron" /></button>
               </div>
-              <button className="m-profile-signout">Sign out</button>
+              <button className="m-profile-signout" onClick={() => { haptic(); onSignOut(); }}>Sign out</button>
             </div>
           </section>
         </div>
@@ -936,12 +951,89 @@ function SearchOverlay({ open, inputRef, onClose }: {
   );
 }
 
+/* ── Login: the one never-themed surface. Magic link + Google, over the muse
+   canvas. Redeems the ?token= callback on /m itself. ─────────────────────── */
+function Login({ onSignedIn }: { onSignedIn: () => void }) {
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const gRef = useRef<HTMLDivElement>(null);
+  const clientId = typeof window !== 'undefined' ? (window as unknown as { __GLYPHH_GOOGLE_CLIENT_ID__?: string }).__GLYPHH_GOOGLE_CLIENT_ID__ : undefined;
+
+  // Google Identity Services — renders its own button; the credential is an ID token.
+  useEffect(() => {
+    if (!clientId || !gRef.current) return;
+    let cancelled = false;
+    const mount = () => {
+      const g = (window as unknown as { google?: any }).google;
+      if (!g?.accounts?.id || cancelled || !gRef.current) return;
+      g.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (resp: { credential: string }) => {
+          try { setBusy(true); setErr(''); await signInWithGoogle(resp.credential); await syncGating(); onSignedIn(); }
+          catch { setErr('Google sign-in failed. Try the magic link.'); setBusy(false); }
+        },
+      });
+      g.accounts.id.renderButton(gRef.current, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 300 });
+    };
+    if ((window as unknown as { google?: any }).google?.accounts?.id) { mount(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true; s.onload = mount;
+    document.head.appendChild(s);
+    return () => { cancelled = true; };
+  }, [clientId, onSignedIn]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const addr = email.trim();
+    if (!addr) return;
+    try { setBusy(true); setErr(''); await startEmailLink(addr, window.location.origin + '/m'); setSent(true); }
+    catch { setErr('Could not send the link. Check the address and try again.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="m-login">
+      <SplashFlow />
+      <div className="m-login-card">
+        <img className="m-login-logo" src="/brand/glyphh-logo-white.png" alt="Glyphh" />
+        {sent ? (
+          <div className="m-login-sent">
+            <div className="m-login-title">Check your email</div>
+            <p className="m-login-sub">We sent a sign-in link to <b>{email}</b>. Open it on this device to continue.</p>
+            <button className="m-login-alt" onClick={() => { haptic(); setSent(false); }}>Use a different email</button>
+          </div>
+        ) : (
+          <>
+            <div className="m-login-title">Sign in to Glyphh</div>
+            <form className="m-login-form" onSubmit={submit}>
+              <input className="m-login-input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none"
+                placeholder="you@work.com" value={email} onChange={(e) => setEmail((e.target as HTMLInputElement).value)} />
+              <button className="m-login-primary" type="submit" disabled={busy}>{busy ? 'Sending…' : 'Email me a magic link'}</button>
+            </form>
+            {clientId && <div className="m-login-or"><span>or</span></div>}
+            {clientId && <div className="m-login-google" ref={gRef} />}
+            {err && <div className="m-login-err">{err}</div>}
+          </>
+        )}
+        <div className="m-login-legal">
+          By continuing you agree to our <a href={LEGAL.terms} target="_blank" rel="noopener noreferrer">Terms</a> &amp;{' '}
+          <a href={LEGAL.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [active, setActive] = useState<SpaceId>('chat');
   const [drawer, setDrawer] = useState(false);
   const [screen, setScreen] = useState<'home' | 'list' | 'session'>('home');
   const [session, setSession] = useState<Recent | null>(null);
-  const [splash, setSplash] = useState(true);
+  const [authState, setAuthState] = useState<'checking' | 'in' | 'out'>('checking');
+  const [user, setUser] = useState<DisplayUser>(() => toDisplayUser(cachedUser()));
+  const [minSplash, setMinSplash] = useState(false);   // hold the splash for its full beat
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
   const [selectorAt, setSelectorAt] = useState<SelSection | null>(null);
@@ -961,11 +1053,44 @@ function App() {
     loopName: loopNameOf(loop),
   };
 
-  // Splash on load → then the new-chat screen.
+  // Hold the splash for its full beat regardless of how fast auth resolves.
   useEffect(() => {
-    const t = setTimeout(() => setSplash(false), 2200);
+    const t = setTimeout(() => setMinSplash(true), 2200);
     return () => clearTimeout(t);
   }, []);
+
+  // Boot auth: redeem a magic-link/exchange callback if present, else check the
+  // stored session; then who-am-I. The signed-out event flips us back to login.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = new URL(window.location.href);
+        const token = url.searchParams.get('token');
+        const code = url.searchParams.get('code');
+        if (token || code) {
+          if (token) await verifyEmailLink(token); else await exchangeCode(code as string);
+          url.searchParams.delete('token'); url.searchParams.delete('code'); url.searchParams.delete('redirect');
+          window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+        }
+        const authed = token || code ? true : await isAuthenticated();
+        if (!authed) { if (!cancelled) setAuthState('out'); return; }
+        const u = await syncGating();
+        if (cancelled) return;
+        setUser(toDisplayUser(u));
+        setAuthState(u ? 'in' : 'out');
+      } catch { if (!cancelled) setAuthState('out'); }
+    })();
+    const onOut = () => { setAuthState('out'); setUser(toDisplayUser(null)); };
+    window.addEventListener('glyphh:signed-out', onOut);
+    return () => { cancelled = true; window.removeEventListener('glyphh:signed-out', onOut); };
+  }, []);
+
+  const onSignedIn = () => {
+    setAuthState('checking');
+    void syncGating().then((u) => { setUser(toDisplayUser(u)); setAuthState(u ? 'in' : 'out'); });
+  };
+  const onSignOut = () => { setSettings(false); void sdkSignOut(); };  // event flips to 'out'
 
   // Loop change → the role set changes; reseed each slot to its default model.
   useEffect(() => { setRoleModels(seedRoleModels(loop)); }, [loop]);
@@ -983,17 +1108,18 @@ function App() {
   const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); setDrawer(false); };
   const newSession = () => { haptic(); setScreen('home'); setSession(null); setDrawer(false); };
 
+  const showSplash = !minSplash || authState === 'checking';
+
   return (
     <div className="m-app" data-drawer={drawer ? 'open' : 'closed'}>
-      {splash && (
-        <div className="m-splash">
-          <SplashFlow />
-          <img className="m-splash-logo m-splash-logo-black" src="/brand/glyphh-logo-black.png" alt="Glyphh" />
-          <img className="m-splash-logo m-splash-logo-white" src="/brand/glyphh-logo-white.png" alt="" />
-        </div>
-      )}
+      {/* Signed out → the login surface (once the splash beat is done). */}
+      {authState === 'out' && !showSplash && <Login onSignedIn={onSignedIn} />}
+
+      {/* Signed in → the app. */}
+      {authState === 'in' && (
+      <>
       <div className="m-shell">
-        <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} />
+        <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} onAllChats={allChats} onAccount={account} onNewChat={newChat} user={user} />
         <main className="m-main">
           {screen === 'home' && (
             <div className="m-home">
@@ -1033,7 +1159,7 @@ function App() {
           <div className="m-scrim" onClick={() => setDrawer(false)} />
         </main>
       </div>
-      <SettingsSheet open={settings} onClose={() => { haptic(); setSettings(false); }} />
+      <SettingsSheet open={settings} onClose={() => { haptic(); setSettings(false); }} user={user} onSignOut={onSignOut} />
       <AttachMenu open={attach} onClose={() => { haptic(); setAttach(false); }} />
       <SelectorSheet
         open={selectorAt !== null}
@@ -1044,6 +1170,17 @@ function App() {
         roleModels={roleModels} setRoleModels={setRoleModels}
       />
       <SearchOverlay open={search} inputRef={searchInputRef} onClose={closeSearch} />
+      </>
+      )}
+
+      {/* Splash sits on top until the beat is done and auth has resolved. */}
+      {showSplash && (
+        <div className="m-splash">
+          <SplashFlow />
+          <img className="m-splash-logo m-splash-logo-black" src="/brand/glyphh-logo-black.png" alt="Glyphh" />
+          <img className="m-splash-logo m-splash-logo-white" src="/brand/glyphh-logo-white.png" alt="" />
+        </div>
+      )}
     </div>
   );
 }

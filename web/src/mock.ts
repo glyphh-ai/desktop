@@ -6,13 +6,7 @@
 
 export type SpaceId = 'chat' | 'work' | 'code' | 'files' | 'desktop';
 
-/** The signed-in user (mock; SDK later → glyphh().me()). */
-export interface User {
-  name: string;
-  initials: string;
-  email: string;
-}
-export const USER: User = { name: 'Chris Timmerman', initials: 'CT', email: 'chris.timmerman@glyphh.ai' };
+/* The signed-in user now comes from the SDK (glyphh().me()); see mobile.tsx. */
 
 /** Settings sheet rows, grouped. `icon` is an Icon name; `value` is the trailing
  *  detail (e.g. the plan). Mock now; SDK later. */

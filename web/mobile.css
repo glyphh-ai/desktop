@@ -1248,3 +1248,63 @@ body {
 .m-home-loop:active { background: var(--hover); }
 .m-home-loop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-home-loop svg { flex: 0 0 15px; width: 15px; height: 15px; color: var(--text-3); }
+
+/* ── Login — the ONE never-themed surface (fixed brand over the muse canvas) ── */
+.m-login {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  background: #0e0c14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bottom) + 24px);
+  color: #f4f2f8;
+}
+.m-login-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+.m-login-logo { width: 176px; max-width: 62%; height: auto; margin-bottom: 6px; }
+.m-login-title { font: 700 25px/1.2 var(--font-sans); color: #fff; }
+.m-login-sub { margin: 0; max-width: 32ch; font: 400 16px/1.55 var(--font-sans); color: rgba(255,255,255,0.62); }
+.m-login-form { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.m-login-input {
+  width: 100%;
+  height: 54px;
+  padding: 0 18px;
+  border-radius: 15px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font: 400 18px/1 var(--font-sans);
+  outline: none;
+}
+.m-login-input::placeholder { color: rgba(255,255,255,0.4); }
+.m-login-input:focus { border-color: rgba(255,255,255,0.42); background: rgba(255,255,255,0.09); }
+.m-login-primary {
+  width: 100%;
+  height: 54px;
+  border: 0;
+  border-radius: 15px;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  font: 600 18px/1 var(--font-sans);
+}
+.m-login-primary:disabled { opacity: 0.6; }
+.m-login-or { display: flex; align-items: center; gap: 12px; width: 100%; color: rgba(255,255,255,0.42); font: 500 13px/1 var(--font-sans); }
+.m-login-or::before, .m-login-or::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.14); }
+.m-login-google { display: flex; justify-content: center; min-height: 44px; width: 100%; }
+.m-login-err { color: #ff8a8a; font: 400 14px/1.4 var(--font-sans); }
+.m-login-alt { border: 0; background: none; color: rgba(255,255,255,0.72); font: 500 15px/1 var(--font-sans); cursor: pointer; text-decoration: underline; }
+.m-login-legal { margin-top: 6px; font: 400 13px/1.55 var(--font-sans); color: rgba(255,255,255,0.45); }
+.m-login-legal a { color: rgba(255,255,255,0.78); }
+.m-login-sent { display: flex; flex-direction: column; align-items: center; gap: 14px; }
