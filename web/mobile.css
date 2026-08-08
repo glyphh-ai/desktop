@@ -1308,3 +1308,66 @@ body {
 .m-login-legal { margin-top: 6px; font: 400 13px/1.55 var(--font-sans); color: rgba(255,255,255,0.45); }
 .m-login-legal a { color: rgba(255,255,255,0.78); }
 .m-login-sent { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+/* ── Settings sub-trays: profile form + billing/usage cards ──────────────── */
+.m-set-loading { padding: 40px 4px; text-align: center; color: var(--text-faint); font: 400 17px/1 var(--font-sans); }
+.m-saved { font: 500 13px/1 var(--font-sans); color: var(--success); text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.m-profile-avatar-img { width: 88px; height: 88px; border-radius: 50%; object-fit: cover; margin-bottom: 6px; }
+
+.m-set-form { display: flex; flex-direction: column; gap: 12px; }
+.m-field { display: flex; flex-direction: column; gap: 6px; }
+.m-field-l { font: 500 15px/1 var(--font-sans); color: var(--text-3); padding-left: 2px; }
+.m-field-in {
+  height: 50px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: 400 18px/1 var(--font-sans);
+  outline: none;
+}
+.m-field-in:focus { border-color: var(--accent); }
+.m-field-btn {
+  width: 100%;
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font: 600 17px/1 var(--font-sans);
+  cursor: pointer;
+}
+.m-field-btn:active { background: var(--hover); }
+
+.m-bill-plan { display: flex; flex-direction: column; gap: 4px; padding: 4px 2px 18px; }
+.m-bill-tier { font: 700 30px/1 var(--font-sans); color: var(--text); }
+.m-bill-seats { font: 400 15px/1 var(--font-sans); color: var(--text-faint); }
+.m-bill-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 8px; }
+.m-bill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.m-bill-v { font: 700 22px/1 var(--font-sans); color: var(--text); font-variant-numeric: tabular-nums; }
+.m-bill-l { font: 400 13px/1.2 var(--font-sans); color: var(--text-faint); }
+
+/* ── Profile identity chips + field error ────────────────────────────────── */
+.m-profile-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
+.m-chip {
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font: 500 13px/1 var(--font-sans);
+}
+.m-field-err { margin-top: 12px; color: var(--danger); font: 400 15px/1.4 var(--font-sans); }
+/* Native <select> should match the text inputs. */
+select.m-field-in { appearance: none; -webkit-appearance: none; background-image: none; }

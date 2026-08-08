@@ -16,18 +16,35 @@ import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, GHOST_QUOTES, DESKTOPS, CODE_SESS
 // Real auth + client — the same SDK wiring app-web uses (localStorage token store,
 // gating cookies, refresh, signed-out event). We reuse it; we don't fork the client.
 import {
-  syncGating, isAuthenticated, signInWithGoogle, startEmailLink,
+  glyphh, syncGating, isAuthenticated, signInWithGoogle, startEmailLink,
   verifyEmailLink, exchangeCode, signOut as sdkSignOut, cachedUser,
 } from './glyphh-web.js';
 
+/** Micro-credits (1 credit = 1e6) → a rounded whole-credit string. */
+function credits(v: number | null | undefined): string {
+  return v == null ? '—' : Math.round(v / 1e6).toLocaleString();
+}
+
 /* ── Current user (derived from the SDK identity / cached legacy user) ─────── */
-interface DisplayUser { name: string; email: string; initials: string; avatarUrl: string | null; }
-function toDisplayUser(u: { name?: string | null; email?: string | null; avatarUrl?: string | null } | null): DisplayUser {
+interface DisplayUser { name: string; email: string; initials: string; avatarUrl: string | null; role: string; tier: string; }
+function toDisplayUser(u: { name?: string | null; email?: string | null; avatarUrl?: string | null; role?: string | null; tier?: string | null } | null): DisplayUser {
   const name = (u?.name || u?.email || 'You').trim();
   const email = u?.email || '';
   const parts = name.split(/\s+/).filter(Boolean);
   const initials = (parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : (name[0] || 'U')).toUpperCase();
-  return { name, email, initials, avatarUrl: u?.avatarUrl || null };
+  return { name, email, initials, avatarUrl: u?.avatarUrl || null, role: u?.role || '', tier: u?.tier || '' };
+}
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+const deviceTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } };
+/** The IANA zone list when the runtime supports it (modern browsers); else null. */
+let _zones: string[] | null | undefined;
+function tzList(): string[] | null {
+  if (_zones !== undefined) return _zones;
+  try {
+    const sv = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
+    _zones = sv ? sv('timeZone') : null;
+  } catch { _zones = null; }
+  return _zones;
 }
 
 // Injected at build time from package.json (esbuild --define). Guarded so a
@@ -664,14 +681,137 @@ function SplashFlow() {
 /* ── Settings: a bottom sheet that slides up over the app and back down on
    close. Rows slide into their sub-screen on a horizontal track (Profile is
    wired); the < back slides that tray back to the main list. ─────────────── */
-function SettingsSheet({ open, onClose, user, onSignOut }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void }) {
-  const [profile, setProfile] = useState(false);
+/* Settings sub-trays — real SDK data. */
+function ProfileTray({ user, onUpdated }: { user: DisplayUser; onUpdated: () => void }) {
+  const [p, setP] = useState<Record<string, unknown> | null>(null);
+  const [img, setImg] = useState('');          // live profile-image field + preview
+  const [imgBad, setImgBad] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let on = true;
+    glyphh().profile.get()
+      .then((d: Record<string, unknown>) => { if (!on) return; setP(d); setImg((d.imageUrl as string) || ''); })
+      .catch(() => { if (on) setErr('Could not load your profile.'); });
+    return () => { on = false; };
+  }, []);
+  const save = async (patch: Record<string, unknown>) => {
+    try {
+      setErr('');
+      const d = await glyphh().profile.update(patch);
+      setP(d as Record<string, unknown>);
+      setSaved(true); setTimeout(() => setSaved(false), 1300);
+      onUpdated();   // refresh the app-wide user so the rail avatar + name follow
+    } catch { setErr('Couldn’t save. Check your connection and try again.'); }
+  };
+  const zones = tzList();
+  const tz = (p?.timezone as string) || '';
+  const preview = (!imgBad && img) || (p?.avatarUrl as string) || user.avatarUrl || '';
+  return (
+    <>
+      <div className="m-profile-top">
+        {preview ? <img className="m-profile-avatar-img" src={preview} alt="" onError={() => setImgBad(true)} /> : <div className="m-profile-avatar">{user.initials}</div>}
+        <div className="m-profile-name">{user.name}</div>
+        <div className="m-profile-email">{user.email}</div>
+        {(user.role || user.tier) && (
+          <div className="m-profile-chips">
+            {user.role && <span className="m-chip">{cap(user.role)}</span>}
+            {user.tier && <span className="m-chip">{cap(user.tier)}</span>}
+          </div>
+        )}
+      </div>
+      {!p ? <div className="m-set-loading">Loading…</div> : (
+        <>
+          <div className="m-set-label">Details {saved && <span className="m-saved">Saved</span>}</div>
+          <div className="m-set-form">
+            <label className="m-field"><span className="m-field-l">First name</span>
+              <input className="m-field-in" defaultValue={(p.firstName as string) ?? ''} onBlur={(e) => save({ firstName: e.currentTarget.value.trim() })} /></label>
+            <label className="m-field"><span className="m-field-l">Last name</span>
+              <input className="m-field-in" defaultValue={(p.lastName as string) ?? ''} onBlur={(e) => save({ lastName: e.currentTarget.value.trim() })} /></label>
+            <label className="m-field"><span className="m-field-l">Profile image URL</span>
+              <input className="m-field-in" type="url" inputMode="url" placeholder="https://…" value={img}
+                onChange={(e) => { setImg(e.currentTarget.value); setImgBad(false); }}
+                onBlur={() => save({ imageUrl: img.trim() || null })} /></label>
+            <label className="m-field"><span className="m-field-l">Timezone</span>
+              {zones ? (
+                <select className="m-field-in" value={tz} onChange={(e) => save({ timezone: e.currentTarget.value })}>
+                  {tz && !zones.includes(tz) && <option value={tz}>{tz}</option>}
+                  {zones.map((z) => <option key={z} value={z}>{z}</option>)}
+                </select>
+              ) : (
+                <input className="m-field-in" defaultValue={tz} onBlur={(e) => save({ timezone: e.currentTarget.value.trim() })} />
+              )}
+            </label>
+          </div>
+          <button className="m-field-btn" onClick={() => save({ timezone: deviceTz() })}>Use this device’s timezone</button>
+          {err && <div className="m-field-err">{err}</div>}
+        </>
+      )}
+    </>
+  );
+}
+
+function BillingTray() {
+  const [d, setD] = useState<{ sub?: Record<string, unknown>; credits?: Record<string, number> } | null>(null);
+  useEffect(() => {
+    let on = true;
+    Promise.all([glyphh().billing.status(), glyphh().billing.credits()])
+      .then(([s, c]) => { if (on) setD({ sub: s, credits: c }); }).catch(() => { if (on) setD({}); });
+    return () => { on = false; };
+  }, []);
+  const portal = async () => { try { const r = await glyphh().billing.portal(); const url = (r as { url?: string })?.url || (r as unknown as string); if (url) window.open(url, '_blank', 'noopener'); } catch { /* */ } };
+  if (!d) return <div className="m-set-loading">Loading…</div>;
+  const s = d.sub as Record<string, unknown> | undefined; const c = d.credits;
+  const tierRaw = (s?.tier as string) || '';
+  const tier = tierRaw ? tierRaw.charAt(0).toUpperCase() + tierRaw.slice(1) : '—';
+  return (
+    <>
+      <div className="m-bill-plan">
+        <div className="m-bill-tier">{tier}</div>
+        {s && <div className="m-bill-seats">{String(s.seats)}/{String(s.maxSeats)} seats · {String(s.billingStatus ?? '')}</div>}
+      </div>
+      <div className="m-bill-cards">
+        <div className="m-bill-card"><span className="m-bill-v">{credits(c?.balance)}</span><span className="m-bill-l">Available</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{credits(c?.allowance ?? c?.grants)}</span><span className="m-bill-l">Allowance</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{credits(c?.purchases)}</span><span className="m-bill-l">Purchased</span></div>
+      </div>
+      <button className="m-field-btn" onClick={portal}>Manage billing &amp; payment</button>
+    </>
+  );
+}
+
+function UsageTray() {
+  const [d, setD] = useState<Record<string, unknown> | null>(null);
+  useEffect(() => { let on = true; glyphh().usage.mine().then((u: Record<string, unknown>) => { if (on) setD(u); }).catch(() => { if (on) setD({}); }); return () => { on = false; }; }, []);
+  if (!d) return <div className="m-set-loading">Loading…</div>;
+  const bs = (d.bySource as Record<string, number>) || {};
+  return (
+    <>
+      <div className="m-bill-cards">
+        <div className="m-bill-card"><span className="m-bill-v">{credits(d.credits as number)}</span><span className="m-bill-l">Credits used</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{credits(d.creditsSaved as number)}</span><span className="m-bill-l">Saved</span></div>
+      </div>
+      <div className="m-set-label">By source</div>
+      <div className="m-sel-group">
+        <div className="m-sel-row"><span className="m-sel-row-label">Runtime</span><span className="m-sel-row-val">{credits(bs.fly)}</span></div>
+        <div className="m-sel-row"><span className="m-sel-row-label">Connectors</span><span className="m-sel-row-val">{credits(bs.pipedream)}</span></div>
+        <div className="m-sel-row"><span className="m-sel-row-label">Model providers</span><span className="m-sel-row-val">{credits(bs.provider)}</span></div>
+      </div>
+    </>
+  );
+}
+
+function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void }) {
+  const [sub, setSub] = useState<'profile' | 'billing' | 'usage'>('profile');
+  const [subOpen, setSubOpen] = useState(false);   // drives the track; sub persists during slide-back
   const [info, setInfo] = useState(false);
   useEffect(() => {
     if (open) return;
-    const t = setTimeout(() => { setProfile(false); setInfo(false); }, 260);
+    const t = setTimeout(() => { setSubOpen(false); setInfo(false); }, 260);
     return () => clearTimeout(t);
   }, [open]);
+  const openSub = (s: 'profile' | 'billing' | 'usage') => { haptic(); setSub(s); setSubOpen(true); };
+  const title = sub === 'profile' ? 'Profile' : sub === 'billing' ? 'Billing' : 'Usage';
 
   const legalRow = (href: string, label: string) => (
     <a className="m-info-row" href={href} target="_blank" rel="noopener noreferrer" onClick={() => setInfo(false)}>
@@ -683,7 +823,7 @@ function SettingsSheet({ open, onClose, user, onSignOut }: { open: boolean; onCl
     <div className="m-sheet-overlay" data-open={open ? 'true' : 'false'}>
       <div className="m-sheet-scrim" onClick={onClose} />
       <div className="m-sheet" role="dialog" aria-modal="true" aria-label="Settings">
-        <div className="m-sheet-track" data-open={profile ? 'true' : 'false'}>
+        <div className="m-sheet-track" data-open={subOpen ? 'true' : 'false'}>
           {/* Panel A — the settings list. */}
           <section className="m-sheet-panel">
             <header className="m-sheet-head">
@@ -698,7 +838,7 @@ function SettingsSheet({ open, onClose, user, onSignOut }: { open: boolean; onCl
                   <div className="m-set-label">{g.label}</div>
                   <div className="m-set-group">
                     {g.rows.map((r) => (
-                      <button key={r.label} className="m-set-row" onClick={r.label === 'Profile' ? () => { haptic(); setProfile(true); } : undefined}>
+                      <button key={r.label} className="m-set-row" onClick={() => openSub(r.sub)}>
                         <span className="m-set-ico"><Icon name={r.icon as IconName} /></span>
                         <span className="m-set-name">{r.label}</span>
                         {r.value && <span className="m-set-val">{r.value}</span>}
@@ -708,28 +848,21 @@ function SettingsSheet({ open, onClose, user, onSignOut }: { open: boolean; onCl
                   </div>
                 </div>
               ))}
+              <button className="m-profile-signout" onClick={() => { haptic(); onSignOut(); }}>Sign out</button>
             </div>
           </section>
 
-          {/* Panel B — Profile (slides in from the right; < slides back). */}
+          {/* Panel B — the active sub-screen (Profile / Billing / Usage). */}
           <section className="m-sheet-panel">
             <header className="m-sheet-head">
-              <button className="m-sheet-btn" aria-label="Back" onClick={() => { haptic(); setProfile(false); }}><Icon name="back" /></button>
-              <span className="m-sheet-title">Profile</span>
+              <button className="m-sheet-btn" aria-label="Back" onClick={() => { haptic(); setSubOpen(false); }}><Icon name="back" /></button>
+              <span className="m-sheet-title">{title}</span>
               <span className="m-sheet-btn" aria-hidden="true" style={{ visibility: 'hidden' }} />
             </header>
             <div className="m-sheet-scroll">
-              <div className="m-profile-top">
-                <div className="m-profile-avatar">{user.initials}</div>
-                <div className="m-profile-name">{user.name}</div>
-                <div className="m-profile-email">{user.email}</div>
-              </div>
-              <div className="m-set-label">Details</div>
-              <div className="m-sel-group">
-                <button className="m-sel-row"><span className="m-sel-row-label">Full name</span><span className="m-sel-row-val">{user.name}</span><Icon name="chevron" /></button>
-                <button className="m-sel-row"><span className="m-sel-row-label">Email</span><span className="m-sel-row-val">{user.email}</span><Icon name="chevron" /></button>
-              </div>
-              <button className="m-profile-signout" onClick={() => { haptic(); onSignOut(); }}>Sign out</button>
+              {sub === 'profile' && <ProfileTray user={user} onUpdated={onUserChanged} />}
+              {sub === 'billing' && <BillingTray />}
+              {sub === 'usage' && <UsageTray />}
             </div>
           </section>
         </div>
@@ -1159,7 +1292,8 @@ function App() {
           <div className="m-scrim" onClick={() => setDrawer(false)} />
         </main>
       </div>
-      <SettingsSheet open={settings} onClose={() => { haptic(); setSettings(false); }} user={user} onSignOut={onSignOut} />
+      <SettingsSheet open={settings} onClose={() => { haptic(); setSettings(false); }} user={user} onSignOut={onSignOut}
+        onUserChanged={() => { void syncGating().then((u) => setUser(toDisplayUser(u))); }} />
       <AttachMenu open={attach} onClose={() => { haptic(); setAttach(false); }} />
       <SelectorSheet
         open={selectorAt !== null}

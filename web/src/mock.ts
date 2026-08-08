@@ -14,25 +14,20 @@ export interface SettingRow {
   icon: string;
   label: string;
   value?: string;
+  sub: 'profile' | 'billing' | 'usage';   // which tray the row opens
 }
 export interface SettingGroup {
   label: string;
   rows: SettingRow[];
 }
+// Reconciled to the real Glyphh domains that the SDK backs today. Notifications /
+// Privacy / Shared links / Capabilities / Voice are hidden until they exist
+// server+SDK-side. `sub` is the tray key; icon is an Icon name.
 export const SETTINGS_GROUPS: SettingGroup[] = [
   { label: 'Account', rows: [
-    { icon: 'user', label: 'Profile' },
-    { icon: 'dollar', label: 'Billing', value: 'Max plan' },
-    { icon: 'chart', label: 'Usage' },
-    { icon: 'bell', label: 'Notifications' },
-    { icon: 'shield', label: 'Privacy' },
-    { icon: 'link', label: 'Shared links' },
-  ] },
-  { label: 'App', rows: [
-    { icon: 'sliders', label: 'Capabilities' },
-    { icon: 'grid', label: 'Connectors' },
-    { icon: 'perms', label: 'Permissions' },
-    { icon: 'voice', label: 'Voice' },
+    { icon: 'user', label: 'Profile', sub: 'profile' },
+    { icon: 'dollar', label: 'Billing', sub: 'billing' },
+    { icon: 'chart', label: 'Usage', sub: 'usage' },
   ] },
 ];
 
