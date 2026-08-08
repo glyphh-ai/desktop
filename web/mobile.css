@@ -659,10 +659,10 @@ body {
   position: absolute; left: 0; right: 0; bottom: 0;
   height: calc(var(--safe-bottom) + 118px);
   z-index: 5; pointer-events: none;
-  -webkit-backdrop-filter: blur(6.5px);
-  backdrop-filter: blur(6.5px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 44%);
-  mask-image: linear-gradient(to bottom, transparent 0%, #000 44%);
+  -webkit-backdrop-filter: blur(11px);
+  backdrop-filter: blur(11px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 38%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 38%, #000 100%);
 }
 /* Scroll-to-latest — centered, appears only when scrolled up. */
 .m-scrolldown {
