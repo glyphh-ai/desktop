@@ -644,7 +644,7 @@ body {
   gap: 14px;
   padding: calc(var(--safe-top) + 74px) 16px 16px calc(var(--safe-left) + 16px);
 }
-.m-msg { max-width: 84%; font: 400 17px/1.45 var(--font-sans); }
+.m-msg { max-width: 84%; font: 400 19px/1.5 var(--font-sans); }
 .m-msg-user {
   align-self: flex-end;
   padding: 11px 16px;
@@ -652,7 +652,7 @@ body {
   background: var(--surface-3);
   color: var(--text);
 }
-.m-msg-glyphh { align-self: flex-start; max-width: 100%; color: var(--text); }
+.m-msg-glyphh { align-self: flex-start; max-width: 100%; color: var(--text); white-space: pre-wrap; word-break: break-word; }
 
 .m-composer { flex: 0 0 auto; padding: 8px 12px calc(var(--safe-bottom) + 12px) calc(var(--safe-left) + 12px); }
 .m-composer-box {

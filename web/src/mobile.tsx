@@ -675,17 +675,12 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
               {msgs.map((m) => (
                 (m.text || m.role === 'user') && <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
               ))}
-              {(() => {
-                const last = msgs[msgs.length - 1];
-                const thinking = comp.sending && !!last && last.role === 'glyphh' && !last.text;
-                if (!connecting && !thinking) return null;
-                return (
-                  <div className="m-working">
-                    <GlyphhSpinner size={40} phrases={!connecting} />
-                    {connecting && <span className="m-working-label">Connecting…</span>}
-                  </div>
-                );
-              })()}
+              {(connecting || comp.sending) && (
+                <div className="m-working">
+                  <GlyphhSpinner size={40} phrases={!connecting} />
+                  {connecting && <span className="m-working-label">Connecting…</span>}
+                </div>
+              )}
             </>
           )}
       </div>
