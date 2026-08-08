@@ -773,12 +773,13 @@ body {
   flex-direction: column;
   background: var(--bg);
   border-radius: 22px 22px 0 0;
-  box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34);
   overflow: hidden;                        /* clip the off-screen panel */
   transform: translateY(100%);
   transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.m-sheet-overlay[data-open="true"] .m-sheet { transform: translateY(0); }
+/* Shadow only while open — otherwise the parked (below-screen) sheet's upward
+   shadow bleeds onto the bottom of every screen. */
+.m-sheet-overlay[data-open="true"] .m-sheet { transform: translateY(0); box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34); }
 
 /* Horizontal track: main list ↔ a sub-screen (Profile), sliding both ways. */
 .m-sheet-track { flex: 1 1 auto; min-height: 0; display: flex; width: 200%; transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -922,13 +923,12 @@ body {
   flex-direction: column;
   background: var(--bg);
   border-radius: 22px 22px 0 0;
-  box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34);
   overflow: hidden;                        /* clip the off-screen panel */
   padding-bottom: calc(var(--safe-bottom) + 16px);
   transform: translateY(100%);
   transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.m-sel-overlay[data-open="true"] .m-sel { transform: translateY(0); }
+.m-sel-overlay[data-open="true"] .m-sel { transform: translateY(0); box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34); }
 /* Content-height variant (permission sheet): sizes to its rows, capped at 80%. */
 .m-sel-fit { top: auto; max-height: 80%; }
 .m-sel-note { padding: 2px 6px 14px; font: 400 15px/1.4 var(--font-sans); color: var(--text-3); }
