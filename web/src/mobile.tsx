@@ -341,8 +341,6 @@ function ChatsView({ title, onMenu, onOpen, onNewChat, onSearch }: {
           </button>
         ))}
       </div>
-      {/* Blur zone: the list scrolls fuzzily under the New chat + search. */}
-      <div className="m-chats-fade" />
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewChat}><Icon name="plus" /><span>New chat</span></button>
       <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
     </div>
@@ -420,7 +418,6 @@ function CodeView({ onMenu, onOpen, onNewSession, onSearch }: {
           ))}
         </div>
       </div>
-      <div className="m-chats-fade" />
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewSession}><Icon name="plus" /><span>New session</span></button>
       <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
     </div>
@@ -467,7 +464,6 @@ function WorkView({ onMenu, onOpen, onNewTask, onSearch }: {
           </div>
         ))}
       </div>
-      <div className="m-chats-fade" />
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewTask}><Icon name="plus" /><span>New task</span></button>
       <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
     </div>

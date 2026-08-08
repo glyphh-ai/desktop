@@ -384,32 +384,26 @@ body {
 .m-chat-when { font: 400 15px/1 var(--font-sans); color: var(--text-faint); }
 .m-chat-row > svg { flex: 0 0 20px; width: 20px; height: 20px; color: var(--text-faint); }
 
-/* Blur zone: a backdrop-blurred band pinned to the bottom that the list scrolls
-   fuzzily under. Masked so the blur fades IN toward the bottom (crisp at the
-   top edge, full frost behind the search). pointer-events off so taps fall
-   through to the New chat + search that float on top. */
+/* Header blur zone: a backdrop-blurred band that the list scrolls fuzzily under,
+   masked so the frost fades out downward. Only used pinned to the TOP (under the
+   header) via .m-chats-fade-top — the base holds the shared position/blur.
+   pointer-events off so taps fall through. */
 .m-chats-fade {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
-  height: calc(var(--safe-bottom) + 108px);
+  top: 0;
+  height: calc(var(--safe-top) + 56px);
   z-index: 4;
   pointer-events: none;
   -webkit-backdrop-filter: blur(6.5px);
   backdrop-filter: blur(6.5px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 42%);
-  mask-image: linear-gradient(to bottom, transparent 0%, #000 42%);
-}
-/* Mirror of the bottom band, pinned to the TOP: same masked frost, flipped so
-   the list dissolves upward under the header. */
-.m-chats-fade-top {
-  bottom: auto;
-  top: 0;
-  height: calc(var(--safe-top) + 56px);
   -webkit-mask-image: linear-gradient(to top, transparent 0%, #000 42%);
   mask-image: linear-gradient(to top, transparent 0%, #000 42%);
 }
+/* Retained modifier — the base already carries the top values; kept so existing
+   `m-chats-fade m-chats-fade-top` markup stays valid. */
+.m-chats-fade-top { top: 0; }
 
 /* Floating New chat + bottom search bar (both ride ABOVE the blur zone). */
 /* Exact twin of the rail's New Chat button: .btn .btn-primary .btn-lg + 18px
