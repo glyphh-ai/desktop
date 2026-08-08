@@ -43,6 +43,30 @@ const ROOT = fileURLToPath(new URL('../dist/renderer/', import.meta.url));
 const PORT = ENV.PORT || 3002;
 const BRIDGE = '/glyphh-web-bundle.js';
 
+// ── LOCAL DEV runtime tunnel (opt-in via LOCAL_RUNTIME_PROXY=1) ────────────────
+// A phone loading this over ngrok can't reach the control plane or the rrotor
+// harness on the host's localhost. When enabled, we reverse-proxy them through
+// THIS one tunnel so everything is same-origin (no CORS, one ngrok):
+//   /api/*  → the local control plane   (API_TARGET, default :3001)
+//   /rt/*   → the local rrotor HARNESS   (RT_TARGET,  default :8081; /rt stripped)
+// The mobile app is then pointed at same-origin, and the server is configured to
+// hand back `<public-origin>/rt` as the runtime URL. OFF by default → prod is
+// unaffected (SDK stays direct-to-API).
+const PROXY = ENV.LOCAL_RUNTIME_PROXY === '1' || ENV.LOCAL_RUNTIME_PROXY === 'true';
+const API_TARGET = ENV.API_TARGET || 'http://localhost:3001';
+const RT_TARGET = ENV.RT_TARGET || 'http://localhost:8081';
+function proxyHttp(req, res, targetBase, strip) {
+  const target = new URL(targetBase);
+  const path = (strip ? req.url.slice(strip.length) : req.url) || '/';
+  const pr = http.request({
+    protocol: target.protocol, hostname: target.hostname, port: target.port,
+    method: req.method, path: path.startsWith('/') ? path : '/' + path,
+    headers: { ...req.headers, host: target.host },
+  }, (pres) => { res.writeHead(pres.statusCode || 502, pres.headers); pres.pipe(res); });
+  pr.on('error', (e) => { res.statusCode = 502; res.end('proxy error: ' + e.message); });
+  req.pipe(pr);
+}
+
 // SPA fallback paths — client-side routes with no file on disk, mirroring the
 // platform's: /auth/callback (OAuth + magic-link return) and /auth/device (the
 // device-grant approval page). They serve the LOGIN SHELL (index.html) IN PLACE,
@@ -112,6 +136,12 @@ function securityHeaders(res, isHttps) {
 const exists = async (f) => { try { await access(f); return true; } catch { return false; } };
 
 const server = http.createServer(async (req, res) => {
+  // DEV tunnel: forward API + harness through this origin before anything else.
+  if (PROXY) {
+    const rp = new URL(req.url, 'http://x').pathname;
+    if (rp.startsWith('/api/')) return proxyHttp(req, res, API_TARGET, '');
+    if (rp === '/rt' || rp.startsWith('/rt/')) return proxyHttp(req, res, RT_TARGET, '/rt');
+  }
   securityHeaders(res, (req.headers['x-forwarded-proto'] || '').includes('https'));
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
@@ -205,8 +235,11 @@ const server = http.createServer(async (req, res) => {
         + "location.replace('/m')}catch(e){}</script>";
       // The mobile shell loads its OWN React bundle (declared in mobile.html) and
       // must not get the desktop renderer bridge — only the client-safe config.
+      // DEV tunnel: point the mobile SDK at THIS origin so /api rides the proxy.
+      const apiOverride = (isMobileShell && PROXY)
+        ? '\n  <script>window.__GLYPHH_API_URL__=location.origin;</script>' : '';
       const inject = isMobileShell
-        ? configScript()
+        ? configScript() + apiOverride
         : `${touchRedirect}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`;
       body = body.replace(
         /<head(\s[^>]*)?>/i,
@@ -231,4 +264,30 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`app web target on http://localhost:${PORT}`));
+// DEV tunnel: proxy the harness WS stream (/rt/ws → RT_TARGET/ws). The harness
+// falls back to HTTP frame-polling if the socket path is unavailable, but WS
+// keeps the stream live end-to-end through the one tunnel.
+if (PROXY) {
+  server.on('upgrade', (req, socket, head) => {
+    const rp = new URL(req.url, 'http://x').pathname;
+    if (!rp.startsWith('/rt/')) { socket.destroy(); return; }
+    const target = new URL(RT_TARGET);
+    const preq = http.request({
+      hostname: target.hostname, port: target.port, path: req.url.slice('/rt'.length) || '/',
+      method: req.method, headers: { ...req.headers, host: target.host },
+    });
+    preq.on('upgrade', (pres, psock, phead) => {
+      socket.write('HTTP/1.1 101 Switching Protocols\r\n'
+        + Object.entries(pres.headers).map(([k, v]) => `${k}: ${v}`).join('\r\n') + '\r\n\r\n');
+      if (phead && phead.length) psock.unshift(phead);
+      psock.pipe(socket); socket.pipe(psock);
+      psock.on('error', () => socket.destroy());
+      socket.on('error', () => psock.destroy());
+    });
+    preq.on('error', () => socket.destroy());
+    if (head && head.length) preq.write(head);
+    preq.end();
+  });
+}
+
+server.listen(PORT, () => console.log(`app web target on http://localhost:${PORT}${PROXY ? ` · dev proxy ON (/api→${API_TARGET}, /rt→${RT_TARGET})` : ''}`));
