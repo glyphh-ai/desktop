@@ -144,27 +144,6 @@ body {
 .m-rail-brand { display: flex; align-items: center; padding: 14px 0 8px 26px; }
 .m-wordmark { height: 30px; width: auto; display: block; }
 
-/* Circular hamburger (home) — same circle as the session back button. It lives
-   inside the shell, so it SLIDES WITH the rail. Toggles the drawer. */
-.m-hamburger {
-  position: absolute;
-  top: calc(var(--safe-top) + 12px);
-  left: calc(var(--safe-left) + 12px);
-  z-index: 30;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--surface-2);
-  color: var(--text);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  box-shadow: 0 2px 10px var(--overlay-bg);
-}
-.m-hamburger:active { background: var(--hover); }
-.m-hamburger svg { width: 24px; height: 24px; }
-
 /* Blurs the pushed-out content while the drawer is open; tap to close. */
 .m-scrim {
   position: absolute;
@@ -755,7 +734,7 @@ body {
   /* No push drawer on tablet: the shell is a no-op and the rail is a persistent
      fixed sidebar (fixed positioning is what keeps it flush to the top). */
   .m-shell { display: contents; }
-  .m-hamburger, .m-scrim { display: none; }
+  .m-scrim { display: none; }
   .m-rail {
     position: fixed;
     inset: 0 auto 0 0;
@@ -1104,3 +1083,168 @@ body {
 .m-filter-check { flex: 0 0 26px; width: 26px; display: flex; justify-content: center; color: var(--text); }
 .m-filter-check svg { width: 22px; height: 22px; }
 .m-filter-row > svg { flex: 0 0 24px; width: 24px; height: 24px; color: var(--text-2); }
+
+/* ── Session dots menu (Rename / Pin / Delete) + delete confirm ──────────── */
+.m-sv-menu-wrap { position: relative; display: inline-flex; }
+.m-sv-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  min-width: 232px;
+  padding: 8px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid var(--border);
+  box-shadow: 0 14px 40px var(--overlay-bg);
+  transform-origin: top right;
+  animation: m-info-in 0.16s ease;
+}
+.m-sv-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 14px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: 500 20px/1.2 var(--font-sans);
+  color: var(--text);
+}
+.m-sv-menu-row:active { background: var(--hover); }
+.m-sv-menu-row svg { flex: 0 0 22px; width: 22px; height: 22px; color: var(--text-2); }
+.m-sv-menu-row.m-danger, .m-sv-menu-row.m-danger svg { color: var(--danger); }
+.m-sv-menu-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.m-sv-menu-t { font: 500 20px/1.2 var(--font-sans); color: var(--text); }
+.m-sv-menu-s { font: 400 14px/1.2 var(--font-sans); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-sv-menu-sep { height: 1px; background: var(--border); margin: 6px 10px; }
+
+.m-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.m-confirm-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); }
+.m-confirm {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 22px 22px 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  animation: m-confirm-in 0.18s ease;
+}
+@keyframes m-confirm-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+.m-confirm-title { font: 700 22px/1.2 var(--font-sans); color: var(--text); margin-bottom: 8px; }
+.m-confirm-msg { font: 400 17px/1.45 var(--font-sans); color: var(--text-3); margin-bottom: 20px; }
+.m-confirm-actions { display: flex; gap: 10px; }
+.m-confirm-btn {
+  flex: 1;
+  padding: 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: 600 18px/1 var(--font-sans);
+  cursor: pointer;
+}
+.m-confirm-btn:active { background: var(--hover); }
+.m-confirm-danger { background: var(--danger); color: #fff; }
+.m-confirm-danger:active { filter: brightness(0.92); background: var(--danger); }
+
+/* ── Active search: focused input pinned above the keyboard ──────────────── */
+.m-search-overlay { position: fixed; inset: 0; z-index: 210; pointer-events: none; }
+.m-search-overlay[data-open="true"] { pointer-events: auto; }
+.m-search-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 34%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.m-search-overlay[data-open="true"] .m-search-scrim { opacity: 1; }
+.m-search-bar {
+  position: absolute;
+  left: calc(var(--safe-left) + 12px);
+  right: calc(var(--safe-right) + 12px);
+  bottom: calc(var(--m-kb, 0px) + 10px);   /* tracks the keyboard's top edge */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transform: translateY(160%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.m-search-overlay[data-open="true"] .m-search-bar { transform: translateY(0); }
+.m-search-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 28px var(--overlay-bg);
+}
+.m-search-field > svg { flex: 0 0 22px; width: 22px; height: 22px; color: var(--text-faint); }
+.m-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  font: 400 19px/1 var(--font-sans);
+  color: var(--text);
+  caret-color: var(--accent);
+}
+.m-search-input::placeholder { color: var(--text-faint); }
+.m-search-x {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 8px 28px var(--overlay-bg);
+}
+.m-search-x svg { width: 22px; height: 22px; }
+
+/* ── New-chat home header: chats-style transparent bar + centered loop/model ── */
+.m-home-center { flex: 1; min-width: 0; display: flex; justify-content: center; }
+.m-home-head-spacer { flex: 0 0 40px; }   /* balances the hamburger so the dropdown centers */
+.m-home-loop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  cursor: pointer;
+  font: 600 16px/1 var(--font-sans);
+  color: var(--text);
+}
+.m-home-loop:active { background: var(--hover); }
+.m-home-loop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-home-loop svg { flex: 0 0 15px; width: 15px; height: 15px; color: var(--text-3); }

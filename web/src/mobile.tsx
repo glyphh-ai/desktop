@@ -32,7 +32,8 @@ type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'b
   | 'circle' | 'progress' | 'check'
   | 'close' | 'info' | 'user' | 'dollar' | 'chart' | 'bell' | 'shield' | 'link'
   | 'sliders' | 'grid' | 'perms' | 'voice'
-  | 'camera' | 'image' | 'filedoc' | 'tick' | 'external' | 'pin' | 'chats';
+  | 'camera' | 'image' | 'filedoc' | 'tick' | 'external' | 'pin' | 'chats' | 'pencil' | 'trash'
+  | 'swap' | 'loop';
 
 /* ── Icons (stroke = currentColor, so they inherit the token color) ───────── */
 const ICON: Record<IconName, React.ReactNode> = {
@@ -78,6 +79,10 @@ const ICON: Record<IconName, React.ReactNode> = {
   external: <><rect x="4" y="4" width="16" height="16" rx="3.5" /><path d="M10 14l5-5" /><path d="M11 9h4v4" /></>,
   pin: <><path d="M12 17v5" /><path d="M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.7l-1.8-.9A2 2 0 0 1 15 10.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></>,
   chats: <><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></>,
+  pencil: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></>,
+  trash: <><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></>,
+  swap: <><path d="M16 3l4 4-4 4" /><path d="M20 7H8a4 4 0 0 0-4 4" /><path d="M8 21l-4-4 4-4" /><path d="M4 17h12a4 4 0 0 0 4-4" /></>,
+  loop: <><path d="M17 2l4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></>,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -118,14 +123,12 @@ function seedRoleModels(loopId: string): Record<string, string> {
   return rm;
 }
 function modelNameOf(id: string) { return MODELS.find((m) => m.id === id)?.name ?? ''; }
-/** "Default | Sonnet 5 +1" — loop name plus the primary role's model (and a
- *  +N when the loop has multiple role slots). */
-function loopModelText(loopId: string, roleModels: Record<string, string>): string {
+function loopNameOf(loopId: string) { return LOOPS.find((l) => l.id === loopId)?.name ?? ''; }
+/** "Sonnet 5 +1" — the primary role's model, with a +N for extra role slots. */
+function modelSummaryText(loopId: string, roleModels: Record<string, string>): string {
   const roles = rolesForLoop(loopId);
-  const loopName = LOOPS.find((l) => l.id === loopId)?.name ?? '';
   const primary = modelNameOf(roleModels[roles[0]?.id] ?? '');
-  const models = roles.length > 1 ? `${primary} +${roles.length - 1}` : primary;
-  return `${loopName} / ${models}`;
+  return roles.length > 1 ? `${primary} +${roles.length - 1}` : primary;
 }
 
 /* ── Left rail: brand → spaces → recents ──────────────────────────────────── */
@@ -186,11 +189,12 @@ function Rail({ active, onSelect, onOpenRecent, onAllChats, onAccount, onNewChat
 }
 
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
-   One config chip shows loop / model (single line, never wraps). */
-function Composer({ onPlus, onSelector, loopModelLabel }: {
+   The chip is the permission-mode selector; model + loop live in the session
+   dots menu. */
+function Composer({ onPlus, onOpenSelector, permLabel }: {
   onPlus: () => void;
-  onSelector: () => void;
-  loopModelLabel: string;
+  onOpenSelector: (section: 'loop' | 'models' | 'permission') => void;
+  permLabel: string;
 }) {
   return (
     <div className="m-composer">
@@ -198,7 +202,7 @@ function Composer({ onPlus, onSelector, loopModelLabel }: {
         <div className="m-composer-input"><span className="m-composer-ph">Message Glyphh…</span></div>
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
-          <button className="m-tool-pill m-pill-cfg" onClick={onSelector}><span>{loopModelLabel}</span></button>
+          <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
           <span className="m-composer-spacer" />
           <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
           <button className="m-composer-send" aria-label="Send"><Icon name="send" /></button>
@@ -260,11 +264,12 @@ function FilterMenu({ allLabel, allIcon }: { allLabel: string; allIcon: IconName
 }
 
 /* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
-function ChatsView({ title, onMenu, onOpen, onNewChat }: {
+function ChatsView({ title, onMenu, onOpen, onNewChat, onSearch }: {
   title: string;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onNewChat: () => void;
+  onSearch: () => void;
 }) {
   return (
     <div className="m-chats">
@@ -289,7 +294,7 @@ function ChatsView({ title, onMenu, onOpen, onNewChat }: {
       {/* Blur zone: the list scrolls fuzzily under the New chat + search. */}
       <div className="m-chats-fade" />
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewChat}><Icon name="plus" /><span>New chat</span></button>
-      <div className="m-search"><Icon name="search" /><span>Search</span></div>
+      <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
     </div>
   );
 }
@@ -316,10 +321,11 @@ function CodeRowMeta({ s }: { s: CodeSession }) {
   );
 }
 
-function CodeView({ onMenu, onOpen, onNewSession }: {
+function CodeView({ onMenu, onOpen, onNewSession, onSearch }: {
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onNewSession: () => void;
+  onSearch: () => void;
 }) {
   return (
     <div className="m-code">
@@ -366,17 +372,18 @@ function CodeView({ onMenu, onOpen, onNewSession }: {
       </div>
       <div className="m-chats-fade" />
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewSession}><Icon name="plus" /><span>New session</span></button>
-      <div className="m-search"><Icon name="search" /><span>Search</span></div>
+      <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
     </div>
   );
 }
 
 /* ── Work: tasks grouped by time bucket, each a card with a status
    glyph, title, timestamp and an optional note. ─────────────────────────── */
-function WorkView({ onMenu, onOpen, onNewTask }: {
+function WorkView({ onMenu, onOpen, onNewTask, onSearch }: {
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onNewTask: () => void;
+  onSearch: () => void;
 }) {
   const glyph = (s: Task['state']) => (s === 'doing' ? 'progress' : s === 'done' ? 'check' : 'circle');
   return (
@@ -412,22 +419,64 @@ function WorkView({ onMenu, onOpen, onNewTask }: {
       </div>
       <div className="m-chats-fade" />
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewTask}><Icon name="plus" /><span>New task</span></button>
-      <div className="m-search"><Icon name="search" /><span>Search</span></div>
+      <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
     </div>
   );
 }
 
 /* ── Session: the standard Glyphh agent view (transparent blurred header,
    messages, composer pinned at the bottom). ─────────────────────────────── */
-interface CompProps { onPlus: () => void; onSelector: () => void; loopModelLabel: string; }
+type SelSection = 'sections' | 'loop' | 'models' | 'permission';
+interface CompProps {
+  onPlus: () => void;
+  onOpenSelector: (section: SelSection) => void;
+  permLabel: string;
+  modelSummary: string;   // dots "Change model" subtitle / home dropdown
+  loopName: string;       // dots "Change loop" subtitle / home dropdown
+}
 
 function SessionView({ session, onBack, comp }: { session: Recent; onBack: () => void; comp: CompProps }) {
+  const [menu, setMenu] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const onDoc = (e: Event) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false); };
+    document.addEventListener('pointerdown', onDoc);
+    return () => document.removeEventListener('pointerdown', onDoc);
+  }, [menu]);
+
   return (
     <div className="m-sv">
       <header className="m-sv-head">
         <button className="m-chats-icon" aria-label="Back" onClick={onBack}><Icon name="back" /></button>
         <span className="m-sv-name">{session.title}</span>
-        <button className="m-chats-icon" aria-label="Options"><Icon name="dots" /></button>
+        <div className="m-sv-menu-wrap" ref={menuRef}>
+          <button className="m-chats-icon" aria-label="Options" onClick={() => { haptic(); setMenu((v) => !v); }}><Icon name="dots" /></button>
+          {menu && (
+            <div className="m-sv-menu" role="menu">
+              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('models'); }}>
+                <Icon name="swap" />
+                <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change model</span><span className="m-sv-menu-s">{comp.modelSummary}</span></span>
+              </button>
+              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('loop'); }}>
+                <Icon name="loop" />
+                <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change loop</span><span className="m-sv-menu-s">{comp.loopName}</span></span>
+              </button>
+              <div className="m-sv-menu-sep" />
+              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); /* rename (mock) */ }}>
+                <Icon name="pencil" /><span>Rename</span>
+              </button>
+              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); setPinned((p) => !p); }}>
+                <Icon name="pin" /><span>{pinned ? 'Unpin' : 'Pin'}</span>
+              </button>
+              <button className="m-sv-menu-row m-danger" onClick={() => { haptic(); setMenu(false); setConfirm(true); }}>
+                <Icon name="trash" /><span>Delete</span>
+              </button>
+            </div>
+          )}
+        </div>
       </header>
       <div className="m-sv-messages">
         {MESSAGES.map((m) => (
@@ -435,6 +484,21 @@ function SessionView({ session, onBack, comp }: { session: Recent; onBack: () =>
         ))}
       </div>
       <Composer {...comp} />
+
+      {/* Delete confirmation (app modal, never a native confirm). */}
+      {confirm && (
+        <div className="m-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="m-confirm-scrim" onClick={() => setConfirm(false)} />
+          <div className="m-confirm">
+            <div className="m-confirm-title">Delete chat?</div>
+            <div className="m-confirm-msg">“{session.title}” will be permanently deleted. This can’t be undone.</div>
+            <div className="m-confirm-actions">
+              <button className="m-confirm-btn" onClick={() => { haptic(); setConfirm(false); }}>Cancel</button>
+              <button className="m-confirm-btn m-confirm-danger" onClick={() => { haptic(); setConfirm(false); onBack(); }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -710,8 +774,9 @@ function OptionList({ items, selected, onPick }: { items: { id: string; name: st
   );
 }
 
-function SelectorSheet({ open, onClose, loop, setLoop, perm, setPerm, roleModels, setRoleModels }: {
+function SelectorSheet({ open, section, onClose, loop, setLoop, perm, setPerm, roleModels, setRoleModels }: {
   open: boolean;
+  section: 'loop' | 'models' | 'permission' | null;   // deep-link entry point
   onClose: () => void;
   loop: string; setLoop: (v: string) => void;
   perm: string; setPerm: (v: string) => void;
@@ -728,8 +793,12 @@ function SelectorSheet({ open, onClose, loop, setLoop, perm, setPerm, roleModels
   const [moreRole, setMoreRole] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});   // undefined → expanded
 
-  // Reset to the sections after the sheet has slid away.
-  useEffect(() => { if (open) return; const t = setTimeout(() => setDepth(0), 260); return () => clearTimeout(t); }, [open]);
+  // Open → jump straight to the requested section's tray. Close → reset once slid away.
+  useEffect(() => {
+    if (open) { if (section) { setTray(section); setDepth(1); } return; }
+    const t = setTimeout(() => setDepth(0), 260);
+    return () => clearTimeout(t);
+  }, [open]);
 
   const nameOf = (arr: { id: string; name: string }[], id: string) => arr.find((x) => x.id === id)?.name ?? '';
   const modelName = (id: string) => nameOf(MODELS, id);
@@ -830,6 +899,43 @@ function SelectorSheet({ open, onClose, loop, setLoop, perm, setPerm, roleModels
   );
 }
 
+/* ── Search overlay: the resting pill promotes to a focused input pinned above
+   the keyboard (tracked via visualViewport). Slides up on open; the X slides it
+   back down. Rendered at app root so position:fixed escapes the shell transform. */
+function SearchOverlay({ open, inputRef, onClose }: {
+  open: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const setKb = (px: number) => document.documentElement.style.setProperty('--m-kb', px + 'px');
+    if (!open) { setKb(0); return; }
+    const update = () => {
+      if (!vv) return;
+      setKb(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    };
+    update();
+    vv?.addEventListener('resize', update);
+    vv?.addEventListener('scroll', update);
+    return () => { vv?.removeEventListener('resize', update); vv?.removeEventListener('scroll', update); setKb(0); };
+  }, [open]);
+
+  return (
+    <div className="m-search-overlay" data-open={open ? 'true' : 'false'}>
+      <div className="m-search-scrim" onClick={onClose} />
+      <div className="m-search-bar">
+        <div className="m-search-field">
+          <Icon name="search" />
+          <input ref={inputRef} className="m-search-input" type="text" placeholder="Search"
+            autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} enterKeyHint="search" />
+        </div>
+        <button className="m-search-x" aria-label="Close search" onClick={onClose}><Icon name="close" /></button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [active, setActive] = useState<SpaceId>('chat');
   const [drawer, setDrawer] = useState(false);
@@ -838,14 +944,21 @@ function App() {
   const [splash, setSplash] = useState(true);
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
-  const [selector, setSelector] = useState(false);
+  const [selectorAt, setSelectorAt] = useState<SelSection | null>(null);
   const [loop, setLoop] = useState('default');
   const [perm, setPerm] = useState('accept-edits');
   const [roleModels, setRoleModels] = useState<Record<string, string>>(() => seedRoleModels('default'));
+  const [search, setSearch] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Focus synchronously inside the tap so iOS raises the keyboard.
+  const openSearch = () => { haptic(); searchInputRef.current?.focus(); setSearch(true); };
+  const closeSearch = () => { haptic(); searchInputRef.current?.blur(); setSearch(false); };
   const comp: CompProps = {
     onPlus: () => { haptic(); setAttach(true); },
-    onSelector: () => { haptic(); setSelector(true); },
-    loopModelLabel: loopModelText(loop, roleModels),
+    onOpenSelector: (s) => { haptic(); setSelectorAt(s); },
+    permLabel: PERMISSIONS.find((p) => p.id === perm)?.name ?? 'Accept edits',
+    modelSummary: modelSummaryText(loop, roleModels),
+    loopName: loopNameOf(loop),
   };
 
   // Splash on load → then the new-chat screen.
@@ -884,6 +997,18 @@ function App() {
         <main className="m-main">
           {screen === 'home' && (
             <div className="m-home">
+              {/* Same transparent chats-style header + a centered loop / model dropdown. */}
+              <div className="m-chats-fade m-chats-fade-top" />
+              <header className="m-chats-head m-home-head">
+                <button className="m-chats-icon" aria-label="Open menu" onClick={toggleDrawer}><Icon name="menu" /></button>
+                <div className="m-home-center">
+                  <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
+                    <span>{comp.loopName} / {comp.modelSummary}</span>
+                    <Icon name="caret" />
+                  </button>
+                </div>
+                <span className="m-home-head-spacer" aria-hidden="true" />
+              </header>
               <Ghost />
               <Composer {...comp} />
             </div>
@@ -893,10 +1018,10 @@ function App() {
               <div className="m-nav-track">
                 <section className="m-nav-panel">
                   {active === 'code'
-                    ? <CodeView onMenu={toggleDrawer} onOpen={openSession} onNewSession={newSession} />
+                    ? <CodeView onMenu={toggleDrawer} onOpen={openSession} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
-                    ? <WorkView onMenu={toggleDrawer} onOpen={openSession} onNewTask={newSession} />
-                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} />}
+                    ? <WorkView onMenu={toggleDrawer} onOpen={openSession} onNewTask={newSession} onSearch={openSearch} />
+                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
                   {session && <SessionView session={session} onBack={backToList} comp={comp} />}
@@ -906,24 +1031,19 @@ function App() {
           )}
           {/* Blurs the pushed-out content while the drawer is open; tap to close. */}
           <div className="m-scrim" onClick={() => setDrawer(false)} />
-          {/* Hamburger sits ABOVE the blur scrim (rendered after it). Slides with
-              the rail. Toggles the drawer. */}
-          {screen === 'home' && (
-            <button className="m-hamburger" aria-label="Menu" onClick={toggleDrawer}>
-              <Icon name="menu" />
-            </button>
-          )}
         </main>
       </div>
       <SettingsSheet open={settings} onClose={() => { haptic(); setSettings(false); }} />
       <AttachMenu open={attach} onClose={() => { haptic(); setAttach(false); }} />
       <SelectorSheet
-        open={selector}
-        onClose={() => { haptic(); setSelector(false); }}
+        open={selectorAt !== null}
+        section={selectorAt === 'sections' ? null : selectorAt}
+        onClose={() => { haptic(); setSelectorAt(null); }}
         loop={loop} setLoop={setLoop}
         perm={perm} setPerm={setPerm}
         roleModels={roleModels} setRoleModels={setRoleModels}
       />
+      <SearchOverlay open={search} inputRef={searchInputRef} onClose={closeSearch} />
     </div>
   );
 }
