@@ -11,8 +11,7 @@
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef } from 'react';
-import { NAV, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, WORK_GROUPS,
-  SETTINGS_GROUPS, MODELS, MODEL_TOP_N, LOOP_ROLES, DEFAULT_ROLE, LOOPS, PERMISSIONS,
+import { NAV, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, WORK_GROUPS, SETTINGS_GROUPS,
   type SpaceId, type Recent, type Message, type CodeSession, type Task } from './mock';
 // Real auth + client — the same SDK wiring app-web uses (localStorage token store,
 // gating cookies, refresh, signed-out event). We reuse it; we don't fork the client.
@@ -178,20 +177,26 @@ function haptic() {
   } catch { /* */ }
 }
 
-/* ── Loop role helpers (shared by the composer chip + the selector) ───────── */
-function rolesForLoop(loopId: string) { return LOOP_ROLES[loopId] ?? [DEFAULT_ROLE]; }
-function seedRoleModels(loopId: string): Record<string, string> {
-  const rm: Record<string, string> = {};
-  for (const r of rolesForLoop(loopId)) rm[r.id] = r.defaultModel;
-  return rm;
-}
-function modelNameOf(id: string) { return MODELS.find((m) => m.id === id)?.name ?? ''; }
-function loopNameOf(loopId: string) { return LOOPS.find((l) => l.id === loopId)?.name ?? ''; }
-/** "Sonnet 5 +1" — the primary role's model, with a +N for extra role slots. */
-function modelSummaryText(loopId: string, roleModels: Record<string, string>): string {
-  const roles = rolesForLoop(loopId);
-  const primary = modelNameOf(roleModels[roles[0]?.id] ?? '');
-  return roles.length > 1 ? `${primary} +${roles.length - 1}` : primary;
+/* ── Loops / models / permissions — real SDK data (glyphh().loops, .models).
+   A loop declares role slots (Planner/Builder/…); each role carries its allowed
+   model `choices` and the currently-resolved `modelId`. ────────────────────── */
+interface LoopItem { id: string; slug: string; name: string; description?: string; builtIn?: boolean; }
+interface ModelChoice { id: string; name: string; providerSlug?: string; }
+interface RoleItem { name: string; label?: string; description?: string; modelId: string | null; choices: ModelChoice[]; }
+const MODEL_TOP_N = 5;
+/** Agent permission modes = the SDK's HarnessPermission set (the value sent per run). */
+const PERMS: { id: string; name: string; desc: string }[] = [
+  { id: 'ask',         name: 'Ask every time', desc: 'Approve each tool before it runs' },
+  { id: 'plan',        name: 'Plan mode',      desc: 'Read-only — draft a plan, pause on edits' },
+  { id: 'acceptEdits', name: 'Accept edits',   desc: 'Auto-approve edits; pause on risky actions' },
+  { id: 'auto',        name: 'Auto',           desc: 'Run unattended; pause only on dangerous actions' },
+  { id: 'bypass',      name: 'Full access',    desc: 'Run everything without asking' },
+];
+/** A model id may be provider-qualified ("anthropic::claude-opus-4-8"); show the tail. */
+function shortModelId(id: string): string { const i = id.indexOf('::'); return i >= 0 ? id.slice(i + 2) : id; }
+/** Default loop: the built-in 'default', else any built-in, else the first. */
+function defaultLoopSlug(loops: LoopItem[]): string {
+  return loops.find((l) => l.slug === 'default')?.slug ?? loops.find((l) => l.builtIn)?.slug ?? loops[0]?.slug ?? '';
 }
 
 /* ── Sessions (chat threads) — real SDK data (glyphh().sessions.threads()).
@@ -1798,18 +1803,16 @@ function OptionList({ items, selected, onPick }: { items: { id: string; name: st
   );
 }
 
-function SelectorSheet({ open, section, onClose, loop, setLoop, roleModels, setRoleModels }: {
+function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, roleSel, setRoleSel, models }: {
   open: boolean;
   section: 'loop' | 'models' | null;   // deep-link entry point
   onClose: () => void;
+  loops: LoopItem[] | null;
   loop: string; setLoop: (v: string) => void;
-  roleModels: Record<string, string>; setRoleModels: (fn: (m: Record<string, string>) => Record<string, string>) => void;
+  roles: RoleItem[] | null;
+  roleSel: Record<string, string>; setRoleSel: (fn: (m: Record<string, string>) => Record<string, string>) => void;
+  models: ModelChoice[];
 }) {
-  // The chosen loop's role slots (Planner/Builder/…) drive the Models tray.
-  const roles = rolesForLoop(loop);
-  const topModels = MODELS.slice(0, MODEL_TOP_N);      // shown per role
-  const moreModels = MODELS.slice(MODEL_TOP_N);        // the rest → "More models"
-
   // Depth track: 0 = sections, 1 = a section tray, 2 = More models (per role).
   const [tray, setTray] = useState<'loop' | 'models'>('models');
   const [depth, setDepth] = useState(0);
@@ -1823,15 +1826,24 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, roleModels, setR
     return () => clearTimeout(t);
   }, [open]);
 
-  const nameOf = (arr: { id: string; name: string }[], id: string) => arr.find((x) => x.id === id)?.name ?? '';
-  const modelName = (id: string) => nameOf(MODELS, id);
+  const roleList = roles ?? [];
+  const choicesFor = (r: RoleItem) => (r.choices.length ? r.choices : models);   // fall back to the full pool
+  const selectedFor = (r: RoleItem) => roleSel[r.name] ?? r.modelId ?? '';
+  const modelName = (id: string) => {
+    if (!id) return '';
+    for (const r of roleList) { const c = r.choices.find((x) => x.id === id); if (c) return c.name; }
+    return models.find((m) => m.id === id)?.name ?? shortModelId(id);
+  };
+  const loopName = (loops ?? []).find((l) => l.slug === loop)?.name ?? '';
   const openTray = (t: 'loop' | 'models') => { haptic(); setTray(t); setDepth(1); };
   const trayTitle = tray === 'loop' ? 'Loop' : 'Models';
-  const modelsSummary = roles.length === 1 ? modelName(roleModels[roles[0].id]) : `${roles.length} models`;
-  const setRoleModel = (roleId: string, id: string) => { haptic(); setRoleModels((m) => ({ ...m, [roleId]: id })); };
-  const toggleRole = (roleId: string) => { haptic(); setExpanded((e) => ({ ...e, [roleId]: !(e[roleId] ?? true) })); };
-  const openMore = (roleId: string) => { haptic(); setMoreRole(roleId); setDepth(2); };
-  const moreRoleName = nameOf(roles, moreRole);
+  const modelsSummary = roleList.length === 1 ? modelName(selectedFor(roleList[0])) : roleList.length ? `${roleList.length} models` : '';
+  const setRoleModel = (roleName: string, id: string) => { haptic(); setRoleSel((m) => ({ ...m, [roleName]: id })); };
+  const toggleRole = (roleName: string) => { haptic(); setExpanded((e) => ({ ...e, [roleName]: !(e[roleName] ?? true) })); };
+  const openMore = (roleName: string) => { haptic(); setMoreRole(roleName); setDepth(2); };
+  const loopItems = (loops ?? []).map((l) => ({ id: l.slug, name: l.name, desc: l.description }));
+  const moreRoleObj = roleList.find((r) => r.name === moreRole);
+  const moreItems = moreRoleObj ? choicesFor(moreRoleObj).slice(MODEL_TOP_N).map((c) => ({ id: c.id, name: c.name, desc: c.providerSlug })) : [];
 
   return (
     <div className="m-sel-overlay" data-open={open ? 'true' : 'false'}>
@@ -1839,7 +1851,7 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, roleModels, setR
       <div className="m-sel" role="dialog" aria-modal="true">
         <div className="m-sel-grip" />
         <div className="m-sel-track" data-depth={depth}>
-          {/* Panel 0 — the three sections. */}
+          {/* Panel 0 — the two sections. */}
           <section className="m-sel-panel">
             <div className="m-sel-head">
               <button className="m-sheet-btn" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
@@ -1848,7 +1860,7 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, roleModels, setR
             <div className="m-sel-body">
               <div className="m-sel-group">
                 <button className="m-sel-row" onClick={() => openTray('loop')}>
-                  <span className="m-sel-row-label">Loop</span><span className="m-sel-row-val">{nameOf(LOOPS, loop)}</span><Icon name="chevron" />
+                  <span className="m-sel-row-label">Loop</span><span className="m-sel-row-val">{loopName}</span><Icon name="chevron" />
                 </button>
                 <button className="m-sel-row" onClick={() => openTray('models')}>
                   <span className="m-sel-row-label">Models</span><span className="m-sel-row-val">{modelsSummary}</span><Icon name="chevron" />
@@ -1865,49 +1877,64 @@ function SelectorSheet({ open, section, onClose, loop, setLoop, roleModels, setR
             </div>
             <div className="m-sel-body">
               {tray === 'loop' && (
-                <OptionList items={LOOPS} selected={loop} onPick={(id) => { haptic(); setLoop(id); setDepth(0); }} />
+                loops === null
+                  ? <div className="m-list-note">Loading…</div>
+                  : loopItems.length === 0
+                  ? <div className="m-list-note">No loops available.</div>
+                  : <OptionList items={loopItems} selected={loop} onPick={(id) => { haptic(); setLoop(id); setDepth(0); }} />
               )}
               {tray === 'models' && (
+                roles === null
+                  ? <div className="m-list-note">Loading…</div>
+                  : (
                 <>
-                  <div className="m-sel-search"><Icon name="search" /><span>Search</span></div>
-                  {/* One collapsible section per loop role; each lists its top N,
-                      then "More models" → the rest of the pool (panel 2). */}
-                  {roles.map((r) => (
-                    <div key={r.id} className="m-role" data-open={(expanded[r.id] ?? true) ? 'true' : 'false'}>
-                      <button className="m-role-head" onClick={() => toggleRole(r.id)}>
-                        <span className="m-role-name">{r.name}</span>
-                        <span className="m-role-val">{modelName(roleModels[r.id])}</span>
-                        <Icon name="caret" />
-                      </button>
-                      {(expanded[r.id] ?? true) && (
-                        <div className="m-sel-group">
-                          {topModels.map((m) => (
-                            <button key={m.id} className="m-opt" onClick={() => setRoleModel(r.id, m.id)}>
-                              <span className="m-opt-text"><span className="m-opt-name">{m.name}</span><span className="m-opt-desc">{m.desc}</span></span>
-                              {roleModels[r.id] === m.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
-                            </button>
-                          ))}
-                          <button className="m-sel-row" onClick={() => openMore(r.id)}>
-                            <span className="m-sel-row-label">More models</span><Icon name="chevron" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {/* One collapsible section per loop role; each lists its top N
+                      choices, then "More models" → the rest (panel 2). */}
+                  {roleList.map((r) => {
+                    const choices = choicesFor(r);
+                    const top = choices.slice(0, MODEL_TOP_N);
+                    const sel = selectedFor(r);
+                    const openSec = expanded[r.name] ?? true;
+                    return (
+                      <div key={r.name} className="m-role" data-open={openSec ? 'true' : 'false'}>
+                        <button className="m-role-head" onClick={() => toggleRole(r.name)}>
+                          <span className="m-role-name">{r.label || r.name}</span>
+                          <span className="m-role-val">{modelName(sel)}</span>
+                          <Icon name="caret" />
+                        </button>
+                        {openSec && (
+                          <div className="m-sel-group">
+                            {top.length === 0 && <div className="m-list-note">No models available.</div>}
+                            {top.map((m) => (
+                              <button key={m.id} className="m-opt" onClick={() => setRoleModel(r.name, m.id)}>
+                                <span className="m-opt-text"><span className="m-opt-name">{m.name}</span>{m.providerSlug && <span className="m-opt-desc">{m.providerSlug}</span>}</span>
+                                {sel === m.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
+                              </button>
+                            ))}
+                            {choices.length > MODEL_TOP_N && (
+                              <button className="m-sel-row" onClick={() => openMore(r.name)}>
+                                <span className="m-sel-row-label">More models</span><Icon name="chevron" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </>
+                  )
               )}
             </div>
           </section>
 
-          {/* Panel 2 — More models for a role: the pool minus that role's top N. */}
+          {/* Panel 2 — More models for a role: that role's choices beyond the top N. */}
           <section className="m-sel-panel">
             <div className="m-sel-head">
               <button className="m-sheet-btn" aria-label="Back" onClick={() => { haptic(); setDepth(1); }}><Icon name="back" /></button>
-              <span className="m-sel-title">{moreRoleName ? `${moreRoleName} · more` : 'More models'}</span>
+              <span className="m-sel-title">{moreRoleObj ? `${moreRoleObj.label || moreRoleObj.name} · more` : 'More models'}</span>
             </div>
             <div className="m-sel-body">
-              <div className="m-sel-search"><Icon name="search" /><span>Search all models</span></div>
-              <OptionList items={moreModels} selected={roleModels[moreRole]} onPick={(id) => { setRoleModel(moreRole, id); setDepth(1); }} />
+              <OptionList items={moreItems} selected={moreRoleObj ? selectedFor(moreRoleObj) : ''} onPick={(id) => { if (moreRole) setRoleModel(moreRole, id); setDepth(1); }} />
             </div>
           </section>
         </div>
@@ -1934,7 +1961,7 @@ function PermissionSheet({ open, onClose, perm, setPerm }: {
         </div>
         <div className="m-sel-body">
           <div className="m-sel-note">How much can Glyphh do on its own before it checks with you?</div>
-          <OptionList items={PERMISSIONS} selected={perm} onPick={(id) => { haptic(); setPerm(id); onClose(); }} />
+          <OptionList items={PERMS} selected={perm} onPick={(id) => { haptic(); setPerm(id); onClose(); }} />
         </div>
       </div>
     </div>
@@ -2066,20 +2093,35 @@ function App() {
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
   const [selectorAt, setSelectorAt] = useState<'sections' | 'loop' | 'models' | null>(null);
   const [permOpen, setPermOpen] = useState(false);
-  const [loop, setLoop] = useState('default');
-  const [perm, setPerm] = useState('accept-edits');
-  const [roleModels, setRoleModels] = useState<Record<string, string>>(() => seedRoleModels('default'));
+  const [loops, setLoops] = useState<LoopItem[] | null>(null);
+  const [loop, setLoop] = useState<string>('');                        // selected loop slug
+  const [roles, setRoles] = useState<RoleItem[] | null>(null);         // resolved roles for `loop`
+  const [roleSel, setRoleSel] = useState<Record<string, string>>({});  // per-role model override
+  const [models, setModels] = useState<ModelChoice[]>([]);             // available() pool (labels + fallback)
+  const [perm, setPerm] = useState('acceptEdits');
   const [search, setSearch] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Focus synchronously inside the tap so iOS raises the keyboard.
   const openSearch = () => { haptic(); searchInputRef.current?.focus(); setSearch(true); };
   const closeSearch = () => { haptic(); searchInputRef.current?.blur(); setSearch(false); };
+  // Chip labels derive from the resolved roles + the selected loop.
+  const roleList = roles ?? [];
+  const effModel = (r: RoleItem) => roleSel[r.name] ?? r.modelId ?? '';
+  const modelNameById = (id: string) => {
+    if (!id) return '';
+    for (const r of roleList) { const c = r.choices.find((x) => x.id === id); if (c) return c.name; }
+    return models.find((m) => m.id === id)?.name ?? shortModelId(id);
+  };
+  const loopName = (loops ?? []).find((l) => l.slug === loop)?.name ?? '';
+  const modelSummary = roleList.length
+    ? (roleList.length > 1 ? `${modelNameById(effModel(roleList[0]))} +${roleList.length - 1}` : modelNameById(effModel(roleList[0])))
+    : '';
   const comp: CompProps = {
     onPlus: () => { haptic(); setAttach(true); },
     onOpenSelector: (s) => { haptic(); if (s === 'permission') setPermOpen(true); else setSelectorAt(s); },
-    permLabel: PERMISSIONS.find((p) => p.id === perm)?.name ?? 'Accept edits',
-    modelSummary: modelSummaryText(loop, roleModels),
-    loopName: loopNameOf(loop),
+    permLabel: PERMS.find((p) => p.id === perm)?.name ?? 'Accept edits',
+    modelSummary,
+    loopName,
   };
 
   // Hold the splash for its full beat regardless of how fast auth resolves.
@@ -2123,8 +2165,29 @@ function App() {
   };
   const onSignOut = () => { setSettings(false); void sdkSignOut(); };  // event flips to 'out'
 
-  // Loop change → the role set changes; reseed each slot to its default model.
-  useEffect(() => { setRoleModels(seedRoleModels(loop)); }, [loop]);
+  // Load loops + available models once signed in; pick a default loop.
+  useEffect(() => {
+    if (authState !== 'in') return;
+    let on = true;
+    glyphh().loops.list()
+      .then((r: { loops: LoopItem[] }) => { if (!on) return; const ls = r?.loops ?? []; setLoops(ls); setLoop((cur) => cur || defaultLoopSlug(ls)); })
+      .catch(() => { if (on) setLoops([]); });
+    glyphh().models.available()
+      .then((m: ModelChoice[]) => { if (on) setModels(Array.isArray(m) ? m : []); })
+      .catch(() => { if (on) setModels([]); });
+    return () => { on = false; };
+  }, [authState]);
+
+  // Resolve the selected loop's role/model slots; reset overrides on switch.
+  useEffect(() => {
+    if (!loop) { setRoles(null); return; }
+    let on = true;
+    setRoles(null); setRoleSel({});
+    glyphh().loops.roles(loop)
+      .then((rs: RoleItem[]) => { if (on) setRoles(Array.isArray(rs) && rs.length ? rs : [{ name: 'agent', label: 'Agent', modelId: null, choices: [] }]); })
+      .catch(() => { if (on) setRoles([{ name: 'agent', label: 'Agent', modelId: null, choices: [] }]); });
+    return () => { on = false; };
+  }, [loop]);
 
   // Load the user's chat threads once signed in (feeds the rail + chats list).
   useEffect(() => {
@@ -2205,8 +2268,9 @@ function App() {
         open={selectorAt !== null}
         section={selectorAt === 'sections' ? null : selectorAt}
         onClose={() => { haptic(); setSelectorAt(null); }}
-        loop={loop} setLoop={setLoop}
-        roleModels={roleModels} setRoleModels={setRoleModels}
+        loops={loops} loop={loop} setLoop={setLoop}
+        roles={roles} roleSel={roleSel} setRoleSel={setRoleSel}
+        models={models}
       />
       <PermissionSheet open={permOpen} onClose={() => { haptic(); setPermOpen(false); }} perm={perm} setPerm={setPerm} />
       <SearchOverlay open={search} inputRef={searchInputRef} onClose={closeSearch} />
