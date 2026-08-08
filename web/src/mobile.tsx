@@ -33,6 +33,20 @@ function applyTheme(t: string) {
     ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
     : t;
   document.documentElement.setAttribute('data-theme', resolved);
+  syncThemeColor();
+}
+/* Keep Safari's UI (status bar + bottom toolbar) tinted to the live theme's page
+   colour. Otherwise a stale/dark theme-color makes Safari paint a grey gradient
+   over the page above its bottom bar. Reads the resolved --bg so every theme
+   (not just light/dark) matches. */
+function syncThemeColor() {
+  try {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    if (!bg) return;
+    let m = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    if (!m) { m = document.createElement('meta'); m.name = 'theme-color'; document.head.appendChild(m); }
+    m.setAttribute('content', bg);
+  } catch { /* best effort */ }
 }
 function currentTheme(): string { try { return localStorage.getItem('yoTheme') || 'dark'; } catch { return 'dark'; } }
 
@@ -2017,7 +2031,9 @@ function App() {
   };
 
   // Hold the splash for its full beat regardless of how fast auth resolves.
+  // Also tint Safari's chrome to the live theme (kills the grey bottom-bar band).
   useEffect(() => {
+    syncThemeColor();
     const t = setTimeout(() => setMinSplash(true), 2200);
     return () => clearTimeout(t);
   }, []);
