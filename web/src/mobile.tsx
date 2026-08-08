@@ -646,10 +646,9 @@ interface CompProps {
   sending: boolean;                 // a turn is in flight
 }
 
-function SessionView({ session, msgs, connecting, onBack, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; onBack: () => void; comp: CompProps }) {
+function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTogglePin, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; onBack: () => void; onDelete: () => void; onTogglePin: () => void; comp: CompProps }) {
   const [menu, setMenu] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const [pinned, setPinned] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -685,7 +684,7 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
               <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); /* rename (mock) */ }}>
                 <Icon name="pencil" /><span>Rename</span>
               </button>
-              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); setPinned((p) => !p); }}>
+              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); onTogglePin(); }}>
                 <Icon name="pin" /><span>{pinned ? 'Unpin' : 'Pin'}</span>
               </button>
               <button className="m-sv-menu-row m-danger" onClick={() => { haptic(); setMenu(false); setConfirm(true); }}>
@@ -728,7 +727,7 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
             <div className="m-confirm-msg">“{session.title}” will be permanently deleted. This can’t be undone.</div>
             <div className="m-confirm-actions">
               <button className="m-confirm-btn" onClick={() => { haptic(); setConfirm(false); }}>Cancel</button>
-              <button className="m-confirm-btn m-confirm-danger" onClick={() => { haptic(); setConfirm(false); onBack(); }}>Delete</button>
+              <button className="m-confirm-btn m-confirm-danger" onClick={() => { haptic(); setConfirm(false); onDelete(); }}>Delete</button>
             </div>
           </div>
         </div>
@@ -2313,6 +2312,7 @@ function App() {
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
+  const [pins, setPins] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem('yoPins') || '[]')); } catch { return new Set(); } });
   const [msgs, setMsgs] = useState<Message[] | null>(null);            // active session's live transcript
   const [connecting, setConnecting] = useState(false);                 // provisioning/connecting a cloud runtime
   const [streaming, setStreaming] = useState(false);                   // a turn is in flight
@@ -2519,7 +2519,8 @@ function App() {
       .catch(() => { if (on) setThreads([]); });
     return () => { on = false; };
   }, [authState]);
-  const chatRecents = threadsFor(threads, 'chat');
+  const pinnedFirst = (arr: Recent[]) => [...arr].sort((a, b) => (pins.has(b.id) ? 1 : 0) - (pins.has(a.id) ? 1 : 0));
+  const chatRecents = pinnedFirst(threadsFor(threads, 'chat'));
   const workGroups = groupThreadsByTime(threads, 'cowork');   // Work = cowork threads, time-grouped
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
@@ -2528,6 +2529,15 @@ function App() {
   const openRecent = (r: Recent) => openSession(r);
   const allChats = () => { haptic(); setScreen('list'); setDrawer(false); };
   const backToList = () => { haptic(); setScreen('list'); };
+  const savePins = (s: Set<string>) => { setPins(new Set(s)); try { localStorage.setItem('yoPins', JSON.stringify([...s])); } catch { /* */ } };
+  const togglePin = (id: string) => { const s = new Set(pins); if (s.has(id)) s.delete(id); else s.add(id); savePins(s); };
+  const deleteSession = async (s: Recent) => {
+    try { await glyphh().sessions.deleteThread(s.id); } catch { /* best effort */ }
+    remoteChats.delete(s.id);
+    setThreads((t) => (t ?? []).filter((x) => x.id !== s.id));
+    if (pins.has(s.id)) { const p = new Set(pins); p.delete(s.id); savePins(p); }
+    backToList();
+  };
   const account = () => { haptic(); setSettings(true); };  /* leave the rail open behind the sheet */
   const clearConvo = () => { convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); setPending(null); };
   const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
@@ -2575,7 +2585,7 @@ function App() {
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
-                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} onBack={backToList} comp={comp} />}
+                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} comp={comp} />}
                 </section>
               </div>
             </div>
