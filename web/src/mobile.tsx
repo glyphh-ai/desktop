@@ -11,8 +11,8 @@
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef } from 'react';
-import { NAV, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, WORK_GROUPS, SETTINGS_GROUPS,
-  type SpaceId, type Recent, type Message, type CodeSession, type Task } from './mock';
+import { NAV, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, SETTINGS_GROUPS,
+  type SpaceId, type Recent, type Message, type CodeSession } from './mock';
 // Real auth + client — the same SDK wiring app-web uses (localStorage token store,
 // gating cookies, refresh, signed-out event). We reuse it; we don't fork the client.
 import {
@@ -285,6 +285,23 @@ function threadToRecent(t: ThreadMeta): Recent { return { id: t.id, title: t.tit
 /** Newest-first threads of one mode, mapped for the list. */
 function threadsFor(threads: ThreadMeta[] | null, mode: string): Recent[] {
   return (threads ?? []).filter((t) => t.mode === mode).sort((a, b) => b.updatedAt - a.updatedAt).map(threadToRecent);
+}
+/** Threads of a mode bucketed by recency (Work/Code are time-grouped lists). */
+interface TimeGroup { label: string; items: Recent[]; }
+function groupThreadsByTime(threads: ThreadMeta[] | null, mode: string): TimeGroup[] {
+  const list = (threads ?? []).filter((t) => t.mode === mode).sort((a, b) => b.updatedAt - a.updatedAt);
+  const now = Date.now();
+  const bucket = (ms: number): string => {
+    const days = (now - ms) / 86400000;
+    if (days < 1) return 'Today';
+    if (days < 7) return 'This week';
+    if (days < 31) return 'This month';
+    return 'Earlier';
+  };
+  const order: string[] = [];
+  const by: Record<string, Recent[]> = {};
+  for (const t of list) { const l = bucket(t.updatedAt); if (!by[l]) { by[l] = []; order.push(l); } by[l].push(threadToRecent(t)); }
+  return order.map((label) => ({ label, items: by[label] }));
 }
 /** A thread's messages → the session view's {role, text}. assistant → 'glyphh'. */
 function normalizeMsg(m: ThreadMsg, i: number): Message {
@@ -565,13 +582,14 @@ function CodeView({ onMenu, onOpen, onNewSession, onSearch }: {
 
 /* ── Work: tasks grouped by time bucket, each a card with a status
    glyph, title, timestamp and an optional note. ─────────────────────────── */
-function WorkView({ onMenu, onOpen, onNewTask, onSearch }: {
+function WorkView({ groups, loading, onMenu, onOpen, onNewTask, onSearch }: {
+  groups: TimeGroup[];
+  loading: boolean;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onNewTask: () => void;
   onSearch: () => void;
 }) {
-  const glyph = (s: Task['state']) => (s === 'doing' ? 'progress' : s === 'done' ? 'check' : 'circle');
   return (
     <div className="m-work">
       {/* Header + footer are the EXACT chats classes (same transparency/size +
@@ -583,25 +601,28 @@ function WorkView({ onMenu, onOpen, onNewTask, onSearch }: {
         <FilterMenu allLabel="All tasks" allIcon="work" />
       </header>
       <div className="m-work-scroll">
-        {WORK_GROUPS.map((g) => (
-          <div key={g.label} className="m-work-section">
-            <div className="m-work-label">{g.label}</div>
-            <div className="m-work-group">
-              {g.tasks.map((t) => (
-                <button key={t.id} className="m-task" onClick={() => onOpen({ id: t.id, title: t.title, when: t.when })}>
-                  <span className="m-task-check" data-state={t.state}><Icon name={glyph(t.state)} /></span>
-                  <span className="m-task-body">
-                    <span className="m-task-top">
-                      <span className="m-task-title">{t.title}</span>
-                      <span className="m-task-when">{t.when}</span>
+        {loading
+          ? <div className="m-list-note">Loading…</div>
+          : groups.length === 0
+          ? <div className="m-list-note">No tasks yet — start one.</div>
+          : groups.map((g) => (
+            <div key={g.label} className="m-work-section">
+              <div className="m-work-label">{g.label}</div>
+              <div className="m-work-group">
+                {g.items.map((t) => (
+                  <button key={t.id} className="m-task" onClick={() => onOpen(t)}>
+                    <span className="m-task-check" data-state="todo"><Icon name="circle" /></span>
+                    <span className="m-task-body">
+                      <span className="m-task-top">
+                        <span className="m-task-title">{t.title}</span>
+                        <span className="m-task-when">{t.when}</span>
+                      </span>
                     </span>
-                    {t.note && <span className="m-task-note">{t.note}</span>}
-                  </span>
-                </button>
-              ))}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
       </div>
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewTask}><Icon name="plus" /><span>New task</span></button>
       <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
@@ -2313,6 +2334,8 @@ function App() {
     : '';
   // ── Conversation transcript + streaming (chats run on a cloud pod) ──────────
   const renderConvo = () => setMsgs([...convoRef.current]);
+  // The current space decides the session mode (Chat / Work / Code toolset).
+  const curMode: 'chat' | 'cowork' | 'code' = active === 'work' ? 'cowork' : active === 'code' ? 'code' : 'chat';
 
   /** Persist the live transcript back to the thread (LWW by updatedAt), then
    *  refresh the list so the chat surfaces with its new title/timestamp. */
@@ -2320,7 +2343,7 @@ function App() {
     try {
       const messages = convoRef.current.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text }));
       const title = convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat';
-      await glyphh().sessions.pushThread(id, { title, mode: 'chat', messages, updatedAt: Date.now() });
+      await glyphh().sessions.pushThread(id, { title, mode: curMode, messages, updatedAt: Date.now() });
       const t = await glyphh().sessions.threads();
       setThreads(Array.isArray(t) ? t : []);
     } catch { /* offline / not-ready — the transcript stays local for now */ }
@@ -2352,7 +2375,7 @@ function App() {
       sess = { id, title: prompt.slice(0, 60), when: 'now' };
       setSession(sess); setScreen('session'); setDrawer(false);
       convoRef.current = [];
-      setThreads((t) => [{ id, title: sess!.title, mode: 'chat', createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
+      setThreads((t) => [{ id, title: sess!.title, mode: curMode, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
     }
     const asstId = 'a' + Date.now().toString(36);
     convoRef.current = [...convoRef.current,
@@ -2368,8 +2391,9 @@ function App() {
     // (the selected role's), the value the /run body's `model` field takes.
     const r0 = roleList[0];
     const model = r0 ? (roleSel[r0.name] ?? r0.modelId ?? '') : '';
+    const chat = chatFor(sess.id); chat.mode = curMode;   // Chat / Work / Code toolset
     const outcome = await runRemoteTurn(
-      chatFor(sess.id), prompt, () => {},
+      chat, prompt, () => {},
       {
         onToken: () => setConnecting(false),
         onAnswer: (full) => { setConnecting(false); setAsst(full); },
@@ -2484,6 +2508,7 @@ function App() {
     return () => { on = false; };
   }, [authState]);
   const chatRecents = threadsFor(threads, 'chat');
+  const workGroups = groupThreadsByTime(threads, 'cowork');   // Work = cowork threads, time-grouped
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
   const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('list'); setSession(null); setDrawer(false); };
@@ -2534,7 +2559,7 @@ function App() {
                   {active === 'code'
                     ? <CodeView onMenu={toggleDrawer} onOpen={openSession} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
-                    ? <WorkView onMenu={toggleDrawer} onOpen={openSession} onNewTask={newSession} onSearch={openSearch} />
+                    ? <WorkView groups={workGroups} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewTask={newSession} onSearch={openSearch} />
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
