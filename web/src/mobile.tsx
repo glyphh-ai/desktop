@@ -2245,7 +2245,6 @@ function App() {
     : '';
   // ── Conversation transcript + streaming (chats run on a cloud pod) ──────────
   const renderConvo = () => setMsgs([...convoRef.current]);
-  const primaryModelId = (): string => { const r = roleList[0]; return r ? (roleSel[r.name] ?? r.modelId ?? '') : ''; };
 
   /** Persist the live transcript back to the thread (LWW by updatedAt), then
    *  refresh the list so the chat surfaces with its new title/timestamp. */
@@ -2295,7 +2294,9 @@ function App() {
     const setAsst = (text: string) => { const m = convoRef.current.find((x) => x.id === asstId); if (m) { m.text = text; renderConvo(); } };
     setConnecting(!isCommitted(sess.id));
     setStreaming(true);
-    const model = primaryModelId();
+    const ac = new AbortController();
+    // Match app-web's launchRemote (help/code.ts) EXACTLY: no model override —
+    // the loop resolves its own model server-side; only rotor + permission + signal.
     await runRemoteTurn(
       chatFor(sess.id), prompt, () => {},
       {
@@ -2308,7 +2309,7 @@ function App() {
         onError: (detail) => { setConnecting(false); setPending(null); setAsst('⚠️ ' + detail); },
         onStopped: () => { setConnecting(false); setPending(null); },
       },
-      { rotor: loop, ...(model ? { model } : {}), permission: perm as RemotePermission },
+      { rotor: loop, permission: perm as RemotePermission, signal: ac.signal },
     );
     setStreaming(false); setConnecting(false);
     void persistThread(sess.id);
