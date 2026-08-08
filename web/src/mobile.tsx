@@ -25,6 +25,16 @@ function credits(v: number | null | undefined): string {
   return v == null ? '—' : Math.round(v / 1e6).toLocaleString();
 }
 
+/** Persist + apply the theme live (same contract as mobile.html's pre-paint). */
+function applyTheme(t: string) {
+  try { localStorage.setItem('yoTheme', t); } catch { /* */ }
+  const resolved = t === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : t;
+  document.documentElement.setAttribute('data-theme', resolved);
+}
+function currentTheme(): string { try { return localStorage.getItem('yoTheme') || 'dark'; } catch { return 'dark'; } }
+
 /* ── Current user (derived from the SDK identity / cached legacy user) ─────── */
 interface DisplayUser { name: string; email: string; initials: string; avatarUrl: string | null; role: string; tier: string; }
 function toDisplayUser(u: { name?: string | null; email?: string | null; avatarUrl?: string | null; role?: string | null; tier?: string | null } | null): DisplayUser {
@@ -116,6 +126,7 @@ const ICON: Record<IconName, React.ReactNode> = {
   trash: <><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></>,
   swap: <><path d="M16 3l4 4-4 4" /><path d="M20 7H8a4 4 0 0 0-4 4" /><path d="M8 21l-4-4 4-4" /><path d="M4 17h12a4 4 0 0 0 4-4" /></>,
   loop: <><path d="M17 2l4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></>,
+  contrast: <><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" /></>,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -801,8 +812,230 @@ function UsageTray() {
   );
 }
 
+function ConnectionsTray() {
+  type Conn = { id: string; appSlug: string; appName: string; label: string | null; healthy: boolean };
+  type App = { id: string; name: string; icon: string | null };
+  type Tool = { key: string; name: string; description?: string };
+  const [view, setView] = useState<'list' | 'catalog' | 'detail'>('list');
+  const [conns, setConns] = useState<Conn[] | null>(null);
+  const [apps, setApps] = useState<App[] | null>(null);
+  const [q, setQ] = useState('');
+  const [err, setErr] = useState('');
+  const [del, setDel] = useState<Conn | null>(null);
+  const [connecting, setConnecting] = useState<{ app: App; url: string } | null>(null);
+  // Detail (edit) tray state.
+  const [sel, setSel] = useState<Conn | null>(null);
+  const [tools, setTools] = useState<Tool[] | null>(null);
+  const [allowed, setAllowed] = useState<Set<string>>(new Set());
+
+  const refresh = async () => { try { setConns(await glyphh().connections.personalList()); } catch { setConns([]); } };
+  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    if (view !== 'catalog') return;
+    let on = true; setApps(null);
+    glyphh().connections.apps({ search: q.trim() || undefined, limit: 40 })
+      .then((r: { apps: App[] }) => { if (on) setApps(r.apps || []); }).catch(() => { if (on) setApps([]); });
+    return () => { on = false; };
+  }, [view, q]);
+
+  // While the connect tray is open, watch for the new account to land, then
+  // close the tray + return to the list (also on tab focus, belt-and-braces).
+  useEffect(() => {
+    if (!connecting) return;
+    const before = new Set((conns || []).map((c) => c.id));
+    let alive = true, n = 0;
+    const tick = async () => {
+      if (!alive) return;
+      n++;
+      const list = await glyphh().connections.personalList().catch(() => null);
+      if (list) { setConns(list); if (list.some((c) => !before.has(c.id))) { setConnecting(null); setView('list'); return; } }
+      if (n < 90) setTimeout(() => void tick(), 2000);
+    };
+    const t = setTimeout(() => void tick(), 2000);
+    const onFocus = () => void tick();
+    window.addEventListener('focus', onFocus);
+    return () => { alive = false; clearTimeout(t); window.removeEventListener('focus', onFocus); };
+  }, [connecting]);
+
+  const startConnect = async (app: App) => {
+    try {
+      setErr('');
+      const s = await glyphh().connections.personalConnect(app.id) as { url?: string; connectUrl?: string };
+      const url = s?.url || s?.connectUrl;
+      if (!url) { setErr('Could not start the connection.'); return; }
+      setConnecting({ app, url });
+    } catch { setErr('Could not start the connection.'); }
+  };
+  const disconnect = async (c: Conn) => {
+    setDel(null);
+    try { await glyphh().connections.personalDisconnect(c.id); setView('list'); setSel(null); void refresh(); } catch { setErr('Could not disconnect.'); }
+  };
+
+  // Open the edit tray: load the app's full tool catalog + this connection's
+  // allowed cap (absent ⇒ all tools allowed).
+  const openDetail = async (c: Conn) => {
+    haptic(); setErr(''); setSel(c); setTools(null); setView('detail');
+    try {
+      const [t, caps] = await Promise.all([
+        glyphh().connections.appTools(c.appSlug),
+        glyphh().connections.personalConnectionTools(),
+      ]);
+      const list = (t?.tools || []) as Tool[];
+      setTools(list);
+      const cap = (caps as Record<string, string[]>)[c.appSlug];
+      setAllowed(cap == null ? new Set(list.map((x) => x.name)) : new Set(cap));
+    } catch { setTools([]); }
+  };
+  const toggleTool = (c: Conn, name: string) => {
+    haptic();
+    const next = new Set(allowed);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    setAllowed(next);
+    void glyphh().connections.setPersonalConnectionTools(c.appSlug, [...next]).catch(() => setErr('Could not update tools.'));
+  };
+  const rename = (c: Conn, label: string) => {
+    const v = label.trim();
+    if (!v || v === (c.label || c.appName)) return;
+    void glyphh().connections.renamePersonalConnection(c.id, v).then(() => void refresh()).catch(() => setErr('Could not rename.'));
+  };
+
+  return (
+    <>
+      {view === 'catalog' ? (
+        <>
+          <button className="m-conn-back" onClick={() => { haptic(); setView('list'); setErr(''); }}><Icon name="back" /><span>Connections</span></button>
+          <div className="m-sel-search"><Icon name="search" /><input className="m-conn-in" placeholder="Search apps" value={q} onChange={(e) => setQ(e.currentTarget.value)} /></div>
+          {apps == null ? <div className="m-set-loading">Loading…</div> : (
+            <div className="m-sel-group">
+              {apps.map((a) => (
+                <button key={a.id} className="m-opt" onClick={() => startConnect(a)}>
+                  <span className="m-conn-ico">{a.icon ? <img src={a.icon} alt="" /> : (a.name || '?').charAt(0)}</span>
+                  <span className="m-opt-text"><span className="m-opt-name">{a.name}</span></span>
+                  <Icon name="plus" />
+                </button>
+              ))}
+            </div>
+          )}
+          {err && <div className="m-field-err">{err}</div>}
+        </>
+      ) : view === 'detail' && sel ? (
+        <>
+          <button className="m-conn-back" onClick={() => { haptic(); setView('list'); setSel(null); setErr(''); }}><Icon name="back" /><span>Connections</span></button>
+          <div className="m-conn-detail-head">
+            <span className="m-conn-ico m-conn-ico-lg">{(sel.appName || '?').charAt(0)}</span>
+            <div className="m-conn-detail-meta">
+              <div className="m-conn-detail-name">{sel.label || sel.appName}</div>
+              <div className={`m-conn-detail-status${sel.healthy === false ? ' bad' : ''}`}>{sel.healthy === false ? 'Reconnect needed' : 'Connected'}</div>
+            </div>
+          </div>
+          <div className="m-set-label">Name</div>
+          <div className="m-set-form">
+            <input className="m-field-in" defaultValue={sel.label || sel.appName} placeholder={sel.appName} onBlur={(e) => rename(sel, e.currentTarget.value)} />
+          </div>
+          <div className="m-set-label">Tools your agent can use</div>
+          {tools == null ? <div className="m-set-loading">Loading tools…</div>
+            : tools.length === 0 ? <div className="m-conn-empty">This app publishes no tools yet.</div>
+            : (
+              <div className="m-sel-group">
+                {tools.map((t) => (
+                  <button key={t.key || t.name} className="m-opt" onClick={() => toggleTool(sel, t.name)}>
+                    <span className="m-opt-text"><span className="m-opt-name">{t.name}</span>{t.description && <span className="m-opt-desc">{t.description}</span>}</span>
+                    <span className="m-toolcheck" data-on={allowed.has(t.name) ? 'true' : 'false'}>{allowed.has(t.name) && <Icon name="tick" />}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          <button className="m-field-btn m-field-danger" onClick={() => { haptic(); setDel(sel); }}>Disconnect</button>
+          {err && <div className="m-field-err">{err}</div>}
+        </>
+      ) : (
+        <>
+          {conns == null ? <div className="m-set-loading">Loading…</div>
+            : conns.length === 0 ? <div className="m-conn-empty">No connections yet. Add one to give your agent access to your apps.</div>
+            : (
+              <div className="m-sel-group">
+                {conns.map((c) => (
+                  <button key={c.id} className="m-opt" onClick={() => openDetail(c)}>
+                    <span className="m-conn-ico">{(c.appName || '?').charAt(0)}</span>
+                    <span className="m-opt-text"><span className="m-opt-name">{c.label || c.appName}</span><span className="m-opt-desc">{c.healthy === false ? 'Reconnect needed' : 'Connected'}</span></span>
+                    <Icon name="chevron" />
+                  </button>
+                ))}
+              </div>
+            )}
+          <button className="m-field-btn" onClick={() => { haptic(); setView('catalog'); }}>+ Add a connection</button>
+          {err && <div className="m-field-err">{err}</div>}
+        </>
+      )}
+
+      {/* Connect happens IN-APP as a tray (no popup): the Pipedream Connect page
+          loads in an embedded frame; we detect the new account and close. */}
+      {connecting && (
+        <div className="m-connect-tray">
+          <header className="m-connect-head">
+            <button className="m-sheet-btn" aria-label="Cancel" onClick={() => { haptic(); setConnecting(null); void refresh(); }}><Icon name="close" /></button>
+            <span className="m-sheet-title">Connect {connecting.app.name}</span>
+            <span className="m-sheet-btn" aria-hidden="true" style={{ visibility: 'hidden' }} />
+          </header>
+          <iframe className="m-connect-frame" src={connecting.url} title={`Connect ${connecting.app.name}`} allow="clipboard-write" />
+          <a className="m-connect-fallback" href={connecting.url} target="_blank" rel="noopener noreferrer">Trouble loading? Open in a browser tab</a>
+        </div>
+      )}
+
+      {del && (
+        <div className="m-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="m-confirm-scrim" onClick={() => setDel(null)} />
+          <div className="m-confirm">
+            <div className="m-confirm-title">Disconnect {del.label || del.appName}?</div>
+            <div className="m-confirm-msg">Your agent loses access to its tools until you reconnect.</div>
+            <div className="m-confirm-actions">
+              <button className="m-confirm-btn" onClick={() => setDel(null)}>Cancel</button>
+              <button className="m-confirm-btn m-confirm-danger" onClick={() => disconnect(del)}>Disconnect</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+const THEMES: { id: string; name: string; desc?: string }[] = [
+  { id: 'system', name: 'System', desc: 'Match your device' },
+  { id: 'light', name: 'Light' },
+  { id: 'dark', name: 'Dark' },
+  { id: 'purple', name: 'Purple' },
+  { id: 'aurora', name: 'Aurora' },
+  { id: 'prism', name: 'Prism' },
+  { id: 'github', name: 'GitHub' },
+  { id: 'highvis', name: 'High contrast' },
+  { id: 'claude', name: 'Claude' },
+  { id: 'chatgpt', name: 'ChatGPT' },
+  { id: 'gemini', name: 'Gemini' },
+  { id: 'dracula', name: 'Dracula' },
+  { id: 'nord', name: 'Nord' },
+  { id: 'synthwave', name: 'Synthwave' },
+  { id: 'matrix', name: 'Matrix' },
+];
+function AppearanceTray() {
+  const [theme, setTheme] = useState(currentTheme);
+  const pick = (t: string) => { haptic(); setTheme(t); applyTheme(t); };
+  const sysResolved = (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  return (
+    <div className="m-sel-group">
+      {THEMES.map((o) => (
+        <button key={o.id} className="m-opt" onClick={() => pick(o.id)}>
+          <span className="m-theme-sw" data-theme={o.id === 'system' ? sysResolved : o.id} aria-hidden="true" />
+          <span className="m-opt-text"><span className="m-opt-name">{o.name}</span>{o.desc && <span className="m-opt-desc">{o.desc}</span>}</span>
+          {theme === o.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections';
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void }) {
-  const [sub, setSub] = useState<'profile' | 'billing' | 'usage'>('profile');
+  const [sub, setSub] = useState<SettingsSub>('profile');
   const [subOpen, setSubOpen] = useState(false);   // drives the track; sub persists during slide-back
   const [info, setInfo] = useState(false);
   useEffect(() => {
@@ -810,8 +1043,9 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
     const t = setTimeout(() => { setSubOpen(false); setInfo(false); }, 260);
     return () => clearTimeout(t);
   }, [open]);
-  const openSub = (s: 'profile' | 'billing' | 'usage') => { haptic(); setSub(s); setSubOpen(true); };
-  const title = sub === 'profile' ? 'Profile' : sub === 'billing' ? 'Billing' : 'Usage';
+  const openSub = (s: SettingsSub) => { haptic(); setSub(s); setSubOpen(true); };
+  const title = sub === 'profile' ? 'Profile' : sub === 'billing' ? 'Billing' : sub === 'usage' ? 'Usage'
+    : sub === 'connections' ? 'Connections' : 'Appearance';
 
   const legalRow = (href: string, label: string) => (
     <a className="m-info-row" href={href} target="_blank" rel="noopener noreferrer" onClick={() => setInfo(false)}>
@@ -863,6 +1097,8 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
               {sub === 'profile' && <ProfileTray user={user} onUpdated={onUserChanged} />}
               {sub === 'billing' && <BillingTray />}
               {sub === 'usage' && <UsageTray />}
+              {sub === 'connections' && <ConnectionsTray />}
+              {sub === 'appearance' && <AppearanceTray />}
             </div>
           </section>
         </div>
