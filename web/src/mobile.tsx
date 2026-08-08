@@ -23,7 +23,8 @@ import {
 // import). It reads the SDK off window.glyphhSdk (desktop shape) and drives the
 // exact provision → poll-ready → harness.start streaming path. The renderer-only
 // LOCAL path lives in code.ts, not here, so nothing desktop-specific is pulled in.
-import { runRemoteTurn, ensureRuntime, type RemoteChat, type RemotePermission } from '../../src/renderer/help/remote-run';
+import { runRemoteTurn, ensureRuntime, answerPending,
+  type RemoteChat, type RemotePermission, type RemoteApprovalRequest, type RemoteAskRequest } from '../../src/renderer/help/remote-run';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -1996,6 +1997,73 @@ function PermissionSheet({ open, onClose, perm, setPerm }: {
   );
 }
 
+/* ── Agent prompt: a parked approval (Allow/Deny) or the agent's questions.
+   Portaled over everything; auto-dismisses at the runtime's decide deadline. ── */
+type PendingPrompt = ({ t: 'approval' } & RemoteApprovalRequest) | ({ t: 'ask' } & RemoteAskRequest);
+function AgentPrompt({ pending, onResolve }: {
+  pending: PendingPrompt;
+  onResolve: (reply: { allow?: boolean; answers?: string[] } | null) => void;
+}) {
+  const [answers, setAnswers] = useState<string[]>(() => pending.t === 'ask' ? pending.questions.map(() => '') : []);
+  const [left, setLeft] = useState(() => Math.max(0, Math.round((pending.deadline - Date.now()) / 1000)));
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const s = Math.max(0, Math.round((pending.deadline - Date.now()) / 1000));
+      setLeft(s);
+      if (s <= 0) onResolve(null);   // the runtime decides on its own past the deadline
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [pending.deadline]);
+
+  const body = pending.t === 'approval' ? (
+    <>
+      <div className="m-prompt-kind" data-kind={pending.kind}>{pending.kind}</div>
+      <div className="m-prompt-title">{pending.title || 'Allow this action?'}</div>
+      {pending.detail && <div className="m-prompt-detail">{pending.detail}</div>}
+      <div className="m-prompt-actions">
+        <button className="m-prompt-btn" onClick={() => { haptic(); onResolve({ allow: false }); }}>Deny</button>
+        <button className="m-prompt-btn m-prompt-primary" onClick={() => { haptic(); onResolve({ allow: true }); }}>Allow</button>
+      </div>
+    </>
+  ) : (
+    <>
+      <div className="m-prompt-title">Glyphh is asking</div>
+      {pending.questions.map((q, i) => (
+        <div key={i} className="m-prompt-q">
+          <div className="m-prompt-qtext">{q.question}</div>
+          {q.options && q.options.length ? (
+            <div className="m-prompt-opts">
+              {q.options.map((o) => (
+                <button key={o} className="m-prompt-opt" data-on={answers[i] === o ? 'true' : 'false'}
+                  onClick={() => { haptic(); setAnswers((a) => a.map((x, j) => (j === i ? o : x))); }}>{o}</button>
+              ))}
+            </div>
+          ) : (
+            <input className="m-prompt-input" value={answers[i]} placeholder="Type an answer…"
+              onChange={(e) => setAnswers((a) => a.map((x, j) => (j === i ? (e.target as HTMLInputElement).value : x)))} />
+          )}
+        </div>
+      ))}
+      <div className="m-prompt-actions">
+        <button className="m-prompt-btn m-prompt-primary" disabled={answers.some((a) => !a.trim())}
+          onClick={() => { haptic(); onResolve({ answers }); }}>Send</button>
+      </div>
+    </>
+  );
+
+  return createPortal(
+    <div className="m-prompt-overlay" role="dialog" aria-modal="true">
+      <div className="m-prompt-scrim" />
+      <div className="m-prompt">
+        <div className="m-prompt-grip" />
+        {body}
+        {left > 0 && <div className="m-prompt-timer">Auto-decides in {left}s</div>}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /* ── Search overlay: the resting pill promotes to a focused input pinned above
    the keyboard (tracked via visualViewport). Slides up on open; the X slides it
    back down. Rendered at app root so position:fixed escapes the shell transform. */
@@ -2123,6 +2191,7 @@ function App() {
   const [connecting, setConnecting] = useState(false);                 // provisioning/connecting a cloud runtime
   const [streaming, setStreaming] = useState(false);                   // a turn is in flight
   const [draft, setDraft] = useState('');                              // composer input
+  const [pending, setPending] = useState<PendingPrompt | null>(null);  // parked approval/ask
   const convoRef = useRef<Message[]>([]);                              // source of truth for the transcript
   const [selectorAt, setSelectorAt] = useState<'sections' | 'loop' | 'models' | null>(null);
   const [permOpen, setPermOpen] = useState(false);
@@ -2184,7 +2253,7 @@ function App() {
   const sendPrompt = async () => {
     const prompt = draft.trim();
     if (!prompt || streaming) return;
-    haptic(); setDraft('');
+    haptic(); setDraft(''); setPending(null);
     let sess = session;
     if (!sess) {
       const id = 'c' + Date.now().toString(36);
@@ -2208,14 +2277,21 @@ function App() {
         onToken: () => setConnecting(false),
         onAnswer: (full) => { setConnecting(false); setAsst(full); },
         onStep: () => setConnecting(false),
-        onDone: (full) => { setConnecting(false); if (full) setAsst(full); },
-        onError: (detail) => { setConnecting(false); setAsst('⚠️ ' + detail); },
-        onStopped: () => { setConnecting(false); },
+        onApproval: (a) => { setConnecting(false); setPending({ t: 'approval', ...a }); },
+        onAsk: (a) => { setConnecting(false); setPending({ t: 'ask', ...a }); },
+        onDone: (full) => { setConnecting(false); setPending(null); if (full) setAsst(full); },
+        onError: (detail) => { setConnecting(false); setPending(null); setAsst('⚠️ ' + detail); },
+        onStopped: () => { setConnecting(false); setPending(null); },
       },
       { rotor: loop, ...(model ? { model } : {}), permission: perm as RemotePermission },
     );
     setStreaming(false); setConnecting(false);
     void persistThread(sess.id);
+  };
+
+  // Answer (or dismiss on deadline) a parked approval/ask via the answer seam.
+  const resolvePending = (reply: { allow?: boolean; answers?: string[] } | null) => {
+    setPending((p) => { if (p && reply) void answerPending(p.id, reply); return null; });
   };
 
   const comp: CompProps = {
@@ -2312,7 +2388,7 @@ function App() {
   const allChats = () => { haptic(); setScreen('list'); setDrawer(false); };
   const backToList = () => { haptic(); setScreen('list'); };
   const account = () => { haptic(); setSettings(true); };  /* leave the rail open behind the sheet */
-  const clearConvo = () => { convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); };
+  const clearConvo = () => { convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); setPending(null); };
   const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
   const newSession = () => { haptic(); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
 
@@ -2380,6 +2456,7 @@ function App() {
       />
       <PermissionSheet open={permOpen} onClose={() => { haptic(); setPermOpen(false); }} perm={perm} setPerm={setPerm} />
       <SearchOverlay open={search} inputRef={searchInputRef} onClose={closeSearch} />
+      {pending && <AgentPrompt pending={pending} onResolve={resolvePending} />}
       </>
       )}
 

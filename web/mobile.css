@@ -737,6 +737,48 @@ body {
 .m-connecting { display: flex; align-items: center; gap: 10px; padding: 12px 2px; color: var(--text-3); font: 400 15px/1 var(--font-sans); }
 .m-connecting-spin { flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-2); border-top-color: var(--accent); animation: m-spin 0.7s linear infinite; }
 
+/* ── Agent prompt (parked approval / ask) — portaled bottom sheet ─────────── */
+.m-prompt-overlay { position: fixed; inset: 0; z-index: 260; display: flex; align-items: flex-end; }
+.m-prompt-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.m-prompt {
+  position: relative; width: 100%; box-sizing: border-box;
+  max-height: 80%; overflow-y: auto;
+  background: var(--bg); border-radius: 22px 22px 0 0;
+  padding: 8px 18px calc(var(--safe-bottom) + 18px);
+  box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34);
+  animation: m-sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.m-prompt-grip { width: 40px; height: 5px; border-radius: 3px; background: var(--border-2); margin: 0 auto 14px; }
+.m-prompt-kind {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; margin-bottom: 10px;
+  font: 600 12px/1 var(--font-sans); text-transform: capitalize; letter-spacing: 0.02em;
+  background: var(--accent-bg); color: var(--accent-text);
+}
+.m-prompt-kind[data-kind="dangerous"] { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+.m-prompt-title { font: 700 20px/1.25 var(--font-sans); color: var(--text); }
+.m-prompt-detail { margin-top: 8px; font: 400 15px/1.5 var(--font-sans); color: var(--text-3); white-space: pre-wrap; word-break: break-word; }
+.m-prompt-q { margin-top: 14px; }
+.m-prompt-qtext { font: 500 16px/1.4 var(--font-sans); color: var(--text); margin-bottom: 8px; }
+.m-prompt-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.m-prompt-opt {
+  padding: 9px 14px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font: 500 15px/1 var(--font-sans); cursor: pointer;
+}
+.m-prompt-opt[data-on="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
+.m-prompt-input {
+  width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font: 400 16px/1.3 var(--font-sans); outline: none;
+}
+.m-prompt-actions { display: flex; gap: 10px; margin-top: 18px; }
+.m-prompt-btn {
+  flex: 1; padding: 14px; border-radius: 14px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font: 600 16px/1 var(--font-sans); cursor: pointer;
+}
+.m-prompt-btn:disabled { opacity: 0.4; cursor: default; }
+.m-prompt-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
+.m-prompt-timer { margin-top: 12px; text-align: center; font: 400 13px/1 var(--font-sans); color: var(--text-faint); }
+
 /* ── TABLET+ (iPad) : persistent sidebar, bigger type ── */
 @media (min-width: 768px) {
   /* No push drawer on tablet: the shell is a no-op and the rail is a persistent
