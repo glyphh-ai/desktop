@@ -667,14 +667,14 @@ body {
 /* Scroll-to-latest — centered, appears only when scrolled up. */
 .m-scrolldown {
   position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: calc(var(--safe-bottom) + 138px); z-index: 7;
-  width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border);
+  bottom: calc(var(--safe-bottom) + 126px); z-index: 7;
+  width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--border);
   display: grid; place-items: center; cursor: pointer;
   background: color-mix(in srgb, var(--surface-2) 84%, transparent);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   color: var(--text-2); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
 }
-.m-scrolldown svg { width: 20px; height: 20px; }
+.m-scrolldown svg { width: 22px; height: 22px; }
 .m-msg { max-width: 84%; font: 400 20px/1.5 var(--font-sans); }
 .m-msg-user {
   align-self: flex-end;
