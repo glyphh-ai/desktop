@@ -131,12 +131,18 @@ export function createGlyphhSpinner(opts?: { size?: number; phrases?: boolean })
 
   let raf = 0;
   let dead = false;
+  let read = false;
   const cx = size / 2, cy = size / 2;
   const persp = size * 1.6;
 
   const frame = () => {
     if (dead) return;
     if (!root.isConnected) { destroy(); return; } // dropped by a re-render
+    // Colours must be read while ATTACHED — the init read runs before the element
+    // is in the DOM, so getComputedStyle returns the default (white). Re-read on
+    // the first connected frame so the cube is theme-aware (dark on light themes),
+    // not just the white that happens to work on dark.
+    if (!read) { readColors(); read = true; }
     // Ease the tumble toward its target direction.
     vel = {
       x: vel.x + (target.x - vel.x) * 0.04,
