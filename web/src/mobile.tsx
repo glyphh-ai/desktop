@@ -11,8 +11,8 @@
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef } from 'react';
-import { NAV, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, SETTINGS_GROUPS,
-  type SpaceId, type Recent, type Message, type CodeSession } from './mock';
+import { NAV, GHOST_QUOTES, SETTINGS_GROUPS,
+  type SpaceId, type Recent, type Message } from './mock';
 // Real auth + client — the same SDK wiring app-web uses (localStorage token store,
 // gating cookies, refresh, signed-out event). We reuse it; we don't fork the client.
 import {
@@ -513,26 +513,13 @@ function ChatsView({ title, sessions, loading, onMenu, onOpen, onNewChat, onSear
 /* ── Code: attached Desktops strip + a Sessions list that distinguishes a
    session's runtime — running on a connected desktop, on a now-unreachable
    desktop, or in the cloud. ──────────────────────────────────────────────── */
-function CodeRowMeta({ s }: { s: CodeSession }) {
-  if (s.where === 'cloud') {
-    return (
-      <span className="m-code-meta" data-where="cloud">
-        <Icon name="cloud" /><span className="m-code-loc">{s.location}</span>
-      </span>
-    );
-  }
-  const connected = s.where === 'connected';
-  return (
-    <span className="m-code-meta" data-where={s.where}>
-      <Icon name={connected ? 'monitor' : 'monitor-off'} />
-      <span className="m-code-state">{connected ? 'Connected' : 'Disconnected'}</span>
-      <span className="m-code-dot">·</span>
-      <span className="m-code-loc">{s.location}</span>
-    </span>
-  );
-}
+/** An attached desktop/machine, from glyphh().attach.status(). */
+interface AttachedMachine { id?: string; app: string; version?: string; name?: string; capabilities?: string[]; since?: number }
 
-function CodeView({ onMenu, onOpen, onNewSession, onSearch }: {
+function CodeView({ desktops, sessions, loading, onMenu, onOpen, onNewSession, onSearch }: {
+  desktops: AttachedMachine[];
+  sessions: Recent[];
+  loading: boolean;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onNewSession: () => void;
@@ -551,34 +538,37 @@ function CodeView({ onMenu, onOpen, onNewSession, onSearch }: {
       <div className="m-code-scroll">
         <div className="m-code-label">Desktops</div>
         <div className="m-desktops">
-          {DESKTOPS.map((d) => (
-            <div key={d.id} className="m-desktop" data-status={d.status}>
-              <span className="m-desktop-icon"><Icon name="laptop" /><i className="m-desktop-badge" /></span>
-              <span className="m-desktop-name">{d.name}</span>
-              <span className="m-desktop-status">{d.status === 'connected' ? 'Connected' : 'Offline'}</span>
-            </div>
-          ))}
+          {desktops.length === 0
+            ? <div className="m-list-note">No desktops connected</div>
+            : desktops.map((d) => (
+              <div key={d.id || d.name || d.app} className="m-desktop" data-status="connected">
+                <span className="m-desktop-icon"><Icon name="laptop" /><i className="m-desktop-badge" /></span>
+                <span className="m-desktop-name">{d.name || d.app}</span>
+                <span className="m-desktop-status">Connected</span>
+              </div>
+            ))}
         </div>
 
         <div className="m-code-sessions-head">
           <span className="m-code-label">Sessions</span>
-          <button className="m-code-filter">All <Icon name="caret" /></button>
         </div>
         <div className="m-code-list">
-          {CODE_SESSIONS.map((s) => (
-            <button key={s.id} className="m-code-card" onClick={() => onOpen({ id: s.id, title: s.title, when: s.when })}>
-              <span className="m-code-thumb" data-kind={s.kind ?? 'plain'}>
-                {s.kind === 'branch' ? <Icon name="branch" /> : null}
-              </span>
-              <span className="m-code-body">
-                <span className="m-code-top">
-                  <span className="m-code-name">{s.title}</span>
-                  <span className="m-code-when">{s.when}</span>
+          {loading
+            ? <div className="m-list-note">Loading…</div>
+            : sessions.length === 0
+            ? <div className="m-list-note">No sessions yet — start one.</div>
+            : sessions.map((s) => (
+              <button key={s.id} className="m-code-card" onClick={() => onOpen(s)}>
+                <span className="m-code-thumb" data-kind="plain" />
+                <span className="m-code-body">
+                  <span className="m-code-top">
+                    <span className="m-code-name">{s.title}</span>
+                    <span className="m-code-when">{s.when}</span>
+                  </span>
+                  <span className="m-code-meta" data-where="cloud"><Icon name="cloud" /><span className="m-code-loc">Cloud</span></span>
                 </span>
-                <CodeRowMeta s={s} />
-              </span>
-            </button>
-          ))}
+              </button>
+            ))}
         </div>
       </div>
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewSession}><Icon name="plus" /><span>New session</span></button>
@@ -2325,6 +2315,7 @@ function App() {
   const [attach, setAttach] = useState(false);
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
   const [pins, setPins] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem('yoPins') || '[]')); } catch { return new Set(); } });
+  const [desktops, setDesktops] = useState<AttachedMachine[]>([]);   // attached machines (Code strip)
   const [msgs, setMsgs] = useState<Message[] | null>(null);            // active session's live transcript
   const [connecting, setConnecting] = useState(false);                 // provisioning/connecting a cloud runtime
   const [streaming, setStreaming] = useState(false);                   // a turn is in flight
@@ -2530,11 +2521,16 @@ function App() {
     glyphh().sessions.threads()
       .then((t: ThreadMeta[]) => { if (on) setThreads(Array.isArray(t) ? t : []); })
       .catch(() => { if (on) setThreads([]); });
+    // Attached desktops (Code strip) — a browser can LIST them via attach.status().
+    glyphh().attach.status()
+      .then((s: { machines?: AttachedMachine[] }) => { if (on) setDesktops(Array.isArray(s?.machines) ? s.machines : []); })
+      .catch(() => { if (on) setDesktops([]); });
     return () => { on = false; };
   }, [authState]);
   const pinnedFirst = (arr: Recent[]) => [...arr].sort((a, b) => (pins.has(b.id) ? 1 : 0) - (pins.has(a.id) ? 1 : 0));
   const chatRecents = pinnedFirst(threadsFor(threads, 'chat'));
   const workGroups = groupThreadsByTime(threads, 'cowork');   // Work = cowork threads, time-grouped
+  const codeRecents = threadsFor(threads, 'code');            // Code = code threads
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
   const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('list'); setSession(null); setDrawer(false); };
@@ -2595,7 +2591,7 @@ function App() {
               <div className="m-nav-track">
                 <section className="m-nav-panel">
                   {active === 'code'
-                    ? <CodeView onMenu={toggleDrawer} onOpen={openSession} onNewSession={newSession} onSearch={openSearch} />
+                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
                     ? <WorkView groups={workGroups} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewTask={newSession} onSearch={openSearch} />
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
