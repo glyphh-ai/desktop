@@ -516,12 +516,13 @@ function ChatsView({ title, sessions, loading, onMenu, onOpen, onNewChat, onSear
 /** An attached desktop/machine, from glyphh().attach.status(). */
 interface AttachedMachine { id?: string; app: string; version?: string; name?: string; capabilities?: string[]; since?: number }
 
-function CodeView({ desktops, sessions, loading, onMenu, onOpen, onNewSession, onSearch }: {
+function CodeView({ desktops, sessions, loading, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
   desktops: AttachedMachine[];
   sessions: Recent[];
   loading: boolean;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
+  onOpenDesktop: (d: AttachedMachine) => void;
   onNewSession: () => void;
   onSearch: () => void;
 }) {
@@ -541,11 +542,11 @@ function CodeView({ desktops, sessions, loading, onMenu, onOpen, onNewSession, o
           {desktops.length === 0
             ? <div className="m-list-note">No desktops connected</div>
             : desktops.map((d) => (
-              <div key={d.id || d.name || d.app} className="m-desktop" data-status="connected">
+              <button key={d.id || d.name || d.app} className="m-desktop" data-status="connected" onClick={() => onOpenDesktop(d)}>
                 <span className="m-desktop-icon"><Icon name="laptop" /><i className="m-desktop-badge" /></span>
                 <span className="m-desktop-name">{d.name || d.app}</span>
                 <span className="m-desktop-status">Connected</span>
-              </div>
+              </button>
             ))}
         </div>
 
@@ -579,11 +580,13 @@ function CodeView({ desktops, sessions, loading, onMenu, onOpen, onNewSession, o
 
 /* ── Work: tasks grouped by time bucket, each a card with a status
    glyph, title, timestamp and an optional note. ─────────────────────────── */
-function WorkView({ groups, loading, onMenu, onOpen, onNewTask, onSearch }: {
+function WorkView({ desktops, groups, loading, onMenu, onOpen, onOpenDesktop, onNewTask, onSearch }: {
+  desktops: AttachedMachine[];
   groups: TimeGroup[];
   loading: boolean;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
+  onOpenDesktop: (d: AttachedMachine) => void;
   onNewTask: () => void;
   onSearch: () => void;
 }) {
@@ -598,6 +601,20 @@ function WorkView({ groups, loading, onMenu, onOpen, onNewTask, onSearch }: {
         <FilterMenu allLabel="All tasks" allIcon="work" />
       </header>
       <div className="m-work-scroll">
+        {/* Desktops strip — same as Code: tap a machine to start a task on it. */}
+        <div className="m-code-label">Desktops</div>
+        <div className="m-desktops">
+          {desktops.length === 0
+            ? <div className="m-list-note">No desktops connected</div>
+            : desktops.map((d) => (
+              <button key={d.id || d.name || d.app} className="m-desktop" data-status="connected" onClick={() => onOpenDesktop(d)}>
+                <span className="m-desktop-icon"><Icon name="laptop" /><i className="m-desktop-badge" /></span>
+                <span className="m-desktop-name">{d.name || d.app}</span>
+                <span className="m-desktop-status">Connected</span>
+              </button>
+            ))}
+        </div>
+        <div className="m-code-sessions-head"><span className="m-code-label">Tasks</span></div>
         {loading
           ? <div className="m-list-note">Loading…</div>
           : groups.length === 0
@@ -2551,6 +2568,19 @@ function App() {
   const clearConvo = () => { convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); setPending(null); };
   const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
   const newSession = () => { haptic(); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
+  /** Tap a connected desktop → start a new session BOUND to that machine.
+   *  The source is `local` (machineId), threaded into the same runRemoteTurn
+   *  provisioning app-web uses: cloud today (web-deferred), the attached box
+   *  when the relay seam lands — mobile inherits it for free. */
+  const startDesktopSession = (d: AttachedMachine) => {
+    haptic();
+    const id = 'c' + Date.now().toString(36);
+    const chat = chatFor(id);
+    chat.mode = curMode;
+    chat.source = { kind: 'local', machineId: d.id, path: '' };
+    setSession({ id, title: 'New session', when: 'now' });
+    setScreen('session'); setDrawer(false); clearConvo();
+  };
 
   const showSplash = !minSplash || authState === 'checking';
 
@@ -2591,9 +2621,9 @@ function App() {
               <div className="m-nav-track">
                 <section className="m-nav-panel">
                   {active === 'code'
-                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewSession={newSession} onSearch={openSearch} />
+                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={startDesktopSession} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
-                    ? <WorkView groups={workGroups} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewTask={newSession} onSearch={openSearch} />
+                    ? <WorkView desktops={desktops} groups={workGroups} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={startDesktopSession} onNewTask={newSession} onSearch={openSearch} />
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
