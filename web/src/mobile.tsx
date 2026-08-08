@@ -78,6 +78,10 @@ function unavailMessage(stage: string, detail: string, runtimeUrl?: string, prob
 function credits(v: number | null | undefined): string {
   return v == null ? '—' : Math.round(v / 1e6).toLocaleString();
 }
+/** Values ALREADY in whole credits (e.g. /api/usage/mine, which converts server-side). */
+function wholeCredits(v: number | null | undefined): string {
+  return v == null ? '—' : Math.round(Number(v)).toLocaleString();
+}
 
 /** Persist + apply the theme live (same contract as mobile.html's pre-paint). */
 function applyTheme(t: string) {
@@ -995,14 +999,14 @@ function UsageTray() {
   return (
     <>
       <div className="m-bill-cards">
-        <div className="m-bill-card"><span className="m-bill-v">{credits(d.credits as number)}</span><span className="m-bill-l">Credits used</span></div>
-        <div className="m-bill-card"><span className="m-bill-v">{credits(d.creditsSaved as number)}</span><span className="m-bill-l">Saved</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{wholeCredits(d.credits as number)}</span><span className="m-bill-l">Credits used</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{wholeCredits(d.creditsSaved as number)}</span><span className="m-bill-l">Saved</span></div>
       </div>
       <div className="m-set-label">By source</div>
       <div className="m-sel-group">
-        <div className="m-sel-row"><span className="m-sel-row-label">Runtime</span><span className="m-sel-row-val">{credits(bs.fly)}</span></div>
-        <div className="m-sel-row"><span className="m-sel-row-label">Connectors</span><span className="m-sel-row-val">{credits(bs.pipedream)}</span></div>
-        <div className="m-sel-row"><span className="m-sel-row-label">Model providers</span><span className="m-sel-row-val">{credits(bs.provider)}</span></div>
+        <div className="m-sel-row"><span className="m-sel-row-label">Runtime</span><span className="m-sel-row-val">{wholeCredits(bs.fly)}</span></div>
+        <div className="m-sel-row"><span className="m-sel-row-label">Connectors</span><span className="m-sel-row-val">{wholeCredits(bs.pipedream)}</span></div>
+        <div className="m-sel-row"><span className="m-sel-row-label">Model providers</span><span className="m-sel-row-val">{wholeCredits(bs.provider)}</span></div>
       </div>
     </>
   );
