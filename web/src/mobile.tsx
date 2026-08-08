@@ -9,6 +9,7 @@
 // shapes. Served at /m by web/serve.mjs; bundled by `npm run build:web-mobile`.
 
 import { createRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef } from 'react';
 import { NAV, RECENTS, ALL_SESSIONS, MESSAGES, GHOST_QUOTES, DESKTOPS, CODE_SESSIONS, WORK_GROUPS,
   SETTINGS_GROUPS, MODELS, MODEL_TOP_N, LOOP_ROLES, DEFAULT_ROLE, LOOPS, PERMISSIONS,
@@ -813,6 +814,18 @@ function UsageTray() {
   );
 }
 
+/** App-icon cache, resolved by slug the way the desktop does — search the catalog
+ *  for the app whose id === slug and take its icon URL. */
+const _connIcon: Record<string, string | null> = {};
+async function resolveConnIcon(slug: string): Promise<string | null> {
+  if (slug in _connIcon) return _connIcon[slug];
+  try {
+    const { apps } = await glyphh().connections.apps({ search: slug, limit: 8 });
+    _connIcon[slug] = (apps.find((a: { id: string; icon?: string | null }) => a.id === slug)?.icon) || null;
+  } catch { _connIcon[slug] = null; }
+  return _connIcon[slug];
+}
+
 function ConnectionsTray() {
   type Conn = { id: string; appSlug: string; appName: string; label: string | null; healthy: boolean };
   type App = { id: string; name: string; icon: string | null };
@@ -824,13 +837,31 @@ function ConnectionsTray() {
   const [err, setErr] = useState('');
   const [del, setDel] = useState<Conn | null>(null);
   const [connecting, setConnecting] = useState<{ app: App; url: string } | null>(null);
+  const [icons, setIcons] = useState<Record<string, string | null>>({});
   // Detail (edit) tray state.
   const [sel, setSel] = useState<Conn | null>(null);
   const [tools, setTools] = useState<Tool[] | null>(null);
   const [allowed, setAllowed] = useState<Set<string>>(new Set());
+  const [toolsOpen, setToolsOpen] = useState<Set<string>>(new Set());   // expanded tool rows
 
   const refresh = async () => { try { setConns(await glyphh().connections.personalList()); } catch { setConns([]); } };
   useEffect(() => { void refresh(); }, []);
+  // Resolve real app icons for the connected accounts.
+  useEffect(() => {
+    if (!conns) return;
+    const slugs = [...new Set(conns.map((c) => c.appSlug))].filter((s) => !(s in icons));
+    if (!slugs.length) return;
+    let alive = true;
+    void Promise.all(slugs.map(async (s) => [s, await resolveConnIcon(s)] as const)).then((pairs) => {
+      if (alive) setIcons((m) => { const n = { ...m }; for (const [s, i] of pairs) n[s] = i; return n; });
+    });
+    return () => { alive = false; };
+  }, [conns]);   // eslint-disable-line
+  const connIcon = (slug: string, name: string, lg?: boolean) => (
+    <span className={lg ? 'm-conn-ico m-conn-ico-lg' : 'm-conn-ico'}>
+      {icons[slug] ? <img src={icons[slug] as string} alt="" onError={() => setIcons((m) => ({ ...m, [slug]: null }))} /> : (name || '?').charAt(0)}
+    </span>
+  );
   useEffect(() => {
     if (view !== 'catalog') return;
     let on = true; setApps(null);
@@ -874,8 +905,9 @@ function ConnectionsTray() {
 
   // Open the edit tray: load the app's full tool catalog + this connection's
   // allowed cap (absent ⇒ all tools allowed).
+  const toggleToolOpen = (id: string) => setToolsOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const openDetail = async (c: Conn) => {
-    haptic(); setErr(''); setSel(c); setTools(null); setView('detail');
+    haptic(); setErr(''); setSel(c); setTools(null); setToolsOpen(new Set()); setView('detail');
     try {
       const [t, caps] = await Promise.all([
         glyphh().connections.appTools(c.appSlug),
@@ -902,76 +934,120 @@ function ConnectionsTray() {
 
   return (
     <>
-      {view === 'catalog' ? (
-        <>
-          <button className="m-conn-back" onClick={() => { haptic(); setView('list'); setErr(''); }}><Icon name="back" /><span>Connections</span></button>
-          <div className="m-sel-search"><Icon name="search" /><input className="m-conn-in" placeholder="Search apps" value={q} onChange={(e) => setQ(e.currentTarget.value)} /></div>
-          {apps == null ? <div className="m-set-loading">Loading…</div> : (
-            <div className="m-sel-group">
-              {apps.map((a) => (
-                <button key={a.id} className="m-opt" onClick={() => startConnect(a)}>
-                  <span className="m-conn-ico">{a.icon ? <img src={a.icon} alt="" /> : (a.name || '?').charAt(0)}</span>
-                  <span className="m-opt-text"><span className="m-opt-name">{a.name}</span></span>
-                  <Icon name="plus" />
-                </button>
-              ))}
+      {/* Base: the connections list (the settings sub content). */}
+      {conns == null ? <div className="m-set-loading">Loading…</div>
+        : conns.length === 0 ? <div className="m-conn-empty">No connections yet. Add one to give your agent access to your apps.</div>
+        : (
+          <div className="m-sel-group">
+            {conns.map((c) => (
+              <button key={c.id} className="m-opt" onClick={() => openDetail(c)}>
+                {connIcon(c.appSlug, c.appName)}
+                <span className="m-opt-text"><span className="m-opt-name">{c.label || c.appName}</span><span className="m-opt-desc">{c.healthy === false ? 'Reconnect needed' : 'Connected'}</span></span>
+                <Icon name="chevron" />
+              </button>
+            ))}
+          </div>
+        )}
+      <button className="m-field-btn" onClick={() => { haptic(); setView('catalog'); }}>+ Add a connection</button>
+      {view === 'list' && err && <div className="m-field-err">{err}</div>}
+
+      {/* Add-a-connection catalog — its own sliding tray (portaled so fixed
+          positioning escapes the settings track's transform). */}
+      {view === 'catalog' && createPortal(
+        <div className="m-subtray">
+          <header className="m-subtray-head">
+            <button className="m-sheet-btn" aria-label="Back" onClick={() => { haptic(); setView('list'); setErr(''); }}><Icon name="back" /></button>
+            <span className="m-sheet-title">Add a connection</span>
+            <span className="m-sheet-btn" aria-hidden="true" style={{ visibility: 'hidden' }} />
+          </header>
+          <div className="m-subtray-body">
+            <div className="m-sel-search"><Icon name="search" /><input className="m-conn-in" placeholder="Search apps" value={q} onChange={(e) => setQ(e.currentTarget.value)} /></div>
+            {apps == null ? <div className="m-set-loading">Loading…</div> : (
+              <div className="m-sel-group">
+                {apps.map((a) => (
+                  <button key={a.id} className="m-opt" onClick={() => startConnect(a)}>
+                    <span className="m-conn-ico">{a.icon ? <img src={a.icon} alt="" /> : (a.name || '?').charAt(0)}</span>
+                    <span className="m-opt-text"><span className="m-opt-name">{a.name}</span></span>
+                    <Icon name="plus" />
+                  </button>
+                ))}
+              </div>
+            )}
+            {err && <div className="m-field-err">{err}</div>}
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* Connection detail (edit) — its own sliding tray (portaled). */}
+      {view === 'detail' && sel && createPortal(
+        <div className="m-subtray">
+          <header className="m-subtray-head">
+            <button className="m-sheet-btn" aria-label="Back" onClick={() => { haptic(); setView('list'); setSel(null); setErr(''); }}><Icon name="back" /></button>
+            <span className="m-sheet-title">{sel.label || sel.appName}</span>
+            <span className="m-sheet-btn" aria-hidden="true" style={{ visibility: 'hidden' }} />
+          </header>
+          <div className="m-subtray-body">
+            <div className="m-conn-detail-head">
+              {connIcon(sel.appSlug, sel.appName, true)}
+              <div className="m-conn-detail-meta">
+                <div className="m-conn-detail-name">{sel.label || sel.appName}</div>
+                <div className={`m-conn-detail-status${sel.healthy === false ? ' bad' : ''}`}>{sel.healthy === false ? 'Reconnect needed' : 'Connected'}</div>
+              </div>
+            </div>
+            <div className="m-set-label">Name</div>
+            <div className="m-set-form">
+              <input className="m-field-in" defaultValue={sel.label || sel.appName} placeholder={sel.appName} onBlur={(e) => rename(sel, e.currentTarget.value)} />
+            </div>
+            <div className="m-set-label">Tools your agent can use</div>
+            {tools == null ? <div className="m-set-loading">Loading tools…</div>
+              : tools.length === 0 ? <div className="m-conn-empty">This app publishes no tools yet.</div>
+              : (
+                <div className="m-sel-group">
+                  {tools.map((t) => {
+                    const id = t.key || t.name;
+                    const open = toolsOpen.has(id);
+                    return (
+                      <div key={id} className="m-tool" data-open={open ? 'true' : 'false'}>
+                        <div className="m-tool-head" onClick={() => (t.description ? toggleToolOpen(id) : toggleTool(sel, t.name))}>
+                          <span className="m-tool-name">{t.name}</span>
+                          {t.description && <span className="m-tool-caret"><Icon name="caret" /></span>}
+                          <button className="m-toolcheck" data-on={allowed.has(t.name) ? 'true' : 'false'}
+                            aria-label={allowed.has(t.name) ? 'Allowed — tap to block' : 'Blocked — tap to allow'}
+                            onClick={(e) => { e.stopPropagation(); toggleTool(sel, t.name); }}>
+                            {allowed.has(t.name) && <Icon name="tick" />}
+                          </button>
+                        </div>
+                        {open && t.description && <div className="m-tool-desc">{t.description}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            <button className="m-field-btn m-field-danger" onClick={() => { haptic(); setDel(sel); }}>Disconnect</button>
+            {err && <div className="m-field-err">{err}</div>}
+          </div>
+
+          {del && (
+            <div className="m-confirm-overlay" role="dialog" aria-modal="true">
+              <div className="m-confirm-scrim" onClick={() => setDel(null)} />
+              <div className="m-confirm">
+                <div className="m-confirm-title">Disconnect {del.label || del.appName}?</div>
+                <div className="m-confirm-msg">Your agent loses access to its tools until you reconnect.</div>
+                <div className="m-confirm-actions">
+                  <button className="m-confirm-btn" onClick={() => setDel(null)}>Cancel</button>
+                  <button className="m-confirm-btn m-confirm-danger" onClick={() => disconnect(del)}>Disconnect</button>
+                </div>
+              </div>
             </div>
           )}
-          {err && <div className="m-field-err">{err}</div>}
-        </>
-      ) : view === 'detail' && sel ? (
-        <>
-          <button className="m-conn-back" onClick={() => { haptic(); setView('list'); setSel(null); setErr(''); }}><Icon name="back" /><span>Connections</span></button>
-          <div className="m-conn-detail-head">
-            <span className="m-conn-ico m-conn-ico-lg">{(sel.appName || '?').charAt(0)}</span>
-            <div className="m-conn-detail-meta">
-              <div className="m-conn-detail-name">{sel.label || sel.appName}</div>
-              <div className={`m-conn-detail-status${sel.healthy === false ? ' bad' : ''}`}>{sel.healthy === false ? 'Reconnect needed' : 'Connected'}</div>
-            </div>
-          </div>
-          <div className="m-set-label">Name</div>
-          <div className="m-set-form">
-            <input className="m-field-in" defaultValue={sel.label || sel.appName} placeholder={sel.appName} onBlur={(e) => rename(sel, e.currentTarget.value)} />
-          </div>
-          <div className="m-set-label">Tools your agent can use</div>
-          {tools == null ? <div className="m-set-loading">Loading tools…</div>
-            : tools.length === 0 ? <div className="m-conn-empty">This app publishes no tools yet.</div>
-            : (
-              <div className="m-sel-group">
-                {tools.map((t) => (
-                  <button key={t.key || t.name} className="m-opt" onClick={() => toggleTool(sel, t.name)}>
-                    <span className="m-opt-text"><span className="m-opt-name">{t.name}</span>{t.description && <span className="m-opt-desc">{t.description}</span>}</span>
-                    <span className="m-toolcheck" data-on={allowed.has(t.name) ? 'true' : 'false'}>{allowed.has(t.name) && <Icon name="tick" />}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          <button className="m-field-btn m-field-danger" onClick={() => { haptic(); setDel(sel); }}>Disconnect</button>
-          {err && <div className="m-field-err">{err}</div>}
-        </>
-      ) : (
-        <>
-          {conns == null ? <div className="m-set-loading">Loading…</div>
-            : conns.length === 0 ? <div className="m-conn-empty">No connections yet. Add one to give your agent access to your apps.</div>
-            : (
-              <div className="m-sel-group">
-                {conns.map((c) => (
-                  <button key={c.id} className="m-opt" onClick={() => openDetail(c)}>
-                    <span className="m-conn-ico">{(c.appName || '?').charAt(0)}</span>
-                    <span className="m-opt-text"><span className="m-opt-name">{c.label || c.appName}</span><span className="m-opt-desc">{c.healthy === false ? 'Reconnect needed' : 'Connected'}</span></span>
-                    <Icon name="chevron" />
-                  </button>
-                ))}
-              </div>
-            )}
-          <button className="m-field-btn" onClick={() => { haptic(); setView('catalog'); }}>+ Add a connection</button>
-          {err && <div className="m-field-err">{err}</div>}
-        </>
+        </div>,
+        document.body,
       )}
 
       {/* Connect happens IN-APP as a tray (no popup): the Pipedream Connect page
           loads in an embedded frame; we detect the new account and close. */}
-      {connecting && (
+      {connecting && createPortal(
         <div className="m-connect-tray">
           <header className="m-connect-head">
             <button className="m-sheet-btn" aria-label="Cancel" onClick={() => { haptic(); setConnecting(null); void refresh(); }}><Icon name="close" /></button>
@@ -980,21 +1056,8 @@ function ConnectionsTray() {
           </header>
           <iframe className="m-connect-frame" src={connecting.url} title={`Connect ${connecting.app.name}`} allow="clipboard-write" />
           <a className="m-connect-fallback" href={connecting.url} target="_blank" rel="noopener noreferrer">Trouble loading? Open in a browser tab</a>
-        </div>
-      )}
-
-      {del && (
-        <div className="m-confirm-overlay" role="dialog" aria-modal="true">
-          <div className="m-confirm-scrim" onClick={() => setDel(null)} />
-          <div className="m-confirm">
-            <div className="m-confirm-title">Disconnect {del.label || del.appName}?</div>
-            <div className="m-confirm-msg">Your agent loses access to its tools until you reconnect.</div>
-            <div className="m-confirm-actions">
-              <button className="m-confirm-btn" onClick={() => setDel(null)}>Cancel</button>
-              <button className="m-confirm-btn m-confirm-danger" onClick={() => disconnect(del)}>Disconnect</button>
-            </div>
-          </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

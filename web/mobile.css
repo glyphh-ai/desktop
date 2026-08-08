@@ -1441,8 +1441,11 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
   flex: 0 0 26px;
   width: 26px;
   height: 26px;
+  padding: 0;
   border-radius: 8px;
   border: 1.5px solid var(--border-2);
+  background: none;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1450,6 +1453,17 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 }
 .m-toolcheck[data-on="true"] { background: var(--accent); border-color: var(--accent); }
 .m-toolcheck svg { width: 18px; height: 18px; }
+
+/* Expandable tool row (description collapsed by default). */
+.m-tool { border-bottom: 1px solid var(--border); }
+.m-tool:last-child { border-bottom: 0; }
+.m-tool-head { display: flex; align-items: center; gap: 10px; padding: 15px 18px; cursor: pointer; }
+.m-tool-head:active { background: var(--hover); }
+.m-tool-name { flex: 1; min-width: 0; font: 500 18px/1.3 var(--font-sans); color: var(--text); }
+.m-tool-caret { flex: 0 0 18px; display: flex; color: var(--text-faint); transition: transform 0.2s ease; }
+.m-tool-caret svg { width: 18px; height: 18px; }
+.m-tool[data-open="true"] .m-tool-caret { transform: rotate(180deg); }
+.m-tool-desc { padding: 0 18px 15px; font: 400 15px/1.5 var(--font-sans); color: var(--text-3); }
 .m-field-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); margin-top: 22px; }
 
 /* ── Full theme set (tokens ported from styles.css; mobile subset) ────────── */
@@ -1606,3 +1620,31 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 }
 .m-help-send:disabled { opacity: 0.4; }
 .m-help-send svg { width: 20px; height: 20px; }
+
+/* ── Generic sliding sub-tray (connection catalog + detail) ──────────────── */
+.m-subtray {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  animation: m-nav-in 0.28s ease;
+}
+.m-subtray-head {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(var(--safe-top) + 10px) 12px 10px calc(var(--safe-left) + 12px);
+  border-bottom: 1px solid var(--border);
+}
+.m-subtray-head .m-sheet-title { position: absolute; left: 0; right: 0; text-align: center; pointer-events: none; }
+.m-subtray-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px calc(var(--safe-right) + 16px) calc(var(--safe-bottom) + 24px) calc(var(--safe-left) + 16px);
+}
