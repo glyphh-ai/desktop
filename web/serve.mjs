@@ -55,16 +55,37 @@ const BRIDGE = '/glyphh-web-bundle.js';
 const PROXY = ENV.LOCAL_RUNTIME_PROXY === '1' || ENV.LOCAL_RUNTIME_PROXY === 'true';
 const API_TARGET = ENV.API_TARGET || 'http://localhost:3001';
 const RT_TARGET = ENV.RT_TARGET || 'http://localhost:8081';
-function proxyHttp(req, res, targetBase, strip) {
+function proxyHttp(req, res, targetBase, strip, rewrite) {
   const target = new URL(targetBase);
   const path = (strip ? req.url.slice(strip.length) : req.url) || '/';
+  const headers = { ...req.headers, host: target.host };
+  if (rewrite) delete headers['accept-encoding'];   // need uncompressed JSON to rewrite
   const pr = http.request({
     protocol: target.protocol, hostname: target.hostname, port: target.port,
-    method: req.method, path: path.startsWith('/') ? path : '/' + path,
-    headers: { ...req.headers, host: target.host },
-  }, (pres) => { res.writeHead(pres.statusCode || 502, pres.headers); pres.pipe(res); });
+    method: req.method, path: path.startsWith('/') ? path : '/' + path, headers,
+  }, (pres) => {
+    if (!rewrite) { res.writeHead(pres.statusCode || 502, pres.headers); pres.pipe(res); return; }
+    const chunks = [];
+    pres.on('data', (c) => chunks.push(c));
+    pres.on('end', () => {
+      let body = Buffer.concat(chunks);
+      if ((pres.headers['content-type'] || '').includes('application/json')) {
+        try { const j = JSON.parse(body.toString('utf8')); rewrite(j); body = Buffer.from(JSON.stringify(j)); } catch { /* leave as-is */ }
+      }
+      const h = { ...pres.headers }; delete h['content-length']; delete h['content-encoding'];
+      res.writeHead(pres.statusCode || 502, h);
+      res.end(body);
+    });
+  });
   pr.on('error', (e) => { res.statusCode = 502; res.end('proxy error: ' + e.message); });
   req.pipe(pr);
+}
+// Rewrite a provisioned session's runtimeUrl to point back through THIS tunnel's
+// /rt proxy — so the phone streams to a reachable URL WITHOUT restarting the server
+// (which keeps handing back whatever localhost address it's configured with).
+function rewriteRuntimeUrl(j, url) {
+  const fix = (o) => { if (o && typeof o === 'object' && typeof o.runtimeUrl === 'string' && o.runtimeUrl) { o.runtimeUrl = url; if (o.status && o.status !== 'ready') o.status = 'ready'; } };
+  if (Array.isArray(j)) j.forEach(fix); else { fix(j); if (j && typeof j === 'object') fix(j.session); }
 }
 
 // SPA fallback paths — client-side routes with no file on disk, mirroring the
@@ -139,6 +160,13 @@ const server = http.createServer(async (req, res) => {
   // DEV tunnel: forward API + harness through this origin before anything else.
   if (PROXY) {
     const rp = new URL(req.url, 'http://x').pathname;
+    // Session provision/get: rewrite runtimeUrl → <this-origin>/rt so the phone
+    // reaches the harness through this tunnel (no server restart needed).
+    if (rp.startsWith('/api/sessions') && !rp.startsWith('/api/sessions/threads')) {
+      const proto = (req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
+      const rtUrl = `${proto}://${req.headers.host}/rt`;
+      return proxyHttp(req, res, API_TARGET, '', (j) => rewriteRuntimeUrl(j, rtUrl));
+    }
     if (rp.startsWith('/api/')) return proxyHttp(req, res, API_TARGET, '');
     if (rp === '/rt' || rp.startsWith('/rt/')) return proxyHttp(req, res, RT_TARGET, '/rt');
   }
