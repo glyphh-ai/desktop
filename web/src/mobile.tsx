@@ -46,6 +46,34 @@ function isCommitted(id: string): boolean {
   return !!(r && r.url && r.token);
 }
 
+/* ── Honest runtime diagnostics (ported from app-web help/code.ts) — on a failed
+   turn, name the STAGE + the exact control/runtime URLs + whether the runtime is
+   reachable, so a 404 is a diagnosis, not a mystery. ─────────────────────────── */
+async function probeRuntime(url?: string): Promise<string> {
+  if (!url) return '';
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 4000);
+    try {
+      const res = await fetch(`${url.replace(/\/$/, '')}/healthz`, { signal: ctl.signal });
+      return res.ok ? 'runtime IS reachable from this browser (so it is auth/capacity, not the network)' : `runtime answered ${res.status} on /healthz`;
+    } finally { clearTimeout(t); }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return /abort/i.test(msg) ? 'runtime did not answer within 4s (down or blocked)' : `this browser could not reach the runtime (${msg}) — a blocked cross-origin request or nothing listening`;
+  }
+}
+function unavailMessage(stage: string, detail: string, runtimeUrl?: string, probe?: string): string {
+  const why =
+    stage === 'provision' || stage === 'provision-poll' ? "the cloud runtime couldn't be provisioned"
+    : stage === 'not-ready' ? "the cloud runtime didn't come up in time"
+    : stage === 'open' || stage === 'stream' ? 'the cloud runtime is unreachable from here'
+    : 'the cloud runtime isn’t connected';
+  const server = typeof window !== 'undefined' ? (window as unknown as { __GLYPHH_API_URL__?: string }).__GLYPHH_API_URL__ || '' : '';
+  const where = [server && `control plane ${server}`, runtimeUrl && `runtime ${runtimeUrl}`].filter(Boolean).join(' · ');
+  return `⚠️ Cloud runtime not connected — ${why} (at ${stage}).${where ? ` ${where}.` : ''}${probe ? ` Diagnosis: ${probe}.` : ''} (${detail})`;
+}
+
 /** Micro-credits (1 credit = 1e6) → a rounded whole-credit string. */
 function credits(v: number | null | undefined): string {
   return v == null ? '—' : Math.round(v / 1e6).toLocaleString();
@@ -2300,7 +2328,7 @@ function App() {
     // (the selected role's), the value the /run body's `model` field takes.
     const r0 = roleList[0];
     const model = r0 ? (roleSel[r0.name] ?? r0.modelId ?? '') : '';
-    await runRemoteTurn(
+    const outcome = await runRemoteTurn(
       chatFor(sess.id), prompt, () => {},
       {
         onToken: () => setConnecting(false),
@@ -2315,6 +2343,13 @@ function App() {
       { rotor: loop, ...(model ? { model } : {}), permission: perm as RemotePermission, signal: ac.signal },
     );
     setStreaming(false); setConnecting(false);
+    // Honest diagnosis: an unavailable stage names WHERE + probes the runtime.
+    if (outcome && typeof outcome === 'object' && 'unavailable' in outcome) {
+      const o = outcome as { stage: string; detail: string };
+      const url = chatFor(sess.id).runtime?.url;
+      const probe = await probeRuntime(url);
+      setAsst(unavailMessage(o.stage, o.detail, url, probe));
+    }
     void persistThread(sess.id);
   };
 
