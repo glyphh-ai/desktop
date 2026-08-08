@@ -644,7 +644,7 @@ body {
   gap: 14px;
   /* Bottom pad clears the floating composer so the last message sits above it —
      yet still scrolls fuzzily *under* the frosted band. */
-  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 120px) calc(var(--safe-left) + 16px);
+  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 128px) calc(var(--safe-left) + 16px);
 }
 /* Session composer FLOATS over the transcript + frosted band (like the chats
    New chat / search), and the box is translucent-frosted so text fuzzes behind. */
@@ -667,7 +667,7 @@ body {
 /* Scroll-to-latest — centered, appears only when scrolled up. */
 .m-scrolldown {
   position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: calc(var(--safe-bottom) + 96px); z-index: 6;
+  bottom: calc(var(--safe-bottom) + 138px); z-index: 7;
   width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border);
   display: grid; place-items: center; cursor: pointer;
   background: color-mix(in srgb, var(--surface-2) 84%, transparent);
@@ -675,7 +675,7 @@ body {
   color: var(--text-2); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
 }
 .m-scrolldown svg { width: 20px; height: 20px; }
-.m-msg { max-width: 84%; font: 400 19px/1.5 var(--font-sans); }
+.m-msg { max-width: 84%; font: 400 20px/1.5 var(--font-sans); }
 .m-msg-user {
   align-self: flex-end;
   padding: 11px 16px;
