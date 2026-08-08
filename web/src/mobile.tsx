@@ -25,6 +25,9 @@ import {
 // LOCAL path lives in code.ts, not here, so nothing desktop-specific is pulled in.
 import { runRemoteTurn, ensureRuntime, answerPending,
   type RemoteChat, type RemotePermission, type RemoteApprovalRequest, type RemoteAskRequest } from '../../src/renderer/help/remote-run';
+// The app's real working indicator — the tumbling wireframe cube + typed phrase.
+// Pure DOM/Canvas, so we mount it verbatim (brand parity in the chat thread).
+import { createGlyphhSpinner } from '../../src/renderer/glyphh-spinner';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -342,6 +345,20 @@ function Composer({ draft, setDraft, onSend, sending, onPlus, onOpenSelector, pe
   );
 }
 
+/* ── Brand working spinner — mounts the app's createGlyphhSpinner (canvas cube +
+   typed phrase) into React, self-destroys on unmount. ─────────────────────── */
+function GlyphhSpinner({ size = 40, phrases = true }: { size?: number; phrases?: boolean }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const host = ref.current;
+    if (!host) return;
+    const s = createGlyphhSpinner({ size, phrases });
+    host.appendChild(s.el);
+    return () => s.destroy();
+  }, [size, phrases]);
+  return <span ref={ref} className="m-gs-host" />;
+}
+
 /* ── Agent new-session empty state — the mark + a rotating quote. Matches the
    app's generic agent ghost (help/code.ts .code-ghost / GHOST_QUOTES). ────── */
 function Ghost() {
@@ -622,9 +639,17 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
               {msgs.map((m) => (
                 (m.text || m.role === 'user') && <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
               ))}
-              {connecting && (
-                <div className="m-connecting"><span className="m-connecting-spin" aria-hidden="true" />Connecting…</div>
-              )}
+              {(() => {
+                const last = msgs[msgs.length - 1];
+                const thinking = comp.sending && !!last && last.role === 'glyphh' && !last.text;
+                if (!connecting && !thinking) return null;
+                return (
+                  <div className="m-working">
+                    <GlyphhSpinner size={40} phrases={!connecting} />
+                    {connecting && <span className="m-working-label">Connecting…</span>}
+                  </div>
+                );
+              })()}
             </>
           )}
       </div>

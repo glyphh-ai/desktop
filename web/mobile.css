@@ -730,12 +730,22 @@ body {
 .m-composer-send svg { width: 20px; height: 20px; }
 .m-composer-send:disabled { opacity: 0.4; cursor: default; }
 
-/* Spinners: the send button while a turn is in flight, and the "Connecting…"
-   row while a cloud runtime provisions for a session. */
+/* Send button ring while a turn is in flight. */
 @keyframes m-spin { to { transform: rotate(360deg); } }
 .m-send-spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.45); border-top-color: #fff; animation: m-spin 0.7s linear infinite; }
-.m-connecting { display: flex; align-items: center; gap: 10px; padding: 12px 2px; color: var(--text-3); font: 400 15px/1 var(--font-sans); }
-.m-connecting-spin { flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-2); border-top-color: var(--accent); animation: m-spin 0.7s linear infinite; }
+
+/* Brand working spinner (createGlyphhSpinner) — the tumbling wireframe cube +
+   typed phrase, matched to the app. Shown as a thread row while the agent is
+   connecting or thinking. Mobile-friendly: the phrase flexes + ellipsizes. */
+.m-working { display: flex; align-items: center; gap: 8px; padding: 8px 2px; align-self: flex-start; max-width: 100%; }
+.m-working-label { font: 400 15px/1 var(--font-sans); color: var(--text-3); }
+.m-gs-host { display: inline-flex; min-width: 0; }
+.glyphh-spinner { display: inline-flex; align-items: center; gap: 10px; min-width: 0; color: var(--text); }
+.gs-cube { display: block; flex-shrink: 0; }
+.gs-phrase { font: 400 13.5px/1.2 var(--font-sans); color: var(--text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-meta { font: 400 13.5px/1.2 var(--font-sans); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gs-phrase.typing::after { content: "\258d"; margin-left: 1px; color: var(--accent); animation: gs-caret 0.7s step-end infinite; }
+@keyframes gs-caret { 50% { opacity: 0; } }
 
 /* ── Agent prompt (parked approval / ask) — portaled bottom sheet ─────────── */
 .m-prompt-overlay { position: fixed; inset: 0; z-index: 260; display: flex; align-items: flex-end; }
