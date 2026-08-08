@@ -2295,8 +2295,11 @@ function App() {
     setConnecting(!isCommitted(sess.id));
     setStreaming(true);
     const ac = new AbortController();
-    // Match app-web's launchRemote (help/code.ts) EXACTLY: no model override —
-    // the loop resolves its own model server-side; only rotor + permission + signal.
+    // Design (top-down): a chat turn rides the cloud rrotor carrying the LOOP
+    // (rotor), the MODEL, and the PERMISSION mode. Chat is tool-less → one model
+    // (the selected role's), the value the /run body's `model` field takes.
+    const r0 = roleList[0];
+    const model = r0 ? (roleSel[r0.name] ?? r0.modelId ?? '') : '';
     await runRemoteTurn(
       chatFor(sess.id), prompt, () => {},
       {
@@ -2309,7 +2312,7 @@ function App() {
         onError: (detail) => { setConnecting(false); setPending(null); setAsst('⚠️ ' + detail); },
         onStopped: () => { setConnecting(false); setPending(null); },
       },
-      { rotor: loop, permission: perm as RemotePermission, signal: ac.signal },
+      { rotor: loop, ...(model ? { model } : {}), permission: perm as RemotePermission, signal: ac.signal },
     );
     setStreaming(false); setConnecting(false);
     void persistThread(sess.id);
