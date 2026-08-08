@@ -2189,6 +2189,7 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [devUrl, setDevUrl] = useState('');   // dev servers w/o an emailer return the link
   const gRef = useRef<HTMLDivElement>(null);
   const clientId = typeof window !== 'undefined' ? (window as unknown as { __GLYPHH_GOOGLE_CLIENT_ID__?: string }).__GLYPHH_GOOGLE_CLIENT_ID__ : undefined;
 
@@ -2219,8 +2220,14 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
     e.preventDefault();
     const addr = email.trim();
     if (!addr) return;
-    try { setBusy(true); setErr(''); await startEmailLink(addr, window.location.origin + '/m'); setSent(true); }
-    catch { setErr('Could not send the link. Check the address and try again.'); }
+    try {
+      setBusy(true); setErr('');
+      // A dev server with no emailer configured returns { sent:false, devUrl } —
+      // surface it so local sign-in is self-service (no inbox, no console).
+      const r = await startEmailLink(addr, window.location.origin + '/m') as { sent?: boolean; devUrl?: string } | undefined;
+      setDevUrl(r && r.sent === false && r.devUrl ? r.devUrl : '');
+      setSent(true);
+    } catch { setErr('Could not send the link. Check the address and try again.'); }
     finally { setBusy(false); }
   };
 
@@ -2231,9 +2238,19 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
         <img className="m-login-logo" src="/brand/glyphh-logo-white.png" alt="Glyphh" />
         {sent ? (
           <div className="m-login-sent">
-            <div className="m-login-title">Check your email</div>
-            <p className="m-login-sub">We sent a sign-in link to <b>{email}</b>. Open it on this device to continue.</p>
-            <button className="m-login-alt" onClick={() => { haptic(); setSent(false); }}>Use a different email</button>
+            {devUrl ? (
+              <>
+                <div className="m-login-title">Dev sign-in</div>
+                <p className="m-login-sub">This server has no emailer, so use the dev link for <b>{email}</b> (local only).</p>
+                <a className="m-login-primary m-login-devlink" href={devUrl}>Continue as {email}</a>
+              </>
+            ) : (
+              <>
+                <div className="m-login-title">Check your email</div>
+                <p className="m-login-sub">We sent a sign-in link to <b>{email}</b>. Open it on this device to continue.</p>
+              </>
+            )}
+            <button className="m-login-alt" onClick={() => { haptic(); setSent(false); setDevUrl(''); }}>Use a different email</button>
           </div>
         ) : (
           <>

@@ -1363,6 +1363,8 @@ body {
   font: 600 18px/1 var(--font-sans);
 }
 .m-login-primary:disabled { opacity: 0.6; }
+/* Dev sign-in link — the primary button rendered as an anchor. */
+.m-login-devlink { display: flex; align-items: center; justify-content: center; text-decoration: none; box-sizing: border-box; }
 .m-login-or { display: flex; align-items: center; gap: 12px; width: 100%; color: rgba(255,255,255,0.42); font: 500 13px/1 var(--font-sans); }
 .m-login-or::before, .m-login-or::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.14); }
 .m-login-google { display: flex; justify-content: center; min-height: 44px; width: 100%; }
