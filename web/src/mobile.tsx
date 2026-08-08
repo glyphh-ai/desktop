@@ -19,6 +19,28 @@ import {
   glyphh, syncGating, isAuthenticated, signInWithGoogle, startEmailLink,
   verifyEmailLink, exchangeCode, signOut as sdkSignOut, cachedUser,
 } from './glyphh-web.js';
+// Reuse the desktop's remote-turn engine verbatim (it's web-safe — only a type
+// import). It reads the SDK off window.glyphhSdk (desktop shape) and drives the
+// exact provision → poll-ready → harness.start streaming path. The renderer-only
+// LOCAL path lives in code.ts, not here, so nothing desktop-specific is pulled in.
+import { runRemoteTurn, ensureRuntime, type RemoteChat, type RemotePermission } from '../../src/renderer/help/remote-run';
+
+// Point the reused engine at OUR authenticated client so provisioning + streaming
+// share one session. (glyphh() is a lazily-built singleton — safe at module load.)
+if (typeof window !== 'undefined') (window as unknown as { glyphhSdk?: unknown }).glyphhSdk = glyphh();
+
+/** Per-thread runtime binding cache. "Committed" = the thread has a live runtime
+ *  (url+token). Chats are cloud: the pod is provisioned once per thread, reused. */
+const remoteChats = new Map<string, RemoteChat>();
+function chatFor(id: string): RemoteChat {
+  let c = remoteChats.get(id);
+  if (!c) { c = { id, mode: 'chat' }; remoteChats.set(id, c); }
+  return c;
+}
+function isCommitted(id: string): boolean {
+  const r = remoteChats.get(id)?.runtime;
+  return !!(r && r.url && r.token);
+}
 
 /** Micro-credits (1 credit = 1e6) → a rounded whole-credit string. */
 function credits(v: number | null | undefined): string {
@@ -291,21 +313,28 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ onPlus, onOpenSelector, permLabel }: {
-  onPlus: () => void;
-  onOpenSelector: (section: 'loop' | 'models' | 'permission') => void;
-  permLabel: string;
-}) {
+function Composer({ draft, setDraft, onSend, sending, onPlus, onOpenSelector, permLabel }: CompProps) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  // Auto-grow up to a cap; the box scrolls internally beyond that.
+  useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
+  const canSend = !!draft.trim() && !sending;
+  const submit = () => { if (canSend) onSend(); };
   return (
     <div className="m-composer">
       <div className="m-composer-box">
-        <div className="m-composer-input"><span className="m-composer-ph">Message Glyphh…</span></div>
+        <textarea
+          ref={ref} className="m-composer-input" rows={1} placeholder="Message Glyphh…"
+          value={draft} onChange={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
+          autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" />
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
           <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
           <span className="m-composer-spacer" />
           <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
-          <button className="m-composer-send" aria-label="Send"><Icon name="send" /></button>
+          <button className="m-composer-send" aria-label="Send" disabled={!canSend} onClick={submit}>
+            {sending ? <span className="m-send-spin" aria-hidden="true" /> : <Icon name="send" />}
+          </button>
         </div>
       </div>
     </div>
@@ -535,13 +564,16 @@ interface CompProps {
   permLabel: string;
   modelSummary: string;   // dots "Change model" subtitle / home dropdown
   loopName: string;       // dots "Change loop" subtitle / home dropdown
+  draft: string;                    // composer input value (single active composer)
+  setDraft: (v: string) => void;
+  onSend: () => void;
+  sending: boolean;                 // a turn is in flight
 }
 
-function SessionView({ session, onBack, comp }: { session: Recent; onBack: () => void; comp: CompProps }) {
+function SessionView({ session, msgs, connecting, onBack, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; onBack: () => void; comp: CompProps }) {
   const [menu, setMenu] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const [msgs, setMsgs] = useState<Message[] | null>(null);   // null = loading
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!menu) return;
@@ -549,15 +581,6 @@ function SessionView({ session, onBack, comp }: { session: Recent; onBack: () =>
     document.addEventListener('pointerdown', onDoc);
     return () => document.removeEventListener('pointerdown', onDoc);
   }, [menu]);
-  // Load the thread's real messages whenever the open session changes.
-  useEffect(() => {
-    let on = true;
-    setMsgs(null);
-    glyphh().sessions.thread(session.id)
-      .then((t: { messages?: ThreadMsg[] }) => { if (on) setMsgs((t.messages ?? []).map(normalizeMsg)); })
-      .catch(() => { if (on) setMsgs([]); });
-    return () => { on = false; };
-  }, [session.id]);
 
   return (
     <div className="m-sv">
@@ -593,11 +616,16 @@ function SessionView({ session, onBack, comp }: { session: Recent; onBack: () =>
       <div className="m-sv-messages">
         {msgs === null
           ? <div className="m-list-note">Loading…</div>
-          : msgs.length === 0
-          ? <div className="m-list-note">No messages yet.</div>
-          : msgs.map((m) => (
-            <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
-          ))}
+          : (
+            <>
+              {msgs.map((m) => (
+                (m.text || m.role === 'user') && <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
+              ))}
+              {connecting && (
+                <div className="m-connecting"><span className="m-connecting-spin" aria-hidden="true" />Connecting…</div>
+              )}
+            </>
+          )}
       </div>
       <Composer {...comp} />
 
@@ -2091,6 +2119,11 @@ function App() {
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
+  const [msgs, setMsgs] = useState<Message[] | null>(null);            // active session's live transcript
+  const [connecting, setConnecting] = useState(false);                 // provisioning/connecting a cloud runtime
+  const [streaming, setStreaming] = useState(false);                   // a turn is in flight
+  const [draft, setDraft] = useState('');                              // composer input
+  const convoRef = useRef<Message[]>([]);                              // source of truth for the transcript
   const [selectorAt, setSelectorAt] = useState<'sections' | 'loop' | 'models' | null>(null);
   const [permOpen, setPermOpen] = useState(false);
   const [loops, setLoops] = useState<LoopItem[] | null>(null);
@@ -2116,12 +2149,84 @@ function App() {
   const modelSummary = roleList.length
     ? (roleList.length > 1 ? `${modelNameById(effModel(roleList[0]))} +${roleList.length - 1}` : modelNameById(effModel(roleList[0])))
     : '';
+  // ── Conversation transcript + streaming (chats run on a cloud pod) ──────────
+  const renderConvo = () => setMsgs([...convoRef.current]);
+  const primaryModelId = (): string => { const r = roleList[0]; return r ? (roleSel[r.name] ?? r.modelId ?? '') : ''; };
+
+  /** Persist the live transcript back to the thread (LWW by updatedAt), then
+   *  refresh the list so the chat surfaces with its new title/timestamp. */
+  const persistThread = async (id: string) => {
+    try {
+      const messages = convoRef.current.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text }));
+      const title = convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat';
+      await glyphh().sessions.pushThread(id, { title, mode: 'chat', messages, updatedAt: Date.now() });
+      const t = await glyphh().sessions.threads();
+      setThreads(Array.isArray(t) ? t : []);
+    } catch { /* offline / not-ready — the transcript stays local for now */ }
+  };
+
+  /** Open a chat: load its transcript, and (chats are cloud) eagerly connect its
+   *  runtime if it isn't committed yet — the connecting spinner rides that. */
+  const loadSession = (s: Recent) => {
+    convoRef.current = []; setMsgs(null);
+    glyphh().sessions.thread(s.id)
+      .then((t: { messages?: ThreadMsg[] }) => { convoRef.current = (t.messages ?? []).map(normalizeMsg); renderConvo(); })
+      .catch(() => { convoRef.current = []; renderConvo(); });
+    // Chats are cloud — connect on open. Work/Code aren't cloud, so don't provision.
+    if (active === 'chat' && !isCommitted(s.id)) {
+      setConnecting(true);
+      void ensureRuntime(chatFor(s.id), () => {}, { rotor: loop }).then(() => setConnecting(false)).catch(() => setConnecting(false));
+    } else { setConnecting(false); }
+  };
+
+  /** Send the composer draft — minting the chat on the first message, then
+   *  streaming the agent's reply into the transcript. */
+  const sendPrompt = async () => {
+    const prompt = draft.trim();
+    if (!prompt || streaming) return;
+    haptic(); setDraft('');
+    let sess = session;
+    if (!sess) {
+      const id = 'c' + Date.now().toString(36);
+      sess = { id, title: prompt.slice(0, 60), when: 'now' };
+      setSession(sess); setScreen('session'); setDrawer(false);
+      convoRef.current = [];
+      setThreads((t) => [{ id, title: sess!.title, mode: 'chat', createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
+    }
+    const asstId = 'a' + Date.now().toString(36);
+    convoRef.current = [...convoRef.current,
+      { id: 'u' + Date.now().toString(36), role: 'user', text: prompt },
+      { id: asstId, role: 'glyphh', text: '' }];
+    renderConvo();
+    const setAsst = (text: string) => { const m = convoRef.current.find((x) => x.id === asstId); if (m) { m.text = text; renderConvo(); } };
+    setConnecting(!isCommitted(sess.id));
+    setStreaming(true);
+    const model = primaryModelId();
+    await runRemoteTurn(
+      chatFor(sess.id), prompt, () => {},
+      {
+        onToken: () => setConnecting(false),
+        onAnswer: (full) => { setConnecting(false); setAsst(full); },
+        onStep: () => setConnecting(false),
+        onDone: (full) => { setConnecting(false); if (full) setAsst(full); },
+        onError: (detail) => { setConnecting(false); setAsst('⚠️ ' + detail); },
+        onStopped: () => { setConnecting(false); },
+      },
+      { rotor: loop, ...(model ? { model } : {}), permission: perm as RemotePermission },
+    );
+    setStreaming(false); setConnecting(false);
+    void persistThread(sess.id);
+  };
+
   const comp: CompProps = {
     onPlus: () => { haptic(); setAttach(true); },
     onOpenSelector: (s) => { haptic(); if (s === 'permission') setPermOpen(true); else setSelectorAt(s); },
     permLabel: PERMS.find((p) => p.id === perm)?.name ?? 'Accept edits',
     modelSummary,
     loopName,
+    draft, setDraft,
+    onSend: () => { void sendPrompt(); },
+    sending: streaming,
   };
 
   // Hold the splash for its full beat regardless of how fast auth resolves.
@@ -2202,13 +2307,14 @@ function App() {
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
   const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('list'); setSession(null); setDrawer(false); };
-  const openSession = (s: Recent) => { haptic(); setSession(s); setScreen('session'); setDrawer(false); };
+  const openSession = (s: Recent) => { haptic(); setSession(s); setScreen('session'); setDrawer(false); loadSession(s); };
   const openRecent = (r: Recent) => openSession(r);
   const allChats = () => { haptic(); setScreen('list'); setDrawer(false); };
   const backToList = () => { haptic(); setScreen('list'); };
   const account = () => { haptic(); setSettings(true); };  /* leave the rail open behind the sheet */
-  const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); setDrawer(false); };
-  const newSession = () => { haptic(); setScreen('home'); setSession(null); setDrawer(false); };
+  const clearConvo = () => { convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); };
+  const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
+  const newSession = () => { haptic(); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
 
   const showSplash = !minSplash || authState === 'checking';
 
@@ -2252,7 +2358,7 @@ function App() {
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
-                  {session && <SessionView session={session} onBack={backToList} comp={comp} />}
+                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} onBack={backToList} comp={comp} />}
                 </section>
               </div>
             </div>
