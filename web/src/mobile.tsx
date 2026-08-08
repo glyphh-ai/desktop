@@ -651,12 +651,18 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
   const [confirm, setConfirm] = useState(false);
   const [pinned, setPinned] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [atBottom, setAtBottom] = useState(true);
   useEffect(() => {
     if (!menu) return;
     const onDoc = (e: Event) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false); };
     document.addEventListener('pointerdown', onDoc);
     return () => document.removeEventListener('pointerdown', onDoc);
   }, [menu]);
+  const onScroll = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80); };
+  const scrollToBottom = (smooth: boolean) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
+  // Follow the stream when already at the bottom; leave the user alone if scrolled up.
+  useEffect(() => { if (atBottom) scrollToBottom(false); }, [msgs, atBottom]);
 
   return (
     <div className="m-sv">
@@ -689,7 +695,7 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
           )}
         </div>
       </header>
-      <div className="m-sv-messages">
+      <div className="m-sv-messages" ref={scrollRef} onScroll={onScroll}>
         {msgs === null
           ? <div className="m-list-note">Loading…</div>
           : (
@@ -706,6 +712,11 @@ function SessionView({ session, msgs, connecting, onBack, comp }: { session: Rec
             </>
           )}
       </div>
+      {/* Frosted bottom band — the transcript scrolls fuzzily under the composer. */}
+      <div className="m-sv-fade" />
+      {!atBottom && msgs && msgs.length > 0 && (
+        <button className="m-scrolldown" aria-label="Scroll to latest" onClick={() => scrollToBottom(true)}><Icon name="arrowdown" /></button>
+      )}
       <Composer {...comp} />
 
       {/* Delete confirmation (app modal, never a native confirm). */}

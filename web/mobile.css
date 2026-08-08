@@ -642,8 +642,39 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: calc(var(--safe-top) + 74px) 16px 16px calc(var(--safe-left) + 16px);
+  /* Bottom pad clears the floating composer so the last message sits above it —
+     yet still scrolls fuzzily *under* the frosted band. */
+  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 128px) calc(var(--safe-left) + 16px);
 }
+/* Session composer FLOATS over the transcript + frosted band (like the chats
+   New chat / search), and the box is translucent-frosted so text fuzzes behind. */
+.m-sv .m-composer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; }
+.m-sv .m-composer-box {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+/* Frosted bottom band — the transcript dissolves upward under the composer. */
+.m-sv-fade {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: calc(var(--safe-bottom) + 118px);
+  z-index: 5; pointer-events: none;
+  -webkit-backdrop-filter: blur(6.5px);
+  backdrop-filter: blur(6.5px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 44%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 44%);
+}
+/* Scroll-to-latest — centered, appears only when scrolled up. */
+.m-scrolldown {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 126px); z-index: 7;
+  width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--border);
+  display: grid; place-items: center; cursor: pointer;
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  color: var(--text-2); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+.m-scrolldown svg { width: 22px; height: 22px; }
 .m-msg { max-width: 84%; font: 400 20px/1.5 var(--font-sans); }
 .m-msg-user {
   align-self: flex-end;
