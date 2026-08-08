@@ -1420,6 +1420,147 @@ function GuardrailsTray() {
   );
 }
 
+function ModelsTray() {
+  type Prov = { slug: string; name: string; enabledForOrg: boolean; hasByokKey: boolean };
+  type OM = { id: string; name: string; providerSlug: string; supported: boolean };
+  const [provs, setProvs] = useState<Prov[] | null>(null);
+  const [models, setModels] = useState<OM[] | null>(null);
+  const [q, setQ] = useState('');
+  const [keyFor, setKeyFor] = useState<string | null>(null);
+  const [keyVal, setKeyVal] = useState('');
+  const [err, setErr] = useState('');
+  const load = () => {
+    glyphh().catalog.providers().then((p: Prov[]) => setProvs(p)).catch(() => setProvs([]));
+    glyphh().orgModels.list().then((m: OM[]) => setModels(m)).catch(() => setModels([]));
+  };
+  useEffect(() => { load(); }, []);
+  const toggleProvider = async (p: Prov) => {
+    try { if (p.enabledForOrg) await glyphh().providers.disable(p.slug); else await glyphh().providers.enable(p.slug); load(); }
+    catch { setErr('Could not update the provider.'); }
+  };
+  const saveKey = async (slug: string) => { try { await glyphh().providers.enable(slug, keyVal.trim()); setKeyFor(null); setKeyVal(''); load(); } catch { setErr('Could not save the key.'); } };
+  const clearKey = (slug: string) => { void glyphh().providers.clearKey(slug).then(load).catch(() => setErr('Could not clear the key.')); };
+  const toggleModel = async (m: OM) => {
+    setModels((ms) => (ms || []).map((x) => (x.id === m.id ? { ...x, supported: !x.supported } : x)));
+    try { await glyphh().orgModels.setSupported(m.id, !m.supported); } catch { setErr('Could not update the model.'); load(); }
+  };
+  const filtered = (models || []).filter((m) => !q.trim() || m.name.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <>
+      <div className="m-set-label">Providers</div>
+      {provs == null ? <div className="m-set-loading">Loading…</div> : (
+        <div className="m-sel-group">
+          {provs.map((p) => (
+            <div key={p.slug} className="m-tool" data-open={keyFor === p.slug ? 'true' : 'false'}>
+              <div className="m-tool-head" onClick={() => (p.enabledForOrg ? setKeyFor(keyFor === p.slug ? null : p.slug) : toggleProvider(p))}>
+                <span className="m-tool-name">{p.name}{p.hasByokKey && <span className="m-chip m-chip-inline">Key</span>}</span>
+                <Switch on={p.enabledForOrg} onClick={(e) => { e.stopPropagation(); toggleProvider(p); }} />
+              </div>
+              {keyFor === p.slug && (
+                <div className="m-tool-desc">
+                  <input className="m-field-in" type="password" placeholder="BYOK API key (optional)" value={keyVal} onChange={(e) => setKeyVal(e.currentTarget.value)} />
+                  <div className="m-key-row">
+                    <button className="m-field-btn" onClick={() => saveKey(p.slug)}>Save key</button>
+                    {p.hasByokKey && <button className="m-key-revoke" onClick={() => clearKey(p.slug)}>Clear key</button>}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="m-set-label">Models</div>
+      <div className="m-sel-search"><Icon name="search" /><input className="m-conn-in" placeholder="Search models" value={q} onChange={(e) => setQ(e.currentTarget.value)} /></div>
+      {models == null ? <div className="m-set-loading">Loading…</div> : (
+        <div className="m-sel-group">
+          {filtered.map((m) => (
+            <div key={m.id} className="m-tool">
+              <div className="m-tool-head">
+                <span className="m-opt-text"><span className="m-opt-name">{m.name}</span><span className="m-opt-desc">{m.providerSlug}</span></span>
+                <Switch on={m.supported} onClick={(e) => { e.stopPropagation(); toggleModel(m); }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {err && <div className="m-field-err">{err}</div>}
+    </>
+  );
+}
+
+function WorkspacesTray() {
+  type WS = { id: string; name: string; isBase: boolean; creditsCap: number | null; capPeriodDays: number | null; rateLimitCalls: number | null; rateLimitWindowSeconds: number | null };
+  const [list, setList] = useState<WS[] | null>(null);
+  const [sel, setSel] = useState<WS | null>(null);
+  const [newName, setNewName] = useState('');
+  const [del, setDel] = useState<WS | null>(null);
+  const [err, setErr] = useState('');
+  const refresh = () => glyphh().workspaces.list().then((w: WS[]) => setList(w)).catch(() => setList([]));
+  useEffect(() => { refresh(); }, []);
+  const create = async () => { const n = newName.trim(); if (!n) return; try { await glyphh().workspaces.create({ name: n }); setNewName(''); refresh(); } catch { setErr('Could not create.'); } };
+  const save = (ws: WS, patch: Record<string, unknown>) => { glyphh().workspaces.update(ws.id, patch).then((w: WS) => { setSel(w); refresh(); }).catch(() => setErr('Could not save.')); };
+  const remove = async (ws: WS) => { setDel(null); try { await glyphh().workspaces.delete(ws.id); setSel(null); refresh(); } catch { setErr('Could not delete.'); } };
+  const num = (v: string) => (v.trim() === '' ? null : Number(v));
+  return (
+    <>
+      {list == null ? <div className="m-set-loading">Loading…</div> : (
+        <div className="m-sel-group">
+          {list.map((w) => (
+            <button key={w.id} className="m-opt" onClick={() => { haptic(); setSel(w); }}>
+              <span className="m-opt-text"><span className="m-opt-name">{w.name}{w.isBase && <span className="m-chip m-chip-inline">Base</span>}</span></span>
+              <Icon name="chevron" />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="m-set-form">
+        <div className="m-key-row">
+          <input className="m-field-in" style={{ flex: 1 }} value={newName} onChange={(e) => setNewName(e.currentTarget.value)} placeholder="New workspace name" />
+          <button className="m-field-btn m-field-inline" disabled={!newName.trim()} onClick={create}>Create</button>
+        </div>
+      </div>
+      {err && <div className="m-field-err">{err}</div>}
+
+      {sel && createPortal(
+        <div className="m-subtray-overlay">
+          <div className="m-subtray-scrim" onClick={() => setSel(null)} />
+          <div className="m-subtray">
+            <header className="m-subtray-head">
+              <button className="m-sheet-btn" aria-label="Back" onClick={() => setSel(null)}><Icon name="back" /></button>
+              <span className="m-sheet-title">{sel.name}</span>
+              <span className="m-sheet-btn" aria-hidden="true" style={{ visibility: 'hidden' }} />
+            </header>
+            <div className="m-subtray-body">
+              <div className="m-set-label">Name</div>
+              <div className="m-set-form">
+                <input className="m-field-in" defaultValue={sel.name} disabled={sel.isBase} onBlur={(e) => save(sel, { name: e.currentTarget.value.trim() })} />
+              </div>
+              <div className="m-set-label">Credit cap</div>
+              <div className="m-set-form">
+                <label className="m-field"><span className="m-field-l">Credits</span>
+                  <input className="m-field-in" type="number" inputMode="numeric" defaultValue={sel.creditsCap ?? ''} placeholder="No cap" onBlur={(e) => save(sel, { creditsCap: num(e.currentTarget.value) })} /></label>
+                <label className="m-field"><span className="m-field-l">Period (days)</span>
+                  <input className="m-field-in" type="number" inputMode="numeric" defaultValue={sel.capPeriodDays ?? ''} placeholder="30" onBlur={(e) => save(sel, { capPeriodDays: num(e.currentTarget.value) })} /></label>
+              </div>
+              <div className="m-set-label">Rate limit</div>
+              <div className="m-set-form">
+                <label className="m-field"><span className="m-field-l">Calls</span>
+                  <input className="m-field-in" type="number" inputMode="numeric" defaultValue={sel.rateLimitCalls ?? ''} placeholder="No limit" onBlur={(e) => save(sel, { rateLimitCalls: num(e.currentTarget.value) })} /></label>
+                <label className="m-field"><span className="m-field-l">Per (seconds)</span>
+                  <input className="m-field-in" type="number" inputMode="numeric" defaultValue={sel.rateLimitWindowSeconds ?? ''} placeholder="60" onBlur={(e) => save(sel, { rateLimitWindowSeconds: num(e.currentTarget.value) })} /></label>
+              </div>
+              {!sel.isBase && <button className="m-field-btn m-field-danger" onClick={() => setDel(sel)}>Delete workspace</button>}
+              {err && <div className="m-field-err">{err}</div>}
+            </div>
+            {del && <Confirm title={`Delete “${del.name}”?`} message="Members fall back to the base workspace." confirmLabel="Delete" onCancel={() => setDel(null)} onConfirm={() => remove(del)} />}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 const THEMES: { id: string; name: string; desc?: string }[] = [
   { id: 'system', name: 'System', desc: 'Match your device' },
   { id: 'light', name: 'Light' },
@@ -1455,11 +1596,11 @@ function AppearanceTray() {
 }
 
 type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help'
-  | 'general' | 'apikeys' | 'org' | 'members' | 'guardrails';
+  | 'general' | 'apikeys' | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces';
 const SUB_TITLE: Record<SettingsSub, string> = {
   profile: 'Profile', billing: 'Billing', usage: 'Usage', appearance: 'Appearance',
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
-  org: 'Organization', members: 'Members', guardrails: 'Guardrails',
+  org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
 };
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
@@ -1533,6 +1674,8 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
               {sub === 'org' && <OrganizationTray />}
               {sub === 'members' && <MembersTray />}
               {sub === 'guardrails' && <GuardrailsTray />}
+              {sub === 'models' && <ModelsTray />}
+              {sub === 'workspaces' && <WorkspacesTray />}
               {sub === 'connections' && <ConnectionsTray />}
               {sub === 'appearance' && <AppearanceTray />}
               {sub === 'help' && <HelpTray />}

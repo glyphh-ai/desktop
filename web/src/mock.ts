@@ -43,6 +43,8 @@ export const SETTINGS_GROUPS: SettingGroup[] = [
     { icon: 'contrast', label: 'Appearance', sub: 'appearance' },
   ] },
   { label: 'Admin', rows: [
+    { icon: 'sliders', label: 'Models', sub: 'models', admin: true },
+    { icon: 'grid', label: 'Workspaces', sub: 'workspaces', admin: true },
     { icon: 'shield', label: 'Guardrails', sub: 'guardrails', admin: true },
   ] },
   { label: 'Support', rows: [

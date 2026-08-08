@@ -1700,3 +1700,8 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 }
 .m-key-revoke { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
 .m-member-role { appearance: none; -webkit-appearance: none; }
+
+/* ── Settings batch 2: Models / Workspaces ───────────────────────────────── */
+.m-chip-inline { margin-left: 8px; padding: 3px 8px; font-size: 12px; }
+.m-key-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.m-field-inline { width: auto; margin-top: 0; flex: 0 0 auto; }
