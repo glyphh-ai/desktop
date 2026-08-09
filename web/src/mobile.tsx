@@ -28,6 +28,9 @@ import { runRemoteTurn, ensureRuntime, answerPending,
 // The app's real working indicator — the tumbling wireframe cube + typed phrase.
 // Pure DOM/Canvas, so we mount it verbatim (brand parity in the chat thread).
 import { createGlyphhSpinner } from '../../src/renderer/glyphh-spinner';
+// Real markdown + code blocks (copy/fold), tool-step group + diff badges. Own file
+// (mobile.tsx is large); marked + dompurify are bundled — no CDN.
+import { Markdown, copyText, ToolGroup, DiffBadge, type ToolStep } from './md';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -152,7 +155,7 @@ const LEGAL = {
 
 type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send' | 'mic'
   | 'laptop' | 'monitor' | 'monitor-off' | 'cloud' | 'branch' | 'caret' | 'arrowdown'
-  | 'circle' | 'progress' | 'check'
+  | 'circle' | 'progress' | 'check' | 'copy'
   | 'close' | 'info' | 'user' | 'dollar' | 'chart' | 'bell' | 'shield' | 'link'
   | 'sliders' | 'grid' | 'perms' | 'voice'
   | 'camera' | 'image' | 'filedoc' | 'tick' | 'external' | 'pin' | 'chats' | 'pencil' | 'trash'
@@ -184,6 +187,7 @@ const ICON: Record<IconName, React.ReactNode> = {
   circle: <circle cx="12" cy="12" r="8" />,
   progress: <path d="M12 4a8 8 0 1 0 7.5 5.3" />,
   check: <><circle cx="12" cy="12" r="8" /><path d="M8.5 12l2.5 2.5 4.5-5" /></>,
+  copy: <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>,
   close: <path d="M6 6l12 12M18 6L6 18" />,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.6h.01" /></>,
   user: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="10" r="2.8" /><path d="M6.5 18.2a5.6 5.6 0 0 1 11 0" /></>,
@@ -660,8 +664,53 @@ interface CompProps {
   mode: 'chat' | 'cowork' | 'code'; // chat → loop/model chip; work/code → permission chip
 }
 
+/* One assistant turn: the tool group (if any), the markdown answer, and a copy
+   action that appears once the turn has settled. User turns stay plain text. */
+function AgentMessage({ m, onOpenDetail }: { m: Message; onOpenDetail: (s: ToolStep) => void }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => { if (await copyText(m.text)) { haptic(); setCopied(true); setTimeout(() => setCopied(false), 1400); } };
+  return (
+    <div className="m-msg m-msg-glyphh">
+      {m.steps && m.steps.length > 0 && <ToolGroup steps={m.steps as ToolStep[]} onOpenDetail={onOpenDetail} />}
+      {m.text && <Markdown text={m.text} />}
+      {m.text && (
+        <button className="m-msg-copy" onClick={copy} aria-label="Copy message">
+          {copied ? <><Icon name="check" /><span>Copied</span></> : <><Icon name="copy" /><span>Copy</span></>}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* A single tool step's full detail, in the same bottom-tray (sheet) idiom as the
+   loop/model selector — the "sub-task opens from a tray" behaviour. */
+function ToolDetailTray({ step, onClose }: { step: ToolStep | null; onClose: () => void }) {
+  return createPortal(
+    <div className="m-sel-overlay" data-open={!!step ? 'true' : 'false'}>
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel m-sel-fit">
+        <div className="m-sel-grip" />
+        {step && (
+          <>
+            <div className="m-sel-head"><span className="m-sel-title">{step.title || step.name}</span></div>
+            <div className="m-sel-body">
+              <div className="m-tray-kv"><span className="m-tray-k">Tool</span><span className="m-tray-v">{step.name}</span></div>
+              <div className="m-tray-kv"><span className="m-tray-k">Status</span><span className={`m-tray-status m-tray-status-${step.status}`}>{step.status}</span></div>
+              {step.diff && <div className="m-tray-kv"><span className="m-tray-k">Changes</span><DiffBadge diff={step.diff} /></div>}
+              {step.thought && <div className="m-tray-block"><div className="m-tray-k">Thinking</div><div className="m-tray-thought">{step.thought}</div></div>}
+              {step.error && <div className="m-tray-block"><div className="m-tray-k">Error</div><pre className="m-tray-err">{step.error}</pre></div>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTogglePin, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; onBack: () => void; onDelete: () => void; onTogglePin: () => void; comp: CompProps }) {
   const [menu, setMenu] = useState(false);
+  const [toolDetail, setToolDetail] = useState<ToolStep | null>(null);
   const [confirm, setConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -719,7 +768,9 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
           : (
             <>
               {msgs.map((m) => (
-                (m.text || m.role === 'user') && <div key={m.id} className={`m-msg m-msg-${m.role}`}>{m.text}</div>
+                m.role === 'user'
+                  ? <div key={m.id} className="m-msg m-msg-user">{m.text}</div>
+                  : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} onOpenDetail={setToolDetail} />
               ))}
               {(connecting || comp.sending) && (
                 <div className="m-working">
@@ -736,6 +787,9 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
         <button className="m-scrolldown" aria-label="Scroll to latest" onClick={() => scrollToBottom(true)}><Icon name="arrowdown" /></button>
       )}
       <Composer {...comp} />
+
+      {/* Tool detail tray — a step's full thought / title / diff / error. */}
+      <ToolDetailTray step={toolDetail} onClose={() => setToolDetail(null)} />
 
       {/* Delete confirmation (app modal, never a native confirm). */}
       {confirm && (
@@ -2415,6 +2469,26 @@ function App() {
       { id: asstId, role: 'glyphh', text: '' }];
     renderConvo();
     const setAsst = (text: string) => { const m = convoRef.current.find((x) => x.id === asstId); if (m) { m.text = text; renderConvo(); } };
+    // Fold a tool frame into the assistant turn's steps: start pushes a running
+    // row; done finalises the most recent running row of that name (✓/✕ + diff).
+    const applyTool = (t: { name: string; phase: 'start' | 'done'; status: 'running' | 'ok' | 'denied' | 'failed'; thought?: string; title?: string; diff?: string; error?: string }) => {
+      const m = convoRef.current.find((x) => x.id === asstId);
+      if (!m) return;
+      const steps = (m.steps ??= []);
+      if (t.phase === 'start') {
+        steps.push({ name: t.name, status: 'running', ...(t.thought ? { thought: t.thought } : {}) });
+      } else {
+        let idx = -1;
+        for (let i = steps.length - 1; i >= 0; i--) { if (steps[i].name === t.name && steps[i].status === 'running') { idx = i; break; } }
+        const target = idx >= 0 ? steps[idx] : (steps.push({ name: t.name, status: 'running' }), steps[steps.length - 1]);
+        target.status = t.status;
+        if (t.title) target.title = t.title;
+        if (t.diff) target.diff = t.diff;
+        if (t.error) target.error = t.error;
+        if (t.thought && !target.thought) target.thought = t.thought;
+      }
+      setConnecting(false); renderConvo();
+    };
     setConnecting(!isCommitted(sess.id));
     setStreaming(true);
     const ac = new AbortController();
@@ -2430,6 +2504,7 @@ function App() {
         onToken: () => setConnecting(false),
         onAnswer: (full) => { setConnecting(false); setAsst(full); },
         onStep: () => setConnecting(false),
+        onTool: applyTool,
         onApproval: (a) => { setConnecting(false); setPending({ t: 'approval', ...a }); },
         onAsk: (a) => { setConnecting(false); setPending({ t: 'ask', ...a }); },
         onDone: (full) => { setConnecting(false); setPending(null); if (full) setAsst(full); },
