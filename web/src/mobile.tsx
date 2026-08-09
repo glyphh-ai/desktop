@@ -394,19 +394,40 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, onStop, sending, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode }: CompProps) {
+function Composer({ draft, setDraft, onSend, onStop, sending, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode, onDictate, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
-  const canSend = !!draft.trim() && !sending;
+  const voice = useVoice(onDictate);
+  const canSend = (!!draft.trim() || attachments.length > 0) && !sending;
   const submit = () => { if (canSend) onSend(); };
+  const onMic = () => {
+    // Web Speech where available; otherwise focus the field so the keyboard's own
+    // dictation mic is one tap away (iOS).
+    if (!voice.toggle()) { ref.current?.focus(); }
+  };
+  const onPaste = (e: { clipboardData: DataTransfer | null; preventDefault: () => void }) => {
+    const imgs = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
+    if (imgs.length) { e.preventDefault(); onPasteFiles(imgs); }
+  };
   return (
     <div className="m-composer">
       <div className="m-composer-box">
+        {attachments.length > 0 && (
+          <div className="m-attach-strip">
+            {attachments.map((a) => (
+              <div key={a.id} className="m-attach-chip">
+                <img src={a.url} alt={a.name} />
+                <button className="m-attach-x" aria-label="Remove" onClick={() => onRemoveAttachment(a.id)}><Icon name="close" /></button>
+              </div>
+            ))}
+          </div>
+        )}
         <textarea
           ref={ref} className="m-composer-input" rows={1} placeholder="Message Glyphh…"
           value={draft} onChange={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
+          onPaste={onPaste}
           autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" />
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
@@ -414,7 +435,7 @@ function Composer({ draft, setDraft, onSend, onStop, sending, onPlus, onOpenSele
             ? <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
             : <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>}
           <span className="m-composer-spacer" />
-          <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
+          <button className={`m-tool-mic${voice.listening ? ' m-mic-live' : ''}`} aria-label="Voice" onClick={onMic}><Icon name="mic" /></button>
           {sending
             ? <button className="m-composer-send m-composer-stop" aria-label="Stop" onClick={() => onStop?.()}><span className="m-stop-sq" aria-hidden="true" /></button>
             : <button className="m-composer-send" aria-label="Send" disabled={!canSend} onClick={submit}><Icon name="send" /></button>}
@@ -678,6 +699,51 @@ interface CompProps {
   onStop?: () => void;              // abort the in-flight turn
   sending: boolean;                 // a turn is in flight
   mode: 'chat' | 'cowork' | 'code'; // chat → loop/model chip; work/code → permission chip
+  onDictate: (text: string) => void;                 // append dictated text to the draft
+  attachments: AttachImage[];                        // pending image attachments (vision)
+  onRemoveAttachment: (id: string) => void;
+  onPasteFiles: (files: FileList | File[]) => void;  // paste-image / drop
+}
+
+/** A pending image attachment — base64 for the turn, dataURL for the chip. */
+interface AttachImage { id: string; mediaType: string; data: string; url: string; name: string }
+
+/** Web Speech dictation. Returns supported=false where the API is absent (e.g.
+ *  iOS Safari — there the keyboard's own mic is the fallback). Appends only final
+ *  results so nothing double-types. */
+function useVoice(onText: (t: string) => void) {
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<{ stop: () => void } | null>(null);
+  const SR = typeof window !== 'undefined'
+    ? ((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
+      || (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition)
+    : undefined;
+  const supported = !!SR;
+  const toggle = (): boolean => {
+    if (!supported) return false;
+    if (recRef.current) { recRef.current.stop(); return true; }
+    const rec = new (SR as new () => {
+      lang: string; interimResults: boolean; continuous: boolean;
+      onstart: () => void; onerror: () => void; onend: () => void;
+      onresult: (e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void;
+      start: () => void; stop: () => void;
+    })();
+    rec.lang = (navigator.language || 'en-US');
+    rec.interimResults = true; rec.continuous = true;
+    rec.onstart = () => setListening(true);
+    rec.onerror = () => { setListening(false); recRef.current = null; };
+    rec.onend = () => { setListening(false); recRef.current = null; };
+    rec.onresult = (e) => {
+      let final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) { const r = e.results[i]; if (r.isFinal) final += r[0].transcript; }
+      if (final.trim()) onText(final.trim());
+    };
+    recRef.current = rec as unknown as { stop: () => void };
+    try { rec.start(); haptic(); } catch { recRef.current = null; }
+    return true;
+  };
+  useEffect(() => () => { try { recRef.current?.stop(); } catch { /* */ } }, []);
+  return { listening, toggle, supported };
 }
 
 /* One assistant turn: the tool group (if any), the markdown answer, and a copy
@@ -716,7 +782,14 @@ function usageLabel(meta: { creditsMicro?: number; ms?: number }): string {
 /* A user turn — plain text, long-press for actions. */
 function UserMessage({ m, onLongPress }: { m: Message; onLongPress: (m: Message) => void }) {
   const press = useLongPress(() => onLongPress(m));
-  return <div className="m-msg m-msg-user" {...press}>{m.text}</div>;
+  return (
+    <div className="m-msg m-msg-user" {...press}>
+      {m.images && m.images.length > 0 && (
+        <div className="m-msg-imgs">{m.images.map((src, i) => <img key={i} src={src} alt="" />)}</div>
+      )}
+      {m.text && <span>{m.text}</span>}
+    </div>
+  );
 }
 
 /* Long-press action tray for a message: copy / quote / edit-resend / retry /
@@ -2062,14 +2135,14 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open
 
 /* ── Attachment menu: a popover above the composer's + (camera / photo / file).
    Rendered at app root so it escapes the shell's transform. ──────────────── */
-function AttachMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AttachMenu({ open, onClose, onCamera, onPhoto }: { open: boolean; onClose: () => void; onCamera: () => void; onPhoto: () => void }) {
+  const pick = (fn: () => void) => { haptic(); fn(); onClose(); };
   return (
     <div className="m-attach-overlay" data-open={open ? 'true' : 'false'}>
       <div className="m-attach-scrim" onClick={onClose} />
       <div className="m-attach-menu" role="menu">
-        <button className="m-attach-row" onClick={onClose}><Icon name="camera" /><span>Take Photo</span></button>
-        <button className="m-attach-row" onClick={onClose}><Icon name="image" /><span>Choose photo or video</span></button>
-        <button className="m-attach-row" onClick={onClose}><Icon name="filedoc" /><span>Choose file</span></button>
+        <button className="m-attach-row" onClick={() => pick(onCamera)}><Icon name="camera" /><span>Take Photo</span></button>
+        <button className="m-attach-row" onClick={() => pick(onPhoto)}><Icon name="image" /><span>Photo Library</span></button>
       </div>
     </div>
   );
@@ -2466,6 +2539,9 @@ function App() {
   const [minSplash, setMinSplash] = useState(false);   // hold the splash for its full beat
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
+  const [attachImgs, setAttachImgs] = useState<AttachImage[]>([]);     // pending image attachments (vision)
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
   const [pins, setPins] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem('yoPins') || '[]')); } catch { return new Set(); } });
   const [desktops, setDesktops] = useState<AttachedMachine[]>([]);   // attached machines (Code strip)
@@ -2545,8 +2621,11 @@ function App() {
    *  streaming the agent's reply into the transcript. */
   const sendPrompt = async (override?: string, opts?: { noUserBubble?: boolean }) => {
     const prompt = (override ?? draft).trim();
-    if (!prompt || streaming) return;
-    haptic(); if (override === undefined) setDraft(''); setPending(null);
+    // Images only ride a fresh composer send (not retry/edit-resend).
+    const imgs = override === undefined ? attachImgs.map((a) => ({ mediaType: a.mediaType, data: a.data })) : [];
+    const imgUrls = override === undefined ? attachImgs.map((a) => a.url) : [];
+    if ((!prompt && imgs.length === 0) || streaming) return;
+    haptic(); if (override === undefined) { setDraft(''); setAttachImgs([]); } setPending(null);
     let sess = session;
     if (!sess) {
       const id = 'c' + Date.now().toString(36);
@@ -2556,7 +2635,7 @@ function App() {
       setThreads((t) => [{ id, title: sess!.title, mode: curMode, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
     }
     const asstId = 'a' + Date.now().toString(36);
-    const userMsg: Message = { id: 'u' + Date.now().toString(36), role: 'user', text: prompt };
+    const userMsg: Message = { id: 'u' + Date.now().toString(36), role: 'user', text: prompt, ...(imgUrls.length ? { images: imgUrls } : {}) };
     const asstMsg: Message = { id: asstId, role: 'glyphh', text: '' };
     convoRef.current = [...convoRef.current, ...(opts?.noUserBubble ? [] : [userMsg]), asstMsg];
     renderConvo();
@@ -2607,7 +2686,7 @@ function App() {
         onError: (detail) => { setConnecting(false); setPending(null); setAsst('⚠️ ' + detail); },
         onStopped: () => { setConnecting(false); setPending(null); },
       },
-      { rotor: loop, ...(model ? { model } : {}), permission: perm as RemotePermission, signal: ac.signal },
+      { rotor: loop, ...(model ? { model } : {}), ...(imgs.length ? { images: imgs } : {}), permission: perm as RemotePermission, signal: ac.signal },
     );
     setStreaming(false); setConnecting(false);
     streamAbortRef.current = null;
@@ -2656,6 +2735,21 @@ function App() {
     const q = m.text.split('\n').map((l) => `> ${l}`).join('\n');
     setDraft((d) => (d.trim() ? `${d}\n${q}\n\n` : `${q}\n\n`));
   };
+  // Read chosen/pasted images into base64 vision attachments (pod caps: 8/turn,
+  // ~7.5 MiB each, png/jpeg/gif/webp).
+  const addImageFiles = (files: FileList | File[]) => {
+    const arr = Array.from(files).filter((f) => /^image\/(png|jpe?g|gif|webp)$/.test(f.type) && f.size <= 7.3 * 1024 * 1024);
+    arr.forEach((f, i) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = String(reader.result || '');
+        const data = url.slice(url.indexOf(',') + 1);
+        if (!data) return;
+        setAttachImgs((cur) => cur.length >= 8 ? cur : [...cur, { id: `im-${Date.now().toString(36)}-${i}-${f.size}`, mediaType: f.type, data, url, name: f.name || 'image' }]);
+      };
+      reader.readAsDataURL(f);
+    });
+  };
 
   // Answer (or dismiss on deadline) a parked approval/ask via the answer seam.
   const resolvePending = (reply: { allow?: boolean; answers?: string[] } | null) => {
@@ -2673,6 +2767,10 @@ function App() {
     onStop: () => { haptic(); streamAbortRef.current?.abort(); },
     sending: streaming,
     mode: curMode,
+    onDictate: (text) => setDraft((d) => (d.trim() ? `${d} ${text}` : text)),
+    attachments: attachImgs,
+    onRemoveAttachment: (id) => setAttachImgs((cur) => cur.filter((a) => a.id !== id)),
+    onPasteFiles: addImageFiles,
   };
 
   // Hold the splash for its full beat regardless of how fast auth resolves.
@@ -2847,7 +2945,13 @@ function App() {
       </div>
       <SettingsSheet open={settings} onClose={() => { haptic(); setSettings(false); }} user={user} onSignOut={onSignOut}
         onUserChanged={() => { void syncGating().then((u) => setUser(toDisplayUser(u))); }} />
-      <AttachMenu open={attach} onClose={() => { haptic(); setAttach(false); }} />
+      <AttachMenu open={attach} onClose={() => { haptic(); setAttach(false); }}
+        onCamera={() => cameraInputRef.current?.click()} onPhoto={() => photoInputRef.current?.click()} />
+      {/* Hidden pickers — camera capture vs the photo library. */}
+      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" hidden
+        onChange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) addImageFiles(f); (e.target as HTMLInputElement).value = ''; }} />
+      <input ref={photoInputRef} type="file" accept="image/*" multiple hidden
+        onChange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) addImageFiles(f); (e.target as HTMLInputElement).value = ''; }} />
       <SelectorSheet
         open={selectorAt !== null}
         section={selectorAt === 'sections' ? null : selectorAt}

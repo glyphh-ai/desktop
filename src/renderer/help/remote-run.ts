@@ -445,7 +445,7 @@ export async function runRemoteTurn(
   prompt: string,
   save: () => void,
   callbacks: RemoteRunCallbacks = {},
-  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal } = {},
+  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }> } = {},
 ): Promise<RemoteRunOutcome> {
   // ONE silent retry on a dead binding: attempt 1 swallows its error, drops
   // the cached runtime, re-provisions, and runs again. Only the second
@@ -461,7 +461,7 @@ async function runRemoteTurnOnce(
   prompt: string,
   save: () => void,
   callbacks: RemoteRunCallbacks,
-  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal },
+  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }> },
   forceFresh: boolean,
 ): Promise<RemoteRunOutcome> {
   const rotor = opts.rotor ?? DEFAULT_ROTOR;
@@ -487,6 +487,7 @@ async function runRemoteTurnOnce(
       ...(opts.model ? { model: opts.model } : {}),
       // The pod defaults to `auto`; the SESSION's picked mode is what governs.
       ...(opts.permission ? { permission: opts.permission } : {}),
+      ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
   } catch (err) {

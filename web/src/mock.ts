@@ -153,6 +153,8 @@ export interface Message {
   steps?: Array<{ name: string; status: 'running' | 'ok' | 'denied' | 'failed'; thought?: string; title?: string; diff?: string; error?: string }>;
   /** Per-turn usage footer: credits (micro) the runtime metered + wall-clock ms. */
   meta?: { creditsMicro?: number; ms?: number };
+  /** User turns: image attachment preview URLs (dataURLs), rendered as thumbs. */
+  images?: string[];
 }
 export const MESSAGES: Message[] = [
   { id: 'm1', role: 'user', text: 'Build a landing page for a Texas pool supply company.' },
