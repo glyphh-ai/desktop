@@ -20,29 +20,10 @@ import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-client.js";
 import { harnessRun, type RunSource } from "./glyphh-harness-run.js";
 import { answerRemotePause } from "./glyphh-agent-permissions.js";
-import type { ChatMessage } from "./glyphh-agent-prompt.js";
+import { toWireFrame, baseMessages } from "./attach-run-frames.js";
 
 /** Live run controllers, by runId — so `agent.stop` can abort. */
 const controllers = new Map<string, AbortController>();
-
-/** Translate one `glyphh-agent:*` emit into a HarnessWireFrame (the shape the
- *  mobile's remote-run consumer already speaks). Returns null for events with no
- *  wire mapping. `data` already carries the emit payload (minus seq/runId/at). */
-function toWireFrame(channel: string, data: Record<string, unknown>, seq: number, runId: string): Record<string, unknown> | null {
-  const base = { seq, runId, at: Date.now() };
-  switch (channel) {
-    case "glyphh-agent:delta": return { ...base, type: "delta", delta: data.delta ?? "" };
-    case "glyphh-agent:tool": return { ...base, ...data, type: "tool" };
-    case "glyphh-agent:progress": return { ...base, type: "progress", inTokens: data.inTokens ?? 0, outTokens: data.outTokens ?? 0 };
-    case "glyphh-agent:credits": return { ...base, type: "credits", creditsMicro: data.creditsMicro ?? 0 };
-    case "glyphh-agent:approval": return { ...base, type: "approval", id: data.id, kind: data.kind, title: data.title, detail: data.detail };
-    case "glyphh-agent:ask": return { ...base, type: "ask", id: data.id, questions: data.questions };
-    case "glyphh-agent:setup": return { ...base, ...data, type: "setup" };
-    case "glyphh-agent:done": return { ...base, type: "done", stopped: !!data.stopped };
-    case "glyphh-agent:error": return { ...base, type: "error", error: data.error ?? "run failed" };
-    default: return null;
-  }
-}
 
 /** A fake WebContents whose `send` forwards harnessRun's frames up the socket. */
 function makeSink(runId: string): WebContents {
@@ -55,22 +36,6 @@ function makeSink(runId: string): WebContents {
     },
   };
   return sink as unknown as WebContents;
-}
-
-/** Build the turn's messages from the caller's history (or just the prompt). */
-function baseMessages(params: Record<string, unknown>, prompt: string): ChatMessage[] {
-  const hist = Array.isArray(params.messages) ? params.messages : null;
-  if (hist && hist.length) {
-    return hist
-      .map((m) => {
-        const mm = (m ?? {}) as Record<string, unknown>;
-        const role: ChatMessage["role"] = mm.role === "user" ? "user" : "assistant";
-        const content = typeof mm.text === "string" ? mm.text : (typeof mm.content === "string" ? mm.content : "");
-        return { role, content };
-      })
-      .filter((m) => m.content);
-  }
-  return [{ role: "user", content: prompt }];
 }
 
 export function installAttachRunHandlers(): void {

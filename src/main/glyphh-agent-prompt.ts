@@ -35,8 +35,12 @@ export function brandError(message: string): string {
 }
 
 /** Extra workspace context appended to the system prompt (app library +
- *  connected accounts) so open_app and connector tools target real names. */
-export async function workspaceExtras(): Promise<string> {
+ *  connected accounts) so open_app and connector tools target real names.
+ *  `workdirOverride` is the RUN's real folder — passed for a relayed run driven
+ *  from another device, where the desktop's globally-selected folder is NOT this
+ *  run's folder (the phone picked its own). Without it the agent is told the wrong
+ *  cwd while its tools actually run in the picked one. */
+export async function workspaceExtras(workdirOverride?: string): Promise<string> {
   let appList = "";
   try {
     const apps = await fetchOrgApps();
@@ -71,7 +75,7 @@ export async function workspaceExtras(): Promise<string> {
   // work it can actually do. The UI shows the folder chip; the agent must know
   // the same thing. Folder-scoped, so it only invalidates the prompt cache when
   // the user actually switches folders (a genuinely new context).
-  const wd = getExplicitWorkingDirectory();
+  const wd = workdirOverride || getExplicitWorkingDirectory();
   const envLine = wd
     ? `ENVIRONMENT: You are running on the user's Desktop machine, with direct access to its local filesystem and shell. Your working folder — the current app's project ROOT — is "${wd.split(/[\\/]/).filter(Boolean).pop() || wd}" at ${wd}. Read, write, and run commands there directly; never ask the user where you are or which folder to use.`
     : `ENVIRONMENT: You are running on the user's Desktop machine, with direct access to its local filesystem and shell. No working folder is picked yet — ask the user to choose one with the folder chip before building or editing files.`;
@@ -136,17 +140,18 @@ export async function composeTurn(
   base: ChatMessage[],
   chatId: string,
   attachments: AttachRef[] = [],
+  workdir?: string,
 ): Promise<ComposedTurn> {
   const ask = String(base[base.length - 1]?.content ?? "");
   const history = base.slice(1, -1)
     .map((m) => `${m.role === "user" ? "User" : "Glyphh"}: ${m.content}`)
     .join("\n");
   const [extras, skillSeed, recallBlock, filesHint] = await Promise.all([
-    workspaceExtras(),
+    workspaceExtras(workdir),
     skillSeedFor(ask),
     chatId ? shortTermRecallBlock(chatId, ask).catch(() => "") : Promise.resolve(""),
     (async () => {
-      const wd = getExplicitWorkingDirectory();
+      const wd = workdir || getExplicitWorkingDirectory();
       return wd ? relevantFilesHint(wd, ask).catch(() => "") : "";
     })(),
   ]);

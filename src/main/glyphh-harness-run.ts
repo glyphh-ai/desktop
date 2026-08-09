@@ -205,7 +205,7 @@ export async function harnessRun(
 
     // 2. The turn, assembled exactly as the in-process path assembles it —
     //    the path manifest in the text, the images as real vision blocks.
-    const { system, lastUser, ask } = await composeTurn(base, chatId, attachments);
+    const { system, lastUser, ask } = await composeTurn(base, chatId, attachments, runWorkdir);
     const images = attachmentImageRefs(attachments);
 
     // 3. The tool surface. Builtins for the mode; connectors as first-class
