@@ -36,6 +36,14 @@ import { Markdown, copyText, ToolActionRow, DiffBadge, fileFromTitle, summarize,
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
 if (typeof window !== 'undefined') (window as unknown as { glyphhSdk?: unknown }).glyphhSdk = glyphh();
 
+/** Suppress the password-manager / iOS AutoFill accessory bar on NON-credential
+ *  fields (composer, chat answer, search). iOS ignores `autocomplete="off"` for
+ *  that bar, but every major password manager honours a per-field ignore hint —
+ *  so we spread these onto app inputs. Login email + BYOK key deliberately OMIT
+ *  it so real autofill still works where it's wanted. Data-* only, so a field's
+ *  own autoComplete/autoCorrect/autoCapitalize are untouched. */
+const NOFILL = { "data-1p-ignore": true, "data-lpignore": "true", "data-bwignore": true, "data-form-type": "other" } as const;
+
 /** Per-thread runtime binding cache. "Committed" = the thread has a live runtime
  *  (url+token). Chats are cloud: the pod is provisioned once per thread, reused. */
 const remoteChats = new Map<string, RemoteChat>();
@@ -451,7 +459,7 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
           value={draft} onChange={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
           onPaste={onPaste}
-          autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" />
+          autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" {...NOFILL} />
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
           {mode === 'chat'
@@ -2604,7 +2612,7 @@ function AgentPrompt({ pending, onResolve }: {
               ))}
             </div>
           ) : (
-            <input className="m-prompt-input" value={answers[i]} placeholder="Type an answer…"
+            <input className="m-prompt-input" value={answers[i]} placeholder="Type an answer…" autoComplete="off" {...NOFILL}
               onChange={(e) => setAnswers((a) => a.map((x, j) => (j === i ? (e.target as HTMLInputElement).value : x)))} />
           )}
         </div>
@@ -2658,7 +2666,7 @@ function SearchOverlay({ open, inputRef, onClose }: {
         <div className="m-search-field">
           <Icon name="search" />
           <input ref={inputRef} className="m-search-input" type="text" placeholder="Search"
-            autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} enterKeyHint="search" />
+            autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} enterKeyHint="search" {...NOFILL} />
         </div>
         <button className="m-search-x" aria-label="Close search" onClick={onClose}><Icon name="close" /></button>
       </div>
@@ -2878,6 +2886,16 @@ function App() {
     : '';
   // ── Conversation transcript + streaming (chats run on a cloud pod) ──────────
   const renderConvo = () => setMsgs([...convoRef.current]);
+  // A tool step correlates start→done by name; a 'start' whose 'done' never
+  // arrives (the ask/approval tool unparks out-of-band, or a done frame is lost)
+  // would spin forever. Settle any lingering 'running' step to 'ok' so a
+  // breadcrumb never outlives the work it described — called when a parked
+  // approval/ask is answered and again when the turn settles.
+  const finalizeRunningSteps = () => {
+    let changed = false;
+    for (const m of convoRef.current) for (const s of (m.steps ?? [])) if (s.status === 'running') { s.status = 'ok'; changed = true; }
+    if (changed) renderConvo();
+  };
   // Streaming can fire deltas faster than a frame; coalesce to one paint per rAF
   // so markdown re-lexing doesn't jank the scroll. Non-streaming callers use
   // renderConvo directly (immediate).
@@ -3017,6 +3035,7 @@ function App() {
     );
     setStreaming(false); setConnecting(false);
     setAct(sid, null);
+    finalizeRunningSteps();   // no tool breadcrumb outlives the settled turn
     streamAbortRef.current = null;
     // Per-turn footer: credits the runtime metered + wall-clock. Only stamp a
     // real turn (not an unavailable outcome).
@@ -3083,6 +3102,9 @@ function App() {
   // Answering un-parks the turn → the session goes back to 'working'.
   const resolvePending = (reply: { allow?: boolean; answers?: string[] } | null) => {
     setPending((p) => { if (p && reply) void answerPending(p.id, reply); return null; });
+    // The ask/approval tool that parked the turn is resolved — stop its spinner
+    // even though the turn keeps running.
+    finalizeRunningSteps();
     if (pendingSessionId) setAct(pendingSessionId, 'working');
     setPendingSessionId(null);
   };

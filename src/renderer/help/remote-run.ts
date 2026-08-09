@@ -466,7 +466,12 @@ async function runRelayTurn(
   let run: HarnessRunHandle;
   try {
     run = handle.attach.run(
-      { prompt, mode: modeFor(chat), ...(workdir ? { workdir } : {}) },
+      // threadId = the CHAT's id (STABLE across turns) so the on-machine pod
+      // records the transcript under one thread and each turn sees the prior
+      // ones — exactly like the cloud path's `threadId: chat.id`. Without it the
+      // desktop keys the pod thread by the per-turn runId and every turn starts
+      // with no memory.
+      { prompt, threadId: chat.id, mode: modeFor(chat), ...(workdir ? { workdir } : {}) },
       { ...(opts.signal ? { signal: opts.signal } : {}) },
     );
   } catch (err) { const u = unavailable("open", err); callbacks.onError?.(u.detail); return u; }

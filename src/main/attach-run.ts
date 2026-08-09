@@ -43,6 +43,10 @@ export function installAttachRunHandlers(): void {
   registerRelayHandler("agent.run", async (params) => {
     const p = (params ?? {}) as Record<string, unknown>;
     const runId = typeof p.runId === "string" && p.runId ? p.runId : `rl-${Date.now().toString(36)}`;
+    // The STABLE transcript thread (the caller's chat id). harnessRun keys the
+    // pod's thread + per-session home by this, so a relayed session remembers
+    // across turns. Falls back to the per-turn runId only for old callers.
+    const threadId = typeof p.threadId === "string" && p.threadId ? p.threadId : runId;
     const prompt = typeof p.prompt === "string" ? p.prompt : "";
     if (!prompt && !Array.isArray(p.messages)) throw new Error("agent.run requires { prompt } or { messages }");
     const mode: "cowork" | "code" = p.mode === "cowork" ? "cowork" : "code";
@@ -53,7 +57,7 @@ export function installAttachRunHandlers(): void {
     const sink = makeSink(runId);
     // Fire-and-forget: frames stream via pushToAttach. Ack the runId immediately
     // so the caller knows the run is live (it already subscribed to run:<runId>).
-    void harnessRun(sink, runId, baseMessages(p, prompt), ctrl, [], runId, workdir, mode, source)
+    void harnessRun(sink, runId, baseMessages(p, prompt), ctrl, [], threadId, workdir, mode, source)
       .catch((err) => { try { sink.send("glyphh-agent:error", { error: err instanceof Error ? err.message : String(err) }); } catch { /* socket gone */ } })
       .finally(() => { controllers.delete(runId); });
     return { runId, started: true };
