@@ -309,6 +309,20 @@ function modeFor(chat: RemoteChat): "chat" | "cowork" | "code" {
  *    onStopped is onDone with stopped=true (the user aborted). */
 export interface RemoteRunCallbacks {
   onStep?: (step: { id: string; type: string; status: string; error?: string }) => void;
+  /** Richer per-tool breadcrumb than onStep — fires on BOTH start and finish and
+   *  carries the tool's thought, human title, and diff badge. Additive: desktop
+   *  keeps using onStep unchanged; the mobile UI uses this to render a collapsible
+   *  tool group with proper ✓/✕ rows and [+N -M] badges. Correlate start→done by
+   *  name (the most recent still-running step of that name). */
+  onTool?: (t: {
+    name: string;
+    phase: "start" | "done";
+    status: "running" | "ok" | "denied" | "failed";
+    thought?: string;
+    title?: string;
+    diff?: string;     // "[+N -M]"
+    error?: string;
+  }) => void;
   onToken?: (delta: string) => void;
   onAnswer?: (fullText: string) => void;
   onDone?: (fullText: string) => void;
@@ -354,8 +368,20 @@ function dispatchFrame(
     case "tool":
       if (frame.phase === "start") {
         cb.onStep?.({ id: `${frame.name}#${frame.seq}`, type: frame.name, status: "" });
-      } else if (frame.denied || frame.failed) {
-        cb.onStep?.({ id: `${frame.name}#${frame.seq}`, type: frame.name, status: frame.denied ? "denied" : "failed", ...(frame.title ? { error: frame.title } : {}) });
+        cb.onTool?.({ name: frame.name, phase: "start", status: "running", ...(frame.thought ? { thought: frame.thought } : {}) });
+      } else {
+        if (frame.denied || frame.failed) {
+          cb.onStep?.({ id: `${frame.name}#${frame.seq}`, type: frame.name, status: frame.denied ? "denied" : "failed", ...(frame.title ? { error: frame.title } : {}) });
+        }
+        const diff = /\[\+\d+ -\d+\]/.exec(String(frame.preview ?? ""))?.[0] ?? "";
+        cb.onTool?.({
+          name: frame.name,
+          phase: "done",
+          status: frame.denied ? "denied" : frame.failed ? "failed" : "ok",
+          ...(frame.title ? { title: frame.title } : {}),
+          ...(diff ? { diff } : {}),
+          ...((frame.denied || frame.failed) && frame.preview ? { error: String(frame.preview).split("\n")[0].slice(0, 140) } : {}),
+        });
       }
       return;
     case "approval": {
