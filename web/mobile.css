@@ -33,6 +33,7 @@
   --accent-bg: #f5ecfd;
   --success: #16a34a;        /* connected-green (matches styles.css light) */
   --danger: #e5484d;         /* matches styles.css light */
+  --warning: #f59e0b;        /* needs-input amber (matches desktop .input) */
   --overlay-bg: rgba(0, 0, 0, 0.3);
   --grad-accent: linear-gradient(to top right, #8c3bf2, #ec4899);
   --radius: 10px;
@@ -59,6 +60,7 @@
   --accent-bg: #241a2e;
   --success: #3fb950;        /* connected-green (matches styles.css dark) */
   --danger: #f85149;         /* matches styles.css dark */
+  --warning: #f59e0b;        /* needs-input amber (matches desktop .input) */
   --overlay-bg: rgba(0, 0, 0, 0.6);
 }
 :root {
@@ -928,13 +930,14 @@ body {
 .m-set-row-toggle { width: 100%; cursor: default; }
 .m-field-err { color: var(--danger); }
 
-/* Per-session activity chip on list rows: Working (subtle) / Needs input (accent). */
-.m-actbadge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; font: 600 12px/1 var(--font-sans); white-space: nowrap; }
-.m-actbadge svg { width: 13px; height: 13px; }
-.m-actbadge-work { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text-2); }
-.m-actbadge-wait { background: var(--accent); color: #fff; }
-.m-actbadge-spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); animation: m-spin 0.7s linear infinite; }
-.m-task-activity { margin-top: 8px; display: inline-flex; }
+/* Per-session activity indicator — LEADING (thumbnail/icon slot), theme colours:
+   neutral spinner while working, amber (--warning) while waiting on input. */
+.m-actlead { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.m-actlead-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--border-2); border-top-color: var(--text-2); animation: m-spin 0.75s linear infinite; }
+.m-actlead-wait { color: var(--warning, #f59e0b); }
+.m-actlead-wait svg { width: 20px; height: 20px; }
+/* Code card meta reads amber while awaiting input. */
+.m-code-meta[data-where="input"] .m-code-loc { color: var(--warning, #f59e0b); }
 
 /* On-open connecting pill — centred just above the composer, frosted. */
 .m-connecting {

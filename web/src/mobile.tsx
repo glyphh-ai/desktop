@@ -517,11 +517,13 @@ function FilterMenu({ allLabel, allIcon }: { allLabel: string; allIcon: IconName
 }
 
 /* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
-/** Per-session live-state chip on a list row: a spinner while the agent works,
- *  a "Needs input" pill while it's parked on an approval/ask. */
+/** Per-session live-state indicator, shown in the row's LEADING slot (the
+ *  thumbnail / icon space): a neutral spinner while the agent works, an amber
+ *  bell (--warning, the theme's needs-input colour — never accent/purple) while
+ *  it's parked on an approval/ask. */
 function ActivityBadge({ state }: { state?: 'working' | 'waiting' }) {
-  if (state === 'waiting') return <span className="m-actbadge m-actbadge-wait"><Icon name="bell" /><span>Needs input</span></span>;
-  if (state === 'working') return <span className="m-actbadge m-actbadge-work"><span className="m-actbadge-spin" /><span>Working</span></span>;
+  if (state === 'working') return <span className="m-actlead m-actlead-work" aria-label="Working"><span className="m-actlead-spin" /></span>;
+  if (state === 'waiting') return <span className="m-actlead m-actlead-wait" aria-label="Needs input"><Icon name="bell" /></span>;
   return null;
 }
 
@@ -551,11 +553,12 @@ function ChatsView({ title, sessions, loading, activity, onMenu, onOpen, onNewCh
           ? <div className="m-list-note">No chats yet — start a new one.</div>
           : sessions.map((s) => (
             <button key={s.id} className="m-chat-row" onClick={() => onOpen(s)}>
+              {activity[s.id] && <ActivityBadge state={activity[s.id]} />}
               <span className="m-chat-text">
                 <span className="m-chat-title">{s.title}</span>
                 <span className="m-chat-when">{s.when}</span>
               </span>
-              {activity[s.id] ? <ActivityBadge state={activity[s.id]} /> : <Icon name="chevron" />}
+              <Icon name="chevron" />
             </button>
           ))}
       </div>
@@ -616,14 +619,16 @@ function CodeView({ desktops, sessions, loading, activity, onMenu, onOpen, onOpe
             ? <div className="m-list-note">No sessions yet — start one.</div>
             : sessions.map((s) => (
               <button key={s.id} className="m-code-card" onClick={() => onOpen(s)}>
-                <span className="m-code-thumb" data-kind="plain" />
+                <span className="m-code-thumb" data-kind="plain">{activity[s.id] && <ActivityBadge state={activity[s.id]} />}</span>
                 <span className="m-code-body">
                   <span className="m-code-top">
                     <span className="m-code-name">{s.title}</span>
                     <span className="m-code-when">{s.when}</span>
                   </span>
-                  <span className="m-code-meta" data-where="cloud">
-                    {activity[s.id] ? <ActivityBadge state={activity[s.id]} /> : <><Icon name="cloud" /><span className="m-code-loc">Cloud</span></>}
+                  <span className="m-code-meta" data-where={activity[s.id] === 'waiting' ? 'input' : 'cloud'}>
+                    {activity[s.id] === 'working' ? <span className="m-code-loc">Working…</span>
+                      : activity[s.id] === 'waiting' ? <span className="m-code-loc">Needs input</span>
+                      : <><Icon name="cloud" /><span className="m-code-loc">Cloud</span></>}
                   </span>
                 </span>
               </button>
@@ -684,13 +689,12 @@ function WorkView({ desktops, groups, loading, activity, onMenu, onOpen, onOpenD
               <div className="m-work-group">
                 {g.items.map((t) => (
                   <button key={t.id} className="m-task" onClick={() => onOpen(t)}>
-                    <span className="m-task-check" data-state="todo"><Icon name="circle" /></span>
+                    <span className="m-task-check" data-state="todo">{activity[t.id] ? <ActivityBadge state={activity[t.id]} /> : <Icon name="circle" />}</span>
                     <span className="m-task-body">
                       <span className="m-task-top">
                         <span className="m-task-title">{t.title}</span>
                         <span className="m-task-when">{t.when}</span>
                       </span>
-                      {activity[t.id] && <span className="m-task-activity"><ActivityBadge state={activity[t.id]} /></span>}
                     </span>
                   </button>
                 ))}
