@@ -2604,7 +2604,10 @@ function App() {
   const [roles, setRoles] = useState<RoleItem[] | null>(null);         // resolved roles for `loop`
   const [roleSel, setRoleSel] = useState<Record<string, string>>({});  // per-role model override
   const [models, setModels] = useState<ModelChoice[]>([]);             // available() pool (labels + fallback)
-  const [perm, setPerm] = useState('acceptEdits');
+  // Permission mode persists — a refresh must NOT silently revert the user's
+  // choice (e.g. Auto) back to the default and start prompting again.
+  const [perm, setPermState] = useState(() => { try { return localStorage.getItem('yoPerm') || 'acceptEdits'; } catch { return 'acceptEdits'; } });
+  const setPerm = (v: string) => { setPermState(v); try { localStorage.setItem('yoPerm', v); } catch { /* */ } };
   const [search, setSearch] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Focus synchronously inside the tap so iOS raises the keyboard.
