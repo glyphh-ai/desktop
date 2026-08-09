@@ -1289,8 +1289,11 @@ body {
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
   }
   /* The + (attachment) menu becomes a centered modal card too, matching the
-     other sheets in width + position instead of floating at the composer. */
-  .m-attach-scrim { background: var(--overlay-bg); }
+     other sheets in width + position instead of floating at the composer. The
+     scrim is a permanent full-screen layer (only the menu toggles), so it must
+     ONLY paint when open — otherwise it veils the whole app. */
+  .m-attach-scrim { transition: background 0.25s ease; }
+  .m-attach-overlay[data-open="true"] .m-attach-scrim { background: var(--overlay-bg); }
   .m-attach-menu {
     left: 50%; right: auto;
     top: 50%; bottom: auto;
