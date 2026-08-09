@@ -39,26 +39,29 @@ if (typeof window !== 'undefined') (window as unknown as { glyphhSdk?: unknown }
 /** Per-thread runtime binding cache. "Committed" = the thread has a live runtime
  *  (url+token). Chats are cloud: the pod is provisioned once per thread, reused. */
 const remoteChats = new Map<string, RemoteChat>();
-/** A session's SOURCE (which desktop + folder, or cloud) persists across reloads
- *  keyed by session id — so a reopened machine session stays LOCAL (and keeps its
- *  working folder), instead of silently reverting to cloud. */
-type SavedSource = { kind: 'local'; machineId?: string; path: string };
-const SOURCE_KEY = 'yoSources';
-function loadSavedSources(): Record<string, SavedSource> {
-  try { return JSON.parse(localStorage.getItem(SOURCE_KEY) || '{}'); } catch { return {}; }
+/** A session's LOCUS is an IMMUTABLE fact, persisted by session id: it is FOREVER
+ *  cloud or FOREVER a specific desktop (+ working folder). It NEVER flips. Only the
+ *  connection STATUS (alive/idle) is dynamic and derived separately. The machine is
+ *  keyed by NAME (its per-connection id changes on every reconnect — keying on that
+ *  caused the flicker). */
+type SavedLocus = { kind: 'local'; machineId?: string; machineName?: string; path: string } | { kind: 'cloud' };
+const LOCUS_KEY = 'yoSources';
+function loadLocus(): Record<string, SavedLocus> {
+  try { return JSON.parse(localStorage.getItem(LOCUS_KEY) || '{}'); } catch { return {}; }
 }
-function saveSource(id: string, s: SavedSource): void {
-  try { const all = loadSavedSources(); all[id] = s; localStorage.setItem(SOURCE_KEY, JSON.stringify(all)); } catch { /* */ }
+function locusOf(id: string): SavedLocus | undefined { return loadLocus()[id]; }
+function saveLocus(id: string, l: SavedLocus): void {
+  try { const all = loadLocus(); if (all[id]) return; all[id] = l; localStorage.setItem(LOCUS_KEY, JSON.stringify(all)); } catch { /* */ }
 }
-function forgetSource(id: string): void {
-  try { const all = loadSavedSources(); if (all[id]) { delete all[id]; localStorage.setItem(SOURCE_KEY, JSON.stringify(all)); } } catch { /* */ }
+function forgetLocus(id: string): void {
+  try { const all = loadLocus(); if (all[id]) { delete all[id]; localStorage.setItem(LOCUS_KEY, JSON.stringify(all)); } } catch { /* */ }
 }
 function chatFor(id: string): RemoteChat {
   let c = remoteChats.get(id);
   if (!c) {
     c = { id, mode: 'chat' };
-    const saved = loadSavedSources()[id];
-    if (saved) c.source = saved;   // restore local/desktop binding + folder
+    const l = locusOf(id);
+    if (l?.kind === 'local') c.source = { kind: 'local', ...(l.machineId ? { machineId: l.machineId } : {}), path: l.path };
     remoteChats.set(id, c);
   }
   return c;
@@ -598,7 +601,7 @@ function CodeView({ desktops, sessions, loading, activity, sourceOf, onMenu, onO
   sessions: Recent[];
   loading: boolean;
   activity: Record<string, 'working' | 'waiting'>;
-  sourceOf: (id: string) => { local: boolean; name?: string; connected?: boolean };
+  sourceOf: (id: string) => { local: boolean; name?: string; connected: boolean };
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onOpenDesktop: (d: AttachedMachine) => void;
@@ -647,12 +650,11 @@ function CodeView({ desktops, sessions, loading, activity, sourceOf, onMenu, onO
                   </span>
                   {(() => {
                     const info = sourceOf(s.id);
-                    const where = info.local ? (info.connected ? 'connected' : 'off') : 'cloud';
                     return (
-                      <span className="m-code-meta" data-where={where}>
-                        {info.local
-                          ? <><Icon name="laptop" /><span className="m-code-state">{info.connected ? 'Connected' : 'Disconnected'}</span><span className="m-code-loc">· {info.name}</span></>
-                          : <><Icon name="cloud" /><span className="m-code-loc">Cloud</span></>}
+                      <span className="m-code-meta" data-where={info.connected ? 'connected' : 'off'}>
+                        <Icon name={info.local ? 'laptop' : 'cloud'} />
+                        <span className="m-code-state">{info.connected ? 'Connected' : 'Disconnected'}</span>
+                        <span className="m-code-loc">· {info.local ? info.name : 'Cloud'}</span>
                       </span>
                     );
                   })()}
@@ -2921,6 +2923,8 @@ function App() {
       sess = { id, title: prompt.slice(0, 60), when: 'now' };
       setSession(sess); setScreen('session'); setDrawer(false);
       convoRef.current = [];
+      // A session born here (from Home) is CLOUD, forever — stamp its immutable locus.
+      saveLocus(id, { kind: 'cloud' });
       setThreads((t) => [{ id, title: sess!.title, mode: curMode, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
     }
     const asstId = 'a' + Date.now().toString(36);
@@ -3106,9 +3110,11 @@ function App() {
   // Code/Work header subtitle — WHERE the session runs (cloud / repo / desktop).
   const sessionSubtitle: { icon: IconName; text: string } | undefined = (() => {
     if (!session || curMode === 'chat') return undefined;
+    // From the IMMUTABLE locus (stable name), never volatile machine ids.
+    const l = locusOf(session.id);
+    if (l?.kind === 'local') return { icon: 'laptop', text: l.machineName || 'Local machine' };
     const src = chatFor(session.id).source;
     if (src?.kind === 'cloud-repo' && src.repo) return { icon: 'cloud', text: `Cloud · ${src.repo.split('/').pop()}` };
-    if (src?.kind === 'local') { const d = desktops.find((x) => x.id === src.machineId); return { icon: 'laptop', text: d?.name || d?.app || 'Local machine' }; }
     return { icon: 'cloud', text: 'Cloud' };
   })();
 
@@ -3194,16 +3200,17 @@ function App() {
   const chatRecents = pinnedFirst(threadsFor(threads, 'chat'));
   const workGroups = groupThreadsByTime(threads, 'cowork');   // Work = cowork threads, time-grouped
   const codeRecents = threadsFor(threads, 'code');            // Code = code threads
-  // Per-code-session locus for the list meta: local (which machine, still attached?)
-  // vs cloud. Source lives on the in-memory chat binding (set when the session was
-  // started on a desktop); unknown → cloud.
-  const codeSourceOf = (id: string): { local: boolean; name?: string; connected?: boolean } => {
-    const src = chatFor(id).source;
-    if (src?.kind === 'local') {
-      const d = desktops.find((x) => x.id === src.machineId);
-      return { local: true, name: d?.name || d?.app || 'Local machine', connected: !!d };
+  // Per-code-session meta: the IMMUTABLE locus (persisted — forever cloud or forever
+  // THIS desktop) + a DYNAMIC status. Local is "connected" while its machine (matched
+  // by NAME, stable across reconnects) is attached; cloud is "connected" only while a
+  // turn is actively running (an idle cloud pod is ephemeral → disconnected).
+  const codeSourceOf = (id: string): { local: boolean; name?: string; connected: boolean } => {
+    const l = locusOf(id);
+    if (l?.kind === 'local') {
+      const connected = desktops.some((d) => (d.name || d.app) === l.machineName);
+      return { local: true, name: l.machineName || 'Local machine', connected };
     }
-    return { local: false };
+    return { local: false, connected: activity[id] === 'working' || activity[id] === 'waiting' };
   };
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
@@ -3216,7 +3223,7 @@ function App() {
   const togglePin = (id: string) => { const s = new Set(pins); if (s.has(id)) s.delete(id); else s.add(id); savePins(s); };
   const deleteSession = async (s: Recent) => {
     try { await glyphh().sessions.deleteThread(s.id); } catch { /* best effort */ }
-    remoteChats.delete(s.id); forgetSource(s.id);
+    remoteChats.delete(s.id); forgetLocus(s.id);
     setThreads((t) => (t ?? []).filter((x) => x.id !== s.id));
     if (pins.has(s.id)) { const p = new Set(pins); p.delete(s.id); savePins(p); }
     backToList();
@@ -3235,7 +3242,8 @@ function App() {
     const chat = chatFor(id);
     chat.mode = curMode;
     chat.source = { kind: 'local', machineId: d.id, path };
-    saveSource(id, { kind: 'local', machineId: d.id, path });   // survives reload/reopen
+    // Immutable locus — this session is FOREVER this desktop + folder.
+    saveLocus(id, { kind: 'local', machineId: d.id, machineName: d.name || d.app, path });
     setSession({ id, title: 'New session', when: 'now' });
     setScreen('session'); setDrawer(false);
     // Empty transcript ([] not null) → shows the mascot empty state, not "Loading…".
