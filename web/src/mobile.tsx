@@ -2753,6 +2753,9 @@ function App() {
     const asstMsg: Message = { id: asstId, role: 'glyphh', text: '' };
     convoRef.current = [...convoRef.current, ...(opts?.noUserBubble ? [] : [userMsg]), asstMsg];
     renderConvo();
+    // Persist the session up front (with the user's message) so a reload/close
+    // mid-turn can still find and re-open it — not only after the turn completes.
+    void persistThread(sess.id);
     const setAsst = (text: string) => { const m = convoRef.current.find((x) => x.id === asstId); if (m) { m.text = text; renderThrottled(); } };
     // Fold a tool frame into the assistant turn's steps: start pushes a running
     // row; done finalises the most recent running row of that name (✓/✕ + diff).
@@ -3036,24 +3039,26 @@ function App() {
 
   // Track the current view so async callbacks (notify) know if the user is looking.
   useEffect(() => { viewRef.current = { screen, sid: session?.id ?? null }; }, [screen, session]);
-  // Remember where the user was (space / screen / open session) so a reload lands
-  // them back there instead of resetting to the Chat home.
+  const [restored, setRestored] = useState(false);
+  // Restore FIRST — runs once on sign-in. `restored` is state (not a ref) so the
+  // persist effect below only starts writing on the NEXT render, once the restored
+  // space/session have applied — never clobbering the saved state with defaults.
   useEffect(() => {
-    if (authState !== 'in') return;
-    try { localStorage.setItem('yoNav', JSON.stringify({ active, screen, session: session ? { id: session.id, title: session.title, when: session.when } : null })); } catch { /* */ }
-  }, [authState, active, screen, session]);
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (authState !== 'in' || restoredRef.current) return;
-    restoredRef.current = true;
+    if (authState !== 'in' || restored) return;
     try {
       const nav = JSON.parse(localStorage.getItem('yoNav') || 'null') as { active?: SpaceId; screen?: string; session?: Recent | null } | null;
-      if (!nav) return;
-      if (nav.active) setActive(nav.active);
-      if (nav.session && nav.screen === 'session') openSession(nav.session);
-      else if (nav.screen === 'list') setScreen('list');
+      if (nav) {
+        if (nav.active) setActive(nav.active);
+        if (nav.session && nav.screen === 'session') openSession(nav.session);
+        else if (nav.screen === 'list') setScreen('list');
+      }
     } catch { /* */ }
-  }, [authState]);
+    setRestored(true);
+  }, [authState, restored]);
+  useEffect(() => {
+    if (authState !== 'in' || !restored) return;
+    try { localStorage.setItem('yoNav', JSON.stringify({ active, screen, session: session ? { id: session.id, title: session.title, when: session.when } : null })); } catch { /* */ }
+  }, [authState, restored, active, screen, session]);
 
   const showSplash = !minSplash || authState === 'checking';
 
