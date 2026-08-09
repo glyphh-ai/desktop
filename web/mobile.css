@@ -768,12 +768,6 @@ body {
 .m-tool-more svg { width: 16px; height: 16px; }
 .m-tool-err { padding: 2px 8px 8px 38px; color: var(--danger); font: 400 13.5px/1.4 ui-monospace, monospace; }
 
-/* Streaming caret — a blinking accent bar trailing the live answer. */
-.m-msg-md { display: flex; flex-direction: column; gap: 12px; }
-.m-cursor { display: inline-block; width: 3px; height: 1.15em; border-radius: 2px; background: var(--accent); vertical-align: text-bottom; animation: m-blink 1s steps(2, start) infinite; }
-.m-cursor-solo { align-self: flex-start; }
-@keyframes m-blink { 50% { opacity: 0; } }
-
 /* Per-message footer: copy affordance + per-turn usage. */
 .m-msg-foot { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
 .m-msg-copy { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 9px; background: none; color: var(--text-3); font: 500 13px/1 var(--font-sans); cursor: pointer; opacity: 0.75; }

@@ -760,8 +760,7 @@ function AgentMessage({ m, streaming, onOpenDetail, onLongPress }: { m: Message;
   return (
     <div className="m-msg m-msg-glyphh" {...press}>
       {m.steps && m.steps.length > 0 && <ToolGroup steps={m.steps as ToolStep[]} onOpenDetail={onOpenDetail} />}
-      {m.text && <div className="m-msg-md">{<Markdown text={m.text} />}{streaming && <span className="m-cursor" />}</div>}
-      {streaming && !m.text && m.steps && m.steps.length > 0 && <span className="m-cursor m-cursor-solo" />}
+      {m.text && <Markdown text={m.text} />}
       {!streaming && m.text && (
         <div className="m-msg-foot">
           <button className="m-msg-copy" onClick={copy} aria-label="Copy message">
@@ -887,10 +886,6 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
   const [actionMsg, setActionMsg] = useState<Message | null>(null);
   const [confirm, setConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  // True once the in-flight turn's agent bubble exists (has text or steps) — then
-  // its inline cursor is the working indicator, so we drop the standalone row.
-  const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
-  const lastIsStreamingAgent = !!(comp.sending && last && last.role === 'glyphh' && (last.text || (last.steps && last.steps.length > 0)));
   const scrollRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   useEffect(() => {
@@ -964,9 +959,9 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
                   ? <UserMessage key={m.id} m={m} onLongPress={setActionMsg} />
                   : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} streaming={comp.sending && i === msgs.length - 1} onOpenDetail={setToolDetail} onLongPress={setActionMsg} />
               ))}
-              {/* Standalone working row only BEFORE any answer/steps have landed —
-                  once the streaming agent bubble exists, its cursor carries it. */}
-              {(connecting || (comp.sending && !lastIsStreamingAgent)) && (
+              {/* The branded spinner shows for the whole in-flight turn (connecting
+                  AND while streaming/tool-running) — it's the working indicator. */}
+              {(connecting || comp.sending) && (
                 <div className="m-working">
                   <GlyphhSpinner size={40} phrases={!connecting} />
                   {connecting && <span className="m-working-label">Connecting…</span>}
