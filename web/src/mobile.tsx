@@ -3249,11 +3249,15 @@ function App() {
     glyphh().sessions.threads()
       .then((t: ThreadMeta[]) => { if (on) setThreads(Array.isArray(t) ? t : []); })
       .catch(() => { if (on) setThreads([]); });
-    // Attached desktops (Code strip) — a browser can LIST them via attach.status().
-    glyphh().attach.status()
+    // Attached desktops (Code strip). POLL it — a one-shot fetch goes stale the
+    // instant the socket reconnects (a server restart drops the attach WS, the
+    // desktop re-attaches seconds later, but a single fetch never sees it).
+    const loadDesktops = (): void => { void glyphh().attach.status()
       .then((s: { machines?: AttachedMachine[] }) => { if (on) setDesktops(Array.isArray(s?.machines) ? s.machines : []); })
-      .catch(() => { if (on) setDesktops([]); });
-    return () => { on = false; };
+      .catch(() => { if (on) setDesktops([]); }); };
+    loadDesktops();
+    const desktopsTimer = setInterval(loadDesktops, 20000);
+    return () => { on = false; clearInterval(desktopsTimer); };
   }, [authState]);
   const pinnedFirst = (arr: Recent[]) => [...arr].sort((a, b) => (pins.has(b.id) ? 1 : 0) - (pins.has(a.id) ? 1 : 0));
   const chatRecents = pinnedFirst(threadsFor(threads, 'chat'));
