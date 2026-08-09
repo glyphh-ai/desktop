@@ -573,15 +573,14 @@ export async function runRemoteTurn(
   callbacks: RemoteRunCallbacks = {},
   opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }>; memory?: RemoteMemoryPolicy } = {},
 ): Promise<RemoteRunOutcome> {
-  // THE SINGLE FRONT DOOR: every turn goes through the control-plane proxy, which
-  // region-routes to the org's regional rrotor + stator (docs/turn-proxy.md). No
-  // pod url, no provisioning, no relay. A local source just carries its folder as
-  // workdir. The legacy per-pod / relay paths below run only on an SDK that
-  // predates the proxy (no `harnessViaApi`).
-  if (sdk()?.harnessViaApi) return runViaFrontDoor(chat, prompt, callbacks, opts);
-  // A LOCAL (machine-bound) session runs ON the attached desktop over the relay,
-  // not in a cloud pod.
+  // THE RUNTIME SPLIT (docs/runtime-stator-split.md): the STATOR is one regional
+  // plane; the RUNTIME is chosen per session. A LOCAL (machine-bound) session
+  // runs on the user's OWN machine over the relay — tools touch its real folder,
+  // memory reaches the same regional stator via /api/stator/*. Everything else
+  // goes through the front door to the cloud runtime. The cloud pod REJECTS a
+  // caller workdir by design, so local must never route there.
   if (chat.source?.kind === "local") return runRelayTurn(chat, prompt, callbacks, { ...(opts.signal ? { signal: opts.signal } : {}) });
+  if (sdk()?.harnessViaApi) return runViaFrontDoor(chat, prompt, callbacks, opts);
   // ONE silent retry on a dead binding: attempt 1 swallows its error, drops
   // the cached runtime, re-provisions, and runs again. Only the second
   // failure reaches the user.

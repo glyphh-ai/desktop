@@ -83,7 +83,9 @@ function isCommitted(id: string): boolean {
    turn, name the STAGE + the exact control/runtime URLs + whether the runtime is
    reachable, so a 404 is a diagnosis, not a mystery. ─────────────────────────── */
 async function probeRuntime(url?: string): Promise<string> {
-  if (!url) return '';
+  // Synthetic bindings ('api' = the front-door proxy, 'relay' = the attached
+  // desktop) are not pod URLs — probing them yields a nonsense 404 diagnosis.
+  if (!url || !/^https?:\/\//.test(url)) return '';
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 4000);
