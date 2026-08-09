@@ -2710,6 +2710,64 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
   );
 }
 
+/** A directory on the attached machine (from attach.fsList over the relay). */
+interface FsEntry { name: string; path: string; dir: boolean; git?: boolean }
+interface FsListing { path: string; parent: string | null; entries: FsEntry[] }
+
+/* "Choose directory" — a bottom tray (slides up like the model selector) that
+   browses the attached machine's folders over the relay (attach.fsList) and lets
+   the user pick one or create a new folder under the current one, then start the
+   session there. */
+function FolderPickerTray({ machine, onClose, onChoose }: { machine: AttachedMachine | null; onClose: () => void; onChoose: (path: string) => void }) {
+  const [listing, setListing] = useState<FsListing | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const load = (path?: string) => {
+    setLoading(true); setErr('');
+    glyphh().attach.fsList(path)
+      .then((r: FsListing) => { setListing(r); setLoading(false); })
+      .catch(() => { setErr('Could not read this machine’s folders — the desktop may need an update.'); setLoading(false); });
+  };
+  useEffect(() => { if (machine) { setListing(null); setCreating(false); setNewName(''); load(); } }, [machine]);
+  const cur = listing?.path;
+  const dirs = (listing?.entries ?? []).filter((e) => e.dir);
+  const createFolder = async () => {
+    const name = newName.trim(); if (!name || !cur) return;
+    try { await glyphh().attach.dispatch('fs.mkdir', { path: cur, name }); setCreating(false); setNewName(''); load(cur); }
+    catch { setErr('Could not create that folder.'); }
+  };
+  return createPortal(
+    <div className="m-sel-overlay" data-open={machine ? 'true' : 'false'}>
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel">
+        <div className="m-sel-grip" />
+        <div className="m-sel-head"><button className="m-sel-x" aria-label="Close" onClick={onClose}><Icon name="close" /></button><span className="m-sel-title">Choose directory</span></div>
+        <div className="m-sel-body">
+          {cur && <div className="m-fp-cur">{cur}</div>}
+          {listing?.parent != null && <button className="m-fp-row m-fp-up" onClick={() => load(listing.parent!)}><Icon name="back" /><span>Up a level</span></button>}
+          {loading ? <div className="m-list-note">Loading…</div>
+            : err ? <div className="m-list-note m-field-err">{err}</div>
+            : dirs.length === 0 ? <div className="m-list-note">No sub-folders here.</div>
+            : dirs.map((e) => (
+              <button key={e.path} className="m-fp-row" onClick={() => load(e.path)}>
+                <Icon name={e.git ? 'branch' : 'files'} /><span className="m-fp-name">{e.name}</span><Icon name="chevron" />
+              </button>
+            ))}
+        </div>
+        <div className="m-fp-actions">
+          {creating
+            ? <div className="m-fp-create"><input className="m-prompt-input" value={newName} onChange={(e) => setNewName((e.target as HTMLInputElement).value)} placeholder="New folder name" autoFocus /><button className="m-prompt-btn m-prompt-primary" onClick={() => void createFolder()}>Create</button></div>
+            : <button className="m-fp-new" onClick={() => setCreating(true)} disabled={!cur}><Icon name="plus" /><span>New folder</span></button>}
+          <button className="btn btn-primary btn-lg m-fp-choose" onClick={() => cur && onChoose(cur)} disabled={!cur}>Use this folder</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function App() {
   const [active, setActive] = useState<SpaceId>('chat');
   const [drawer, setDrawer] = useState(false);
@@ -2721,6 +2779,7 @@ function App() {
   const [settings, setSettings] = useState(false);
   const [attach, setAttach] = useState(false);
   const [attachImgs, setAttachImgs] = useState<AttachImage[]>([]);     // pending image attachments (vision)
+  const [folderPick, setFolderPick] = useState<AttachedMachine | null>(null); // desktop whose folder picker is open
   const photoInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
@@ -3126,12 +3185,12 @@ function App() {
    *  The source is `local` (machineId), threaded into the same runRemoteTurn
    *  provisioning app-web uses: cloud today (web-deferred), the attached box
    *  when the relay seam lands — mobile inherits it for free. */
-  const startDesktopSession = (d: AttachedMachine) => {
+  const startDesktopSession = (d: AttachedMachine, path: string) => {
     haptic();
     const id = 'c' + Date.now().toString(36);
     const chat = chatFor(id);
     chat.mode = curMode;
-    chat.source = { kind: 'local', machineId: d.id, path: '' };
+    chat.source = { kind: 'local', machineId: d.id, path };
     setSession({ id, title: 'New session', when: 'now' });
     setScreen('session'); setDrawer(false);
     // Empty transcript ([] not null) → shows the mascot empty state, not "Loading…".
@@ -3203,9 +3262,9 @@ function App() {
               <div className="m-nav-track">
                 <section className="m-nav-panel">
                   {active === 'code'
-                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={startDesktopSession} onNewSession={newSession} onSearch={openSearch} />
+                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
-                    ? <WorkView desktops={desktops} groups={workGroups} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={startDesktopSession} onNewTask={newSession} onSearch={openSearch} />
+                    ? <WorkView desktops={desktops} groups={workGroups} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewTask={newSession} onSearch={openSearch} />
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
@@ -3220,6 +3279,10 @@ function App() {
       </div>
       <SettingsSheet open={settings} onClose={() => { haptic(); setSettings(false); }} user={user} onSignOut={onSignOut}
         onUserChanged={() => { void syncGating().then((u) => setUser(toDisplayUser(u))); }} />
+      {/* Tap a desktop → choose a folder over the relay → start a session there. */}
+      <FolderPickerTray machine={folderPick} onClose={() => { haptic(); setFolderPick(null); }}
+        onChoose={(path) => { const d = folderPick; setFolderPick(null); if (d) startDesktopSession(d, path); }} />
+
       <AttachMenu open={attach} onClose={() => { haptic(); setAttach(false); }}
         onCamera={() => cameraInputRef.current?.click()} onPhoto={() => photoInputRef.current?.click()} />
       {/* Hidden pickers — camera capture vs the photo library. */}

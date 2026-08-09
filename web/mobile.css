@@ -799,6 +799,22 @@ body {
 .m-action-chev svg { width: 16px; height: 16px; }
 .m-action-file { margin-top: 6px; font: 400 15px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); word-break: break-all; }
 
+/* Folder picker (Choose directory) */
+.m-fp-cur { padding: 6px 6px 10px; font: 400 13.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-3); word-break: break-all; }
+.m-fp-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 4px; background: none; border: 0; border-bottom: 1px solid var(--border); cursor: pointer; text-align: left; color: var(--text); font: 500 17px/1.2 var(--font-sans); }
+.m-fp-row:last-child { border-bottom: 0; }
+.m-fp-row:active { background: var(--hover); }
+.m-fp-row svg { width: 20px; height: 20px; color: var(--text-3); flex: 0 0 20px; }
+.m-fp-up { color: var(--text-2); }
+.m-fp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-fp-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 12px 16px calc(var(--safe-bottom) + 14px); border-top: 1px solid var(--border); }
+.m-fp-new { display: inline-flex; align-items: center; gap: 6px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-2); background: var(--surface); color: var(--text); font: 600 15px/1 var(--font-sans); cursor: pointer; }
+.m-fp-new svg { width: 16px; height: 16px; }
+.m-fp-new:disabled { opacity: 0.5; }
+.m-fp-choose { flex: 1; justify-content: center; }
+.m-fp-create { display: flex; gap: 8px; flex: 1; }
+.m-fp-create .m-prompt-input { flex: 1; }
+
 /* Per-message footer: copy affordance + per-turn usage. */
 .m-msg-foot { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
 .m-msg-copy { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 9px; background: none; color: var(--text-3); font: 500 13px/1 var(--font-sans); cursor: pointer; opacity: 0.75; }
