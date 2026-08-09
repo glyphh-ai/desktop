@@ -433,7 +433,12 @@ function Composer({ draft, setDraft, onSend, onStop, sending, onPlus, onOpenSele
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
           {mode === 'chat'
             ? <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
-            : <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>}
+            : <>
+                <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
+                {/* Loop/model chip beside permission — shown on tablet (phone keeps
+                    the top dropdown / dots menu for it). */}
+                <button className="m-tool-pill m-pill-cfg m-pill-loopmodel" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
+              </>}
           <span className="m-composer-spacer" />
           <button className={`m-tool-mic${voice.listening ? ' m-mic-live' : ''}`} aria-label="Voice" onClick={onMic}><Icon name="mic" /></button>
           {sending

@@ -833,6 +833,9 @@ body {
 .m-composer-spacer { flex: 1; }
 /* Single config chip (loop / model) — one line, ellipsizes, never wraps. */
 .m-pill-cfg { flex: 0 1 auto; min-width: 0; justify-content: flex-start; }
+/* The 2nd (loop/model) chip beside permission is tablet-only; phone keeps it in
+   the top dropdown / dots menu where there's no room in the composer row. */
+.m-pill-loopmodel { display: none; }
 .m-tool-pill > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-tool-pill > svg { flex: 0 0 18px; }
 .m-tool-btn {
@@ -976,6 +979,20 @@ body {
   .m-recents-list { gap: 6px; }
   .m-recent { padding: 12px 16px; }
   .m-recent-title { font-size: 19px; }
+
+  /* Loop/model chip sits beside the permission chip in Work/Code on tablet. */
+  .m-pill-loopmodel { display: inline-flex; }
+
+  /* Roomier right panel: more breathing room on the left & right of the content
+     column (messages, composer, headers, lists, home). */
+  .m-sv-messages { padding-left: calc(var(--safe-left) + 48px); padding-right: 48px; }
+  .m-sv-head { padding-left: calc(var(--safe-left) + 40px); padding-right: 40px; }
+  .m-chats-scroll, .m-code-scroll, .m-work-scroll { padding-left: calc(var(--safe-left) + 40px); padding-right: 40px; }
+  .m-chats-head, .m-home-head { padding-left: calc(var(--safe-left) + 40px); padding-right: 40px; }
+  .m-ghost { padding-left: 48px; padding-right: 48px; }
+
+  /* Composer: match the roomier side padding and sit lower on the right panel. */
+  .m-composer { padding: 6px 48px calc(var(--safe-bottom) + 8px) calc(var(--safe-left) + 48px); }
 }
 
 /* ── Settings bottom sheet: slides up over the app, back down on close ────── */
