@@ -140,6 +140,16 @@ function syncThemeColor() {
 }
 function currentTheme(): string { try { return localStorage.getItem('yoTheme') || 'dark'; } catch { return 'dark'; } }
 
+/* Full-desktop-site preference for THIS browser (Appearance → Desktop site). A
+   cookie (not localStorage) so serve.mjs can read it server-side and skip the
+   mobile redirect, serving the full renderer even on a touch device. */
+function prefersDesktopSite(): boolean {
+  try { return document.cookie.includes('glyphh_view=desktop'); } catch { return false; }
+}
+function setDesktopSite(on: boolean): void {
+  try { document.cookie = `glyphh_view=${on ? 'desktop' : ''}; path=/; max-age=${on ? 31536000 : 0}; samesite=lax`; } catch { /* no cookies */ }
+}
+
 /* ── Runtimes — the cloud runtime a session runs on. Selectable like models;
    NAM (shared) for now, upgraded/dedicated later. All orgs default to NAM. ── */
 const RUNTIMES: { id: string; name: string; desc: string }[] = [
@@ -2232,16 +2242,35 @@ function AppearanceTray() {
   const [theme, setTheme] = useState(currentTheme);
   const pick = (t: string) => { haptic(); setTheme(t); applyTheme(t); };
   const sysResolved = (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  const [desktop, setDesktop] = useState(prefersDesktopSite);
+  // ON → set the cookie and load the full site NOW. OFF → clear it; we're
+  // already in the mobile app, so nothing to navigate.
+  const toggleDesktop = () => {
+    haptic();
+    if (!desktop) { setDesktopSite(true); window.location.href = '/'; }
+    else { setDesktopSite(false); setDesktop(false); }
+  };
   return (
-    <div className="m-sel-group">
-      {THEMES.map((o) => (
-        <button key={o.id} className="m-opt" onClick={() => pick(o.id)}>
-          <span className="m-theme-sw" data-theme={o.id === 'system' ? sysResolved : o.id} aria-hidden="true" />
-          <span className="m-opt-text"><span className="m-opt-name">{o.name}</span>{o.desc && <span className="m-opt-desc">{o.desc}</span>}</span>
-          {theme === o.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="m-sel-group">
+        {THEMES.map((o) => (
+          <button key={o.id} className="m-opt" onClick={() => pick(o.id)}>
+            <span className="m-theme-sw" data-theme={o.id === 'system' ? sysResolved : o.id} aria-hidden="true" />
+            <span className="m-opt-text"><span className="m-opt-name">{o.name}</span>{o.desc && <span className="m-opt-desc">{o.desc}</span>}</span>
+            {theme === o.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
+          </button>
+        ))}
+      </div>
+      <div className="m-set-label">Browser</div>
+      <div className="m-set-group">
+        <div className="m-set-row m-set-row-toggle">
+          <span className="m-set-ico"><Icon name="desktop" /></span>
+          <span className="m-set-name">Desktop site</span>
+          <Switch on={desktop} onClick={toggleDesktop} />
+        </div>
+      </div>
+      <div className="m-field-note">Loads the full Glyphh site in this browser instead of the mobile app. Return anytime by opening /m.</div>
+    </>
   );
 }
 

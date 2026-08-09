@@ -1052,16 +1052,20 @@ body {
   .m-rail-brand { padding: 0 0 8px 30px; }
   .m-wordmark { height: 36px; }
   .m-rail-nav { margin-top: 6px; gap: 3px; }
-  .m-nav-item { padding: 12px 16px; font-size: 20px; gap: 15px; }
-  .m-nav-item svg { width: 20px; height: 20px; flex-basis: 20px; }
+  .m-nav-item { padding: 11px 16px; font-size: 16px; gap: 14px; }
+  .m-nav-item svg { width: 18px; height: 18px; flex-basis: 18px; }
   .m-recents { margin-top: 22px; }
-  .m-recents-label { padding-left: 16px; font-size: 13px; }
-  .m-recents-list { gap: 6px; }
-  .m-recent { padding: 12px 16px; }
-  .m-recent-title { font-size: 19px; }
+  .m-recents-label { padding-left: 16px; font-size: 12px; }
+  .m-recents-list { gap: 4px; }
+  .m-recent { padding: 10px 16px; }
+  .m-recent-title { font-size: 15px; }
 
   /* Loop/model chip sits beside the permission chip in Work/Code on tablet. */
   .m-pill-loopmodel { display: inline-flex; }
+
+  /* The rail is a PERSISTENT sidebar on tablet — the drawer hamburger has
+     nothing to open/close, so remove it from every header. */
+  .m-chats-icon[aria-label="Open menu"] { display: none; }
 
   /* Roomier right panel: more breathing room on the left & right of the content
      column (messages, composer, headers, lists, home). */
@@ -1081,6 +1085,16 @@ body {
   .m-md { font-size: 17px; }
   .m-md-h1 { font-size: 22px; } .m-md-h2 { font-size: 20px; } .m-md-h3 { font-size: 18px; } .m-md-h4 { font-size: 17px; }
   .m-toolrow-lead { font-size: 16px; }
+
+  /* The list + header type is phone-sized (touch targets); on a tablet it reads
+     oversized. Step it down — the conversation itself is handled above. */
+  .m-chats-title { font-size: 16px; }
+  .m-chat-title, .m-code-name, .m-task-title { font-size: 16px; }
+  .m-desktop-name { font-size: 16px; }
+  .m-desktop-status { font-size: 13px; }
+  .m-code-label, .m-work-label { font-size: 14px; }
+  .m-list-note, .m-task-note { font-size: 14px; }
+  .m-chat-when, .m-code-when, .m-code-meta, .m-task-when { font-size: 13px; }
 }
 
 /* ── Settings bottom sheet: slides up over the app, back down on close ────── */
