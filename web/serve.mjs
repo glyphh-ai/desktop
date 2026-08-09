@@ -305,10 +305,14 @@ const server = http.createServer(async (req, res) => {
 if (PROXY) {
   server.on('upgrade', (req, socket, head) => {
     const rp = new URL(req.url, 'http://x').pathname;
-    if (!rp.startsWith('/rt/')) { socket.destroy(); return; }
-    const target = new URL(RT_TARGET);
+    // /rt/* → the runtime pod (legacy direct path); /api/* → the local server
+    // (the front door's /api/harness/ws live frame pipe). Anything else drops.
+    const isApi = rp.startsWith('/api/');
+    if (!rp.startsWith('/rt/') && !isApi) { socket.destroy(); return; }
+    const target = new URL(isApi ? API_TARGET : RT_TARGET);
     const preq = http.request({
-      hostname: target.hostname, port: target.port, path: req.url.slice('/rt'.length) || '/',
+      hostname: target.hostname, port: target.port,
+      path: isApi ? req.url : (req.url.slice('/rt'.length) || '/'),
       method: req.method, headers: { ...req.headers, host: target.host },
     });
     preq.on('upgrade', (pres, psock, phead) => {
