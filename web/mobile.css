@@ -1002,13 +1002,15 @@ body {
 .m-prompt-q { margin-top: 14px; }
 .m-prompt-qtext { font: 500 16px/1.4 var(--font-sans); color: var(--text); margin-bottom: 8px; }
 .m-prompt-opts { display: flex; flex-wrap: wrap; gap: 8px; }
-/* Option chips follow the theme's button system: unselected = secondary
-   (surface + border-2), selected = primary (white pill — white in dark mode). */
+/* Option chips: unselected = surface + a quiet border; selected = a strong
+   CONTRAST border (var(--white) = near-black in light, white in dark) + bold —
+   so the choice reads in BOTH modes (a white fill vanished on the light sheet).
+   Both states carry a 2px border so selecting never nudges the layout. */
 .m-prompt-opt {
-  padding: 9px 14px; border-radius: 12px; border: 1px solid var(--border-2);
+  padding: 9px 14px; border-radius: 12px; border: 2px solid var(--border-2);
   background: var(--surface); color: var(--text); font: 500 15px/1 var(--font-sans); cursor: pointer;
 }
-.m-prompt-opt[data-on="true"] { background: #fff; border-color: #fff; color: #000; }
+.m-prompt-opt[data-on="true"] { border-color: var(--white); color: var(--text); font-weight: 700; }
 .m-prompt-input {
   width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 12px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
