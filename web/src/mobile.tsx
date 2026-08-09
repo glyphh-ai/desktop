@@ -425,24 +425,9 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
 function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode, onDictate, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  // The composer is a contentEditable div (NOT a <textarea>) so iOS shows no
-  // AutoFill accessory bar over it — a rich editable isn't a form field, which
-  // is exactly why Gmail/Docs composers stay clean. It grows with content up to
-  // the CSS max-height, then scrolls internally, so no JS auto-grow is needed.
-  //
-  // Keep the editable in sync with the controlled `draft` WITHOUT stealing the
-  // caret mid-type: only touch the DOM when they diverge (an external set — the
-  // draft cleared on send, or a quoted message inserted), then drop the caret at
-  // the end.
-  useEffect(() => {
-    const el = ref.current; if (!el || el.innerText === draft) return;
-    el.innerText = draft;
-    if (draft && document.activeElement === el) {
-      const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
-      const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
-    }
-  }, [draft]);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  // Auto-grow up to a cap; the box scrolls internally beyond that.
+  useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
   const voice = useVoice(onDictate);
   const canSend = (!!draft.trim() || attachments.length > 0) && !sending && !connecting;
   const submit = () => { if (canSend) onSend(); };
@@ -451,15 +436,9 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
     // dictation mic is one tap away (iOS).
     if (!voice.toggle()) { ref.current?.focus(); }
   };
-  // A contentEditable would otherwise paste rich HTML — intercept everything:
-  // image files go to the attachment strip, text is inserted as PLAIN text at
-  // the caret (execCommand keeps native undo + fires onInput → setDraft).
   const onPaste = (e: { clipboardData: DataTransfer | null; preventDefault: () => void }) => {
-    e.preventDefault();
     const imgs = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
-    if (imgs.length) { onPasteFiles(imgs); return; }
-    const text = e.clipboardData?.getData('text/plain') ?? '';
-    if (text) document.execCommand('insertText', false, text);
+    if (imgs.length) { e.preventDefault(); onPasteFiles(imgs); }
   };
   return (
     <div className="m-composer">
@@ -474,21 +453,13 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
             ))}
           </div>
         )}
-        <div
-          ref={ref} className="m-composer-input"
-          role="textbox" aria-multiline="true" aria-label="Message Glyphh"
-          contentEditable={!connecting} suppressContentEditableWarning
-          data-empty={!draft} data-placeholder={connecting ? 'Connecting…' : 'Message Glyphh…'}
-          onInput={(e) => {
-            const el = e.currentTarget as HTMLDivElement;
-            // A lone <br> Safari leaves after deleting all text keeps the field
-            // "non-empty" — clear it so the placeholder shows clean.
-            if (el.textContent === '' && el.innerHTML !== '') el.innerHTML = '';
-            setDraft(el.innerText);
-          }}
+        <textarea
+          ref={ref} className="m-composer-input" rows={1} disabled={connecting}
+          placeholder={connecting ? 'Connecting…' : 'Message Glyphh…'}
+          value={draft} onChange={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
           onPaste={onPaste}
-          autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" />
+          autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" {...NOFILL} />
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
           {mode === 'chat'
