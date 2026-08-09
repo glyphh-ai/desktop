@@ -836,7 +836,11 @@ body {
     max-width: none;
     padding: 0 3px 0 calc(var(--safe-left) + 3px);
   }
-  .m-main { margin-left: 320px; width: auto; flex: none; }
+  /* .m-shell is display:contents on tablet, so .m-main is now a direct child of
+     the fixed full-height .m-app and must claim the height itself — without this
+     it collapses to content height and the right pane renders into a short box
+     with a huge gap below it. */
+  .m-main { margin-left: 320px; width: auto; flex: none; height: 100%; }
   .m-rail-brand { padding: 0 0 8px 30px; }
   .m-wordmark { height: 36px; }
   .m-rail-nav { margin-top: 6px; gap: 3px; }
@@ -1028,6 +1032,28 @@ body {
 .m-sel-overlay[data-open="true"] .m-sel { transform: translateY(0); box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.34); }
 /* Content-height variant (permission sheet): sizes to its rows, capped at 80%. */
 .m-sel-fit { top: auto; max-height: 80%; }
+
+/* ── Tablet: sheets become centered modal cards, not full-width bottom sheets ── */
+@media (min-width: 768px) {
+  .m-sheet, .m-sel {
+    left: 50%; right: auto;
+    top: 50%; bottom: auto;
+    width: min(460px, 88vw);
+    height: min(680px, 84dvh);
+    max-height: 84dvh;
+    border-radius: 22px;
+    /* Parked well below the viewport centre; rises to centre on open. */
+    transform: translate(-50%, 130vh);
+  }
+  .m-sel { padding-bottom: 0; }
+  .m-sel-fit { height: auto; }               /* permission sheet hugs its rows */
+  .m-sheet-overlay[data-open="true"] .m-sheet,
+  .m-sel-overlay[data-open="true"] .m-sel {
+    transform: translate(-50%, -50%);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  }
+  /* The attachment popover already floats; keep it bottom-left near the composer. */
+}
 .m-sel-note { padding: 2px 6px 14px; font: 400 15px/1.4 var(--font-sans); color: var(--text-3); }
 .m-sel-grip { flex: 0 0 auto; width: 40px; height: 5px; border-radius: 3px; background: var(--border-2); margin: 8px auto 2px; }
 .m-sel-head { position: relative; display: flex; align-items: center; gap: 12px; padding: 8px 16px 14px; flex: 0 0 auto; }
