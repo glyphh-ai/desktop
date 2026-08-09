@@ -466,11 +466,9 @@ async function runRelayTurn(
   let run: HarnessRunHandle;
   try {
     run = handle.attach.run(
-      // threadId = the CHAT's id (STABLE across turns) so the on-machine pod
-      // records the transcript under one thread and each turn sees the prior
-      // ones — exactly like the cloud path's `threadId: chat.id`. Without it the
-      // desktop keys the pod thread by the per-turn runId and every turn starts
-      // with no memory.
+      // threadId = the CHAT's id (stable across turns). The DESKTOP keys the
+      // relay session's transcript + compaction by it (glyphh-agent-context),
+      // so the mobile need only send the new turn — not the whole history.
       { prompt, threadId: chat.id, mode: modeFor(chat), ...(workdir ? { workdir } : {}) },
       { ...(opts.signal ? { signal: opts.signal } : {}) },
     );

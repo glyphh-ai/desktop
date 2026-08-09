@@ -213,13 +213,8 @@ const server = http.createServer(async (req, res) => {
     const ua = req.headers['user-agent'] || '';
     const isPhoneUA = /iPhone|iPod|Android.+Mobile/i.test(ua);
     const authedCookie = /(?:^|;\s*)glyphh_logged_in=1\b/.test(req.headers.cookie || '');
-    // The user opted into the FULL desktop site in THIS browser (mobile app →
-    // Appearance → Desktop site). Honour it server-side so shell/home routes
-    // serve the desktop renderer even on a touch device (incl. iPad); /m stays
-    // the mobile app so they can switch back.
-    const viewDesktop = /(?:^|;\s*)glyphh_view=desktop\b/.test(req.headers.cookie || '');
     const isAuthRoute = p === '/auth' || p.startsWith('/auth/');
-    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute && !viewDesktop
+    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute
       && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/');
     const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
     if (isMobileShell) {
@@ -267,8 +262,7 @@ const server = http.createServer(async (req, res) => {
       // to the mobile app. Desktops (fine pointer) and signed-out users stay put.
       const touchRedirect =
         "<script>try{if(matchMedia('(pointer: coarse)').matches"
-        + "&&document.cookie.indexOf('glyphh_logged_in=1')>=0"
-        + "&&document.cookie.indexOf('glyphh_view=desktop')<0)"   // stay if the user chose the full site
+        + "&&document.cookie.indexOf('glyphh_logged_in=1')>=0)"
         + "location.replace('/m')}catch(e){}</script>";
       // The mobile shell loads its OWN React bundle (declared in mobile.html) and
       // must not get the desktop renderer bridge — only the client-safe config.
