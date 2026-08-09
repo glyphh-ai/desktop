@@ -140,13 +140,6 @@ function syncThemeColor() {
 }
 function currentTheme(): string { try { return localStorage.getItem('yoTheme') || 'dark'; } catch { return 'dark'; } }
 
-/* ── Runtimes — the cloud runtime a session runs on. Selectable like models;
-   NAM (shared) for now, upgraded/dedicated later. All orgs default to NAM. ── */
-const RUNTIMES: { id: string; name: string; desc: string }[] = [
-  { id: 'nam', name: 'NAM', desc: 'Shared runtime · North America' },
-];
-function currentRuntime(): string { try { return localStorage.getItem('yoRuntime') || 'nam'; } catch { return 'nam'; } }
-function setRuntimePref(id: string) { try { localStorage.setItem('yoRuntime', id); } catch { /* */ } }
 
 /* ── Current user (derived from the SDK identity / cached legacy user) ─────── */
 interface DisplayUser { name: string; email: string; initials: string; avatarUrl: string | null; role: string; tier: string; }
@@ -2245,21 +2238,50 @@ function AppearanceTray() {
   );
 }
 
-/* Runtime picker — same selection UI as models/appearance. NAM for now. */
+/* Region picker — the org's REGIONAL rrotor + stator (where the org's sessions
+   run and its memory lives). One org-level choice, default NAM; an org admin
+   sets it, every member sees it. Real data via glyphh().org.infra(). */
+type Infra = { region: string | null; regionChosen: boolean; regions: Array<{ id: string; label?: string }> };
+const REGION_DESC: Record<string, string> = { nam: 'North America · shared' };
+const regionName = (id: string, label?: string) => label || id.toUpperCase();
+
 function RuntimeTray() {
-  const [rt, setRt] = useState(currentRuntime);
-  const pick = (id: string) => { haptic(); setRt(id); setRuntimePref(id); };
+  const [infra, setInfra] = useState<Infra | null>(null);
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let on = true;
+    glyphh().org.infra()
+      .then((i: Infra) => { if (on) setInfra(i); })
+      // Offline / no-org: fall back to the sole default so the picker still reads.
+      .catch(() => { if (on) setInfra({ region: 'nam', regionChosen: true, regions: [{ id: 'nam', label: 'NAM' }] }); });
+    return () => { on = false; };
+  }, []);
+  const regions = infra?.regions?.length ? infra.regions : [{ id: 'nam', label: 'NAM' }];
+  const current = infra?.region ?? 'nam';
+  const pick = (id: string) => {
+    if (busy || current === id) return;
+    haptic(); setBusy(id); setErr('');
+    // tier 'shared' is the free default; this flips regionChosen + routes the org.
+    glyphh().org.chooseInfra({ region: id, tier: 'shared' })
+      .then((i: Infra) => { setInfra(i); setBusy(''); })
+      .catch((e: unknown) => {
+        setBusy('');
+        setErr(/forbidden|403|admin/i.test(String((e as Error)?.message || e)) ? 'Only an org admin can change the region.' : 'Could not change the region.');
+      });
+  };
   return (
     <>
-      <div className="m-sel-note">The cloud runtime your chats run on. Upgraded and dedicated runtimes are coming — every org runs on NAM for now.</div>
+      <div className="m-sel-note">The regional runtime + stator your sessions run on — where your memory lives. One choice for the whole org; more regions coming. NAM is the default.</div>
       <div className="m-sel-group">
-        {RUNTIMES.map((o) => (
-          <button key={o.id} className="m-opt" onClick={() => pick(o.id)}>
-            <span className="m-opt-text"><span className="m-opt-name">{o.name}</span><span className="m-opt-desc">{o.desc}</span></span>
-            {rt === o.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
+        {regions.map((o) => (
+          <button key={o.id} className="m-opt" disabled={!!busy} onClick={() => pick(o.id)}>
+            <span className="m-opt-text"><span className="m-opt-name">{regionName(o.id, o.label)}</span><span className="m-opt-desc">{REGION_DESC[o.id] || 'Shared runtime'}</span></span>
+            {busy === o.id ? <span className="m-opt-tick m-opt-spin" aria-hidden="true" /> : current === o.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
           </button>
         ))}
       </div>
+      {err && <div className="m-field-note m-field-err">{err}</div>}
     </>
   );
 }
@@ -2269,7 +2291,7 @@ type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections
 const SUB_TITLE: Record<SettingsSub, string> = {
   profile: 'Profile', billing: 'Billing', usage: 'Usage', appearance: 'Appearance',
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
-  runtime: 'Runtime', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
+  runtime: 'Region', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
 };
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
