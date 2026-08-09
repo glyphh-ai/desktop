@@ -266,12 +266,16 @@ const server = http.createServer(async (req, res) => {
         + "location.replace('/m')}catch(e){}</script>";
       // The mobile shell loads its OWN React bundle (declared in mobile.html) and
       // must not get the desktop renderer bridge — only the client-safe config.
-      // DEV tunnel: point the mobile SDK at THIS origin so /api rides the proxy.
-      const apiOverride = (isMobileShell && PROXY)
+      // DEV tunnel: point the SDK at THIS origin so /api rides the proxy → the
+      // LOCAL server. Applies to EVERY shell (mobile + the desktop/app-web site),
+      // not just mobile — otherwise the full site talks to the configured
+      // GLYPHH_SERVER_URL (e.g. Fly) while the desktop talks to localhost, and the
+      // device-auth codes created on one can't be approved on the other.
+      const apiOverride = PROXY
         ? '\n  <script>window.__GLYPHH_API_URL__=location.origin;</script>' : '';
       const inject = isMobileShell
         ? configScript() + apiOverride
-        : `${touchRedirect}\n  ${configScript()}\n  <script src="${BRIDGE}"></script>`;
+        : `${touchRedirect}\n  ${configScript()}${apiOverride}\n  <script src="${BRIDGE}"></script>`;
       body = body.replace(
         /<head(\s[^>]*)?>/i,
         (m) => `${m}${base}\n  ${inject}`,

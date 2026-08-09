@@ -259,7 +259,9 @@ async function showDevice(shownAt) {
 
   step.append(h, lede, grid);
   if (!code) step.append(input);
-  step.append(actions, err);
+  // Error ABOVE the button — below it, a full-height card clips/overlaps it at
+  // the viewport's bottom edge (it read as "hidden behind the button").
+  step.append(err, actions);
 }
 
 function showLogin(shownAt, initialError) {
