@@ -574,11 +574,12 @@ function ChatsView({ title, sessions, loading, activity, onMenu, onOpen, onNewCh
 /** An attached desktop/machine, from glyphh().attach.status(). */
 interface AttachedMachine { id?: string; app: string; version?: string; name?: string; capabilities?: string[]; since?: number }
 
-function CodeView({ desktops, sessions, loading, activity, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
+function CodeView({ desktops, sessions, loading, activity, sourceOf, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
   desktops: AttachedMachine[];
   sessions: Recent[];
   loading: boolean;
   activity: Record<string, 'working' | 'waiting'>;
+  sourceOf: (id: string) => { local: boolean; name?: string; connected?: boolean };
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onOpenDesktop: (d: AttachedMachine) => void;
@@ -625,11 +626,17 @@ function CodeView({ desktops, sessions, loading, activity, onMenu, onOpen, onOpe
                     <span className="m-code-name">{s.title}</span>
                     <span className="m-code-when">{s.when}</span>
                   </span>
-                  <span className="m-code-meta" data-where={activity[s.id] === 'waiting' ? 'input' : 'cloud'}>
-                    {activity[s.id] === 'working' ? <span className="m-code-loc">Working…</span>
-                      : activity[s.id] === 'waiting' ? <span className="m-code-loc">Needs input</span>
-                      : <><Icon name="cloud" /><span className="m-code-loc">Cloud</span></>}
-                  </span>
+                  {(() => {
+                    const info = sourceOf(s.id);
+                    const where = info.local ? (info.connected ? 'connected' : 'off') : 'cloud';
+                    return (
+                      <span className="m-code-meta" data-where={where}>
+                        {info.local
+                          ? <><Icon name="laptop" /><span className="m-code-state">{info.connected ? 'Connected' : 'Disconnected'}</span><span className="m-code-loc">· {info.name}</span></>
+                          : <><Icon name="cloud" /><span className="m-code-loc">Cloud</span></>}
+                      </span>
+                    );
+                  })()}
                 </span>
               </button>
             ))}
@@ -3161,6 +3168,17 @@ function App() {
   const chatRecents = pinnedFirst(threadsFor(threads, 'chat'));
   const workGroups = groupThreadsByTime(threads, 'cowork');   // Work = cowork threads, time-grouped
   const codeRecents = threadsFor(threads, 'code');            // Code = code threads
+  // Per-code-session locus for the list meta: local (which machine, still attached?)
+  // vs cloud. Source lives on the in-memory chat binding (set when the session was
+  // started on a desktop); unknown → cloud.
+  const codeSourceOf = (id: string): { local: boolean; name?: string; connected?: boolean } => {
+    const src = chatFor(id).source;
+    if (src?.kind === 'local') {
+      const d = desktops.find((x) => x.id === src.machineId);
+      return { local: true, name: d?.name || d?.app || 'Local machine', connected: !!d };
+    }
+    return { local: false };
+  };
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
   const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('list'); setSession(null); setDrawer(false); };
@@ -3262,7 +3280,7 @@ function App() {
               <div className="m-nav-track">
                 <section className="m-nav-panel">
                   {active === 'code'
-                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
+                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} activity={activity} sourceOf={codeSourceOf} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
                     ? <WorkView desktops={desktops} groups={workGroups} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewTask={newSession} onSearch={openSearch} />
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}

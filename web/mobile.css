@@ -549,6 +549,7 @@ body {
 .m-code-meta[data-where="connected"] svg { color: var(--success); }
 .m-code-state { font-weight: 500; }
 .m-code-meta[data-where="connected"] .m-code-state { color: var(--success); }
+.m-code-meta[data-where="off"] svg, .m-code-meta[data-where="off"] .m-code-state { color: var(--text-3); }
 .m-code-dot { color: var(--text-faint); }
 .m-code-loc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
