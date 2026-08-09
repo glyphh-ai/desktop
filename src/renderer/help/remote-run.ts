@@ -65,6 +65,10 @@ interface HarnessRunHandle {
  *  in Ask mode would silently run unattended if we didn't say so. */
 export type RemotePermission = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
 
+/** The LOOP's memory policy for a turn (mirrors the SDK's HarnessMemoryPolicy):
+ *  whether the turn rotates around the stator and how. Absent = runtime default. */
+export interface RemoteMemoryPolicy { recall?: boolean; write?: boolean; topK?: number; threshold?: number; entity?: string }
+
 interface HarnessPod {
   start(opts: {
     prompt: string;
@@ -468,7 +472,7 @@ async function runViaFrontDoor(
   chat: RemoteChat,
   prompt: string,
   callbacks: RemoteRunCallbacks,
-  opts: { model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }> },
+  opts: { model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }>; memory?: RemoteMemoryPolicy },
 ): Promise<RemoteRunOutcome> {
   const pod = (sdk() as unknown as { harnessViaApi?: () => HarnessPod })?.harnessViaApi?.();
   if (!pod) { const u = unavailable("open", new Error("this build can't run turns (SDK harnessViaApi missing)")); callbacks.onError?.(u.detail); return u; }
@@ -486,6 +490,8 @@ async function runViaFrontDoor(
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.permission ? { permission: opts.permission } : {}),
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
+      // The LOOP's memory policy — when memory is used and how (absent = default on).
+      ...(opts.memory ? { memory: opts.memory } : {}),
       ...(workdir ? { workdir } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
     } as Parameters<HarnessPod["start"]>[0]);
@@ -565,7 +571,7 @@ export async function runRemoteTurn(
   prompt: string,
   save: () => void,
   callbacks: RemoteRunCallbacks = {},
-  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }> } = {},
+  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }>; memory?: RemoteMemoryPolicy } = {},
 ): Promise<RemoteRunOutcome> {
   // THE SINGLE FRONT DOOR: every turn goes through the control-plane proxy, which
   // region-routes to the org's regional rrotor + stator (docs/turn-proxy.md). No

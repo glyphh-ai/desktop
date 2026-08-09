@@ -2885,6 +2885,9 @@ function App() {
   const [loops, setLoops] = useState<LoopItem[] | null>(null);
   const [loop, setLoop] = useState<string>('');                        // selected loop slug
   const [roles, setRoles] = useState<RoleItem[] | null>(null);         // resolved roles for `loop`
+  // The selected loop's MEMORY POLICY (manifest.memory → run body). Ref, not
+  // state: it only rides the next run, never re-renders anything.
+  const loopMemoryRef = useRef<{ recall?: boolean; write?: boolean; topK?: number; threshold?: number; entity?: string } | null>(null);
   const [roleSel, setRoleSel] = useState<Record<string, string>>({});  // per-role model override
   const [models, setModels] = useState<ModelChoice[]>([]);             // available() pool (labels + fallback)
   // Permission mode persists — a refresh must NOT silently revert the user's
@@ -3055,7 +3058,9 @@ function App() {
         onError: (detail) => { setConnecting(false); setPending(null); setPendingSessionId(null); setAct(sid, null); setAsst('⚠️ ' + detail); },
         onStopped: () => { setConnecting(false); setPending(null); setPendingSessionId(null); setAct(sid, null); },
       },
-      { rotor: loop, ...(model ? { model } : {}), ...(imgs.length ? { images: imgs } : {}), permission: perm as RemotePermission, signal: ac.signal },
+      { rotor: loop, ...(model ? { model } : {}), ...(imgs.length ? { images: imgs } : {}), permission: perm as RemotePermission, signal: ac.signal,
+        // The LOOP's memory policy rides the run — when memory is used and how.
+        ...(loopMemoryRef.current ? { memory: loopMemoryRef.current } : {}) },
     );
     setStreaming(false); setConnecting(false);
     setAct(sid, null);
@@ -3232,13 +3237,29 @@ function App() {
   }, [authState]);
 
   // Resolve the selected loop's role/model slots; reset overrides on switch.
+  // ALSO fetch the loop's manifest for its MEMORY POLICY — the loop defines when
+  // memory is used and how; the policy rides every run body (memory field).
   useEffect(() => {
-    if (!loop) { setRoles(null); return; }
+    if (!loop) { setRoles(null); loopMemoryRef.current = null; return; }
     let on = true;
     setRoles(null); setRoleSel({});
     glyphh().loops.roles(loop)
       .then((rs: RoleItem[]) => { if (on) setRoles(Array.isArray(rs) && rs.length ? rs : [{ name: 'agent', label: 'Agent', modelId: null, choices: [] }]); })
       .catch(() => { if (on) setRoles([{ name: 'agent', label: 'Agent', modelId: null, choices: [] }]); });
+    glyphh().loops.get(loop)
+      .then((l: { manifest?: { memory?: { read?: boolean; write?: boolean; topK?: number; threshold?: number; entity?: string } } }) => {
+        if (!on) return;
+        const m = l?.manifest?.memory;
+        // manifest read/write → runtime recall/write; absent = null (runtime default).
+        loopMemoryRef.current = m ? {
+          ...(m.read !== undefined ? { recall: m.read } : {}),
+          ...(m.write !== undefined ? { write: m.write } : {}),
+          ...(m.topK !== undefined ? { topK: m.topK } : {}),
+          ...(m.threshold !== undefined ? { threshold: m.threshold } : {}),
+          ...(m.entity ? { entity: m.entity } : {}),
+        } : null;
+      })
+      .catch(() => { if (on) loopMemoryRef.current = null; });
     return () => { on = false; };
   }, [loop]);
 
