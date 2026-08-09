@@ -323,6 +323,10 @@ export interface RemoteRunCallbacks {
     diff?: string;     // "[+N -M]"
     error?: string;
   }) => void;
+  /** Live usage for the turn — credits (micro) as the runtime meters them, and
+   *  token progress. Additive; desktop ignores it. Mobile shows a per-turn
+   *  credits + duration footer. */
+  onUsage?: (u: { creditsMicro?: number; inTokens?: number; outTokens?: number }) => void;
   onToken?: (delta: string) => void;
   onAnswer?: (fullText: string) => void;
   onDone?: (fullText: string) => void;
@@ -418,8 +422,14 @@ function dispatchFrame(
     case "error":
       state.error = frame.error || "the runtime reported an error";
       return;
+    case "credits":
+      cb.onUsage?.({ creditsMicro: frame.creditsMicro });
+      return;
+    case "progress":
+      cb.onUsage?.({ inTokens: frame.inTokens, outTokens: frame.outTokens });
+      return;
     default:
-      // progress / credits / setup / done — no UI mapping (done resolves run.done).
+      // setup / done — no UI mapping (done resolves run.done).
       return;
   }
 }

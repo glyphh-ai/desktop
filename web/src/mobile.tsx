@@ -159,7 +159,7 @@ type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'b
   | 'close' | 'info' | 'user' | 'dollar' | 'chart' | 'bell' | 'shield' | 'link'
   | 'sliders' | 'grid' | 'perms' | 'voice'
   | 'camera' | 'image' | 'filedoc' | 'tick' | 'external' | 'pin' | 'chats' | 'pencil' | 'trash'
-  | 'swap' | 'loop';
+  | 'swap' | 'loop' | 'contrast' | 'help' | 'key' | 'building' | 'users';
 
 /* ── Icons (stroke = currentColor, so they inherit the token color) ───────── */
 const ICON: Record<IconName, React.ReactNode> = {
@@ -246,6 +246,21 @@ function haptic() {
     }
     hapticSwitch.click();
   } catch { /* */ }
+}
+
+/** Long-press (touch hold) → fire `cb` after `ms`, with haptic. No-op if cb is
+ *  undefined. Cancels on move/end so a scroll never triggers it. */
+function useLongPress(cb?: () => void, ms = 440) {
+  const timer = useRef<number | null>(null);
+  const clear = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  const start = () => { if (!cb) return; clear(); timer.current = window.setTimeout(() => { haptic(); cb(); }, ms); };
+  return {
+    onTouchStart: start,
+    onTouchEnd: clear,
+    onTouchMove: clear,
+    onTouchCancel: clear,
+    onContextMenu: (e: { preventDefault: () => void }) => { if (cb) e.preventDefault(); },
+  };
 }
 
 /* ── Loops / models / permissions — real SDK data (glyphh().loops, .models).
@@ -379,7 +394,7 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, sending, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode }: CompProps) {
+function Composer({ draft, setDraft, onSend, onStop, sending, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
@@ -400,9 +415,9 @@ function Composer({ draft, setDraft, onSend, sending, onPlus, onOpenSelector, pe
             : <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>}
           <span className="m-composer-spacer" />
           <button className="m-tool-mic" aria-label="Voice"><Icon name="mic" /></button>
-          <button className="m-composer-send" aria-label="Send" disabled={!canSend} onClick={submit}>
-            {sending ? <span className="m-send-spin" aria-hidden="true" /> : <Icon name="send" />}
-          </button>
+          {sending
+            ? <button className="m-composer-send m-composer-stop" aria-label="Stop" onClick={() => onStop?.()}><span className="m-stop-sq" aria-hidden="true" /></button>
+            : <button className="m-composer-send" aria-label="Send" disabled={!canSend} onClick={submit}><Icon name="send" /></button>}
         </div>
       </div>
     </div>
@@ -660,26 +675,42 @@ interface CompProps {
   draft: string;                    // composer input value (single active composer)
   setDraft: (v: string) => void;
   onSend: () => void;
+  onStop?: () => void;              // abort the in-flight turn
   sending: boolean;                 // a turn is in flight
   mode: 'chat' | 'cowork' | 'code'; // chat → loop/model chip; work/code → permission chip
 }
 
 /* One assistant turn: the tool group (if any), the markdown answer, and a copy
    action that appears once the turn has settled. User turns stay plain text. */
-function AgentMessage({ m, onOpenDetail }: { m: Message; onOpenDetail: (s: ToolStep) => void }) {
+function AgentMessage({ m, streaming, onOpenDetail, onLongPress }: { m: Message; streaming: boolean; onOpenDetail: (s: ToolStep) => void; onLongPress?: (m: Message) => void }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => { if (await copyText(m.text)) { haptic(); setCopied(true); setTimeout(() => setCopied(false), 1400); } };
+  const press = useLongPress(() => onLongPress?.(m));
   return (
-    <div className="m-msg m-msg-glyphh">
+    <div className="m-msg m-msg-glyphh" {...press}>
       {m.steps && m.steps.length > 0 && <ToolGroup steps={m.steps as ToolStep[]} onOpenDetail={onOpenDetail} />}
-      {m.text && <Markdown text={m.text} />}
-      {m.text && (
-        <button className="m-msg-copy" onClick={copy} aria-label="Copy message">
-          {copied ? <><Icon name="check" /><span>Copied</span></> : <><Icon name="copy" /><span>Copy</span></>}
-        </button>
+      {m.text && <div className="m-msg-md">{<Markdown text={m.text} />}{streaming && <span className="m-cursor" />}</div>}
+      {streaming && !m.text && m.steps && m.steps.length > 0 && <span className="m-cursor m-cursor-solo" />}
+      {!streaming && m.text && (
+        <div className="m-msg-foot">
+          <button className="m-msg-copy" onClick={copy} aria-label="Copy message">
+            {copied ? <><Icon name="check" /><span>Copied</span></> : <><Icon name="copy" /><span>Copy</span></>}
+          </button>
+          {m.meta && <span className="m-msg-usage">{usageLabel(m.meta)}</span>}
+        </div>
       )}
     </div>
   );
+}
+/** "· 1,240 cr · 3.2s" style footer from a turn's usage meta. */
+function usageLabel(meta: { creditsMicro?: number; ms?: number }): string {
+  const parts: string[] = [];
+  if (typeof meta.creditsMicro === 'number' && meta.creditsMicro > 0) {
+    const cr = meta.creditsMicro / 1e6;
+    parts.push(`${cr >= 10 ? Math.round(cr).toLocaleString() : cr.toFixed(2)} cr`);
+  }
+  if (typeof meta.ms === 'number') parts.push(meta.ms >= 1000 ? `${(meta.ms / 1000).toFixed(1)}s` : `${meta.ms}ms`);
+  return parts.join(' · ');
 }
 
 /* A single tool step's full detail, in the same bottom-tray (sheet) idiom as the
@@ -713,6 +744,10 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
   const [toolDetail, setToolDetail] = useState<ToolStep | null>(null);
   const [confirm, setConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // True once the in-flight turn's agent bubble exists (has text or steps) — then
+  // its inline cursor is the working indicator, so we drop the standalone row.
+  const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
+  const lastIsStreamingAgent = !!(comp.sending && last && last.role === 'glyphh' && (last.text || (last.steps && last.steps.length > 0)));
   const scrollRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   useEffect(() => {
@@ -767,12 +802,14 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
           ? <div className="m-list-note">Loading…</div>
           : (
             <>
-              {msgs.map((m) => (
+              {msgs.map((m, i) => (
                 m.role === 'user'
                   ? <div key={m.id} className="m-msg m-msg-user">{m.text}</div>
-                  : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} onOpenDetail={setToolDetail} />
+                  : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} streaming={comp.sending && i === msgs.length - 1} onOpenDetail={setToolDetail} />
               ))}
-              {(connecting || comp.sending) && (
+              {/* Standalone working row only BEFORE any answer/steps have landed —
+                  once the streaming agent bubble exists, its cursor carries it. */}
+              {(connecting || (comp.sending && !lastIsStreamingAgent)) && (
                 <div className="m-working">
                   <GlyphhSpinner size={40} phrases={!connecting} />
                   {connecting && <span className="m-working-label">Connecting…</span>}
@@ -1149,7 +1186,7 @@ function ConnectionsTray() {
       if (!alive) return;
       n++;
       const list = await glyphh().connections.personalList().catch(() => null);
-      if (list) { setConns(list); if (list.some((c) => !before.has(c.id))) { setConnecting(null); setView('list'); return; } }
+      if (list) { setConns(list); if (list.some((c: { id: string }) => !before.has(c.id))) { setConnecting(null); setView('list'); return; } }
       if (n < 90) setTimeout(() => void tick(), 2000);
     };
     const t = setTimeout(() => void tick(), 2000);
@@ -2390,6 +2427,8 @@ function App() {
   const [msgs, setMsgs] = useState<Message[] | null>(null);            // active session's live transcript
   const [connecting, setConnecting] = useState(false);                 // provisioning/connecting a cloud runtime
   const [streaming, setStreaming] = useState(false);                   // a turn is in flight
+  const streamAbortRef = useRef<AbortController | null>(null);          // aborts the in-flight turn (Stop)
+  const renderPendRef = useRef(false);                                 // coalesces streaming re-renders to one per frame
   const [draft, setDraft] = useState('');                              // composer input
   const [pending, setPending] = useState<PendingPrompt | null>(null);  // parked approval/ask
   const convoRef = useRef<Message[]>([]);                              // source of truth for the transcript
@@ -2420,6 +2459,14 @@ function App() {
     : '';
   // ── Conversation transcript + streaming (chats run on a cloud pod) ──────────
   const renderConvo = () => setMsgs([...convoRef.current]);
+  // Streaming can fire deltas faster than a frame; coalesce to one paint per rAF
+  // so markdown re-lexing doesn't jank the scroll. Non-streaming callers use
+  // renderConvo directly (immediate).
+  const renderThrottled = () => {
+    if (renderPendRef.current) return;
+    renderPendRef.current = true;
+    requestAnimationFrame(() => { renderPendRef.current = false; renderConvo(); });
+  };
   // The current space decides the session mode (Chat / Work / Code toolset).
   const curMode: 'chat' | 'cowork' | 'code' = active === 'work' ? 'cowork' : active === 'code' ? 'code' : 'chat';
 
@@ -2468,7 +2515,7 @@ function App() {
       { id: 'u' + Date.now().toString(36), role: 'user', text: prompt },
       { id: asstId, role: 'glyphh', text: '' }];
     renderConvo();
-    const setAsst = (text: string) => { const m = convoRef.current.find((x) => x.id === asstId); if (m) { m.text = text; renderConvo(); } };
+    const setAsst = (text: string) => { const m = convoRef.current.find((x) => x.id === asstId); if (m) { m.text = text; renderThrottled(); } };
     // Fold a tool frame into the assistant turn's steps: start pushes a running
     // row; done finalises the most recent running row of that name (✓/✕ + diff).
     const applyTool = (t: { name: string; phase: 'start' | 'done'; status: 'running' | 'ok' | 'denied' | 'failed'; thought?: string; title?: string; diff?: string; error?: string }) => {
@@ -2487,11 +2534,14 @@ function App() {
         if (t.error) target.error = t.error;
         if (t.thought && !target.thought) target.thought = t.thought;
       }
-      setConnecting(false); renderConvo();
+      setConnecting(false); renderThrottled();
     };
     setConnecting(!isCommitted(sess.id));
     setStreaming(true);
     const ac = new AbortController();
+    streamAbortRef.current = ac;
+    const turnStart = Date.now();
+    let creditsMicro = 0;
     // Design (top-down): a chat turn rides the cloud rrotor carrying the LOOP
     // (rotor), the MODEL, and the PERMISSION mode. Chat is tool-less → one model
     // (the selected role's), the value the /run body's `model` field takes.
@@ -2505,6 +2555,7 @@ function App() {
         onAnswer: (full) => { setConnecting(false); setAsst(full); },
         onStep: () => setConnecting(false),
         onTool: applyTool,
+        onUsage: (u) => { if (typeof u.creditsMicro === 'number') creditsMicro = u.creditsMicro; },
         onApproval: (a) => { setConnecting(false); setPending({ t: 'approval', ...a }); },
         onAsk: (a) => { setConnecting(false); setPending({ t: 'ask', ...a }); },
         onDone: (full) => { setConnecting(false); setPending(null); if (full) setAsst(full); },
@@ -2514,6 +2565,13 @@ function App() {
       { rotor: loop, ...(model ? { model } : {}), permission: perm as RemotePermission, signal: ac.signal },
     );
     setStreaming(false); setConnecting(false);
+    streamAbortRef.current = null;
+    // Per-turn footer: credits the runtime metered + wall-clock. Only stamp a
+    // real turn (not an unavailable outcome).
+    const settled = convoRef.current.find((x) => x.id === asstId);
+    if (settled && !(outcome && typeof outcome === 'object' && 'unavailable' in outcome)) {
+      settled.meta = { ...(creditsMicro ? { creditsMicro } : {}), ms: Date.now() - turnStart };
+    }
     // Honest diagnosis: an unavailable stage names WHERE + probes the runtime.
     if (outcome && typeof outcome === 'object' && 'unavailable' in outcome) {
       const o = outcome as { stage: string; detail: string };
@@ -2521,6 +2579,7 @@ function App() {
       const probe = await probeRuntime(url);
       setAsst(unavailMessage(o.stage, o.detail, url, probe));
     }
+    renderConvo();
     void persistThread(sess.id);
   };
 
@@ -2537,6 +2596,7 @@ function App() {
     loopName,
     draft, setDraft,
     onSend: () => { void sendPrompt(); },
+    onStop: () => { haptic(); streamAbortRef.current?.abort(); },
     sending: streaming,
     mode: curMode,
   };

@@ -764,10 +764,22 @@ body {
 .m-tool-more svg { width: 16px; height: 16px; }
 .m-tool-err { padding: 2px 8px 8px 38px; color: var(--danger); font: 400 13.5px/1.4 ui-monospace, monospace; }
 
-/* Per-message copy affordance (settles in under the answer). */
-.m-msg-copy { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 9px; background: none; color: var(--text-3); font: 500 13px/1 var(--font-sans); cursor: pointer; opacity: 0.75; }
+/* Streaming caret — a blinking accent bar trailing the live answer. */
+.m-msg-md { display: flex; flex-direction: column; gap: 12px; }
+.m-cursor { display: inline-block; width: 3px; height: 1.15em; border-radius: 2px; background: var(--accent); vertical-align: text-bottom; animation: m-blink 1s steps(2, start) infinite; }
+.m-cursor-solo { align-self: flex-start; }
+@keyframes m-blink { 50% { opacity: 0; } }
+
+/* Per-message footer: copy affordance + per-turn usage. */
+.m-msg-foot { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+.m-msg-copy { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 9px; background: none; color: var(--text-3); font: 500 13px/1 var(--font-sans); cursor: pointer; opacity: 0.75; }
 .m-msg-copy:active { background: var(--hover); opacity: 1; }
 .m-msg-copy svg { width: 14px; height: 14px; }
+.m-msg-usage { color: var(--text-faint); font: 400 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+
+/* Stop button (replaces send while a turn is streaming). */
+.m-composer-stop { background: var(--surface-3); }
+.m-stop-sq { width: 15px; height: 15px; border-radius: 4px; background: var(--text); display: inline-block; }
 
 /* ── Tool detail tray (rows in the selector-sheet body) ──────────────────── */
 .m-tray-kv { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
