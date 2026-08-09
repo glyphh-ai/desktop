@@ -900,6 +900,17 @@ body {
 .m-working { display: flex; align-items: center; gap: 10px; padding: 10px 2px; align-self: flex-start; max-width: 100%; }
 .m-working-label { font: 500 16px/1 var(--font-sans); color: var(--text-2); animation: m-pulse 1.4s ease-in-out infinite; }
 
+.m-set-row-toggle { width: 100%; cursor: default; }
+.m-field-err { color: var(--danger); }
+
+/* Per-session activity chip on list rows: Working (subtle) / Needs input (accent). */
+.m-actbadge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; font: 600 12px/1 var(--font-sans); white-space: nowrap; }
+.m-actbadge svg { width: 13px; height: 13px; }
+.m-actbadge-work { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text-2); }
+.m-actbadge-wait { background: var(--accent); color: #fff; }
+.m-actbadge-spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); animation: m-spin 0.7s linear infinite; }
+.m-task-activity { margin-top: 8px; display: inline-flex; }
+
 /* On-open connecting pill — centred just above the composer, frosted. */
 .m-connecting {
   position: absolute; left: 50%; transform: translateX(-50%);

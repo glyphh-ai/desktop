@@ -517,10 +517,19 @@ function FilterMenu({ allLabel, allIcon }: { allLabel: string; allIcon: IconName
 }
 
 /* ── Chats list (slides in from the rail's "All Chats") ───────────────────── */
-function ChatsView({ title, sessions, loading, onMenu, onOpen, onNewChat, onSearch }: {
+/** Per-session live-state chip on a list row: a spinner while the agent works,
+ *  a "Needs input" pill while it's parked on an approval/ask. */
+function ActivityBadge({ state }: { state?: 'working' | 'waiting' }) {
+  if (state === 'waiting') return <span className="m-actbadge m-actbadge-wait"><Icon name="bell" /><span>Needs input</span></span>;
+  if (state === 'working') return <span className="m-actbadge m-actbadge-work"><span className="m-actbadge-spin" /><span>Working</span></span>;
+  return null;
+}
+
+function ChatsView({ title, sessions, loading, activity, onMenu, onOpen, onNewChat, onSearch }: {
   title: string;
   sessions: Recent[];
   loading: boolean;
+  activity: Record<string, 'working' | 'waiting'>;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onNewChat: () => void;
@@ -546,7 +555,7 @@ function ChatsView({ title, sessions, loading, onMenu, onOpen, onNewChat, onSear
                 <span className="m-chat-title">{s.title}</span>
                 <span className="m-chat-when">{s.when}</span>
               </span>
-              <Icon name="chevron" />
+              {activity[s.id] ? <ActivityBadge state={activity[s.id]} /> : <Icon name="chevron" />}
             </button>
           ))}
       </div>
@@ -562,10 +571,11 @@ function ChatsView({ title, sessions, loading, onMenu, onOpen, onNewChat, onSear
 /** An attached desktop/machine, from glyphh().attach.status(). */
 interface AttachedMachine { id?: string; app: string; version?: string; name?: string; capabilities?: string[]; since?: number }
 
-function CodeView({ desktops, sessions, loading, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
+function CodeView({ desktops, sessions, loading, activity, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
   desktops: AttachedMachine[];
   sessions: Recent[];
   loading: boolean;
+  activity: Record<string, 'working' | 'waiting'>;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onOpenDesktop: (d: AttachedMachine) => void;
@@ -612,7 +622,9 @@ function CodeView({ desktops, sessions, loading, onMenu, onOpen, onOpenDesktop, 
                     <span className="m-code-name">{s.title}</span>
                     <span className="m-code-when">{s.when}</span>
                   </span>
-                  <span className="m-code-meta" data-where="cloud"><Icon name="cloud" /><span className="m-code-loc">Cloud</span></span>
+                  <span className="m-code-meta" data-where="cloud">
+                    {activity[s.id] ? <ActivityBadge state={activity[s.id]} /> : <><Icon name="cloud" /><span className="m-code-loc">Cloud</span></>}
+                  </span>
                 </span>
               </button>
             ))}
@@ -626,10 +638,11 @@ function CodeView({ desktops, sessions, loading, onMenu, onOpen, onOpenDesktop, 
 
 /* ── Work: tasks grouped by time bucket, each a card with a status
    glyph, title, timestamp and an optional note. ─────────────────────────── */
-function WorkView({ desktops, groups, loading, onMenu, onOpen, onOpenDesktop, onNewTask, onSearch }: {
+function WorkView({ desktops, groups, loading, activity, onMenu, onOpen, onOpenDesktop, onNewTask, onSearch }: {
   desktops: AttachedMachine[];
   groups: TimeGroup[];
   loading: boolean;
+  activity: Record<string, 'working' | 'waiting'>;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onOpenDesktop: (d: AttachedMachine) => void;
@@ -677,6 +690,7 @@ function WorkView({ desktops, groups, loading, onMenu, onOpen, onOpenDesktop, on
                         <span className="m-task-title">{t.title}</span>
                         <span className="m-task-when">{t.when}</span>
                       </span>
+                      {activity[t.id] && <span className="m-task-activity"><ActivityBadge state={activity[t.id]} /></span>}
                     </span>
                   </button>
                 ))}
@@ -1694,6 +1708,22 @@ function Confirm({ title, message, confirmLabel, onCancel, onConfirm }: { title:
 function GeneralTray() {
   const [prefs, setPrefs] = useState<Record<string, unknown> | null>(null);
   const [saved, setSaved] = useState(false);
+  // Device-local notification pref (yoNotifyInput) — alert when a background
+  // session needs input. Web Notifications need OS permission; on iOS they only
+  // work once the app is added to the Home Screen (installed PWA).
+  const [notify, setNotify] = useState(() => { try { return localStorage.getItem('yoNotifyInput') === '1'; } catch { return false; } });
+  const [notifyErr, setNotifyErr] = useState('');
+  const toggleNotify = async () => {
+    if (notify) { setNotify(false); try { localStorage.setItem('yoNotifyInput', '0'); } catch { /* */ } return; }
+    let ok = false;
+    try {
+      if ('Notification' in window) {
+        ok = Notification.permission === 'granted' || (Notification.permission === 'default' && (await Notification.requestPermission()) === 'granted');
+      }
+    } catch { ok = false; }
+    if (!ok) { setNotifyErr('Notifications need to be allowed for this site — on iPhone/iPad, add Glyphh to your Home Screen first.'); return; }
+    setNotify(true); setNotifyErr(''); try { localStorage.setItem('yoNotifyInput', '1'); } catch { /* */ }
+  };
   useEffect(() => { glyphh().profile.prefs().then((p: Record<string, unknown>) => setPrefs(p)).catch(() => setPrefs({})); }, []);
   const save = (patch: Record<string, unknown>) => {
     glyphh().profile.setPrefs(patch).then((p: Record<string, unknown>) => { setPrefs(p); setSaved(true); setTimeout(() => setSaved(false), 1300); }).catch(() => {});
@@ -1701,6 +1731,17 @@ function GeneralTray() {
   if (!prefs) return <div className="m-set-loading">Loading…</div>;
   return (
     <>
+      <div className="m-set-label">Notifications</div>
+      <div className="m-set-group">
+        <div className="m-set-row m-set-row-toggle">
+          <span className="m-set-ico"><Icon name="bell" /></span>
+          <span className="m-set-name">Alert me when the agent needs input</span>
+          <Switch on={notify} onClick={() => { haptic(); void toggleNotify(); }} />
+        </div>
+      </div>
+      {notifyErr && <div className="m-field-note m-field-err">{notifyErr}</div>}
+      <div className="m-field-note">Notifies you outside the app when a background session is waiting on an approval or question.</div>
+
       <div className="m-set-label">Compaction guidance {saved && <span className="m-saved">Saved</span>}</div>
       <div className="m-set-form">
         <textarea className="m-field-in m-field-area" defaultValue={(prefs.glyphhCompactionPrompt as string) || ''} rows={5}
@@ -2612,6 +2653,13 @@ function App() {
   const renderPendRef = useRef(false);                                 // coalesces streaming re-renders to one per frame
   const [draft, setDraft] = useState('');                              // composer input
   const [pending, setPending] = useState<PendingPrompt | null>(null);  // parked approval/ask
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // whose prompt it is
+  // Per-session live state, survives navigation: 'working' = turn in flight,
+  // 'waiting' = parked on an approval/ask. Drives the list-row indicators, and
+  // the prompt is only ever shown INSIDE its own session.
+  const [activity, setActivity] = useState<Record<string, 'working' | 'waiting'>>({});
+  const setAct = (id: string, s: 'working' | 'waiting' | null) => setActivity((a) => { const n = { ...a }; if (s) n[id] = s; else delete n[id]; return n; });
+  const viewRef = useRef<{ screen: string; sid: string | null }>({ screen: 'home', sid: null });
   const convoRef = useRef<Message[]>([]);                              // source of truth for the transcript
   const [selectorAt, setSelectorAt] = useState<'sections' | 'loop' | 'models' | null>(null);
   const [permOpen, setPermOpen] = useState(false);
@@ -2728,10 +2776,12 @@ function App() {
     };
     setConnecting(!isCommitted(sess.id));
     setStreaming(true);
+    setAct(sess.id, 'working');
     const ac = new AbortController();
     streamAbortRef.current = ac;
     const turnStart = Date.now();
     let creditsMicro = 0;
+    const sid = sess.id;
     // Design (top-down): a chat turn rides the cloud rrotor carrying the LOOP
     // (rotor), the MODEL, and the PERMISSION mode. Chat is tool-less → one model
     // (the selected role's), the value the /run body's `model` field takes.
@@ -2746,15 +2796,16 @@ function App() {
         onStep: () => setConnecting(false),
         onTool: applyTool,
         onUsage: (u) => { if (typeof u.creditsMicro === 'number') creditsMicro = u.creditsMicro; },
-        onApproval: (a) => { setConnecting(false); setPending({ t: 'approval', ...a }); },
-        onAsk: (a) => { setConnecting(false); setPending({ t: 'ask', ...a }); },
-        onDone: (full) => { setConnecting(false); setPending(null); if (full) setAsst(full); },
-        onError: (detail) => { setConnecting(false); setPending(null); setAsst('⚠️ ' + detail); },
-        onStopped: () => { setConnecting(false); setPending(null); },
+        onApproval: (a) => { setConnecting(false); setPending({ t: 'approval', ...a }); setPendingSessionId(sid); setAct(sid, 'waiting'); notifyNeedsInput(sess!, a.title || 'Approve an action'); },
+        onAsk: (a) => { setConnecting(false); setPending({ t: 'ask', ...a }); setPendingSessionId(sid); setAct(sid, 'waiting'); notifyNeedsInput(sess!, a.questions?.[0]?.question || 'The agent has a question'); },
+        onDone: (full) => { setConnecting(false); setPending(null); setPendingSessionId(null); setAct(sid, null); if (full) setAsst(full); },
+        onError: (detail) => { setConnecting(false); setPending(null); setPendingSessionId(null); setAct(sid, null); setAsst('⚠️ ' + detail); },
+        onStopped: () => { setConnecting(false); setPending(null); setPendingSessionId(null); setAct(sid, null); },
       },
       { rotor: loop, ...(model ? { model } : {}), ...(imgs.length ? { images: imgs } : {}), permission: perm as RemotePermission, signal: ac.signal },
     );
     setStreaming(false); setConnecting(false);
+    setAct(sid, null);
     streamAbortRef.current = null;
     // Per-turn footer: credits the runtime metered + wall-clock. Only stamp a
     // real turn (not an unavailable outcome).
@@ -2818,8 +2869,26 @@ function App() {
   };
 
   // Answer (or dismiss on deadline) a parked approval/ask via the answer seam.
+  // Answering un-parks the turn → the session goes back to 'working'.
   const resolvePending = (reply: { allow?: boolean; answers?: string[] } | null) => {
     setPending((p) => { if (p && reply) void answerPending(p.id, reply); return null; });
+    if (pendingSessionId) setAct(pendingSessionId, 'working');
+    setPendingSessionId(null);
+  };
+
+  // Notify the user OUTSIDE the app when a background session needs input — only
+  // when they're not already looking at that session. Gated by the yoNotifyInput
+  // config toggle + granted OS permission.
+  const notifyNeedsInput = (sess: Recent, body: string) => {
+    const viewing = viewRef.current.screen === 'session' && viewRef.current.sid === sess.id && !document.hidden;
+    let enabled = false; try { enabled = localStorage.getItem('yoNotifyInput') === '1'; } catch { /* */ }
+    if (viewing || !enabled) return;
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const n = new Notification('Glyphh needs your input', { body: `${sess.title} — ${body}`.slice(0, 140), tag: `glyphh-input-${sess.id}` });
+        n.onclick = () => { try { window.focus(); } catch { /* */ } openSession(sess); n.close(); };
+      }
+    } catch { /* */ }
   };
 
   const comp: CompProps = {
@@ -2965,6 +3034,8 @@ function App() {
     setScreen('session'); setDrawer(false); clearConvo();
   };
 
+  // Track the current view so async callbacks (notify) know if the user is looking.
+  useEffect(() => { viewRef.current = { screen, sid: session?.id ?? null }; }, [screen, session]);
   // Remember where the user was (space / screen / open session) so a reload lands
   // them back there instead of resetting to the Chat home.
   useEffect(() => {
@@ -3023,10 +3094,10 @@ function App() {
               <div className="m-nav-track">
                 <section className="m-nav-panel">
                   {active === 'code'
-                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={startDesktopSession} onNewSession={newSession} onSearch={openSearch} />
+                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={startDesktopSession} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
-                    ? <WorkView desktops={desktops} groups={workGroups} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={startDesktopSession} onNewTask={newSession} onSearch={openSearch} />
-                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
+                    ? <WorkView desktops={desktops} groups={workGroups} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={startDesktopSession} onNewTask={newSession} onSearch={openSearch} />
+                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
                   {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} subtitle={sessionSubtitle} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
@@ -3057,7 +3128,9 @@ function App() {
       />
       <PermissionSheet open={permOpen} onClose={() => { haptic(); setPermOpen(false); }} perm={perm} setPerm={setPerm} />
       <SearchOverlay open={search} inputRef={searchInputRef} onClose={closeSearch} />
-      {pending && <AgentPrompt pending={pending} onResolve={resolvePending} />}
+      {/* The approval/ask card ONLY shows inside its own session — never on a list
+          or another session. Elsewhere the list row's "needs input" chip stands in. */}
+      {pending && screen === 'session' && session?.id === pendingSessionId && <AgentPrompt pending={pending} onResolve={resolvePending} />}
       </>
       )}
 
