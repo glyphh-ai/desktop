@@ -98,6 +98,10 @@ interface SdkHandle {
     get?: (id: string) => Promise<RuntimeSession>;
   };
   harness?: (opts: { url: string; token?: () => Promise<string>; run?: { maxReconnects?: number } }) => HarnessPod;
+  /** THE SINGLE FRONT DOOR: a harness bound to the control-plane turn proxy
+   *  (`/api/harness`), auth'd by the user's session token. Region-routes to the
+   *  org's regional rrotor + stator — no pod url, no provisioning. */
+  harnessViaApi?: () => HarnessPod;
 }
 
 const sdk = (): SdkHandle | undefined =>
@@ -230,6 +234,14 @@ export async function ensureRuntime(
   save: () => void,
   opts: { rotor?: unknown; signal?: AbortSignal; forceFresh?: boolean } = {},
 ): Promise<{ ok: true; runtime: RuntimeBinding } | Unavailable | { ok: false; stopped: true }> {
+  // SINGLE FRONT DOOR: with the proxy, there is nothing to provision — a turn
+  // goes straight through `harnessViaApi()`, region-routed server-side. Hand back
+  // a synthetic binding so the UI reads "connected" (isCommitted) instantly.
+  if (sdk()?.harnessViaApi) {
+    const runtime: RuntimeBinding = { sessionId: chat.id, url: "api", token: "api" };
+    chat.runtime = runtime; save();
+    return { ok: true, runtime };
+  }
   // A cached binding is reused — EXCEPT when the caller knows it's dead
   // (forceFresh). Without that escape a binding minted against an old pod
   // URL/port, a stopped session, or a pre-CORS pod is permanent: every later
@@ -446,6 +458,60 @@ function dispatchFrame(
 const RELAY_RUNTIME = (chat: RemoteChat): RuntimeBinding => ({ sessionId: chat.id, url: "relay", token: "relay" });
 
 /**
+ * Run a turn through THE SINGLE FRONT DOOR: `harnessViaApi()` binds to the
+ * control-plane proxy, which region-routes to the org's regional rrotor + stator.
+ * No provisioning, no pod url, no relay — the user's session token authenticates
+ * and the server picks the region. Same frames as every other path, so the UI is
+ * identical. `threadId` (the chat id) scopes the transcript + memory.
+ */
+async function runViaFrontDoor(
+  chat: RemoteChat,
+  prompt: string,
+  callbacks: RemoteRunCallbacks,
+  opts: { model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }> },
+): Promise<RemoteRunOutcome> {
+  const pod = (sdk() as unknown as { harnessViaApi?: () => HarnessPod })?.harnessViaApi?.();
+  if (!pod) { const u = unavailable("open", new Error("this build can't run turns (SDK harnessViaApi missing)")); callbacks.onError?.(u.detail); return u; }
+  // Synthetic "connected" binding — enough for the UI's isCommitted state; there
+  // is no pod url to hold. The proxy needs only the chat id (threadId) + the
+  // user's token, both server-side.
+  chat.runtime = { sessionId: chat.id, url: "api", token: "api" };
+  const workdir = chat.source?.kind === "local" ? chat.source.path : undefined;
+  let run: HarnessRunHandle;
+  try {
+    run = pod.start({
+      prompt,
+      threadId: chat.id,
+      mode: modeFor(chat),
+      ...(opts.model ? { model: opts.model } : {}),
+      ...(opts.permission ? { permission: opts.permission } : {}),
+      ...(opts.images && opts.images.length ? { images: opts.images } : {}),
+      ...(workdir ? { workdir } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    } as Parameters<HarnessPod["start"]>[0]);
+  } catch (err) { const u = unavailable("open", err); callbacks.onError?.(u.detail); return u; }
+
+  const state = { text: "", error: null as string | null };
+  const off = run.on((frame) => { if (opts.signal?.aborted) return; dispatchFrame(frame, callbacks, state, run); });
+  let stopped = false;
+  try {
+    const result = await run.done;
+    stopped = result.stopped;
+    if (result.error && !state.error) state.error = result.error;
+  } catch (err) {
+    off(); forgetPending(run);
+    if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
+    if (!state.text) { const u = unavailable("stream", err); callbacks.onError?.(u.detail); return u; }
+    state.error = err instanceof Error ? err.message : String(err);
+  }
+  off(); forgetPending(run);
+  if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
+  if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime: chat.runtime }; }
+  callbacks.onDone?.(state.text);
+  return { ok: true, text: state.text, runtime: chat.runtime, ...(state.error ? { error: state.error } : {}) };
+}
+
+/**
  * Run a turn ON the caller's attached MACHINE via the SDK relay (attach.run),
  * streaming the SAME frames the cloud path streams — so the UI is identical. Used
  * for a LOCAL (machine-bound) session; the desktop runs it in `source.path`.
@@ -501,6 +567,12 @@ export async function runRemoteTurn(
   callbacks: RemoteRunCallbacks = {},
   opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }> } = {},
 ): Promise<RemoteRunOutcome> {
+  // THE SINGLE FRONT DOOR: every turn goes through the control-plane proxy, which
+  // region-routes to the org's regional rrotor + stator (docs/turn-proxy.md). No
+  // pod url, no provisioning, no relay. A local source just carries its folder as
+  // workdir. The legacy per-pod / relay paths below run only on an SDK that
+  // predates the proxy (no `harnessViaApi`).
+  if (sdk()?.harnessViaApi) return runViaFrontDoor(chat, prompt, callbacks, opts);
   // A LOCAL (machine-bound) session runs ON the attached desktop over the relay,
   // not in a cloud pod.
   if (chat.source?.kind === "local") return runRelayTurn(chat, prompt, callbacks, { ...(opts.signal ? { signal: opts.signal } : {}) });
