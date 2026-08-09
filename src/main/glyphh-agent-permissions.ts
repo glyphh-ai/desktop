@@ -184,6 +184,12 @@ function answerRemote(id: string, reply: RemoteAnswer): boolean {
   return true;
 }
 
+/** Answer a parked pause from OUTSIDE the renderer IPC — used by the attach-run
+ *  relay so a phone can approve/answer a turn running on this machine. */
+export function answerRemotePause(id: string, reply: RemoteAnswer): boolean {
+  return answerRemote(id, reply);
+}
+
 export function registerGlyphhPermissionIpc(): void {
   ipcMain.handle("glyphh-agent-connect-respond", (_e, p: { id?: string; connected?: boolean; reason?: string }) => {
     const entry = pendingConnects.get(String(p?.id ?? ""));

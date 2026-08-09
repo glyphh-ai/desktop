@@ -73,6 +73,7 @@ import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { installAttachHandlers } from "./attach-handlers";
+import { installAttachRunHandlers } from "./attach-run";
 import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
@@ -343,6 +344,9 @@ async function boot() {
   // loops.run / skills.run / agents.run / scrape.page — the attach socket's
   // extra capabilities, on the same registry.
   installAttachHandlers();
+  // agent.run / agent.answer / agent.stop — run a turn ON THIS MACHINE for a
+  // signed-in web/mobile client, streaming frames back up the attach socket.
+  installAttachRunHandlers();
   // panel.open/input/close/stats/webrtc — stream a real on-machine page to a
   // web client over the attach relay (panel-host.ts). Same registry, same
   // socket. On web + desktop-attached, an app panel renders here and streams.
