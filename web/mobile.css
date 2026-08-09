@@ -895,6 +895,19 @@ body {
    connecting or thinking. Mobile-friendly: the phrase flexes + ellipsizes. */
 .m-working { display: flex; align-items: center; gap: 10px; padding: 10px 2px; align-self: flex-start; max-width: 100%; }
 .m-working-label { font: 500 16px/1 var(--font-sans); color: var(--text-2); animation: m-pulse 1.4s ease-in-out infinite; }
+
+/* On-open connecting pill — centred just above the composer, frosted. */
+.m-connecting {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 132px); z-index: 6;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 15px 7px 9px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid var(--border); box-shadow: 0 8px 24px var(--overlay-bg);
+  color: var(--text-2); font: 500 14px/1 var(--font-sans); white-space: nowrap;
+}
+.m-composer-input:disabled { opacity: 0.55; cursor: default; }
 .m-gs-host { display: inline-flex; min-width: 0; }
 .glyphh-spinner { display: inline-flex; align-items: center; gap: 10px; min-width: 0; color: var(--text); }
 .gs-cube { display: block; flex-shrink: 0; }

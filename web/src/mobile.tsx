@@ -394,12 +394,12 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, onStop, sending, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode, onDictate, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
+function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode, onDictate, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
   const voice = useVoice(onDictate);
-  const canSend = (!!draft.trim() || attachments.length > 0) && !sending;
+  const canSend = (!!draft.trim() || attachments.length > 0) && !sending && !connecting;
   const submit = () => { if (canSend) onSend(); };
   const onMic = () => {
     // Web Speech where available; otherwise focus the field so the keyboard's own
@@ -424,7 +424,8 @@ function Composer({ draft, setDraft, onSend, onStop, sending, onPlus, onOpenSele
           </div>
         )}
         <textarea
-          ref={ref} className="m-composer-input" rows={1} placeholder="Message Glyphh…"
+          ref={ref} className="m-composer-input" rows={1} disabled={connecting}
+          placeholder={connecting ? 'Connecting…' : 'Message Glyphh…'}
           value={draft} onChange={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
           onPaste={onPaste}
@@ -703,6 +704,7 @@ interface CompProps {
   onSend: () => void;
   onStop?: () => void;              // abort the in-flight turn
   sending: boolean;                 // a turn is in flight
+  connecting: boolean;              // provisioning the runtime on open — input locked
   mode: 'chat' | 'cowork' | 'code'; // chat → loop/model chip; work/code → permission chip
   onDictate: (text: string) => void;                 // append dictated text to the draft
   attachments: AttachImage[];                        // pending image attachments (vision)
@@ -963,14 +965,12 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
                   ? <UserMessage key={m.id} m={m} onLongPress={setActionMsg} />
                   : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} streaming={comp.sending && i === msgs.length - 1} onOpenDetail={setToolDetail} onLongPress={setActionMsg} />
               ))}
-              {/* The branded spinner shows for the whole in-flight turn (connecting
-                  AND while streaming/tool-running). A definite label names what's
-                  happening — a running tool, else Working/Connecting — so it's never
-                  ambiguous whether the agent is busy. */}
-              {(connecting || comp.sending) && (
+              {/* The branded spinner shows while a turn runs (streaming/tool-running).
+                  The on-open "connecting" state is its own pill above the composer. */}
+              {comp.sending && (
                 <div className="m-working">
                   <GlyphhSpinner size={40} phrases={false} />
-                  <span className="m-working-label">{connecting ? 'Connecting…' : (runningTool ? `Running ${runningTool}…` : 'Working…')}</span>
+                  <span className="m-working-label">{runningTool ? `Running ${runningTool}…` : 'Working…'}</span>
                 </div>
               )}
             </>
@@ -980,6 +980,14 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
       <div className="m-sv-fade" />
       {!atBottom && msgs && msgs.length > 0 && (
         <button className="m-scrolldown" aria-label="Scroll to latest" onClick={() => scrollToBottom(true)}><Icon name="arrowdown" /></button>
+      )}
+      {/* On-open connecting state — a small centered pill just above the composer,
+          same spinner. The composer input/send are locked while it shows. */}
+      {connecting && !comp.sending && (
+        <div className="m-connecting">
+          <GlyphhSpinner size={24} phrases={false} />
+          <span>Connecting…</span>
+        </div>
       )}
       <Composer {...comp} />
 
@@ -2663,10 +2671,13 @@ function App() {
     glyphh().sessions.thread(s.id)
       .then((t: { messages?: ThreadMsg[] }) => { convoRef.current = (t.messages ?? []).map(normalizeMsg); renderConvo(); })
       .catch(() => { convoRef.current = []; renderConvo(); });
-    // Chats are cloud — connect on open. Work/Code aren't cloud, so don't provision.
-    if (active === 'chat' && !isCommitted(s.id)) {
+    // Connect the runtime the moment the session opens (every mode) — so the turn
+    // is instant and the user sees an honest "connecting" state up front instead
+    // of a stall on their first submit.
+    const chat = chatFor(s.id); chat.mode = curMode;
+    if (!isCommitted(s.id)) {
       setConnecting(true);
-      void ensureRuntime(chatFor(s.id), () => {}, { rotor: loop }).then(() => setConnecting(false)).catch(() => setConnecting(false));
+      void ensureRuntime(chat, () => {}, { rotor: loop }).then(() => setConnecting(false)).catch(() => setConnecting(false));
     } else { setConnecting(false); }
   };
 
@@ -2819,6 +2830,7 @@ function App() {
     onSend: () => { void sendPrompt(); },
     onStop: () => { haptic(); streamAbortRef.current?.abort(); },
     sending: streaming,
+    connecting,
     mode: curMode,
     onDictate: (text) => setDraft((d) => (d.trim() ? `${d} ${text}` : text)),
     attachments: attachImgs,
