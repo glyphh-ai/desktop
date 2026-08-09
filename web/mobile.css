@@ -823,25 +823,22 @@ body {
 
 /* ── TABLET+ (iPad) : persistent sidebar, bigger type ── */
 @media (min-width: 768px) {
-  /* No push drawer on tablet: the shell is a no-op and the rail is a persistent
-     fixed sidebar (fixed positioning is what keeps it flush to the top). */
-  .m-shell { display: contents; }
+  /* Tablet: the rail is a PERSISTENT sidebar — no push-drawer. Keep the shell a
+     real flex row (NOT display:contents, which detached .m-main from the row so
+     it couldn't inherit height and .m-nav collapsed → blank right pane + dead
+     clicks). Rail is a flex item; main flexes to fill and gets its full height
+     from the row's stretch. Neutralise the drawer transform in both states. */
+  .m-shell { display: flex; width: 100%; transform: none; }
+  .m-app[data-drawer="open"] .m-shell { transform: none; }
   .m-scrim { display: none; }
   .m-rail {
-    position: fixed;
-    inset: 0 auto 0 0;
-    transform: none;
-    z-index: 30;
-    flex: none;
+    flex: 0 0 320px;
     width: 320px;
     max-width: none;
+    transform: none;
     padding: 0 3px 0 calc(var(--safe-left) + 3px);
   }
-  /* .m-shell is display:contents on tablet, so .m-main is now a direct child of
-     the fixed full-height .m-app. A percentage height doesn't resolve reliably
-     through the display:contents ancestor on iPad Safari — the pane collapsed to
-     ~half height with dead space below. Pin it to the dynamic viewport instead. */
-  .m-main { margin-left: 320px; width: auto; flex: none; height: 100dvh; }
+  .m-main { flex: 1 1 auto; width: auto; margin-left: 0; min-width: 0; }
   .m-rail-brand { padding: 0 0 8px 30px; }
   .m-wordmark { height: 36px; }
   .m-rail-nav { margin-top: 6px; gap: 3px; }
