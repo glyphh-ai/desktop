@@ -2805,7 +2805,10 @@ function App() {
     // is instant and the user sees an honest "connecting" state up front instead
     // of a stall on their first submit.
     const chat = chatFor(s.id); chat.mode = curMode;
-    if (!isCommitted(s.id)) {
+    // LOCAL (machine-bound) sessions run ON the desktop over the relay — no cloud
+    // pod to provision; the turn connects per-run via attach.run. Cloud sessions
+    // provision their pod up front.
+    if (chat.source?.kind !== 'local' && !isCommitted(s.id)) {
       setConnecting(true);
       void ensureRuntime(chat, () => {}, { rotor: loop }).then(() => setConnecting(false)).catch(() => setConnecting(false));
     } else { setConnecting(false); }
@@ -3133,12 +3136,9 @@ function App() {
     setScreen('session'); setDrawer(false);
     // Empty transcript ([] not null) → shows the mascot empty state, not "Loading…".
     convoRef.current = []; setMsgs([]); setDraft(''); setPending(null);
-    // Connect the runtime on open, like loadSession — the connecting pill + locked
-    // input ride this.
-    if (!isCommitted(id)) {
-      setConnecting(true);
-      void ensureRuntime(chat, () => {}, { rotor: loop }).then(() => setConnecting(false)).catch(() => setConnecting(false));
-    } else setConnecting(false);
+    // A desktop session runs ON the machine over the relay — no cloud pod to
+    // provision. It connects per-turn (attach.run); the first send establishes it.
+    setConnecting(false);
   };
 
   // Track the current view so async callbacks (notify) know if the user is looking.

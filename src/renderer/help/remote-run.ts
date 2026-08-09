@@ -440,6 +440,57 @@ function dispatchFrame(
  * typed outcome. Never throws to the caller — every failure is a typed result
  * the UI can render as the honest not-connected / turn-error state.
  */
+/** The synthetic runtime binding a relay (on-machine) run carries — it has no
+ *  cloud pod, but a non-empty binding keeps `isCommitted` true so the session
+ *  doesn't try to provision a cloud pod on open. */
+const RELAY_RUNTIME = (chat: RemoteChat): RuntimeBinding => ({ sessionId: chat.id, url: "relay", token: "relay" });
+
+/**
+ * Run a turn ON the caller's attached MACHINE via the SDK relay (attach.run),
+ * streaming the SAME frames the cloud path streams — so the UI is identical. Used
+ * for a LOCAL (machine-bound) session; the desktop runs it in `source.path`.
+ */
+async function runRelayTurn(
+  chat: RemoteChat,
+  prompt: string,
+  callbacks: RemoteRunCallbacks,
+  opts: { signal?: AbortSignal },
+): Promise<RemoteRunOutcome> {
+  const handle = sdk() as unknown as { attach?: { run?: (p: unknown, o: unknown) => HarnessRunHandle } };
+  if (!handle?.attach?.run) {
+    const u = unavailable("open", new Error("this build can't run on a machine (SDK attach.run missing)"));
+    callbacks.onError?.(u.detail); return u;
+  }
+  chat.runtime = RELAY_RUNTIME(chat);   // mark as connected (no cloud pod)
+  const workdir = chat.source?.kind === "local" ? chat.source.path : undefined;
+  let run: HarnessRunHandle;
+  try {
+    run = handle.attach.run(
+      { prompt, mode: modeFor(chat), ...(workdir ? { workdir } : {}) },
+      { ...(opts.signal ? { signal: opts.signal } : {}) },
+    );
+  } catch (err) { const u = unavailable("open", err); callbacks.onError?.(u.detail); return u; }
+
+  const state = { text: "", error: null as string | null };
+  const off = run.on((frame) => { if (opts.signal?.aborted) return; dispatchFrame(frame, callbacks, state, run); });
+  let stopped = false;
+  try {
+    const result = await run.done;
+    stopped = result.stopped;
+    if (result.error && !state.error) state.error = result.error;
+  } catch (err) {
+    off(); forgetPending(run);
+    if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
+    if (!state.text) { const u = unavailable("stream", err); callbacks.onError?.(u.detail); return u; }
+    state.error = err instanceof Error ? err.message : String(err);
+  }
+  off(); forgetPending(run);
+  if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
+  if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime: chat.runtime }; }
+  callbacks.onDone?.(state.text);
+  return { ok: true, text: state.text, runtime: chat.runtime, ...(state.error ? { error: state.error } : {}) };
+}
+
 export async function runRemoteTurn(
   chat: RemoteChat,
   prompt: string,
@@ -447,6 +498,9 @@ export async function runRemoteTurn(
   callbacks: RemoteRunCallbacks = {},
   opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }> } = {},
 ): Promise<RemoteRunOutcome> {
+  // A LOCAL (machine-bound) session runs ON the attached desktop over the relay,
+  // not in a cloud pod.
+  if (chat.source?.kind === "local") return runRelayTurn(chat, prompt, callbacks, { ...(opts.signal ? { signal: opts.signal } : {}) });
   // ONE silent retry on a dead binding: attempt 1 swallows its error, drops
   // the cached runtime, re-provisions, and runs again. Only the second
   // failure reaches the user.
