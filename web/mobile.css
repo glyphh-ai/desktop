@@ -871,11 +871,17 @@ body {
   border: 1px solid var(--border);
 }
 .m-composer-input {
-  width: 100%; box-sizing: border-box; border: 0; background: none; resize: none; outline: none;
+  width: 100%; box-sizing: border-box; border: 0; background: none; outline: none;
   color: var(--text); font: 400 19px/1.3 var(--font-sans);
   min-height: 26px; max-height: 140px; padding: 2px 4px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word; cursor: text;
+  -webkit-user-select: text; user-select: text;
 }
-.m-composer-input::placeholder { color: var(--text-faint); }
+/* Placeholder for the contentEditable div (no native ::placeholder). */
+.m-composer-input[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint); pointer-events: none;
+}
 .m-composer-tools { display: flex; align-items: center; gap: 8px; }
 .m-composer-spacer { flex: 1; }
 /* Single config chip (loop / model) — one line, ellipsizes, never wraps. */
@@ -974,7 +980,7 @@ body {
   border: 1px solid var(--border); box-shadow: 0 8px 24px var(--overlay-bg);
   color: var(--text-2); font: 500 14px/1 var(--font-sans); white-space: nowrap;
 }
-.m-composer-input:disabled { opacity: 0.55; cursor: default; }
+.m-composer-input[contenteditable="false"] { opacity: 0.55; cursor: default; }
 .m-gs-host { display: inline-flex; min-width: 0; }
 .glyphh-spinner { display: inline-flex; align-items: center; gap: 10px; min-width: 0; color: var(--text); }
 .gs-cube { display: block; flex-shrink: 0; }
@@ -1282,7 +1288,19 @@ body {
     transform: translate(-50%, -50%);
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
   }
-  /* The attachment popover already floats; keep it bottom-left near the composer. */
+  /* The + (attachment) menu becomes a centered modal card too, matching the
+     other sheets in width + position instead of floating at the composer. */
+  .m-attach-scrim { background: var(--overlay-bg); }
+  .m-attach-menu {
+    left: 50%; right: auto;
+    top: 50%; bottom: auto;
+    width: min(460px, 88vw); min-width: 0; max-width: none;
+    transform: translate(-50%, 130vh);
+  }
+  .m-attach-overlay[data-open="true"] .m-attach-menu {
+    transform: translate(-50%, -50%);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  }
 }
 .m-sel-note { padding: 2px 6px 14px; font: 400 15px/1.4 var(--font-sans); color: var(--text-3); }
 .m-sel-grip { flex: 0 0 auto; width: 40px; height: 5px; border-radius: 3px; background: var(--border-2); margin: 8px auto 2px; }
