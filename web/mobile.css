@@ -781,6 +781,12 @@ body {
 .m-composer-stop { background: var(--surface-3); }
 .m-stop-sq { width: 15px; height: 15px; border-radius: 4px; background: var(--text); display: inline-block; }
 
+/* Long-press message action rows. */
+.m-act-row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 8px; background: none; border: 0; border-bottom: 1px solid var(--border); color: var(--text); font: 500 18px/1 var(--font-sans); cursor: pointer; text-align: left; }
+.m-act-row:last-child { border-bottom: 0; }
+.m-act-row:active { background: var(--hover); }
+.m-act-row svg { width: 22px; height: 22px; color: var(--text-2); flex: 0 0 22px; }
+
 /* ── Tool detail tray (rows in the selector-sheet body) ──────────────────── */
 .m-tray-kv { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
 .m-tray-k { flex: 0 0 84px; color: var(--text-3); font: 500 14px/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; font-size: 12px; }

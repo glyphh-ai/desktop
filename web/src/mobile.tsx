@@ -713,6 +713,43 @@ function usageLabel(meta: { creditsMicro?: number; ms?: number }): string {
   return parts.join(' · ');
 }
 
+/* A user turn — plain text, long-press for actions. */
+function UserMessage({ m, onLongPress }: { m: Message; onLongPress: (m: Message) => void }) {
+  const press = useLongPress(() => onLongPress(m));
+  return <div className="m-msg m-msg-user" {...press}>{m.text}</div>;
+}
+
+/* Long-press action tray for a message: copy / quote / edit-resend / retry /
+   share, in the selector-sheet idiom. */
+function MsgActionSheet({ msg, onClose, onCopy, onQuote, onRetry, onEditResend }: {
+  msg: Message | null; onClose: () => void;
+  onCopy: (m: Message) => void; onQuote: (m: Message) => void;
+  onRetry: () => void; onEditResend: (m: Message) => void;
+}) {
+  const canShare = typeof navigator !== 'undefined' && !!(navigator as Navigator & { share?: unknown }).share;
+  const act = (fn: () => void) => { haptic(); fn(); onClose(); };
+  const share = (m: Message) => { try { void (navigator as Navigator & { share?: (d: { text: string }) => Promise<void> }).share?.({ text: m.text }); } catch { /* */ } };
+  return createPortal(
+    <div className="m-sel-overlay" data-open={msg ? 'true' : 'false'}>
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel m-sel-fit">
+        <div className="m-sel-grip" />
+        {msg && (
+          <div className="m-sel-body">
+            <button className="m-act-row" onClick={() => act(() => onCopy(msg))}><Icon name="copy" /><span>Copy</span></button>
+            <button className="m-act-row" onClick={() => act(() => onQuote(msg))}><Icon name="chats" /><span>Quote in reply</span></button>
+            {msg.role === 'user'
+              ? <button className="m-act-row" onClick={() => act(() => onEditResend(msg))}><Icon name="pencil" /><span>Edit &amp; resend</span></button>
+              : <button className="m-act-row" onClick={() => act(onRetry)}><Icon name="loop" /><span>Retry response</span></button>}
+            {canShare && <button className="m-act-row" onClick={() => act(() => share(msg))}><Icon name="external" /><span>Share…</span></button>}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /* A single tool step's full detail, in the same bottom-tray (sheet) idiom as the
    loop/model selector — the "sub-task opens from a tray" behaviour. */
 function ToolDetailTray({ step, onClose }: { step: ToolStep | null; onClose: () => void }) {
@@ -739,9 +776,10 @@ function ToolDetailTray({ step, onClose }: { step: ToolStep | null; onClose: () 
   );
 }
 
-function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTogglePin, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; onBack: () => void; onDelete: () => void; onTogglePin: () => void; comp: CompProps }) {
+function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTogglePin, onRetry, onEditResend, onQuote, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; onBack: () => void; onDelete: () => void; onTogglePin: () => void; onRetry: () => void; onEditResend: (m: Message) => void; onQuote: (m: Message) => void; comp: CompProps }) {
   const [menu, setMenu] = useState(false);
   const [toolDetail, setToolDetail] = useState<ToolStep | null>(null);
+  const [actionMsg, setActionMsg] = useState<Message | null>(null);
   const [confirm, setConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   // True once the in-flight turn's agent bubble exists (has text or steps) — then
@@ -804,8 +842,8 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
             <>
               {msgs.map((m, i) => (
                 m.role === 'user'
-                  ? <div key={m.id} className="m-msg m-msg-user">{m.text}</div>
-                  : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} streaming={comp.sending && i === msgs.length - 1} onOpenDetail={setToolDetail} />
+                  ? <UserMessage key={m.id} m={m} onLongPress={setActionMsg} />
+                  : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} streaming={comp.sending && i === msgs.length - 1} onOpenDetail={setToolDetail} onLongPress={setActionMsg} />
               ))}
               {/* Standalone working row only BEFORE any answer/steps have landed —
                   once the streaming agent bubble exists, its cursor carries it. */}
@@ -827,6 +865,13 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
 
       {/* Tool detail tray — a step's full thought / title / diff / error. */}
       <ToolDetailTray step={toolDetail} onClose={() => setToolDetail(null)} />
+
+      {/* Long-press message actions. */}
+      <MsgActionSheet
+        msg={actionMsg} onClose={() => setActionMsg(null)}
+        onCopy={(m) => void copyText(m.text)}
+        onQuote={onQuote} onRetry={onRetry} onEditResend={onEditResend}
+      />
 
       {/* Delete confirmation (app modal, never a native confirm). */}
       {confirm && (
@@ -2498,10 +2543,10 @@ function App() {
 
   /** Send the composer draft — minting the chat on the first message, then
    *  streaming the agent's reply into the transcript. */
-  const sendPrompt = async () => {
-    const prompt = draft.trim();
+  const sendPrompt = async (override?: string, opts?: { noUserBubble?: boolean }) => {
+    const prompt = (override ?? draft).trim();
     if (!prompt || streaming) return;
-    haptic(); setDraft(''); setPending(null);
+    haptic(); if (override === undefined) setDraft(''); setPending(null);
     let sess = session;
     if (!sess) {
       const id = 'c' + Date.now().toString(36);
@@ -2511,9 +2556,9 @@ function App() {
       setThreads((t) => [{ id, title: sess!.title, mode: curMode, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
     }
     const asstId = 'a' + Date.now().toString(36);
-    convoRef.current = [...convoRef.current,
-      { id: 'u' + Date.now().toString(36), role: 'user', text: prompt },
-      { id: asstId, role: 'glyphh', text: '' }];
+    const userMsg: Message = { id: 'u' + Date.now().toString(36), role: 'user', text: prompt };
+    const asstMsg: Message = { id: asstId, role: 'glyphh', text: '' };
+    convoRef.current = [...convoRef.current, ...(opts?.noUserBubble ? [] : [userMsg]), asstMsg];
     renderConvo();
     const setAsst = (text: string) => { const m = convoRef.current.find((x) => x.id === asstId); if (m) { m.text = text; renderThrottled(); } };
     // Fold a tool frame into the assistant turn's steps: start pushes a running
@@ -2581,6 +2626,35 @@ function App() {
     }
     renderConvo();
     void persistThread(sess.id);
+  };
+
+  // Regenerate the last turn: drop everything after the last user message and
+  // re-run it (no new user bubble).
+  const regenerate = () => {
+    if (streaming) return;
+    const conv = convoRef.current;
+    let i = conv.length - 1;
+    while (i >= 0 && conv[i].role !== 'user') i--;
+    if (i < 0) return;
+    const userText = conv[i].text;
+    convoRef.current = conv.slice(0, i + 1);
+    renderConvo();
+    void sendPrompt(userText, { noUserBubble: true });
+  };
+  // Edit & resend a user message: rewind the transcript to just before it and
+  // drop its text into the composer to edit, then send.
+  const editResend = (m: Message) => {
+    const conv = convoRef.current;
+    const idx = conv.findIndex((x) => x.id === m.id);
+    if (idx < 0) return;
+    convoRef.current = conv.slice(0, idx);
+    renderConvo();
+    setDraft(m.text);
+  };
+  // Quote a message into the composer as a Markdown blockquote.
+  const quoteMsg = (m: Message) => {
+    const q = m.text.split('\n').map((l) => `> ${l}`).join('\n');
+    setDraft((d) => (d.trim() ? `${d}\n${q}\n\n` : `${q}\n\n`));
   };
 
   // Answer (or dismiss on deadline) a parked approval/ask via the answer seam.
@@ -2762,7 +2836,7 @@ function App() {
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
-                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} comp={comp} />}
+                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
                 </section>
               </div>
             </div>
