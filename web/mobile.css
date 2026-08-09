@@ -651,10 +651,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  /* Bottom pad clears the floating composer AND leaves a few lines of breathing
-     room, so the last message rests above the input instead of butting onto it —
-     yet still scrolls fuzzily *under* the frosted band. */
-  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 208px) calc(var(--safe-left) + 16px);
+  /* Bottom pad clears the floating composer + a few lines of breathing room. The
+     composer's REAL height is measured into --composer-h (it varies with the
+     chips row, attachment strip, multi-line input) so the last message always
+     rests above it and can be scrolled fully into view. */
+  padding: calc(var(--safe-top) + 74px) 16px calc(var(--composer-h, 200px) + 28px) calc(var(--safe-left) + 16px);
 }
 /* Session composer FLOATS over the transcript + frosted band (like the chats
    New chat / search), and the box is translucent-frosted so text fuzzes behind. */

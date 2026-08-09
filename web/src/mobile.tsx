@@ -1004,6 +1004,19 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
   const [atBottom, setAtBottom] = useState(true);
   const followRef = useRef(true);       // auto-follow the stream unless the user scrolls up
   const scrollRafRef = useRef(0);
+  const svRef = useRef<HTMLDivElement>(null);
+  // Measure the composer's REAL height into --composer-h so the transcript's
+  // bottom padding always clears it (chips row, attachment strip, multi-line) and
+  // the last message can be scrolled fully into view — no more trapped footer.
+  useEffect(() => {
+    const sv = svRef.current; if (!sv) return;
+    const comp = sv.querySelector('.m-composer') as HTMLElement | null;
+    const setH = () => sv.style.setProperty('--composer-h', `${comp?.offsetHeight ?? 200}px`);
+    setH();
+    const ro = comp && 'ResizeObserver' in window ? new ResizeObserver(setH) : null;
+    if (comp && ro) ro.observe(comp);
+    return () => ro?.disconnect();
+  }, []);
   useEffect(() => {
     if (!menu) return;
     const onDoc = (e: Event) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false); };
@@ -1036,7 +1049,7 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
     : undefined;
 
   return (
-    <div className="m-sv">
+    <div className="m-sv" ref={svRef}>
       <header className="m-sv-head">
         <button className="m-chats-icon" aria-label="Back" onClick={onBack}><Icon name="back" /></button>
         <div className="m-sv-titles">
