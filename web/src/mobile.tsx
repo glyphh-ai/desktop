@@ -762,7 +762,9 @@ function AgentMessage({ m, streaming, onOpenDetail, onLongPress }: { m: Message;
   return (
     <div className="m-msg m-msg-glyphh" {...press}>
       {m.steps && m.steps.length > 0 && <ToolGroup steps={m.steps as ToolStep[]} onOpenDetail={onOpenDetail} />}
-      {m.text && <Markdown text={m.text} />}
+      {/* While streaming, render PLAIN text — smooth, no per-token markdown re-lex
+          or block re-creation. Swap to full Markdown the moment the turn settles. */}
+      {m.text && (streaming ? <div className="m-stream">{m.text}</div> : <Markdown text={m.text} />)}
       {!streaming && m.text && (
         <div className="m-msg-foot">
           <button className="m-msg-copy" onClick={copy} aria-label="Copy message">
@@ -2962,6 +2964,25 @@ function App() {
     setSession({ id, title: 'New session', when: 'now' });
     setScreen('session'); setDrawer(false); clearConvo();
   };
+
+  // Remember where the user was (space / screen / open session) so a reload lands
+  // them back there instead of resetting to the Chat home.
+  useEffect(() => {
+    if (authState !== 'in') return;
+    try { localStorage.setItem('yoNav', JSON.stringify({ active, screen, session: session ? { id: session.id, title: session.title, when: session.when } : null })); } catch { /* */ }
+  }, [authState, active, screen, session]);
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (authState !== 'in' || restoredRef.current) return;
+    restoredRef.current = true;
+    try {
+      const nav = JSON.parse(localStorage.getItem('yoNav') || 'null') as { active?: SpaceId; screen?: string; session?: Recent | null } | null;
+      if (!nav) return;
+      if (nav.active) setActive(nav.active);
+      if (nav.session && nav.screen === 'session') openSession(nav.session);
+      else if (nav.screen === 'list') setScreen('list');
+    } catch { /* */ }
+  }, [authState]);
 
   const showSplash = !minSplash || authState === 'checking';
 

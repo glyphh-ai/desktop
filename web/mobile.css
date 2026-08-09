@@ -768,6 +768,10 @@ body {
 .m-tool-more svg { width: 16px; height: 16px; }
 .m-tool-err { padding: 2px 8px 8px 38px; color: var(--danger); font: 400 13.5px/1.4 ui-monospace, monospace; }
 
+/* Streaming plain text — matches the markdown body font so the swap to formatted
+   output on completion isn't jarring. */
+.m-stream { white-space: pre-wrap; word-break: break-word; font: 400 20px/1.55 var(--font-sans); color: var(--text); }
+
 /* Per-message footer: copy affordance + per-turn usage. */
 .m-msg-foot { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
 .m-msg-copy { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 9px; background: none; color: var(--text-3); font: 500 13px/1 var(--font-sans); cursor: pointer; opacity: 0.75; }
