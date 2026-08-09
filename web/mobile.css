@@ -646,6 +646,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-anchor: none;        /* we pin to the bottom ourselves; don't fight it */
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 14px;

@@ -39,9 +39,28 @@ if (typeof window !== 'undefined') (window as unknown as { glyphhSdk?: unknown }
 /** Per-thread runtime binding cache. "Committed" = the thread has a live runtime
  *  (url+token). Chats are cloud: the pod is provisioned once per thread, reused. */
 const remoteChats = new Map<string, RemoteChat>();
+/** A session's SOURCE (which desktop + folder, or cloud) persists across reloads
+ *  keyed by session id — so a reopened machine session stays LOCAL (and keeps its
+ *  working folder), instead of silently reverting to cloud. */
+type SavedSource = { kind: 'local'; machineId?: string; path: string };
+const SOURCE_KEY = 'yoSources';
+function loadSavedSources(): Record<string, SavedSource> {
+  try { return JSON.parse(localStorage.getItem(SOURCE_KEY) || '{}'); } catch { return {}; }
+}
+function saveSource(id: string, s: SavedSource): void {
+  try { const all = loadSavedSources(); all[id] = s; localStorage.setItem(SOURCE_KEY, JSON.stringify(all)); } catch { /* */ }
+}
+function forgetSource(id: string): void {
+  try { const all = loadSavedSources(); if (all[id]) { delete all[id]; localStorage.setItem(SOURCE_KEY, JSON.stringify(all)); } } catch { /* */ }
+}
 function chatFor(id: string): RemoteChat {
   let c = remoteChats.get(id);
-  if (!c) { c = { id, mode: 'chat' }; remoteChats.set(id, c); }
+  if (!c) {
+    c = { id, mode: 'chat' };
+    const saved = loadSavedSources()[id];
+    if (saved) c.source = saved;   // restore local/desktop binding + folder
+    remoteChats.set(id, c);
+  }
   return c;
 }
 function isCommitted(id: string): boolean {
@@ -981,23 +1000,30 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
   const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const followRef = useRef(true);       // auto-follow the stream unless the user scrolls up
+  const scrollRafRef = useRef(0);
   useEffect(() => {
     if (!menu) return;
     const onDoc = (e: Event) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false); };
     document.addEventListener('pointerdown', onDoc);
     return () => document.removeEventListener('pointerdown', onDoc);
   }, [menu]);
-  const onScroll = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80); };
+  const onScroll = () => {
+    const el = scrollRef.current; if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
+    followRef.current = near; setAtBottom(near);
+  };
   const scrollToBottom = (smooth: boolean) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
   const [changesOpen, setChangesOpen] = useState(false);
-  // Follow the stream when already at the bottom; leave the user alone if scrolled up.
-  useEffect(() => { if (atBottom) scrollToBottom(false); }, [msgs, atBottom]);
-  // When the turn settles, the plain→markdown swap reflows the height — re-pin to
-  // the bottom next frame so the tail of the answer isn't left under the composer.
+  // Follow the stream smoothly: while the user is at the bottom, pin to the bottom
+  // with a SINGLE coalesced rAF per change (instant scrollTop, no per-frame
+  // scrollTo animations fighting the growing content — that was the "jumping").
   useEffect(() => {
-    if (!comp.sending && atBottom) { const r = requestAnimationFrame(() => scrollToBottom(false)); return () => cancelAnimationFrame(r); }
-    return undefined;
-  }, [comp.sending]);
+    if (!followRef.current) return;
+    cancelAnimationFrame(scrollRafRef.current);
+    scrollRafRef.current = requestAnimationFrame(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; });
+    return () => cancelAnimationFrame(scrollRafRef.current);
+  }, [msgs, comp.sending]);
   // Code/Work: roll up every file-editing tool step (those with a diff badge)
   // across the transcript into a session-level "Changes" view.
   const changes = comp.mode === 'chat' ? [] : (msgs ?? []).flatMap((m) => (m.steps ?? []) as ToolStep[]).filter((s) => !!s.diff);
@@ -3190,7 +3216,7 @@ function App() {
   const togglePin = (id: string) => { const s = new Set(pins); if (s.has(id)) s.delete(id); else s.add(id); savePins(s); };
   const deleteSession = async (s: Recent) => {
     try { await glyphh().sessions.deleteThread(s.id); } catch { /* best effort */ }
-    remoteChats.delete(s.id);
+    remoteChats.delete(s.id); forgetSource(s.id);
     setThreads((t) => (t ?? []).filter((x) => x.id !== s.id));
     if (pins.has(s.id)) { const p = new Set(pins); p.delete(s.id); savePins(p); }
     backToList();
@@ -3209,6 +3235,7 @@ function App() {
     const chat = chatFor(id);
     chat.mode = curMode;
     chat.source = { kind: 'local', machineId: d.id, path };
+    saveSource(id, { kind: 'local', machineId: d.id, path });   // survives reload/reopen
     setSession({ id, title: 'New session', when: 'now' });
     setScreen('session'); setDrawer(false);
     // Empty transcript ([] not null) → shows the mascot empty state, not "Loading…".
