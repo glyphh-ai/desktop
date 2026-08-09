@@ -2890,6 +2890,9 @@ function App() {
   // The selected loop's MEMORY POLICY (manifest.memory → run body). Ref, not
   // state: it only rides the next run, never re-renders anything.
   const loopMemoryRef = useRef<{ recall?: boolean; write?: boolean; topK?: number; threshold?: number; entity?: string } | null>(null);
+  // One-shot: suppress the nav slide-in for the NEXT screen switch (used when
+  // the keyboard is collapsing at the same time — the two compose diagonally).
+  const navNoAnimRef = useRef(false);
   const [roleSel, setRoleSel] = useState<Record<string, string>>({});  // per-role model override
   const [models, setModels] = useState<ModelChoice[]>([]);             // available() pool (labels + fallback)
   // Permission mode persists — a refresh must NOT silently revert the user's
@@ -2981,6 +2984,12 @@ function App() {
     if (!sess) {
       const id = 'c' + Date.now().toString(36);
       sess = { id, title: prompt.slice(0, 60), when: 'now' };
+      // Dismiss the keyboard BEFORE the screen switch and skip the horizontal
+      // slide-in for this entry: the input unmounting mid-slide collapses the
+      // iOS keyboard, and the vertical viewport settle composing with the
+      // nav's translateX read as a DIAGONAL slide.
+      try { (document.activeElement as HTMLElement | null)?.blur?.(); } catch { /* */ }
+      navNoAnimRef.current = true;
       setSession(sess); setScreen('session'); setDrawer(false);
       convoRef.current = [];
       // A session born here (from Home) is CLOUD, forever — stamp its immutable locus.
@@ -3397,7 +3406,7 @@ function App() {
             </div>
           )}
           {(screen === 'list' || screen === 'session') && (
-            <div className="m-nav" data-screen={screen}>
+            <div className="m-nav" data-screen={screen} data-noanim={navNoAnimRef.current ? 'true' : 'false'} ref={() => { navNoAnimRef.current = false; }}>
               <div className="m-nav-track">
                 <section className="m-nav-panel">
                   {active === 'code'

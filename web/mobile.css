@@ -612,6 +612,9 @@ body {
    slides horizontally. ────────────────────────────────────────────────────── */
 .m-nav { position: absolute; inset: 0; overflow: hidden; animation: m-nav-in 0.28s ease; }
 @keyframes m-nav-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+/* Home-compose → session: the keyboard is collapsing (vertical viewport settle)
+   at the same instant — the horizontal slide composes into a DIAGONAL. Skip it. */
+.m-nav[data-noanim="true"] { animation: none; }
 .m-nav-track { display: flex; width: 200%; height: 100%; transition: transform 0.3s ease; }
 .m-nav[data-screen="session"] .m-nav-track { transform: translateX(-50%); }
 .m-nav-panel { flex: 0 0 50%; width: 50%; height: 100%; position: relative; overflow: hidden; }
