@@ -772,6 +772,31 @@ body {
    output on completion isn't jarring. */
 .m-stream { white-space: pre-wrap; word-break: break-word; font: 400 20px/1.55 var(--font-sans); color: var(--text); }
 
+/* Interleaved tool-action row (Work/Code): a muted summary + diff + chevron. */
+.m-toolrow { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; max-width: 100%; margin: -2px 0; padding: 4px 0; background: none; border: 0; cursor: pointer; text-align: left; }
+.m-toolrow:active { opacity: 0.55; }
+.m-toolrow-spin { flex: 0 0 13px; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--border-2); border-top-color: var(--accent); animation: m-spin 0.7s linear infinite; }
+.m-toolrow-lead { color: var(--text-3); font: 400 19px/1.35 var(--font-sans); }
+.m-toolrow-lead code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; color: var(--text-2); }
+.m-toolrow-bad .m-toolrow-lead { color: var(--danger); }
+.m-toolrow-diff { display: inline-flex; gap: 6px; font: 600 16px/1 ui-monospace, monospace; }
+.m-toolrow-chev { display: inline-flex; color: var(--text-faint); }
+.m-toolrow-chev svg { width: 17px; height: 17px; }
+
+/* Tool-actions tray (reuses the selector sheet's nested track). */
+.m-sel-x { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.m-sel-x svg { width: 18px; height: 18px; }
+.m-action-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 15px 4px; background: none; border: 0; border-bottom: 1px solid var(--border); cursor: pointer; text-align: left; color: var(--text); font: 500 17px/1.25 var(--font-sans); }
+.m-action-row:last-child { border-bottom: 0; }
+.m-action-row:active { background: var(--hover); }
+.m-action-ico { flex: 0 0 22px; color: var(--text-2); display: inline-flex; }
+.m-action-ico svg { width: 20px; height: 20px; }
+.m-action-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-action-name code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; color: var(--text-2); }
+.m-action-chev { flex: 0 0 18px; color: var(--text-faint); display: inline-flex; }
+.m-action-chev svg { width: 16px; height: 16px; }
+.m-action-file { margin-top: 6px; font: 400 15px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); word-break: break-all; }
+
 /* Per-message footer: copy affordance + per-turn usage. */
 .m-msg-foot { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
 .m-msg-copy { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 9px; background: none; color: var(--text-3); font: 500 13px/1 var(--font-sans); cursor: pointer; opacity: 0.75; }

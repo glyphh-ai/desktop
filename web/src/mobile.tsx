@@ -30,7 +30,7 @@ import { runRemoteTurn, ensureRuntime, answerPending,
 import { createGlyphhSpinner } from '../../src/renderer/glyphh-spinner';
 // Real markdown + code blocks (copy/fold), tool-step group + diff badges. Own file
 // (mobile.tsx is large); marked + dompurify are bundled — no CDN.
-import { Markdown, copyText, ToolGroup, DiffBadge, type ToolStep } from './md';
+import { Markdown, copyText, ToolActionRow, DiffBadge, fileFromTitle, summarize, stepVerb, type ToolStep } from './md';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -769,16 +769,20 @@ function useVoice(onText: (t: string) => void) {
 
 /* One assistant turn: the tool group (if any), the markdown answer, and a copy
    action that appears once the turn has settled. User turns stay plain text. */
-function AgentMessage({ m, streaming, onOpenDetail, onLongPress }: { m: Message; streaming: boolean; onOpenDetail: (s: ToolStep) => void; onLongPress?: (m: Message) => void }) {
+function AgentMessage({ m, streaming, onOpenTools, onLongPress }: { m: Message; streaming: boolean; onOpenTools: (steps: ToolStep[]) => void; onLongPress?: (m: Message) => void }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => { if (await copyText(m.text)) { haptic(); setCopied(true); setTimeout(() => setCopied(false), 1400); } };
   const press = useLongPress(() => onLongPress?.(m));
+  const txt = (t: string, k: number) => streaming ? <div className="m-stream" key={k}>{t}</div> : <Markdown key={k} text={t} />;
   return (
     <div className="m-msg m-msg-glyphh" {...press}>
-      {m.steps && m.steps.length > 0 && <ToolGroup steps={m.steps as ToolStep[]} onOpenDetail={onOpenDetail} />}
-      {/* While streaming, render PLAIN text — smooth, no per-token markdown re-lex
-          or block re-creation. Swap to full Markdown the moment the turn settles. */}
-      {m.text && (streaming ? <div className="m-stream">{m.text}</div> : <Markdown text={m.text} />)}
+      {/* Work/Code: text and tool-action rows interleaved in stream order. Chat:
+          just the answer. While streaming, text is plain (smooth); Markdown on settle. */}
+      {m.parts && m.parts.length > 0
+        ? m.parts.map((p, i) => p.kind === 'text'
+            ? (p.text ? txt(p.text, i) : null)
+            : <ToolActionRow key={i} steps={p.steps as ToolStep[]} onOpen={() => onOpenTools(p.steps as ToolStep[])} />)
+        : (m.text && txt(m.text, 0))}
       {!streaming && m.text && (
         <div className="m-msg-foot">
           <button className="m-msg-copy" onClick={copy} aria-label="Copy message">
@@ -871,6 +875,65 @@ function ToolDetailTray({ step, onClose }: { step: ToolStep | null; onClose: () 
   );
 }
 
+const stepIcon = (name: string): IconName => {
+  const l = name.toLowerCase();
+  if (/edit|write/.test(l)) return 'pencil';
+  if (l === 'read') return 'filedoc';
+  if (/glob|grep|search|fetch/.test(l)) return 'search';
+  return 'code';
+};
+
+/* Tool-actions tray — the interleaved row's slide-up. Panel 0 lists the batch's
+   actions (icon + "Edited `file`" + counts); tapping one slides to Panel 1 with
+   that action's detail — the same nested-track motion as the model selector. */
+function ToolActionsTray({ steps, onClose }: { steps: ToolStep[] | null; onClose: () => void }) {
+  const [sel, setSel] = useState<ToolStep | null>(null);
+  const open = !!steps;
+  useEffect(() => { if (!open) setSel(null); }, [open]);
+  const list = steps ?? [];
+  const head = list.length ? summarize(list) : { lead: 'Actions' as string, file: undefined as string | undefined };
+  return createPortal(
+    <div className="m-sel-overlay" data-open={open ? 'true' : 'false'}>
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel">
+        <div className="m-sel-grip" />
+        <div className="m-sel-track" data-depth={sel ? '1' : '0'}>
+          {/* Panel 0 — the action list */}
+          <div className="m-sel-panel">
+            <div className="m-sel-head"><button className="m-sel-x" aria-label="Close" onClick={onClose}><Icon name="close" /></button><span className="m-sel-title">{head.lead}{head.file ? ` ${head.file}` : ''}</span></div>
+            <div className="m-sel-body">
+              {list.map((s, i) => (
+                <button key={i} className="m-action-row" data-status={s.status} onClick={() => { haptic(); setSel(s); }}>
+                  <span className="m-action-ico"><Icon name={stepIcon(s.name)} /></span>
+                  <span className="m-action-name">{stepVerb(s.name)} <code>{fileFromTitle(s.title) || 'file'}</code></span>
+                  {s.diff && <DiffBadge diff={s.diff} />}
+                  <span className="m-action-chev"><Icon name="chevron" /></span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Panel 1 — one action's detail */}
+          <div className="m-sel-panel">
+            <div className="m-sel-head"><button className="m-sel-x" aria-label="Back" onClick={() => setSel(null)}><Icon name="back" /></button><span className="m-sel-title">{sel ? stepVerb(sel.name) : ''}</span></div>
+            <div className="m-sel-body">
+              {sel && (
+                <>
+                  <div className="m-tray-block"><div className="m-tray-k">File</div><div className="m-action-file">{sel.title || sel.name}</div></div>
+                  {sel.diff && <div className="m-tray-kv"><span className="m-tray-k">Changes</span><DiffBadge diff={sel.diff} /></div>}
+                  {sel.thought && <div className="m-tray-block"><div className="m-tray-k">Thinking</div><div className="m-tray-thought">{sel.thought}</div></div>}
+                  {sel.error && <div className="m-tray-block"><div className="m-tray-k">Error</div><pre className="m-tray-err">{sel.error}</pre></div>}
+                  {!sel.diff && !sel.error && !sel.thought && <div className="m-list-note">The full patch isn’t streamed to the client yet — only the change summary.</div>}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /* Session-level changes rollup — every file-editing tool step across the run,
    with its diff badge; tap a row for the step detail. */
 function ChangesTray({ open, changes, onClose, onPick }: { open: boolean; changes: ToolStep[]; onClose: () => void; onPick: (s: ToolStep) => void }) {
@@ -901,6 +964,7 @@ function ChangesTray({ open, changes, onClose, onPick }: { open: boolean; change
 function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDelete, onTogglePin, onRetry, onEditResend, onQuote, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; subtitle?: { icon: IconName; text: string }; onBack: () => void; onDelete: () => void; onTogglePin: () => void; onRetry: () => void; onEditResend: (m: Message) => void; onQuote: (m: Message) => void; comp: CompProps }) {
   const [menu, setMenu] = useState(false);
   const [toolDetail, setToolDetail] = useState<ToolStep | null>(null);
+  const [toolsOpen, setToolsOpen] = useState<ToolStep[] | null>(null);
   const [actionMsg, setActionMsg] = useState<Message | null>(null);
   const [confirm, setConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -979,7 +1043,7 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
               {msgs.map((m, i) => (
                 m.role === 'user'
                   ? <UserMessage key={m.id} m={m} onLongPress={setActionMsg} />
-                  : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} streaming={comp.sending && i === msgs.length - 1} onOpenDetail={setToolDetail} onLongPress={setActionMsg} />
+                  : (m.text || (m.parts && m.parts.length > 0)) && <AgentMessage key={m.id} m={m} streaming={comp.sending && i === msgs.length - 1} onOpenTools={setToolsOpen} onLongPress={setActionMsg} />
               ))}
               {/* The branded spinner shows while a turn runs (streaming/tool-running).
                   The on-open "connecting" state is its own pill above the composer. */}
@@ -1007,7 +1071,11 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
       )}
       <Composer {...comp} />
 
-      {/* Tool detail tray — a step's full thought / title / diff / error. */}
+      {/* Tool actions tray — slides up like the model selector: the action list,
+          drilling into one action's detail. */}
+      <ToolActionsTray steps={toolsOpen} onClose={() => setToolsOpen(null)} />
+
+      {/* Single-step detail tray (from the Changes rollup). */}
       <ToolDetailTray step={toolDetail} onClose={() => setToolDetail(null)} />
 
       {/* Session-level changes rollup (Code/Work). */}
@@ -2756,19 +2824,35 @@ function App() {
     // Persist the session up front (with the user's message) so a reload/close
     // mid-turn can still find and re-open it — not only after the turn completes.
     void persistThread(sess.id);
-    const setAsst = (text: string) => { const m = convoRef.current.find((x) => x.id === asstId); if (m) { m.text = text; renderThrottled(); } };
-    // Fold a tool frame into the assistant turn's steps: start pushes a running
-    // row; done finalises the most recent running row of that name (✓/✕ + diff).
+    const isCoding = curMode !== 'chat';
+    const msgOf = () => convoRef.current.find((x) => x.id === asstId);
+    // Chat: one running text (markdown on completion). Work/Code: build ordered
+    // `parts` so tool rows interleave between narration.
+    const setAsst = (text: string) => { const m = msgOf(); if (m) { m.text = text; renderThrottled(); } };
+    const appendText = (delta: string) => {
+      const m = msgOf(); if (!m) return;
+      m.text = (m.text || '') + delta;
+      m.parts ??= [];
+      let last = m.parts[m.parts.length - 1];
+      if (!last || last.kind !== 'text') { last = { kind: 'text', text: '' }; m.parts.push(last); }
+      last.text += delta;
+      renderThrottled();
+    };
+    // A tool frame folds into the flat `steps` (for the header rollup) AND the
+    // current 'tools' part (for the interleaved row) — sharing the step object.
     const applyTool = (t: { name: string; phase: 'start' | 'done'; status: 'running' | 'ok' | 'denied' | 'failed'; thought?: string; title?: string; diff?: string; error?: string }) => {
-      const m = convoRef.current.find((x) => x.id === asstId);
-      if (!m) return;
+      const m = msgOf(); if (!m) return;
       const steps = (m.steps ??= []);
+      m.parts ??= [];
+      const toolsPart = () => { let last = m.parts![m.parts!.length - 1]; if (!last || last.kind !== 'tools') { last = { kind: 'tools', steps: [] }; m.parts!.push(last); } return last; };
       if (t.phase === 'start') {
-        steps.push({ name: t.name, status: 'running', ...(t.thought ? { thought: t.thought } : {}) });
+        const step = { name: t.name, status: 'running' as const, ...(t.thought ? { thought: t.thought } : {}) };
+        steps.push(step); toolsPart().steps.push(step);
       } else {
         let idx = -1;
         for (let i = steps.length - 1; i >= 0; i--) { if (steps[i].name === t.name && steps[i].status === 'running') { idx = i; break; } }
-        const target = idx >= 0 ? steps[idx] : (steps.push({ name: t.name, status: 'running' }), steps[steps.length - 1]);
+        let target = idx >= 0 ? steps[idx] : null;
+        if (!target) { target = { name: t.name, status: 'running' }; steps.push(target); toolsPart().steps.push(target); }
         target.status = t.status;
         if (t.title) target.title = t.title;
         if (t.diff) target.diff = t.diff;
@@ -2794,8 +2878,8 @@ function App() {
     const outcome = await runRemoteTurn(
       chat, prompt, () => {},
       {
-        onToken: () => setConnecting(false),
-        onAnswer: (full) => { setConnecting(false); setAsst(full); },
+        onToken: (delta) => { setConnecting(false); if (isCoding) appendText(delta); },
+        onAnswer: (full) => { setConnecting(false); if (!isCoding) setAsst(full); },
         onStep: () => setConnecting(false),
         onTool: applyTool,
         onUsage: (u) => { if (typeof u.creditsMicro === 'number') creditsMicro = u.creditsMicro; },

@@ -148,9 +148,16 @@ export interface Message {
   id: string;
   role: 'user' | 'glyphh';
   text: string;
-  /** Work/Code only: the tool calls this assistant turn ran (rendered as a
-   *  collapsible group above the answer). Shape mirrors md.tsx's ToolStep. */
+  /** Work/Code only: the flat list of tool calls this turn ran (header "Changes"
+   *  rollup + working label). Shape mirrors md.tsx's ToolStep. */
   steps?: Array<{ name: string; status: 'running' | 'ok' | 'denied' | 'failed'; thought?: string; title?: string; diff?: string; error?: string }>;
+  /** Work/Code only: text + tool-groups in STREAM ORDER, so tool-action rows
+   *  interleave between narration blocks. Each 'tools' part shares its step
+   *  objects with `steps` above. */
+  parts?: Array<
+    | { kind: 'text'; text: string }
+    | { kind: 'tools'; steps: Array<{ name: string; status: 'running' | 'ok' | 'denied' | 'failed'; thought?: string; title?: string; diff?: string; error?: string }> }
+  >;
   /** Per-turn usage footer: credits (micro) the runtime metered + wall-clock ms. */
   meta?: { creditsMicro?: number; ms?: number };
   /** User turns: image attachment preview URLs (dataURLs), rendered as thumbs. */

@@ -185,6 +185,70 @@ export function DiffBadge({ diff }: { diff: string }): React.ReactElement | null
   );
 }
 
+/* ── Tool-action summary row (interleaved between narration in Work/Code) ────*/
+const VERB: Record<string, { verb: string; noun: string }> = {
+  read: { verb: 'Read', noun: 'a file' },
+  edit: { verb: 'Edited', noun: 'a file' },
+  write: { verb: 'Wrote', noun: 'a file' },
+  multiedit: { verb: 'Edited', noun: 'a file' },
+  notebookedit: { verb: 'Edited', noun: 'a file' },
+  bash: { verb: 'Ran', noun: 'a command' },
+  glob: { verb: 'Searched', noun: 'the files' },
+  grep: { verb: 'Searched', noun: 'the code' },
+  todowrite: { verb: 'Updated', noun: 'the plan' },
+  webfetch: { verb: 'Fetched', noun: 'a page' },
+  websearch: { verb: 'Searched', noun: 'the web' },
+  task: { verb: 'Ran', noun: 'an agent' },
+};
+const verbOf = (name: string) => VERB[name.toLowerCase()] ?? { verb: name, noun: '' };
+
+/** A file name out of a tool title ("Edit /a/b/mobile.tsx" → "mobile.tsx"). */
+export function fileFromTitle(title?: string): string | undefined {
+  if (!title) return undefined;
+  const toks = title.split(/\s+/);
+  for (let i = toks.length - 1; i >= 0; i--) {
+    const t = toks[i].replace(/[),.:;]+$/, '');
+    if (/[/.]/.test(t) && /[A-Za-z0-9]/.test(t) && !/^https?:$/.test(t)) return t.split(/[/\\]/).pop() || t;
+  }
+  return undefined;
+}
+function sumDiffs(steps: ToolStep[]) {
+  return steps.reduce((a, s) => { const m = /\[\+(\d+)\s*-(\d+)\]/.exec(s.diff || ''); if (m) { a.add += +m[1]; a.del += +m[2]; } return a; }, { add: 0, del: 0 });
+}
+/** The verb for one tool ("Read" / "Edited" / "Ran"…), for tray headings. */
+export function stepVerb(name: string): string { return verbOf(name).verb; }
+
+/** "Read a file, edited a file" / "Read `mobile.tsx`" from a batch of steps. */
+export function summarize(steps: ToolStep[]): { lead: string; file?: string } {
+  const done = steps.filter((s) => s.status !== 'denied');
+  if (done.length === 1) {
+    const s = done[0]; const v = verbOf(s.name); const file = fileFromTitle(s.title);
+    return file ? { lead: v.verb, file } : { lead: `${v.verb} ${v.noun}`.trim() };
+  }
+  const phrases: string[] = [];
+  for (const s of done) { const v = verbOf(s.name); const p = `${v.verb} ${v.noun}`.trim(); if (!phrases.includes(p)) phrases.push(p); }
+  const lead = phrases.map((p, i) => i === 0 ? p : p.charAt(0).toLowerCase() + p.slice(1)).join(', ');
+  return { lead };
+}
+
+/** One interleaved tool-action row: a muted summary + diff badge + chevron; taps
+ *  open the actions tray (which slides up like the model selector). */
+export function ToolActionRow({ steps, onOpen }: { steps: ToolStep[]; onOpen: () => void }): React.ReactElement | null {
+  if (!steps.length) return null;
+  const running = steps.some((s) => s.status === 'running');
+  const failed = steps.some((s) => s.status === 'denied' || s.status === 'failed');
+  const { lead, file } = summarize(steps);
+  const { add, del } = sumDiffs(steps);
+  return (
+    <button className={`m-toolrow${failed ? ' m-toolrow-bad' : ''}`} onClick={onOpen}>
+      {running && <span className="m-toolrow-spin" aria-hidden="true" />}
+      <span className="m-toolrow-lead">{lead}{file && <> <code>{file}</code></>}</span>
+      {(add > 0 || del > 0) && <span className="m-toolrow-diff"><span className="m-diff-add">+{add}</span><span className="m-diff-del">−{del}</span></span>}
+      <span className="m-toolrow-chev">{I.chevron}</span>
+    </button>
+  );
+}
+
 const glyphFor = (s: ToolStep['status']) =>
   s === 'running' ? <span className="m-tool-spin" /> : s === 'ok' ? <span className="m-tool-ok">{I.check}</span> : <span className="m-tool-bad">✕</span>;
 
