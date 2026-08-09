@@ -16,6 +16,10 @@ import DOMPurify from 'dompurify';
 
 marked.setOptions({ gfm: true, breaks: true });
 
+/* True while the message is still streaming — read by CodeBlock so a long block
+ *  stays OPEN as it streams in (it only auto-folds once the turn settles). */
+const StreamingCtx = React.createContext(false);
+
 /* ── Inline: rich but sanitised ─────────────────────────────────────────────*/
 function inlineHtml(src: string): string {
   let html: string;
@@ -72,8 +76,11 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const language = (lang || '').trim().toLowerCase();
   const isDiff = language === 'diff' || language === 'patch';
   const lineCount = code.replace(/\n$/, '').split('\n').length;
+  const streaming = React.useContext(StreamingCtx);
   const [copied, setCopied] = useState(false);
-  const [folded, setFolded] = useState(lineCount > 24);   // long blocks start folded
+  // Long blocks start folded — but NOT while streaming, so code is visible as it
+  // arrives rather than collapsing under the reader mid-write.
+  const [folded, setFolded] = useState(!streaming && lineCount > 24);
   const copy = async () => {
     try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1400); }
     catch { /* clipboard blocked */ }
@@ -153,9 +160,17 @@ function Block({ t }: { t: Token }): React.ReactElement | null {
 }
 
 /* ── Public: <Markdown text> ─────────────────────────────────────────────────*/
-export function Markdown({ text }: { text: string }): React.ReactElement {
+export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }): React.ReactElement {
+  // Live during streaming: the lexer runs on the (rAF-coalesced) growing text so
+  // formatting appears AS it writes — no raw-markdown flash that snaps to
+  // rendered on settle. marked handles incomplete syntax (an open fence, a half
+  // **bold**) gracefully and it resolves as the delimiter arrives.
   const tokens = useMemo(() => { try { return marked.lexer(text || ''); } catch { return []; } }, [text]);
-  return <div className="m-md">{tokens.map((t, i) => <Block key={i} t={t} />)}</div>;
+  return (
+    <StreamingCtx.Provider value={streaming}>
+      <div className="m-md">{tokens.map((t, i) => <Block key={i} t={t} />)}</div>
+    </StreamingCtx.Provider>
+  );
 }
 
 /* Copy the whole message (plain source). Used by the message action row. */

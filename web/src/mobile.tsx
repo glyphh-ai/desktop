@@ -813,11 +813,13 @@ function AgentMessage({ m, streaming, onOpenTools, onLongPress }: { m: Message; 
   const [copied, setCopied] = useState(false);
   const copy = async () => { if (await copyText(m.text)) { haptic(); setCopied(true); setTimeout(() => setCopied(false), 1400); } };
   const press = useLongPress(() => onLongPress?.(m));
-  const txt = (t: string, k: number) => streaming ? <div className="m-stream" key={k}>{t}</div> : <Markdown key={k} text={t} />;
+  // Render markdown LIVE — formatting appears as the text streams, not as raw
+  // markdown that snaps to rendered on settle. (Deltas are rAF-coalesced upstream.)
+  const txt = (t: string, k: number) => <Markdown key={k} text={t} streaming={streaming} />;
   return (
     <div className="m-msg m-msg-glyphh" {...press}>
       {/* Work/Code: text and tool-action rows interleaved in stream order. Chat:
-          just the answer. While streaming, text is plain (smooth); Markdown on settle. */}
+          just the answer. Markdown renders LIVE while streaming (not on settle). */}
       {m.parts && m.parts.length > 0
         ? m.parts.map((p, i) => p.kind === 'text'
             ? (p.text ? txt(p.text, i) : null)

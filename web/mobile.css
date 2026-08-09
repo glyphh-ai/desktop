@@ -779,8 +779,6 @@ body {
 
 /* Streaming plain text — matches the markdown body font so the swap to formatted
    output on completion isn't jarring. */
-.m-stream { white-space: pre-wrap; word-break: break-word; font: 400 20px/1.55 var(--font-sans); color: var(--text); }
-
 /* Interleaved tool-action row (Work/Code): a muted summary + diff + chevron. */
 .m-toolrow { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; max-width: 100%; margin: -2px 0; padding: 4px 0; background: none; border: 0; cursor: pointer; text-align: left; }
 .m-toolrow:active { opacity: 0.55; }
