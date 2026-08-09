@@ -1,30 +1,21 @@
 /**
- * remote-run.ts — the app-web REMOTE turn transport. The desktop app runs the
- * harness locally (window.glyphh.glyphhRun → main); the WEB build cannot. When
- * a session's workspace SOURCE is remote (or web = cloud, period), a turn goes
- * through the SDK handle (window.glyphhSdk) against the control plane's session
- * surface + the provisioned pod's HARNESS data plane (`glyphh.harness/v1`):
+ * remote-run.ts — the renderer's TURN TRANSPORT, routing by the runtime/stator
+ * split (server/docs/runtime-stator-split.md): the STATOR is one regional memory
+ * plane; the RUNTIME is chosen per session.
  *
- *   1. glyphhSdk.sessions.create(provisionArgsFor(source))
- *        → provisions a runtime pod, returns { session, runtimeToken }
- *          (the token is shown ONCE — the chat record binds it).
- *   2. poll glyphhSdk.sessions.get(id) until status === 'ready' (bounded).
- *   3. glyphhSdk.harness({ url: runtimeUrl, token })
- *        → opens the harness data plane (POST /run + frame stream, durable
- *          reconnect inside the SDK: WS when reachable, frame-poll otherwise).
- *   4. pod.start({ prompt, threadId: chat.id, mode }) → a run handle streaming
- *        the DESKTOP FRAME VOCABULARY (delta/tool/progress/approval/ask/done/
- *        error) — near-1:1 onto the same callbacks the local path drives.
+ *   LOCAL (machine) session → the attach RELAY (`attach.run`) → the user's own
+ *     rrotor — tools on their real folder, memory via /api/stator/*.
+ *   everything else → THE SINGLE FRONT DOOR (`harnessViaApi()` → /api/harness/*)
+ *     → the org's regional cloud runtime. No pod URL, no per-session
+ *     provisioning — the server region-routes and the pod introspects the
+ *     user's own bearer (docs/turn-proxy.md).
  *
- * `threadId` rides every run: the pod records the transcript under the CLIENT's
- * chat id (auth stays bound to the provisioned sessionId via the bearer).
+ * Both paths stream the same HarnessWireFrames onto the same callbacks, so the
+ * UI renders identically wherever the turn ran. `threadId` = the CLIENT's chat
+ * id — it scopes the pod-side transcript AND the stator memory session.
  *
- * Every stage can honestly fail on web today (no runtime deployed for the org's
- * region, the provisioner disabled, the runtime unreachable from a browser).
  * Failure is a TYPED RESULT, not an exception: code.ts renders the designed
- * "runtime not connected" state — never a fake reply. Even on an unavailable
- * provision the session id (when we got one) is bound onto the chat: the session
- * EXISTS server-side, and re-provision must not orphan it.
+ * "runtime not connected" state — never a fake reply.
  *
  * The renderer cannot import from @glyphh/sdk (preload boundary), so the SDK
  * handle's shapes are mirrored here (same discipline as code-source-chip.ts /
@@ -80,28 +71,7 @@ interface HarnessPod {
   }): HarnessRunHandle;
 }
 
-type SessionStatus = "provisioning" | "ready" | "error" | "stopped";
-interface RuntimeSession {
-  id: string;
-  status: SessionStatus;
-  runtimeUrl: string | null;
-  [k: string]: unknown;
-}
-interface ProvisionedSession { session: RuntimeSession; runtimeToken: string }
-interface CreateSessionInput {
-  rotor?: unknown;
-  locus?: "remote" | "local" | "relay";
-  repo?: string;
-  path?: string;
-  newProject?: boolean;
-}
-
 interface SdkHandle {
-  sessions?: {
-    create?: (input: CreateSessionInput) => Promise<ProvisionedSession>;
-    get?: (id: string) => Promise<RuntimeSession>;
-  };
-  harness?: (opts: { url: string; token?: () => Promise<string>; run?: { maxReconnects?: number } }) => HarnessPod;
   /** THE SINGLE FRONT DOOR: a harness bound to the control-plane turn proxy
    *  (`/api/harness`), auth'd by the user's session token. Region-routes to the
    *  org's regional rrotor + stator — no pod url, no provisioning. */
@@ -126,18 +96,12 @@ export interface RemoteChat {
   [k: string]: unknown;
 }
 
-const DEFAULT_ROTOR = "default";
-const READY_POLL_MS = 1500;
-const READY_POLL_TRIES = 10;
-
 /** How long the runtime waits before deciding FOR the user. Mirrored from the
  *  pod (rrotor `harness/gate.ts`) — and identical to the desktop's local gate
  *  (`glyphh-agent-permissions.ts`), so the dock's countdown is honest on BOTH
  *  paths and there is one set of numbers in the UI. */
 export const APPROVAL_TIMEOUT_MS = 120_000;
 export const ASK_TIMEOUT_MS = 10 * 60_000;
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // ── The answer seam ───────────────────────────────────────────────────────────
 //
@@ -198,7 +162,7 @@ export function isRemoteSource(source?: Source): boolean {
 /** A remote turn is only routed here on WEB, where the SDK handle is exposed and
  *  the local harness (window.glyphh.glyphhRun → main) does not exist. */
 export function canRunRemote(source?: Source): boolean {
-  return isRemoteSource(source) && !!sdk()?.harness && !!sdk()?.sessions?.create;
+  return isRemoteSource(source) && !!sdk()?.harnessViaApi;
 }
 
 /** The honest typed failure — never thrown to the UI, always rendered as the
@@ -211,22 +175,6 @@ function unavailable(stage: string, err: unknown): Unavailable {
 }
 
 /**
- * Translate the UI workspace SOURCE into sessions.create arguments.
- *   cloud-repo → remote runtime cloning the repo (scoped clone token server-side)
- *   cloud-new  → remote runtime, empty git-init'd R2-durable project (newProject)
- *   local      → the attached desktop (relay locus) in the picked folder
- * A missing/unknown source is the safe default: an empty cloud project.
- */
-function provisionArgsFor(source: Source | undefined, rotor: unknown): CreateSessionInput {
-  const base = { rotor };
-  if (source?.kind === "cloud-repo" && source.repo) return { ...base, locus: "remote", repo: source.repo };
-  // WEB = the shared CLOUD rotor even for machine-sourced sessions (driving
-  // the attached machine from web is deferred) — provision plain remote.
-  if (source?.kind === "local") return { ...base, locus: "remote", newProject: true };
-  return { ...base, locus: "remote", newProject: true };
-}
-
-/**
  * Ensure the chat has a live runtime binding, provisioning one if needed and
  * persisting it via `save`. Reuses an existing binding (later turns don't
  * re-provision). On an unavailable provision that still minted a session id, the
@@ -236,78 +184,18 @@ function provisionArgsFor(source: Source | undefined, rotor: unknown): CreateSes
 export async function ensureRuntime(
   chat: RemoteChat,
   save: () => void,
-  opts: { rotor?: unknown; signal?: AbortSignal; forceFresh?: boolean } = {},
+  _opts: { rotor?: unknown; signal?: AbortSignal; forceFresh?: boolean } = {},
 ): Promise<{ ok: true; runtime: RuntimeBinding } | Unavailable | { ok: false; stopped: true }> {
-  // SINGLE FRONT DOOR: with the proxy, there is nothing to provision — a turn
-  // goes straight through `harnessViaApi()`, region-routed server-side. Hand back
-  // a synthetic binding so the UI reads "connected" (isCommitted) instantly.
+  // SINGLE FRONT DOOR: nothing to provision — a turn goes straight through
+  // `harnessViaApi()`, region-routed server-side. Hand back a synthetic binding
+  // so the UI reads "connected" (isCommitted) instantly. The per-session
+  // provision-and-poll path was deleted with the cutover (no-dead-code).
   if (sdk()?.harnessViaApi) {
     const runtime: RuntimeBinding = { sessionId: chat.id, url: "api", token: "api" };
     chat.runtime = runtime; save();
     return { ok: true, runtime };
   }
-  // A cached binding is reused — EXCEPT when the caller knows it's dead
-  // (forceFresh). Without that escape a binding minted against an old pod
-  // URL/port, a stopped session, or a pre-CORS pod is permanent: every later
-  // turn in that chat fails identically and no reload can heal it.
-  if (!opts.forceFresh && chat.runtime?.url && chat.runtime?.token) return { ok: true, runtime: chat.runtime };
-  if (opts.forceFresh) { chat.runtime = undefined; save(); }
-
-  const handle = sdk();
-  if (!handle?.sessions?.create || !handle.sessions.get) {
-    return unavailable("provision", new Error("the SDK runtime surface is not available"));
-  }
-  const rotor = opts.rotor ?? DEFAULT_ROTOR;
-
-  let provisioned: ProvisionedSession;
-  try {
-    provisioned = await handle.sessions.create(provisionArgsFor(chat.source, rotor));
-  } catch (err) {
-    return unavailable("provision", err);
-  }
-  const token = provisioned?.runtimeToken;
-  let session = provisioned?.session;
-  if (!token || !session?.id) return unavailable("provision", new Error("provisioning returned no runtime"));
-
-  // Bind the session id NOW — even if it never reaches ready, the session
-  // exists server-side and a later attempt must reuse it, not orphan it.
-  bindSessionId(chat, session.id, save);
-
-  // The runtime may still be standing up — poll until ready (bounded).
-  let tries = 0;
-  while (session.status === "provisioning" && tries < READY_POLL_TRIES) {
-    if (opts.signal?.aborted) return { ok: false, stopped: true };
-    await sleep(READY_POLL_MS);
-    tries += 1;
-    try {
-      session = await handle.sessions.get(session.id);
-    } catch (err) {
-      const u = unavailable("provision-poll", err);
-      u.sessionId = session.id;
-      return u;
-    }
-  }
-  if (session.status !== "ready" || !session.runtimeUrl) {
-    const u = unavailable(
-      "not-ready",
-      new Error(`runtime ${session.status}${session.runtimeUrl ? "" : " (no runtime url)"}`),
-    );
-    u.sessionId = session.id;
-    return u;
-  }
-
-  const runtime: RuntimeBinding = { sessionId: session.id, url: session.runtimeUrl, token };
-  chat.runtime = runtime;
-  save();
-  return { ok: true, runtime };
-}
-
-/** Bind only the session id (the session exists server-side even when not ready),
- *  so a re-provision reuses the same session space. Kept idempotent. */
-function bindSessionId(chat: RemoteChat, sessionId: string, save: () => void): void {
-  if (chat.runtime?.sessionId === sessionId) return;
-  chat.runtime = { sessionId, url: chat.runtime?.url ?? "", token: chat.runtime?.token ?? "" };
-  save();
+  return unavailable("open", new Error("this build cannot run turns (SDK harnessViaApi missing)"));
 }
 
 /** The session's effective mode for the pod (mirror of code.ts modeOf: the
@@ -581,87 +469,11 @@ export async function runRemoteTurn(
   // caller workdir by design, so local must never route there.
   if (chat.source?.kind === "local") return runRelayTurn(chat, prompt, callbacks, { ...(opts.signal ? { signal: opts.signal } : {}) });
   if (sdk()?.harnessViaApi) return runViaFrontDoor(chat, prompt, callbacks, opts);
-  // ONE silent retry on a dead binding: attempt 1 swallows its error, drops
-  // the cached runtime, re-provisions, and runs again. Only the second
-  // failure reaches the user.
-  const first = await runRemoteTurnOnce(chat, prompt, save, { ...callbacks, onError: undefined }, opts, false);
-  if (!("unavailable" in first)) return first;
-  if (!chat.runtime && first.stage === "provision") { callbacks.onError?.(first.detail); return first; }
-  return runRemoteTurnOnce(chat, prompt, save, callbacks, opts, true);
-}
-
-async function runRemoteTurnOnce(
-  chat: RemoteChat,
-  prompt: string,
-  save: () => void,
-  callbacks: RemoteRunCallbacks,
-  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }> },
-  forceFresh: boolean,
-): Promise<RemoteRunOutcome> {
-  const rotor = opts.rotor ?? DEFAULT_ROTOR;
-  const ensured = await ensureRuntime(chat, save, { rotor, signal: opts.signal, forceFresh });
-  if (!ensured.ok) {
-    if ("stopped" in ensured) { callbacks.onStopped?.(); return ensured; }
-    callbacks.onError?.(ensured.detail);
-    return ensured;
-  }
-  const { runtime } = ensured;
-
-  const handle = sdk();
-  let run: HarnessRunHandle;
-  try {
-    if (!handle?.harness) throw new Error("the SDK harness transport is not available");
-    const pod = handle.harness({ url: runtime.url, token: async () => runtime.token });
-    // threadId = the CHAT's id on every run — the pod records the transcript
-    // under it (auth stays bound to the provisioned session via the bearer).
-    run = pod.start({
-      prompt,
-      threadId: chat.id,
-      mode: modeFor(chat),
-      ...(opts.model ? { model: opts.model } : {}),
-      // The pod defaults to `auto`; the SESSION's picked mode is what governs.
-      ...(opts.permission ? { permission: opts.permission } : {}),
-      ...(opts.images && opts.images.length ? { images: opts.images } : {}),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    });
-  } catch (err) {
-    const u = unavailable("open", err);
-    callbacks.onError?.(u.detail);
-    return u;
-  }
-
-  const state = { text: "", error: null as string | null };
-  const off = run.on((frame) => {
-    if (opts.signal?.aborted) return;
-    dispatchFrame(frame, callbacks, state, run);
-  });
-
-  let stopped = false;
-  try {
-    const result = await run.done;
-    stopped = result.stopped;
-    if (result.error && !state.error) state.error = result.error;
-  } catch (err) {
-    off();
-    forgetPending(run);
-    if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime }; }
-    // A run that never streamed (unreachable pod, 401 bearer, 409 at-capacity,
-    // wire mismatch) is the honest not-connected state; mid-stream loss with
-    // text already on screen is a turn error.
-    if (!state.text) {
-      const u = unavailable("stream", err);
-      u.sessionId = runtime.sessionId;
-      callbacks.onError?.(u.detail);
-      return u;
-    }
-    state.error = err instanceof Error ? err.message : String(err);
-  }
-  off();
-  // The run is over: any card still parked on it can never be answered.
-  forgetPending(run);
-
-  if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime }; }
-  if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime }; }
-  callbacks.onDone?.(state.text);
-  return { ok: true, text: state.text, runtime, ...(state.error ? { error: state.error } : {}) };
+  // No front door in this SDK build = an honest typed failure. The old
+  // provision-a-pod-per-session path was deleted with the cutover (no-dead-code);
+  // `save` stays in the signature for callers, unused now that nothing binds.
+  void save;
+  const u = unavailable("open", new Error("this build cannot run turns (SDK harnessViaApi missing)"));
+  callbacks.onError?.(u.detail);
+  return u;
 }
