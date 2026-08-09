@@ -849,7 +849,34 @@ function ToolDetailTray({ step, onClose }: { step: ToolStep | null; onClose: () 
   );
 }
 
-function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTogglePin, onRetry, onEditResend, onQuote, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; onBack: () => void; onDelete: () => void; onTogglePin: () => void; onRetry: () => void; onEditResend: (m: Message) => void; onQuote: (m: Message) => void; comp: CompProps }) {
+/* Session-level changes rollup — every file-editing tool step across the run,
+   with its diff badge; tap a row for the step detail. */
+function ChangesTray({ open, changes, onClose, onPick }: { open: boolean; changes: ToolStep[]; onClose: () => void; onPick: (s: ToolStep) => void }) {
+  return createPortal(
+    <div className="m-sel-overlay" data-open={open ? 'true' : 'false'}>
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel m-sel-fit">
+        <div className="m-sel-grip" />
+        <div className="m-sel-head"><span className="m-sel-title">Changes</span></div>
+        <div className="m-sel-body">
+          {changes.length === 0
+            ? <div className="m-list-note">No file changes yet.</div>
+            : changes.map((s, i) => (
+              <button key={i} className="m-tool-row" data-status={s.status} onClick={() => { haptic(); onPick(s); }}>
+                <span className="m-tool-glyph"><span className="m-tool-ok"><Icon name="filedoc" /></span></span>
+                <span className="m-tool-name">{s.title || s.name}</span>
+                {s.diff && <DiffBadge diff={s.diff} />}
+                <span className="m-tool-more"><Icon name="chevron" /></span>
+              </button>
+            ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDelete, onTogglePin, onRetry, onEditResend, onQuote, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; subtitle?: { icon: IconName; text: string }; onBack: () => void; onDelete: () => void; onTogglePin: () => void; onRetry: () => void; onEditResend: (m: Message) => void; onQuote: (m: Message) => void; comp: CompProps }) {
   const [menu, setMenu] = useState(false);
   const [toolDetail, setToolDetail] = useState<ToolStep | null>(null);
   const [actionMsg, setActionMsg] = useState<Message | null>(null);
@@ -869,14 +896,28 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
   }, [menu]);
   const onScroll = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80); };
   const scrollToBottom = (smooth: boolean) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
+  const [changesOpen, setChangesOpen] = useState(false);
   // Follow the stream when already at the bottom; leave the user alone if scrolled up.
   useEffect(() => { if (atBottom) scrollToBottom(false); }, [msgs, atBottom]);
+  // Code/Work: roll up every file-editing tool step (those with a diff badge)
+  // across the transcript into a session-level "Changes" view.
+  const changes = comp.mode === 'chat' ? [] : (msgs ?? []).flatMap((m) => (m.steps ?? []) as ToolStep[]).filter((s) => !!s.diff);
+  const changeTotals = changes.reduce((a, s) => { const mm = /\[\+(\d+)\s*-(\d+)\]/.exec(s.diff || ''); if (mm) { a.add += +mm[1]; a.del += +mm[2]; } return a; }, { add: 0, del: 0 });
 
   return (
     <div className="m-sv">
       <header className="m-sv-head">
         <button className="m-chats-icon" aria-label="Back" onClick={onBack}><Icon name="back" /></button>
-        <span className="m-sv-name">{session.title}</span>
+        <div className="m-sv-titles">
+          <span className="m-sv-name">{session.title}</span>
+          {subtitle && <span className="m-sv-sub"><Icon name={subtitle.icon} /><span>{subtitle.text}</span></span>}
+        </div>
+        {changes.length > 0 && (
+          <button className="m-sv-changes" onClick={() => { haptic(); setChangesOpen(true); }}>
+            <Icon name="branch" />
+            <span className="m-diff-add">+{changeTotals.add}</span><span className="m-diff-del">−{changeTotals.del}</span>
+          </button>
+        )}
         <div className="m-sv-menu-wrap" ref={menuRef}>
           <button className="m-chats-icon" aria-label="Options" onClick={() => { haptic(); setMenu((v) => !v); }}><Icon name="dots" /></button>
           {menu && (
@@ -938,6 +979,9 @@ function SessionView({ session, msgs, connecting, pinned, onBack, onDelete, onTo
 
       {/* Tool detail tray — a step's full thought / title / diff / error. */}
       <ToolDetailTray step={toolDetail} onClose={() => setToolDetail(null)} />
+
+      {/* Session-level changes rollup (Code/Work). */}
+      <ChangesTray open={changesOpen} changes={changes} onClose={() => setChangesOpen(false)} onPick={(s) => { setChangesOpen(false); setToolDetail(s); }} />
 
       {/* Long-press message actions. */}
       <MsgActionSheet
@@ -2773,6 +2817,15 @@ function App() {
     onPasteFiles: addImageFiles,
   };
 
+  // Code/Work header subtitle — WHERE the session runs (cloud / repo / desktop).
+  const sessionSubtitle: { icon: IconName; text: string } | undefined = (() => {
+    if (!session || curMode === 'chat') return undefined;
+    const src = chatFor(session.id).source;
+    if (src?.kind === 'cloud-repo' && src.repo) return { icon: 'cloud', text: `Cloud · ${src.repo.split('/').pop()}` };
+    if (src?.kind === 'local') { const d = desktops.find((x) => x.id === src.machineId); return { icon: 'laptop', text: d?.name || d?.app || 'Local machine' }; }
+    return { icon: 'cloud', text: 'Cloud' };
+  })();
+
   // Hold the splash for its full beat regardless of how fast auth resolves.
   // Also tint Safari's chrome to the live theme (kills the grey bottom-bar band).
   useEffect(() => {
@@ -2934,7 +2987,7 @@ function App() {
                     : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
-                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
+                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} subtitle={sessionSubtitle} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
                 </section>
               </div>
             </div>
