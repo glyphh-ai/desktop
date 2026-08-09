@@ -1049,7 +1049,10 @@ body {
     padding: 0 3px 0 calc(var(--safe-left) + 3px);
   }
   .m-main { flex: 1 1 auto; width: auto; margin-left: 0; min-width: 0; }
-  .m-rail-brand { padding: 0 0 8px 30px; }
+  /* Align the wordmark with the content header (safe-top + 10px) and respect the
+     status-bar inset in standalone PWA — without a top pad the logo crams to the
+     very top of the rail while the content sits lower. */
+  .m-rail-brand { padding: calc(var(--safe-top) + 14px) 0 10px 30px; }
   .m-wordmark { height: 36px; }
   .m-rail-nav { margin-top: 6px; gap: 3px; }
   .m-nav-item { padding: 11px 16px; font-size: 16px; gap: 14px; }
