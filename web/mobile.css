@@ -102,8 +102,11 @@ body {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  background: #ffffff;
-  color: #000;
+  /* Theme's primary CONTRAST — white pill in dark, black pill in light — never a
+     hardcoded colour, so it stays legible in every theme. Accent lives only in
+     the gradient sweep on press (::before). */
+  background: var(--white);
+  color: var(--bg);
   border: none;
 }
 .btn-primary::before {
@@ -826,9 +829,10 @@ body {
 .m-msg-copy svg { width: 14px; height: 14px; }
 .m-msg-usage { color: var(--text-faint); font: 400 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 
-/* Stop button (replaces send while a turn is streaming). */
-.m-composer-stop { background: var(--surface-3); }
-.m-stop-sq { width: 15px; height: 15px; border-radius: 4px; background: var(--text); display: inline-block; }
+/* Stop button (replaces send while a turn is streaming) — same primary-contrast
+   pill as send, with a square in the page-bg colour so the glyph reads on it. */
+.m-composer-stop { background: var(--white); }
+.m-stop-sq { width: 15px; height: 15px; border-radius: 4px; background: var(--bg); display: inline-block; }
 
 /* Composer image attachments (pending) + mic listening state. */
 .m-attach-strip { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 4px 8px; }
@@ -928,8 +932,10 @@ body {
   height: 40px;
   border: 0;
   border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
+  /* The theme's primary CONTRAST: white pill in dark, black pill in light — the
+     send/stop affordance, visible in every theme. Foreground is the page bg. */
+  background: var(--white);
+  color: var(--bg);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -939,7 +945,7 @@ body {
 
 /* Send button ring while a turn is in flight. */
 @keyframes m-spin { to { transform: rotate(360deg); } }
-.m-send-spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.45); border-top-color: #fff; animation: m-spin 0.7s linear infinite; }
+.m-send-spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--bg) 40%, transparent); border-top-color: var(--bg); animation: m-spin 0.7s linear infinite; }
 
 /* Brand working spinner (createGlyphhSpinner) — the tumbling wireframe cube +
    typed phrase, matched to the app. Shown as a thread row while the agent is
@@ -981,7 +987,7 @@ body {
 
 /* ── Agent prompt (parked approval / ask) — portaled bottom sheet ─────────── */
 .m-prompt-overlay { position: fixed; inset: 0; z-index: 260; display: flex; align-items: flex-end; }
-.m-prompt-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.m-prompt-scrim { position: absolute; inset: 0; background: var(--overlay-bg); }
 .m-prompt {
   position: relative; width: 100%; box-sizing: border-box;
   max-height: 80%; overflow-y: auto;
@@ -1024,7 +1030,7 @@ body {
 }
 .m-prompt-btn:disabled { opacity: 0.4; cursor: default; }
 /* Primary button (Send / Approve): the theme's white pill (white in dark mode). */
-.m-prompt-primary { background: #fff; border-color: #fff; color: #000; }
+.m-prompt-primary { background: var(--white); border-color: var(--white); color: var(--bg); }
 .m-prompt-timer { margin-top: 12px; text-align: center; font: 400 13px/1 var(--font-sans); color: var(--text-faint); }
 
 /* ── TABLET+ (iPad) : persistent sidebar, bigger type ── */
@@ -1077,7 +1083,7 @@ body {
 .m-sheet-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-bg);
   opacity: 0;
   transition: opacity 0.34s ease;
 }
@@ -1227,7 +1233,7 @@ body {
 .m-sel-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-bg);
   opacity: 0;
   transition: opacity 0.34s ease;
 }
@@ -1978,7 +1984,7 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 /* ── Generic sub-tray (connection catalog + detail): 80% bottom sheet, matches
    the Settings sheet. Scrim behind; slides up. ───────────────────────────── */
 .m-subtray-overlay { position: fixed; inset: 0; z-index: 250; }
-.m-subtray-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); animation: m-fade-in 0.25s ease; }
+.m-subtray-scrim { position: absolute; inset: 0; background: var(--overlay-bg); animation: m-fade-in 0.25s ease; }
 @keyframes m-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes m-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .m-subtray {
