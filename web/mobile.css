@@ -837,10 +837,10 @@ body {
     padding: 0 3px 0 calc(var(--safe-left) + 3px);
   }
   /* .m-shell is display:contents on tablet, so .m-main is now a direct child of
-     the fixed full-height .m-app and must claim the height itself — without this
-     it collapses to content height and the right pane renders into a short box
-     with a huge gap below it. */
-  .m-main { margin-left: 320px; width: auto; flex: none; height: 100%; }
+     the fixed full-height .m-app. A percentage height doesn't resolve reliably
+     through the display:contents ancestor on iPad Safari — the pane collapsed to
+     ~half height with dead space below. Pin it to the dynamic viewport instead. */
+  .m-main { margin-left: 320px; width: auto; flex: none; height: 100dvh; }
   .m-rail-brand { padding: 0 0 8px 30px; }
   .m-wordmark { height: 36px; }
   .m-rail-nav { margin-top: 6px; gap: 3px; }
