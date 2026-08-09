@@ -1073,6 +1073,14 @@ body {
 
   /* Composer: match the roomier side padding and sit lower on the right panel. */
   .m-composer { padding: 6px 48px calc(var(--safe-bottom) + 8px) calc(var(--safe-left) + 48px); }
+
+  /* The 20px body reads a touch large in the tablet's wider column — step the
+     conversation type down to iOS's native body size (17px). Line-heights are
+     unitless so they scale with it; inline code (0.86em) tracks automatically. */
+  .m-msg { font-size: 17px; }
+  .m-md { font-size: 17px; }
+  .m-md-h1 { font-size: 22px; } .m-md-h2 { font-size: 20px; } .m-md-h3 { font-size: 18px; } .m-md-h4 { font-size: 17px; }
+  .m-toolrow-lead { font-size: 16px; }
 }
 
 /* ── Settings bottom sheet: slides up over the app, back down on close ────── */
