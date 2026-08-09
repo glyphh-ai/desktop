@@ -985,6 +985,12 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
   const [changesOpen, setChangesOpen] = useState(false);
   // Follow the stream when already at the bottom; leave the user alone if scrolled up.
   useEffect(() => { if (atBottom) scrollToBottom(false); }, [msgs, atBottom]);
+  // When the turn settles, the plain→markdown swap reflows the height — re-pin to
+  // the bottom next frame so the tail of the answer isn't left under the composer.
+  useEffect(() => {
+    if (!comp.sending && atBottom) { const r = requestAnimationFrame(() => scrollToBottom(false)); return () => cancelAnimationFrame(r); }
+    return undefined;
+  }, [comp.sending]);
   // Code/Work: roll up every file-editing tool step (those with a diff badge)
   // across the transcript into a session-level "Changes" view.
   const changes = comp.mode === 'chat' ? [] : (msgs ?? []).flatMap((m) => (m.steps ?? []) as ToolStep[]).filter((s) => !!s.diff);
@@ -1042,6 +1048,8 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
       <div className="m-sv-messages" ref={scrollRef} onScroll={onScroll}>
         {msgs === null
           ? <div className="m-list-note">Loading…</div>
+          : msgs.length === 0 && !comp.sending
+          ? <Ghost />
           : (
             <>
               {msgs.map((m, i) => (
@@ -3122,7 +3130,15 @@ function App() {
     chat.mode = curMode;
     chat.source = { kind: 'local', machineId: d.id, path: '' };
     setSession({ id, title: 'New session', when: 'now' });
-    setScreen('session'); setDrawer(false); clearConvo();
+    setScreen('session'); setDrawer(false);
+    // Empty transcript ([] not null) → shows the mascot empty state, not "Loading…".
+    convoRef.current = []; setMsgs([]); setDraft(''); setPending(null);
+    // Connect the runtime on open, like loadSession — the connecting pill + locked
+    // input ride this.
+    if (!isCommitted(id)) {
+      setConnecting(true);
+      void ensureRuntime(chat, () => {}, { rotor: loop }).then(() => setConnecting(false)).catch(() => setConnecting(false));
+    } else setConnecting(false);
   };
 
   // Track the current view so async callbacks (notify) know if the user is looking.
