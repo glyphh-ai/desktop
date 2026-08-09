@@ -903,6 +903,10 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
   // across the transcript into a session-level "Changes" view.
   const changes = comp.mode === 'chat' ? [] : (msgs ?? []).flatMap((m) => (m.steps ?? []) as ToolStep[]).filter((s) => !!s.diff);
   const changeTotals = changes.reduce((a, s) => { const mm = /\[\+(\d+)\s*-(\d+)\]/.exec(s.diff || ''); if (mm) { a.add += +mm[1]; a.del += +mm[2]; } return a; }, { add: 0, del: 0 });
+  // The tool currently in flight (last running step) — names the working label.
+  const runningTool = comp.sending
+    ? (() => { const steps = (msgs ?? []).flatMap((m) => (m.steps ?? []) as ToolStep[]); for (let i = steps.length - 1; i >= 0; i--) if (steps[i].status === 'running') return steps[i].title || steps[i].name; return undefined; })()
+    : undefined;
 
   return (
     <div className="m-sv">
@@ -960,11 +964,13 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
                   : (m.text || (m.steps && m.steps.length > 0)) && <AgentMessage key={m.id} m={m} streaming={comp.sending && i === msgs.length - 1} onOpenDetail={setToolDetail} onLongPress={setActionMsg} />
               ))}
               {/* The branded spinner shows for the whole in-flight turn (connecting
-                  AND while streaming/tool-running) — it's the working indicator. */}
+                  AND while streaming/tool-running). A definite label names what's
+                  happening — a running tool, else Working/Connecting — so it's never
+                  ambiguous whether the agent is busy. */}
               {(connecting || comp.sending) && (
                 <div className="m-working">
-                  <GlyphhSpinner size={40} phrases={!connecting} />
-                  {connecting && <span className="m-working-label">Connecting…</span>}
+                  <GlyphhSpinner size={40} phrases={false} />
+                  <span className="m-working-label">{connecting ? 'Connecting…' : (runningTool ? `Running ${runningTool}…` : 'Working…')}</span>
                 </div>
               )}
             </>
