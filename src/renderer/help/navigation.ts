@@ -136,10 +136,11 @@ export function gotoSection(section: string, sub?: string): void {
     if (sub) showDocPanel(sub);
     return;
   }
-  // Apps + Connections (A2) and Loops + Skills + Agents (A3) moved INTO the
-  // settings modal — each is a settings sub-panel now, not a full-page rail
-  // section.
-  if (["apps", "connections", "loops", "skills", "agents"].includes(section)) {
+  // Apps + Connections (A2), Loops + Skills + Agents (A3), and Layouts moved
+  // INTO the settings modal — each is a settings sub-panel now, not a full-page
+  // rail section. (The rail keeps its Layouts quick-launch tray, which opens a
+  // layout directly rather than this management page.)
+  if (["apps", "connections", "loops", "skills", "agents", "layouts"].includes(section)) {
     void window.glyphh.setPreference?.("homeLastSection", "settings");
     void window.glyphh.setPreference?.("homeLastSub", section);
     openSettingsModal(section);
@@ -147,7 +148,7 @@ export function gotoSection(section: string, sub?: string): void {
   }
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
-  if (["layouts", "files"].includes(section)) {
+  if (["files"].includes(section)) {
     void window.glyphh.railCollapseSet?.(false);
   }
   void window.glyphh.setPreference?.("homeLastSection", section);
@@ -329,6 +330,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "loops") { mountSettingsSection("loops"); void loadLoops(); }
   else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
   else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
+  else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
 }
 
 // ── Docs-in-modal adoption ───────────────────────────────
@@ -384,6 +386,7 @@ const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   loops: { host: "settings-loops-host" },
   skills: { host: "settings-skills-host" },
   agents: { host: "settings-agents-host" },
+  layouts: { host: "settings-layouts-host" },
 };
 
 /** Where a moved section lives when NOT adopted (the hidden #page-body pen),

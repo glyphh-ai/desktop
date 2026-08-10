@@ -4561,10 +4561,11 @@ ol.docs-list li::before {
   padding: 0;
 }
 
-/* Apps / Connections sub-panels (A2) — the WHOLE .help-section node is adopted
-   into the host, so the panel becomes a flex column that gives the section its
-   full-height context (its own .active rule sets display:flex; height:100% and
-   owns the scroll + detail-pane switching). */
+/* Adopted full-page sections in the modal (Apps, Connections, Loops, Skills,
+   Agents, Layouts). The WHOLE .help-section node is adopted into the host, so
+   the panel becomes a flex column that gives the section its full-height
+   context. These rules make the adopted section read as a NATIVE settings
+   panel: same gutters, left-aligned full-width content, ONE scroll container. */
 .settings-modal-body .settings-panels .settings-panel-section {
   padding: 0;
   height: 100%;
@@ -4576,17 +4577,40 @@ ol.docs-list li::before {
 }
 .settings-modal-body .settings-panel-section > [id$="-host"] {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
 }
+/* The adopted section IS the scroll container — matches a native .settings-panel
+   inside .settings-panels (padding: 8px 28px, top bumped to 16px for the close
+   button). The outer .settings-panels padding is zeroed below so this is the
+   ONLY gutter (no double edge) and the ONLY vertical scrollbar (no double bar). */
 .settings-modal-body .settings-panel-section > [id$="-host"] > .help-section {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  padding: 16px 28px 20px;
+  box-sizing: border-box;
 }
-/* The adopted section brings its own page padding; drop the panels' gutter so
-   the edges don't double up when Apps/Connections is showing. */
+/* Kill the section's own page-level <h2> title inside the modal — the settings
+   nav already labels it. Only the DIRECT-child page header (and Apps' library
+   heading); deeper functional <h2>s (marketplace banner, editors) are untouched. */
+.settings-modal-body .settings-panel-section > [id$="-host"] > .help-section > h2,
+.settings-modal-body .settings-panel-section .apps-page-heading {
+  display: none;
+}
+/* The adopted section owns the gutter + scroll now, so the panels wrapper adds
+   neither when a section is active — no double padding, no double scrollbar. */
 .settings-modal-body .settings-panels:has(.settings-panel-section.active) {
-  padding: 0 0 0 12px;
+  padding: 0;
+  overflow-y: hidden;
+}
+/* The full-page Apps marketplace rule lets the OUTER page (#help-content) scroll
+   by making the section overflow:visible — there's no such outer scroller in the
+   modal, so re-assert the section as the scroll container for that tab too. */
+.settings-modal-body .settings-panel-section > [id$="-host"] > .help-section[data-section="apps"].active:has(#apps-marketplace-page:not(.hidden)) {
+  height: 100%;
+  overflow-y: auto;
 }
 
 .pagination-bar {
