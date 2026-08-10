@@ -4502,6 +4502,34 @@ ol.docs-list li::before {
   padding: 0;
 }
 
+/* Apps / Connections sub-panels (A2) — the WHOLE .help-section node is adopted
+   into the host, so the panel becomes a flex column that gives the section its
+   full-height context (its own .active rule sets display:flex; height:100% and
+   owns the scroll + detail-pane switching). */
+.settings-modal-body .settings-panels .settings-panel-section {
+  padding: 0;
+  height: 100%;
+}
+.settings-modal-body .settings-panels .settings-panel-section.active {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.settings-modal-body .settings-panel-section > [id$="-host"] {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.settings-modal-body .settings-panel-section > [id$="-host"] > .help-section {
+  flex: 1;
+  min-height: 0;
+}
+/* The adopted section brings its own page padding; drop the panels' gutter so
+   the edges don't double up when Apps/Connections is showing. */
+.settings-modal-body .settings-panels:has(.settings-panel-section.active) {
+  padding: 0 0 0 12px;
+}
+
 .pagination-bar {
   display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px 0;
 }

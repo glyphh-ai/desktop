@@ -128,9 +128,17 @@ export function gotoSection(section: string, sub?: string): void {
     if (sub) showDocPanel(sub);
     return;
   }
+  // Apps + Connections moved INTO the settings modal (A2) — management is a
+  // settings sub-panel now, not a full-page rail section.
+  if (section === "apps" || section === "connections") {
+    void window.glyphh.setPreference?.("homeLastSection", "settings");
+    void window.glyphh.setPreference?.("homeLastSub", section);
+    openSettingsModal(section);
+    return;
+  }
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
-  if (["apps", "connections", "layouts", "settings"].includes(section)) {
+  if (["layouts"].includes(section)) {
     void window.glyphh.railCollapseSet?.(false);
   }
   void window.glyphh.setPreference?.("homeLastSection", section);
@@ -169,11 +177,14 @@ let settingsModalPanelsHidden = false;
 
 function selectSettingsSub(sub: string): void {
   const target = settingsSubAlias(sub);
-  const navBtns = document.querySelectorAll<HTMLButtonElement>(".settings-nav .settings-nav-item");
-  const panels = document.querySelectorAll<HTMLDivElement>(".settings-panels .settings-panel");
+  // Direct children of the MAIN settings nav/panels only — never the docs
+  // topics nav or its .docs-panels, which share the .settings-nav-item /
+  // .settings-panels class names.
+  const navBtns = document.querySelectorAll<HTMLButtonElement>(".settings-nav:not(.docs-nav) > .settings-nav-item");
+  const panels = document.querySelectorAll<HTMLDivElement>(".settings-modal-body > .settings-layout > .settings-panels > .settings-panel");
   navBtns.forEach((n) => n.classList.toggle("active", n.dataset.sub === target));
   panels.forEach((p) => p.classList.toggle("active", p.dataset.sub === target));
-  const panelsWrap = document.querySelector<HTMLElement>(".settings-modal-body .settings-panels");
+  const panelsWrap = document.querySelector<HTMLElement>(".settings-modal-body > .settings-layout > .settings-panels");
   if (panelsWrap) panelsWrap.scrollTop = 0;
   // A deep link must POPULATE the panel too — an empty Billing page because
   // nobody clicked the tab is the same bug as not loading it.
@@ -188,9 +199,12 @@ export function closeSettingsModal(): void {
   const overlay = document.getElementById("settings-modal");
   if (!overlay) return;
   document.removeEventListener("keydown", onSettingsModalKey, true);
-  // Park the adopted docs body back in its own hidden section FIRST, so the
-  // settings layout below doesn't carry it back into the settings pen.
+  // Park every adopted section body (docs, apps, connections) back into its own
+  // hidden section FIRST, so the settings layout below doesn't carry any of
+  // them back into the settings pen.
   parkSettingsDocs();
+  parkSettingsSection("apps");
+  parkSettingsSection("connections");
   // Park the shared .settings-layout DOM back in its hidden section pen so its
   // ids stay unique and it's ready to be re-adopted next open.
   const layout = overlay.querySelector<HTMLElement>(".settings-modal-body > .settings-layout");
@@ -296,6 +310,8 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "models") loadModelsAdmin();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
+  else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
+  else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
 }
 
 // ── Docs-in-modal adoption ───────────────────────────────
@@ -334,6 +350,49 @@ function parkSettingsDocs(): void {
   if (body && docsHomePen) docsHomePen.appendChild(body);
 }
 
+// ── Apps / Connections in-modal adoption (A2) ────────────
+//
+// Same move-not-clone discipline. Unlike docs (whose CSS keys off .docs-panel
+// classes), the apps and connections layouts are styled through selectors
+// scoped to `.help-section[data-section=X]` and its DIRECT children — so moving
+// only the children out would break those rules. Instead the WHOLE
+// `.help-section` node is moved into the panel host and given `.active` (so its
+// full-height flex + detail-pane CSS still applies), then parked straight back
+// into #page-body on close. Its `data-section` never triggers the workbench,
+// since nothing routes apps/connections there anymore.
+const SETTINGS_SECTIONS: Record<string, { host: string }> = {
+  apps: { host: "settings-apps-host" },
+  connections: { host: "settings-connections-host" },
+};
+
+/** Where a moved section lives when NOT adopted (the hidden #page-body pen),
+ *  captured on first mount so it can be parked back precisely. */
+const settingsSectionPen: Record<string, HTMLElement | null> = {};
+
+/** Adopt the whole .help-section[data-section=X] node into its settings-modal
+ *  host and activate it. Idempotent — a no-op once already adopted. */
+function mountSettingsSection(section: string): void {
+  const cfg = SETTINGS_SECTIONS[section];
+  if (!cfg) return;
+  const host = document.getElementById(cfg.host);
+  const sec = document.querySelector<HTMLElement>(`.help-section[data-section='${section}']`);
+  if (!host || !sec) return;
+  if (sec.parentElement === host) { sec.classList.add("active"); return; }
+  settingsSectionPen[section] = sec.parentElement as HTMLElement | null;
+  sec.classList.add("active");
+  host.appendChild(sec);
+}
+
+/** Park a section's node back into its hidden #page-body pen and deactivate it. */
+function parkSettingsSection(section: string): void {
+  const cfg = SETTINGS_SECTIONS[section];
+  if (!cfg) return;
+  const host = document.getElementById(cfg.host);
+  const sec = host?.querySelector<HTMLElement>(`.help-section[data-section='${section}']`);
+  const pen = settingsSectionPen[section];
+  if (sec && pen) { sec.classList.remove("active"); pen.appendChild(sec); }
+}
+
 // ── Docs inner sub-navigation ────────────────────────────
 
 const docsSubNav = document.querySelectorAll<HTMLButtonElement>(".docs-nav .settings-nav-item");
@@ -365,7 +424,10 @@ export function initHelp() {
   // MOVED into the settings modal on open, so bind by data-attr (not by
   // section-scoped selectors that break once the layout leaves the section)
   // and re-query the panel set at click time from wherever the layout now is.
-  const settingsSubNav = document.querySelectorAll<HTMLButtonElement>(".settings-nav .settings-nav-item");
+  // Scope to the MAIN settings nav's own direct items — NOT the docs topics
+  // nav (`.settings-nav.docs-nav`), whose buttons are also `.settings-nav-item`
+  // and would otherwise double-bind and wipe the active state on a topic click.
+  const settingsSubNav = document.querySelectorAll<HTMLButtonElement>(".settings-nav:not(.docs-nav) > .settings-nav-item");
   settingsSubNav.forEach((btn) => {
     btn.addEventListener("click", () => {
       // Docs has its own topics nav, so it opens as its own section — and the
@@ -377,10 +439,10 @@ export function initHelp() {
         return;
       }
       const sub = btn.dataset.sub!;
-      document.querySelectorAll(".settings-nav .settings-nav-item").forEach((n) => n.classList.remove("active"));
-      document.querySelectorAll(".settings-panels .settings-panel").forEach((p) => p.classList.remove("active"));
+      document.querySelectorAll(".settings-nav:not(.docs-nav) > .settings-nav-item").forEach((n) => n.classList.remove("active"));
+      document.querySelectorAll(".settings-panels > .settings-panel").forEach((p) => p.classList.remove("active"));
       btn.classList.add("active");
-      const target = document.querySelector(`.settings-panels .settings-panel[data-sub="${sub}"]`);
+      const target = document.querySelector(`.settings-panels > .settings-panel[data-sub="${sub}"]`);
       if (target) target.classList.add("active");
       loadSettingsSub(sub);
     });

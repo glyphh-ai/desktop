@@ -90,20 +90,14 @@
           <span>New session</span>
         </button>
         <nav class="app-rail-nav">
-          <button class="app-rail-nav-item" data-section="connections">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-            <span>Connections</span>
-          </button>
-          <button class="app-rail-nav-item" data-section="apps">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>
-            <span>Apps</span>
-          </button>
+          <!-- Apps + Connections moved into Settings (A2); their rail page-links
+               are gone — management lives in the settings modal now. -->
           <button class="app-rail-nav-item" data-section="layouts">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="12"/></svg>
             <span>Layouts</span>
           </button>
-          <!-- Home, Connections, Apps, and Layouts are pinned; everything
-               else lives in a fly-out to the RIGHT of More (navigation.ts). -->
+          <!-- Layouts is pinned; everything else lives in a fly-out to the
+               RIGHT of More (navigation.ts). -->
           <button id="rail-more-toggle" class="app-rail-nav-item app-rail-more-toggle" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
             <span>More</span>
@@ -121,17 +115,13 @@
              page / command center, ordered by last-opened, opened with the same
              launch the Apps page uses. -->
         <div id="recents-vsplit" class="recents-vsplit" title="Drag to resize"></div>
-        <!-- Apps section — collapsible; open icon → Apps page. -->
+        <!-- Apps section — collapsible quick-launch grid. The reset + open-page
+             header buttons were removed in A2 (Apps management lives in Settings
+             now); the toggle + search + grid stay as the launcher. -->
         <div class="code-rail-label app-rail-section-head">
           <button id="rail-apps-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
             <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             <span>Apps</span>
-          </button>
-          <button class="rail-label-btn rail-reset-btn" title="Reset — close all panels, back to the wall" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-          </button>
-          <button id="apps-open-btn" class="rail-label-btn" title="Open Apps page" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </button>
         </div>
         <div id="rail-apps-body" class="app-rail-section-body">
