@@ -388,7 +388,7 @@ body {
 .m-chats-fade-bottom {
   top: auto;
   bottom: 0;
-  height: calc(var(--safe-bottom) + 118px);
+  height: calc(var(--safe-bottom) + 88px);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 42%);
   mask-image: linear-gradient(to bottom, transparent 0%, #000 42%);
 }
