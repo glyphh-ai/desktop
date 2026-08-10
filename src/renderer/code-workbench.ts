@@ -1476,6 +1476,13 @@ async function init(): Promise<void> {
         <div class="echo-drip-pop hidden"></div>
       </div>
       <div class="echo-veil"></div>
+      <div class="echo-layout-bar hidden">
+        <span class="echo-layout-bar-name"></span>
+        <button class="ws-icon-btn echo-layout-close" type="button" title="Close layout — close every panel in it">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          <span>Close layout</span>
+        </button>
+      </div>
       <div class="echo-cards"></div>
       <div class="echo-zoom">
         <button class="ws-icon-btn echo-shadow-btn" title="Show the wall (hold ⌃⌥)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
@@ -1565,7 +1572,12 @@ async function init(): Promise<void> {
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
     interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
-    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean }
+    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
+      /** B1/B2: the layout open that spawned this card. Every panel a layout
+       *  fans out shares one id; a standalone app open has none. A card with a
+       *  layoutId hides its own X (closing is via the layout bar) and is torn
+       *  down as a group by closeLayoutGroup. */
+      layoutId?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
     const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; highlight: string; font: string } => {
@@ -2048,6 +2060,11 @@ async function init(): Promise<void> {
     // The layout whose cards are on stage — dragged/resized card geometry is
     // remembered under its name and restored on the next open.
     let echoLayoutName: string | null = null;
+    // B1/B2: the id shared by every card the CURRENT layout open fanned out.
+    // Minted per open in openLayoutInEchoArranged; stamped onto each entry so a
+    // card knows it belongs to a layout (hide its X) and the layout bar can tear
+    // the whole set down in one action.
+    let activeLayoutId: string | null = null;
     const echoMemKey = (name: string): string => `echo:layout:${name.trim().toLowerCase()}`;
     /** A fingerprint of the layout's DEFINITION — grid size plus every cell's
      *  panel and slot. Remembered positions override the definition (that is
@@ -2352,15 +2369,30 @@ async function init(): Promise<void> {
         if (!dripPop.classList.contains("hidden") && !dripPop.contains(ev.target as Node)) closeDripPop();
       });
     }
+    // B1: the layout bar — one control that closes the whole layout. Shown only
+    // while a layout's cards are on stage (any open card carries a layoutId).
+    // Defined ABOVE layoutCards so there is no forward reference.
+    const layoutBar = body.querySelector<HTMLElement>(".echo-layout-bar")!;
+    const layoutBarName = body.querySelector<HTMLElement>(".echo-layout-bar-name")!;
+    body.querySelector<HTMLElement>(".echo-layout-close")!
+      .addEventListener("click", () => closeLayoutGroup());
+    const paintLayoutBar = (): void => {
+      const inLayout = openList.some((e) => e.layoutId != null);
+      layoutBar.classList.toggle("hidden", !inLayout);
+      if (inLayout) layoutBarName.textContent = echoLayoutName || "Layout";
+    };
     const layoutCards = (): void => {
       const n = openList.length;
-      if (!n) { paintDividers(false); syncWallVisibility(); return; }   // no panels ⇒ no seams
+      if (!n) { paintDividers(false); syncWallVisibility(); paintLayoutBar(); return; }   // no panels ⇒ no seams
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const grid = gridRects();
       const flow = flowRects(openList.filter((e) => !(grid && grid.has(e))));
       openList.forEach((e) => {
         if (!e.card) return;
         e.card.classList.toggle("echo-pinned", !!e.tile.sticky);
+        // B2: a panel that's part of a layout hides its own X — closing happens
+        // via the layout bar (B1). A standalone app (no layoutId) keeps its X.
+        e.card.classList.toggle("echo-card-in-layout", e.layoutId != null);
         if (e.card.classList.contains("expanded")) {
           setRect(e.card, { left: 0, top: 0, width: w, height: h });
           return;
@@ -2371,6 +2403,7 @@ async function init(): Promise<void> {
       paintDividers(grid ? true : false);
       syncWallVisibility();
       paintSectionToggles();   // an echo card IS the tool's open state
+      paintLayoutBar();
     };
     relayout = layoutCards;
     /** DIVIDERS — draggable seams between grid columns/rows (the old rail
@@ -2527,6 +2560,32 @@ async function init(): Promise<void> {
         }
       }, 380);
       if (!openList.length) setShadow(false, false);
+      layoutCards();
+    };
+    /** B1: close a LAYOUT as one unit — tear down every open card that shares
+     *  the given layoutId (or the active layout's id when none is passed), then
+     *  drop the grid state so the surface falls back to the command center (B4).
+     *  Layout terminals with "Maintain on close" are parked, same as a nav-away.
+     */
+    const closeLayoutGroup = (layoutId?: string): void => {
+      const id = layoutId ?? activeLayoutId;
+      if (!id) return;
+      saveEchoLayoutMem();   // a "last" layout remembers its panels through a close
+      for (const x of [...openList]) {
+        if (x.layoutId === id) closeCard(x, { parkTerms: true });
+      }
+      // If nothing outside the layout remained, the grid is gone — clear its
+      // state so a fresh open starts clean and the wall/command center returns.
+      if (!openList.length) {
+        echoGrid = null;
+        gridHoles = [];
+        echoLayoutName = null;
+        echoActiveLayout = null;
+        activeLayoutId = null;
+        setShadow(false, false);
+        userMoved = false;
+        refit?.();
+      }
       layoutCards();
     };
     /** The card shell every open shares: head (name / expand / close), a
@@ -2769,9 +2828,14 @@ async function init(): Promise<void> {
         // the OUTGOING layout remembers what its panels were doing (last
         // page, open files, browser tabs) — capture before the teardown
         saveEchoLayoutMem();   // the OUTGOING layout's save runs under ITS contract
+        // B3: OPEN = WIPE-THEN-MOUNT — a layout open first tears down whatever
+        // is up (the previous layout AND any standalone apps), so only the new
+        // layout's panels remain.
         for (const x of [...openList]) closeCard(x, { parkTerms: true });
         echoLayoutName = layout.name || null;
         echoActiveLayout = echoLayoutName ? { name: echoLayoutName, mode: layout.sessionMode ?? "keep" } : null;
+        // B1: mint the shared id for every panel THIS open fans out.
+        activeLayoutId = `layout-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
         interface EchoLayoutMem { sig?: string; colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number; state?: EchoCellState }> }
         let mem: EchoLayoutMem | null = null;
         echoLayoutSig = layoutSig(layout);
@@ -2844,6 +2908,8 @@ async function init(): Promise<void> {
           if (entry?.card) {
             seenKeys.set(id, (seenKeys.get(id) ?? 0) + 1);
             entry.memKey = pendingKey;
+            // B1/B2: this card belongs to the layout being opened.
+            entry.layoutId = activeLayoutId ?? undefined;
             // the editor gets its files back (contents re-read from disk)
             if (st?.files?.length && entry.toolSlot?.view === "monaco") {
               const m = entry.toolSlot as MonacoSlot;
@@ -3066,6 +3132,12 @@ async function init(): Promise<void> {
         // fanning out its own cells, and a pin never retargets itself)
         const pinned = openList.find((x) => x.tile.sticky && x.card && x !== e);
         if (pinned && !openingLayout) { retargetCard(pinned, t); return; }
+        // B3: OPEN = WIPE-THEN-MOUNT. A wall app-tile click (this direct path,
+        // not ctl.openApp) replaces the current layout AND any open apps — one
+        // app at a time. NEVER during a layout fan-out (openingLayout guards the
+        // cells this same function builds), and never when this very card is the
+        // only thing open.
+        if (!openingLayout && openList.some((x) => x !== e && x.card)) resetEcho();
         const card = openShell(e);
         if (!card) return;
         mountAppIntoCard(e, card);
@@ -3197,13 +3269,13 @@ async function init(): Promise<void> {
         if (!tile) return;
         const pinned = openList.find((x) => x.tile.sticky && x.card);
         if (pinned) { retargetCard(pinned, tile); return; }
-        // An APP open REPLACES an open layout — the same rule openSection
-        // already applies to nav pages. Without it the new card stacked over
-        // the layout while its grid slots lived on underneath (stale seams
-        // and dividers under the fresh panel, on both surfaces). The reset
-        // saves the layout's memory ("last" resumes it); a PIN above still
-        // captures the open into the pinned location with the layout intact.
-        if (echoGrid) resetEcho();
+        // B3: OPEN = WIPE-THEN-MOUNT. An app open REPLACES whatever is up — the
+        // current layout AND any other open apps — so only the one new app
+        // remains (one app or one layout at a time; opens never accumulate).
+        // The reset saves an open layout's memory ("last" resumes it); a PIN
+        // above still captures the open into the pinned slot with the rest
+        // intact (the deliberate sticky-slot exception).
+        if (openList.length) resetEcho();
         activateTile(adHoc(tile));
       },
       openLayout: (layout) => openLayoutInEcho(layout),
@@ -3627,6 +3699,7 @@ async function init(): Promise<void> {
       gridHoles = [];
       echoLayoutName = null;
       echoActiveLayout = null;
+      activeLayoutId = null;
       setShadow(false, false);
       userMoved = false;
       refit?.();

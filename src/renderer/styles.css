@@ -15449,6 +15449,38 @@ body.code-dragging webview { pointer-events: none !important; }
 .echo-card-head .ws-icon-btn:hover { background: var(--hover); color: var(--text); }
 .echo-card-head svg { width: 13px; height: 13px; }
 
+/* B2: a panel that belongs to a LAYOUT hides its own close (X) — the layout is
+   closed as a whole via the layout bar (B1). Standalone app cards keep their X. */
+.echo-card.echo-card-in-layout .echo-card-close { display: none; }
+
+/* B1: the layout bar — one "Close layout" control, shown only while a layout's
+   panels are on stage. Sits top-center above the cards, out of the way. */
+.echo-layout-bar {
+  position: absolute;
+  top: 8px; left: 50%; transform: translateX(-50%);
+  z-index: 6;
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 6px 4px 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  max-width: 70%;
+}
+.echo-layout-bar.hidden { display: none; }
+.echo-layout-bar-name {
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.echo-layout-close {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px 4px 10px; width: auto; height: auto;
+  border: none; border-radius: 999px; cursor: pointer;
+  background: var(--surface-3); color: var(--text-2);
+  font-size: 12px; font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+.echo-layout-close:hover { background: var(--danger, #e5484d); color: #fff; }
+.echo-layout-close svg { width: 13px; height: 13px; }
+
 /* Shadow mode (⌘⇧E): open cards fade to ghosts and stop taking input so
    the wall behind is visible and clickable; opening another app, closing
    the last one, toggling again, or Esc exits. */
