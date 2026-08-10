@@ -383,6 +383,15 @@ body {
 /* Retained modifier — the base already carries the top values; kept so existing
    `m-chats-fade m-chats-fade-top` markup stays valid. */
 .m-chats-fade-top { top: 0; }
+/* Bottom blur: the list scrolls fuzzily DOWN under the search bar to the page bottom
+   (mirror of the top fade — anchored to the bottom, mask flipped). */
+.m-chats-fade-bottom {
+  top: auto;
+  bottom: 0;
+  height: calc(var(--safe-bottom) + 118px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 42%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 42%);
+}
 
 /* Floating New chat + bottom search bar (both ride ABOVE the blur zone). */
 /* Exact twin of the rail's New Chat button: .btn .btn-primary .btn-lg + 18px

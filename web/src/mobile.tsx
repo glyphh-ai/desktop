@@ -558,6 +558,7 @@ function HomeList({ desktops, sessions, pinnedIds, loading, activity, sourceOf, 
       {/* Header + footer reuse the chats classes — identical transparency,
           size, and the search input. */}
       <div className="m-chats-fade m-chats-fade-top" />
+      <div className="m-chats-fade m-chats-fade-bottom" />
       <header className="m-chats-head">
         <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
         <span className="m-chats-title">Sessions</span>
