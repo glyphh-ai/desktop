@@ -2140,16 +2140,45 @@ function AppearanceTray() {
   const [theme, setTheme] = useState(currentTheme);
   const pick = (t: string) => { haptic(); setTheme(t); applyTheme(t); };
   const sysResolved = (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  // Escape hatch to the FULL desktop site (iPad + tablets). `/m` is a SEPARATE
+  // bundle from the desktop shell — a CSS breakpoint can't switch it — so this
+  // sets a persistent flag that tells the shell's touch-redirect (serve.mjs) to
+  // stand down, then loads `/`. Only shown at tablet width so a phone can't
+  // strand itself in a layout it can't use. Return path: visit the /m address.
+  const tablet = typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches;
+  const [desktopSite, setDesktopSite] = useState(() => { try { return localStorage.getItem('glyphh_force_desktop') === '1'; } catch { return false; } });
+  const toggleDesktopSite = () => {
+    haptic();
+    const next = !desktopSite;
+    setDesktopSite(next);
+    try {
+      if (next) { localStorage.setItem('glyphh_force_desktop', '1'); location.href = '/'; }
+      else { localStorage.removeItem('glyphh_force_desktop'); }
+    } catch { /* private mode — the toggle just no-ops */ }
+  };
   return (
-    <div className="m-sel-group">
-      {THEMES.map((o) => (
-        <button key={o.id} className="m-opt" onClick={() => pick(o.id)}>
-          <span className="m-theme-sw" data-theme={o.id === 'system' ? sysResolved : o.id} aria-hidden="true" />
-          <span className="m-opt-text"><span className="m-opt-name">{o.name}</span>{o.desc && <span className="m-opt-desc">{o.desc}</span>}</span>
-          {theme === o.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="m-sel-group">
+        {THEMES.map((o) => (
+          <button key={o.id} className="m-opt" onClick={() => pick(o.id)}>
+            <span className="m-theme-sw" data-theme={o.id === 'system' ? sysResolved : o.id} aria-hidden="true" />
+            <span className="m-opt-text"><span className="m-opt-name">{o.name}</span>{o.desc && <span className="m-opt-desc">{o.desc}</span>}</span>
+            {theme === o.id && <span className="m-opt-tick"><Icon name="tick" /></span>}
+          </button>
+        ))}
+      </div>
+      {tablet && (
+        <>
+          <div className="m-set-label">Layout</div>
+          <div className="m-sel-group">
+            <div className="m-sel-row">
+              <span className="m-opt-text"><span className="m-opt-name">Desktop site</span><span className="m-opt-desc">Use the full desktop layout on this iPad — return via the /m address.</span></span>
+              <Switch on={desktopSite} onClick={toggleDesktopSite} />
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 

@@ -260,9 +260,13 @@ const server = http.createServer(async (req, res) => {
       // shells we run a tiny pre-bridge script: any TOUCH device (coarse primary
       // pointer = phone or tablet, incl. iPad-as-Mac) that is signed in replaces
       // to the mobile app. Desktops (fine pointer) and signed-out users stay put.
+      // The `glyphh_force_desktop` localStorage flag (set by the mobile app's
+      // Appearance → "Desktop site" toggle) is the escape hatch: a tablet that
+      // opted into the full desktop layout must NOT be bounced back to /m.
       const touchRedirect =
         "<script>try{if(matchMedia('(pointer: coarse)').matches"
-        + "&&document.cookie.indexOf('glyphh_logged_in=1')>=0)"
+        + "&&document.cookie.indexOf('glyphh_logged_in=1')>=0"
+        + "&&localStorage.getItem('glyphh_force_desktop')!=='1')"
         + "location.replace('/m')}catch(e){}</script>";
       // The mobile shell loads its OWN React bundle (declared in mobile.html) and
       // must not get the desktop renderer bridge — only the client-safe config.
