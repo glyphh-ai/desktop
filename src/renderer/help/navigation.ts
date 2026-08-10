@@ -128,9 +128,10 @@ export function gotoSection(section: string, sub?: string): void {
     if (sub) showDocPanel(sub);
     return;
   }
-  // Apps + Connections moved INTO the settings modal (A2) — management is a
-  // settings sub-panel now, not a full-page rail section.
-  if (section === "apps" || section === "connections") {
+  // Apps + Connections (A2) and Loops + Skills + Agents (A3) moved INTO the
+  // settings modal — each is a settings sub-panel now, not a full-page rail
+  // section.
+  if (["apps", "connections", "loops", "skills", "agents"].includes(section)) {
     void window.glyphh.setPreference?.("homeLastSection", "settings");
     void window.glyphh.setPreference?.("homeLastSub", section);
     openSettingsModal(section);
@@ -199,12 +200,11 @@ export function closeSettingsModal(): void {
   const overlay = document.getElementById("settings-modal");
   if (!overlay) return;
   document.removeEventListener("keydown", onSettingsModalKey, true);
-  // Park every adopted section body (docs, apps, connections) back into its own
-  // hidden section FIRST, so the settings layout below doesn't carry any of
-  // them back into the settings pen.
+  // Park every adopted section body (docs + the whole-node sections) back into
+  // its own hidden section FIRST, so the settings layout below doesn't carry
+  // any of them back into the settings pen.
   parkSettingsDocs();
-  parkSettingsSection("apps");
-  parkSettingsSection("connections");
+  for (const s of Object.keys(SETTINGS_SECTIONS)) parkSettingsSection(s);
   // Park the shared .settings-layout DOM back in its hidden section pen so its
   // ids stay unique and it's ready to be re-adopted next open.
   const layout = overlay.querySelector<HTMLElement>(".settings-modal-body > .settings-layout");
@@ -312,6 +312,9 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
   else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
+  else if (sub === "loops") { mountSettingsSection("loops"); void loadLoops(); }
+  else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
+  else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
 }
 
 // ── Docs-in-modal adoption ───────────────────────────────
@@ -350,19 +353,23 @@ function parkSettingsDocs(): void {
   if (body && docsHomePen) docsHomePen.appendChild(body);
 }
 
-// ── Apps / Connections in-modal adoption (A2) ────────────
+// ── Whole-section in-modal adoption (A2 apps/connections, A3 loops/skills/
+//    agents) ────────────
 //
 // Same move-not-clone discipline. Unlike docs (whose CSS keys off .docs-panel
-// classes), the apps and connections layouts are styled through selectors
-// scoped to `.help-section[data-section=X]` and its DIRECT children — so moving
-// only the children out would break those rules. Instead the WHOLE
-// `.help-section` node is moved into the panel host and given `.active` (so its
-// full-height flex + detail-pane CSS still applies), then parked straight back
-// into #page-body on close. Its `data-section` never triggers the workbench,
-// since nothing routes apps/connections there anymore.
+// classes), these layouts are styled through selectors scoped to
+// `.help-section[data-section=X]` and its DIRECT children — so moving only the
+// children out would break those rules. Instead the WHOLE `.help-section` node
+// is moved into the panel host and given `.active` (so its full-height flex +
+// detail-pane CSS still applies), then parked straight back into #page-body on
+// close. Its `data-section` never triggers the workbench, since nothing routes
+// these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   apps: { host: "settings-apps-host" },
   connections: { host: "settings-connections-host" },
+  loops: { host: "settings-loops-host" },
+  skills: { host: "settings-skills-host" },
+  agents: { host: "settings-agents-host" },
 };
 
 /** Where a moved section lives when NOT adopted (the hidden #page-body pen),
@@ -457,63 +464,15 @@ export function initHelp() {
   // base, Home is a nav item like the rest, and clicking the ACTIVE section
   // returns to the agent — so every section toggles back to code.
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item").forEach((btn) => {
-    if (!btn.dataset.section) return; // the More toggle is not a section
+    if (!btn.dataset.section) return; // non-section rail buttons are skipped
     btn.addEventListener("click", () => {
       gotoSection(btn.classList.contains("active") ? "code" : btn.dataset.section!);
     });
   });
 
-  // ── "More" fly-out — everything but Home + Connections lives here, in a
-  //    popup that opens to the RIGHT of the More button so the rail stays a
-  //    short, tidy three-item column. ──
-  // space: rail tabs that show the item (word list) — absent = all spaces
-  const MORE_ITEMS: Array<{ section: string; label: string; icon: string; space?: string }> = [
-    { section: "loops", label: "Loops", space: "code", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg>` },
-    { section: "skills", label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg>` },
-    { section: "agents", label: "Agents", space: "code", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>` },
-  ];
-  const moreToggle = document.getElementById("rail-more-toggle");
-  let moreMenu: HTMLDivElement | null = null;
-  // Capture phase, so a click ANYWHERE off the menu closes it even when the
-  // clicked control stops propagation (the rail's open-page buttons do).
-  const closeMore = (): void => { moreMenu?.remove(); moreMenu = null; document.removeEventListener("click", onMoreOutside, true); };
-  const onMoreOutside = (ev: MouseEvent): void => {
-    if (!(ev.target as HTMLElement).closest("#rail-more-menu, #rail-more-toggle")) closeMore();
-  };
-  const activeSection = (): string => document.body.dataset.railSection || "";
-  moreToggle?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (moreMenu) { closeMore(); return; }
-    const menu = document.createElement("div");
-    menu.id = "rail-more-menu";
-    menu.className = "code-menu rail-more-menu";
-    const space = document.body.dataset.railSpace || "chat";
-    for (const it of MORE_ITEMS.filter((x) => !x.space || x.space.split(" ").includes(space))) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "app-rail-nav-item" + (activeSection() === it.section ? " active" : "");
-      b.innerHTML = `${it.icon}<span>${it.label}</span>`;
-      b.addEventListener("click", () => {
-        closeMore();
-        gotoSection(it.section);
-      });
-      menu.appendChild(b);
-    }
-    document.body.appendChild(menu);
-    moreMenu = menu; // track it so closeMore() and the outside-click can remove it
-    // Anchor to the RIGHT of the More button, top-aligned; nudge back on screen.
-    const r = moreToggle.getBoundingClientRect();
-    menu.style.left = `${r.right + 6}px`;
-    menu.style.top = `${Math.min(r.top, window.innerHeight - menu.offsetHeight - 8)}px`;
-    moreToggle.classList.add("open");
-    setTimeout(() => document.addEventListener("click", onMoreOutside, true), 0);
-  });
-  // The More button highlights when one of its sections is the active one.
-  const moreSections = new Set(MORE_ITEMS.map((i) => i.section));
-  new MutationObserver(() => {
-    moreToggle?.classList.toggle("active", moreSections.has(activeSection()));
-    if (!moreMenu) moreToggle?.classList.remove("open");
-  }).observe(document.body, { attributes: true, attributeFilter: ["data-rail-section"] });
+  // The "More" fly-out (Loops / Skills / Agents) was removed in A3 — those
+  // sections live in the Settings modal now, so the rail no longer carries a
+  // More toggle or its dynamic menu.
 
   // User area — dropdown opens upward: Settings / Account / Logout.
   const GEAR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;

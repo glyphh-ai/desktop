@@ -3217,6 +3217,9 @@ body.account-locked #dl-btn-wrap {
 .help-section[data-section="dashboard"].active,
 .help-section[data-section="apps"].active,
 .help-section[data-section="connections"].active,
+.help-section[data-section="loops"].active,
+.help-section[data-section="skills"].active,
+.help-section[data-section="agents"].active,
 .help-section[data-section="layouts"].active,
 .help-section[data-section="mcp"].active,
 .help-section[data-section="library"].active,
@@ -15108,21 +15111,6 @@ body.code-dragging webview { pointer-events: none !important; }
 
 
 
-
-/* ── Rail "More" disclosure — Loops/Skills/Agents fold under it ── */
-/* Quieter than the real destinations — it is a disclosure, not a page. Dark
-   mode dims it further; hover and open restore full presence. */
-.app-rail-more-toggle { opacity: 0.85; }
-
-[data-theme="dark"] .app-rail-more-toggle { opacity: 0.55; }
-
-.app-rail-more-toggle:hover, .app-rail-more-toggle.open, .app-rail-more-toggle.active { opacity: 1; }
-
-/* The More fly-out — a code-menu (fixed + shadowed) holding rail nav items,
-   opened to the right of the More button. */
-.rail-more-menu { display: flex; flex-direction: column; gap: 2px; min-width: 152px; }
-
-.rail-more-menu .app-rail-nav-item { width: 100%; }
 
 
 /* .code-menu family — the shared dropdown chrome the rail menus ride
