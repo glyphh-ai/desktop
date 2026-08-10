@@ -12792,6 +12792,10 @@ select:focus {
 .session-head-kebab { -webkit-app-region: no-drag; }
 /* No open session (a landing): hide the kebab — SessionHeader isn't rendered. */
 .code-agent-head.head-landing #code-session-kebab-wrap { display: none; }
+/* New-chat / landing screen: no header at all (the head carries no drag region
+   of its own — the app drag strip is #shell-drag-strip — so hiding it is safe).
+   A real open session keeps the normal head (back / title / pin / kebab). */
+.code-agent-head.head-landing { display: none; }
 .code-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -15334,13 +15338,9 @@ body.code-dragging webview { pointer-events: none !important; }
    three.js WebGL wall; drag pans, wheel/± zooms. ─────────────────────── */
 .ws-echo-body {
   position: relative; overflow: hidden;
-  /* The command center (chat/work/code) wears the SAME purple bloom as the splash
-     screen — the aurora-style radial glow layered over the theme's --bg. */
-  background:
-    radial-gradient(130% 120% at 0% 100%, rgba(147, 51, 234, 0.40) 0%, transparent 55%),
-    radial-gradient(100% 100% at 100% 0%, rgba(236, 72, 153, 0.26) 0%, transparent 52%),
-    var(--bg);
-  background-attachment: fixed;
+  /* The command center wears the theme's own background — NO bloom. (The splash
+     purple lives on the new-session HeroFlow backdrop, not here.) */
+  background: var(--bg);
 }
 .echo-stage { position: absolute; inset: 0; z-index: 1; overflow: hidden; cursor: grab; }
 .echo-stage:active { cursor: grabbing; }
@@ -15358,6 +15358,10 @@ body.code-dragging webview { pointer-events: none !important; }
 }
 .echo-zoom .ws-icon-btn:hover { color: var(--text); background: var(--hover); }
 .echo-zoom .ws-icon-btn.active { color: var(--accent); border-color: var(--accent); }
+/* Keep only the command icon (.echo-shadow-btn = "show the wall"); hide the
+   zoom in/out/reset trio. The elements STAY in the DOM so their click handlers
+   (bound later via querySelector(...)!.addEventListener) don't null-throw. */
+.echo-z-in, .echo-z-out, .echo-z-reset { display: none; }
 /* the header's command-center eye mirrors the echo eye's pinned state */
 #code-cc-btn.active { color: var(--accent); }
 
@@ -15425,7 +15429,7 @@ body.code-dragging webview { pointer-events: none !important; }
 }
 .echo-search-wrap {
   display: flex; align-items: center; gap: 10px;
-  width: 560px; max-width: 64vw;
+  flex: 0 1 560px; min-width: 0; max-width: 64vw;
   padding: 0 16px; height: 46px;
   border: 1px solid var(--border); border-radius: 13px;
   background: color-mix(in srgb, var(--surface-2) 82%, transparent);
@@ -15477,6 +15481,10 @@ body.code-dragging webview { pointer-events: none !important; }
 .echo-cards.echo-no-anim .echo-card { transition: none; }
 .echo-card.dragging .echo-card-head { cursor: grabbing; }
 .echo-card-body .code-agent { display: flex; flex: 1; min-width: 0; background: transparent; }
+/* Inside a workbench/layout panel the composer's default 48/52px gutters +
+   880px centering cap scrunch the input into a narrow column. Drop the gutters
+   right down and release the cap so the input uses the panel's full width. */
+.echo-card-body .code-composer { padding: 4px 12px 14px; max-width: none; margin: 0; }
 .echo-card-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* bare glyph buttons — no UA button chrome (the gray box) */
 .echo-card-head .ws-icon-btn {
@@ -15880,7 +15888,9 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .app-rail-tile:hover .tile-name { color: var(--text); }
 
 /* The wall's Chat/Work/Code agent tabs were removed — one session type now. */
-.echo-topbar-stacked { flex-wrap: wrap; justify-content: center; }
+/* Keep the drip button to the RIGHT of the search on one row (never wrap it
+   below); the search itself shrinks in tight panels via its flex-basis. */
+.echo-topbar-stacked { flex-wrap: nowrap; justify-content: center; max-width: 92%; }
 
 /* The rail's mark is the HOME button. */
 .app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }
