@@ -315,7 +315,7 @@ export async function harnessRun(
     // Publish the user's prompt as the run's FIRST frame so any surface observing this
     // run over the broker renders the turn's user message (assistant frames don't carry
     // it). Local display ignores the channel; the broker + relay sink forward it.
-    emit("glyphh-agent:prompt", { text: lastUser });
+    emit("glyphh-agent:prompt", { text: ask });
 
     run.on((frame: HarnessWireFrame) => {
       switch (frame.type) {
