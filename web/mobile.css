@@ -965,6 +965,13 @@ body {
 
 /* ── TABLET+ (iPad) : persistent sidebar, bigger type ── */
 @media (min-width: 768px) {
+  /* iPad-in-browser: `viewport-fit=cover` makes env(safe-area-inset-top) report
+     the device inset even though the browser chrome already owns that strip, so
+     the header's `safe-top + …` padding opened an empty band above the wordmark.
+     The tablet is never notched-standalone here — zero the top inset so the
+     header sits flush under the toolbar. (Phones stay <768px, untouched.) */
+  :root { --safe-top: 0px; }
+
   /* Tablet: the rail is a PERSISTENT sidebar — no push-drawer. Keep the shell a
      real flex row (NOT display:contents, which detached .m-main from the row so
      it couldn't inherit height and .m-nav collapsed → blank right pane + dead
