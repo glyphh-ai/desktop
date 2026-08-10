@@ -1429,7 +1429,19 @@ async function init(): Promise<void> {
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
-    else if (slot.view === "echo") renderEchoIntoSlot(body, wrap);
+    else if (slot.view === "echo") {
+      // The 3D command-center wall can throw on browsers the desktop shell was
+      // never meant to run in (e.g. iPad Safari via the web-served "Desktop
+      // site"). Contain it: ONE surface failing must not bubble through
+      // renderRail → renderRails → placeView → go and blank the whole page with
+      // an uncaught-error overlay. Degrade to the flat 2D card view instead.
+      try {
+        renderEchoIntoSlot(body, wrap);
+      } catch (err) {
+        console.error("echo wall render failed — degrading to the 2D fallback", err);
+        try { body.classList.add("ws-echo-body", "echo-nogl"); renderEchoFallback(body, wrap); } catch { /* keep the workbench alive no matter what */ }
+      }
+    }
     else if (slot.view === "section") renderSectionIntoSlot(body, slot);
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
