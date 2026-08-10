@@ -215,12 +215,15 @@ let particlesCleanup: (() => void) | null = null;
 // DashParticles component, verbatim): Work runs "converge" (streams entering
 // from both edges, meeting mid-canvas — purple/amber/pink), Chat runs "fall"
 // (the CLI page's cascade, streams falling like terminal output — teal/
-// emerald), and Code runs "rise" (streams flowing UP — greens, seed 1337).
+// emerald), and Code runs "rise" (streams flowing UP). Code is now the ONE
+// session type, so its backdrop must match the SPLASH screen's palette exactly
+// (index.template.html COLORS/PULSE — light-purple / purple / pink) rather than
+// the old per-space greens.
 export type FlowVariant = "cowork" | "chat" | "code";
 const FLOW_VARIANTS: Record<FlowVariant, { mode: "converge" | "fall" | "rise"; colors: readonly string[]; pulse: string; seed: number }> = {
   cowork: { mode: "converge", colors: ["179, 107, 251", "245, 158, 11", "236, 72, 153"], pulse: "255, 236, 180", seed: 2025 },
   chat: { mode: "fall", colors: ["94, 234, 212", "52, 211, 153", "179, 107, 251"], pulse: "190, 242, 255", seed: 4242 },
-  code: { mode: "rise", colors: ["52, 211, 153", "110, 231, 183", "134, 239, 172"], pulse: "187, 247, 208", seed: 1337 },
+  code: { mode: "rise", colors: ["179, 107, 251", "140, 59, 242", "236, 72, 153"], pulse: "255, 236, 180", seed: 1337 },
 };
 
 /** Is the ACTIVE theme light? Read from the theme's own --bg rather than a
