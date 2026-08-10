@@ -3465,39 +3465,9 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 
 [data-theme="dark"] .code-history-sec { opacity: 0.55; }
 
-/* The nav scopes to the active SPACE (data-space = word list of spaces
-   that show the item; untagged = all). CHAT can't navigate or do anything:
-   the whole nav, the command-center entry, and echo's controls hide. */
-body[data-rail-space="chat"] .app-rail-nav-item[data-space]:not([data-space~="chat"]) { display: none; }
-body[data-rail-space="cowork"] .app-rail-nav-item[data-space]:not([data-space~="cowork"]) { display: none; }
-body[data-rail-space="code"] .app-rail-nav-item[data-space]:not([data-space~="code"]) { display: none; }
-/* CHAT gets the nav too now — Connections, Apps, and Layouts are tagged
-   for it (per-item data-space scoping above does the filtering), and the
-   command center works in every space. */
+/* Spaces are gone — every session is the Code agent, so the rail nav no
+   longer scopes items by space (the Chat/Work/Code tabs were removed). */
 
-/* The rail's SPACE tabs — Chat | Code, above + New session. The active
-   space should be unmissable: filled accent pill, icon + label. */
-.rail-mode-tabs {
-  display: flex; gap: 4px; margin: 10px 10px 2px;
-  padding: 4px;
-  border: 1px solid var(--border); border-radius: 11px;
-  background: var(--surface);
-}
-.rail-mode-tabs button {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
-  border: none; border-radius: 8px; background: none; color: var(--text-3);
-  font-size: 13px; font-weight: 700; padding: 8px 0; cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.rail-mode-tabs button svg { width: 15px; height: 15px; }
-.rail-mode-tabs button:hover { color: var(--text); background: var(--hover); }
-.rail-mode-tabs button.active {
-  background: var(--accent);
-  /* Contrast follows the ACCENT, not a constant: white on dark accents
-     (purple, GitHub blue), black on bright ones (Matrix green, amber).
-     Computed per theme by applyAccentInk (code-workbench.ts). */
-  color: var(--accent-ink, #000);
-}
 /* Settings › Usage: the Add credits action above the metric cards */
 .dash-usage-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .dash-greeting {
@@ -15717,18 +15687,9 @@ body.code-dragging webview { pointer-events: none !important; }
 .dash-starter-title { flex: 1; min-width: 0; font-weight: 600; }
 @media (max-width: 900px) { .dash-starters { grid-template-columns: repeat(2, 1fr); } }
 
-/* SPACE pill INSIDE the input — bottom-left; send/stop is bottom-right. The
-   input reserves bottom padding so typed text never runs under the pill. */
+/* The Chat/Work/Code space pill inside the input was removed — every session
+   is the Code agent now. */
 .code-input-wrap { position: relative; }
-.code-input-wrap .code-input { padding-bottom: 42px; }
-.code-space-pill { position: absolute; left: 10px; bottom: 8px; z-index: 2;
-  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; }
-.code-space-opt { padding: 5px 11px; border: 0; border-radius: 7px; background: transparent;
-  color: var(--text-3); font-size: 12.5px; font-weight: 550; font-family: inherit; cursor: pointer; }
-.code-space-opt:hover { color: var(--text); background: var(--hover); }
-.code-space-opt.active { background: var(--accent); color: var(--accent-ink, #fff); }
-@media (pointer: coarse) { .code-space-opt { font-size: 15px; padding: 8px 14px; } }
 
 /* Two-col landing: bare columns — header + cards only, no wrapper chrome. */
 .dash-col { min-width: 0; }
@@ -15805,17 +15766,9 @@ body:not(.composer-on-home) .code-input,
 .echo-card .code-input,
 .ws-rail-slot .code-input { min-height: 38px; }
 
-/* ── The space pill (landing only) — smaller, and it must never overlap the
-   text above it on a narrow/touch viewport (iPad): the input reserves room
-   for the pill row rather than the pill floating over the text. ── */
-.code-space-pill { padding: 1px; border-radius: 8px; gap: 1px; }
-.code-space-opt { padding: 3px 9px; font-size: 11.5px; border-radius: 6px; }
-@media (pointer: coarse) { .code-space-opt { font-size: 12.5px; padding: 5px 10px; } }
-.code-input-wrap .code-input { padding-bottom: 38px; }
-@media (pointer: coarse) { .code-input-wrap .code-input { padding-bottom: 44px; } }
-/* The pill only exists on the landing, so only the landing pays for the room. */
-body:not(.composer-on-home) .code-input-wrap .code-input { padding-bottom: 10px; }
-body:not(.composer-on-home) .code-space-pill { display: none; }
+/* The in-input space pill is gone — the composer input keeps a tight bottom
+   padding (the send/stop button sits bottom-right). */
+.code-input-wrap .code-input { padding-bottom: 10px; }
 
 /* Folder git state. A repo shows its branch in the normal chip voice; a folder
    with no git reads as an absence, not an error — it is a fine way to start. */
@@ -15926,27 +15879,8 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .app-rail-tile .tile-name { color: var(--text-2); }
 .app-rail-tile:hover .tile-name { color: var(--text); }
 
-/* The wall's agent tabs — part of the COMMAND PANEL's own bar, immediately
-   left of the search. Living in the bar (instead of floating absolutely) means
-   they appear exactly when the panel does and can never hover over a card. */
-.echo-space-tabs {
-  display: inline-flex; align-items: center; gap: 3px; padding: 3px; flex: none;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px;
-}
-.echo-space-opt {
-  padding: 9px 18px; border: 0; border-radius: 8px; background: transparent;
-  color: var(--text-2); font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
-}
-.echo-space-opt:hover { background: var(--hover); color: var(--text); }
-.echo-space-opt.active { background: var(--accent); color: var(--accent-ink, #fff); }
-@media (pointer: coarse) { .echo-space-opt { padding: 11px 20px; font-size: 15px; } }
-
-/* The panel bar STACKS: agent tabs on their own row ABOVE the search. */
-/* The tabs row spans the bar so it can CENTRE the pill; the pill itself
-   shrink-wraps to its three buttons (it was stretching the full width). */
+/* The wall's Chat/Work/Code agent tabs were removed — one session type now. */
 .echo-topbar-stacked { flex-wrap: wrap; justify-content: center; }
-.echo-topbar-stacked .echo-space-row { flex-basis: 100%; display: flex; justify-content: center; margin: 0 0 10px; }
-.echo-space-tabs { width: auto; flex: 0 0 auto; }
 
 /* The rail's mark is the HOME button. */
 .app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }

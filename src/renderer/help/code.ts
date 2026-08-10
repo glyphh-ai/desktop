@@ -27,7 +27,6 @@ import {
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
 import { runHeroFlow, syncDashParticles } from "./dashboard.js";
-import { SPACE_LABEL } from "./space-meta.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -39,17 +38,17 @@ interface CodeChat {
   workdir?: string;
   /** Pinned sessions float to the top of the history dropdown. */
   pinned?: boolean;
-  /** LEGACY flag (pre-mode) — read once by modeOf, never written. */
+  /** LEGACY flag (pre-mode) — kept for back-compat with old stored sessions. */
   chat?: boolean;
-  /** The session's SPACE + toolbelt: "chat" (tool-less), "cowork"
-   *  (connections/browsing/apps — the most tools), "code" (the dev pack).
-   *  Chat→co-work is a safe upgrade anytime (a chat history carries no tool
-   *  transcripts); the reverse only before the first turn. */
+  /** The spaces concept (Chat/Work/Code) is gone — every session is ONE type,
+   *  the most-capable Code toolset. The field is kept ONLY for back-compat with
+   *  sessions the server/thread-store persisted before the collapse and with the
+   *  pod's `mode` contract; it is always written as "code" now (see modeOf). */
   mode?: "chat" | "cowork" | "code";
-  /** The workspace SOURCE (Work/Code only): where this session RUNS + what it
-   *  works on — cloud-new (empty cloud project), cloud-repo (a GitHub clone),
-   *  or local (a folder on the machine). Stamped from the source chip when the
-   *  session is born; threaded into provisioning (glyphhRun). */
+  /** The workspace SOURCE: where this session RUNS + what it works on —
+   *  cloud-new (empty cloud project), cloud-repo (a GitHub clone), or local
+   *  (a folder on the machine). Stamped from the source chip when the session
+   *  is born; threaded into provisioning (glyphhRun). */
   source?: Source;
   /** The bound REMOTE runtime (web/cloud sources only): the provisioned session
    *  id + data-plane url + one-time runtime token. Written by remote-run.ts on
@@ -65,9 +64,13 @@ interface CodeChat {
   messageCount?: number;
 }
 
-/** The session's effective mode (legacy chat flag folds in; default code). */
-function modeOf(c: CodeChat): "chat" | "cowork" | "code" {
-  return c.mode ?? (c.chat ? "chat" : "code");
+/** The spaces concept is collapsed: every session runs the most-capable Code
+ *  toolset. `modeOf` is the single choke point — it ignores any legacy
+ *  chat/cowork stamp and always reports "code", so tool selection, run routing
+ *  and the composer are uniform. (Kept as a function so the many call sites and
+ *  the pod's `mode` contract stay untouched.) */
+function modeOf(_c: CodeChat): "code" {
+  return "code";
 }
 
 const STORE_KEY = "codeChats";
@@ -130,13 +133,10 @@ function paintChips(): void {
   const ec = el("code-effort-chip");
   if (ec) {
     const lp = loops.find((x) => x.id === glyphhLoop) ?? loops[0];
-    const cur = current();
-    const eff = cur ? modeOf(cur) : railTab;
-    const locked = eff === "chat"; // Chat runs the Default loop — chip is locked
     ec.textContent = `Loop: ${lp?.name ?? "Default"}`;
-    ec.title = locked ? "Chat runs the Default loop" : (lp?.description ?? "Which agent loop runs this session");
-    ec.className = "code-chip" + (locked ? " is-locked" : "");
-    ec.setAttribute("aria-disabled", locked ? "true" : "false");
+    ec.title = lp?.description ?? "Which agent loop runs this session";
+    ec.className = "code-chip";
+    ec.setAttribute("aria-disabled", "false");
   }
 }
 
@@ -598,10 +598,6 @@ function initComposerControls(): void {
     e.stopPropagation();
     el("code-mode-menu")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
-    // Chat runs the Default loop — the chip is locked: it closes other popups
-    // (done above) but never opens its own menu (Composer.js loopLocked).
-    const cur = current();
-    if ((cur ? modeOf(cur) : railTab) === "chat") { el("code-effort-pop")?.classList.add("hidden"); return; }
     void refreshLoops().then(() => { renderLoopMenu(); const p2 = el("code-effort-pop"); if (p2 && !p2.classList.contains("hidden")) openChipDropUp(p2); });
     renderLoopMenu();
     const lp = el("code-effort-pop");
@@ -948,12 +944,6 @@ function ensureCodeSection(): void {
     if (!target) return;
     currentId = id;
     threadPinned = true;
-    // The session's OWN space comes with it — clicking a Work session from the
-    // landing must open the Work agent, not whatever space the pill was left on.
-    railTab = spaceOf(target);
-    document.body.dataset.railSpace = railTab;
-    syncSpaceAttrs();
-    window.dispatchEvent(new CustomEvent("rail-space-changed"));
     void saveStore();
     syncThinking();   // this session's own run state, not the last one's
     renderHistory();
@@ -1019,34 +1009,29 @@ let pendingWorkdir = "";
  *  mounts, so the + New Session screen came up unstyled until the user clicked
  *  a tab (which called paintCw and "fixed" it). */
 function syncSpaceAttrs(): void {
-  const cur = current();
-  document.body.dataset.sessionSpace = cur ? modeOf(cur) : railTab;
-  // The chip row's inventory is per-space (chat: source only; work: no repo
-  // chip; code: all of them) — it has to repaint with the space, not just on
-  // a pick, or a tab switch leaves the previous space's chips on screen.
+  // Spaces are gone — every surface is the Code agent. Keep the dataset stamped
+  // to "code" so any consumer that still reads it (workbench/dashboard) sees a
+  // valid, stable value.
+  document.body.dataset.sessionSpace = "code";
+  document.body.dataset.railSpace = "code";
   sourceChip?.setSource(activeSource());
   paintSourceDependents();
 }
 (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs = syncSpaceAttrs;
 
 function newChat(): void {
-  // The ACTIVE TAB types the session, once, at birth. A session's mode is
-  // never rewritten afterwards — the tool pack, the chips and the runtime all
-  // key off it, so a late change would mean a session running with a pack it
-  // wasn't created for.
-  const mode: CodeChat["mode"] = railTab;
-  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode };
+  // Every session is a Code session (the most-capable toolset). The mode field
+  // is retained only for the pod/thread-store contract and is always "code".
+  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: "code" };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
-  // Stamp the space's pending source (Work/Code) — a local source seeds the
-  // session's own workdir so the run targets that folder.
-  if (mode !== "chat") {
-    c.source = sourceBySpace[mode];
-    if (c.source.kind === "local" && c.source.path && !c.workdir) c.workdir = c.source.path;
-  }
+  // Stamp the pending source — a local source seeds the session's own workdir
+  // so the run targets that folder.
+  c.source = pendingSource;
+  if (c.source.kind === "local" && c.source.path && !c.workdir) c.workdir = c.source.path;
   chats.unshift(c);
   currentId = c.id;
-  lastBySpace[spaceOf(c)] = c.id;
-  void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
+  lastSession = c.id;
+  void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id);
   threadPinned = true;
   void saveStore();
   syncThinking();   // fresh session — no run of its own yet
@@ -1078,34 +1063,30 @@ function leaveSessionToLanding(): void {
 }
 
 /**
- * The session is no longer CURRENT for its space.
+ * The session is no longer CURRENT.
  *
  * Closing a session — by hand, or because a layout replaced the agent panel —
- * ends it as the space's resume target: the next visit to that tab opens a
- * fresh + New Session instead of silently reopening what was closed. Deleting
- * one lands here too, for the same reason.
+ * ends it as the resume target: the next visit opens a fresh + New Session
+ * instead of silently reopening what was closed. Deleting one lands here too.
+ * (The optional arg is a legacy space hint from the workbench bridge — ignored
+ * now that there is one session type.)
  */
-function forgetCurrentSession(space?: "chat" | "cowork" | "code"): void {
+function forgetCurrentSession(_space?: "chat" | "cowork" | "code"): void {
   const cur = current();
-  const sp = space ?? (cur ? spaceOf(cur) : railTab);
   // BOTH the in-memory resume target and its persisted twin — clearing only
   // the first let the session come back on the next launch.
-  lastBySpace[sp] = "";
-  void window.glyphh.setPreference?.(SPACE_PREF[sp], "");
-  // ...AND the workspace state that belonged to it. The source + folder were
-  // sticky PER SPACE, so a closed session left its folder behind and the next
-  // new session inherited it — a folder on a machine that may not even be
-  // connected. Closing a session resets its space to the default source.
-  if (sp !== "chat") {
-    sourceBySpace[sp] = { ...DEFAULT_SOURCE };
-    void window.glyphh.setPreference?.(SOURCE_PREF[sp], null);
-  }
+  lastSession = "";
+  void window.glyphh.setPreference?.(LAST_SESSION_PREF, "");
+  // ...AND the workspace state that belonged to it: a closed session must not
+  // leave its folder behind for the next new session to inherit.
+  pendingSource = { ...DEFAULT_SOURCE };
+  void window.glyphh.setPreference?.(SOURCE_PREF, null);
   pendingWorkdir = "";
   sourceChip?.setSource(activeSource());
   paintSourceDependents();
-  // Closing the session you were in leaves you on that tab's landing, not on
-  // an empty agent screen.
-  if (cur && spaceOf(cur) === sp) leaveSessionToLanding();
+  // Closing the session you were in leaves you on the landing, not an empty
+  // agent screen.
+  if (cur) leaveSessionToLanding();
   else { renderHistory(); renderThread(); }
 }
 // The workbench closes PANELS; it has no idea which session was in one.
@@ -1123,8 +1104,8 @@ async function deleteChat(chat: CodeChat): Promise<void> {
     danger: true,
   }))) return;
   chats = chats.filter((x) => x.id !== chat.id);
-  // A deleted session can never be a space's resume target again.
-  if (lastBySpace[spaceOf(chat)] === chat.id) forgetCurrentSession(spaceOf(chat));
+  // A deleted session can never be the resume target again.
+  if (lastSession === chat.id) forgetCurrentSession();
   if (currentId === chat.id) currentId = chats[0]?.id || "";
   threadStore.remove(chat.id); // server tombstone (offline-safe)
   void saveStore();
@@ -1344,15 +1325,14 @@ function renderHistory(): void {
   list.textContent = "";
   cwPaint?.();
   const q = recentsQuery.trim().toLowerCase();
-  const inSpace = chats.filter((c) => spaceOf(c) === railTab);
-  const visible = inSpace.filter((c) => !q || c.title.toLowerCase().includes(q));
-  // Rows in the SPACE, not rows surviving the filter — a search that matches
+  const visible = chats.filter((c) => !q || c.title.toLowerCase().includes(q));
+  // All sessions, not just rows surviving the filter — a search that matches
   // nothing must keep its own box on screen to be cleared.
-  paintRecentsSearch(inSpace.length);
+  paintRecentsSearch(chats.length);
 
   // Pinned sessions leave their normal group and sit at the top under one
-  // heading — in EVERY space, chat included. Nothing pinned, no heading: an
-  // empty "Pinned" would be a permanent reminder of a feature you aren't using.
+  // heading. Nothing pinned, no heading: an empty "Pinned" would be a permanent
+  // reminder of a feature you aren't using.
   const pinned = visible.filter((c) => c.pinned);
   const rest = visible.filter((c) => !c.pinned);
   if (pinned.length) {
@@ -1360,16 +1340,9 @@ function renderHistory(): void {
     for (const c of pinned) list.appendChild(historyRow(c));
   }
 
-  // Chat always runs in the cloud, so the rest has nothing to divide by: one
-  // plain list, which only needs its own heading once Pinned is above it.
-  // Work and Code split by WHERE a session runs — Cloud, then a group per
-  // local folder. A folder whose sessions are all pinned drops out entirely,
-  // because the groups are built from what's left.
-  if (railTab === "chat") {
-    if (pinned.length && rest.length) list.appendChild(recentsHead("Recent", "Everything else"));
-    for (const c of rest) list.appendChild(historyRow(c));
-    return;
-  }
+  // Sessions split by WHERE they run — Cloud, then a group per local folder.
+  // A folder whose sessions are all pinned drops out entirely, because the
+  // groups are built from what's left.
   for (const g of groupRecents(rest)) {
     list.appendChild(recentsHead(g.label, g.title));
     for (const c of g.rows) list.appendChild(historyRow(c));
@@ -1434,27 +1407,22 @@ function historyRow(c: CodeChat): HTMLDivElement {
   const label = document.createElement("span");
   label.className = "code-history-title";
   label.textContent = c.title;
-  const cMode = modeOf(c);
-  label.title = cMode === "chat" ? `${c.title} — Chat (no tools)` : cMode === "cowork" ? `${c.title} — Co-work` : c.title;
+  label.title = c.title;
   // Rename is a menu action (⋯ → Rename), not a click on the title — a
   // selection-gated title click fought the row's own select handler and
   // never reliably fired. The label is now just a label.
-  // Leading slot: the RUNNING pulse while live, the session TYPE's icon
-  // when idle (no emojis). Either way it TOGGLES THE PIN on click.
+  // Leading slot: the RUNNING pulse while live, the session icon when idle
+  // (no emojis). Either way it TOGGLES THE PIN on click.
   const working = liveRuns.has(c.id);
   const dot = document.createElement("span");
   if (working) {
     dot.className = "code-chat-dot working";
   } else {
     dot.className = "code-sess-ic";
-    dot.innerHTML = cMode === "chat"
-      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
-      : cMode === "cowork"
-        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`
-        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+    dot.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
   }
   dot.classList.toggle("pinned", !!c.pinned);
-  const typeName = working ? "Working" : cMode === "chat" ? "Chat" : cMode === "cowork" ? "Co-work" : "Code";
+  const typeName = working ? "Working" : "Code";
   dot.title = `${typeName} — click to ${c.pinned ? "unpin" : "pin"}`;
   dot.addEventListener("click", (e) => {
     e.stopPropagation();   // pinning must not also open the session
@@ -1468,8 +1436,8 @@ function historyRow(c: CodeChat): HTMLDivElement {
   row.append(dot, label, menuBtn);
   row.addEventListener("click", () => {
     currentId = c.id;
-    lastBySpace[spaceOf(c)] = c.id;
-    void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id);
+    lastSession = c.id;
+    void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id);
     threadPinned = true;
     void saveStore();
     ensureCodeSection();
@@ -1477,7 +1445,7 @@ function historyRow(c: CodeChat): HTMLDivElement {
     renderThread();
     refreshCtxMeter();
     void checkWorkdirGate();
-    // a rail session press behaves like the Glyphh icon: chat ALONE
+    // a rail session press behaves like the Glyphh icon: the agent ALONE
     gotoSection("agent");
   });
   return row;
@@ -1641,7 +1609,7 @@ function openLocalSession(id: string): void {
   if (!chats.some((x) => x.id === id)) return;
   currentId = id;
   const c = current();
-  if (c) { lastBySpace[spaceOf(c)] = c.id; void window.glyphh.setPreference?.(SPACE_PREF[spaceOf(c)], c.id); }
+  if (c) { lastSession = c.id; void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id); }
   threadPinned = true;
   void saveStore();
   ensureCodeSection();
@@ -1866,11 +1834,6 @@ const wb = () => (window as unknown as { wb?: WbBridge }).wb;
 // once one exists it persists as last-used and sessions start ready (the
 // picker, when opened, defaults to that folder so switching is one click).
 let workdirReady = true; // painted by checkWorkdirGate
-/** The rail's active SPACE tab — Chat | Work | Code. The TAB IS THE MODE:
- *  it scopes the session list, the menus, and what a new session becomes. */
-let railTab: "chat" | "cowork" | "code" = "chat";
-/** Each space remembers ITS last-selected session — switching tabs never
- *  carries a session across (persisted per space). */
 
 /**
  * Rail search behaviour: type to filter, Esc to clear.
@@ -1901,66 +1864,48 @@ function paintRecentsSearch(rows: number): void {
   box.classList.toggle("hidden", !show);
 }
 
-/** The rail's Recents filter — session titles, this space only. */
+/** The rail's Recents filter — session titles. */
 let recentsQuery = "";
-const lastBySpace: Record<"chat" | "cowork" | "code", string> = { chat: "", cowork: "", code: "" };
-const spaceOf = (c: CodeChat): "chat" | "cowork" | "code" => modeOf(c);
-const SPACE_PREF: Record<"chat" | "cowork" | "code", string> = { chat: "lastSessionChat", cowork: "lastSessionCowork", code: "lastSessionCode" };
-/** Repaints the Chat/Work toggle — set by initComposerControls, called on
- *  session switches so the control always shows the CURRENT session's mode. */
+/** The last-selected session id (persisted). One session type now, one slot. */
+let lastSession = "";
+const LAST_SESSION_PREF = "lastSessionCode";
+/** Repaints session-scoped composer chrome — set by initComposerControls,
+ *  called on session switches. */
 let cwPaint: (() => void) | null = null;
-// ── Workspace SOURCE (the location chip on Work + Code) ───────────────────
-// Where the next session runs + what it works on. Persisted PER SPACE (a
-// code session defaults to a folder/repo; a work session to a cloud project),
-// stamped onto the record the first send creates. Chat never carries a source.
+// ── Workspace SOURCE (the location chip on the composer) ──────────────────
+// Where the next session runs + what it works on (cloud project / repo / local
+// folder). One pending pick now (spaces are gone), stamped onto the record the
+// first send creates.
 const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
-const sourceBySpace: Record<"cowork" | "code", Source> = { cowork: { ...DEFAULT_SOURCE }, code: { ...DEFAULT_SOURCE } };
-const SOURCE_PREF: Record<"cowork" | "code", string> = { cowork: "workspaceSourceCowork", code: "workspaceSourceCode" };
+let pendingSource: Source = { ...DEFAULT_SOURCE };
+const SOURCE_PREF = "workspaceSourceCode";
 let sourceChip: ReturnType<typeof createSourceChip> | null = null;
 let gitChip: ReturnType<typeof createGitChip> | null = null;
 
-/** The space the chips describe right now. On the LANDING that is the rail's
- *  tab (the chips describe the NEXT session) — never a resumed session's space,
- *  because switching tabs on Home binds currentId to that space's last session.
- *
- *  READ AND WRITE MUST AGREE. When pickSource resolved the space differently
- *  from activeSource, a pick on the landing landed in one space's bucket while
- *  the chip re-read another's — the label snapped straight back and every chip
- *  looked frozen. */
-function activeSpace(): "chat" | "cowork" | "code" {
-  const cur = document.body.classList.contains("composer-on-home") ? null : current();
-  return cur ? modeOf(cur) : railTab;
-}
-
 /** The source for the ACTIVE surface — the current session's stamped source,
- *  else the active space's pending pick (chat has none → cloud). */
+ *  else the pending pick. */
 function activeSource(): Source {
   const cur = document.body.classList.contains("composer-on-home") ? null : current();
   if (cur?.source) return cur.source;
-  const space = activeSpace();
-  if (space === "chat") return { ...DEFAULT_SOURCE };
-  return sourceBySpace[space];
+  return pendingSource;
 }
 
 /** A source pick from the chip: stamp the CURRENT session if one exists (only
  *  before its first send — after that the runtime is bound), else remember it
- *  as the active space's pending pick. Persisted either way. */
+ *  as the pending pick. Persisted either way. */
 function pickSource(next: Source): void {
-  const space = activeSpace();
-  const cur = space === "chat" ? null : current();
-  if (space === "chat") return; // chat is always cloud
+  const cur = current();
   // An OPEN session keeps the source it was born with. Guarded here as well as
   // in the chip, because the folder browser and the repo picker call this too.
   if (cur && !document.body.classList.contains("composer-on-home")) return;
-  sourceBySpace[space] = next;
+  pendingSource = next;
   paintSourceDependents();
-  void window.glyphh.setPreference?.(SOURCE_PREF[space], next);
+  void window.glyphh.setPreference?.(SOURCE_PREF, next);
   if (cur && cur.messages.length === 0) { cur.source = next; void saveStore(); }
   sourceChip?.setSource(next);
 }
 
-/** Mount the source chip above the composer (once). Its own visibility is
- *  driven by the active space via CSS (data-sessionSpace) — hidden in chat. */
+/** Mount the source chip above the composer (once). */
 function mountSourceChip(): void {
   if (sourceChip) { sourceChip.setSource(activeSource()); return; }
   // The chip mounts AFTER prefs restore (async) — land it in whichever slot is
@@ -1972,8 +1917,7 @@ function mountSourceChip(): void {
   sourceChip = createSourceChip({
     getSource: activeSource,
     onPick: pickSource,
-    // Chat's chip reads a flat "Cloud" — never a per-session runtime address.
-    getSessionId: () => (activeSpace() === "chat" ? null : current()?.id ?? null),
+    getSessionId: () => current()?.id ?? null,
   });
   host.appendChild(sourceChip.el);
   // The GIT chip sits AFTER the folder in the landing row: repo picker on a
@@ -1986,12 +1930,8 @@ function mountSourceChip(): void {
   }
 }
 
-/** The composer's resting prompt, in the voice of the ACTIVE space. */
+/** The composer's resting prompt. */
 function readyPlaceholder(): string {
-  const cur = current();
-  const eff = cur ? modeOf(cur) : railTab;
-  if (eff === "chat") return "Ask anything…";
-  if (eff === "cowork") return "What should we get done? Email, files, research…";
   return "Describe what to build or fix…";
 }
 
@@ -2245,36 +2185,34 @@ function paintSourceReach(): void {
 function paintSourceDependents(): void {
   homeChips();
   paintSourceReach();
-  const space = activeSpace();
   const cloud = activeSource().kind !== "local";
   // A CLOUD source has no machine folder to browse and nowhere to put a new
   // one — the folder chip and its + go away entirely rather than sitting there
-  // inert. Chat has no folder chips at all.
+  // inert.
   const FOLDER_CHIPS = new Set(["dash-wd-btn", "dash-wd-add", "code-workdir-btn", "code-workdir-add"]);
   for (const [id, title] of Object.entries(CHIP_TITLES)) {
     const el2 = document.getElementById(id);
     if (!el2) continue;
     el2.classList.remove("chip-disabled");
-    el2.classList.toggle("hidden", space === "chat" || (cloud && FOLDER_CHIPS.has(id)));
+    el2.classList.toggle("hidden", cloud && FOLDER_CHIPS.has(id));
     el2.setAttribute("title", title);
   }
   // The source chip shows everywhere, but it is only a CONTROL while the
-  // session is still pending. Chat never has a choice, and an EXISTING session's
-  // source is fixed at birth: the runtime, the workspace and the transcript are
-  // all bound to it, so re-pointing a live session would silently move where
-  // its work runs. It reads as a label from then on.
+  // session is still pending. An EXISTING session's source is fixed at birth:
+  // the runtime, the workspace and the transcript are all bound to it, so
+  // re-pointing a live session would silently move where its work runs. It
+  // reads as a label from then on.
   const bound = !document.body.classList.contains("composer-on-home") && !!current();
-  sourceChip?.el.classList.toggle("cl-chip-static", space === "chat" || bound);
+  sourceChip?.el.classList.toggle("cl-chip-static", bound);
   paintGitState();
-  // GIT position: local → the passive branch mirror; cloud → the repo chip,
-  // and only in Code (Work carries no GitHub).
+  // GIT position: local → the passive branch mirror; cloud → the repo chip.
   const mirror = document.getElementById("dash-wd-branch-wrap");
   if (mirror && cloud) (mirror as HTMLElement).style.display = "none";
   gitChip?.refresh();
   // The repo picker chooses what a CLOUD workspace checks out — on a local
   // folder there is nothing for it to pick, and the folder's real git state
   // (branch, or none) is already on the branch chip via paintGitState.
-  if (gitChip) gitChip.el.style.display = space === "code" && cloud ? "" : "none";
+  if (gitChip) gitChip.el.style.display = cloud ? "" : "none";
   // WEB: the folder chip shows the SESSION source's folder (the machine's cwd
   // concept doesn't reach a browser) — Home until a pick lands.
   // The folder chip names the folder the session is IN — the last segment of
@@ -2833,9 +2771,9 @@ function send(): void {
   // fresh setup pops the OS folder picker, then the run proceeds.
   // The workspace SOURCE rides the run: a LOCAL source targets its folder (also
   // the workdir); a CLOUD source (new project / repo) tells main to provision a
-  // remote runtime. Chat carries no source. main reads what it supports and
-  // ignores the rest (older builds just run local, as before).
-  const src = modeOf(c) === "chat" ? undefined : (c.source ?? sourceBySpace[modeOf(c) as "cowork" | "code"]);
+  // remote runtime. main reads what it supports and ignores the rest (older
+  // builds just run local, as before).
+  const src = c.source ?? pendingSource;
   // A REMOTE source on WEB (cloud-new / cloud-repo, window.glyphhSdk present) can't
   // ride the local harness (main's glyphhRun) — it PROVISIONS + STREAMS a Fly
   // runtime through the SDK. Desktop-local and the honest-state fallback keep the
@@ -3994,15 +3932,11 @@ export function initCode(): void {
   };
 
   /** The RAIL's "+ New session" — the FULL reset: every panel closes, the
-   *  layout clears, the agent type resets, and the new-session screen loads. */
+   *  layout clears, and the new-session screen loads. */
   const newSessionLanding = (): void => {
     currentId = "";
-    // NO type reset: the ACTIVE TAB is the choice — pick Code up top, hit +,
-    // and you land in a new Code session, never back at a screen that asks again.
     void saveStore();
-    document.body.dataset.railSpace = railTab;
     syncSpaceAttrs();
-    window.dispatchEvent(new CustomEvent("rail-space-changed"));
     // CLOSE EVERYTHING FIRST: every open card, panel and layout goes, then the
     // landing mounts. (Ordering matters — a reset AFTER the section opens tore
     // down the landing's own card and left the surface with no composer.)
@@ -4012,8 +3946,7 @@ export function initCode(): void {
     void checkWorkdirGate();
     gotoSection("agent");
   };
-  // The rail's + honors the ACTIVE TAB: a new session of that type, straight
-  // to its agent.
+  // The rail's + starts a new Code session, straight to the agent.
   el("code-new-chat")?.addEventListener("click", () => newSessionLanding());
   /** HOME — the rail's mark and the wall's first tile. ALWAYS returns to the
    *  + New Session landing (everything closes first); the typed shortcut is
@@ -4047,69 +3980,22 @@ export function initCode(): void {
     };
     go();
   }));
-  // ── The TAB is the mode — no in-composer toggle. This painter keeps the
-  // session-scoped chrome honest (chat sessions strip the work chrome). ──
+  // ── Session-scoped composer chrome. One session type now (Code), so this
+  // just keeps the source chip + chips in sync with the open/pending session. ──
   const paintCw = (): void => {
     const cur = current();
-    // HARD TYPING: a session's mode is fixed at birth and the rail tab must
-    // agree with whatever is OPEN. Without this the two could drift — the tab
-    // said Code while a Chat session was on screen — and the next + New
-    // session would inherit the wrong type from the tab.
-    //
-    // Only ever against an OPEN session. On the LANDING `current()` still
-    // resolves whichever session was last visited, so typing off it snapped
-    // the rail straight back to that session's space on every repaint: the
-    // Work and Code tabs could not be selected at all, and their chips stayed
-    // in chat's inert state. The landing's space is the TAB's, full stop.
-    const open = document.body.classList.contains("composer-on-home") ? null : cur;
-    if (open && railTab !== modeOf(open)) {
-      railTab = modeOf(open);
-      railTabs?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === railTab));
-      document.body.dataset.railSpace = railTab;
-      window.dispatchEvent(new CustomEvent("rail-space-changed"));
-    }
-    // The agent orients by where its session CAME FROM: the session's own
-    // mode, or — before the first send creates one — the active tab. CSS
-    // keys the head chrome off this (chat = title only; work = folder but
-    // no dev toggles/git; code = everything).
-    const eff = cur ? modeOf(cur) : railTab;
-    document.body.dataset.sessionSpace = eff;
-    // the Home landing hides the cowork content in the CHAT space
-    document.body.classList.toggle("chat-only", railTab === "chat");
-    // the source chip reflects the active surface (hidden in chat via CSS).
+    syncSpaceAttrs();
     sourceChip?.setSource(activeSource());
     sourceChip?.setSessionId(cur?.id ?? null);
-    // the loop chip locks in Chat + the mode chip hides — repaint the chips.
     paintChips();
   };
   cwPaint = paintCw;
-  // ── The rail's SPACE tabs: Chat | Code — the list + "+ New session" scope
-  // to the active one. ──
-  const railTabs = el("rail-mode-tabs");
-  // LOGIN-FIRST (2026-08-03): the web app is only reachable with a session (the
-  // bridge bounces anonymous visitors to the login shell), so the old per-tab
-  // Work/Code sign-in gating + lock affordances are gone — every tab switches
-  // freely on web exactly as on desktop.
-  // The SPACE is now chosen from the composer's bottom-left pill (the rail's
-  // top tabs are gone). Keep painting both — railTabs is null once removed.
-  const spacePill = el("code-space-pill");
-  const paintRailTabs = (): void => {
-    railTabs?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === railTab));
-    spacePill?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => b.classList.toggle("active", b.dataset.space === railTab));
-    // the nav below scopes to the space (data-space items + the More menu)
-    document.body.dataset.railSpace = railTab;
+  // Land on the pending-new / resumed session and paint. Used by boot and by
+  // the workbench's enter/activate events (spaces are gone — these now just
+  // resurface the agent rather than switching between space types).
+  const enterAgent = (navigate: boolean): void => {
     syncSpaceAttrs();
-    // the command-center wall re-scopes too
-    window.dispatchEvent(new CustomEvent("rail-space-changed"));
-  };
-  const enterSpace = (navigate: boolean): void => {
-    paintRailTabs();
-    // NEVER carry a session across spaces, and resume the space's last one
-    // ONLY when we are navigating to it. Staying put (the landing's own pill)
-    // must leave currentId empty — the screen IS the pending new session
-    // there, and binding it to an old record made the next send APPEND to a
-    // session that was never on screen.
-    const last = navigate ? chats.find((c) => c.id === lastBySpace[railTab] && spaceOf(c) === railTab) : undefined;
+    const last = navigate ? chats.find((c) => c.id === lastSession) : undefined;
     currentId = last?.id || "";
     void saveStore();
     renderHistory();
@@ -4117,73 +4003,24 @@ export function initCode(): void {
     refreshCtxMeter();
     void checkWorkdirGate();
     if (!navigate) return;
-    // No session to resume → that tab's + New Session screen, for EVERY space.
-    // Code used to jump straight to a bare agent, which is what made a cleared
-    // session look like it had come back as an empty one.
     if (last) gotoSection("agent");
     else gotoSection("dashboard");
     paintCw();
   };
-  // THE RAIL TABS are the space switch: they scope the rail's lists AND decide
-  // which agent a new session becomes. On the landing they re-scope in place;
-  // elsewhere they navigate to that space (enterSpace decides).
-  /** Switch spaces. `navigate` decides the destination: GO to the space (its
-   *  live session if it has one, else its + New Session page), or just re-type
-   *  the pending session in place. */
-  const switchSpace = (next: "chat" | "cowork" | "code", navigate: boolean): void => {
-    // A navigating click on the ALREADY-active tab still goes — "take me to my
-    // Work session" shouldn't depend on which tab happens to be lit.
-    if (railTab === next && !navigate) return;
-    railTab = next;
-    enterSpace(navigate);
-    paintCw();
-  };
-  const spaceOfBtn = (v?: string): "chat" | "cowork" | "code" =>
-    v === "code" ? "code" : v === "cowork" ? "cowork" : "chat";
-  // THE RAIL TABS navigate, exactly as the command centre's do.
-  railTabs?.querySelectorAll<HTMLElement>("button").forEach((b) => b.addEventListener("click", () => {
-    switchSpace(spaceOfBtn(b.dataset.tab), true);
-  }));
-  // The landing's pill TYPES the session you are about to start — it never
-  // navigates away from the screen you are filling in.
-  spacePill?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => b.addEventListener("click", () => {
-    switchSpace(spaceOfBtn(b.dataset.space), false);
-  }));
-  // The COMMAND CENTRE's tabs: the panel has already closed itself, so this
-  // always navigates — enterSpace resumes the space's last session when it has
-  // one and lands on its new-session screen when it does not.
-  window.addEventListener("glyphh:enter-space", (e) => {
-    const s = (e as CustomEvent).detail;
-    if (s !== "chat" && s !== "cowork" && s !== "code") return;
-    switchSpace(s, true);
-  });
-  // A layout ACTIVATES ITS OWN SPACE (code-workbench dispatches on open):
-  // the tab, lists, and menus follow the layout — without navigating away
-  // from it, and without resetting the session the layout is about to bind.
-  window.addEventListener("glyphh:activate-space", (e) => {
-    const s = (e as CustomEvent).detail;
-    if (s !== "chat" && s !== "cowork" && s !== "code") return;
-    railTab = s;
-    // THE LAYOUT'S TYPE WINS: a session of a DIFFERENT space must not ride a
-    // layout that declares one (a Chat session inside a Code layout would get
-    // Chat's tool-less pack while the layout's dev panels sat there useless).
-    // Drop to the pending-new state so the first send creates a session of the
-    // layout's own type.
-    const cur = current();
-    if (cur && spaceOf(cur) !== s) { currentId = ""; void saveStore(); }
-    paintRailTabs();
+  // The command centre / workbench used to switch spaces; with one type they
+  // just resurface the agent (its last session, else the new-session screen).
+  window.addEventListener("glyphh:enter-space", () => enterAgent(true));
+  // A layout opening no longer changes the session TYPE (there is one); keep
+  // the hook so the agent chrome + lists repaint when a layout mounts.
+  window.addEventListener("glyphh:activate-space", () => {
     syncSpaceAttrs();
     renderHistory();
     renderThread();
     paintCw();
     void checkWorkdirGate();
   });
-  // Restore the per-space workspace source picks (Work/Code chip), then mount
-  // the chip above the composer.
-  void Promise.all([
-    window.glyphh.getPreference?.(SOURCE_PREF.cowork, null),
-    window.glyphh.getPreference?.(SOURCE_PREF.code, null),
-  ]).then(([sw, sc]) => {
+  // Restore the workspace source pick, then mount the chip above the composer.
+  void window.glyphh.getPreference?.(SOURCE_PREF, null).then((sc) => {
     const coerce = (v: unknown): Source | null => {
       if (!v || typeof v !== "object") return null;
       const s = v as Source;
@@ -4192,16 +4029,14 @@ export function initCode(): void {
       if (s.kind === "cloud-new") return { kind: "cloud-new" };
       return null;
     };
-    const cw = coerce(sw); if (cw) sourceBySpace.cowork = cw;
-    const cc = coerce(sc); if (cc) sourceBySpace.code = cc;
+    const cc = coerce(sc); if (cc) pendingSource = cc;
     // LOCAL machine wins whenever one exists — Chris's rule verbatim:
     // "Default to local machine if available, then to cloud." A stored CLOUD
-    // pick (new OR repo) applies only when no machine is attached; picking
-    // cloud stays a per-visit choice from the chip, never a sticky default
-    // that buries the folder picker.
-    const cwPinned = cw && cw.kind === "local";
+    // pick applies only when no machine is attached; picking cloud stays a
+    // per-visit choice from the chip, never a sticky default that buries the
+    // folder picker.
     const ccPinned = cc && cc.kind === "local";
-    if (!cwPinned || !ccPinned) {
+    if (!ccPinned) {
       void (async () => {
         let local: Source | null = null;
         if (!onWebTarget()) local = { kind: "local", path: "" };
@@ -4212,8 +4047,7 @@ export function initCode(): void {
           } catch { /* stays cloud */ }
         }
         if (!local) return;
-        if (!cwPinned) sourceBySpace.cowork = { ...local };
-        if (!ccPinned) sourceBySpace.code = { ...local };
+        pendingSource = { ...local };
         sourceChip?.setSource(activeSource());
         paintSourceDependents();
       })();
@@ -4221,19 +4055,10 @@ export function initCode(): void {
     mountSourceChip();
     paintSourceDependents();
   });
-  void Promise.all([
-    window.glyphh.getPreference?.("lastSessionChat", ""),
-    window.glyphh.getPreference?.("lastSessionCowork", ""),
-    window.glyphh.getPreference?.("lastSessionCode", ""),
-  ]).then(([lc, lw, lco]) => {
-    // STARTUP ALWAYS LANDS ON CHAT — the front door: its starter cards open
-    // into whichever space the task actually belongs to.
-    railTab = "chat";
-    lastBySpace.chat = String(lc || "");
-    lastBySpace.cowork = String(lw || "");
-    lastBySpace.code = String(lco || "");
-    // boot: paint the space's state but DON'T navigate (boot lands on Home)
-    enterSpace(false);
+  void window.glyphh.getPreference?.(LAST_SESSION_PREF, "").then((lco) => {
+    lastSession = String(lco || "");
+    // boot: paint the agent's state but DON'T navigate (boot lands on Home)
+    enterAgent(false);
   });
   el("code-rail-toggle")?.addEventListener("click", () => {
     const collapsed = el("app-rail")!.classList.toggle("collapsed");
@@ -4290,12 +4115,9 @@ export function initCode(): void {
     const paint = (): void => {
       menu.innerHTML = "";
       const cur = currentId;
-      // Pinned first (stable — recency holds within each group).
-      // SCOPED TO THIS AGENT'S TYPE: a session's space decides whether it
-      // belongs in this agent's recents at all (a layout-hosted Code agent
-      // must never offer to swap in a Chat session).
-      const space = current() ? spaceOf(current()!) : railTab;
-      const rows = chats.filter((c) => spaceOf(c) === space)
+      // Pinned first (stable — recency holds within each group). One session
+      // type now, so every session is eligible.
+      const rows = [...chats]
         .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 20);
       for (const c of rows) {
         const row = document.createElement("div");
@@ -4416,10 +4238,7 @@ export function initCode(): void {
       if (thinking) queueNote();
       else send();
     } else if (e.key === "Tab" && e.shiftKey) {
-      // Chat carries no visible mode control — no hidden cycling either.
-      const curTab = current();
-      const eff = curTab ? modeOf(curTab) : railTab;
-      if (eff === "chat") return;
+      // Shift+Tab cycles the permission mode from the composer.
       e.preventDefault();
       cycleMode();
     }
@@ -4508,22 +4327,15 @@ export function openRunSession(run: {
 }
 
 /** A NEW session with `text` ready in the composer — the dashboard's
- *  "Recommended for you" entries land here. */
-export function seedNewSession(text: string, space?: "chat" | "cowork" | "code"): void {
-  // A starter card can point at ANY space — switch first (the rail, the
-  // lists, and the chrome follow), then land on the new session there.
-  if (space && space !== railTab) {
-    window.dispatchEvent(new CustomEvent("glyphh:activate-space", { detail: space }));
-  }
+ *  "Recommended for you" entries land here. (The legacy `space` arg is
+ *  ignored: every session is the Code agent now.) */
+export function seedNewSession(text: string, _space?: "chat" | "cowork" | "code"): void {
   // No record until the user actually SENDS — the seed just fills the
   // composer on a cleared selection.
   currentId = "";
   void saveStore();
   renderHistory();
   renderThread();
-  // Code's new session IS the full agent; Chat and Work seed the composer
-  // on the landing they're already looking at.
-  if (space === "code") gotoSection("agent");
   seedComposer(text);
   void checkWorkdirGate();
 }
@@ -4579,11 +4391,8 @@ export function seedComposer(text: string): void {
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
   // Clicking a prompt IS the intent to start — if no working folder is set
-  // yet, ask for it right now instead of leaving a dead composer. (A CHAT
-  // session needs no folder — never ask.)
-  const curSeed = current();
-  const seedSpace = curSeed ? modeOf(curSeed) : railTab;
-  if (!workdirReady && seedSpace !== "chat") {
+  // yet, ask for it right now instead of leaving a dead composer.
+  if (!workdirReady) {
     void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
   }
 }

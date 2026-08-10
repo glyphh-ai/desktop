@@ -1461,13 +1461,6 @@ async function init(): Promise<void> {
     body.innerHTML = `
       <div class="echo-stage"></div>
       <div class="echo-topbar echo-topbar-stacked">
-        <div class="echo-space-row">
-          <div class="echo-space-tabs" role="tablist" aria-label="Agent">
-            <button type="button" class="echo-space-opt" data-space="chat">Chat</button>
-            <button type="button" class="echo-space-opt" data-space="cowork">Work</button>
-            <button type="button" class="echo-space-opt" data-space="code">Code</button>
-          </div>
-        </div>
         <div class="echo-search-wrap">
           <svg class="echo-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input class="echo-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" />
@@ -2268,29 +2261,8 @@ async function init(): Promise<void> {
       const shadowOn = cardsLayer.classList.contains("echo-shadow");
       const hidden = layoutUp && !shadowOn;
       canvas.style.visibility = hidden ? "hidden" : "";
-      // The wall's own space tabs — big targets above the search. They drive the
-    // SAME space switch the rail tabs do (help/code.ts listens), so the wall,
-    // the rail lists and the next new session all agree.
-    const spaceTabs = body.querySelector<HTMLElement>(".echo-space-tabs");
-    const paintSpaceTabs = (): void => {
-      const active = document.body.dataset.railSpace || "chat";
-      spaceTabs?.querySelectorAll<HTMLElement>(".echo-space-opt")
-        .forEach((b) => b.classList.toggle("active", b.dataset.space === active));
-    };
-    spaceTabs?.querySelectorAll<HTMLElement>(".echo-space-opt").forEach((b) => {
-      b.addEventListener("click", () => {
-        const next = b.dataset.space === "code" ? "code" : b.dataset.space === "cowork" ? "cowork" : "chat";
-        paintSpaceTabs();
-        // Close the panel and GO: that space's live session if it has one,
-        // else its new-session landing with the tab already active. (The
-        // layout-activation event is a different thing — it re-scopes in
-        // place and must not navigate.)
-        closeEchoSurface();
-        window.dispatchEvent(new CustomEvent("glyphh:enter-space", { detail: next }));
-      });
-    });
-    window.addEventListener("rail-space-changed", paintSpaceTabs);
-    paintSpaceTabs();
+      // The Chat/Work/Code space tabs were removed — every session is one type
+    // (the most-capable Code toolset), so the wall no longer switches spaces.
     const bar = body.querySelector<HTMLElement>(".echo-topbar");
       if (bar) bar.style.visibility = hidden ? "hidden" : "";
     };
