@@ -85,6 +85,8 @@ import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAccountIpc } from "./account-ipc";
 import { registerFilesIpc } from "./files-ipc";
+import { registerApiKeysIpc } from "./apikeys-ipc";
+import { registerSupportIpc } from "./support-ipc";
 import { registerModelsIpc } from "./models-ipc";
 import { registerWorkspacesIpc } from "./workspaces-ipc";
 import { getClient } from "./glyphh-client";
@@ -843,6 +845,10 @@ async function boot() {
 
   // Files — the artifacts gallery's transport, same main-process SDK client.
   registerFilesIpc();
+
+  // API Keys + Support (threaded ticketing) — A4 settings panels' transport.
+  registerApiKeysIpc();
+  registerSupportIpc();
 
   registerAppsIpc({
     layoutManager, dripManager,

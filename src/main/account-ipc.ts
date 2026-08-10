@@ -14,8 +14,13 @@
  */
 
 import { ipcMain } from "electron";
-import type { MemberRole, OrgUpdate } from "@glyphh/sdk";
+import type { MemberRole, OrgUpdate, GuardrailsPolicy } from "@glyphh/sdk";
 import { getClient } from "./glyphh-client";
+
+// OrgInfraChoice isn't re-exported from the SDK index, so its input is mirrored
+// structurally here (threads-ipc.ts's discipline). region + tier ('shared' is
+// the free default) — the SAME shape org.chooseInfra accepts.
+interface OrgInfraChoiceInput { region: string; tier: string }
 
 // The SDK's index re-exports `OrgUpdate` and `MemberRole` but not the
 // auto-top-up / self-profile inputs, nor the member-write shapes, so those are
@@ -68,6 +73,24 @@ export function registerAccountIpc(): void {
   ipcMain.handle("account-org-get", () => getClient().org.get());
   ipcMain.handle("account-org-update", async (_e, patch: OrgUpdate) => {
     try { return { ok: true as const, org: await getClient().org.update(patch) }; }
+    catch (err) { return fail(err); }
+  });
+
+  // ── Runtime region (org infra) ──────────────────────────────────────────
+  // infra() is any-member (reads the current region + choice state); chooseInfra
+  // is org_admin — a non-admin's 403 rides the ok/error envelope.
+  ipcMain.handle("account-org-infra", () => getClient().org.infra());
+  ipcMain.handle("account-org-choose-infra", async (_e, choice: OrgInfraChoiceInput) => {
+    try { return { ok: true as const, infra: await getClient().org.chooseInfra(choice) }; }
+    catch (err) { return fail(err); }
+  });
+
+  // ── Org guardrails (org_admin) ──────────────────────────────────────────
+  // guardrails() reads the policy; setGuardrails replaces it wholesale (null
+  // clears). The server enforces org_admin on the write.
+  ipcMain.handle("account-org-guardrails", () => getClient().org.guardrails());
+  ipcMain.handle("account-org-set-guardrails", async (_e, policy: GuardrailsPolicy | null) => {
+    try { return { ok: true as const, guardrails: await getClient().org.setGuardrails(policy) }; }
     catch (err) { return fail(err); }
   });
 

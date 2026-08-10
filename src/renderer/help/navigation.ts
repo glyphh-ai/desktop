@@ -18,6 +18,11 @@ import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadModelsAdmin } from "./models-admin.js";
 import { loadFiles, initFiles } from "./files.js";
+import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
+import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
+import { loadRuntime } from "./settings-runtime.js";
+import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
+import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 
 const overlay = getHelpOverlay();
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
@@ -286,7 +291,23 @@ export function openSettingsModal(sub?: string): void {
 
   // Populate the whole panel set + admin gating, then reveal the requested sub.
   loadSettings();
+  gateAdminSubs();
   selectSettingsSub(sub || "general");
+}
+
+/** Hide the A4 admin-only nav items (Organization, Runtime, Guardrails) for
+ *  non-admins on modal open — the SAME rule Members/Workspaces use (their own
+ *  loaders gate on the eager loadSettings() call; these panels load only when
+ *  selected, so their nav items are gated here up front). Each panel's own
+ *  loader re-asserts the gate + the admin-only body message. */
+function gateAdminSubs(): void {
+  void window.glyphh.getAccountInfo?.().then((info) => {
+    const admin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
+    for (const s of ["organization", "runtime", "guardrails"]) {
+      document.querySelector<HTMLElement>(`.settings-nav .settings-nav-item[data-sub="${s}"]`)
+        ?.classList.toggle("hidden", !admin);
+    }
+  }).catch(() => { /* signed out — items stay hidden (they start hidden) */ });
 }
 
 /**
@@ -296,11 +317,12 @@ export function openSettingsModal(sub?: string): void {
  * blank.
  */
 const SETTINGS_SUB_ALIAS: Record<string, string> = {
-  organization: "account",
   // "Customize" (the rail's app-settings entry) opens the modal on Appearance —
   // the app-level customization panel (themes, browser). General/Appearance/
   // Drips/Desktop/MCP are the app-config subs; Appearance is the natural anchor.
   app: "appearance",
+  // (The old organization→account alias is gone — Organization is its own
+  //  standalone Admin panel now, data-sub="organization".)
 };
 
 /** Retired top-level sections, redirected to the Settings sub-panel that
@@ -314,16 +336,21 @@ const settingsSubAlias = (sub: string): string => SETTINGS_SUB_ALIAS[sub] || sub
 /** Settings sub-panels that fetch on show. Shared by the sub-nav click handler
  *  and gotoSection's deep-link path so both populate identically. */
 function loadSettingsSub(sub: string): void {
-  if (sub === "support") loadSupport();
+  if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "drips") loadDrips();
   else if (sub === "billing") void loadBilling();
-  // Organization is a section INSIDE Account now (org admins only), so it
-  // loads with the profile rather than from a tab of its own.
+  // Organization is ALSO folded into Account (org admins only), so Account
+  // still loads the org section; the standalone Organization panel (A4) is its
+  // own sub below.
   else if (sub === "account") { void loadProfile(); void loadOrg(); }
   else if (sub === "members") void loadMembers();
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "models") loadModelsAdmin();
+  else if (sub === "apikeys") void loadApiKeys();
+  else if (sub === "organization") void loadOrgPanel();
+  else if (sub === "runtime") void loadRuntime();
+  else if (sub === "guardrails") void loadGuardrails();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
   else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
@@ -545,6 +572,11 @@ export function initHelp() {
   initConnections();
   initLayoutsEvents();
   initFiles();
+  // A4 settings panels — wire their controls once at boot (idempotent).
+  initApiKeys();
+  initSupportPanel();
+  initGuardrails();
+  initOrgPanel();
   initDripsEvents();
   initLoopsEvents();
   initSkillsLibraryEvents();

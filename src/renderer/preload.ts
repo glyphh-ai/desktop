@@ -171,6 +171,18 @@ export interface FileCreateInputRow {
   sessionId?: string | null;
 }
 
+// A4 settings panels (API Keys, Support, Runtime, Guardrails). Structural
+// mirrors of the SDK's shapes — the MAIN-process client executes these
+// (apikeys-ipc.ts / support-ipc.ts / account-ipc.ts); help/settings-*.ts mirror
+// the same shapes and own the web target's SDK-handle transport.
+export interface ApiKeyRow { id: string; label: string; prefix: string; userId: string; userEmail: string; createdAt: string; expiresAt: string | null; lastUsedAt: string | null }
+export interface CreatedApiKeyRow { key: ApiKeyRow; token: string }
+export interface SupportMessageRow { id: string; authorKind: "user" | "admin"; authorUserId: string | null; body: string; createdAt: string }
+export interface SupportTicketRow { id: string; subject: string; status: string; createdAt: string; updatedAt: string; lastMessage?: SupportMessageRow | null; unread?: boolean }
+export interface SupportThreadRow extends SupportTicketRow { messages: SupportMessageRow[] }
+export interface OrgInfraRow { mode: string; region: string | null; tier: string | null; status: string; regionChosen: boolean; regions: Array<{ id: string; label?: string }> }
+export interface GuardrailsRow { guardrails_policy: Record<string, number> | null }
+
 // Fields the create/update calls forward to /api/panel-apps. Kept as a named
 // type so preload + renderer stay in sync on the accepted keys.
 export interface PanelAppInput {
@@ -537,6 +549,28 @@ contextBridge.exposeInMainWorld("glyphh", {
   filesGet: (id: string) => ipcRenderer.invoke("files-get", id) as Promise<FileArtifactRow>,
   filesCreate: (input: FileCreateInputRow) =>
     ipcRenderer.invoke("files-create", input) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
+  // ── A4 settings transports (API Keys, Support, Runtime region, Guardrails).
+  // MAIN-process SDK client executes these; reads REJECT, writes answer
+  // { ok, …, error }. help/settings-*.ts mirror these + own the web SDK path. ──
+  apiKeysList: () => ipcRenderer.invoke("apikeys-list") as Promise<ApiKeyRow[]>,
+  apiKeysCreate: (input: { label: string; expiresInDays?: number }) =>
+    ipcRenderer.invoke("apikeys-create", input) as Promise<{ ok: boolean; created?: CreatedApiKeyRow; error?: string }>,
+  apiKeysRevoke: (id: string) =>
+    ipcRenderer.invoke("apikeys-revoke", id) as Promise<{ ok: boolean; error?: string }>,
+  supportTickets: () => ipcRenderer.invoke("support-tickets") as Promise<SupportTicketRow[]>,
+  supportThread: (id: string) => ipcRenderer.invoke("support-thread", id) as Promise<SupportThreadRow>,
+  supportCreateTicket: (input: { subject: string; message: string }) =>
+    ipcRenderer.invoke("support-create-ticket", input) as Promise<{ ok: boolean; thread?: SupportThreadRow; error?: string }>,
+  supportReply: (id: string, body: string) =>
+    ipcRenderer.invoke("support-reply", id, body) as Promise<{ ok: boolean; thread?: SupportThreadRow; error?: string }>,
+  supportMarkRead: (id: string) =>
+    ipcRenderer.invoke("support-mark-read", id) as Promise<{ ok: boolean; error?: string }>,
+  orgInfraGet: () => ipcRenderer.invoke("account-org-infra") as Promise<OrgInfraRow>,
+  orgChooseInfra: (choice: { region: string; tier: string }) =>
+    ipcRenderer.invoke("account-org-choose-infra", choice) as Promise<{ ok: boolean; infra?: OrgInfraRow; error?: string }>,
+  orgGuardrailsGet: () => ipcRenderer.invoke("account-org-guardrails") as Promise<GuardrailsRow>,
+  orgGuardrailsSet: (policy: Record<string, number> | null) =>
+    ipcRenderer.invoke("account-org-set-guardrails", policy) as Promise<{ ok: boolean; guardrails?: GuardrailsRow; error?: string }>,
   // AI Gateway — escalation models (org-governed), slicer usage, org governance.
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
