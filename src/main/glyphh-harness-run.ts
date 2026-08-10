@@ -39,6 +39,7 @@ import { glyphhMode, registerRemotePause } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { glyphhToolDefs, connectorWireTools, type ConnectorWireDef } from "./glyphh-agent-tools";
 import { selectConnectorTools } from "./tool-vectors";
+import { turnNeedsTools } from "./turn-router";
 import { attachmentImageRefs, type AttachRef } from "./glyphh-agent-attachments";
 import { composeTurn, brandError, type ChatMessage } from "./glyphh-agent-prompt";
 import { lendToolSurface, BRIDGE_TOOL_PREFIX, type LentSurface } from "./harness-mcp-bridge";
@@ -237,9 +238,34 @@ export async function harnessRun(
     //    instead of a catalog subset — the same trade the in-process path makes).
     //    A CLOUD pod works in its own sandbox and cannot reach this machine's
     //    loopback bridge, so it is lent nothing and brings its own tools.
-    const defs = cloud ? [] : glyphhToolDefs(mode);
+    //
+    //    PRE-ROUTER (turn-router.ts): the Chat/Work/Code spaces were collapsed,
+    //    so `mode` is always 'code' and every turn — even a one-line chat —
+    //    would otherwise dump the FULL builtin surface. The system, not the
+    //    user, decides tool cost per turn: for an obviously-conversational turn
+    //    we assemble a MINIMAL surface (no builtins, no connector subset) and
+    //    keep only find_tools/call_tool lent as an escape hatch, so a
+    //    mis-classified chat can still discover + call a tool mid-turn
+    //    (progressive loading). Cloud is exempt here — the pod brings its own
+    //    tools — and the same pre-router belongs in the pod's assembly as a
+    //    follow-up (TODO(cloud) in turn-router.ts).
+    const wantsTools = cloud ? true : await turnNeedsTools(lastUser, base).catch(() => true);
+
+    // find_tools/call_tool are the progressive-loading escape hatch — always
+    // present so a no-tools turn that turns out to need a tool can still reach
+    // one. In the full-tools branch they ride along inside the builtins.
+    const ESCAPE_HATCH = new Set(["find_tools", "call_tool"]);
+    const fullDefs = cloud ? [] : glyphhToolDefs(mode);
+    const defs = cloud || wantsTools ? fullDefs : fullDefs.filter((d) => ESCAPE_HATCH.has(d.name));
+
+    // Wire the connector catalog even in the no-tools branch: it costs no
+    // prompt tokens (it only populates the module-level wireMap/lastWireDefs
+    // that back find_tools/call_tool), and without it the escape hatch would
+    // search a stale/empty catalog. What we skip when tools are gated off is
+    // the per-ask PRESELECT — those defs DO ride the prompt — so connDefs stays
+    // empty and find_tools discovers the rest lazily if the model reaches for it.
     const connCatalog = cloud ? [] : await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
-    const connDefs = cloud || mode === "code"
+    const connDefs = cloud || !wantsTools || mode === "code"
       ? []
       : await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
 
