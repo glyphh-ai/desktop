@@ -15519,11 +15519,13 @@ body.code-dragging webview { pointer-events: none !important; }
 /* B1: the layout bar — one "Close layout" control, shown only while a layout's
    panels are on stage. Sits top-center above the cards, out of the way. */
 .echo-layout-bar {
+  /* Re-parented into #shell-drag-strip (the 38px app header) in code-workbench.ts, so
+     it's absolute-centered WITHIN that fixed header — dead center of the app header,
+     not the content pane. no-drag so the button stays clickable in the drag region. */
   position: absolute;
-  /* Sit centered on the command-center header line (matches .echo-topbar's top),
-     which is hidden while a layout is up — so the Close-layout bar takes its place. */
-  top: 56px; left: 50%; transform: translateX(-50%);
-  z-index: 6;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 201;
+  -webkit-app-region: no-drag;
   display: flex; align-items: center; gap: 10px;
   padding: 4px 6px 4px 14px;
   background: var(--surface-2); border: 1px solid var(--border);

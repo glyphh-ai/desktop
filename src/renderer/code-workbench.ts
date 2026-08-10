@@ -2373,6 +2373,10 @@ async function init(): Promise<void> {
     // while a layout's cards are on stage (any open card carries a layoutId).
     // Defined ABOVE layoutCards so there is no forward reference.
     const layoutBar = body.querySelector<HTMLElement>(".echo-layout-bar")!;
+    // Move the Close-layout bar OUT of the content pane and INTO the app header
+    // (#shell-drag-strip, the fixed 38px top bar) so it renders centered in the header,
+    // not floating in the right-hand content page. It stays referenced by `layoutBar`.
+    document.getElementById("shell-drag-strip")?.appendChild(layoutBar);
     const layoutBarName = body.querySelector<HTMLElement>(".echo-layout-bar-name")!;
     body.querySelector<HTMLElement>(".echo-layout-close")!
       .addEventListener("click", () => closeLayoutGroup());
