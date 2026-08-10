@@ -1732,12 +1732,10 @@ function renderThread(): void {
       inner.appendChild(el);
       return;
     }
-    // The trailing group of an active run renders expanded (live progress).
-    if (liveRun && i === blocks.length - 1) {
-      for (const m of b.msgs) inner.appendChild(toolLineEl(m.text));
-      return;
-    }
-    inner.appendChild(toolGroupEl(c.id, b.msgs));
+    // The active run's trailing group folds into a working TRAY too (a summary by
+    // default, expandable for the detail actions) — same treatment as finished groups,
+    // so a live turn doesn't dump a wall of raw tool lines.
+    inner.appendChild(toolGroupEl(c.id, b.msgs, !!liveRun && i === blocks.length - 1));
   });
   // Working state — the streamed reply renders as plain agent text, and a
   // working spinner ALWAYS sits at the bottom while thinking (through tool
@@ -1825,18 +1823,21 @@ function toolLineEl(text: string): HTMLElement {
 // Expanded tool groups (keyed chatId:firstMsgTimestamp) — transient UI state.
 const expandedToolGroups = new Set<string>();
 
-function toolGroupEl(chatId: string, msgs: CodeMsg[]): HTMLElement {
+function toolGroupEl(chatId: string, msgs: CodeMsg[], live = false): HTMLElement {
   const key = `${chatId}:${msgs[0]?.at ?? 0}`;
   const open = expandedToolGroups.has(key);
   const wrap = document.createElement("div");
-  wrap.className = "code-tool-group";
+  wrap.className = "code-tool-group" + (live ? " live" : "");
   const failed = msgs.filter((m) => m.text.startsWith("✕")).length;
   const head = document.createElement("button");
   head.type = "button";
   head.className = "code-tool-summary" + (open ? " open" : "");
   head.innerHTML = `<span></span><svg class="tg-chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
-  (head.firstChild as HTMLElement).textContent =
-    `Ran ${msgs.length} tool call${msgs.length === 1 ? "" : "s"}${failed ? ` · ${failed} failed` : ""}`;
+  // Live = present-tense "Working" tray (the count updates as tools stream in); settled =
+  // the recap with a failure count. Collapsed by default either way — expand for detail.
+  (head.firstChild as HTMLElement).textContent = live
+    ? `Working — ${msgs.length} tool call${msgs.length === 1 ? "" : "s"}…`
+    : `Ran ${msgs.length} tool call${msgs.length === 1 ? "" : "s"}${failed ? ` · ${failed} failed` : ""}`;
   head.addEventListener("click", () => {
     if (expandedToolGroups.has(key)) expandedToolGroups.delete(key);
     else expandedToolGroups.add(key);
