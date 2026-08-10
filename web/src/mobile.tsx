@@ -2803,6 +2803,11 @@ function App() {
   // One-shot: suppress the nav slide-in for the NEXT screen switch (used when
   // the keyboard is collapsing at the same time — the two compose diagonally).
   const navNoAnimRef = useRef(false);
+  // Synchronous re-entry guard for send. `streaming` is React state (async), so a
+  // rapid double-fire of the send tap (touch + ghost click on mobile) both read
+  // session===null and each mint a NEW chat — "it redirects to a new chat again".
+  // This ref flips the instant the first send lands, closing that window.
+  const sendBusyRef = useRef(false);
   const [roleSel, setRoleSel] = useState<Record<string, string>>({});  // per-role model override
   const [models, setModels] = useState<ModelChoice[]>([]);             // available() pool (labels + fallback)
   // Permission mode persists — a refresh must NOT silently revert the user's
@@ -2949,7 +2954,11 @@ function App() {
     // Images only ride a fresh composer send (not retry/edit-resend).
     const imgs = override === undefined ? attachImgs.map((a) => ({ mediaType: a.mediaType, data: a.data })) : [];
     const imgUrls = override === undefined ? attachImgs.map((a) => a.url) : [];
-    if ((!prompt && imgs.length === 0) || streaming) return;
+    if ((!prompt && imgs.length === 0) || streaming || sendBusyRef.current) return;
+    // Hold the guard through the double-tap / ghost-click window; by the time it
+    // releases, `streaming` state has committed and takes over re-entry blocking.
+    sendBusyRef.current = true;
+    setTimeout(() => { sendBusyRef.current = false; }, 600);
     stopObserving(); // a local send takes this thread over — drop the observer so they don't both drive the transcript
     haptic(); if (override === undefined) { setDraft(''); setAttachImgs([]); } setPending(null);
     let sess = session;
