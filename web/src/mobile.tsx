@@ -2667,6 +2667,7 @@ function AgentPrompt({ pending, onResolve }: {
         </div>
       ))}
       <div className="m-prompt-actions">
+        <button className="m-prompt-btn" onClick={() => { haptic(); onResolve(null); }}>Cancel</button>
         <button className="m-prompt-btn m-prompt-primary" disabled={answers.some((a) => !a.trim())}
           onClick={() => { haptic(); onResolve({ answers }); }}>Send</button>
       </div>

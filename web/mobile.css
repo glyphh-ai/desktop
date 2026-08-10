@@ -1044,6 +1044,10 @@ body {
   .m-shell { display: flex; width: 100%; transform: none; }
   .m-app[data-drawer="open"] .m-shell { transform: none; }
   .m-scrim { display: none; }
+  /* Parked approval/ask lives INSIDE the chat column (right of the rail), as a
+     centered card — not a bottom sheet spanning the whole app over the sidebar. */
+  .m-prompt-overlay { left: 320px; align-items: center; }
+  .m-prompt { max-width: 560px; margin: 0 auto; border-radius: 22px; }
   .m-rail {
     flex: 0 0 320px;
     width: 320px;
