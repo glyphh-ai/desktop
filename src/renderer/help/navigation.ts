@@ -17,6 +17,7 @@ import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadModelsAdmin } from "./models-admin.js";
+import { loadFiles, initFiles } from "./files.js";
 
 const overlay = getHelpOverlay();
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
@@ -94,6 +95,7 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "agents") void loadAgents();
   else if (sec === "layouts") loadLayouts();
+  else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
   else if (sec === "code") loadCode();
   else if (sec === "connections") void loadConnections();
@@ -119,6 +121,12 @@ export function gotoSection(section: string, sub?: string): void {
     openSettingsModal(sub);
     return;
   }
+  // "Customize" — the rail's app-settings entry. Opens the modal on the app-
+  // config anchor ("app" → appearance via SETTINGS_SUB_ALIAS).
+  if (section === "app") {
+    openSettingsModal("app");
+    return;
+  }
   // Docs lives INSIDE the settings modal now (a "docs" sub-panel), not its own
   // full-page section — open the modal on it and apply the optional topic.
   if (section === "docs") {
@@ -139,7 +147,7 @@ export function gotoSection(section: string, sub?: string): void {
   }
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
-  if (["layouts"].includes(section)) {
+  if (["layouts", "files"].includes(section)) {
     void window.glyphh.railCollapseSet?.(false);
   }
   void window.glyphh.setPreference?.("homeLastSection", section);
@@ -286,7 +294,13 @@ export function openSettingsModal(sub?: string): void {
  * — without this, every nav item and panel deactivates and Settings opens
  * blank.
  */
-const SETTINGS_SUB_ALIAS: Record<string, string> = { organization: "account" };
+const SETTINGS_SUB_ALIAS: Record<string, string> = {
+  organization: "account",
+  // "Customize" (the rail's app-settings entry) opens the modal on Appearance —
+  // the app-level customization panel (themes, browser). General/Appearance/
+  // Drips/Desktop/MCP are the app-config subs; Appearance is the natural anchor.
+  app: "appearance",
+};
 
 /** Retired top-level sections, redirected to the Settings sub-panel that
  *  absorbed them — a rail item or `homeLastSection` naming "models" must not
@@ -527,6 +541,7 @@ export function initHelp() {
   initApps();
   initConnections();
   initLayoutsEvents();
+  initFiles();
   initDripsEvents();
   initLoopsEvents();
   initSkillsLibraryEvents();

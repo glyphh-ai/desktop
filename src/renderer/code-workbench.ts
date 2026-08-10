@@ -5673,6 +5673,31 @@ async function init(): Promise<void> {
     // MULTI-INSTANCE: every terminal command spawns its own panel.
     placeSlot(makeSlot("terminal"));
   };
+  // Artifacts gallery (Files section) → workbench. Mount by KIND: code/text/
+  // markdown open in Monaco (content inline if the artifact carries it, else
+  // fetched from the presigned url); image/pdf/other open in a preview panel at
+  // their presigned url. The artifact id stands in for a path so Monaco tabs
+  // dedupe per artifact.
+  interface WbArtifact { id: string; name: string; kind: "code" | "text" | "markdown" | "image" | "pdf" | "other"; url?: string; content?: string; mimeType?: string }
+  (window as unknown as { __wbOpenArtifact?: (a: WbArtifact) => void }).__wbOpenArtifact = (a) => {
+    if (!a) return;
+    const textual = a.kind === "code" || a.kind === "text" || a.kind === "markdown";
+    if (textual) {
+      const node = { name: a.name || a.id, path: `artifact:${a.id}` };
+      if (typeof a.content === "string") { openFileInMonaco(node, a.content); return; }
+      if (a.url) {
+        void fetch(a.url)
+          .then((r) => r.text())
+          .then((text) => openFileInMonaco(node, text))
+          .catch((e) => openFileInMonaco(node, `// Couldn't load ${a.name}: ${String(e)}`));
+        return;
+      }
+      openFileInMonaco(node, "");
+      return;
+    }
+    // image / pdf / other — a preview panel at the presigned url.
+    if (a.url) { openPreviewUrl(a.url); return; }
+  };
 
   // App bridges — the OS-window replacement surface. main (glyphh agent tools,
   // relay panels_*, the Apps/Layouts pages' IPC) drives these through

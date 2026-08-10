@@ -3776,10 +3776,9 @@ function initRailApps(): void {
     syncRailLayout();
   })();
   void loadRecentApps();
-  // The Layouts open icon goes straight through gotoSection — the same switcher
-  // the rail nav's own click handler calls. (The Apps rail open-page button was
-  // removed in A2; Apps management lives in the settings modal now.)
-  el("layouts-open-btn")?.addEventListener("click", (e) => { e.stopPropagation(); gotoSection("layouts"); });
+  // The Apps + Layouts rail open-page buttons were removed (A2/A5); their
+  // sections open via the rail nav / settings modal now, and the trays below
+  // are pure quick-launch grids.
   // Live updates: Apps/Layouts CRUD announces itself (same renderer).
   document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
   initRecentsVsplit();

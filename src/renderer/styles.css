@@ -3220,6 +3220,7 @@ body.account-locked #dl-btn-wrap {
 .help-section[data-section="loops"].active,
 .help-section[data-section="skills"].active,
 .help-section[data-section="agents"].active,
+.help-section[data-section="files"].active,
 .help-section[data-section="layouts"].active,
 .help-section[data-section="mcp"].active,
 .help-section[data-section="library"].active,
@@ -4026,6 +4027,61 @@ ol.docs-list li::before {
 .crud-card:hover {
   background: var(--surface-2);
   border-color: var(--border-2);
+}
+
+/* ── Files — the artifacts gallery (A5) ───────────────────────────────────── */
+/* A responsive grid of artifact cards: kind icon + name + edited-time. */
+.files-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s;
+  font: inherit;
+}
+.file-card:hover { background: var(--surface-2); border-color: var(--border-2); }
+.file-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.file-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+.file-card-icon svg { width: 20px; height: 20px; }
+.file-card-icon-image, .file-card-icon-pdf { color: var(--text-2); }
+.file-card-body { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.file-card-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-card-meta {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Agent identicon — used in the Agents list cards. */
