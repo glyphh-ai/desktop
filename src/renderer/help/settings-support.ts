@@ -97,9 +97,9 @@ function renderTickets(): void {
   for (const t of tickets) {
     const row = document.createElement("button");
     row.type = "button";
-    row.className = "a4-row a4-row-btn";
+    row.className = "set-list-row";
     const last = t.lastMessage?.body ? ` · ${escapeHtml(t.lastMessage.body)}` : "";
-    row.innerHTML = `<span class="a4-row-main"><span class="a4-row-name">${escapeHtml(t.subject)}${t.unread ? ` <span class="a4-dot"></span>` : ""}</span><span class="a4-row-sub">${escapeHtml(t.status)}${last}</span></span>`;
+    row.innerHTML = `<span class="set-list-main"><span class="set-list-name">${escapeHtml(t.subject)}${t.unread ? ` <span class="set-dot"></span>` : ""}</span><span class="set-list-sub">${escapeHtml(t.status)}${last}</span></span>`;
     row.addEventListener("click", () => void openThread(t.id));
     list.appendChild(row);
   }
@@ -115,7 +115,7 @@ function renderThread(): void {
   msgs.innerHTML = "";
   for (const m of thread?.messages || []) {
     const div = document.createElement("div");
-    div.className = `support-msg ${m.authorKind === "user" ? "support-msg-user" : "support-msg-admin"}`;
+    div.className = `set-msg ${m.authorKind === "user" ? "set-msg-user" : "set-msg-admin"}`;
     div.textContent = m.body;
     msgs.appendChild(div);
   }

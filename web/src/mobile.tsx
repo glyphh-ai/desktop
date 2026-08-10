@@ -11,7 +11,7 @@
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef } from 'react';
-import { NAV, GHOST_QUOTES, SETTINGS_GROUPS,
+import { GHOST_QUOTES, SETTINGS_GROUPS,
   type SpaceId, type Recent, type Message } from './mock';
 // Real auth + client — the same SDK wiring app-web uses (localStorage token store,
 // gating cookies, refresh, signed-out event). We reuse it; we don't fork the client.
@@ -67,7 +67,8 @@ function forgetLocus(id: string): void {
 function chatFor(id: string): RemoteChat {
   let c = remoteChats.get(id);
   if (!c) {
-    c = { id, mode: 'chat' };
+    // Spaces are gone — every session runs the full Code toolset.
+    c = { id, mode: 'code' };
     const l = locusOf(id);
     if (l?.kind === 'local') c.source = { kind: 'local', ...(l.machineId ? { machineId: l.machineId } : {}), path: l.path };
     remoteChats.set(id, c);
@@ -310,9 +311,11 @@ function defaultLoopSlug(loops: LoopItem[]): string {
   return loops.find((l) => l.slug === 'default')?.slug ?? loops.find((l) => l.builtIn)?.slug ?? loops[0]?.slug ?? '';
 }
 
-/* ── Sessions (chat threads) — real SDK data (glyphh().sessions.threads()).
-   One thread = one chat; its `mode` buckets it into Chat / Work / Code. ────── */
-interface ThreadMeta { id: string; title: string; mode: string; createdAt: number; updatedAt: number; messageCount: number; }
+/* ── Sessions — real SDK data (glyphh().sessions.threads()). One thread = one
+   session; there is no Chat/Work/Code bucketing anymore (spaces are gone). The
+   `mode` field is still written as "code" for server compatibility, but nothing
+   here branches on it. ────── */
+interface ThreadMeta { id: string; title: string; mode?: string; createdAt: number; updatedAt: number; messageCount: number; }
 interface ThreadMsg { role: string; text?: string; [k: string]: unknown; }
 
 /** Relative "when" label from an epoch-ms timestamp (now / 2h / Yesterday / Aug 1). */
@@ -330,42 +333,28 @@ function rel(ms: number): string {
   return d.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
 }
 /** SDK thread → the Recent shape the list rows + rail render. */
-function threadToRecent(t: ThreadMeta): Recent { return { id: t.id, title: t.title?.trim() || 'New chat', when: rel(t.updatedAt) }; }
-/** Newest-first threads of one mode, mapped for the list. */
-function threadsFor(threads: ThreadMeta[] | null, mode: string): Recent[] {
-  return (threads ?? []).filter((t) => t.mode === mode).sort((a, b) => b.updatedAt - a.updatedAt).map(threadToRecent);
-}
-/** Threads of a mode bucketed by recency (Work/Code are time-grouped lists). */
-interface TimeGroup { label: string; items: Recent[]; }
-function groupThreadsByTime(threads: ThreadMeta[] | null, mode: string): TimeGroup[] {
-  const list = (threads ?? []).filter((t) => t.mode === mode).sort((a, b) => b.updatedAt - a.updatedAt);
-  const now = Date.now();
-  const bucket = (ms: number): string => {
-    const days = (now - ms) / 86400000;
-    if (days < 1) return 'Today';
-    if (days < 7) return 'This week';
-    if (days < 31) return 'This month';
-    return 'Earlier';
-  };
-  const order: string[] = [];
-  const by: Record<string, Recent[]> = {};
-  for (const t of list) { const l = bucket(t.updatedAt); if (!by[l]) { by[l] = []; order.push(l); } by[l].push(threadToRecent(t)); }
-  return order.map((label) => ({ label, items: by[label] }));
+function threadToRecent(t: ThreadMeta): Recent { return { id: t.id, title: t.title?.trim() || 'New session', when: rel(t.updatedAt) }; }
+/** ALL sessions, newest-first, mapped for the unified list. No mode bucketing —
+ *  spaces are gone, so every session shows in the one list. */
+function allSessions(threads: ThreadMeta[] | null): Recent[] {
+  return (threads ?? []).slice().sort((a, b) => b.updatedAt - a.updatedAt).map(threadToRecent);
 }
 /** A thread's messages → the session view's {role, text}. assistant → 'glyphh'. */
 function normalizeMsg(m: ThreadMsg, i: number): Message {
   return { id: `m${i}`, role: m.role === 'user' ? 'user' : 'glyphh', text: typeof m.text === 'string' ? m.text : '' };
 }
 
-/* ── Left rail: brand → spaces → recents ──────────────────────────────────── */
-function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, onNewChat, user }: {
-  active: SpaceId;
-  onSelect: (id: SpaceId) => void;
+/* ── Left rail: brand → + New Session → Recents → Connections.
+   Spaces are gone — there is no Chat/Work/Code tab. The rail is just the one
+   primary action, the recents list, and a single Connections shortcut (which
+   opens the Settings modal on its Connections tray — the page stays in settings). */
+function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onConnections, user }: {
   onOpenRecent: (r: Recent) => void;
   recents: Recent[];
-  onAllChats: () => void;
+  onAllSessions: () => void;
   onAccount: () => void;
-  onNewChat: () => void;
+  onNewSession: () => void;
+  onConnections: () => void;
   user: DisplayUser;
 }) {
   return (
@@ -374,19 +363,11 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
         <img className="m-wordmark" src="/brand/glyphh-logo-text.png" alt="Glyphh" />
       </div>
 
-      <nav className="m-rail-nav">
-        {NAV.map((n) => (
-          <button
-            key={n.id}
-            className="m-nav-item"
-            aria-current={active === n.id ? 'page' : undefined}
-            onClick={() => onSelect(n.id)}
-          >
-            <Icon name={n.id} />
-            <span>{n.label}</span>
-          </button>
-        ))}
-      </nav>
+      {/* + New Session — the one primary action, top-left. */}
+      <button className="m-rail-new btn btn-primary btn-lg" onClick={onNewSession}>
+        <Icon name="plus" />
+        <span>New Session</span>
+      </button>
 
       <div className="m-recents">
         <div className="m-recents-label">Recents</div>
@@ -396,20 +377,24 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
               <span className="m-recent-title">{r.title}</span>
             </button>
           ))}
-          <button className="m-all-chats" onClick={onAllChats}>
-            <span>All Chats</span>
+          <button className="m-all-chats" onClick={onAllSessions}>
+            <span>All Sessions</span>
             <Icon name="chevron" />
           </button>
         </div>
       </div>
 
+      {/* The one rail destination — a shortcut into Settings → Connections. */}
+      <nav className="m-rail-nav">
+        <button className="m-nav-item" onClick={onConnections}>
+          <Icon name="link" />
+          <span>Connections</span>
+        </button>
+      </nav>
+
       <div className="m-rail-footer">
         <button className="m-avatar" aria-label={user.name} title={user.name} onClick={onAccount}>
           {user.initials}
-        </button>
-        <button className="btn btn-primary btn-lg" onClick={onNewChat}>
-          <Icon name="plus" />
-          <span>New Chat</span>
         </button>
       </div>
     </aside>
@@ -419,7 +404,7 @@ function Rail({ active, onSelect, onOpenRecent, recents, onAllChats, onAccount, 
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, loopName, modelSummary, mode, onDictate, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
+function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, loopName, modelSummary, onDictate, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
@@ -457,14 +442,10 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
           autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" {...NOFILL} />
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
-          {mode === 'chat'
-            ? <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
-            : <>
-                <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
-                {/* Loop/model chip beside permission — shown on tablet (phone keeps
-                    the top dropdown / dots menu for it). */}
-                <button className="m-tool-pill m-pill-cfg m-pill-loopmodel" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
-              </>}
+          {/* Every session is a Code session now: the permission pill + the
+              loop/model chip beside it (the most-capable composer). */}
+          <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
+          <button className="m-tool-pill m-pill-cfg m-pill-loopmodel" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
           <span className="m-composer-spacer" />
           <button className={`m-tool-mic${voice.listening ? ' m-mic-live' : ''}`} aria-label="Voice" onClick={onMic}><Icon name="mic" /></button>
           {sending
@@ -552,55 +533,14 @@ function ActivityBadge({ state }: { state?: 'working' | 'waiting' }) {
   return null;
 }
 
-function ChatsView({ title, sessions, pinnedIds, loading, activity, onMenu, onOpen, onNewChat, onSearch }: {
-  title: string;
-  sessions: Recent[];
-  pinnedIds: Set<string>;
-  loading: boolean;
-  activity: Record<string, 'working' | 'waiting'>;
-  onMenu: () => void;
-  onOpen: (s: Recent) => void;
-  onNewChat: () => void;
-  onSearch: () => void;
-}) {
-  return (
-    <div className="m-chats">
-      {/* Blur zone (top): the list scrolls fuzzily up under the header. */}
-      <div className="m-chats-fade m-chats-fade-top" />
-      <header className="m-chats-head">
-        <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
-        <span className="m-chats-title">{title}</span>
-        <FilterMenu allLabel="All chats" allIcon="chats" />
-      </header>
-      <div className="m-chats-list">
-        {loading
-          ? <div className="m-list-note">Loading…</div>
-          : sessions.length === 0
-          ? <div className="m-list-note">No chats yet — start a new one.</div>
-          : sessions.map((s) => (
-            <button key={s.id} className="m-chat-row" onClick={() => onOpen(s)}>
-              {activity[s.id] && <ActivityBadge state={activity[s.id]} />}
-              <span className="m-chat-text">
-                <span className="m-chat-title">{pinnedIds.has(s.id) && <span className="m-row-pin"><Icon name="pin" /></span>}{s.title}</span>
-                <span className="m-chat-when">{s.when}</span>
-              </span>
-              <Icon name="chevron" />
-            </button>
-          ))}
-      </div>
-      <button className="m-fab btn btn-primary btn-lg" onClick={onNewChat}><Icon name="plus" /><span>New chat</span></button>
-      <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
-    </div>
-  );
-}
-
-/* ── Code: attached Desktops strip + a Sessions list that distinguishes a
-   session's runtime — running on a connected desktop, on a now-unreachable
-   desktop, or in the cloud. ──────────────────────────────────────────────── */
 /** An attached desktop/machine, from glyphh().attach.status(). */
 interface AttachedMachine { id?: string; app: string; version?: string; name?: string; capabilities?: string[]; since?: number }
 
-function CodeView({ desktops, sessions, pinnedIds, loading, activity, sourceOf, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
+/* ── The ONE unified session list (spaces are gone). Attached Desktops strip at
+   the top, then every session — pinned-first, then time-sorted — each row
+   carrying a small cloud/local marker (the only per-session distinction now).
+   Built like the old Code view; Chats/Work/Code are collapsed into this. ──── */
+function HomeList({ desktops, sessions, pinnedIds, loading, activity, sourceOf, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
   desktops: AttachedMachine[];
   sessions: Recent[];
   pinnedIds: Set<string>;
@@ -615,12 +555,12 @@ function CodeView({ desktops, sessions, pinnedIds, loading, activity, sourceOf, 
 }) {
   return (
     <div className="m-code">
-      {/* Header + footer are the EXACT chats classes — identical transparency,
-          size, and the search input. Only the middle content differs. */}
+      {/* Header + footer reuse the chats classes — identical transparency,
+          size, and the search input. */}
       <div className="m-chats-fade m-chats-fade-top" />
       <header className="m-chats-head">
         <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
-        <span className="m-chats-title">Code</span>
+        <span className="m-chats-title">Sessions</span>
         <FilterMenu allLabel="All sessions" allIcon="code" />
       </header>
       <div className="m-code-scroll">
@@ -674,73 +614,6 @@ function CodeView({ desktops, sessions, pinnedIds, loading, activity, sourceOf, 
   );
 }
 
-/* ── Work: tasks grouped by time bucket, each a card with a status
-   glyph, title, timestamp and an optional note. ─────────────────────────── */
-function WorkView({ desktops, groups, loading, activity, onMenu, onOpen, onOpenDesktop, onNewTask, onSearch }: {
-  desktops: AttachedMachine[];
-  groups: TimeGroup[];
-  loading: boolean;
-  activity: Record<string, 'working' | 'waiting'>;
-  onMenu: () => void;
-  onOpen: (s: Recent) => void;
-  onOpenDesktop: (d: AttachedMachine) => void;
-  onNewTask: () => void;
-  onSearch: () => void;
-}) {
-  return (
-    <div className="m-work">
-      {/* Header + footer are the EXACT chats classes (same transparency/size +
-          search input). */}
-      <div className="m-chats-fade m-chats-fade-top" />
-      <header className="m-chats-head">
-        <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
-        <span className="m-chats-title">Work</span>
-        <FilterMenu allLabel="All tasks" allIcon="work" />
-      </header>
-      <div className="m-work-scroll">
-        {/* Desktops strip — same as Code: tap a machine to start a task on it. */}
-        <div className="m-code-label">Desktops</div>
-        <div className="m-desktops">
-          {desktops.length === 0
-            ? <div className="m-list-note">No desktops connected</div>
-            : desktops.map((d) => (
-              <button key={d.id || d.name || d.app} className="m-desktop" data-status="connected" onClick={() => onOpenDesktop(d)}>
-                <span className="m-desktop-icon"><Icon name="laptop" /><i className="m-desktop-badge" /></span>
-                <span className="m-desktop-name">{d.name || d.app}</span>
-                <span className="m-desktop-status">Connected</span>
-              </button>
-            ))}
-        </div>
-        <div className="m-code-sessions-head"><span className="m-code-label">Tasks</span></div>
-        {loading
-          ? <div className="m-list-note">Loading…</div>
-          : groups.length === 0
-          ? <div className="m-list-note">No tasks yet — start one.</div>
-          : groups.map((g) => (
-            <div key={g.label} className="m-work-section">
-              <div className="m-work-label">{g.label}</div>
-              <div className="m-work-group">
-                {g.items.map((t) => (
-                  <button key={t.id} className="m-task" onClick={() => onOpen(t)}>
-                    <span className="m-task-check" data-state="todo">{activity[t.id] ? <ActivityBadge state={activity[t.id]} /> : <Icon name="circle" />}</span>
-                    <span className="m-task-body">
-                      <span className="m-task-top">
-                        <span className="m-task-title">{t.title}</span>
-                        <span className="m-task-when">{t.when}</span>
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-      </div>
-      <button className="m-fab btn btn-primary btn-lg" onClick={onNewTask}><Icon name="plus" /><span>New task</span></button>
-      <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
-    </div>
-  );
-}
-
 /* ── Session: the standard Glyphh agent view (transparent blurred header,
    messages, composer pinned at the bottom). ─────────────────────────────── */
 type SelSection = 'sections' | 'loop' | 'models' | 'permission';
@@ -756,7 +629,6 @@ interface CompProps {
   onStop?: () => void;              // abort the in-flight turn
   sending: boolean;                 // a turn is in flight
   connecting: boolean;              // provisioning the runtime on open — input locked
-  mode: 'chat' | 'cowork' | 'code'; // chat → loop/model chip; work/code → permission chip
   onDictate: (text: string) => void;                 // append dictated text to the draft
   attachments: AttachImage[];                        // pending image attachments (vision)
   onRemoveAttachment: (id: string) => void;
@@ -1046,9 +918,9 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
     scrollRafRef.current = requestAnimationFrame(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; });
     return () => cancelAnimationFrame(scrollRafRef.current);
   }, [msgs, comp.sending]);
-  // Code/Work: roll up every file-editing tool step (those with a diff badge)
-  // across the transcript into a session-level "Changes" view.
-  const changes = comp.mode === 'chat' ? [] : (msgs ?? []).flatMap((m) => (m.steps ?? []) as ToolStep[]).filter((s) => !!s.diff);
+  // Roll up every file-editing tool step (those with a diff badge) across the
+  // transcript into a session-level "Changes" view.
+  const changes = (msgs ?? []).flatMap((m) => (m.steps ?? []) as ToolStep[]).filter((s) => !!s.diff);
   const changeTotals = changes.reduce((a, s) => { const mm = /\[\+(\d+)\s*-(\d+)\]/.exec(s.diff || ''); if (mm) { a.add += +mm[1]; a.del += +mm[2]; } return a; }, { add: 0, del: 0 });
   // The tool currently in flight (last running step) — names the working label.
   const runningTool = comp.sending
@@ -1073,20 +945,16 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
           <button className="m-chats-icon" aria-label="Options" onClick={() => { haptic(); setMenu((v) => !v); }}><Icon name="dots" /></button>
           {menu && (
             <div className="m-sv-menu" role="menu">
-              {/* Chat uses the composer chip for loop/model; Work/Code keep it here. */}
-              {comp.mode !== 'chat' && (
-                <>
-                  <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
-                    <Icon name="swap" />
-                    <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change model</span><span className="m-sv-menu-s">{comp.modelSummary}</span></span>
-                  </button>
-                  <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
-                    <Icon name="loop" />
-                    <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change loop</span><span className="m-sv-menu-s">{comp.loopName}</span></span>
-                  </button>
-                  <div className="m-sv-menu-sep" />
-                </>
-              )}
+              {/* Every session is a Code session — loop/model change lives here. */}
+              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
+                <Icon name="swap" />
+                <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change model</span><span className="m-sv-menu-s">{comp.modelSummary}</span></span>
+              </button>
+              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
+                <Icon name="loop" />
+                <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change loop</span><span className="m-sv-menu-s">{comp.loopName}</span></span>
+              </button>
+              <div className="m-sv-menu-sep" />
               <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); onRename(); }}>
                 <Icon name="pencil" /><span>Rename</span>
               </button>
@@ -2318,10 +2186,14 @@ const SUB_TITLE: Record<SettingsSub, string> = {
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
   runtime: 'Region', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
 };
-function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void }) {
+function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialSub }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void; initialSub?: SettingsSub | null }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
   const [subOpen, setSubOpen] = useState(false);   // drives the track; sub persists during slide-back
   const [info, setInfo] = useState(false);
+  // Rail shortcut: open the sheet straight onto a specific tray (e.g. Connections).
+  useEffect(() => {
+    if (open && initialSub) { setSub(initialSub); setSubOpen(true); }
+  }, [open, initialSub]);
   useEffect(() => {
     if (open) return;
     const t = setTimeout(() => { setSubOpen(false); setInfo(false); }, 260);
@@ -2875,7 +2747,6 @@ function FolderPickerTray({ machine, onClose, onChoose }: { machine: AttachedMac
 }
 
 function App() {
-  const [active, setActive] = useState<SpaceId>('chat');
   const [drawer, setDrawer] = useState(false);
   const [screen, setScreen] = useState<'home' | 'list' | 'session'>('home');
   const [session, setSession] = useState<Recent | null>(null);
@@ -2883,6 +2754,7 @@ function App() {
   const [user, setUser] = useState<DisplayUser>(() => toDisplayUser(cachedUser()));
   const [minSplash, setMinSplash] = useState(false);   // hold the splash for its full beat
   const [settings, setSettings] = useState(false);
+  const [settingsSub, setSettingsSub] = useState<SettingsSub | null>(null);   // rail shortcut → open a specific tray
   const [attach, setAttach] = useState(false);
   const [attachImgs, setAttachImgs] = useState<AttachImage[]>([]);     // pending image attachments (vision)
   const [folderPick, setFolderPick] = useState<AttachedMachine | null>(null); // desktop whose folder picker is open
@@ -2965,8 +2837,9 @@ function App() {
     renderPendRef.current = true;
     requestAnimationFrame(() => { renderPendRef.current = false; renderConvo(); });
   };
-  // The current space decides the session mode (Chat / Work / Code toolset).
-  const curMode: 'chat' | 'cowork' | 'code' = active === 'work' ? 'cowork' : active === 'code' ? 'code' : 'chat';
+  // Spaces are gone — every session is a Code session (the full toolset). The
+  // server still persists a `mode` field for compatibility, so we hardcode it.
+  const SESSION_MODE = 'code' as const;
 
   /** Persist the live transcript back to the thread (LWW by updatedAt), then
    *  refresh the list so the chat surfaces with its new title/timestamp. */
@@ -2976,7 +2849,7 @@ function App() {
       // Preserve a custom/renamed title (local override or the one already on the thread)
       // instead of re-deriving from the first message — otherwise a rename gets clobbered.
       const title = titles[id] ?? (threads ?? []).find((t) => t.id === id)?.title ?? (convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat');
-      await glyphh().sessions.pushThread(id, { title, mode: curMode, messages, updatedAt: Date.now() });
+      await glyphh().sessions.pushThread(id, { title, mode: SESSION_MODE, messages, updatedAt: Date.now() });
       const t = await glyphh().sessions.threads();
       setThreads(Array.isArray(t) ? t : []);
     } catch { /* offline / not-ready — the transcript stays local for now */ }
@@ -3047,10 +2920,10 @@ function App() {
         if (!streaming) observeActiveRun(s, chatFor(s.id));
       })
       .catch(() => { convoRef.current = []; renderConvo(); });
-    // Connect the runtime the moment the session opens (every mode) — so the turn
-    // is instant and the user sees an honest "connecting" state up front instead
-    // of a stall on their first submit.
-    const chat = chatFor(s.id); chat.mode = curMode;
+    // Connect the runtime the moment the session opens — so the turn is instant
+    // and the user sees an honest "connecting" state up front instead of a stall
+    // on their first submit.
+    const chat = chatFor(s.id);
     // LOCAL (machine-bound) sessions run ON the desktop over the relay — no cloud
     // pod to provision; the turn connects per-run via attach.run. Cloud sessions
     // provision their pod up front.
@@ -3084,7 +2957,7 @@ function App() {
       convoRef.current = [];
       // A session born here (from Home) is CLOUD, forever — stamp its immutable locus.
       saveLocus(id, { kind: 'cloud' });
-      setThreads((t) => [{ id, title: sess!.title, mode: curMode, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
+      setThreads((t) => [{ id, title: sess!.title, mode: SESSION_MODE, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
     }
     const asstId = 'a' + Date.now().toString(36);
     const userMsg: Message = { id: 'u' + Date.now().toString(36), role: 'user', text: prompt, ...(imgUrls.length ? { images: imgUrls } : {}) };
@@ -3094,10 +2967,9 @@ function App() {
     // Persist the session up front (with the user's message) so a reload/close
     // mid-turn can still find and re-open it — not only after the turn completes.
     void persistThread(sess.id);
-    const isCoding = curMode !== 'chat';
     const msgOf = () => convoRef.current.find((x) => x.id === asstId);
-    // Chat: one running text (markdown on completion). Work/Code: build ordered
-    // `parts` so tool rows interleave between narration.
+    // Every session is a Code turn: build ordered `parts` so tool rows interleave
+    // between narration (streamed live via appendText).
     const setAsst = (text: string) => { const m = msgOf(); if (m) { m.text = text; renderThrottled(); } };
     const appendText = (delta: string) => {
       const m = msgOf(); if (!m) return;
@@ -3144,12 +3016,12 @@ function App() {
     // (the selected role's), the value the /run body's `model` field takes.
     const r0 = roleList[0];
     const model = r0 ? (roleSel[r0.name] ?? r0.modelId ?? '') : '';
-    const chat = chatFor(sess.id); chat.mode = curMode;   // Chat / Work / Code toolset
+    const chat = chatFor(sess.id);   // full Code toolset (spaces are gone)
     const outcome = await runRemoteTurn(
       chat, prompt, () => {},
       {
-        onToken: (delta) => { setConnecting(false); if (isCoding) appendText(delta); },
-        onAnswer: (full) => { setConnecting(false); if (!isCoding) setAsst(full); },
+        onToken: (delta) => { setConnecting(false); appendText(delta); },
+        onAnswer: () => { setConnecting(false); },
         onStep: () => setConnecting(false),
         onTool: applyTool,
         onUsage: (u) => { if (typeof u.creditsMicro === 'number') creditsMicro = u.creditsMicro; },
@@ -3265,16 +3137,16 @@ function App() {
     onStop: () => { haptic(); streamAbortRef.current?.abort(); },
     sending: streaming,
     connecting,
-    mode: curMode,
     onDictate: (text) => setDraft((d) => (d.trim() ? `${d} ${text}` : text)),
     attachments: attachImgs,
     onRemoveAttachment: (id) => setAttachImgs((cur) => cur.filter((a) => a.id !== id)),
     onPasteFiles: addImageFiles,
   };
 
-  // Code/Work header subtitle — WHERE the session runs (cloud / repo / desktop).
+  // Session header subtitle — WHERE the session runs (cloud / repo / desktop).
+  // This is now the ONLY per-session distinction (cloud vs a named local machine).
   const sessionSubtitle: { icon: IconName; text: string } | undefined = (() => {
-    if (!session || curMode === 'chat') return undefined;
+    if (!session) return undefined;
     // From the IMMUTABLE locus (stable name), never volatile machine ids.
     const l = locusOf(session.id);
     if (l?.kind === 'local') return { icon: 'laptop', text: l.machineName || 'Local machine' };
@@ -3381,15 +3253,15 @@ function App() {
     const desktopsTimer = setInterval(loadDesktops, 20000);
     return () => { on = false; clearInterval(desktopsTimer); };
   }, [authState]);
+  // Stable sort that keeps time order within each pinned/unpinned group.
   const pinnedFirst = (arr: Recent[]) => [...arr].sort((a, b) => (pins.has(b.id) ? 1 : 0) - (pins.has(a.id) ? 1 : 0));
-  const chatRecents = pinnedFirst(threadsFor(threads, 'chat'));
-  const workGroups = groupThreadsByTime(threads, 'cowork');   // Work = cowork threads, time-grouped
-  const codeRecents = pinnedFirst(threadsFor(threads, 'code')); // Code = code threads (pinned float to top)
-  // Per-code-session meta: the IMMUTABLE locus (persisted — forever cloud or forever
+  // The ONE unified session list — every thread, pinned-first then time-sorted.
+  const sessions = pinnedFirst(allSessions(threads));
+  // Per-session meta: the IMMUTABLE locus (persisted — forever cloud or forever
   // THIS desktop) + a DYNAMIC status. Local is "connected" while its machine (matched
   // by NAME, stable across reconnects) is attached; cloud is "connected" only while a
   // turn is actively running (an idle cloud pod is ephemeral → disconnected).
-  const codeSourceOf = (id: string): { local: boolean; name?: string; connected: boolean } => {
+  const sourceOf = (id: string): { local: boolean; name?: string; connected: boolean } => {
     const l = locusOf(id);
     if (l?.kind === 'local') {
       const connected = desktops.some((d) => (d.name || d.app) === l.machineName);
@@ -3399,10 +3271,10 @@ function App() {
   };
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
-  const selectSpace = (id: SpaceId) => { haptic(); setActive(id); setScreen('list'); setSession(null); setDrawer(false); };
   const openSession = (s: Recent) => { haptic(); setSession(s); setScreen('session'); setDrawer(false); loadSession(s); };
   const openRecent = (r: Recent) => openSession(r);
-  const allChats = () => { haptic(); setScreen('list'); setDrawer(false); };
+  const allSessionsList = () => { haptic(); setScreen('list'); setDrawer(false); };
+  const openConnections = () => { haptic(); setSettingsSub('connections'); setSettings(true); };
   const backToList = () => { haptic(); setScreen('list'); };
   const savePins = (s: Set<string>) => { setPins(new Set(s)); try { localStorage.setItem('yoPins', JSON.stringify([...s])); } catch { /* */ } };
   const togglePin = (id: string) => { const s = new Set(pins); if (s.has(id)) s.delete(id); else s.add(id); savePins(s); };
@@ -3415,7 +3287,7 @@ function App() {
     // Sync to the server so the new title shows on every surface (Rename is only offered
     // from an OPEN session, so convoRef holds the messages to push alongside it).
     void glyphh().sessions.pushThread(id, {
-      title, mode: curMode,
+      title, mode: SESSION_MODE,
       messages: convoRef.current.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })),
       updatedAt: Date.now(),
     }).catch(() => { /* offline — the local override + list update still stand */ });
@@ -3427,9 +3299,8 @@ function App() {
     if (pins.has(s.id)) { const p = new Set(pins); p.delete(s.id); savePins(p); }
     backToList();
   };
-  const account = () => { haptic(); setSettings(true); };  /* leave the rail open behind the sheet */
+  const account = () => { haptic(); setSettingsSub(null); setSettings(true); };  /* leave the rail open behind the sheet */
   const clearConvo = () => { stopObserving(); convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); setPending(null); };
-  const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
   const newSession = () => { haptic(); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
   /** Tap a connected desktop → start a new session BOUND to that machine.
    *  The source is `local` (machineId), threaded into the same runRemoteTurn
@@ -3439,7 +3310,6 @@ function App() {
     haptic();
     const id = 'c' + Date.now().toString(36);
     const chat = chatFor(id);
-    chat.mode = curMode;
     chat.source = { kind: 'local', machineId: d.id, path };
     // Immutable locus — this session is FOREVER this desktop + folder.
     saveLocus(id, { kind: 'local', machineId: d.id, machineName: d.name || d.app, path });
@@ -3457,13 +3327,12 @@ function App() {
   const [restored, setRestored] = useState(false);
   // Restore FIRST — runs once on sign-in. `restored` is state (not a ref) so the
   // persist effect below only starts writing on the NEXT render, once the restored
-  // space/session have applied — never clobbering the saved state with defaults.
+  // session has applied — never clobbering the saved state with defaults.
   useEffect(() => {
     if (authState !== 'in' || restored) return;
     try {
-      const nav = JSON.parse(localStorage.getItem('yoNav') || 'null') as { active?: SpaceId; screen?: string; session?: Recent | null } | null;
+      const nav = JSON.parse(localStorage.getItem('yoNav') || 'null') as { screen?: string; session?: Recent | null } | null;
       if (nav) {
-        if (nav.active) setActive(nav.active);
         if (nav.session && nav.screen === 'session') openSession(nav.session);
         else if (nav.screen === 'list') setScreen('list');
       }
@@ -3472,8 +3341,8 @@ function App() {
   }, [authState, restored]);
   useEffect(() => {
     if (authState !== 'in' || !restored) return;
-    try { localStorage.setItem('yoNav', JSON.stringify({ active, screen, session: session ? { id: session.id, title: session.title, when: session.when } : null })); } catch { /* */ }
-  }, [authState, restored, active, screen, session]);
+    try { localStorage.setItem('yoNav', JSON.stringify({ screen, session: session ? { id: session.id, title: session.title, when: session.when } : null })); } catch { /* */ }
+  }, [authState, restored, screen, session]);
 
   const showSplash = !minSplash || authState === 'checking';
 
@@ -3486,7 +3355,7 @@ function App() {
       {authState === 'in' && (
       <>
       <div className="m-shell">
-        <Rail active={active} onSelect={selectSpace} onOpenRecent={openRecent} recents={chatRecents.slice(0, 12)} onAllChats={allChats} onAccount={account} onNewChat={newChat} user={user} />
+        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onConnections={openConnections} user={user} />
         <main className="m-main">
           {screen === 'home' && (
             <div className="m-home">
@@ -3495,13 +3364,11 @@ function App() {
               <header className="m-chats-head m-home-head">
                 <button className="m-chats-icon" aria-label="Open menu" onClick={toggleDrawer}><Icon name="menu" /></button>
                 <div className="m-home-center">
-                  {/* Chat picks loop/model on the composer chip; Work/Code keep the top dropdown. */}
-                  {active !== 'chat' && (
-                    <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
-                      <span>{comp.loopName} / {comp.modelSummary}</span>
-                      <Icon name="caret" />
-                    </button>
-                  )}
+                  {/* One kind of session — the top loop/model dropdown always shows. */}
+                  <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
+                    <span>{comp.loopName} / {comp.modelSummary}</span>
+                    <Icon name="caret" />
+                  </button>
                 </div>
                 <span className="m-home-head-spacer" aria-hidden="true" />
               </header>
@@ -3513,11 +3380,7 @@ function App() {
             <div className="m-nav" data-screen={screen} data-noanim={navNoAnimRef.current ? 'true' : 'false'} ref={() => { navNoAnimRef.current = false; }}>
               <div className="m-nav-track">
                 <section className="m-nav-panel">
-                  {active === 'code'
-                    ? <CodeView desktops={desktops} sessions={codeRecents} pinnedIds={pins} loading={threads === null} activity={activity} sourceOf={codeSourceOf} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
-                    : active === 'work'
-                    ? <WorkView desktops={desktops} groups={workGroups} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewTask={newSession} onSearch={openSearch} />
-                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} pinnedIds={pins} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
+                  <HomeList desktops={desktops} sessions={sessions} pinnedIds={pins} loading={threads === null} activity={activity} sourceOf={sourceOf} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
                 </section>
                 <section className="m-nav-panel">
                   {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} subtitle={sessionSubtitle} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRename={() => setRenameId(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
@@ -3530,7 +3393,7 @@ function App() {
           <div className="m-scrim" onClick={() => setDrawer(false)} />
         </main>
       </div>
-      <SettingsSheet open={settings} onClose={() => { haptic(); setSettings(false); }} user={user} onSignOut={onSignOut}
+      <SettingsSheet open={settings} initialSub={settingsSub} onClose={() => { haptic(); setSettings(false); }} user={user} onSignOut={onSignOut}
         onUserChanged={() => { void syncGating().then((u) => setUser(toDisplayUser(u))); }} />
       {/* Tap a desktop → choose a folder over the relay → start a session there. */}
       <FolderPickerTray machine={folderPick} onClose={() => { haptic(); setFolderPick(null); }}

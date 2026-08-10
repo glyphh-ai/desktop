@@ -76,12 +76,12 @@ function render(): void {
   for (const o of regions) {
     const row = document.createElement("button");
     row.type = "button";
-    row.className = "a4-row a4-row-btn";
+    row.className = "set-list-row";
     row.disabled = !!busy;
     const chosen = current === o.id;
     row.innerHTML =
-      `<span class="a4-row-main"><span class="a4-row-name">${regionName(o.id, o.label)}</span><span class="a4-row-sub">${REGION_DESC[o.id] || "Shared runtime"}</span></span>` +
-      `<span class="a4-row-tick">${busy === o.id ? '<span class="a4-spin"></span>' : chosen ? TICK_SVG : ""}</span>`;
+      `<span class="set-list-main"><span class="set-list-name">${regionName(o.id, o.label)}</span><span class="set-list-sub">${REGION_DESC[o.id] || "Shared runtime"}</span></span>` +
+      `<span class="set-list-aside">${busy === o.id ? '<span class="set-spinner"></span>' : chosen ? TICK_SVG : ""}</span>`;
     row.addEventListener("click", () => void pick(o.id));
     host.appendChild(row);
   }

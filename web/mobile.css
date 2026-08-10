@@ -149,6 +149,10 @@ body {
 .m-rail-brand { display: flex; align-items: center; padding: 14px 0 8px 26px; }
 .m-wordmark { height: 30px; width: auto; display: block; }
 
+/* + New Session — the one primary action, full-width under the wordmark. */
+.m-rail-new { width: auto; margin: 6px 14px 4px; justify-content: center; }
+.m-rail-new svg { width: 18px; height: 18px; }
+
 /* Blurs the pushed-out content while the drawer is open; tap to close. */
 .m-scrim {
   position: absolute;
@@ -190,7 +194,7 @@ body {
 .m-splash-logo-black { display: none; }
 .m-splash-logo-white { display: block; }
 
-/* Spaces nav. */
+/* Rail destination(s) — the single Connections shortcut. */
 .m-rail-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
 .m-nav-item {
   display: flex;
@@ -326,10 +330,8 @@ body {
   transition: opacity 0.5s ease;
 }
 
-/* All Chats — the Chats list view (matches the reference). */
-.m-chats { display: flex; flex-direction: column; height: 100%; position: relative; }
-
-/* Transparent header: the list scrolls UNDER it, blurred beneath the bar. */
+/* Transparent header: the list scrolls UNDER it, blurred beneath the bar.
+   Shared by the unified session list, the home screen, and the session view. */
 .m-chats-head {
   position: absolute;
   top: 0;
@@ -358,38 +360,8 @@ body {
 .m-chats-icon svg { width: 22px; height: 22px; }
 .m-chats-title { flex: 1; text-align: center; font: 700 20px/1 var(--font-sans); color: var(--text); }
 
-.m-chats-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  /* Bottom pad clears the floating New chat + search so the last row can sit
-     above them — yet still scrolls fuzzily *under* the blur zone. */
-  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 108px) calc(var(--safe-left) + 16px);
-}
 /* Loading / empty placeholder for lists + the session message area. */
 .m-list-note { padding: 32px 16px; text-align: center; color: var(--text-3); font: 400 16px/1.45 var(--font-sans); }
-.m-chat-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 14px 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-.m-chat-row:active { background: var(--hover); }
-.m-chat-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.m-chat-title {
-  font: 500 22px/1.2 var(--font-sans);
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.m-chat-when { font: 400 15px/1 var(--font-sans); color: var(--text-faint); }
-.m-chat-row > svg { flex: 0 0 20px; width: 20px; height: 20px; color: var(--text-faint); }
 
 /* Header blur zone: a backdrop-blurred band that the list scrolls fuzzily under,
    masked so the frost fades out downward. Only used pinned to the TOP (under the
@@ -555,58 +527,6 @@ body {
 .m-code-meta[data-where="off"] svg, .m-code-meta[data-where="off"] .m-code-state { color: var(--text-3); }
 .m-code-dot { color: var(--text-faint); }
 .m-code-loc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ── Work view: time-bucketed task cards ─────────────────────────────────────
-   Header + footer reuse the chats classes; only the scroll body is bespoke. */
-.m-work { position: relative; height: 100%; }
-.m-work-scroll {
-  height: 100%;
-  overflow-y: auto;
-  padding: calc(var(--safe-top) + 74px) 16px calc(var(--safe-bottom) + 108px) calc(var(--safe-left) + 16px);
-}
-.m-work-label { font: 500 17px/1 var(--font-sans); color: var(--text-3); margin: 22px 2px 12px; }
-.m-work-section:first-child .m-work-label { margin-top: 4px; }
-.m-work-group { display: flex; flex-direction: column; gap: 12px; }
-.m-task {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  width: 100%;
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  text-align: left;
-  cursor: pointer;
-}
-.m-task:active { background: var(--hover); }
-.m-task-check {
-  flex: 0 0 40px;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-}
-.m-task-check svg { width: 22px; height: 22px; }
-.m-task-check[data-state="doing"] { color: var(--text-2); }
-.m-task-check[data-state="done"] { color: var(--success); }
-.m-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
-.m-task-top { display: flex; align-items: baseline; gap: 10px; }
-.m-task-title {
-  flex: 1;
-  min-width: 0;
-  font: 600 22px/1.2 var(--font-sans);
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.m-task-when { flex: 0 0 auto; font: 400 15px/1 var(--font-sans); color: var(--text-faint); }
-.m-task-note { font: 400 17px/1.4 var(--font-sans); color: var(--text-3); }
 
 /* ── Sliding nav stack: home → list slides in from the left; list ↔ session
    slides horizontally. ────────────────────────────────────────────────────── */
@@ -1081,7 +1001,7 @@ body {
      column (messages, composer, headers, lists, home). */
   .m-sv-messages { padding-left: calc(var(--safe-left) + 48px); padding-right: 48px; }
   .m-sv-head { padding-left: calc(var(--safe-left) + 40px); padding-right: 40px; }
-  .m-chats-scroll, .m-code-scroll, .m-work-scroll { padding-left: calc(var(--safe-left) + 40px); padding-right: 40px; }
+  .m-code-scroll { padding-left: calc(var(--safe-left) + 40px); padding-right: 40px; }
   .m-chats-head, .m-home-head { padding-left: calc(var(--safe-left) + 40px); padding-right: 40px; }
   .m-ghost { padding-left: 48px; padding-right: 48px; }
 
@@ -1099,12 +1019,12 @@ body {
   /* The list + header type is phone-sized (touch targets); on a tablet it reads
      oversized. Step it down — the conversation itself is handled above. */
   .m-chats-title { font-size: 16px; }
-  .m-chat-title, .m-code-name, .m-task-title { font-size: 16px; }
+  .m-code-name { font-size: 16px; }
   .m-desktop-name { font-size: 16px; }
   .m-desktop-status { font-size: 13px; }
-  .m-code-label, .m-work-label { font-size: 14px; }
-  .m-list-note, .m-task-note { font-size: 14px; }
-  .m-chat-when, .m-code-when, .m-code-meta, .m-task-when { font-size: 13px; }
+  .m-code-label { font-size: 14px; }
+  .m-list-note { font-size: 14px; }
+  .m-code-when, .m-code-meta { font-size: 13px; }
 }
 
 /* ── Settings bottom sheet: slides up over the app, back down on close ────── */
