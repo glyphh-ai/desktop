@@ -2361,8 +2361,12 @@ async function init(): Promise<void> {
     // (#shell-drag-strip, the fixed 38px top bar) so it renders centered in the header,
     // not floating in the right-hand content page. It stays referenced by `layoutBar`.
     document.getElementById("shell-drag-strip")?.appendChild(layoutBar);
-    const layoutBarName = body.querySelector<HTMLElement>(".echo-layout-bar-name")!;
-    body.querySelector<HTMLElement>(".echo-layout-close")!
+    // These live INSIDE layoutBar, which was just re-parented into the header —
+    // query them from layoutBar, NOT body, or they come back null and the
+    // addEventListener below throws, killing every handler bound after it
+    // (the wall renders but nothing is clickable).
+    const layoutBarName = layoutBar.querySelector<HTMLElement>(".echo-layout-bar-name")!;
+    layoutBar.querySelector<HTMLElement>(".echo-layout-close")!
       .addEventListener("click", () => closeLayoutGroup());
     const paintLayoutBar = (): void => {
       const inLayout = openList.some((e) => e.layoutId != null);
