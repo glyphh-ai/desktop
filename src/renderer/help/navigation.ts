@@ -2,7 +2,8 @@
  * Help overlay — open/close, section switching, nav wiring.
  */
 
-import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning } from "./shared.js";
+import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal } from "./shared.js";
+import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps } from "./apps.js";
@@ -33,8 +34,10 @@ export function openHelp() {
 }
 
 export function openSettings(sub?: string) {
-  gotoSection("settings", sub);
-  openHelp();
+  // Settings is a modal overlay now — it no longer swaps the workbench for a
+  // full-page section. The user-menu "Settings"/"Account" and every deep link
+  // land here.
+  openSettingsModal(sub);
 }
 
 export function isHelpOpen(): boolean {
@@ -107,6 +110,15 @@ export function loadActiveSection(explicit?: string) {
 export function gotoSection(section: string, sub?: string): void {
   const moved = SECTION_ALIAS[section];
   if (moved) { section = moved.section; sub = sub || moved.sub; }
+  // Settings is a MODAL now — intercept before the workbench section swap so
+  // the user-menu item, the "models" alias, and any deep link all open the
+  // overlay instead of replacing the workspace with a full-page section.
+  if (section === "settings") {
+    void window.glyphh.setPreference?.("homeLastSection", "settings");
+    void window.glyphh.setPreference?.("homeLastSub", sub || "");
+    openSettingsModal(sub);
+    return;
+  }
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
   if (["apps", "connections", "layouts", "settings"].includes(section)) {
@@ -126,21 +138,121 @@ export function gotoSection(section: string, sub?: string): void {
     if (w.__wbOpenSection) w.__wbOpenSection(section);
     else if (tries++ < 40) { requestAnimationFrame(go); return; }
     if (!sub) return;
+    // Settings returned early above (it opens as a modal); only docs deep-links
+    // route through the workbench section here.
     if (section === "docs") showDocPanel(sub);
-    else if (section === "settings") {
-      const target = settingsSubAlias(sub);
-      const navBtns = document.querySelectorAll<HTMLButtonElement>(
-        ".help-section[data-section='settings'] .settings-nav-item");
-      const panels = document.querySelectorAll<HTMLDivElement>(
-        ".help-section[data-section='settings'] .settings-panel");
-      navBtns.forEach((n) => n.classList.toggle("active", n.dataset.sub === target));
-      panels.forEach((p) => p.classList.toggle("active", p.dataset.sub === target));
-      // A DEEP LINK must populate the panel too — showing an empty Billing
-      // page because nobody clicked the tab is the same bug as not loading it.
-      loadSettingsSub(target);
-    }
   };
   go();
+}
+
+// ── Settings modal ───────────────────────────────────────
+//
+// Settings is a centered modal overlay (A1), not a full-page workbench
+// section. The two-column .settings-layout DOM is MOVED out of its hidden
+// .help-section pen into the modal on open and moved back on close — so the
+// panels keep their exact ids/classes and every existing loader (billing,
+// members, workspaces, models, …) and the admin-only role-gating work
+// untouched wherever the layout currently lives.
+
+/** The layout's resting place — the section it lives in when the modal is
+ *  closed. Captured on first open so it can be parked back precisely. */
+let settingsHomePen: HTMLElement | null = null;
+let settingsModalWebviewsGuarded = false;
+let settingsModalPanelsHidden = false;
+
+function selectSettingsSub(sub: string): void {
+  const target = settingsSubAlias(sub);
+  const navBtns = document.querySelectorAll<HTMLButtonElement>(".settings-nav .settings-nav-item");
+  const panels = document.querySelectorAll<HTMLDivElement>(".settings-panels .settings-panel");
+  navBtns.forEach((n) => n.classList.toggle("active", n.dataset.sub === target));
+  panels.forEach((p) => p.classList.toggle("active", p.dataset.sub === target));
+  const panelsWrap = document.querySelector<HTMLElement>(".settings-modal-body .settings-panels");
+  if (panelsWrap) panelsWrap.scrollTop = 0;
+  // A deep link must POPULATE the panel too — an empty Billing page because
+  // nobody clicked the tab is the same bug as not loading it.
+  loadSettingsSub(target);
+}
+
+export function isSettingsModalOpen(): boolean {
+  return !!document.getElementById("settings-modal");
+}
+
+export function closeSettingsModal(): void {
+  const overlay = document.getElementById("settings-modal");
+  if (!overlay) return;
+  // Park the shared .settings-layout DOM back in its hidden section pen so its
+  // ids stay unique and it's ready to be re-adopted next open.
+  const layout = overlay.querySelector<HTMLElement>(".settings-layout");
+  if (layout && settingsHomePen) settingsHomePen.appendChild(layout);
+  overlay.remove();
+  document.removeEventListener("keydown", onSettingsModalKey, true);
+  if (settingsModalWebviewsGuarded) { guardWebviewsForModal(false); settingsModalWebviewsGuarded = false; }
+  restorePanelsForModal(settingsModalPanelsHidden);
+  settingsModalPanelsHidden = false;
+  try { window.glyphh.panelsShow?.(); } catch { /* */ }
+}
+
+function onSettingsModalKey(e: KeyboardEvent): void {
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSettingsModal(); }
+}
+
+export function openSettingsModal(sub?: string): void {
+  // Already open — just switch the sub-panel.
+  if (isSettingsModalOpen()) { selectSettingsSub(sub || "general"); return; }
+
+  const layout = document.querySelector<HTMLElement>(
+    ".help-section[data-section='settings'] .settings-layout") ??
+    document.querySelector<HTMLElement>(".settings-layout");
+  if (!layout) return;
+  // Remember where the layout lives so it can be parked back on close.
+  settingsHomePen = layout.parentElement as HTMLElement | null;
+
+  // Freeze the workbench's <webview> panels — they composite ABOVE page HTML in
+  // Electron, so without this the modal renders underneath the open apps and
+  // can't be seen or clicked. Same guard the confirm/prompt modals use. The
+  // capture-based freeze-frame is a best-effort extra for any legacy panels.
+  guardWebviewsForModal(true);
+  settingsModalWebviewsGuarded = true;
+  void hidePanelsForModal().then((hidden) => { settingsModalPanelsHidden = hidden; });
+
+  const overlay = document.createElement("div");
+  overlay.id = "settings-modal";
+  overlay.className = "yo-modal yo-settings-modal";
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "yo-modal-backdrop";
+  backdrop.addEventListener("click", () => closeSettingsModal());
+
+  const panel = document.createElement("div");
+  panel.className = "yo-modal-panel settings-modal-panel";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  panel.setAttribute("aria-label", "Settings");
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "settings-modal-close";
+  closeBtn.setAttribute("aria-label", "Close settings");
+  closeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  closeBtn.addEventListener("click", () => closeSettingsModal());
+
+  const body = document.createElement("div");
+  body.className = "settings-modal-body";
+  // Adopt the real two-column layout — same nodes, so every loader + the
+  // admin-only nav gating keep working exactly as before.
+  body.appendChild(layout);
+
+  panel.appendChild(closeBtn);
+  panel.appendChild(body);
+  overlay.appendChild(backdrop);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  document.addEventListener("keydown", onSettingsModalKey, true);
+
+  // Populate the whole panel set + admin gating, then reveal the requested sub.
+  loadSettings();
+  selectSettingsSub(sub || "general");
 }
 
 /**
@@ -201,21 +313,26 @@ export function initHelp() {
   document.querySelector(`.help-section[data-section="code"]`)?.classList.add("active");
   document.body.dataset.railSection ||= "code";
 
-  const settingsSubNav = document.querySelectorAll<HTMLButtonElement>(".help-section[data-section='settings'] .settings-nav-item");
-  const settingsSubPanels = document.querySelectorAll<HTMLDivElement>(".help-section[data-section='settings'] .settings-panel");
+  // Settings sub-nav — the buttons live inside the .settings-layout that gets
+  // MOVED into the settings modal on open, so bind by data-attr (not by
+  // section-scoped selectors that break once the layout leaves the section)
+  // and re-query the panel set at click time from wherever the layout now is.
+  const settingsSubNav = document.querySelectorAll<HTMLButtonElement>(".settings-nav .settings-nav-item");
   settingsSubNav.forEach((btn) => {
     btn.addEventListener("click", () => {
-      // Docs has its own topics nav, so it opens as its own section.
+      // Docs has its own topics nav, so it opens as its own section — and the
+      // settings modal must step aside for it.
       const jump = btn.dataset.jump;
       if (jump) {
+        closeSettingsModal();
         gotoSection(jump);
         return;
       }
       const sub = btn.dataset.sub!;
-      settingsSubNav.forEach((n) => n.classList.remove("active"));
-      settingsSubPanels.forEach((p) => p.classList.remove("active"));
+      document.querySelectorAll(".settings-nav .settings-nav-item").forEach((n) => n.classList.remove("active"));
+      document.querySelectorAll(".settings-panels .settings-panel").forEach((p) => p.classList.remove("active"));
       btn.classList.add("active");
-      const target = document.querySelector(`.help-section[data-section='settings'] .settings-panel[data-sub="${sub}"]`);
+      const target = document.querySelector(`.settings-panels .settings-panel[data-sub="${sub}"]`);
       if (target) target.classList.add("active");
       loadSettingsSub(sub);
     });

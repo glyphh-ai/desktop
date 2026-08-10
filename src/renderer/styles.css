@@ -4421,6 +4421,59 @@ ol.docs-list li::before {
 .yo-modal-btn-danger { background: #e5484d; border-color: #e5484d; }
 .yo-modal-btn-danger:hover { background: #d93a3f; border-color: #d93a3f; }
 
+/* ── Settings modal (A1) — the two-column settings UI in a centered overlay
+   instead of a full-page workbench section. Extends the .yo-modal backdrop. */
+.yo-settings-modal .settings-modal-panel {
+  width: min(900px, 94vw);
+  height: min(640px, 88vh);
+  max-width: none;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  animation: yo-modal-in 130ms ease-out;
+}
+.settings-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.settings-modal-close:hover { background: var(--active-bg); color: var(--text); }
+.settings-modal-close svg { width: 17px; height: 17px; }
+.settings-modal-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+/* The adopted .settings-layout fills the modal body; its inner .settings-panels
+   keeps its own scroll, matching the full-page section. */
+.settings-modal-body .settings-layout {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+.settings-modal-body .settings-nav {
+  padding-top: 14px;
+}
+/* Keep the right column clear of the floating close button on its first row. */
+.settings-modal-body .settings-panels {
+  padding-top: 16px;
+}
+
 .pagination-bar {
   display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px 0;
 }
