@@ -119,6 +119,15 @@ export function gotoSection(section: string, sub?: string): void {
     openSettingsModal(sub);
     return;
   }
+  // Docs lives INSIDE the settings modal now (a "docs" sub-panel), not its own
+  // full-page section — open the modal on it and apply the optional topic.
+  if (section === "docs") {
+    void window.glyphh.setPreference?.("homeLastSection", "settings");
+    void window.glyphh.setPreference?.("homeLastSub", "docs");
+    openSettingsModal("docs");
+    if (sub) showDocPanel(sub);
+    return;
+  }
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
   if (["apps", "connections", "layouts", "settings"].includes(section)) {
@@ -137,10 +146,8 @@ export function gotoSection(section: string, sub?: string): void {
   const go = (): void => {
     if (w.__wbOpenSection) w.__wbOpenSection(section);
     else if (tries++ < 40) { requestAnimationFrame(go); return; }
-    if (!sub) return;
-    // Settings returned early above (it opens as a modal); only docs deep-links
-    // route through the workbench section here.
-    if (section === "docs") showDocPanel(sub);
+    // Settings and docs return early above (both open as the settings modal);
+    // no remaining section here carries a deep-link sub through the workbench.
   };
   go();
 }
@@ -180,12 +187,15 @@ export function isSettingsModalOpen(): boolean {
 export function closeSettingsModal(): void {
   const overlay = document.getElementById("settings-modal");
   if (!overlay) return;
+  document.removeEventListener("keydown", onSettingsModalKey, true);
+  // Park the adopted docs body back in its own hidden section FIRST, so the
+  // settings layout below doesn't carry it back into the settings pen.
+  parkSettingsDocs();
   // Park the shared .settings-layout DOM back in its hidden section pen so its
   // ids stay unique and it's ready to be re-adopted next open.
-  const layout = overlay.querySelector<HTMLElement>(".settings-layout");
+  const layout = overlay.querySelector<HTMLElement>(".settings-modal-body > .settings-layout");
   if (layout && settingsHomePen) settingsHomePen.appendChild(layout);
   overlay.remove();
-  document.removeEventListener("keydown", onSettingsModalKey, true);
   if (settingsModalWebviewsGuarded) { guardWebviewsForModal(false); settingsModalWebviewsGuarded = false; }
   restorePanelsForModal(settingsModalPanelsHidden);
   settingsModalPanelsHidden = false;
@@ -201,8 +211,9 @@ export function openSettingsModal(sub?: string): void {
   if (isSettingsModalOpen()) { selectSettingsSub(sub || "general"); return; }
 
   const layout = document.querySelector<HTMLElement>(
-    ".help-section[data-section='settings'] .settings-layout") ??
-    document.querySelector<HTMLElement>(".settings-layout");
+    ".help-section[data-section='settings'] > .settings-layout") ??
+    document.querySelector<HTMLElement>(".settings-nav:not(.docs-nav)")?.closest<HTMLElement>(".settings-layout") ??
+    null;
   if (!layout) return;
   // Remember where the layout lives so it can be parked back on close.
   settingsHomePen = layout.parentElement as HTMLElement | null;
@@ -284,6 +295,43 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "members") void loadMembers();
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "models") loadModelsAdmin();
+  else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
+}
+
+// ── Docs-in-modal adoption ───────────────────────────────
+//
+// Docs opens as a sub-panel of the settings modal rather than its own
+// full-page section. Its body (the topics nav + content from sections/docs.html)
+// is MOVED into the settings docs panel on show and parked back into its hidden
+// .help-section on close — same move-not-clone discipline as .settings-layout,
+// so its ids stay unique and loadDocs + the docs sub-nav bind unchanged.
+
+/** Where the docs body lives when NOT adopted into the modal — captured on
+ *  first mount so it can be parked back precisely. */
+let docsHomePen: HTMLElement | null = null;
+
+/** The docs body element — the inner two-column layout of the docs section. */
+function docsBody(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    ".help-section[data-section='docs'] > .settings-layout") ??
+    document.querySelector<HTMLElement>("#settings-docs-host > .settings-layout") ??
+    document.querySelector<HTMLElement>(".docs-nav")?.closest<HTMLElement>(".settings-layout") ??
+    null;
+}
+
+function mountSettingsDocs(): void {
+  const host = document.getElementById("settings-docs-host");
+  const body = docsBody();
+  if (!host || !body) return;
+  if (body.parentElement === host) return; // already adopted
+  docsHomePen = body.parentElement as HTMLElement | null;
+  host.appendChild(body);
+}
+
+function parkSettingsDocs(): void {
+  const host = document.getElementById("settings-docs-host");
+  const body = host?.querySelector<HTMLElement>(".settings-layout");
+  if (body && docsHomePen) docsHomePen.appendChild(body);
 }
 
 // ── Docs inner sub-navigation ────────────────────────────

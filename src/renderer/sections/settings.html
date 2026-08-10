@@ -16,7 +16,7 @@
               <button class="settings-nav-item" data-sub="desktop"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><line x1="8.5" y1="20.5" x2="15.5" y2="20.5"/><line x1="12" y1="16.5" x2="12" y2="20.5"/></svg><span>Desktop</span></button>
               <button class="settings-nav-item" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
               <div class="settings-nav-group">Help</div>
-              <button class="settings-nav-item" data-jump="docs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v18H5.5A1.5 1.5 0 0 1 4 19.5z"/><path d="M4 17.5A1.5 1.5 0 0 1 5.5 16H19"/></svg><span>Docs</span></button>
+              <button class="settings-nav-item" data-sub="docs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v18H5.5A1.5 1.5 0 0 1 4 19.5z"/><path d="M4 17.5A1.5 1.5 0 0 1 5.5 16H19"/></svg><span>Docs</span></button>
               <button class="settings-nav-item" data-sub="about"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg><span>About</span></button>
             </nav>
             <div class="settings-panels">
@@ -956,6 +956,14 @@
             <span class="about-update-prompt-text" id="about-update-prompt-text">An update is ready</span>
             <button class="btn btn-primary" id="about-update-relaunch">Relaunch to Update</button>
           </div>
+              </div>
+
+              <!-- Docs — the docs body (its own topics nav + content, from
+                   sections/docs.html) is MOVED into this host on open and parked
+                   back on close, so its ids/handlers and loadDocs bind unchanged.
+                   The settings panel just gives it a mount point. -->
+              <div class="settings-panel settings-panel-docs" data-sub="docs">
+                <div id="settings-docs-host"></div>
               </div>
 
             </div>
