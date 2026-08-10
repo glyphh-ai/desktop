@@ -874,7 +874,7 @@ function ChangesTray({ open, changes, onClose, onPick }: { open: boolean; change
   );
 }
 
-function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDelete, onTogglePin, onRename, onRetry, onEditResend, onQuote, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; subtitle?: { icon: IconName; text: string }; onBack: () => void; onDelete: () => void; onTogglePin: () => void; onRename: () => void; onRetry: () => void; onEditResend: (m: Message) => void; onQuote: (m: Message) => void; comp: CompProps }) {
+function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onMenu, onDelete, onTogglePin, onRename, onRetry, onEditResend, onQuote, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; subtitle?: { icon: IconName; text: string }; onBack: () => void; onMenu: () => void; onDelete: () => void; onTogglePin: () => void; onRename: () => void; onRetry: () => void; onEditResend: (m: Message) => void; onQuote: (m: Message) => void; comp: CompProps }) {
   const [menu, setMenu] = useState(false);
   const [toolDetail, setToolDetail] = useState<ToolStep | null>(null);
   const [toolsOpen, setToolsOpen] = useState<ToolStep[] | null>(null);
@@ -929,8 +929,27 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
     ? (() => { const steps = (msgs ?? []).flatMap((m) => (m.steps ?? []) as ToolStep[]); for (let i = steps.length - 1; i >= 0; i--) if (steps[i].status === 'running') return steps[i].title || steps[i].name; return undefined; })()
     : undefined;
 
+  // The ONE persistent surface serves both the new-chat empty state and an active
+  // session. While there are no messages (and nothing streaming), it's a "new chat":
+  // show the home loop/model dropdown header + the Ghost. The moment the first
+  // message lands, the SAME mounted surface flips to the session header + transcript
+  // ABOVE the SAME mounted Composer — no remount, so the iOS keyboard never drops.
+  const isNew = (!msgs || msgs.length === 0) && !comp.sending && !connecting;
   return (
     <div className="m-sv" ref={svRef}>
+      {isNew ? (
+        /* New-chat header — the home loop/model dropdown (menu ⇄ centered dropdown). */
+        <header className="m-sv-head m-home-head">
+          <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
+          <div className="m-home-center">
+            <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
+              <span>{comp.loopName} / {comp.modelSummary}</span>
+              <Icon name="caret" />
+            </button>
+          </div>
+          <span className="m-home-head-spacer" aria-hidden="true" />
+        </header>
+      ) : (
       <header className="m-sv-head">
         <button className="m-chats-icon" aria-label="Back" onClick={onBack}><Icon name="back" /></button>
         <div className="m-sv-titles">
@@ -970,6 +989,7 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
           )}
         </div>
       </header>
+      )}
       <div className="m-sv-messages" ref={scrollRef} onScroll={onScroll}>
         {msgs === null
           ? <div className="m-list-note">Loading…</div>
@@ -2963,19 +2983,32 @@ function App() {
     haptic(); if (override === undefined) { setDraft(''); setAttachImgs([]); } setPending(null);
     let sess = session;
     if (!sess) {
+      // Defensive: the surface always mints the session (newSession/startDesktopSession)
+      // before a send, but if we're somehow send-first, mint a CLOUD session here.
       const id = 'c' + Date.now().toString(36);
       sess = { id, title: prompt.slice(0, 60), when: 'now' };
-      // Dismiss the keyboard BEFORE the screen switch and skip the horizontal
-      // slide-in for this entry: the input unmounting mid-slide collapses the
-      // iOS keyboard, and the vertical viewport settle composing with the
-      // nav's translateX read as a DIAGONAL slide.
-      try { (document.activeElement as HTMLElement | null)?.blur?.(); } catch { /* */ }
-      navNoAnimRef.current = true;
       setSession(sess); setScreen('session'); setDrawer(false);
       convoRef.current = [];
-      // A session born here (from Home) is CLOUD, forever — stamp its immutable locus.
-      saveLocus(id, { kind: 'cloud' });
-      setThreads((t) => [{ id, title: sess!.title, mode: SESSION_MODE, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...(t ?? [])]);
+    }
+    // FIRST send of a brand-new chat: the placeholder isn't in Recents yet. Stamp
+    // its immutable locus (a session born on this surface with no local locus is
+    // CLOUD, forever), title it from the prompt, and add it to the list — exactly
+    // once. No screen switch happens here: we're already on this session's surface,
+    // so the Composer never remounts and the keyboard holds.
+    // "First send of a new chat" = an empty pre-send transcript AND not yet in
+    // Recents. The empty-transcript half rules out an already-loaded session that
+    // just hasn't hydrated `threads` yet (that path must NOT re-stamp/re-insert).
+    const firstSend = convoRef.current.length === 0 && !(threads ?? []).some((t) => t.id === sess!.id);
+    if (firstSend) {
+      const title = prompt.slice(0, 60) || sess.title;
+      sess = { ...sess, title };
+      setSession(sess);
+      // Cloud placeholders carry no locus yet; desktop sessions already stamped theirs.
+      if (!locusOf(sess.id)) saveLocus(sess.id, { kind: 'cloud' });
+      setThreads((t) => {
+        const rest = (t ?? []).filter((x) => x.id !== sess!.id);   // never double-insert
+        return [{ id: sess!.id, title, mode: SESSION_MODE, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...rest];
+      });
     }
     const asstId = 'a' + Date.now().toString(36);
     const userMsg: Message = { id: 'u' + Date.now().toString(36), role: 'user', text: prompt, ...(imgUrls.length ? { images: imgUrls } : {}) };
@@ -3319,7 +3352,25 @@ function App() {
   };
   const account = () => { haptic(); setSettingsSub(null); setSettings(true); };  /* leave the rail open behind the sheet */
   const clearConvo = () => { stopObserving(); convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); setPending(null); };
-  const newSession = () => { haptic(); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
+  /** New chat — the empty-state of the ONE persistent session surface. We mint a
+   *  fresh CLOUD session placeholder and land on the session screen with an EMPTY
+   *  transcript ([] not null → Ghost, not "Loading…"). The session header/Ghost
+   *  swap to the home loop/model dropdown while there are no messages; the FIRST
+   *  send fills the transcript ABOVE the very same mounted Composer — no screen
+   *  switch, no remount, no iOS keyboard drop. The placeholder is NOT added to
+   *  Recents (setThreads) until that first send, so an abandoned new chat leaves
+   *  nothing behind. Its immutable cloud locus is stamped on first send too. */
+  const newSession = () => {
+    haptic();
+    stopObserving();
+    const id = 'c' + Date.now().toString(36);
+    setSession({ id, title: 'New chat', when: 'now' });
+    convoRef.current = []; setMsgs([]); setConnecting(false); setDraft(''); setPending(null);
+    // No horizontal slide-in for a new chat opened from anywhere — it's the same
+    // surface gaining an empty state, not a navigation.
+    navNoAnimRef.current = true;
+    setScreen('session'); setDrawer(false);
+  };
   /** Tap a connected desktop → start a new session BOUND to that machine.
    *  The source is `local` (machineId), threaded into the same runRemoteTurn
    *  provisioning app-web uses: cloud today (web-deferred), the attached box
@@ -3348,13 +3399,17 @@ function App() {
   // session has applied — never clobbering the saved state with defaults.
   useEffect(() => {
     if (authState !== 'in' || restored) return;
+    let handled = false;
     try {
       const nav = JSON.parse(localStorage.getItem('yoNav') || 'null') as { screen?: string; session?: Recent | null } | null;
       if (nav) {
-        if (nav.session && nav.screen === 'session') openSession(nav.session);
-        else if (nav.screen === 'list') setScreen('list');
+        if (nav.session && nav.screen === 'session') { openSession(nav.session); handled = true; }
+        else if (nav.screen === 'list') { setScreen('list'); handled = true; }
       }
     } catch { /* */ }
+    // Nothing to restore → land on a fresh new chat (the unified surface's empty
+    // state), never the now-defunct blank 'home' screen.
+    if (!handled) newSession();
     setRestored(true);
   }, [authState, restored]);
   useEffect(() => {
@@ -3375,25 +3430,6 @@ function App() {
       <div className="m-shell">
         <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onConnections={openConnections} user={user} />
         <main className="m-main">
-          {screen === 'home' && (
-            <div className="m-home">
-              {/* Same transparent chats-style header + a centered loop / model dropdown. */}
-              <div className="m-chats-fade m-chats-fade-top" />
-              <header className="m-chats-head m-home-head">
-                <button className="m-chats-icon" aria-label="Open menu" onClick={toggleDrawer}><Icon name="menu" /></button>
-                <div className="m-home-center">
-                  {/* One kind of session — the top loop/model dropdown always shows. */}
-                  <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
-                    <span>{comp.loopName} / {comp.modelSummary}</span>
-                    <Icon name="caret" />
-                  </button>
-                </div>
-                <span className="m-home-head-spacer" aria-hidden="true" />
-              </header>
-              <Ghost />
-              <Composer {...comp} />
-            </div>
-          )}
           {(screen === 'list' || screen === 'session') && (
             <div className="m-nav" data-screen={screen} data-noanim={navNoAnimRef.current ? 'true' : 'false'} ref={() => { navNoAnimRef.current = false; }}>
               <div className="m-nav-track">
@@ -3401,7 +3437,7 @@ function App() {
                   <HomeList desktops={desktops} sessions={sessions} pinnedIds={pins} loading={threads === null} activity={activity} sourceOf={sourceOf} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
                 </section>
                 <section className="m-nav-panel">
-                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} subtitle={sessionSubtitle} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRename={() => setRenameId(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
+                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} subtitle={sessionSubtitle} onBack={backToList} onMenu={toggleDrawer} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRename={() => setRenameId(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
                   {renameId && <RenamePrompt initial={titles[renameId] ?? (threads ?? []).find((t) => t.id === renameId)?.title ?? session?.title ?? ''} onCancel={() => setRenameId(null)} onSave={(t) => { renameThread(renameId, t); setRenameId(null); }} />}
                 </section>
               </div>
