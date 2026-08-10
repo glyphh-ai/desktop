@@ -1548,6 +1548,31 @@ body {
 .m-confirm-btn:active { background: var(--hover); }
 .m-confirm-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .m-confirm-danger:active { filter: brightness(0.92); background: var(--danger); }
+.m-confirm-go { background: var(--accent); border-color: var(--accent); color: #fff; }
+.m-confirm-go:active { filter: brightness(0.92); background: var(--accent); }
+
+/* Rename modal input */
+.m-rename-input {
+  width: 100%;
+  margin: 4px 0 16px;
+  padding: 13px 14px;
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 18px/1.2 var(--font-sans);
+  outline: none;
+}
+.m-rename-input:focus { border-color: var(--accent); }
+
+/* Pin marker on a pinned list row (chat + code) */
+.m-row-pin {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 6px;
+  color: var(--accent);
+}
+.m-row-pin svg { width: 15px; height: 15px; }
 
 /* ── Active search: focused input pinned above the keyboard ──────────────── */
 .m-search-overlay { position: fixed; inset: 0; z-index: 210; pointer-events: none; }

@@ -552,9 +552,10 @@ function ActivityBadge({ state }: { state?: 'working' | 'waiting' }) {
   return null;
 }
 
-function ChatsView({ title, sessions, loading, activity, onMenu, onOpen, onNewChat, onSearch }: {
+function ChatsView({ title, sessions, pinnedIds, loading, activity, onMenu, onOpen, onNewChat, onSearch }: {
   title: string;
   sessions: Recent[];
+  pinnedIds: Set<string>;
   loading: boolean;
   activity: Record<string, 'working' | 'waiting'>;
   onMenu: () => void;
@@ -580,7 +581,7 @@ function ChatsView({ title, sessions, loading, activity, onMenu, onOpen, onNewCh
             <button key={s.id} className="m-chat-row" onClick={() => onOpen(s)}>
               {activity[s.id] && <ActivityBadge state={activity[s.id]} />}
               <span className="m-chat-text">
-                <span className="m-chat-title">{s.title}</span>
+                <span className="m-chat-title">{pinnedIds.has(s.id) && <span className="m-row-pin"><Icon name="pin" /></span>}{s.title}</span>
                 <span className="m-chat-when">{s.when}</span>
               </span>
               <Icon name="chevron" />
@@ -599,9 +600,10 @@ function ChatsView({ title, sessions, loading, activity, onMenu, onOpen, onNewCh
 /** An attached desktop/machine, from glyphh().attach.status(). */
 interface AttachedMachine { id?: string; app: string; version?: string; name?: string; capabilities?: string[]; since?: number }
 
-function CodeView({ desktops, sessions, loading, activity, sourceOf, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
+function CodeView({ desktops, sessions, pinnedIds, loading, activity, sourceOf, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
   desktops: AttachedMachine[];
   sessions: Recent[];
+  pinnedIds: Set<string>;
   loading: boolean;
   activity: Record<string, 'working' | 'waiting'>;
   sourceOf: (id: string) => { local: boolean; name?: string; connected: boolean };
@@ -648,7 +650,7 @@ function CodeView({ desktops, sessions, loading, activity, sourceOf, onMenu, onO
                 <span className="m-code-thumb" data-kind="plain">{activity[s.id] && <ActivityBadge state={activity[s.id]} />}</span>
                 <span className="m-code-body">
                   <span className="m-code-top">
-                    <span className="m-code-name">{s.title}</span>
+                    <span className="m-code-name">{pinnedIds.has(s.id) && <span className="m-row-pin"><Icon name="pin" /></span>}{s.title}</span>
                     <span className="m-code-when">{s.when}</span>
                   </span>
                   {(() => {
@@ -998,7 +1000,7 @@ function ChangesTray({ open, changes, onClose, onPick }: { open: boolean; change
   );
 }
 
-function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDelete, onTogglePin, onRetry, onEditResend, onQuote, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; subtitle?: { icon: IconName; text: string }; onBack: () => void; onDelete: () => void; onTogglePin: () => void; onRetry: () => void; onEditResend: (m: Message) => void; onQuote: (m: Message) => void; comp: CompProps }) {
+function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDelete, onTogglePin, onRename, onRetry, onEditResend, onQuote, comp }: { session: Recent; msgs: Message[] | null; connecting: boolean; pinned: boolean; subtitle?: { icon: IconName; text: string }; onBack: () => void; onDelete: () => void; onTogglePin: () => void; onRename: () => void; onRetry: () => void; onEditResend: (m: Message) => void; onQuote: (m: Message) => void; comp: CompProps }) {
   const [menu, setMenu] = useState(false);
   const [toolDetail, setToolDetail] = useState<ToolStep | null>(null);
   const [toolsOpen, setToolsOpen] = useState<ToolStep[] | null>(null);
@@ -1085,7 +1087,7 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onDe
                   <div className="m-sv-menu-sep" />
                 </>
               )}
-              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); /* rename (mock) */ }}>
+              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); onRename(); }}>
                 <Icon name="pencil" /><span>Rename</span>
               </button>
               <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); onTogglePin(); }}>
@@ -1833,6 +1835,27 @@ function Confirm({ title, message, confirmLabel, onCancel, onConfirm }: { title:
         <div className="m-confirm-actions">
           <button className="m-confirm-btn" onClick={onCancel}>Cancel</button>
           <button className="m-confirm-btn m-confirm-danger" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>, document.body);
+}
+
+/* Rename a chat: a single-field modal (no native prompt), mirroring Confirm. */
+function RenamePrompt({ initial, onCancel, onSave }: { initial: string; onCancel: () => void; onSave: (t: string) => void }) {
+  const [v, setV] = useState(initial);
+  return createPortal(
+    <div className="m-confirm-overlay" style={{ position: 'fixed' }} role="dialog" aria-modal="true">
+      <div className="m-confirm-scrim" onClick={onCancel} />
+      <div className="m-confirm">
+        <div className="m-confirm-title">Rename chat</div>
+        <input
+          className="m-rename-input" value={v} autoFocus maxLength={120} spellCheck={false}
+          onChange={(e) => setV(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSave(v); } else if (e.key === 'Escape') onCancel(); }}
+        />
+        <div className="m-confirm-actions">
+          <button className="m-confirm-btn" onClick={onCancel}>Cancel</button>
+          <button className="m-confirm-btn m-confirm-go" onClick={() => onSave(v)}>Save</button>
         </div>
       </div>
     </div>, document.body);
@@ -2866,6 +2889,10 @@ function App() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
   const [pins, setPins] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem('yoPins') || '[]')); } catch { return new Set(); } });
+  // Custom thread titles (rename). Local override keeps persistThread from re-deriving the
+  // title from the first message; the new title is also pushed to the server so it syncs.
+  const [titles, setTitles] = useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem('yoTitles') || '{}'); } catch { return {}; } });
+  const [renameId, setRenameId] = useState<string | null>(null);
   const [desktops, setDesktops] = useState<AttachedMachine[]>([]);   // attached machines (Code strip)
   const [msgs, setMsgs] = useState<Message[] | null>(null);            // active session's live transcript
   const [connecting, setConnecting] = useState(false);                 // provisioning/connecting a cloud runtime
@@ -2945,7 +2972,9 @@ function App() {
   const persistThread = async (id: string) => {
     try {
       const messages = convoRef.current.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text }));
-      const title = convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat';
+      // Preserve a custom/renamed title (local override or the one already on the thread)
+      // instead of re-deriving from the first message — otherwise a rename gets clobbered.
+      const title = titles[id] ?? (threads ?? []).find((t) => t.id === id)?.title ?? (convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat');
       await glyphh().sessions.pushThread(id, { title, mode: curMode, messages, updatedAt: Date.now() });
       const t = await glyphh().sessions.threads();
       setThreads(Array.isArray(t) ? t : []);
@@ -3354,7 +3383,7 @@ function App() {
   const pinnedFirst = (arr: Recent[]) => [...arr].sort((a, b) => (pins.has(b.id) ? 1 : 0) - (pins.has(a.id) ? 1 : 0));
   const chatRecents = pinnedFirst(threadsFor(threads, 'chat'));
   const workGroups = groupThreadsByTime(threads, 'cowork');   // Work = cowork threads, time-grouped
-  const codeRecents = threadsFor(threads, 'code');            // Code = code threads
+  const codeRecents = pinnedFirst(threadsFor(threads, 'code')); // Code = code threads (pinned float to top)
   // Per-code-session meta: the IMMUTABLE locus (persisted — forever cloud or forever
   // THIS desktop) + a DYNAMIC status. Local is "connected" while its machine (matched
   // by NAME, stable across reconnects) is attached; cloud is "connected" only while a
@@ -3376,6 +3405,20 @@ function App() {
   const backToList = () => { haptic(); setScreen('list'); };
   const savePins = (s: Set<string>) => { setPins(new Set(s)); try { localStorage.setItem('yoPins', JSON.stringify([...s])); } catch { /* */ } };
   const togglePin = (id: string) => { const s = new Set(pins); if (s.has(id)) s.delete(id); else s.add(id); savePins(s); };
+  const renameThread = (id: string, raw: string) => {
+    const title = raw.trim(); if (!title) return;
+    const next = { ...titles, [id]: title }; setTitles(next);
+    try { localStorage.setItem('yoTitles', JSON.stringify(next)); } catch { /* */ }
+    setThreads((ts) => (ts ?? []).map((t) => (t.id === id ? { ...t, title } : t)));
+    setSession((s) => (s && s.id === id ? { ...s, title } : s));
+    // Sync to the server so the new title shows on every surface (Rename is only offered
+    // from an OPEN session, so convoRef holds the messages to push alongside it).
+    void glyphh().sessions.pushThread(id, {
+      title, mode: curMode,
+      messages: convoRef.current.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })),
+      updatedAt: Date.now(),
+    }).catch(() => { /* offline — the local override + list update still stand */ });
+  };
   const deleteSession = async (s: Recent) => {
     try { await glyphh().sessions.deleteThread(s.id); } catch { /* best effort */ }
     remoteChats.delete(s.id); forgetLocus(s.id);
@@ -3470,13 +3513,14 @@ function App() {
               <div className="m-nav-track">
                 <section className="m-nav-panel">
                   {active === 'code'
-                    ? <CodeView desktops={desktops} sessions={codeRecents} loading={threads === null} activity={activity} sourceOf={codeSourceOf} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
+                    ? <CodeView desktops={desktops} sessions={codeRecents} pinnedIds={pins} loading={threads === null} activity={activity} sourceOf={codeSourceOf} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
                     : active === 'work'
                     ? <WorkView desktops={desktops} groups={workGroups} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewTask={newSession} onSearch={openSearch} />
-                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
+                    : <ChatsView title={NAV.find((n) => n.id === active)?.label ?? 'Chats'} sessions={chatRecents} pinnedIds={pins} loading={threads === null} activity={activity} onMenu={toggleDrawer} onOpen={openSession} onNewChat={newChat} onSearch={openSearch} />}
                 </section>
                 <section className="m-nav-panel">
-                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} subtitle={sessionSubtitle} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
+                  {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} subtitle={sessionSubtitle} onBack={backToList} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRename={() => setRenameId(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
+                  {renameId && <RenamePrompt initial={titles[renameId] ?? (threads ?? []).find((t) => t.id === renameId)?.title ?? session?.title ?? ''} onCancel={() => setRenameId(null)} onSave={(t) => { renameThread(renameId, t); setRenameId(null); }} />}
                 </section>
               </div>
             </div>
