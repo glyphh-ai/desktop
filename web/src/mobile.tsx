@@ -2191,10 +2191,17 @@ const SUB_TITLE: Record<SettingsSub, string> = {
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialSub }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void; initialSub?: SettingsSub | null }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
   const [subOpen, setSubOpen] = useState(false);   // drives the track; sub persists during slide-back
+  const [snapSub, setSnapSub] = useState(false);   // track jumps to the sub with NO horizontal slide (rail shortcut)
   const [info, setInfo] = useState(false);
-  // Rail shortcut: open the sheet straight onto a specific tray (e.g. Connections).
+  // Rail shortcut: open the sheet straight onto a tray (e.g. Connections). SNAP the
+  // track to it (transition off) so it's already on Connections BEFORE the sheet rises —
+  // only the slide-up animates, not up + over at the same time.
   useEffect(() => {
-    if (open && initialSub) { setSub(initialSub); setSubOpen(true); }
+    if (open && initialSub) {
+      setSnapSub(true); setSub(initialSub); setSubOpen(true);
+      const r = requestAnimationFrame(() => requestAnimationFrame(() => setSnapSub(false)));
+      return () => cancelAnimationFrame(r);
+    }
   }, [open, initialSub]);
   useEffect(() => {
     if (open) return;
@@ -2215,7 +2222,7 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
     <div className="m-sheet-overlay" data-open={open ? 'true' : 'false'}>
       <div className="m-sheet-scrim" onClick={onClose} />
       <div className="m-sheet" role="dialog" aria-modal="true" aria-label="Settings">
-        <div className="m-sheet-track" data-open={subOpen ? 'true' : 'false'}>
+        <div className="m-sheet-track" data-open={subOpen ? 'true' : 'false'} data-snap={snapSub ? 'true' : 'false'}>
           {/* Panel A — the settings list. */}
           <section className="m-sheet-panel">
             <header className="m-sheet-head">

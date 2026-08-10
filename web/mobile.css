@@ -1068,6 +1068,9 @@ body {
 /* Horizontal track: main list ↔ a sub-screen (Profile), sliding both ways. */
 .m-sheet-track { flex: 1 1 auto; min-height: 0; display: flex; width: 200%; transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
 .m-sheet-track[data-open="true"] { transform: translateX(-50%); }
+/* Rail shortcut: jump to the sub instantly (no horizontal slide) so only the sheet's
+   slide-up animates — the "slide to Connections first, then up" feel. */
+.m-sheet-track[data-snap="true"] { transition: none; }
 .m-sheet-panel { flex: 0 0 50%; width: 50%; min-height: 0; display: flex; flex-direction: column; }
 
 .m-sheet-head {
