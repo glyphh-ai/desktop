@@ -21,9 +21,9 @@ import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
-  canRunRemote, runRemoteTurn, answerPending,
+  canRunRemote, runRemoteTurn, answerPending, attachToActiveRun,
   APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
-  type RemoteChat,
+  type RemoteChat, type AttachHandle,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
 import { runHeroFlow, syncDashParticles } from "./dashboard.js";
@@ -705,6 +705,92 @@ function runEntry(runId: string): [string, LiveRun] | null {
   return null;
 }
 const currentRun = (): LiveRun | null => liveRuns.get(currentId) ?? null;
+
+// ── Observe a run happening ELSEWHERE (run-stream broker consumer) ─────────────
+// "Open a thread anywhere, see the live turn." When the thread on screen has a run
+// executing on ANOTHER surface (this user's desktop, or a cloud pod), we subscribe
+// to that run's frame stream and drive the SAME liveRuns entry a local turn does —
+// so it renders identically. Read-only: the surface that OWNS the run answers its
+// approvals/asks; we only watch. One observer at a time (the thread in view).
+let observedChatId: string | null = null;
+const observers = new Map<string, AttachHandle>();
+
+function stopObserving(chatId: string): void {
+  const h = observers.get(chatId);
+  if (h) { h.stop(); observers.delete(chatId); }
+}
+
+/** Reconcile the observer to the thread on screen: detach the old one, attach the
+ *  new (unless WE are driving that thread locally). Cheap + idempotent — guarded on
+ *  an actual thread change, so it's safe to call from every renderThread. */
+function syncActiveRunAttach(): void {
+  const id = currentId || null;
+  if (observedChatId === id) return;              // same thread — nothing to do
+  if (observedChatId) stopObserving(observedChatId);
+  observedChatId = id;
+  if (!id) return;
+  if (liveRuns.has(id) || remoteAborters.has(id)) return; // our own run drives this
+  const chat = chats.find((c) => c.id === id);
+  if (chat) observeIfRunning(chat);
+}
+
+function observeIfRunning(chat: CodeChat): void {
+  const chatId = chat.id;
+  const handle = attachToActiveRun(
+    chat as unknown as RemoteChat,
+    {
+      // Same grammar as launchRemote's live-run callbacks, minus approval/ask
+      // (the executing surface owns those). Every hop drives THIS chat's liveRuns.
+      onUserPrompt: (text) => {
+        const ch = chats.find((c) => c.id === chatId);
+        if (!ch) return;
+        // The observed turn's user message (first run frame) — render it like a local send.
+        ch.messages.push({ role: "user", text, at: Date.now() });
+        void saveStore();
+        if (chatId === currentId) renderThread();
+      },
+      onStep: (step) => {
+        const r = liveRuns.get(chatId);
+        const ch = chats.find((c) => c.id === chatId);
+        if (!r || !ch) return;
+        if (r.text.trim()) { ch.messages.push({ role: "assistant", text: r.text, at: Date.now() }); r.text = ""; r.bubble = null; }
+        const bad = step.status === "denied" || step.status === "failed" || !!step.error;
+        const glyph = bad ? "✕" : step.status ? "✓" : "⚙";
+        const detail = step.error || (step.status && step.status !== "ok" ? step.status : "");
+        const label = `${glyph} ${step.type}${detail ? ` — ${detail}` : ""}`;
+        r.steps.push(label);
+        ch.messages.push({ role: "assistant", kind: "tool", text: label, at: Date.now() });
+        void saveStore();
+        if (chatId === currentId) { broadcastTimeline(true); renderThread(); }
+      },
+      onToken: (delta) => {
+        const r = liveRuns.get(chatId);
+        if (!r) return;
+        r.text += delta;
+        queueStreamPaint(chatId);
+      },
+      // The run settled — land it, but KEEP the observer: the watcher keeps polling and
+      // will pick up the next run started on this thread (onRun re-seeds a fresh turn).
+      onDone: (text) => { finishRun(chatId, text); },
+      onError: (detail) => {
+        const r = liveRuns.get(chatId);
+        const prefix = r?.text ? `${r.text}\n\n` : "";
+        finishRun(chatId, `${prefix}⚠ ${detail}`);
+      },
+    },
+    // Per run (fires before its first frame): seed a fresh working state so the spinner +
+    // rail dot paint and the streamed block has somewhere to land.
+    (runId) => {
+      liveRuns.set(chatId, {
+        runId, text: "", bubble: null, startAt: Date.now(),
+        inTok: 0, outTok: 0, creditsMicro: 0, steps: [], setupMeta: "",
+      });
+      ensureRunTicker();
+      if (chatId === currentId) { broadcastTimeline(true); setThinking(true); renderHistory(); renderThread(); }
+    },
+  );
+  observers.set(chatId, handle);
+}
 
 // Streamed tokens re-render the CURRENT chat's live block as MARKDOWN, throttled
 // to one paint per animation frame — smooth at token rate, code fences and lists
@@ -1571,6 +1657,7 @@ function renderThread(): void {
   // switch lands here, so recompute (a background session keeps running;
   // this one's send must not wear its stop state).
   syncThinking();
+  syncActiveRunAttach();   // attach to / detach from a run happening on another surface
   const thread = el<HTMLDivElement>("code-thread");
   if (!thread) return;
   wireThreadScroll(thread);
@@ -2727,6 +2814,9 @@ function send(): void {
   // Sending re-engages following: the user's own turn always comes into view.
   pinThreadToBottom();
   // Working state first so the spinner row + rail dot paint immediately.
+  // If we were merely OBSERVING this thread's run from another surface, this send
+  // takes it over locally — drop the observer so the two don't drive one liveRun.
+  stopObserving(c.id);
   liveRuns.set(c.id, {
     runId: null, text: "", bubble: null, startAt: Date.now(),
     inTok: 0, outTok: 0, creditsMicro: 0, steps: [], setupMeta: "",

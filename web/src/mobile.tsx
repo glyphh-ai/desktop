@@ -23,8 +23,8 @@ import {
 // import). It reads the SDK off window.glyphhSdk (desktop shape) and drives the
 // exact provision → poll-ready → harness.start streaming path. The renderer-only
 // LOCAL path lives in code.ts, not here, so nothing desktop-specific is pulled in.
-import { runRemoteTurn, ensureRuntime, answerPending,
-  type RemoteChat, type RemotePermission, type RemoteApprovalRequest, type RemoteAskRequest } from '../../src/renderer/help/remote-run';
+import { runRemoteTurn, ensureRuntime, answerPending, attachToActiveRun,
+  type RemoteChat, type RemotePermission, type RemoteApprovalRequest, type RemoteAskRequest, type AttachHandle } from '../../src/renderer/help/remote-run';
 // The app's real working indicator — the tumbling wireframe cube + typed phrase.
 // Pure DOM/Canvas, so we mount it verbatim (brand parity in the chat thread).
 import { createGlyphhSpinner } from '../../src/renderer/glyphh-spinner';
@@ -2882,6 +2882,7 @@ function App() {
   const setAct = (id: string, s: 'working' | 'waiting' | null) => setActivity((a) => { const n = { ...a }; if (s) n[id] = s; else delete n[id]; return n; });
   const viewRef = useRef<{ screen: string; sid: string | null }>({ screen: 'home', sid: null });
   const convoRef = useRef<Message[]>([]);                              // source of truth for the transcript
+  const observerRef = useRef<AttachHandle | null>(null);               // live-run subscription for the OPEN thread (observe a run started elsewhere)
   const [selectorAt, setSelectorAt] = useState<'sections' | 'loop' | 'models' | null>(null);
   const [permOpen, setPermOpen] = useState(false);
   const [loops, setLoops] = useState<LoopItem[] | null>(null);
@@ -2951,12 +2952,70 @@ function App() {
     } catch { /* offline / not-ready — the transcript stays local for now */ }
   };
 
-  /** Open a chat: load its transcript, and (chats are cloud) eagerly connect its
-   *  runtime if it isn't committed yet — the connecting spinner rides that. */
+  const stopObserving = () => { observerRef.current?.stop(); observerRef.current = null; };
+
+  /** OBSERVE a run that's already executing on this thread — started on ANOTHER
+   *  surface (this desktop, a phone, a pod). Transport is 100% the SDK (attachToActiveRun
+   *  -> client.runStream.attach); this only maps the streamed frames into the SAME
+   *  transcript model a local turn writes. No-op when nothing is running. */
+  const observeActiveRun = (sess: Recent, chat: RemoteChat) => {
+    stopObserving();
+    let asstId = '';        // fresh per observed run (reset in onRun below)
+    let created = false;
+    const msgOf = () => convoRef.current.find((x) => x.id === asstId);
+    const ensureMsg = () => {
+      if (created) return; created = true;
+      convoRef.current = [...convoRef.current, { id: asstId, role: 'glyphh', text: '' }];
+      renderConvo();
+    };
+    const appendText = (delta: string) => {
+      ensureMsg(); const m = msgOf(); if (!m) return;
+      m.text = (m.text || '') + delta;
+      m.parts ??= []; let last = m.parts[m.parts.length - 1];
+      if (!last || last.kind !== 'text') { last = { kind: 'text', text: '' }; m.parts.push(last); }
+      last.text += delta; renderThrottled();
+    };
+    const applyTool = (t: { name: string; phase: 'start' | 'done'; status: 'running' | 'ok' | 'denied' | 'failed'; thought?: string; title?: string; diff?: string; error?: string }) => {
+      ensureMsg(); const m = msgOf(); if (!m) return;
+      const steps = (m.steps ??= []); m.parts ??= [];
+      const toolsPart = () => { let last = m.parts![m.parts!.length - 1]; if (!last || last.kind !== 'tools') { last = { kind: 'tools', steps: [] }; m.parts!.push(last); } return last; };
+      if (t.phase === 'start') { const step = { name: t.name, status: 'running' as const, ...(t.thought ? { thought: t.thought } : {}) }; steps.push(step); toolsPart().steps.push(step); }
+      else {
+        let idx = -1; for (let i = steps.length - 1; i >= 0; i--) { if (steps[i].name === t.name && steps[i].status === 'running') { idx = i; break; } }
+        let target = idx >= 0 ? steps[idx] : null;
+        if (!target) { target = { name: t.name, status: 'running' }; steps.push(target); toolsPart().steps.push(target); }
+        target.status = t.status;
+        if (t.title) target.title = t.title; if (t.diff) target.diff = t.diff; if (t.error) target.error = t.error; if (t.thought && !target.thought) target.thought = t.thought;
+      }
+      renderThrottled();
+    };
+    observerRef.current = attachToActiveRun(chat, {
+      // The turn's user prompt (first frame) — render it BEFORE the assistant bubble the
+      // next frame creates, so an observed turn reads user -> assistant like a local one.
+      onUserPrompt: (text) => { convoRef.current = [...convoRef.current, { id: 'obsu' + Date.now().toString(36), role: 'user', text }]; renderConvo(); },
+      onToken: appendText,
+      onAnswer: (full) => { ensureMsg(); const m = msgOf(); if (m) { m.text = full; renderThrottled(); } },
+      onTool: applyTool,
+      onDone: () => { setStreaming(false); setAct(sess.id, null); finalizeRunningSteps(); renderConvo(); void persistThread(sess.id); },
+      onError: () => { setStreaming(false); setAct(sess.id, null); finalizeRunningSteps(); renderConvo(); },
+    }, () => {
+      // A new run started on this thread (from another surface) — begin a fresh turn.
+      asstId = 'obs' + Date.now().toString(36); created = false;
+      setConnecting(false); setStreaming(true); setAct(sess.id, 'working');
+    });
+  };
+
+  /** Open a chat: load its transcript, attach to any run already streaming on it,
+   *  and (chats are cloud) eagerly connect its runtime if it isn't committed yet. */
   const loadSession = (s: Recent) => {
+    stopObserving();
     convoRef.current = []; setMsgs(null);
     glyphh().sessions.thread(s.id)
-      .then((t: { messages?: ThreadMsg[] }) => { convoRef.current = (t.messages ?? []).map(normalizeMsg); renderConvo(); })
+      .then((t: { messages?: ThreadMsg[] }) => {
+        convoRef.current = (t.messages ?? []).map(normalizeMsg); renderConvo();
+        // Now that the transcript is in, tail whatever is running on this thread.
+        if (!streaming) observeActiveRun(s, chatFor(s.id));
+      })
       .catch(() => { convoRef.current = []; renderConvo(); });
     // Connect the runtime the moment the session opens (every mode) — so the turn
     // is instant and the user sees an honest "connecting" state up front instead
@@ -2979,6 +3038,7 @@ function App() {
     const imgs = override === undefined ? attachImgs.map((a) => ({ mediaType: a.mediaType, data: a.data })) : [];
     const imgUrls = override === undefined ? attachImgs.map((a) => a.url) : [];
     if ((!prompt && imgs.length === 0) || streaming) return;
+    stopObserving(); // a local send takes this thread over — drop the observer so they don't both drive the transcript
     haptic(); if (override === undefined) { setDraft(''); setAttachImgs([]); } setPending(null);
     let sess = session;
     if (!sess) {
@@ -3324,7 +3384,7 @@ function App() {
     backToList();
   };
   const account = () => { haptic(); setSettings(true); };  /* leave the rail open behind the sheet */
-  const clearConvo = () => { convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); setPending(null); };
+  const clearConvo = () => { stopObserving(); convoRef.current = []; setMsgs(null); setConnecting(false); setDraft(''); setPending(null); };
   const newChat = () => { haptic(); setActive('chat'); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
   const newSession = () => { haptic(); setScreen('home'); setSession(null); clearConvo(); setDrawer(false); };
   /** Tap a connected desktop → start a new session BOUND to that machine.

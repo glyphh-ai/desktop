@@ -13,6 +13,9 @@ export interface RelayChatMessage { role: "system" | "user" | "assistant"; conte
 export function toWireFrame(channel: string, data: Record<string, unknown>, seq: number, runId: string, now: number = Date.now()): Record<string, unknown> | null {
   const base = { seq, runId, at: now };
   switch (channel) {
+    // The user's prompt as the FIRST frame of a run — lets a surface observing this run
+    // render the turn's user message (it isn't in the assistant frame stream otherwise).
+    case "glyphh-agent:prompt": return { ...base, type: "prompt", text: data.text ?? "" };
     case "glyphh-agent:delta": return { ...base, type: "delta", delta: data.delta ?? "" };
     case "glyphh-agent:tool": return { ...base, ...data, type: "tool" };
     case "glyphh-agent:progress": return { ...base, type: "progress", inTokens: data.inTokens ?? 0, outTokens: data.outTokens ?? 0 };

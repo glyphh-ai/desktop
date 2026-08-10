@@ -42,6 +42,8 @@ import { selectConnectorTools } from "./tool-vectors";
 import { attachmentImageRefs, type AttachRef } from "./glyphh-agent-attachments";
 import { composeTurn, brandError, type ChatMessage } from "./glyphh-agent-prompt";
 import { lendToolSurface, BRIDGE_TOOL_PREFIX, type LentSurface } from "./harness-mcp-bridge";
+import { pushToAttach, isAttached } from "./attach-client";
+import { toWireFrame } from "./attach-run-frames";
 
 /** Strip the Agent SDK's MCP prefix so tool names read the way the in-process
  *  path emits them (`open_app`, not `mcp__desktop__open_app`). */
@@ -182,10 +184,32 @@ export async function harnessRun(
   runWorkdir?: string,
   mode: "cowork" | "code" = "code",
   source?: RunSource,
+  /** Permission mode from a RELAYING client (mobile/web driving this machine). When
+   *  set it OVERRIDES the desktop's own mode — the run must honor the caller's choice
+   *  (e.g. 'bypass'). Absent for a desktop-local run → the local `glyphhMode()`. */
+  permissionOverride?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass",
+  /** Publish this run's frames UP the attach socket (channel `run:<runId>`) so the
+   *  run-stream broker captures them and ANOTHER surface (web/mobile) can watch this
+   *  desktop-local turn live. The RELAY path (attach-run.ts) already publishes via its
+   *  sink, so it leaves this false; the desktop-local IPC path sets it true. Best-effort:
+   *  a closed socket just means nobody's watching elsewhere — the local run is untouched. */
+  publishFrames = false,
 ): Promise<void> {
   const cloud = isCloudSource(source);
+  // Monotonic seq for the published wire frames (broker ordering rides Redis stream
+  // ids, but the frame carries its own seq for parity with the relay ring).
+  let pubSeq = 0;
   const emit = (channel: string, data: Record<string, unknown>): void => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
+    // Tee to the broker for cross-surface observation. `threadId` on every frame lets
+    // the server record this thread's active run once (broker setActiveRun), so a web
+    // client can discover + attach to it.
+    if (publishFrames && isAttached()) {
+      try {
+        const wf = toWireFrame(channel, { ...data }, pubSeq++, runId);
+        if (wf) pushToAttach(`run:${runId}`, { ...wf, ...(chatId ? { threadId: chatId } : {}) });
+      } catch { /* never let publishing perturb the run */ }
+    }
   };
 
   let lent: LentSurface | null = null;
@@ -256,7 +280,7 @@ export async function harnessRun(
       threadId: chatId || undefined,
       sessionId: chatId || undefined,
       mode,
-      permission: glyphhMode(),
+      permission: permissionOverride ?? glyphhMode(),
       ...(model ? { model } : {}),
       // The SESSION'S REAL FOLDER as the run's cwd. A LOCAL (auth-off,
       // loopback) pod honours this and anchors its OWN preset tools —
@@ -287,6 +311,11 @@ export async function harnessRun(
       ...(surface ? { mcpServers: [{ name: surface.name, url: surface.url, headers: surface.headers }] } : {}),
       signal: ctrl.signal,
     });
+
+    // Publish the user's prompt as the run's FIRST frame so any surface observing this
+    // run over the broker renders the turn's user message (assistant frames don't carry
+    // it). Local display ignores the channel; the broker + relay sink forward it.
+    emit("glyphh-agent:prompt", { text: lastUser });
 
     run.on((frame: HarnessWireFrame) => {
       switch (frame.type) {

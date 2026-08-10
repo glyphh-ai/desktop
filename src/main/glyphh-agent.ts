@@ -133,7 +133,9 @@ export function registerGlyphhIpc(): void {
     // harness pod. There is no third branch and no in-process loop left.
     const runner = mode === "chat"
       ? chatRun(e.sender, id, messages, ctrl, replyBudget)
-      : harnessRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode, source);
+      // publishFrames: true — a desktop-local turn tees its frames to the run-stream
+      // broker so the same thread opened on web/mobile shows this run live.
+      : harnessRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode, source, undefined, true);
     void runner.finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
       if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);

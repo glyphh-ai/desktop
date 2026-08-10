@@ -117,16 +117,17 @@ async function cacheSave(): Promise<void> {
 // ── Sync bookkeeping (tombstones + push queue, survives reloads) ──────────
 
 const META_KEY = "glyphhThreadSync";
-interface SyncMeta { deleted: Record<string, number>; pending: string[] }
+interface SyncMeta { deleted: Record<string, number>; pending: string[]; serverSeen?: string[] }
 function loadMeta(): void {
   try {
     const m = JSON.parse(localStorage.getItem(META_KEY) || "{}") as Partial<SyncMeta>;
     deleted = m.deleted && typeof m.deleted === "object" ? m.deleted : {};
     pending = new Set(Array.isArray(m.pending) ? m.pending : []);
-  } catch { deleted = {}; pending = new Set(); }
+    serverSeen = new Set(Array.isArray(m.serverSeen) ? m.serverSeen : []);
+  } catch { deleted = {}; pending = new Set(); serverSeen = new Set(); }
 }
 function saveMeta(): void {
-  try { localStorage.setItem(META_KEY, JSON.stringify({ deleted, pending: [...pending] })); }
+  try { localStorage.setItem(META_KEY, JSON.stringify({ deleted, pending: [...pending], serverSeen: [...serverSeen] })); }
   catch { /* meta is best-effort — reconcile rebuilds it from stamps */ }
 }
 
@@ -140,6 +141,10 @@ const snapshot = new Map<string, string>();
 const pushTimers = new Map<string, number>();
 let pending = new Set<string>();
 let deleted: Record<string, number> = {};
+/** Ids the SERVER has actually returned at least once (server-origin). Lets reconcile
+ *  tell a REMOTELY-DELETED thread (was here, now gone) from a never-synced local one:
+ *  the former must be dropped locally, the latter pushed. Persisted so it survives reloads. */
+let serverSeen = new Set<string>();
 let offlineWarned = false;
 let needsReconcile = false;
 let hydrated: Promise<{ chats: ThreadChat[]; currentId: string }> | null = null;
@@ -216,6 +221,7 @@ async function reconcile(): Promise<void> {
 
   const serverById = new Map(serverList.map((m) => [m.id, m]));
   for (const m of serverList) {
+    serverSeen.add(m.id); // server-origin — lets us detect a later REMOTE deletion
     if (deleted[m.id] !== undefined) continue;
     const local = chatsRef.find((c) => c.id === m.id);
     if (!local) {
@@ -256,14 +262,23 @@ async function reconcile(): Promise<void> {
       }
     }
   }
-  // Cache-only threads (incl. the desktop's whole pre-cutover history) → the
-  // one-time migration push. Stamps are the chats' EXISTING clocks, so the
-  // next boot sees equal stamps and pushes nothing (applied:false guards races).
+  // A cached thread the server no longer returns is EITHER a REMOTE deletion (it was
+  // server-known → drop it locally, never resurrect) OR a never-synced local thread
+  // (the desktop's pre-cutover history → migration-push it once). Without this split, a
+  // web-side delete was mistaken for a local thread and pushed back — resurrecting it.
+  const remoteGone: string[] = [];
   for (const c of chatsRef) {
-    if (!serverById.has(c.id) && deleted[c.id] === undefined) {
-      pending.add(c.id);
-      snapshot.set(c.id, projection(c));
-    }
+    if (serverById.has(c.id) || deleted[c.id] !== undefined) continue;
+    if (serverSeen.has(c.id)) remoteGone.push(c.id);         // deleted elsewhere → drop
+    else { pending.add(c.id); snapshot.set(c.id, projection(c)); } // never synced → push
+  }
+  for (const id of remoteGone) {
+    const idx = chatsRef.findIndex((c) => c.id === id);
+    if (idx >= 0) { chatsRef.splice(idx, 1); changed = true; }
+    snapshot.delete(id);
+    serverSeen.delete(id);
+    pending.delete(id);
+    if (currentIdRef === id) currentIdRef = chatsRef[0]?.id ?? "";
   }
   saveMeta();
   if (changed) { await cacheSave(); onChangeCb?.(); }

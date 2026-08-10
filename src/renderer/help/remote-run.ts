@@ -29,6 +29,7 @@ import type { Source } from "./code-source-chip.js";
 /** A harness frame as it rides `glyphh.harness/v1` (SDK contract/harness.ts —
  *  itself the desktop's glyphh-agent frame vocabulary, enveloped). */
 type HarnessWireFrame = (
+  | { type: "prompt"; text: string }
   | { type: "delta"; delta: string }
   | { type: "tool"; phase: "start" | "done"; name: string; thought?: string; title?: string; denied?: boolean; failed?: boolean; preview?: string }
   | { type: "progress"; inTokens: number; outTokens: number }
@@ -233,6 +234,10 @@ export interface RemoteRunCallbacks {
   onUsage?: (u: { creditsMicro?: number; inTokens?: number; outTokens?: number }) => void;
   onToken?: (delta: string) => void;
   onAnswer?: (fullText: string) => void;
+  /** The turn's USER prompt — the run's first frame. Only surfaces OBSERVING a run
+   *  started elsewhere render this (the initiating surface already has its own bubble,
+   *  so it omits this callback). */
+  onUserPrompt?: (text: string) => void;
   onDone?: (fullText: string) => void;
   onStopped?: () => void;
   onError?: (detail: string) => void;
@@ -268,6 +273,9 @@ function dispatchFrame(
   run: HarnessRunHandle,
 ): void {
   switch (frame.type) {
+    case "prompt":
+      cb.onUserPrompt?.(frame.text);
+      return;
     case "delta":
       state.text += frame.delta;
       cb.onToken?.(frame.delta);
@@ -349,111 +357,18 @@ function dispatchFrame(
  *  doesn't try to provision a cloud pod on open. */
 const RELAY_RUNTIME = (chat: RemoteChat): RuntimeBinding => ({ sessionId: chat.id, url: "relay", token: "relay" });
 
-/**
- * Run a turn through THE SINGLE FRONT DOOR: `harnessViaApi()` binds to the
- * control-plane proxy, which region-routes to the org's regional rrotor + stator.
- * No provisioning, no pod url, no relay — the user's session token authenticates
- * and the server picks the region. Same frames as every other path, so the UI is
- * identical. `threadId` (the chat id) scopes the transcript + memory.
- */
-async function runViaFrontDoor(
-  chat: RemoteChat,
-  prompt: string,
-  callbacks: RemoteRunCallbacks,
-  opts: { model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }>; memory?: RemoteMemoryPolicy },
-): Promise<RemoteRunOutcome> {
-  const pod = (sdk() as unknown as { harnessViaApi?: () => HarnessPod })?.harnessViaApi?.();
-  if (!pod) { const u = unavailable("open", new Error("this build can't run turns (SDK harnessViaApi missing)")); callbacks.onError?.(u.detail); return u; }
-  // Synthetic "connected" binding — enough for the UI's isCommitted state; there
-  // is no pod url to hold. The proxy needs only the chat id (threadId) + the
-  // user's token, both server-side.
-  chat.runtime = { sessionId: chat.id, url: "api", token: "api" };
-  const workdir = chat.source?.kind === "local" ? chat.source.path : undefined;
-  let run: HarnessRunHandle;
-  try {
-    run = pod.start({
-      prompt,
-      threadId: chat.id,
-      mode: modeFor(chat),
-      ...(opts.model ? { model: opts.model } : {}),
-      ...(opts.permission ? { permission: opts.permission } : {}),
-      ...(opts.images && opts.images.length ? { images: opts.images } : {}),
-      // The LOOP's memory policy — when memory is used and how (absent = default on).
-      ...(opts.memory ? { memory: opts.memory } : {}),
-      ...(workdir ? { workdir } : {}),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    } as Parameters<HarnessPod["start"]>[0]);
-  } catch (err) { const u = unavailable("open", err); callbacks.onError?.(u.detail); return u; }
 
-  const state = { text: "", error: null as string | null };
-  const off = run.on((frame) => { if (opts.signal?.aborted) return; dispatchFrame(frame, callbacks, state, run); });
-  let stopped = false;
-  try {
-    const result = await run.done;
-    stopped = result.stopped;
-    if (result.error && !state.error) state.error = result.error;
-  } catch (err) {
-    off(); forgetPending(run);
-    if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
-    if (!state.text) { const u = unavailable("stream", err); callbacks.onError?.(u.detail); return u; }
-    state.error = err instanceof Error ? err.message : String(err);
-  }
-  off(); forgetPending(run);
-  if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
-  if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime: chat.runtime }; }
-  callbacks.onDone?.(state.text);
-  return { ok: true, text: state.text, runtime: chat.runtime, ...(state.error ? { error: state.error } : {}) };
-}
 
 /**
- * Run a turn ON the caller's attached MACHINE via the SDK relay (attach.run),
- * streaming the SAME frames the cloud path streams — so the UI is identical. Used
- * for a LOCAL (machine-bound) session; the desktop runs it in `source.path`.
+ * THE ONE PATH. Run a turn through the SDK's single `run()` entry, which routes on
+ * where execution belongs: a LOCAL (machine-bound) session runs on the user's OWN
+ * machine over the relay (`target: 'desktop'` — tools touch its real folder); every
+ * other session runs on the cloud runtime through the region-routed front door
+ * (`target: 'cloud'`). BOTH reach the SAME regional stator for memory and stream the
+ * SAME frames — so the UI is identical and there is exactly one code path here.
+ * (docs/runtime-stator-split.md: the cloud pod rejects a caller workdir by design,
+ * so a local session must carry `target: 'desktop'`.)
  */
-async function runRelayTurn(
-  chat: RemoteChat,
-  prompt: string,
-  callbacks: RemoteRunCallbacks,
-  opts: { signal?: AbortSignal },
-): Promise<RemoteRunOutcome> {
-  const handle = sdk() as unknown as { attach?: { run?: (p: unknown, o: unknown) => HarnessRunHandle } };
-  if (!handle?.attach?.run) {
-    const u = unavailable("open", new Error("this build can't run on a machine (SDK attach.run missing)"));
-    callbacks.onError?.(u.detail); return u;
-  }
-  chat.runtime = RELAY_RUNTIME(chat);   // mark as connected (no cloud pod)
-  const workdir = chat.source?.kind === "local" ? chat.source.path : undefined;
-  let run: HarnessRunHandle;
-  try {
-    run = handle.attach.run(
-      // threadId = the CHAT's id (stable across turns). The DESKTOP keys the
-      // relay session's transcript + compaction by it (glyphh-agent-context),
-      // so the mobile need only send the new turn — not the whole history.
-      { prompt, threadId: chat.id, mode: modeFor(chat), ...(workdir ? { workdir } : {}) },
-      { ...(opts.signal ? { signal: opts.signal } : {}) },
-    );
-  } catch (err) { const u = unavailable("open", err); callbacks.onError?.(u.detail); return u; }
-
-  const state = { text: "", error: null as string | null };
-  const off = run.on((frame) => { if (opts.signal?.aborted) return; dispatchFrame(frame, callbacks, state, run); });
-  let stopped = false;
-  try {
-    const result = await run.done;
-    stopped = result.stopped;
-    if (result.error && !state.error) state.error = result.error;
-  } catch (err) {
-    off(); forgetPending(run);
-    if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
-    if (!state.text) { const u = unavailable("stream", err); callbacks.onError?.(u.detail); return u; }
-    state.error = err instanceof Error ? err.message : String(err);
-  }
-  off(); forgetPending(run);
-  if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
-  if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime: chat.runtime }; }
-  callbacks.onDone?.(state.text);
-  return { ok: true, text: state.text, runtime: chat.runtime, ...(state.error ? { error: state.error } : {}) };
-}
-
 export async function runRemoteTurn(
   chat: RemoteChat,
   prompt: string,
@@ -461,19 +376,105 @@ export async function runRemoteTurn(
   callbacks: RemoteRunCallbacks = {},
   opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }>; memory?: RemoteMemoryPolicy } = {},
 ): Promise<RemoteRunOutcome> {
-  // THE RUNTIME SPLIT (docs/runtime-stator-split.md): the STATOR is one regional
-  // plane; the RUNTIME is chosen per session. A LOCAL (machine-bound) session
-  // runs on the user's OWN machine over the relay — tools touch its real folder,
-  // memory reaches the same regional stator via /api/stator/*. Everything else
-  // goes through the front door to the cloud runtime. The cloud pod REJECTS a
-  // caller workdir by design, so local must never route there.
-  if (chat.source?.kind === "local") return runRelayTurn(chat, prompt, callbacks, { ...(opts.signal ? { signal: opts.signal } : {}) });
-  if (sdk()?.harnessViaApi) return runViaFrontDoor(chat, prompt, callbacks, opts);
-  // No front door in this SDK build = an honest typed failure. The old
-  // provision-a-pod-per-session path was deleted with the cutover (no-dead-code);
-  // `save` stays in the signature for callers, unused now that nothing binds.
-  void save;
-  const u = unavailable("open", new Error("this build cannot run turns (SDK harnessViaApi missing)"));
-  callbacks.onError?.(u.detail);
-  return u;
+  void save; // callers keep it in the signature; nothing binds a pod per session now
+  const client = sdk() as unknown as { run?: (o: unknown) => HarnessRunHandle };
+  if (!client?.run) {
+    const u = unavailable("open", new Error("this build cannot run turns (SDK run missing)"));
+    callbacks.onError?.(u.detail);
+    return u;
+  }
+
+  const isLocal = chat.source?.kind === "local";
+  // Runtime binding for the UI's isCommitted state: the relay marker for an
+  // on-machine run, a synthetic api binding for the front door (no pod url to hold).
+  chat.runtime = isLocal ? RELAY_RUNTIME(chat) : { sessionId: chat.id, url: "api", token: "api" };
+  const workdir = chat.source?.kind === "local" ? chat.source.path : undefined;
+
+  let run: HarnessRunHandle;
+  try {
+    run = client.run({
+      target: isLocal ? "desktop" : "cloud", // the one decision: your machine, or the cloud
+      prompt,
+      threadId: chat.id, // stable chat id → transcript + memory scope
+      mode: modeFor(chat),
+      ...(workdir ? { workdir } : {}),
+      ...(opts.model ? { model: opts.model } : {}),
+      ...(opts.permission ? { permission: opts.permission } : {}),
+      ...(opts.images && opts.images.length ? { images: opts.images } : {}),
+      ...(opts.memory ? { memory: opts.memory } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+  } catch (err) { const u = unavailable("open", err); callbacks.onError?.(u.detail); return u; }
+
+  const state = { text: "", error: null as string | null };
+  const off = run.on((frame) => { if (opts.signal?.aborted) return; dispatchFrame(frame, callbacks, state, run); });
+  let stopped = false;
+  try {
+    const result = await run.done;
+    stopped = result.stopped ?? false;
+    if (result.error && !state.error) state.error = result.error;
+  } catch (err) {
+    off(); forgetPending(run);
+    if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
+    if (!state.text) { const u = unavailable("stream", err); callbacks.onError?.(u.detail); return u; }
+    state.error = err instanceof Error ? err.message : String(err);
+  }
+  off(); forgetPending(run);
+  if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
+  if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime: chat.runtime }; }
+  callbacks.onDone?.(state.text);
+  return { ok: true, text: state.text, runtime: chat.runtime, ...(state.error ? { error: state.error } : {}) };
+}
+
+// ── Attach to a run happening ELSEWHERE (the run-stream broker consumer) ───────
+
+/** The SDK's `runStream` resource (window.glyphhSdk.runStream), mirrored here the
+ *  same way HarnessPod is — the renderer can't import @glyphh/sdk across preload. */
+interface RunStreamResource {
+  attach(threadId: string, opts?: { from?: string }): {
+    on(cb: (frame: HarnessWireFrame) => void): () => void;
+    onRun(cb: (runId: string) => void): () => void;
+    stop(): void;
+  };
+}
+
+export interface AttachHandle { readonly runId: string | null; stop(): void }
+
+/**
+ * "Open a thread anywhere, see the live turn." A surface OBSERVES a thread's
+ * currently-active run — wherever it executes (this user's desktop or a cloud pod)
+ * — by asking the broker for the thread's active run, then subscribing to that run's
+ * durable frame stream (replay the tape so far, then follow live). Frames drive the
+ * SAME callbacks a live turn uses, so the thread renders identically.
+ *
+ * READ-ONLY: this surface does not own answering approvals/asks (the executing
+ * surface does), so pass no `onApproval`/`onAsk` — parked frames land as honest
+ * breadcrumbs and the run rides its owner's answer. `onAttached` fires ONCE with the
+ * runId before any frame, so the caller can seed its live-run state first. Returns a
+ * null-runId handle (a no-op) when nothing is running — safe to call on every open.
+ */
+export function attachToActiveRun(
+  chat: RemoteChat,
+  callbacks: RemoteRunCallbacks = {},
+  onRun?: (runId: string) => void,
+): AttachHandle {
+  const rs = (sdk() as unknown as { runStream?: RunStreamResource })?.runStream;
+  if (!rs?.attach) return { runId: null, stop: () => {} };
+
+  // ONE call: the SDK owns "watch this thread and stream whatever runs on it, run after
+  // run, forever until stop." This function is just the shared frame->callbacks glue every
+  // surface reuses; it does NOT know or care where a run executes. `onRun` fires per run so
+  // the surface can start a fresh turn; a terminal frame fires onDone/onError.
+  // dispatchFrame only touches `run` to PARK approval/ask (which an observer omits), so the
+  // stub handle is never dereferenced.
+  const stubRun = {} as unknown as HarnessRunHandle;
+  let state = { text: "", error: null as string | null };
+  const h = rs.attach(chat.id, { from: "0" });
+  h.onRun((runId) => { state = { text: "", error: null }; onRun?.(runId); });
+  h.on((frame) => {
+    dispatchFrame(frame, callbacks, state, stubRun);
+    if (frame.type === "done") callbacks.onDone?.(state.text);
+    else if (frame.type === "error") callbacks.onError?.(state.error || "the run reported an error");
+  });
+  return { runId: null, stop: () => h.stop() };
 }
