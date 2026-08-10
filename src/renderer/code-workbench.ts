@@ -5674,19 +5674,18 @@ async function init(): Promise<void> {
     placeSlot(makeSlot("terminal"));
   };
   // Artifacts gallery (Files section) → workbench. Mount by KIND: code/text/
-  // markdown open in Monaco (content inline if the artifact carries it, else
-  // fetched from the presigned url); image/pdf/other open in a preview panel at
-  // their presigned url. The artifact id stands in for a path so Monaco tabs
-  // dedupe per artifact.
-  interface WbArtifact { id: string; name: string; kind: "code" | "text" | "markdown" | "image" | "pdf" | "other"; url?: string; content?: string; mimeType?: string }
+  // markdown open in Monaco (fetched as text from the artifact's short-lived
+  // downloadUrl); image/pdf/other open in a preview panel at that url. The
+  // artifact id stands in for a path so Monaco tabs dedupe per artifact.
+  // Shape mirrors @glyphh/sdk FileArtifact (downloadUrl present on files.get).
+  interface WbArtifact { id: string; name: string; kind: "code" | "text" | "markdown" | "image" | "pdf" | "other"; downloadUrl?: string; mime?: string }
   (window as unknown as { __wbOpenArtifact?: (a: WbArtifact) => void }).__wbOpenArtifact = (a) => {
     if (!a) return;
     const textual = a.kind === "code" || a.kind === "text" || a.kind === "markdown";
     if (textual) {
       const node = { name: a.name || a.id, path: `artifact:${a.id}` };
-      if (typeof a.content === "string") { openFileInMonaco(node, a.content); return; }
-      if (a.url) {
-        void fetch(a.url)
+      if (a.downloadUrl) {
+        void fetch(a.downloadUrl)
           .then((r) => r.text())
           .then((text) => openFileInMonaco(node, text))
           .catch((e) => openFileInMonaco(node, `// Couldn't load ${a.name}: ${String(e)}`));
@@ -5695,8 +5694,8 @@ async function init(): Promise<void> {
       openFileInMonaco(node, "");
       return;
     }
-    // image / pdf / other — a preview panel at the presigned url.
-    if (a.url) { openPreviewUrl(a.url); return; }
+    // image / pdf / other — a preview panel at the short-lived download url.
+    if (a.downloadUrl) { openPreviewUrl(a.downloadUrl); return; }
   };
 
   // App bridges — the OS-window replacement surface. main (glyphh agent tools,

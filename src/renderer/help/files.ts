@@ -1,61 +1,113 @@
 /**
  * Files — the ARTIFACTS gallery.
  *
- * A first-class object browser over the user's stored artifacts (R2-backed,
- * reached through the SDK's `files` resource on `window.glyphhSdk`, the same
- * raw @glyphh/sdk client the rest of the surface uses). Read-first: a grid of
- * cards; opening one mounts it in the WORKBENCH by kind (Monaco for
- * code/text/markdown, a preview panel for image/pdf) via the workbench's
- * `__wbOpenArtifact` bridge. "New artifact" → `files.create`.
+ * A first-class object browser over the user's stored artifacts (R2-backed).
+ * Read-first: a grid of cards; opening one mounts it in the WORKBENCH by kind
+ * (Monaco for code/text/markdown, a preview panel for image/pdf) via the
+ * workbench's `__wbOpenArtifact` bridge. "New artifact" → files.create.
  *
- * The SDK types live in a separate repo, so — as remote-run.ts / settings-api.ts
- * do — the FileArtifact shape and the files resource are mirrored here
- * structurally and every call is guarded, so a build without the resource
- * degrades to an empty gallery + a clear message rather than throwing.
+ * Transport — the ONE files transport for BOTH surfaces, per settings-api.ts's
+ * law that the renderer never holds an SDK client:
+ *   • web     — window.glyphhSdk.files (the raw @glyphh/sdk client the web
+ *               bridge exposes). Checked FIRST: on web `window.glyphh` is a
+ *               Proxy that fabricates a function for ANY name, so the SDK handle
+ *               must win (thread-store.ts's trap, mirrored by settings-api.ts).
+ *   • desktop — window.glyphh.filesList / filesGet / filesCreate → the
+ *               MAIN-process SDK client (files-ipc.ts → getClient().files).
+ * Neither present (an old build) → an honest empty + a clear message.
+ *
+ * The SDK's shapes are mirrored structurally (the renderer can't import
+ * @glyphh/sdk across the preload boundary) and match sdk contract/files.ts:
+ * FileArtifact carries `mime`/`kind`/`sizeBytes`/`createdAt`; `downloadUrl` is
+ * present only on get(id); create takes base64 bytes.
  */
 
 import { escapeHtml, relativeTime, promptAction } from "./shared.js";
 
-// ── SDK mirror (window.glyphhSdk.files) ──────────────────────────────────────
+// ── SDK shape mirror (matches @glyphh/sdk contract/files.ts) ─────────────────
 
 export type FileArtifactKind = "code" | "text" | "markdown" | "image" | "pdf" | "other";
 
-/** A stored artifact, mirroring the SDK's FileArtifact contract. Fields beyond
- *  id/name/kind are optional so a leaner server payload still renders. */
 export interface FileArtifact {
   id: string;
   name: string;
+  mime: string;
   kind: FileArtifactKind;
-  /** Presigned GET URL for the object (image/pdf viewers, content fetch). */
-  url?: string;
-  /** Inline content when the server returns it (code/text/markdown). */
-  content?: string;
-  size?: number;
-  mimeType?: string;
-  updatedAt?: number | string;
-  createdAt?: number | string;
+  sessionId: string | null;
+  sizeBytes: number;
+  /** ISO-8601. */
+  createdAt: string;
+  /** Short-lived, browser-ready view/download URL — present only on get(id). */
+  downloadUrl?: string;
 }
 
 export interface FileCreateInput {
   name: string;
-  kind: FileArtifactKind;
-  content?: string;
+  mime?: string;
+  /** Artifact bytes, base64-encoded. */
+  contentBase64: string;
+  sessionId?: string | null;
 }
 
-interface SdkFiles {
-  list?: (query?: string) => Promise<FileArtifact[] | { items: FileArtifact[] }>;
+// ── Transport (web SDK handle vs desktop IPC bridge) ─────────────────────────
+
+interface FilesTransport {
+  list(): Promise<FileArtifact[]>;
+  get(id: string): Promise<FileArtifact>;
+  create(input: FileCreateInput): Promise<FileArtifact>;
+}
+
+/** The web SDK handle's files resource. */
+interface SdkFilesHandle {
+  list?: (query?: { sessionId?: string }) => Promise<FileArtifact[]>;
   get?: (id: string) => Promise<FileArtifact>;
   create?: (input: FileCreateInput) => Promise<FileArtifact>;
 }
+interface SdkWithFiles { files?: SdkFilesHandle }
 
-interface SdkWithFiles { files?: SdkFiles }
-
-function filesApi(): SdkFiles | undefined {
-  return (window as unknown as { glyphhSdk?: SdkWithFiles }).glyphhSdk?.files;
+/** The desktop preload bridge's file methods. */
+interface DesktopFilesIpc {
+  filesList?: () => Promise<FileArtifact[]>;
+  filesGet?: (id: string) => Promise<FileArtifact>;
+  filesCreate?: (input: FileCreateInput) => Promise<{ ok: boolean; file?: FileArtifact; error?: string }>;
 }
 
-/** The workbench bridge that mounts an artifact by kind (added in
- *  code-workbench.ts). Absent only if the workbench hasn't initialised yet. */
+const NO_TRANSPORT = "Artifacts aren't available on this build — the files service isn't reachable here.";
+
+/**
+ * The files transport for THIS surface, or null if neither is present.
+ *
+ * On WEB the SDK handle is the only transport — `window.glyphh` there is a Proxy
+ * that fabricates a function for ANY name, so the desktop IPC branch must never
+ * be reached on web (it would look present and then fail oddly). We gate on the
+ * `__GLYPHH_WEB__` flag the web bridge sets, exactly as settings-api.ts does.
+ */
+function filesTransport(): FilesTransport | null {
+  const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+  if (isWeb) {
+    const f = (window as unknown as { glyphhSdk?: SdkWithFiles }).glyphhSdk?.files;
+    if (!f?.list || !f.get || !f.create) return null;
+    return {
+      list: () => f.list!(),
+      get: (id) => f.get!(id),
+      create: (input) => f.create!(input),
+    };
+  }
+  // Desktop — the main-process SDK client via the preload IPC bridge.
+  const g = (window as unknown as { glyphh?: DesktopFilesIpc }).glyphh;
+  if (!g?.filesList || !g.filesGet || !g.filesCreate) return null;
+  return {
+    list: () => g.filesList!(),
+    get: (id) => g.filesGet!(id),
+    create: async (input) => {
+      const res = await g.filesCreate!(input);
+      if (!res?.ok || !res.file) throw new Error(res?.error || "Couldn't create artifact");
+      return res.file;
+    },
+  };
+}
+
+/** The workbench bridge that mounts an artifact by kind (code-workbench.ts). */
 function openArtifactInWorkbench(a: FileArtifact): void {
   const open = (window as unknown as { __wbOpenArtifact?: (a: FileArtifact) => void }).__wbOpenArtifact;
   if (open) open(a);
@@ -79,6 +131,23 @@ const KIND_LABEL: Record<FileArtifactKind, string> = {
 const normalizeKind = (k?: string): FileArtifactKind =>
   (["code", "text", "markdown", "image", "pdf"].includes(String(k)) ? k : "other") as FileArtifactKind;
 
+/** Best-effort MIME for a new artifact, keyed off its name. */
+function mimeForName(name: string): string {
+  const lower = name.toLowerCase();
+  if (/\.(md|markdown)$/.test(lower)) return "text/markdown";
+  if (/\.png$/.test(lower)) return "image/png";
+  if (/\.jpe?g$/.test(lower)) return "image/jpeg";
+  if (/\.gif$/.test(lower)) return "image/gif";
+  if (/\.webp$/.test(lower)) return "image/webp";
+  if (/\.svg$/.test(lower)) return "image/svg+xml";
+  if (/\.pdf$/.test(lower)) return "application/pdf";
+  if (/\.(txt|log)$/.test(lower)) return "text/plain";
+  if (/\.csv$/.test(lower)) return "text/csv";
+  if (/\.json$/.test(lower)) return "application/json";
+  if (/\.[a-z0-9]+$/.test(lower)) return "text/plain";
+  return "text/markdown";
+}
+
 // ── Rendering ────────────────────────────────────────────────────────────────
 
 const $ = (id: string) => document.getElementById(id);
@@ -86,10 +155,8 @@ const $ = (id: string) => document.getElementById(id);
 let allArtifacts: FileArtifact[] = [];
 
 function timeOf(a: FileArtifact): number {
-  const v = a.updatedAt ?? a.createdAt;
-  if (typeof v === "number") return v;
-  if (typeof v === "string") { const t = Date.parse(v); return Number.isNaN(t) ? 0 : t; }
-  return 0;
+  const t = Date.parse(a.createdAt || "");
+  return Number.isNaN(t) ? 0 : t;
 }
 
 function renderGallery(list: FileArtifact[]): void {
@@ -132,14 +199,13 @@ function showError(msg: string | null): void {
 }
 
 async function openArtifact(id: string): Promise<void> {
-  const api = filesApi();
-  // Prefer a fresh get (it carries a presigned url + content); fall back to the
-  // list row we already have so a card still opens without a get endpoint.
+  const t = filesTransport();
+  // Always fetch a fresh get — it carries the short-lived downloadUrl the viewer
+  // needs. Fall back to the list row (no downloadUrl) so a card still opens.
   let art = allArtifacts.find((a) => a.id === id);
-  try {
-    if (api?.get) art = await api.get(id);
-  } catch (e) {
-    showError(`Couldn't open that artifact: ${(e as Error).message}`);
+  if (t) {
+    try { art = await t.get(id); }
+    catch (e) { showError(`Couldn't open that artifact: ${(e as Error).message}`); }
   }
   if (art) openArtifactInWorkbench({ ...art, kind: normalizeKind(art.kind) });
 }
@@ -149,17 +215,16 @@ async function openArtifact(id: string): Promise<void> {
 /** Load + render the artifacts gallery. Called by loadActiveSection("files"). */
 export async function loadFiles(): Promise<void> {
   showError(null);
-  const api = filesApi();
-  if (!api?.list) {
+  const t = filesTransport();
+  if (!t) {
     allArtifacts = [];
     renderGallery([]);
-    showError("Artifacts aren't available on this build — the files service isn't reachable here.");
+    showError(NO_TRANSPORT);
     return;
   }
   try {
-    const res = await api.list();
-    const items = Array.isArray(res) ? res : (res?.items ?? []);
-    allArtifacts = items
+    const items = await t.list();
+    allArtifacts = (items || [])
       .map((a) => ({ ...a, kind: normalizeKind(a.kind) }))
       .sort((a, b) => timeOf(b) - timeOf(a));
     applySearch();
@@ -180,23 +245,21 @@ export function initFiles(): void {
   ($("file-search") as HTMLInputElement | null)?.addEventListener("input", applySearch);
 
   $("file-new-btn")?.addEventListener("click", async () => {
-    const api = filesApi();
-    if (!api?.create) { showError("Creating artifacts isn't available on this build."); return; }
+    const t = filesTransport();
+    if (!t) { showError(NO_TRANSPORT); return; }
     // The app forbids native window.prompt (Electron BrowserViews swallow it) —
     // use the themed prompt modal instead.
     const name = await promptAction("New artifact name", "untitled.md", "e.g. notes.md", "Create");
     if (!name) return;
-    const lower = name.toLowerCase();
-    const kind: FileArtifactKind =
-      /\.(md|markdown)$/.test(lower) ? "markdown" :
-      /\.(png|jpe?g|gif|webp|svg)$/.test(lower) ? "image" :
-      /\.pdf$/.test(lower) ? "pdf" :
-      /\.(txt|log|csv)$/.test(lower) ? "text" :
-      /\.[a-z0-9]+$/.test(lower) ? "code" : "text";
     try {
-      const created = await api.create({ name, kind, content: "" });
+      // A new artifact starts empty; the server derives kind from the mime.
+      // btoa handles the empty/ASCII body; encodeURIComponent→escape keeps it
+      // correct if a default body ever carries non-ASCII.
+      const contentBase64 = btoa(unescape(encodeURIComponent("")));
+      const created = await t.create({ name, mime: mimeForName(name), contentBase64 });
       await loadFiles();
-      openArtifactInWorkbench({ ...created, kind: normalizeKind(created.kind) });
+      // Re-get so the freshly-created artifact opens with a downloadUrl.
+      void openArtifact(created.id);
     } catch (e) {
       showError(`Couldn't create that artifact: ${(e as Error).message}`);
     }

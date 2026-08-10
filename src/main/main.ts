@@ -84,6 +84,7 @@ import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAccountIpc } from "./account-ipc";
+import { registerFilesIpc } from "./files-ipc";
 import { registerModelsIpc } from "./models-ipc";
 import { registerWorkspacesIpc } from "./workspaces-ipc";
 import { getClient } from "./glyphh-client";
@@ -839,6 +840,9 @@ async function boot() {
   // Settings › Billing / Organization / Account — the customer-facing account
   // surfaces, straight through the main-process SDK client.
   registerAccountIpc();
+
+  // Files — the artifacts gallery's transport, same main-process SDK client.
+  registerFilesIpc();
 
   registerAppsIpc({
     layoutManager, dripManager,

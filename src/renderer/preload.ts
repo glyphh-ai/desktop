@@ -150,6 +150,27 @@ export interface AccountProfile {
   avatarUrl: string;
 }
 
+// Files artifact store (Files gallery). Structural mirror of @glyphh/sdk's
+// FileArtifact / CreateFileInput — the MAIN-process SDK client executes these
+// (files-ipc.ts); the renderer's help/files.ts mirrors the same shapes and owns
+// the web target's SDK-handle transport. downloadUrl is present only on get().
+export interface FileArtifactRow {
+  id: string;
+  name: string;
+  mime: string;
+  kind: "code" | "text" | "markdown" | "image" | "pdf" | "other";
+  sessionId: string | null;
+  sizeBytes: number;
+  createdAt: string;
+  downloadUrl?: string;
+}
+export interface FileCreateInputRow {
+  name: string;
+  mime?: string;
+  contentBase64: string;
+  sessionId?: string | null;
+}
+
 // Fields the create/update calls forward to /api/panel-apps. Kept as a named
 // type so preload + renderer stay in sync on the accepted keys.
 export interface PanelAppInput {
@@ -508,6 +529,14 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("account-members-set-role", userId, role) as Promise<{ ok: boolean; error?: string }>,
   accountMembersUpdateProfile: (userId: string, patch: { firstName?: string; lastName?: string }) =>
     ipcRenderer.invoke("account-members-update-profile", userId, patch) as Promise<{ ok: boolean; error?: string }>,
+  // ── Files artifact store (Files gallery) — the MAIN-process SDK client
+  // executes these (files-ipc.ts). Reads REJECT on failure so the gallery shows
+  // an honest error; create answers with { ok, file, error }. help/files.ts
+  // mirrors these shapes and owns the web target's SDK-handle transport. ──
+  filesList: () => ipcRenderer.invoke("files-list") as Promise<FileArtifactRow[]>,
+  filesGet: (id: string) => ipcRenderer.invoke("files-get", id) as Promise<FileArtifactRow>,
+  filesCreate: (input: FileCreateInputRow) =>
+    ipcRenderer.invoke("files-create", input) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
   // AI Gateway — escalation models (org-governed), slicer usage, org governance.
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
