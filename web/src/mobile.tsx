@@ -369,6 +369,15 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
         <span>New Session</span>
       </button>
 
+      {/* Connections — the one rail destination (opens Settings → Connections),
+          directly under New Session and above Recents. */}
+      <nav className="m-rail-nav">
+        <button className="m-nav-item" onClick={onConnections}>
+          <Icon name="link" />
+          <span>Connections</span>
+        </button>
+      </nav>
+
       <div className="m-recents">
         <div className="m-recents-label">Recents</div>
         <div className="m-recents-list">
@@ -383,14 +392,6 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
           </button>
         </div>
       </div>
-
-      {/* The one rail destination — a shortcut into Settings → Connections. */}
-      <nav className="m-rail-nav">
-        <button className="m-nav-item" onClick={onConnections}>
-          <Icon name="link" />
-          <span>Connections</span>
-        </button>
-      </nav>
 
       <div className="m-rail-footer">
         <button className="m-avatar" aria-label={user.name} title={user.name} onClick={onAccount}>
