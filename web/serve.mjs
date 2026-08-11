@@ -160,6 +160,17 @@ function securityHeaders(res, isHttps) {
 const exists = async (f) => { try { await access(f); return true; } catch { return false; } };
 
 const server = http.createServer(async (req, res) => {
+  // /bare — a minimal control page (no app css/js/injections) to isolate
+  // whether the top band is the app's doing or the browser's.
+  if (new URL(req.url, 'http://x').pathname === '/bare') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>bare</title></head>'
+      + '<body style="margin:0;background:#d33;color:#fff;font:16px monospace">'
+      + '<div style="height:44px;background:#2a2;display:flex;align-items:center;padding-left:12px">TOP OF PAGE — this green row is y=0</div>'
+      + '<p style="padding:12px">If a dark band sits between the browser toolbar and the green row, the browser put it there. If green touches the toolbar, the app was doing it.</p>'
+      + '</body></html>');
+    return;
+  }
   // DEV tunnel: forward API + harness through this origin before anything else.
   if (PROXY) {
     const rp = new URL(req.url, 'http://x').pathname;
