@@ -15751,6 +15751,15 @@ body.code-dragging webview { pointer-events: none !important; }
   visibility: hidden;
   pointer-events: none;
 }
+/* Flow panels reorder by dragging their header (up/down/across columns). */
+.echo-card-head { cursor: grab; }
+.echo-card-head:active { cursor: grabbing; }
+.echo-card.echo-card-dragging { opacity: 0.88; z-index: 3; }
+/* While a drag is live, embedded pages must not swallow the pointer, and
+   text selection would fight the gesture. */
+body.echo-drag { user-select: none; }
+body.echo-drag .echo-card iframe,
+body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-card-head {
   display: flex; align-items: center; gap: 6px;
   padding: 5px 6px 5px 10px; font-size: 12px; font-weight: 600; color: var(--text-2);

@@ -2262,6 +2262,59 @@ async function init(): Promise<void> {
       const b = card.querySelector<HTMLElement>(".echo-card-expand");
       if (b) { b.innerHTML = EXPAND_SVG; b.title = "Expand"; }
     };
+    /** Reorder ACCUMULATED (flow) panels by dragging their header — up/down
+     *  within a column, horizontally across columns. Hovering past another
+     *  card moves the dragged entry to its position in openList and the flow
+     *  reflows live (the cards' position transition carries the animation).
+     *  Layout-grid cells keep their grid; controls keep their clicks. Pointer
+     *  capture on the head keeps events flowing even over iframes/webviews. */
+    const wireCardDrag = (e: TileEntry, card: HTMLElement, head: HTMLElement): void => {
+      head.addEventListener("pointerdown", (ev) => {
+        if (ev.button !== 0) return;
+        const t = ev.target as HTMLElement;
+        if (t.closest("button, input, .ws-app-chrome")) return;
+        if (card.classList.contains("expanded")) return;
+        if (gridRects()?.has(e)) return;
+        if (e.tile.kind === "agent") return;   // the agent owns its column — never reflowed
+        const startX = ev.clientX, startY = ev.clientY;
+        let dragging = false;
+        // Capture keeps the stream flowing over iframes/webviews; a pointer
+        // that can't be captured (synthetic, stale id) still drags fine via
+        // the head listeners + the body.echo-drag pointer-events guard.
+        try { head.setPointerCapture(ev.pointerId); } catch { /* uncapturable */ }
+        const move = (mv: PointerEvent): void => {
+          if (!dragging) {
+            if (Math.hypot(mv.clientX - startX, mv.clientY - startY) < 6) return;
+            dragging = true;
+            card.classList.add("echo-card-dragging");
+            document.body.classList.add("echo-drag");
+          }
+          const over = document.elementsFromPoint(mv.clientX, mv.clientY)
+            .find((el) => el !== card && el instanceof HTMLElement && el.classList.contains("echo-card")) as HTMLElement | undefined;
+          if (!over) return;
+          const target = openList.find((x) => x.card === over);
+          if (!target || target.tile.kind === "agent" || gridRects()?.has(target)) return;
+          const from = openList.indexOf(e);
+          const to = openList.indexOf(target);
+          if (from < 0 || to < 0 || from === to) return;
+          openList.splice(from, 1);
+          openList.splice(to, 0, e);
+          layoutCards();
+        };
+        const up = (): void => {
+          head.removeEventListener("pointermove", move);
+          try { head.releasePointerCapture(ev.pointerId); } catch { /* already released */ }
+          if (dragging) {
+            card.classList.remove("echo-card-dragging");
+            document.body.classList.remove("echo-drag");
+            layoutCards();
+          }
+        };
+        head.addEventListener("pointermove", move);
+        head.addEventListener("pointerup", up, { once: true });
+        head.addEventListener("pointercancel", up, { once: true });
+      });
+    };
     const setRect = (el: HTMLElement, r: { left: number; top: number; width: number; height: number }): void => {
       el.style.left = `${Math.round(r.left)}px`;
       el.style.top = `${Math.round(r.top)}px`;
@@ -2724,6 +2777,7 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      wireCardDrag(e, card, card.querySelector<HTMLElement>(".echo-card-head")!);
       card.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
         ev.stopPropagation();   // the slot menu would close the ECHO PANEL
