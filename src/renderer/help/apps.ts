@@ -1619,7 +1619,11 @@ async function loadPanelTab() {
   const isGlyphhApp = app.appArchetype === "glyphh-app" || /\.html?$/i.test(app.execPath || "");
 
   if (!app.url && !isGlyphhApp) {
-    document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">No URL configured for this app. Add one above to enable panel features.</div>`;
+    // #app-commands-list was removed from the markup — guard, don't crash
+    // (the old non-null assertion threw "Cannot set properties of null" and
+    // took down Open App on web).
+    const noUrlHost = document.getElementById("app-commands-list");
+    if (noUrlHost) noUrlHost.innerHTML = `<div class="inline-empty">No URL configured for this app. Add one above to enable panel features.</div>`;
     return;
   }
 
@@ -1631,7 +1635,8 @@ async function loadPanelTab() {
       const wcId = await ensurePreviewWcId();
       const res = await window.glyphh.glyphhAppPreviewOpen(app.slug, wcId);
       if (!res?.ok || !res.fileUrl) {
-        document.getElementById("app-commands-list")!.innerHTML = `<div class="inline-empty">${res?.error || "Could not load app preview."}</div>`;
+        const errHost = document.getElementById("app-commands-list");
+        if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "Could not load app preview."}</div>`;
         return;
       }
       appPreview.src = res.fileUrl;
