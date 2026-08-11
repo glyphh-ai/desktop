@@ -35,6 +35,10 @@ import {
 import { BUILTIN_EFFECT_LIST } from '../../src/shared/drip-effects';
 // DOM-free at import time; only running a recipe touches the document.
 import { runDripRecipe } from './drip-web-runner.js';
+// The workbench locus tracker: every session-cache load/save below feeds it, so
+// window.wb can route Files/Diff/Editor to the CURRENT session's workspace
+// (cloud pod vs attached desktop) without touching the renderer (wb-pod.js).
+import { noteSessionsSnapshot } from './wb-pod.js';
 
 /**
  * The canonical EMPTY shape per contract type — the value a cloud read resolves to
@@ -349,10 +353,15 @@ export function buildContract(client, deps) {
       try {
         const raw = localStorage.getItem(await threadCacheKey());
         const p = raw ? JSON.parse(raw) : null;
-        return { chats: Array.isArray(p?.chats) ? p.chats : [], currentId: String(p?.currentId || '') };
+        const loaded = { chats: Array.isArray(p?.chats) ? p.chats : [], currentId: String(p?.currentId || '') };
+        noteSessionsSnapshot(loaded.chats, loaded.currentId); // seed the wb locus at boot
+        return loaded;
       } catch { return EMPTY.sessions(); }
     },
     glyphhSessionsSave: async (chats, currentId) => {
+      // Every session switch/birth/source-bind flows through this write-through
+      // save (thread-store persist) — the one seam the wb locus needs.
+      try { noteSessionsSnapshot(chats, currentId); } catch { /* locus is best-effort */ }
       try {
         localStorage.setItem(await threadCacheKey(), JSON.stringify({ chats, currentId }));
         return true;

@@ -26,6 +26,7 @@ import {
 import { buildContract } from './web-contract.js';
 import { installErrorSurface } from './web-errors.js';
 import { createWbRelay } from './wb-relay.js';
+import { createWbPod, createWbSelector } from './wb-pod.js';
 
 const client = glyphh();
 const noop = () => {};
@@ -59,12 +60,20 @@ const bridge = new Proxy({}, {
   },
 });
 
-// The workbench bridge (window.wb) is REAL on web now: the Files / Diff /
-// Monaco panels reach the user's ATTACHED DESKTOP's working folder over the
-// panel relay (wb-relay.js — attach.dispatch calls + a /ws/panel push socket
-// for live file-change events). Machine-only dialogs stay honest no-ops, and
-// with no desktop attached the panels render their designed offline states.
-const wb = createWbRelay({ client, apiUrl: API_URL, isAuthenticated });
+// The workbench bridge (window.wb) is REAL on web now, with TWO transports
+// routed by the CURRENT session's locus (wb-pod.js createWbSelector):
+//   · machine-bound session (or none) → the desktop panel relay (wb-relay.js —
+//     attach.dispatch calls + a /ws/panel push socket for live change events)
+//   · cloud session → the session's POD WORKSPACE over the harness front door
+//     (wb-pod.js — /api/harness/fs/* + a ~2s change-event cursor poll)
+// The locus follows the session store's own save path (web-contract.js →
+// noteSessionsSnapshot). Machine-only dialogs stay honest no-ops, and an
+// unreachable far side (desktop offline / pod asleep) renders the panels'
+// designed offline states.
+const wb = createWbSelector({
+  relay: createWbRelay({ client, apiUrl: API_URL, isAuthenticated }),
+  pod: createWbPod({ client, isAuthenticated }),
+});
 
 if (typeof window !== 'undefined') {
   window.glyphh = bridge;

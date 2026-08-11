@@ -47,9 +47,10 @@ interface WbApi {
   /** Git state moved (.git/index / .git/HEAD) — one coalesced signal per git
    *  operation. Optional: older preloads may not expose it yet. */
   onGitChanged?: (cb: () => void) => () => void;
-  /** WEB target only (wb-relay.js): can the machine-fs transport answer right
-   *  now? Drives the honest desktop-offline / signed-out panel states. */
-  webFsStatus?: () => Promise<"ok" | "desktop-offline" | "signed-out">;
+  /** WEB target only (wb-relay.js / wb-pod.js): can the session's fs transport
+   *  answer right now? Drives the honest offline / signed-out panel states.
+   *  "runtime-offline" = a CLOUD session whose pod workspace is unreachable. */
+  webFsStatus?: () => Promise<"ok" | "desktop-offline" | "signed-out" | "runtime-offline">;
   listDir: (dir: string) => Promise<{ entries: FileEntry[]; error?: string }>;
   searchFiles: (dir: string, query: string) => Promise<{ entries: Array<{ name: string; rel: string; path: string; kind: "dir" | "file" }>; truncated?: boolean; error?: string }>;
   pickFile: () => Promise<string | null>;
@@ -4537,22 +4538,24 @@ async function init(): Promise<void> {
   }
 
   /**
-   * WEB: the Files / Diff / Monaco panels read the ATTACHED DESKTOP's
-   * filesystem over the relay (wb-relay.js). When that transport can't answer
-   * — no desktop attached, or signed out — paint the SAME honest state card
-   * the streamed panels and remote terminal show (panelStateFragment, working
-   * "Try again") instead of an empty tree / dead pane. Desktop always
-   * proceeds. Returns true when the caller should mount its real renderer.
+   * WEB: the Files / Diff / Monaco panels read the CURRENT SESSION's
+   * filesystem — the attached desktop over the relay (wb-relay.js), or a
+   * cloud session's pod workspace over the harness front door (wb-pod.js).
+   * When that transport can't answer — no desktop attached, pod unreachable,
+   * or signed out — paint the SAME honest state card the streamed panels and
+   * remote terminal show (panelStateFragment, working "Try again") instead of
+   * an empty tree / dead pane. Desktop always proceeds. Returns true when the
+   * caller should mount its real renderer.
    */
   async function webFsReady(body: HTMLElement, retry: () => void): Promise<boolean> {
     if (!isWebTarget()) return true;
     const status = window.wb.webFsStatus;
-    if (!status) return true; // no relay wb (unexpected) — let the renderer show its own error state
-    let state: "ok" | "desktop-offline" | "signed-out" = "desktop-offline";
+    if (!status) return true; // no web wb (unexpected) — let the renderer show its own error state
+    let state: "ok" | "desktop-offline" | "signed-out" | "runtime-offline" = "desktop-offline";
     try { state = await status(); } catch { state = "desktop-offline"; }
     if (!body.isConnected) return false;
     if (state === "ok") {
-      // The machine just became reachable — the boot-time cwd may predate it.
+      // The far side just became reachable — the boot-time cwd may predate it.
       if (!cwd) cwd = (await window.wb.getCwd().catch(() => "")) || "";
       return true;
     }
@@ -4560,11 +4563,15 @@ async function init(): Promise<void> {
     const card = document.createElement("div");
     card.className = "ws-glyphh-app-state";
     card.style.cssText = "flex:1 1 auto;min-height:0;width:100%;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;background:var(--surface)";
-    card.innerHTML = panelStateFragment(state, {
+    // "runtime-offline" (a cloud session's pod workspace unreachable) rides the
+    // existing generic "failed" card with honest copy — no invented UI.
+    card.innerHTML = panelStateFragment(state === "runtime-offline" ? "failed" : state, {
       retryAttrs: 'data-fs-retry="1"',
       ...(state === "desktop-offline"
         ? { detail: "This panel reads files on your desktop. Open the Glyphh desktop app and sign in, then try again." }
-        : {}),
+        : state === "runtime-offline"
+          ? { detail: "This session's files live in its cloud workspace, which isn't reachable right now. Try again in a moment." }
+          : {}),
     });
     card.querySelector<HTMLButtonElement>("[data-fs-retry]")?.addEventListener("click", retry);
     body.appendChild(card);
