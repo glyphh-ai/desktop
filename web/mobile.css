@@ -732,6 +732,8 @@ body {
 .m-action-row:active { background: var(--hover); }
 .m-action-ico { flex: 0 0 22px; color: var(--text-2); display: inline-flex; }
 .m-action-ico svg { width: 20px; height: 20px; }
+/* The shared per-app icon (server resolver — same image as desktop/web). */
+.m-action-appicon { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; display: block; }
 .m-action-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-action-name code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; color: var(--text-2); }
 .m-action-chev { flex: 0 0 18px; color: var(--text-faint); display: inline-flex; }

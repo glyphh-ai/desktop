@@ -2242,7 +2242,8 @@ function RuntimeTray() {
 }
 
 type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help'
-  | 'general' | 'apikeys' | 'runtime' | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces';
+  | 'general' | 'apikeys' | 'runtime' | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces'
+  | 'apps';   // never a tray — the row hands off to the Apps sheet
 const SUB_TITLE: Record<SettingsSub, string> = {
   profile: 'Profile', billing: 'Billing', usage: 'Usage', appearance: 'Appearance',
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
@@ -2906,6 +2907,24 @@ function AppTray({ app, onClose }: { app: AppItem | null; onClose: () => void })
   );
 }
 
+/** The SAME app icon every surface shows (help/app-icon.ts appIconUrl's rule:
+    one endpoint per entity — a URL-bearing app resolves its hostname through
+    the server's icon resolver via the SDK). Failure falls back to the glyph. */
+function AppIcon({ app }: { app: AppItem }) {
+  const [broken, setBroken] = useState(false);
+  let src = '';
+  if (app.slug === 'glyphh') src = 'brand/glyphh-mark.png';
+  else {
+    try {
+      const sdk = (window as unknown as { glyphhSdk?: { icons?: { urlFor: (d: string) => string } } }).glyphhSdk;
+      const host = new URL(app.url).hostname;
+      src = sdk?.icons?.urlFor ? sdk.icons.urlFor(host) : '';
+    } catch { src = ''; }
+  }
+  if (!src || broken) return <Icon name="grid" />;
+  return <img className="m-action-appicon" src={src} alt="" onError={() => setBroken(true)} />;
+}
+
 /** The Apps list — a bottom sheet listing the user's installed/deployed apps
     (glyphh().apps.mine(), the same source web/desktop use). Tapping one hands it
     up to open the tray. */
@@ -2944,7 +2963,7 @@ function AppsSheet({ open, onClose, onPick }: { open: boolean; onClose: () => vo
               : filtered.length === 0 ? <div className="m-conn-empty">No streamable apps. Deploy or install an app with a live URL to open it here.</div>
               : filtered.map((a) => (
                 <button key={a.slug} className="m-action-row" onClick={() => { haptic(); onPick(a); }}>
-                  <span className="m-action-ico"><Icon name="grid" /></span>
+                  <span className="m-action-ico"><AppIcon app={a} /></span>
                   <span className="m-action-name">{a.name}</span>
                   <span className="m-action-chev"><Icon name="external" /></span>
                 </button>
