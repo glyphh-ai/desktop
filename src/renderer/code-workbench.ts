@@ -439,6 +439,31 @@ async function init(): Promise<void> {
     if (e.key === "Escape" && isDropdownOpen()) closeDropdown();
   });
 
+  // ── Focus guard ──────────────────────────────────────────────────────────
+  // An Electron <webview> guest steals HOST focus whenever its page loads or
+  // navigates — during an agent run the preview/app panels hot-reload on every
+  // file write, so the composer kept losing the keyboard mid-word (keystrokes
+  // landed in whichever panel refreshed last). A guest may only take focus
+  // from a real user gesture: focus arriving on a <webview> with no recent
+  // pointerdown on it snaps back to the text field it robbed.
+  let lastPointerTarget: EventTarget | null = null;
+  let lastPointerAt = 0;
+  document.addEventListener("pointerdown", (e) => {
+    lastPointerTarget = e.target;
+    lastPointerAt = Date.now();
+  }, true);
+  document.addEventListener("focusin", (e) => {
+    const t = e.target as HTMLElement | null;
+    if (!t || t.tagName !== "WEBVIEW") return;
+    const meant = Date.now() - lastPointerAt < 600
+      && (t === lastPointerTarget || (lastPointerTarget instanceof Node && t.contains(lastPointerTarget)));
+    if (meant) return;
+    const robbed = (e as FocusEvent).relatedTarget as HTMLElement | null;
+    if (robbed && (robbed.tagName === "TEXTAREA" || robbed.tagName === "INPUT" || robbed.isContentEditable)) {
+      robbed.focus();
+    }
+  }, true);
+
   // ── Rails state ──
   const rails: Rail[] = [];
   let nextRailId = 1;

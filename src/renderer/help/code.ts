@@ -912,7 +912,7 @@ function observeIfRunning(chat: CodeChat): void {
           settleToolRow(ch, t.name, label);
         }
         void saveStore();
-        if (chatId === currentId) { broadcastTimeline(true); renderThread(); }
+        if (chatId === currentId) { broadcastTimeline(true); scheduleRenderThread(); }
       },
       // The observer omits onApproval/onAsk (the OWNING surface answers those),
       // so a parked run surfaces as an honest breadcrumb here instead.
@@ -925,7 +925,7 @@ function observeIfRunning(chat: CodeChat): void {
         r.steps.push(label);
         ch.messages.push({ role: "assistant", kind: "tool", text: label, at: Date.now() });
         void saveStore();
-        if (chatId === currentId) { broadcastTimeline(true); renderThread(); }
+        if (chatId === currentId) { broadcastTimeline(true); scheduleRenderThread(); }
       },
       onToken: (delta) => {
         const r = liveRuns.get(chatId);
@@ -980,6 +980,16 @@ function queueStreamPaint(chatId: string): void {
     streamPaintQueued = true;
     requestAnimationFrame(paintStream);
   }
+}
+
+/** Coalesce live-run repaints: tool frames arrive many times a second and
+ *  renderThread rebuilds the whole thread DOM — per-event sync repaints made
+ *  the composer drop keystrokes during busy runs. At most one paint a frame. */
+let threadPaintQueued = false;
+function scheduleRenderThread(): void {
+  if (threadPaintQueued) return;
+  threadPaintQueued = true;
+  requestAnimationFrame(() => { threadPaintQueued = false; renderThread(); });
 }
 
 function broadcastTimeline(running: boolean): void {
@@ -3113,7 +3123,7 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
           settleToolRow(chat, t.name, label);
         }
         void saveStore();
-        if (chatId === currentId) { broadcastTimeline(true); renderThread(); }
+        if (chatId === currentId) { broadcastTimeline(true); scheduleRenderThread(); }
       },
       onToken: (delta) => {
         const r = liveRuns.get(chatId);
@@ -3586,7 +3596,7 @@ function initGlyphhAgentEvents(): void {
       settleToolRow(chat, name, text);
     }
     void saveStore();
-    if (currentId === runChatId) renderThread();
+    if (currentId === runChatId) scheduleRenderThread();
   });
   window.glyphh.onGlyphhAgentConnect?.((p) => {
     // the card belongs to the session whose run asked — with parallel runs
