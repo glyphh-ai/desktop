@@ -166,8 +166,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
     res.end('<!doctype html><html style="margin:0;padding:0">'
       + '<body style="margin:0;padding:0;background:#d33;color:#fff;font:16px monospace">'
-      + '<div style="height:44px;background:#2a2;margin:0;padding:0">TOP OF PAGE</div>'
-      + '<div style="margin:0;padding:0">no head, no margin, no padding anywhere</div>'
+      + '<style>* { margin: 0 !important; padding: 0 !important; border: 0 !important; }</style>'
+      + '<div style="height:44px;background:#2a2">TOP OF PAGE</div>'
+      + '<div>universal * reset active — no margin, padding, or border can exist on this page</div>'
       + '</body></html>');
     return;
   }
