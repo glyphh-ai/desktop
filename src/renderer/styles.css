@@ -1535,10 +1535,18 @@ body.account-locked #dl-btn-wrap {
    code-workbench.ts re-parents .echo-layout-bar INTO this strip, and a
    display:none parent would hide that child regardless of its own position. */
 .glyphh-web #shell-drag-strip {
+  height: 0 !important;
+  min-height: 0 !important;
   background: transparent !important;
-  border-bottom: none !important;
+  border: 0 !important;
+  padding: 0 !important;
   overflow: visible !important;
 }
+/* The app itself starts at the VERY top on web — no reserved band, no var
+   dependence (the exposed body background above #help-overlay was the black
+   bar in the report). */
+.glyphh-web #help-overlay { inset: 0 !important; }
+.glyphh-web #panel-container { height: 100vh !important; }
 .glyphh-web #app-rail { padding-top: 24px; }
 /* The Close-layout pill lives inside the now-zero-height strip; re-pin it fixed
    to the top-center of the viewport so it stays visible + clickable on web. */

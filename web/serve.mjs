@@ -290,9 +290,12 @@ const server = http.createServer(async (req, res) => {
       // desktop shell's styles.css was cached. Dev preview; prod uses hashes.
       {
         const v = Date.now();
+        // The shells link assets WITHOUT a leading slash (href="styles.css") —
+        // the old slash-only replace never matched, so browsers kept STALE css
+        // forever and shipped fixes never appeared. Match both forms.
         body = body
-          .replace('href="/styles.css"', `href="/styles.css?v=${v}"`)
-          .replace('src="/code-workbench-bundle.js"', `src="/code-workbench-bundle.js?v=${v}"`);
+          .replace(/href="\/?styles\.css"/, `href="/styles.css?v=${v}"`)
+          .replace(/src="\/?code-workbench-bundle\.js"/, `src="/code-workbench-bundle.js?v=${v}"`);
         if (isMobileShell) {
           body = body
             .replace('href="/mobile.css"', `href="/mobile.css?v=${v}"`)
