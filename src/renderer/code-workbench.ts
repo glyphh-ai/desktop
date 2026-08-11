@@ -3076,6 +3076,25 @@ async function init(): Promise<void> {
     /** Every tile opens IN ECHO: web apps as live webviews with the browser
      *  bar; tool panels as the REAL panel renderers; nav pages by adopting
      *  their section singleton (parked back on close). */
+    /** A card's address bar honors the Settings default (showAppUrlBar), with
+     *  the SAME per-panel header toggle the rail slots carry. Re-mounts (pin
+     *  retargets) rebuild the button so its closure tracks the live chrome. */
+    const wireCardUrlBar = (card: HTMLElement, chrome: HTMLElement): void => {
+      chrome.style.display = urlBarHiddenDefault() ? "none" : "";
+      const head = card.querySelector<HTMLElement>(".echo-card-head");
+      if (!head) return;
+      head.querySelector(".slot-urltoggle")?.remove();
+      const btn = document.createElement("button");
+      btn.className = `ws-icon-btn slot-urltoggle${urlBarHiddenDefault() ? "" : " active"}`;
+      btn.title = "Address bar";
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
+      btn.addEventListener("click", () => {
+        const nowHidden = chrome.style.display !== "none";
+        chrome.style.display = nowHidden ? "none" : "";
+        btn.classList.toggle("active", !nowHidden);
+      });
+      head.insertBefore(btn, head.querySelector(".echo-card-expand"));
+    };
     /** Build an app's live content (webview + browser bar) into a card. */
     const mountAppIntoCard = (e: TileEntry, card: HTMLElement): void => {
       const t = e.tile;
@@ -3120,6 +3139,7 @@ async function init(): Promise<void> {
         const { chrome, urlbar } = buildAppChrome(adapter, () => t.url || url);
         urlbar.value = t.url || url;
         card.querySelector(".echo-card-head")!.after(chrome);
+        wireCardUrlBar(card, chrome);
         return;
       }
       {
@@ -3164,6 +3184,7 @@ async function init(): Promise<void> {
         const { chrome, urlbar } = buildAppChrome(wv as unknown as WebviewEl, () => t.url || "");
         urlbar.value = t.url || "";
         card.querySelector(".echo-card-head")!.after(chrome);
+        wireCardUrlBar(card, chrome);
       }
     };
     /** Tear a card's content down (agent/sections park, PTYs die, RPA
