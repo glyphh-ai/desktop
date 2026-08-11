@@ -6879,17 +6879,10 @@ select.settings-input {
   white-space: nowrap;
 }
 
-/* The plan chip wears the PRIMARY button color and navigates to Billing —
-   it's the one chip that's also a control. */
-.acct-chip-plan {
-  padding-right: 5px;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  cursor: pointer;
-}
-.acct-chip-plan:hover { background: var(--accent-hover, var(--accent)); }
-.acct-chip-plan .acct-chip-refresh { color: #fff; }
+/* The plan chip IS the settings primary component (`action-btn primary` on the
+   element itself — no bespoke fill) and navigates to Billing. Only layout is
+   tuned here: chip-row height + room for the refresh icon. */
+.acct-chip-plan { padding-right: 6px; height: 24px; border-radius: 999px; }
 
 .acct-chip-refresh {
   display: inline-flex;
