@@ -576,13 +576,9 @@ export function initHelp() {
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => openSettingsModal(btn.dataset.settingsSub!));
   });
-  // Artifacts is a PAGE (the files gallery), not a settings section — it
-  // routes through gotoSection like any section nav. The files node is ALSO
-  // adoptable into the settings modal (Settings → Artifacts), so drop the
-  // modal first: closing parks the node back into its page pen.
-  document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-section]").forEach((btn) => {
-    btn.addEventListener("click", () => { closeSettingsModal(); gotoSection(btn.dataset.section!); });
-  });
+  // (Artifacts rides the same data-settings-sub path — every rail link opens
+  // the settings modal; the files PAGE stays reachable via gotoSection for
+  // other callers, and closing the modal parks the adopted node back.)
 
   // The "More" fly-out (Loops / Skills / Agents) was removed in A3 — those
   // sections live in the Settings modal now, so the rail no longer carries a
