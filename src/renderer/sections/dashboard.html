@@ -31,23 +31,25 @@
     <div id="dash-starters" class="dash-starters"></div>
 
     <!-- The landing body — two balanced columns beneath the starters:
-         LEFT  = the recommended prompts.
+         LEFT  = CONTINUE — the user's recent sessions, a jump back into work.
          RIGHT = the cross-agent TASKS list (scheduled-task runs, searchable).
          Populated by help/dashboard.ts. Stacks to one column in a narrow
          panel via @container. -->
     <div class="dash-two-col">
       <div class="dash-col dash-col-recs">
-        <div class="dash-card-label">Recommended for you</div>
-        <div id="dash-recs" class="dash-recs"></div>
+        <div class="dash-card-label">Continue</div>
+        <!-- Recent sessions — click a row to jump back into that work. -->
+        <div id="dash-sessions-list" class="dash-tasks-list"></div>
+        <!-- "Recommended for you" prompts are redundant now that the
+             full-width starter strip sits above — the plumbing stays but the
+             list is hidden. -->
+        <div id="dash-recs" class="dash-recs hidden"></div>
       </div>
       <div class="dash-col dash-col-tasks">
         <div class="dash-card-label" id="dash-right-label">Tasks</div>
         <input id="dash-tasks-search" class="crud-search dash-tasks-search" type="text" placeholder="Search runs..." spellcheck="false" autocomplete="off" />
         <div id="dash-tasks-list" class="dash-tasks-list"></div>
         <div id="dash-tasks-pager"></div>
-        <!-- Retained for any non-Home space that still swaps in sessions;
-             Home keeps it hidden and shows the tasks list above. -->
-        <div id="dash-sessions-list" class="dash-tasks-list hidden"></div>
       </div>
     </div>
 

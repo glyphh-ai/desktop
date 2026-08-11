@@ -494,21 +494,25 @@ function agoLabel(ts: number): string {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
-/** Paint the landing's two columns. Home is the ONE landing now, so the RIGHT
- *  column is always the cross-agent TASKS list — prompts LEFT, tasks RIGHT. */
+/** Paint the landing's two columns. Home is the ONE landing now:
+ *  LEFT = CONTINUE (the user's recent sessions), RIGHT = the cross-agent TASKS
+ *  list (scheduled-task runs). */
 function paintSpaceColumns(): void {
   // The landing's chrome is CSS-driven off body[data-session-space]; keep it
   // correct whenever the landing repaints (boot included).
   (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs?.();
-  // Home shows TASKS on the right — the scheduled-task runs list, ungated from
-  // the old chat-space check (spaces collapsed to one session type). The
-  // sessions column is retained but kept hidden.
+  // RIGHT — TASKS: the scheduled-task runs list, ungated from the old
+  // chat-space check (spaces collapsed to one session type).
   document.getElementById("dash-right-label")!.textContent = "Tasks";
   document.getElementById("dash-tasks-list")?.classList.remove("hidden");
   document.getElementById("dash-tasks-search")?.classList.remove("hidden");
   document.getElementById("dash-tasks-pager")?.classList.remove("hidden");
-  document.getElementById("dash-sessions-list")?.classList.add("hidden");
-  renderRecommendations();
+  // LEFT — CONTINUE: the user's recent sessions (was hidden; now the left
+  // column). The old "Recommended for you" recs stay hidden — the full-width
+  // starter strip above covers that ground.
+  document.getElementById("dash-sessions-list")?.classList.remove("hidden");
+  sessionsPage = 0;
+  renderSessionsList();
   renderRuns();
 }
 
@@ -542,6 +546,15 @@ export function syncDashParticles(): void {
 window.addEventListener("rail-space-changed", () => {
   paintSpaceColumns();
   syncDashParticles();
+});
+
+// The "Continue" column mirrors the live session store — a new session, a
+// rename, a delete, or the store simply arriving after the first paint all
+// fire this, so the list populates and stays fresh while Home is up.
+window.addEventListener("agent-sessions-changed", () => {
+  if (!document.getElementById("dash-sessions-list")?.classList.contains("hidden")) {
+    renderSessionsList();
+  }
 });
 
 export async function loadDashboard(): Promise<void> {
