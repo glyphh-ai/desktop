@@ -332,9 +332,19 @@ export function runHeroFlow(canvas: HTMLCanvasElement, variantKey: FlowVariant):
   };
 
   const frame = (now: number): void => {
-    if (!canvas.isConnected || canvas.offsetParent === null) {
+    // Truly removed from the DOM → stop for good + clean up.
+    if (!canvas.isConnected) {
       raf = 0;
       ro.disconnect();
+      return;
+    }
+    // Temporarily hidden (an occluding panel, a collapsed/animating layout, a
+    // backgrounded tab) or not yet sized → keep the loop ALIVE but skip drawing,
+    // so it RESUMES cleanly on re-show instead of FREEZING on a stale, trail-
+    // smeared frame (the "locked-up hero" bug). The ResizeObserver stays
+    // connected so a resize that happens while hidden still lands.
+    if (canvas.offsetParent === null || w === 0 || h === 0) {
+      raf = requestAnimationFrame(frame);
       return;
     }
     ctx.clearRect(0, 0, w, h);
