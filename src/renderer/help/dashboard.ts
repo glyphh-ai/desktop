@@ -494,23 +494,22 @@ function agoLabel(ts: number): string {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
-/** Swap the two-col content to match the space: Work → runs, Code → sessions. */
+/** Paint the landing's two columns. Home is the ONE landing now, so the RIGHT
+ *  column is always the cross-agent TASKS list — prompts LEFT, tasks RIGHT. */
 function paintSpaceColumns(): void {
   // The landing's chrome is CSS-driven off body[data-session-space]; keep it
   // correct whenever the landing repaints (boot included).
   (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs?.();
-  const isCode = document.body.dataset.railSpace === "code";
-  // WORK and CODE both show their own sessions (pinned, alphabetical, paged);
-  // Chat's landing keeps the runs column.
-  const chat = document.body.dataset.railSpace === "chat";
-  document.getElementById("dash-right-label")!.textContent = chat ? "Recent runs" : "Sessions";
-  document.getElementById("dash-tasks-list")?.classList.toggle("hidden", !chat);
-  document.getElementById("dash-tasks-search")?.classList.toggle("hidden", !chat);
-  document.getElementById("dash-tasks-pager")?.classList.toggle("hidden", !chat);
-  document.getElementById("dash-sessions-list")?.classList.toggle("hidden", chat);
+  // Home shows TASKS on the right — the scheduled-task runs list, ungated from
+  // the old chat-space check (spaces collapsed to one session type). The
+  // sessions column is retained but kept hidden.
+  document.getElementById("dash-right-label")!.textContent = "Tasks";
+  document.getElementById("dash-tasks-list")?.classList.remove("hidden");
+  document.getElementById("dash-tasks-search")?.classList.remove("hidden");
+  document.getElementById("dash-tasks-pager")?.classList.remove("hidden");
+  document.getElementById("dash-sessions-list")?.classList.add("hidden");
   renderRecommendations();
-  sessionsPage = 0;
-  if (!chat) renderSessionsList();
+  renderRuns();
 }
 
 // Switching Chat ↔ Work while the landing is up swaps the flow's orientation

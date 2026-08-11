@@ -48,25 +48,26 @@
       <div id="dash-composer-slot" class="dash-composer-slot"></div>
     </div>
 
-    <!-- Chat landing only: the starters. Each card wears the SPACE it opens
-         into (same pill as the layout badges) — a card is a front door to
-         any of the three, not just to Chat. Built by help/dashboard.ts. -->
-    <div id="dash-starters" class="dash-starters"></div>
-
-    <!-- Under the chart: prompt starters LEFT, the cross-agent schedule RIGHT. -->
-    <!-- Work/Code landing: two bare columns — header + cards, NO card wrapper
-         around them. Right column is Recent runs in Work, recent SESSIONS in
-         Code (dashboard.ts swaps content on rail-space-changed). -->
+    <!-- The landing body — a balanced two-column split:
+         LEFT  = prompt STARTERS (front-door cards) + the recommended prompts.
+         RIGHT = the cross-agent TASKS list (scheduled-task runs, searchable).
+         Built + populated by help/dashboard.ts. Stacks to one column in a
+         narrow panel via @container. -->
     <div class="dash-two-col">
-      <div class="dash-col">
+      <div class="dash-col dash-col-starters">
+        <!-- Each starter card wears the SPACE it opens into (same pill as the
+             layout badges) — a front door to any workspace. -->
+        <div id="dash-starters" class="dash-starters"></div>
         <div class="dash-card-label">Recommended for you</div>
         <div id="dash-recs" class="dash-recs"></div>
       </div>
-      <div class="dash-col">
-        <div class="dash-card-label" id="dash-right-label">Recent runs</div>
+      <div class="dash-col dash-col-tasks">
+        <div class="dash-card-label" id="dash-right-label">Tasks</div>
         <input id="dash-tasks-search" class="crud-search dash-tasks-search" type="text" placeholder="Search runs..." spellcheck="false" autocomplete="off" />
         <div id="dash-tasks-list" class="dash-tasks-list"></div>
         <div id="dash-tasks-pager"></div>
+        <!-- Retained for any non-Home space that still swaps in sessions;
+             Home keeps it hidden and shows the tasks list above. -->
         <div id="dash-sessions-list" class="dash-tasks-list hidden"></div>
       </div>
     </div>

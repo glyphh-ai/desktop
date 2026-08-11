@@ -3313,12 +3313,13 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
    which is why the greeting kept sitting too high instead of centred.) */
 .dash-starters {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* LEFT column of the landing — two starter cards across; the column itself
+     is ~half the body, so a 2-up grid keeps each card a comfortable width. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
   margin: 2px 0 8px;
 }
-body:not([data-rail-space="chat"]) .dash-starters { display: none; }
 @container dash (max-width: 780px) { .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container dash (max-width: 520px) { .dash-starters { grid-template-columns: 1fr; } }
 
@@ -3361,7 +3362,14 @@ body:not([data-rail-space="chat"]) .dash-starters { display: none; }
 /* flush with the cowork columns: the composer's own thread-matching
    max-width and gutters don't apply on Home */
 .dash-composer-slot .code-composer { width: 100%; max-width: none; padding: 0; margin: 0; }
-.dash-composer-slot .code-input { min-height: 76px; }
+/* The HOME landing input is roomier — it opens showing ~2 rows of text (a
+   full extra row over the in-session composer's single line). autoGrow sets an
+   inline height to scrollHeight, but min-height clamps the empty box up to two
+   rows; the textarea still grows past this as you type (max-height 220px).
+   Scoped to Home (the dash slot / composer-on-home) so the in-session and
+   layout-hosted composers keep their one-line start. */
+.dash-composer-slot .code-input,
+body.composer-on-home .dash-composer-slot .code-input { min-height: 88px; }
 
 /* Chat mode hides the cowork content but KEEPS its space — the composer
    stays fixed in the page; the toggle never makes the layout jump */
@@ -14395,12 +14403,19 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-run-body.md pre { background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 0 0 8px; }
 .se-status { font-size: 11px; color: var(--text-3); }
 
-/* ── Dashboard: the two sections under the usage chart ── */
+/* ── Dashboard landing body: a balanced two-column split — prompt starters +
+   recommendations LEFT, the cross-agent tasks list RIGHT. ── */
 .dash-two-col {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 16px;
   align-items: start;
 }
-@container dash (max-width: 780px) { .dash-two-col { grid-template-columns: 1fr; } }
+/* In a narrow panel the columns stack: starters on top, tasks beneath. */
+@container dash (max-width: 780px) { .dash-two-col { grid-template-columns: 1fr; gap: 20px; } }
+
+/* LEFT column: starters then the "Recommended for you" prompt rows. The
+   starters grid brings its own bottom margin; add a little breathing room
+   before the recommendations label. */
+.dash-col-starters .dash-card-label { margin-top: 6px; }
 
 /* Recommended for you — prompt starters, icon on the right. */
 .dash-recs { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -15700,11 +15715,12 @@ body.code-dragging webview { pointer-events: none !important; }
 .desktop-attach-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .desktop-attach-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 
-/* Starter cards: TWO ROWS (3 across), title leads the top row with its pill. */
-.dash-starters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+/* Starter cards live in the LEFT landing column — 2 across (three rows of two
+   for the six starters), title leads the top row with its pill. */
+.dash-starters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .dash-starter-top { display: flex; align-items: center; gap: 8px; }
 .dash-starter-title { flex: 1; min-width: 0; font-weight: 600; }
-@media (max-width: 900px) { .dash-starters { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* The Chat/Work/Code space pill inside the input was removed — every session
    is the Code agent now. */
