@@ -4700,11 +4700,14 @@ ol.docs-list li::before {
 .settings-modal-body .settings-panel-section .apps-page-tabs { margin: 0 0 16px; }
 .settings-modal-body .settings-panel-section .apps-page-heading { margin-top: 0; }
 /* Editors align to the page gutter inside the modal — their legacy full-page
-   16px inner insets would double the left edge here. */
+   16px inner insets would double the left edge here. The RIGHT edge keeps the
+   close-X clearance (this rule out-specifies the generic 4598 clearance, so it
+   must carry the 44px itself — padding-right:0 here was why the Layouts
+   editor's "Open layout" button kept landing under the X). */
 .settings-modal-body .settings-panel-section .crud-inline-header,
 .settings-modal-body .settings-panel-section .edit-head {
   padding-left: 0;
-  padding-right: 0;
+  padding-right: 44px;
 }
 /* The adopted section owns the gutter + scroll now, so the panels wrapper adds
    neither when a section is active — no double padding, no double scrollbar. */
