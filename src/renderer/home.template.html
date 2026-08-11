@@ -4,7 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Glyphh — Home</title>
-  <link rel="icon" href="brand/glyphh-mark.png">
+  <!-- Favicons — the platform's set (ported from platform/public). -->
+  <link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="brand/favicon.ico" sizes="any">
+  <link rel="icon" href="brand/favicon-96x96.png" sizes="96x96" type="image/png">
+  <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+  <meta name="theme-color" content="#8c3bf2">
+  <!-- Social cards. __PUBLIC_ORIGIN__ is filled per-request by web/serve.mjs
+       (scrapers need absolute URLs); the desktop build never renders these. -->
+  <meta property="og:title" content="Glyphh">
+  <meta property="og:description" content="Your AI workspace — agents, apps, and memory that follow you everywhere.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="__PUBLIC_ORIGIN__/">
+  <meta property="og:image" content="__PUBLIC_ORIGIN__/brand/glyphh-mark-purple.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Glyphh">
+  <meta name="twitter:description" content="Your AI workspace — agents, apps, and memory that follow you everywhere.">
+  <meta name="twitter:image" content="__PUBLIC_ORIGIN__/brand/glyphh-mark-purple.png">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="monaco/editor/editor.main.css">
   <!-- xterm — the Code workbench's Terminal slots -->

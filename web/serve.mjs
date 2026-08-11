@@ -289,6 +289,12 @@ const server = http.createServer(async (req, res) => {
         /<head(\s[^>]*)?>/i,
         (m) => `${m}${base}\n  ${inject}`,
       );
+      // Social-card meta needs ABSOLUTE urls — fill the templates' placeholder
+      // with this request's real origin (scrapers fetch og:image blindly).
+      {
+        const proto = String(req.headers['x-forwarded-proto'] || 'http').split(',')[0];
+        body = body.replace(/__PUBLIC_ORIGIN__/g, `${proto}://${req.headers.host || 'localhost'}`);
+      }
       // Cache-bust the shell's OWN assets: every load references a fresh URL, so
       // NO shell (mobile OR the desktop app-web) can serve a stale css/js copy
       // (SW or HTTP cache). This is why web fixes appeared "not applied" — the
