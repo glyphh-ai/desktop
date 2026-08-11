@@ -4708,6 +4708,21 @@ ol.docs-list li::before {
   padding: 16px 28px 20px;
   box-sizing: border-box;
 }
+/* When a full-width inline FORM is open (the agent form), the section stops
+   scrolling and drops its right gutter — the form becomes the scroller, its
+   own right padding restores the inset, and the scrollbar sits flush at the
+   page's right edge instead of 28px inboard. */
+.settings-modal-body .settings-panel-section > [id$="-host"] > .help-section:has(> #agent-form:not(.hidden)) {
+  overflow: hidden;
+  padding-right: 0;
+  display: flex;
+  flex-direction: column;
+}
+.settings-modal-body .help-section #agent-form.crud-inline-form {
+  flex: 1;
+  min-height: 0;
+  padding-right: 28px;
+}
 /* Normalize the adopted section's page header to the NATIVE settings-panel
    grammar (18px title + 4px gap + 13px description) — one header voice on
    every page. (These h2s were previously display:none'd, which left the
