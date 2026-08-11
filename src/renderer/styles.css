@@ -14375,7 +14375,8 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* ── Library editors — the app-standard form on the left, the live React-Flow
    view on the right. Form fields are the same settings-label/settings-input
    system the Apps page uses; only the split shell is new. ── */
-#skill-editor.crud-inline-form, #loop-editor.crud-inline-form, #agent-editor.crud-inline-form { max-width: none; }
+#skill-editor.crud-inline-form, #loop-editor.crud-inline-form, #agent-editor.crud-inline-form,
+#agent-form.crud-inline-form { max-width: none; }
 /* The same horizontal rule the Apps detail draws under its header (its tab
    bar's border-bottom) — ties the two-column editors to one look. */
 #skill-editor .crud-inline-header, #loop-editor .crud-inline-header, #agent-editor .crud-inline-header {
