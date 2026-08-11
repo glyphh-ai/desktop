@@ -10,7 +10,7 @@
  * an honest "not available" message.
  */
 
-import { escapeHtml } from "./shared.js";
+import { escapeHtml, paginate, renderPaginationBar } from "./shared.js";
 
 interface SupportMsg { id: string; authorKind: "user" | "admin"; body: string; createdAt: string }
 interface SupportTicket { id: string; subject: string; status: string; updatedAt: string; lastMessage?: SupportMsg | null; unread?: boolean }
@@ -88,21 +88,61 @@ function show(view: "list" | "new" | "thread"): void {
   $("support-thread-view")?.classList.toggle("hidden", view !== "thread");
 }
 
+/** The standard list-page grammar (Skills/Loops): a lib-table with the row
+ *  anatomy subject / last-message / status badge / updated + crud-empty and
+ *  pagination. Row click opens the thread. */
+let ticketsPage = 0;
+
 function renderTickets(): void {
   const list = $("support-tickets");
   const empty = $("support-empty");
   if (!list) return;
+  const q = (($("support-search") as HTMLInputElement | null)?.value || "").trim().toLowerCase();
+  const rows = q
+    ? tickets.filter((t) => `${t.subject} ${t.status} ${t.lastMessage?.body || ""}`.toLowerCase().includes(q))
+    : tickets;
   empty?.classList.toggle("hidden", tickets.length > 0);
   list.innerHTML = "";
-  for (const t of tickets) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "set-list-row";
-    const last = t.lastMessage?.body ? ` · ${escapeHtml(t.lastMessage.body)}` : "";
-    row.innerHTML = `<span class="set-list-main"><span class="set-list-name">${escapeHtml(t.subject)}${t.unread ? ` <span class="set-dot"></span>` : ""}</span><span class="set-list-sub">${escapeHtml(t.status)}${last}</span></span>`;
-    row.addEventListener("click", () => void openThread(t.id));
-    list.appendChild(row);
+  if (!tickets.length) return;
+  if (!rows.length) {
+    list.innerHTML = `<div class="crud-empty">No requests matching "${escapeHtml(q)}"</div>`;
+    return;
   }
+  const { items, state } = paginate(rows, ticketsPage);
+  ticketsPage = state.page;
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Subject</th><th>Last message</th><th>Status</th><th>Updated</th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  for (const t of items) {
+    const tr = document.createElement("tr");
+    const updated = t.updatedAt ? new Date(t.updatedAt) : null;
+    tr.innerHTML = `
+      <td class="lib-table-name"></td>
+      <td class="lib-table-desc"></td>
+      <td><span class="lib-badge"></span></td>
+      <td class="lib-table-dim">${updated && !Number.isNaN(updated.getTime()) ? escapeHtml(updated.toLocaleDateString()) : ""}</td>`;
+    const subject = tr.querySelector(".lib-table-name");
+    if (subject) {
+      subject.textContent = t.subject;
+      if (t.unread) {
+        // The house badge — the old .set-dot class had no styles anywhere.
+        const badge = document.createElement("span");
+        badge.className = "lib-badge";
+        badge.textContent = "New";
+        subject.append(" ", badge);
+      }
+    }
+    const last = tr.querySelector(".lib-table-desc");
+    if (last) last.textContent = t.lastMessage?.body || "";
+    const status = tr.querySelector(".lib-badge");
+    if (status) status.textContent = t.status;
+    tr.addEventListener("click", () => void openThread(t.id));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  list.appendChild(table);
+  if (state.totalPages > 1) list.appendChild(renderPaginationBar(state, (p) => { ticketsPage = p; renderTickets(); }));
 }
 
 function renderThread(): void {
@@ -155,8 +195,11 @@ export async function loadSupportPanel(): Promise<void> {
 export function initSupportPanel(): void {
   if (wired) return;
   wired = true;
+  $("support-search")?.addEventListener("input", () => { ticketsPage = 0; renderTickets(); });
   $("support-new-btn")?.addEventListener("click", () => { setError(""); show("new"); });
   $("support-new-back")?.addEventListener("click", () => { setError(""); show("list"); });
+  // Cancel in the form's bottom .settings-actions — same exit as the breadcrumb.
+  $("support-new-cancel")?.addEventListener("click", () => { setError(""); show("list"); });
   $("support-thread-back")?.addEventListener("click", () => { setError(""); thread = null; show("list"); void refresh(); });
 
   $("support-submit-btn")?.addEventListener("click", async () => {

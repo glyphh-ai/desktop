@@ -85,6 +85,7 @@ import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAccountIpc } from "./account-ipc";
+import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
 import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
@@ -847,6 +848,9 @@ async function boot() {
   // Settings › Billing / Organization / Account — the customer-facing account
   // surfaces, straight through the main-process SDK client.
   registerAccountIpc();
+
+  // Settings › Platform (super_admin console) — catalog, plans, usage, orgs.
+  registerAdminIpc();
 
   // Files — the artifacts gallery's transport, same main-process SDK client.
   registerFilesIpc();

@@ -24,6 +24,7 @@ import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
 import { loadRuntime } from "./settings-runtime.js";
 import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
+import { loadAdminModels, loadAdminPlans, loadAdminUsage, loadAdminOrgs } from "./settings-admin.js";
 
 const overlay = getHelpOverlay();
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
@@ -344,6 +345,12 @@ function gateAdminSubs(): void {
     for (const id of ["general-runtime-group", "general-guardrails-group", "billing-org-group"]) {
       document.getElementById(id)?.classList.toggle("hidden", !admin);
     }
+    // The Platform group (the super-admin console — Catalog / Plans / Usage /
+    // Orgs) is a TIER above the org-admin gate: super_admin only. The server
+    // enforces the role on every route regardless — this only hides the nav.
+    const superAdmin = info?.role === "super_admin";
+    document.querySelectorAll<HTMLElement>(".settings-nav:not(.docs-nav) > .nav-super")
+      .forEach((el) => el.classList.toggle("hidden", !superAdmin));
   }).catch(() => { /* signed out — items stay hidden (they start hidden) */ });
 }
 
@@ -400,6 +407,12 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "members") void loadMembers();
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "models") loadModelsAdmin();
+  // The Platform group — the super-admin console (settings-admin.ts). Each
+  // loader re-checks the role and paints an honest gate; the server enforces.
+  else if (sub === "padmin-models") loadAdminModels();
+  else if (sub === "padmin-plans") loadAdminPlans();
+  else if (sub === "padmin-usage") loadAdminUsage();
+  else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "apikeys") void loadApiKeys();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }

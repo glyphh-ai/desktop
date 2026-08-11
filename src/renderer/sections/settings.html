@@ -20,6 +20,14 @@
               <button class="settings-nav-item" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Models</span></button>
               <button class="settings-nav-item" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
               <button class="settings-nav-item" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="20.5" x2="21" y2="20.5"/><rect x="5" y="11" width="3.4" height="6.6" rx="1"/><rect x="10.3" y="6.5" width="3.4" height="11.1" rx="1"/><rect x="15.6" y="13.6" width="3.4" height="4" rx="1"/></svg><span>Usage</span></button>
+              <!-- Platform — the super-admin console (Catalog / Plans / Usage /
+                   Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
+                   super_admin role; the server enforces the role regardless. -->
+              <div class="settings-nav-group nav-super hidden">Platform</div>
+              <button class="settings-nav-item nav-super hidden" data-sub="padmin-models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><line x1="12" y1="22.08" x2="12" y2="12"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><circle cx="12" cy="12" r="1"/></svg><span>Catalog</span></button>
+              <button class="settings-nav-item nav-super hidden" data-sub="padmin-plans"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Plans</span></button>
+              <button class="settings-nav-item nav-super hidden" data-sub="padmin-usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
+              <button class="settings-nav-item nav-super hidden" data-sub="padmin-orgs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>Orgs</span></button>
               <div class="settings-nav-group">Devices</div>
               <button class="settings-nav-item" data-sub="desktop"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><line x1="8.5" y1="20.5" x2="15.5" y2="20.5"/><line x1="12" y1="16.5" x2="12" y2="20.5"/></svg><span>Desktop</span></button>
               <button class="settings-nav-item" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
@@ -559,21 +567,28 @@
                 <div id="ws-body">
                   <div id="ws-error" class="settings-error hidden"></div>
 
-                  <!-- LIST — same toolbar grammar as every list page: search
-                       left, the create action right. -->
+                  <!-- LIST — the standard list-page grammar (Skills/Loops):
+                       crud-toolbar with search left + the create action right,
+                       a lib-table of rows (rendered by settings-workspaces.ts),
+                       crud-empty + pagination. -->
                   <div id="ws-list-view">
-                    <div class="crud-toolbar" style="margin-top:12px;">
+                    <div class="crud-toolbar">
                       <input id="ws-search" type="text" class="crud-search" placeholder="Search workspaces…" spellcheck="false" autocomplete="off" />
                       <input id="ws-new-name" type="text" class="settings-input settings-input-md" placeholder="New workspace name" spellcheck="false" autocomplete="off" />
                       <button id="ws-new-btn" class="action-btn primary" type="button">Create</button>
                     </div>
-                    <div id="ws-list" class="mbr-list"></div>
+                    <div id="ws-list"></div>
                   </div>
 
-                  <!-- EDITOR -->
-                  <div id="ws-edit-view" class="hidden">
-                    <button id="ws-back" class="ws-back" type="button">← Workspaces</button>
-                    <h3 class="settings-subheading" id="ws-edit-title">—</h3>
+                  <!-- EDITOR — the inline-form standard (Skills/Loops): a
+                       breadcrumb back in a crud-inline-header; the tabbed,
+                       live-saving body below is unchanged. -->
+                  <div id="ws-edit-view" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="ws-back">&larr; Workspaces</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <h3 class="settings-subheading" id="ws-edit-title" style="margin-top:0;">—</h3>
 
                     <div class="app-detail-tabs" id="ws-tabs">
                       <button class="app-detail-tab active" data-wstab="general" type="button">General</button>
@@ -790,11 +805,97 @@
                   <div class="billing-plan-grid" id="billing-plan-grid"></div>
                 </div>
 
-                <!-- Organization — the org record (moved in from the retired
-                     Organization tab), folded shut under the plan block with
-                     the same disclosure grammar as Auto top-up / Invoices.
-                     Ids unchanged so settings-org-panel.ts binds as before;
-                     the group is admin-gated in navigation.ts gateAdminSubs. -->
+                <h3 class="acct-row-head">Credits
+                  <button id="billing-credits-refresh" class="acct-chip-refresh" title="Refresh balance" aria-label="Refresh balance">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+                  </button>
+                </h3>
+                <div class="dash-grid">
+                  <div class="dash-card">
+                    <div class="dash-card-label">Available</div>
+                    <div class="dash-card-value" id="billing-balance">—</div>
+                    <div class="dash-card-sub">credits</div>
+                  </div>
+                  <div class="dash-card">
+                    <div class="dash-card-label">Plan allowance</div>
+                    <div class="dash-card-value" id="billing-grants">—</div>
+                    <div class="dash-card-sub">credits / month</div>
+                  </div>
+                  <div class="dash-card">
+                    <div class="dash-card-label">Purchased</div>
+                    <div class="dash-card-value" id="billing-purchases">—</div>
+                    <div class="dash-card-sub">never expires</div>
+                  </div>
+                </div>
+                <h3 class="acct-row-head">Buy credits</h3>
+                <div class="billing-topup-grid" id="billing-topup-grid"></div>
+                <div class="settings-inline" style="margin-top:12px;">
+                  <input id="billing-topup-custom" type="number" min="5" max="5000" class="settings-input settings-input-md" placeholder="Custom amount (USD)" />
+                  <span class="settings-hint" id="billing-topup-custom-hint"></span>
+                  <button id="billing-topup-buy" class="action-btn primary">Buy credits</button>
+                </div>
+
+                <!-- Auto top-up, Invoices and Organization are folded: a
+                     standing rule you set once, a table you consult
+                     occasionally, and the org record shouldn't be open on top
+                     of the things you came here to do. -->
+                <h3 class="acct-row-head">Auto top-up <span id="billing-at-status" class="set-save-state"></span></h3>
+                <button type="button" id="billing-at-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="billing-at-body">
+                  <span class="set-fold-head">
+                    <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
+                    <span class="set-fold-title" id="billing-at-summary">Off</span>
+                  </span>
+                </button>
+                <div id="billing-at-body" class="set-fold-body hidden">
+                  <p class="section-desc">Buys more credits when the balance runs low, capped per 30 days. Charges the card on file.</p>
+                  <div class="acct-section">
+                    <label class="settings-toggle">
+                      <input type="checkbox" id="billing-at-enabled" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Auto top-up</span>
+                        <span class="toggle-desc">Buy credits automatically when the balance falls below your threshold.</span>
+                      </div>
+                    </label>
+                    <div class="acct-row">
+                      <div class="acct-field">
+                        <label class="settings-label" for="billing-at-threshold">Below (credits)</label>
+                        <input id="billing-at-threshold" type="number" min="0" class="settings-input" />
+                      </div>
+                      <div class="acct-field">
+                        <label class="settings-label" for="billing-at-pack">Buy each time (USD)</label>
+                        <input id="billing-at-pack" type="number" min="5" class="settings-input" />
+                        <span class="settings-hint" id="billing-at-pack-hint"></span>
+                      </div>
+                      <div class="acct-field">
+                        <label class="settings-label" for="billing-at-cap">Max per 30 days (USD)</label>
+                        <input id="billing-at-cap" type="number" min="0" class="settings-input" />
+                        <span class="settings-hint" id="billing-at-cap-hint">A local guard rail — not enforced by the server yet.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="acct-row-head">Invoices</h3>
+                <button type="button" id="billing-inv-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="billing-invoices-wrap">
+                  <span class="set-fold-head">
+                    <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
+                    <span class="set-fold-title" id="billing-inv-summary">—</span>
+                  </span>
+                </button>
+                <div id="billing-invoices-wrap" class="set-fold-body hidden">
+                  <div class="crud-empty" id="billing-invoices-empty">Loading…</div>
+                  <table class="lib-table billing-invoices hidden" id="billing-invoices-table">
+                    <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+                    <tbody id="billing-invoices-body"></tbody>
+                  </table>
+                </div>
+
+                <!-- Organization — the org record (the retired Organization
+                     tab), folded with the other secondary groups at the end of
+                     the page. Ids unchanged so settings-org-panel.ts binds as
+                     before; the group is admin-gated in navigation.ts
+                     gateAdminSubs. -->
                 <div id="billing-org-group" class="hidden">
                   <h3 class="acct-row-head">Organization <span id="org-panel-status" class="set-save-state"></span></h3>
                   <button type="button" id="org-panel-fold-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="org-panel-fold-body">
@@ -851,90 +952,6 @@
                       </div>
                     </div>
                   </div>
-                </div>
-
-                <h3 class="acct-row-head">Credits
-                  <button id="billing-credits-refresh" class="acct-chip-refresh" title="Refresh balance" aria-label="Refresh balance">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
-                  </button>
-                </h3>
-                <div class="dash-grid">
-                  <div class="dash-card">
-                    <div class="dash-card-label">Available</div>
-                    <div class="dash-card-value" id="billing-balance">—</div>
-                    <div class="dash-card-sub">credits</div>
-                  </div>
-                  <div class="dash-card">
-                    <div class="dash-card-label">Plan allowance</div>
-                    <div class="dash-card-value" id="billing-grants">—</div>
-                    <div class="dash-card-sub">credits / month</div>
-                  </div>
-                  <div class="dash-card">
-                    <div class="dash-card-label">Purchased</div>
-                    <div class="dash-card-value" id="billing-purchases">—</div>
-                    <div class="dash-card-sub">never expires</div>
-                  </div>
-                </div>
-                <div class="billing-topup-grid" id="billing-topup-grid"></div>
-                <div class="settings-inline" style="margin-top:12px;">
-                  <input id="billing-topup-custom" type="number" min="5" max="5000" class="settings-input settings-input-md" placeholder="Custom amount (USD)" />
-                  <span class="settings-hint" id="billing-topup-custom-hint"></span>
-                  <button id="billing-topup-buy" class="action-btn primary">Buy credits</button>
-                </div>
-
-                <!-- Auto top-up and Invoices are folded: a standing rule you set
-                     once, and a table you consult occasionally, shouldn't both
-                     be open on top of the things you came here to do. -->
-                <h3 class="acct-row-head">Auto top-up <span id="billing-at-status" class="set-save-state"></span></h3>
-                <button type="button" id="billing-at-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="billing-at-body">
-                  <span class="set-fold-head">
-                    <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
-                    <span class="set-fold-title" id="billing-at-summary">Off</span>
-                  </span>
-                </button>
-                <div id="billing-at-body" class="set-fold-body hidden">
-                  <p class="section-desc">Buys more credits when the balance runs low, capped per 30 days. Charges the card on file.</p>
-                  <div class="acct-section">
-                    <label class="settings-toggle">
-                      <input type="checkbox" id="billing-at-enabled" />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Auto top-up</span>
-                        <span class="toggle-desc">Buy credits automatically when the balance falls below your threshold.</span>
-                      </div>
-                    </label>
-                    <div class="acct-row">
-                      <div class="acct-field">
-                        <label class="settings-label" for="billing-at-threshold">Below (credits)</label>
-                        <input id="billing-at-threshold" type="number" min="0" class="settings-input" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="billing-at-pack">Buy each time (USD)</label>
-                        <input id="billing-at-pack" type="number" min="5" class="settings-input" />
-                        <span class="settings-hint" id="billing-at-pack-hint"></span>
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="billing-at-cap">Max per 30 days (USD)</label>
-                        <input id="billing-at-cap" type="number" min="0" class="settings-input" />
-                        <span class="settings-hint" id="billing-at-cap-hint">A local guard rail — not enforced by the server yet.</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <h3 class="acct-row-head">Invoices</h3>
-                <button type="button" id="billing-inv-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="billing-invoices-wrap">
-                  <span class="set-fold-head">
-                    <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
-                    <span class="set-fold-title" id="billing-inv-summary">—</span>
-                  </span>
-                </button>
-                <div id="billing-invoices-wrap" class="set-fold-body hidden">
-                  <div class="crud-empty" id="billing-invoices-empty">Loading…</div>
-                  <table class="lib-table billing-invoices hidden" id="billing-invoices-table">
-                    <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead>
-                    <tbody id="billing-invoices-body"></tbody>
-                  </table>
                 </div>
               </div>
 
@@ -1172,34 +1189,44 @@
                 <p class="section-desc">Open a request and we'll get back to you. Your conversation lives here.</p>
                 <div id="support-error" class="settings-error hidden"></div>
 
-                <!-- LIST -->
+                <!-- LIST — the standard list-page grammar (Skills/Loops):
+                     crud-toolbar with search left + the primary action right,
+                     a lib-table of requests (rendered by settings-support.ts),
+                     crud-empty + pagination. -->
                 <div id="support-list-view">
                   <div class="crud-toolbar">
-                    <div class="crud-spacer"></div>
+                    <input id="support-search" type="text" class="crud-search" placeholder="Search requests…" spellcheck="false" autocomplete="off" />
                     <button id="support-new-btn" class="action-btn primary" type="button">+ New request</button>
                   </div>
-                  <h3 class="acct-row-head" style="margin-top:0;">Your requests</h3>
                   <div id="support-empty" class="crud-empty hidden">No requests yet. Open one and we'll get back to you.</div>
-                  <div id="support-tickets" class="mbr-list"></div>
+                  <div id="support-tickets"></div>
                 </div>
 
-                <!-- NEW -->
-                <div id="support-new-view" class="hidden">
-                  <button id="support-new-back" class="ws-back" type="button">← Support</button>
-                  <div class="settings-form">
-                    <label class="settings-label" for="support-subject">Subject</label>
-                    <input id="support-subject" type="text" class="settings-input" placeholder="What do you need help with?" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label" for="support-message">Message</label>
-                    <textarea id="support-message" class="settings-input" rows="6" placeholder="Describe the issue…" spellcheck="false"></textarea>
-                    <div class="settings-actions" style="margin-top:12px;">
-                      <button id="support-submit-btn" class="action-btn primary" type="button">Submit request</button>
-                    </div>
+                <!-- NEW — the inline-form standard: breadcrumb back up top,
+                     stacked label-above-input, Cancel + primary submit in a
+                     bottom .settings-actions footer. -->
+                <div id="support-new-view" class="crud-inline-form hidden">
+                  <div class="crud-inline-header">
+                    <a class="crud-breadcrumb-back" id="support-new-back">&larr; Support</a>
+                    <div class="crud-spacer"></div>
+                  </div>
+                  <label class="settings-label" for="support-subject">Subject</label>
+                  <input id="support-subject" type="text" class="settings-input" placeholder="What do you need help with?" spellcheck="false" autocomplete="off" />
+                  <label class="settings-label" for="support-message">Message</label>
+                  <textarea id="support-message" class="settings-input" rows="6" placeholder="Describe the issue…" spellcheck="false"></textarea>
+                  <div class="settings-actions" style="margin-top:12px;">
+                    <button id="support-new-cancel" class="action-btn" type="button">Cancel</button>
+                    <button id="support-submit-btn" class="action-btn primary" type="button">Submit request</button>
                   </div>
                 </div>
 
-                <!-- THREAD -->
-                <div id="support-thread-view" class="hidden">
-                  <button id="support-thread-back" class="ws-back" type="button">← Support</button>
+                <!-- THREAD — same inline-form header grammar; the set-bar
+                     names the request, the reply composer sits at the bottom. -->
+                <div id="support-thread-view" class="crud-inline-form hidden">
+                  <div class="crud-inline-header">
+                    <a class="crud-breadcrumb-back" id="support-thread-back">&larr; Support</a>
+                    <div class="crud-spacer"></div>
+                  </div>
                   <div class="set-bar" style="margin-bottom:12px;">
                     <span class="set-bar-main"><span class="set-fold-title" id="support-thread-subject">—</span></span>
                     <span class="set-fold-aside"><span id="support-thread-status" class="acct-chip">—</span></span>
@@ -1220,6 +1247,221 @@
                    Sessions group and the folded Guardrails group. Their loaders
                    bind the same ids there; navigation.ts aliases the old
                    data-subs to "general".) -->
+
+              <!-- ══ Platform (super_admin console) — Catalog / Plans / Usage /
+                   Orgs, ported from the platform's admin pages onto the modal's
+                   existing grammar (lib-table lists, crud-toolbar, the
+                   crud-inline-form editor standard, dash-cards + Chart.js).
+                   Loaders in help/settings-admin.ts; nav gated in
+                   navigation.ts gateAdminSubs; the SERVER enforces the role. ══ -->
+
+              <!-- Catalog — the GLOBAL model catalog (admin/models). -->
+              <div class="settings-panel" data-sub="padmin-models">
+                <h2>Model Catalog</h2>
+                <p class="section-desc">The global catalog every organization draws from — display names, credit rates, context windows, availability. Changes apply platform-wide.</p>
+                <div id="pa-models-gate" class="crud-empty hidden">Only a platform super admin can manage the catalog.</div>
+                <div id="pa-models-body">
+                  <div id="pa-models-error" class="settings-error hidden"></div>
+
+                  <div id="pa-models-list-view">
+                    <div class="crud-toolbar">
+                      <input id="pa-models-search" type="text" class="crud-search" placeholder="Search models…" spellcheck="false" autocomplete="off" />
+                    </div>
+                    <div id="pa-models-list"></div>
+                    <h3 class="acct-row-head">Providers</h3>
+                    <p class="section-desc">The vendors behind the catalog, from the model list. Platform proxy keys are server configuration and are never shown here.</p>
+                    <div id="pa-providers-list"></div>
+                  </div>
+
+                  <!-- Model editor — the app form standard: breadcrumb back,
+                       stacked label-above-input, Cancel + primary Save in a
+                       bottom .settings-actions. -->
+                  <div id="pa-model-editor" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="pa-model-back">&larr; Catalog</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div id="pa-model-form-error" class="crud-form-error hidden"></div>
+                    <h3 class="settings-subheading" id="pa-model-title">—</h3>
+                    <label class="settings-label" for="pa-model-name">Display name</label>
+                    <input id="pa-model-name" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label" for="pa-model-alias">Alias <span class="mdl-hint">(short @-mention; blank = none)</span></label>
+                    <input id="pa-model-alias" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label" for="pa-model-in">Input credits / MTok <span class="mdl-hint">(blank = not per-token priced)</span></label>
+                    <input id="pa-model-in" type="number" min="0" class="settings-input" placeholder="—" />
+                    <label class="settings-label" for="pa-model-out">Output credits / MTok <span class="mdl-hint">(blank = not per-token priced)</span></label>
+                    <input id="pa-model-out" type="number" min="0" class="settings-input" placeholder="—" />
+                    <label class="settings-label" for="pa-model-ctx">Context window <span class="mdl-hint">(tokens; what the gateway fits requests to)</span></label>
+                    <input id="pa-model-ctx" type="number" min="0" class="settings-input" placeholder="—" />
+                    <label class="settings-label" for="pa-model-max">Max output tokens</label>
+                    <input id="pa-model-max" type="number" min="0" class="settings-input" placeholder="—" />
+                    <label class="settings-toggle" style="margin-top:12px;">
+                      <input type="checkbox" id="pa-model-active" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Active</span>
+                        <span class="toggle-desc">Inactive models disappear from every org's catalog until reactivated.</span>
+                      </div>
+                    </label>
+                    <div class="settings-actions" style="margin-top:16px;">
+                      <button id="pa-model-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="pa-model-save" class="action-btn primary" type="button">Save</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Plans — global tier pricing + the Stripe price HISTORY
+                   (plan_prices: append + promote, never mutate). -->
+              <div class="settings-panel" data-sub="padmin-plans">
+                <h2>Plans</h2>
+                <p class="section-desc">The global plan tiers — per-seat price, monthly credit allowance, seat caps, availability — and each tier's Stripe price history.</p>
+                <div id="pa-plans-gate" class="crud-empty hidden">Only a platform super admin can manage plans.</div>
+                <div id="pa-plans-body">
+                  <div id="pa-plans-error" class="settings-error hidden"></div>
+
+                  <div id="pa-plans-list-view">
+                    <div id="pa-plans-list"></div>
+                    <h3 id="pa-orgplans-head" class="acct-row-head hidden">Bespoke org plans</h3>
+                    <div id="pa-orgplans-list" class="hidden"></div>
+                  </div>
+
+                  <div id="pa-plan-editor" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="pa-plan-back">&larr; Plans</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div id="pa-plan-form-error" class="crud-form-error hidden"></div>
+                    <h3 class="settings-subheading" id="pa-plan-title">—</h3>
+                    <label class="settings-label" for="pa-plan-name">Display name</label>
+                    <input id="pa-plan-name" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label" for="pa-plan-price">Price (USD / seat / month)</label>
+                    <input id="pa-plan-price" type="number" min="0" class="settings-input" />
+                    <label class="settings-label" for="pa-plan-credits">Included credits / month <span class="mdl-hint">(per seat, whole credits)</span></label>
+                    <input id="pa-plan-credits" type="number" min="0" class="settings-input" />
+                    <label class="settings-label" for="pa-plan-seats">Max seats</label>
+                    <input id="pa-plan-seats" type="number" min="1" class="settings-input" />
+                    <label class="settings-toggle" style="margin-top:12px;">
+                      <input type="checkbox" id="pa-plan-active" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Active</span>
+                        <span class="toggle-desc">Inactive plans are hidden and can no longer be subscribed to.</span>
+                      </div>
+                    </label>
+
+                    <!-- The plan_prices HISTORY contract: a price is appended,
+                         then promoted to active — never mutated in place. Every
+                         historical price still provisions its tier, so legacy
+                         subscriptions keep working. Self-serve tiers only. -->
+                    <div id="pa-prices-group" class="hidden">
+                      <h4 class="acct-row-head">Stripe price history</h4>
+                      <p class="section-desc">Every historical price still provisions its tier — legacy subscriptions on an old price keep working. Only the active price is used for new checkouts.</p>
+                      <div id="pa-prices-list"></div>
+                      <div class="settings-inline" style="margin-top:10px;">
+                        <input id="pa-price-new" type="text" class="settings-input" placeholder="price_…" spellcheck="false" autocomplete="off" />
+                        <button id="pa-price-add" class="action-btn" type="button">Add price</button>
+                      </div>
+                    </div>
+
+                    <div class="settings-actions" style="margin-top:16px;">
+                      <button id="pa-plan-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="pa-plan-save" class="action-btn primary" type="button">Save</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Usage — platform-wide rollups on the Usage panel's exact
+                   chart grammar (dash-cards + Chart.js + dash-usage filters). -->
+              <div class="settings-panel" data-sub="padmin-usage">
+                <h2>Platform Usage</h2>
+                <p class="section-desc">What the whole platform spent and where — every organization, every runtime.</p>
+                <div id="pa-usage-gate" class="crud-empty hidden">Only a platform super admin can see platform usage.</div>
+                <div id="pa-usage-body">
+                  <div id="pa-usage-error" class="settings-error hidden"></div>
+                  <div class="dash-grid">
+                    <div class="dash-card">
+                      <div class="dash-card-label">Credits spent</div>
+                      <div class="dash-card-value" id="pa-usage-credits">—</div>
+                      <div class="dash-card-sub">in the window</div>
+                    </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Requests</div>
+                      <div class="dash-card-value" id="pa-usage-requests">—</div>
+                      <div class="dash-card-sub">billable calls</div>
+                    </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Active users</div>
+                      <div class="dash-card-value" id="pa-usage-active">—</div>
+                      <div class="dash-card-sub">with usage</div>
+                    </div>
+                  </div>
+                  <div class="dash-card dash-card-wide">
+                    <div class="dash-card-head">
+                      <div>
+                        <div class="dash-card-label">Per day</div>
+                        <div class="dash-card-value dash-card-value-sm" id="pa-usage-total">—</div>
+                        <div class="dash-card-sub" id="pa-usage-range">last 30 days</div>
+                      </div>
+                      <div class="dash-usage-filters">
+                        <select id="pa-usage-days" class="dash-usage-select" title="Date range">
+                          <option value="7">7 days</option>
+                          <option value="30" selected>30 days</option>
+                          <option value="90">90 days</option>
+                        </select>
+                        <button class="dash-refresh" id="pa-usage-refresh" title="Refresh">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="dash-chart-wrap">
+                      <canvas id="pa-usage-chart"></canvas>
+                      <div class="dash-chart-empty hidden" id="pa-usage-empty">No usage in this window.</div>
+                    </div>
+                  </div>
+                  <h3 class="acct-row-head">Top spenders</h3>
+                  <div id="pa-usage-users"></div>
+                  <h3 class="acct-row-head">By runtime</h3>
+                  <p class="section-desc">Where it ran — region × shared or dedicated × plan tier.</p>
+                  <div id="pa-usage-runtimes"></div>
+                </div>
+              </div>
+
+              <!-- Orgs — the org list + admin credit grants. -->
+              <div class="settings-panel" data-sub="padmin-orgs">
+                <h2>Organizations</h2>
+                <p class="section-desc">Every organization on the platform. Open one to grant credits — admin grants never expire.</p>
+                <div id="pa-orgs-gate" class="crud-empty hidden">Only a platform super admin can manage organizations.</div>
+                <div id="pa-orgs-body">
+                  <div id="pa-orgs-error" class="settings-error hidden"></div>
+
+                  <div id="pa-orgs-list-view">
+                    <div class="crud-toolbar">
+                      <input id="pa-orgs-search" type="text" class="crud-search" placeholder="Search organizations…" spellcheck="false" autocomplete="off" />
+                    </div>
+                    <div id="pa-orgs-list"></div>
+                    <p class="settings-hint" id="pa-orgs-total"></p>
+                  </div>
+
+                  <div id="pa-org-grant" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="pa-org-grant-back">&larr; Organizations</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div id="pa-org-grant-error" class="crud-form-error hidden"></div>
+                    <h3 class="settings-subheading" id="pa-org-grant-title">— <span id="pa-org-grant-state" class="set-save-state"></span></h3>
+                    <label class="settings-label" for="pa-grant-credits">Credits</label>
+                    <input id="pa-grant-credits" type="number" min="1" class="settings-input" placeholder="e.g. 1000" />
+                    <label class="settings-label" for="pa-grant-note">Note <span class="mdl-hint">(lands in the audit log)</span></label>
+                    <input id="pa-grant-note" type="text" class="settings-input" placeholder="e.g. onboarding credit" spellcheck="false" autocomplete="off" />
+                    <div class="settings-actions" style="margin-top:16px;">
+                      <button id="pa-grant-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="pa-grant-save" class="action-btn primary" type="button">Grant credits</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <!-- Docs — the docs body (its own topics nav + content, from
                    sections/docs.html) is MOVED into this host on open and parked

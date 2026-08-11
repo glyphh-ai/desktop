@@ -24,7 +24,8 @@
  * the SDK returns orgRoleId.
  */
 
-import { confirmAction } from "./shared.js";
+import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
+import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
 
 const MICRO = 1_000_000;
 /** Calendar-aligned periods — the interval defines the reset, no arbitrary dates. */
@@ -252,6 +253,12 @@ function connSummary(w: Workspace): string {
 const modelSummary = (w: Workspace): string =>
   w.limitModels ? `${w.allowedModels?.length ?? 0} models` : "All models";
 
+/** The standard list-page grammar (Skills/Loops): a lib-table with the row
+ *  anatomy name / meta / dim + a kebab cell, crud-empty states, pagination.
+ *  Row click opens the editor; the base workspace keeps its undeletability
+ *  (no Delete in its menu). */
+let wsPage = 0;
+
 function paintList(): void {
   const list = $("ws-list");
   if (!list) return;
@@ -265,44 +272,46 @@ function paintList(): void {
     list.appendChild(empty);
     return;
   }
-  for (const w of rows) {
-    const row = document.createElement("div");
-    row.className = "ws-row";
-
-    const name = document.createElement("span");
-    name.className = "ws-row-name";
-    name.textContent = w.name;
-    if (w.isBase) {
-      const badge = document.createElement("span");
-      badge.className = "acct-chip";
-      badge.textContent = "base";
-      badge.title = "Unassigned members fall back to this workspace; it can't be deleted.";
-      name.appendChild(badge);
+  const { items, state } = paginate(rows, wsPage);
+  wsPage = state.page;
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Name</th><th>Access</th><th>Limits</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  for (const w of items) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="lib-table-name"></td>
+      <td class="lib-table-desc"></td>
+      <td class="lib-table-dim"></td>`;
+    const nameCell = tr.querySelector(".lib-table-name");
+    if (nameCell) {
+      nameCell.textContent = w.name;
+      if (w.isBase) {
+        const badge = document.createElement("span");
+        badge.className = "lib-badge";
+        badge.textContent = "Base";
+        badge.title = "Unassigned members fall back to this workspace; it can't be deleted.";
+        nameCell.append(" ", badge);
+      }
     }
-
-    const meta = document.createElement("span");
-    meta.className = "ws-row-meta";
-    meta.textContent = `${modelSummary(w)} · ${connSummary(w)} · ${rateSummary(w)} · ${capSummary(w)}`;
-
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.className = "action-btn";
-    edit.textContent = "Edit";
-    edit.addEventListener("click", () => { void openEditor(w); });
-
-    row.append(name, meta, edit);
-    if (!w.isBase) {
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "action-btn danger";
-      del.textContent = "Delete";
-      del.addEventListener("click", () => { void removeWorkspace(w); });
-      row.appendChild(del);
-    } else {
-      row.appendChild(document.createElement("span"));
-    }
-    list.appendChild(row);
+    const access = tr.querySelector(".lib-table-desc");
+    if (access) access.textContent = `${modelSummary(w)} · ${connSummary(w)}`;
+    const limits = tr.querySelector(".lib-table-dim");
+    if (limits) limits.textContent = `${rateSummary(w)} · ${capSummary(w)}`;
+    tr.addEventListener("click", () => { void openEditor(w); });
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.edit, label: "Edit", onClick: () => { void openEditor(w); } },
+      ...(w.isBase ? [] : [{
+        icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true,
+        onClick: () => { void removeWorkspace(w); },
+      }]),
+    ]));
+    tbody.appendChild(tr);
   }
+  table.appendChild(tbody);
+  list.appendChild(table);
+  if (state.totalPages > 1) list.appendChild(renderPaginationBar(state, (p) => { wsPage = p; paintList(); }));
 }
 
 async function removeWorkspace(w: Workspace): Promise<void> {
@@ -683,7 +692,7 @@ export function initWorkspaces(): void {
   if (wired) return;
   wired = true;
 
-  $("ws-search")?.addEventListener("input", paintList);
+  $("ws-search")?.addEventListener("input", () => { wsPage = 0; paintList(); });
   $("ws-new-btn")?.addEventListener("click", () => { void createWorkspace(); });
   $("ws-new-name")?.addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key === "Enter") void createWorkspace();

@@ -541,6 +541,33 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("account-members-set-role", userId, role) as Promise<{ ok: boolean; error?: string }>,
   accountMembersUpdateProfile: (userId: string, patch: { firstName?: string; lastName?: string }) =>
     ipcRenderer.invoke("account-members-update-profile", userId, patch) as Promise<{ ok: boolean; error?: string }>,
+  // ── Settings › Platform (super_admin console) — the MAIN-process SDK client
+  // executes these (admin-ipc.ts). The server enforces super_admin on every
+  // route. Reads REJECT on failure; writes answer { ok, …, error }. All rates/
+  // credits keep WIRE units (micro-credits, USD cents); the renderer
+  // (help/settings-admin.ts) owns display conversion + the web SDK path. ──
+  adminModels: () => ipcRenderer.invoke("admin-models") as Promise<{ models: unknown[] }>,
+  adminModelUpdate: (provider: string, model: string, patch: Record<string, unknown>) =>
+    ipcRenderer.invoke("admin-model-update", provider, model, patch) as Promise<{ ok: boolean; model?: unknown; error?: string }>,
+  adminPlans: () => ipcRenderer.invoke("admin-plans") as Promise<{ plans: unknown[] }>,
+  adminPlanUpdate: (tier: string, patch: Record<string, unknown>) =>
+    ipcRenderer.invoke("admin-plan-update", tier, patch) as Promise<{ ok: boolean; plan?: unknown; error?: string }>,
+  adminPlanPrices: (tier: string) => ipcRenderer.invoke("admin-plan-prices", tier) as Promise<unknown[]>,
+  adminPlanPriceAdd: (tier: string, stripePriceId: string) =>
+    ipcRenderer.invoke("admin-plan-price-add", tier, stripePriceId) as Promise<{ ok: boolean; price?: unknown; error?: string }>,
+  adminPlanPriceActivate: (id: string) =>
+    ipcRenderer.invoke("admin-plan-price-activate", id) as Promise<{ ok: boolean; price?: unknown; error?: string }>,
+  adminPlanPriceRemove: (id: string) =>
+    ipcRenderer.invoke("admin-plan-price-remove", id) as Promise<{ ok: boolean; error?: string }>,
+  adminUsageByUser: (days: number) => ipcRenderer.invoke("admin-usage-by-user", days) as Promise<{ users: unknown[] }>,
+  adminUsageDaily: (q: { from: string; to: string; tz?: string }) =>
+    ipcRenderer.invoke("admin-usage-daily", q) as Promise<{ days: unknown[] }>,
+  adminUsageByRuntime: (q: { from: string; to: string }) =>
+    ipcRenderer.invoke("admin-usage-by-runtime", q) as Promise<{ runtimes: unknown[] }>,
+  adminOrgs: (q: { q?: string; page?: number; limit?: number }) =>
+    ipcRenderer.invoke("admin-orgs", q) as Promise<{ orgs: unknown[]; total: number }>,
+  adminOrgGrantCredits: (id: string, credits: number, note?: string) =>
+    ipcRenderer.invoke("admin-org-grant-credits", id, credits, note) as Promise<{ ok: boolean; balance?: number; error?: string }>,
   // ── Files artifact store (Files gallery) — the MAIN-process SDK client
   // executes these (files-ipc.ts). Reads REJECT on failure so the gallery shows
   // an honest error; create answers with { ok, file, error }. help/files.ts
