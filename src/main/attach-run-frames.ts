@@ -23,6 +23,9 @@ export function toWireFrame(channel: string, data: Record<string, unknown>, seq:
     case "glyphh-agent:approval": return { ...base, type: "approval", id: data.id, kind: data.kind, title: data.title, detail: data.detail };
     case "glyphh-agent:ask": return { ...base, type: "ask", id: data.id, questions: data.questions };
     case "glyphh-agent:setup": return { ...base, ...data, type: "setup" };
+    // The run's live permission mode changed mid-flight — rides the stream so
+    // observing surfaces re-render their mode chip in lockstep.
+    case "glyphh-agent:permission": return { ...base, type: "permission", permission: data.permission };
     case "glyphh-agent:done": return { ...base, type: "done", stopped: !!data.stopped };
     case "glyphh-agent:error": return { ...base, type: "error", error: data.error ?? "run failed" };
     default: return null;

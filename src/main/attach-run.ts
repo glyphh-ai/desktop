@@ -18,7 +18,7 @@
 import type { WebContents } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-client.js";
-import { harnessRun, type RunSource } from "./glyphh-harness-run.js";
+import { harnessRun, setRunPermission, type RunSource } from "./glyphh-harness-run.js";
 import { answerRemotePause } from "./glyphh-agent-permissions.js";
 import { toWireFrame, baseMessages } from "./attach-run-frames.js";
 
@@ -121,5 +121,18 @@ export function installAttachRunHandlers(): void {
     const ctrl = controllers.get(runId);
     if (ctrl) ctrl.abort();
     return { stopped: !!ctrl };
+  });
+
+  // agent.permission {runId, permission} → change a live run's permission mode.
+  // A remote surface (web/mobile) flipped the mode chip while its turn runs ON
+  // this machine; push it to the run's pod so the gate re-evaluates the next
+  // action under the new mode. Unknown/finished run → { updated: false }.
+  registerRelayHandler("agent.permission", async (params) => {
+    const p = (params ?? {}) as Record<string, unknown>;
+    const runId = typeof p.runId === "string" ? p.runId : "";
+    const PERMS = ["ask", "plan", "acceptEdits", "auto", "bypass"] as const;
+    const permission = (PERMS as readonly string[]).includes(p.permission as string) ? (p.permission as (typeof PERMS)[number]) : null;
+    if (!runId || !permission) throw new Error("agent.permission requires { runId, permission }");
+    return { updated: await setRunPermission(runId, permission) };
   });
 }

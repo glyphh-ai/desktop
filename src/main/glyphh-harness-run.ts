@@ -117,6 +117,29 @@ interface PodTarget { url: string; token?: string; cloud: boolean }
 
 export const isCloudSource = (s?: RunSource): boolean => !!s && s.kind !== "local";
 
+// ── Live-run registry (mid-run permission push) ─────────────────────────────
+//
+// A run's permission mode is a SNAPSHOT at start (`permission` below). When the
+// user flips the mode chip mid-turn, we must push the change to the pod driving
+// THIS run so its gate re-evaluates. The pod exposes it as POST
+// /runs/:id/permission; the SDK's HarnessRun.setPermission() calls it. We keep
+// each live run's handle here, keyed by the runId the renderer knows, so an IPC
+// (desktop-local) or attach dispatch (a remote surface driving this machine) can
+// reach it. Local runs pass the desktop's OWN runId; relayed runs pass the
+// caller's minted runId — both key this map.
+type PermMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
+interface LiveHandle { setPermission(mode: PermMode): Promise<void> }
+const liveRuns = new Map<string, LiveHandle>();
+
+/** Push a new permission mode to a run in flight. No-op (returns false) when the
+ *  run isn't live here — it may have finished, or never ran on this machine. */
+export async function setRunPermission(runId: string, mode: PermMode): Promise<boolean> {
+  const h = liveRuns.get(runId);
+  if (!h) return false;
+  try { await h.setPermission(mode); return true; }
+  catch { return false; }
+}
+
 const PROVISION_TIMEOUT_MS = 90_000;
 const PROVISION_POLL_MS = 1_500;
 
@@ -338,6 +361,12 @@ export async function harnessRun(
       signal: ctrl.signal,
     });
 
+    // Register the live handle so a mid-run permission-mode change (the user
+    // flipping the mode chip on ANY surface) reaches THIS run's pod: the local
+    // IPC path and the attach `agent.permission` dispatch both resolve by runId
+    // here and call HarnessRun.setPermission → POST /runs/:id/permission.
+    liveRuns.set(runId, { setPermission: (mode) => run.setPermission(mode) });
+
     // Publish the user's prompt as the run's FIRST frame so any surface observing this
     // run over the broker renders the turn's user message (assistant frames don't carry
     // it). Local display ignores the channel; the broker + relay sink forward it.
@@ -387,6 +416,12 @@ export async function harnessRun(
           emit("glyphh-agent:setup", rest as Record<string, unknown>);
           return;
         }
+        case "permission":
+          // The pod echoes a mid-run mode change back on the stream — forward it
+          // so the local renderer AND any surface observing this run (via the
+          // broker tee in `emit`) re-render the mode chip together.
+          emit("glyphh-agent:permission", { permission: (frame as { permission?: string }).permission });
+          return;
         default:
           // done/error settle `run.done` — reported once, below.
           return;
@@ -414,6 +449,7 @@ export async function harnessRun(
     runError = brandError(err instanceof Error ? err.message : String(err));
     emit("glyphh-agent:error", { error: runError });
   } finally {
+    liveRuns.delete(runId);
     for (const cancel of cancelPauses) cancel();
     lent?.release();
   }

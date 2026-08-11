@@ -21,7 +21,7 @@ import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
-  canRunRemote, runRemoteTurn, answerPending, attachToActiveRun,
+  canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
   APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
   type RemoteChat, type AttachHandle,
 } from "./remote-run.js";
@@ -57,6 +57,12 @@ interface CodeChat {
    *  session id is bound even before the runtime is ready — the session exists
    *  server-side and must not be orphaned. */
   runtime?: { sessionId: string; url: string; token: string };
+  /** The session's PERMISSION MODE (ask/plan/acceptEdits/auto/bypass) — bound to
+   *  the SESSION, not the device, so every surface viewing this session agrees and
+   *  a mid-run flip is pushed to the running turn. Absent → the device default
+   *  (last-used, `defaultMode`). Cached locally per session; a live change also
+   *  rides the run-stream so observers repaint the chip. */
+  permission?: (typeof MODES)[number]["id"];
   /** LWW clock for the server threads surface — stamped by thread-store on
    *  every content change (epoch ms). */
   updatedAt?: number;
@@ -106,7 +112,30 @@ let loops: Array<{ id: string; name: string; description: string; builtIn?: bool
 ];
 let loopsCanBuild = false;
 let glyphhLoop = "default";
+// The DEVICE default mode — the last mode the user picked, seeded onto a NEW
+// session so a fresh chat opens in the mode they habitually use. Persisted as the
+// `glyphhMode` preference (kept for back-compat with older builds). The EFFECTIVE
+// mode is per-SESSION: `currentMode()` reads the current chat's `permission`,
+// falling back to this default. `glyphhMode` mirrors the effective mode of the
+// chat on screen so the many read sites (chip paint, run launch) stay a plain read.
+let defaultMode: (typeof MODES)[number]["id"] = "ask";
 let glyphhMode: (typeof MODES)[number]["id"] = "ask";
+
+/** The current session's mode, or the device default when there is no session /
+ *  the session never set one. */
+function currentMode(): (typeof MODES)[number]["id"] {
+  const c = current();
+  const m = c?.permission;
+  return m && MODES.some((x) => x.id === m) ? m : defaultMode;
+}
+
+/** Re-sync `glyphhMode` (the on-screen mirror) to the current session and repaint
+ *  the chip. Call after any session switch or an external mode change. */
+function syncModeChip(): void {
+  glyphhMode = currentMode();
+  paintChips();
+  renderModeMenu();
+}
 // Approval cards awaiting a decision (rendered inline in the thread).
 // Ask dock queue — approvals and agent questions render one at a time in a
 // card docked just above the composer (never inline in the thread).
@@ -126,6 +155,9 @@ let askQueue: AskDockItem[] = [];
 function paintChips(): void {
   const mc = el("code-mode-chip");
   if (mc) {
+    // Mirror the on-screen mode to the current session before painting, so the
+    // chip always reflects the session in view (not the last one touched).
+    glyphhMode = currentMode();
     const m = MODES.find((x) => x.id === glyphhMode) ?? MODES[0];
     mc.textContent = m.label;
     mc.title = `${m.hint} — Shift+Tab cycles`;
@@ -143,14 +175,51 @@ function paintChips(): void {
 
 function setMode(id: (typeof MODES)[number]["id"]): void {
   glyphhMode = id;
+  // The device default follows the user's latest pick (seeds the NEXT new session).
+  defaultMode = id;
   void window.glyphh.setPreference?.("glyphhMode", id);
+  // Bind the mode to the SESSION so it's the same on every surface and survives a
+  // session switch. persist() stamps updatedAt + syncs through the thread-store,
+  // so another surface adopts it on reconcile even with no run in flight.
+  const c = current();
+  if (c) {
+    c.permission = id;
+    void saveStore();
+    // In-flight: push the change to the running turn so its gate re-evaluates the
+    // NEXT action under the new mode — local (main → local pod) or remote (SDK
+    // handle → pod). No live run → a harmless no-op.
+    pushPermissionToRun(c.id, id);
+  }
   paintChips();
   renderModeMenu();
 }
 
+/** Push a mid-run mode change to whatever is executing this chat's turn. A
+ *  DESKTOP-LOCAL run goes over IPC (main resolves the runId + pushes to its pod);
+ *  a REMOTE run (this surface driving the cloud/desktop) goes through the live
+ *  SDK handle held in remote-run. Best-effort and idempotent. */
+function pushPermissionToRun(chatId: string, mode: (typeof MODES)[number]["id"]): void {
+  // Remote turn started FROM here (launchRemote holds the handle) — reach it first.
+  if (remoteAborters.has(chatId)) { void setRemotePermission(chatId, mode); return; }
+  // Otherwise a desktop-local run: main maps the chat to its live runId.
+  void window.glyphh.glyphhSetPermission?.(chatId, mode).catch(() => { /* no live run */ });
+}
+
 function cycleMode(): void {
-  const i = MODES.findIndex((m) => m.id === glyphhMode);
+  const i = MODES.findIndex((m) => m.id === currentMode());
   setMode(MODES[(i + 1) % MODES.length].id);
+}
+
+/** Adopt a mode change that ORIGINATED ELSEWHERE (a run frame from another surface,
+ *  or the local pod echoing one) — update the session + chip WITHOUT re-pushing to
+ *  the run (that would loop). Persists so the change survives a reload. */
+function adoptSessionMode(chatId: string, mode: string): void {
+  if (!MODES.some((x) => x.id === mode)) return;
+  const c = chats.find((ch) => ch.id === chatId);
+  if (!c || c.permission === mode) return;
+  c.permission = mode as (typeof MODES)[number]["id"];
+  void saveStore();
+  if (chatId === currentId) { glyphhMode = c.permission; paintChips(); renderModeMenu(); }
 }
 
 function setLoop(id: string): void {
@@ -796,6 +865,8 @@ function observeIfRunning(chat: CodeChat): void {
         r.text += delta;
         queueStreamPaint(chatId);
       },
+      // The owning surface flipped the mode mid-run — adopt it so our chip agrees.
+      onPermission: (mode) => adoptSessionMode(chatId, mode),
       // The run settled — land it, but KEEP the observer: the watcher keeps polling and
       // will pick up the next run started on this thread (onRun re-seeds a fresh turn).
       onDone: (text) => { finishRun(chatId, text); },
@@ -1055,7 +1126,7 @@ function syncSpaceAttrs(): void {
 function newChat(): void {
   // Every session is a Code session (the most-capable toolset). The mode field
   // is retained only for the pod/thread-store contract and is always "code".
-  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: "code" };
+  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: "code", permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
@@ -1671,6 +1742,7 @@ function renderThread(): void {
   syncThinking();
   syncActiveRunAttach();   // attach to / detach from a run happening on another surface
   paintAskDock();          // re-bind the approval dock to the session now on screen
+  paintChips();            // the mode chip reflects the SESSION on screen (per-session mode)
   const thread = el<HTMLDivElement>("code-thread");
   if (!thread) return;
   wireThreadScroll(thread);
@@ -2891,7 +2963,7 @@ function send(): void {
   const webAlwaysRemote = onWebTarget() && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
   if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, text, src ?? { kind: "cloud-new" })); return; }
   const launch = (retried: boolean): Promise<void> =>
-    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), ...(src ? { source: src } : {}) })
+    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -2976,6 +3048,8 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         askQueue.push({ type: "ask", id: a.id, questions: a.questions, answers: [], step: 0, runId: liveRuns.get(chatId)?.runId ?? undefined, chatId, deadline: a.deadline });
         paintAskDock();
       },
+      // A mode change from another surface viewing this same session — adopt it.
+      onPermission: (mode) => adoptSessionMode(chatId, mode),
       onDone: (text) => { finishRun(chatId, text); },
       onStopped: () => { finishRun(chatId, liveRuns.get(chatId)?.text || "", true); },
       onError: (detail) => {
@@ -2986,9 +3060,10 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
     },
     // No model override — the loop resolves its own model server-side (matches
     // the local path, where main resolves the loop's roles). The permission mode
-    // DOES ride the turn: the pod's own default is `auto`, so without it a
-    // session left in Ask mode would run unattended.
-    { rotor: glyphhLoop, permission: glyphhMode, signal: ac.signal },
+    // DOES ride the turn and is the SESSION's mode (per-session), so the pod's own
+    // default (`auto`) never overrides a session left in Ask; a mid-run flip is
+    // pushed separately via setRemotePermission.
+    { rotor: glyphhLoop, permission: c.permission ?? defaultMode, signal: ac.signal },
   ).then((outcome) => {
     remoteAborters.delete(chatId);
     // An UNAVAILABLE stage is the honest "runtime not connected" state: the
@@ -3360,6 +3435,13 @@ function initGlyphhAgentEvents(): void {
     e[1].inTok = d.inTokens;
     e[1].outTok = d.outTokens;
     if (e[0] === currentId) paintRunMeta();
+  });
+  // A live run's permission mode changed (this desktop's local run echoing the
+  // pod, or a run on this machine driven from another surface over attach) —
+  // adopt it onto the run's session so the chip agrees. runId → chat via runEntry.
+  window.glyphh.onGlyphhAgentPermission?.((d) => {
+    const e = runEntry(d.runId);
+    if (e) adoptSessionMode(e[0], d.permission);
   });
   // A LOCAL gate parks in main with the same deadlines the pod uses
   // (glyphh-agent-permissions.ts), so the card counts down identically.
@@ -4294,7 +4376,9 @@ export function initCode(): void {
   initComposerControls();
   void (async () => {
     const m = String((await window.glyphh.getPreference?.("glyphhMode", "ask")) || "ask");
-    if (MODES.some((x) => x.id === m)) glyphhMode = m as typeof glyphhMode;
+    // The stored preference is the DEVICE DEFAULT (seeds new sessions); the chip
+    // then reflects whichever session is on screen (currentMode via paintChips).
+    if (MODES.some((x) => x.id === m)) { defaultMode = m as typeof glyphhMode; glyphhMode = defaultMode; }
     const lp = String((await window.glyphh.getPreference?.("glyphhLoop", "default")) || "default");
     glyphhLoop = lp;
     void refreshLoops();

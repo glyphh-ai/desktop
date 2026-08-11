@@ -576,7 +576,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
-  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
+  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
     ipcRenderer.invoke("glyphh-agent-run", p) as Promise<{ runId: string }>,
   glyphhPickAttachments: (mode?: "files" | "folder") =>
     ipcRenderer.invoke("glyphh-agent-pick-attachments", { mode }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
@@ -646,6 +646,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   glyphhStop: (chatId?: string) => ipcRenderer.invoke("glyphh-agent-stop", { chatId }) as Promise<boolean>,
+  /** Change a DESKTOP-LOCAL run's permission mode mid-turn — main pushes it to the
+   *  session's live pod so the gate re-evaluates. No live run → { updated: false }. */
+  glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto" | "bypass") =>
+    ipcRenderer.invoke("glyphh-agent-set-permission", { chatId, permission }) as Promise<{ updated: boolean }>,
   onGlyphhAgentDelta: (callback: (d: { runId: string; delta: string }) => void) => {
     ipcRenderer.on("glyphh-agent:delta", (_event, d) => callback(d));
   },
@@ -657,6 +661,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   },
   onGlyphhAgentSetup: (callback: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => {
     ipcRenderer.on("glyphh-agent:setup", (_event, d) => callback(d));
+  },
+  /** A run's live permission mode changed mid-flight (its own surface flipped it,
+   *  or another surface pushed it) — repaint the mode chip for the affected chat. */
+  onGlyphhAgentPermission: (callback: (d: { runId: string; permission: "ask" | "plan" | "acceptEdits" | "auto" | "bypass" }) => void) => {
+    ipcRenderer.on("glyphh-agent:permission", (_event, d) => callback(d));
   },
   onGlyphhAgentCredits: (callback: (d: { runId: string; creditsMicro: number }) => void) => {
     ipcRenderer.on("glyphh-agent:credits", (_event, d) => callback(d));

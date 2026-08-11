@@ -37,6 +37,7 @@ type HarnessWireFrame = (
   | { type: "approval"; id: string; kind: string; title: string; detail: string }
   | { type: "ask"; id: string; questions: Array<{ question: string; options?: string[] }> }
   | { type: "setup"; phase: string }
+  | { type: "permission"; permission: RemotePermission }
   | { type: "done"; stopped: boolean }
   | { type: "error"; error: string }
 ) & { seq: number; runId: string; at: number };
@@ -49,6 +50,9 @@ interface HarnessRunHandle {
   on(fn: (frame: HarnessWireFrame) => void): () => void;
   answer(id: string, reply: { allow?: boolean; answers?: string[] }): Promise<void>;
   stop(): Promise<void>;
+  /** Change THIS in-flight run's permission mode — the executor re-reads it on the
+   *  next tool decision (added with the mid-run mode-change fix). */
+  setPermission(mode: RemotePermission): Promise<void>;
 }
 
 /** The pod's permission modes — verbatim from the desktop (MODES in code.ts,
@@ -155,6 +159,21 @@ function forgetPending(run: HarnessRunHandle): void {
   for (const [id, entry] of pending) if (entry.run === run) pending.delete(id);
 }
 
+// ── Live remote-run handles, by threadId (chat id) — the mid-run mode push seam.
+// A turn started here holds its handle so a mode-chip flip mid-turn can reach the
+// executor (cloud pod or the attached desktop) via handle.setPermission → the
+// server's /permission route. Cleared when the run settles.
+const liveRemote = new Map<string, HarnessRunHandle>();
+
+/** Change a live remote run's permission mode mid-flight. No live run for the
+ *  chat → a harmless no-op (returns false). Never throws. */
+export async function setRemotePermission(chatId: string, mode: RemotePermission): Promise<boolean> {
+  const run = liveRemote.get(chatId);
+  if (!run?.setPermission) return false;
+  try { await run.setPermission(mode); return true; }
+  catch { return false; }
+}
+
 /** A session's source is remote iff it runs in the cloud (cloud-new/cloud-repo). */
 export function isRemoteSource(source?: Source): boolean {
   return !!source && source.kind !== "local";
@@ -248,6 +267,10 @@ export interface RemoteRunCallbacks {
   /** The agent is asking the user — parked until `answerPending(id, {answers})`
    *  (or the deadline). Mirrors `glyphh-agent:ask`. */
   onAsk?: (a: RemoteAskRequest) => void;
+  /** The run's permission mode changed mid-flight (another surface flipped it) —
+   *  the surface repaints its mode chip. Rides the frame stream so observers stay
+   *  in lockstep with the surface that made the change. */
+  onPermission?: (mode: RemotePermission) => void;
 }
 
 export interface RemoteApprovalRequest { id: string; kind: string; title: string; detail: string; deadline: number }
@@ -331,6 +354,9 @@ function dispatchFrame(
       cb.onAsk({ id: frame.id, questions: frame.questions, deadline });
       return;
     }
+    case "permission":
+      cb.onPermission?.(frame.permission);
+      return;
     case "error":
       state.error = frame.error || "the runtime reported an error";
       return;
@@ -406,6 +432,9 @@ export async function runRemoteTurn(
     });
   } catch (err) { const u = unavailable("open", err); callbacks.onError?.(u.detail); return u; }
 
+  // Hold the handle so a mid-turn mode-chip flip can push to this run (the
+  // executor re-reads it per tool decision). Keyed by the chat/thread id.
+  liveRemote.set(chat.id, run);
   const state = { text: "", error: null as string | null };
   const off = run.on((frame) => { if (opts.signal?.aborted) return; dispatchFrame(frame, callbacks, state, run); });
   let stopped = false;
@@ -414,12 +443,12 @@ export async function runRemoteTurn(
     stopped = result.stopped ?? false;
     if (result.error && !state.error) state.error = result.error;
   } catch (err) {
-    off(); forgetPending(run);
+    off(); forgetPending(run); liveRemote.delete(chat.id);
     if (opts.signal?.aborted) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
     if (!state.text) { const u = unavailable("stream", err); callbacks.onError?.(u.detail); return u; }
     state.error = err instanceof Error ? err.message : String(err);
   }
-  off(); forgetPending(run);
+  off(); forgetPending(run); liveRemote.delete(chat.id);
   if (opts.signal?.aborted || stopped) { callbacks.onStopped?.(); return { ok: false, stopped: true, runtime: chat.runtime }; }
   if (state.error && !state.text) { callbacks.onError?.(state.error); return { ok: false, error: state.error, runtime: chat.runtime }; }
   callbacks.onDone?.(state.text);

@@ -37,7 +37,7 @@ import { getClient } from "./glyphh-client";
 import { getPreference } from "./stores/preferences-db";
 import { runModel } from "./loop-selections";
 import { brandError, skillSeedFor, type ChatMessage } from "./glyphh-agent-prompt";
-import { harnessRun, isCloudSource, type RunSource } from "./glyphh-harness-run";
+import { harnessRun, isCloudSource, setRunPermission, type RunSource } from "./glyphh-harness-run";
 import { closeBridge } from "./harness-mcp-bridge";
 
 export type { ChatMessage };
@@ -89,7 +89,7 @@ export function registerGlyphhIpc(): void {
   registerGlyphhContextIpc();
   // The renderer's transport to the server threads surface (thread-store.ts).
   registerThreadsIpc();
-  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; source?: RunSource }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; source?: RunSource }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
@@ -131,11 +131,19 @@ export function registerGlyphhIpc(): void {
     // of the tokens of a Work turn.
     // CHAT is a plain completion; every tool-bearing mode runs on the local
     // harness pod. There is no third branch and no in-process loop left.
+    // The run's START permission is the SESSION's mode (per-session), from the
+    // payload. Absent (older renderer) → harnessRun falls back to the device
+    // `glyphhMode()` preference, as before. A mid-run change is pushed separately
+    // (glyphh-agent-set-permission → the live pod).
+    const PERMS = ["ask", "plan", "acceptEdits", "auto", "bypass"] as const;
+    const startPermission = (PERMS as readonly string[]).includes(String(payload?.permission))
+      ? (String(payload?.permission) as (typeof PERMS)[number])
+      : undefined;
     const runner = mode === "chat"
       ? chatRun(e.sender, id, messages, ctrl, replyBudget)
       // publishFrames: true — a desktop-local turn tees its frames to the run-stream
       // broker so the same thread opened on web/mobile shows this run live.
-      : harnessRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode, source, undefined, true);
+      : harnessRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode, source, startPermission, true);
     void runner.finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
       if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);
@@ -168,6 +176,20 @@ export function registerGlyphhIpc(): void {
     if (chatId) activeRuns.get(chatId)?.ctrl.abort();
     else for (const run of activeRuns.values()) run.ctrl.abort();   // legacy callers: stop everything
     return true;
+  });
+
+  // Mid-run permission-mode change for a DESKTOP-LOCAL run: the user flipped the
+  // mode chip while this session's turn is running on the local pod. Push it so
+  // the pod's gate re-evaluates the next action under the new mode (the snapshot
+  // at start no longer governs). No live run for the chat → a silent no-op.
+  ipcMain.handle("glyphh-agent-set-permission", async (_e, p?: { chatId?: string; permission?: string }) => {
+    const chatId = String(p?.chatId || "");
+    const PERMS = ["ask", "plan", "acceptEdits", "auto", "bypass"] as const;
+    const permission = (PERMS as readonly string[]).includes(String(p?.permission)) ? (String(p?.permission) as (typeof PERMS)[number]) : null;
+    if (!chatId || !permission) return { updated: false };
+    const runId = activeRuns.get(chatId)?.id;
+    if (!runId) return { updated: false };
+    return { updated: await setRunPermission(runId, permission) };
   });
 
   // ── Composer attachments ──────────────────────────────────────────────
