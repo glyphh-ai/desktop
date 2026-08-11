@@ -2928,7 +2928,9 @@ function AppsSheet({ open, onClose, onPick }: { open: boolean; onClose: () => vo
       <div className="m-sel-scrim" onClick={onClose} />
       <div className="m-sel">
         <div className="m-sel-grip" />
-        <div className="m-sel-panel">
+        {/* -solo: this sheet has ONE panel, no sliding track — the bare
+            m-sel-panel is track-sized (33.33%) and rendered a third-width list. */}
+        <div className="m-sel-panel m-sel-panel-solo">
           <div className="m-sel-head"><button className="m-sel-x" aria-label="Close" onClick={onClose}><Icon name="close" /></button><span className="m-sel-title">Apps</span></div>
           <div className="m-sel-search"><Icon name="search" /><input className="m-conn-in" placeholder="Search apps" value={q} onChange={(e) => setQ(e.currentTarget.value)} /></div>
           <div className="m-sel-body">

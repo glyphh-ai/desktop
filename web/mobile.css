@@ -1276,6 +1276,8 @@ body {
 .m-sel-track[data-depth="1"] { transform: translateX(-33.3333%); }
 .m-sel-track[data-depth="2"] { transform: translateX(-66.6666%); }
 .m-sel-panel { flex: 0 0 33.3333%; width: 33.3333%; min-height: 0; display: flex; flex-direction: column; }
+/* A sheet with ONE panel and no sliding track (Apps) — full width. */
+.m-sel-panel.m-sel-panel-solo { flex: 1 1 100%; width: 100%; }
 
 /* Collapsible loop-role section inside the Models tray. */
 .m-role { margin-bottom: 12px; }
