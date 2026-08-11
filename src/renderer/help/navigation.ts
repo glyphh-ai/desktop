@@ -235,7 +235,22 @@ export function closeSettingsModal(): void {
 }
 
 function onSettingsModalKey(e: KeyboardEvent): void {
-  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSettingsModal(); }
+  if (e.key !== "Escape") return;
+  e.preventDefault();
+  e.stopPropagation();
+  // STAGED escape: fullscreen reverts to the normal size first; a second Esc
+  // (or the X) closes the modal.
+  const panel = document.querySelector<HTMLElement>(".settings-modal-panel.fullscreen");
+  if (panel) {
+    panel.classList.remove("fullscreen");
+    const maxBtn = panel.querySelector<HTMLElement>(".settings-modal-max");
+    if (maxBtn) {
+      maxBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+      maxBtn.setAttribute("aria-label", "Expand settings to full screen");
+    }
+    return;
+  }
+  closeSettingsModal();
 }
 
 export function openSettingsModal(sub?: string): void {

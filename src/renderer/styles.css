@@ -4598,16 +4598,19 @@ ol.docs-list li::before {
    slot to its left (12px edge + 30px X + 8px gap). Session-local: the state
    lives on the panel node, which is removed on close. */
 .settings-modal-max { right: 50px; }
-/* Fullscreen stops BELOW the native titlebar: the drag strip is an OS drag
-   region that eats clicks at the compositor level regardless of z-index — a
-   100vh panel put the expand/close buttons inside that band, so nothing could
-   un-fullscreen. Web (--titlebar-h: 0) still gets true fullscreen. */
+/* Fullscreen is PINNED with fixed insets — flex-centering + margin math let
+   the top/bottom drift out of bounds. It also stops BELOW the native titlebar:
+   the drag strip is an OS drag region that eats clicks at the compositor level
+   regardless of z-index (the expand/close buttons were unclickable inside it).
+   Web (--titlebar-h: 0) gets true fullscreen. */
 .yo-settings-modal .settings-modal-panel.fullscreen {
-  width: 100vw;
-  height: calc(100vh - var(--titlebar-h, 0px));
-  max-width: 100vw;
-  max-height: calc(100vh - var(--titlebar-h, 0px));
-  margin-top: var(--titlebar-h, 0px);
+  position: fixed;
+  inset: var(--titlebar-h, 0px) 0 0 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
   border-radius: 0;
 }
 /* The floating expand + close buttons own the modal's top-right corner — page
