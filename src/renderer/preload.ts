@@ -329,6 +329,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   dripsPreview: (recipe: string) => ipcRenderer.invoke("drips-preview", recipe) as Promise<string>,
   dripsBuiltinEffects: () => ipcRenderer.invoke("drips-builtin-effects") as Promise<Array<{ name: string; kind: "one-shot" | "loop" }>>,
 
+  // Mid-run prompt injection — add a user message to the CURRENT live run of a
+  // session; the pod starts a fresh turn at the next between-turn boundary.
+  glyphhInject: (chatId: string, text: string) =>
+    ipcRenderer.invoke("glyphh-agent-inject", { chatId, text }) as Promise<{ injected: boolean }>,
+
   // Run-stream observer (the desktop transport behind attachToActiveRun): the
   // renderer supplies its own subscription token, so pushed frames are
   // filterable from the very first event. Returns unsubscribe functions.

@@ -2630,6 +2630,32 @@ function paintPendingNotes(): void {
   }
 }
 
+/** Mid-run send: INJECT the composer's text into the live run — it lands as
+ *  a user bubble now and starts the run's next turn at the between-turn
+ *  boundary. Falls back to the pending-notes queue when the run can't take
+ *  input (settling, or a run this surface has no inject handle for). */
+async function injectOrQueue(): Promise<void> {
+  const ta = input();
+  const text = ta?.value.trim();
+  if (!ta || !text) return;
+  const c = current();
+  const inject = (window.glyphh as unknown as { glyphhInject?: (chatId: string, text: string) => Promise<{ injected: boolean }> }).glyphhInject;
+  if (c && inject) {
+    try {
+      const r = await inject(c.id, text);
+      if (r?.injected) {
+        ta.value = "";
+        autoGrow(ta);
+        c.messages.push({ role: "user", text, at: Date.now() });
+        void saveStore();
+        if (c.id === currentId) { renderThread(); pinThreadToBottom(); }
+        return;
+      }
+    } catch { /* fall through to the queue */ }
+  }
+  queueNote();
+}
+
 /** Queue what is in the composer as a note. Returns false when there was nothing. */
 function queueNote(): boolean {
   const ta = input();
@@ -4541,9 +4567,11 @@ export function initCode(): void {
   ta?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      // Mid-run, Enter QUEUES the note rather than doing nothing — the button
-      // beside it is the stop control while thinking, and stopping flushes.
-      if (thinking) queueNote();
+      // Mid-run, Enter INJECTS the message into the live run (the pod picks
+      // it up at the next between-turn boundary) — the button beside it stays
+      // the stop control. Injection refused (run settling, or no local
+      // handle) → queue as a note that sends when the run ends, as before.
+      if (thinking) void injectOrQueue();
       else send();
     } else if (e.key === "Tab" && e.shiftKey) {
       // Shift+Tab cycles the permission mode from the composer.

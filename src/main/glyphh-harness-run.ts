@@ -128,7 +128,7 @@ export const isCloudSource = (s?: RunSource): boolean => !!s && s.kind !== "loca
 // reach it. Local runs pass the desktop's OWN runId; relayed runs pass the
 // caller's minted runId — both key this map.
 type PermMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
-interface LiveHandle { setPermission(mode: PermMode): Promise<void> }
+interface LiveHandle { setPermission(mode: PermMode): Promise<void>; inject(text: string): Promise<void> }
 const liveRuns = new Map<string, LiveHandle>();
 
 /** Push a new permission mode to a run in flight. No-op (returns false) when the
@@ -137,6 +137,16 @@ export async function setRunPermission(runId: string, mode: PermMode): Promise<b
   const h = liveRuns.get(runId);
   if (!h) return false;
   try { await h.setPermission(mode); return true; }
+  catch { return false; }
+}
+
+/** Add a USER message to a run in flight (the pod drains it at the next
+ *  between-turn boundary). False when the run isn't live here or refuses
+ *  input (settled / final turn already closing). */
+export async function injectRunMessage(runId: string, text: string): Promise<boolean> {
+  const h = liveRuns.get(runId);
+  if (!h) return false;
+  try { await h.inject(text); return true; }
   catch { return false; }
 }
 
@@ -365,7 +375,7 @@ export async function harnessRun(
     // flipping the mode chip on ANY surface) reaches THIS run's pod: the local
     // IPC path and the attach `agent.permission` dispatch both resolve by runId
     // here and call HarnessRun.setPermission → POST /runs/:id/permission.
-    liveRuns.set(runId, { setPermission: (mode) => run.setPermission(mode) });
+    liveRuns.set(runId, { setPermission: (mode) => run.setPermission(mode), inject: (text) => run.inject(text) });
 
     // Publish the user's prompt as the run's FIRST frame so any surface observing this
     // run over the broker renders the turn's user message (assistant frames don't carry

@@ -37,7 +37,7 @@ import { getClient } from "./glyphh-client";
 import { getPreference } from "./stores/preferences-db";
 import { runModel } from "./loop-selections";
 import { brandError, skillSeedFor, type ChatMessage } from "./glyphh-agent-prompt";
-import { harnessRun, isCloudSource, setRunPermission, type RunSource } from "./glyphh-harness-run";
+import { harnessRun, isCloudSource, setRunPermission, injectRunMessage, type RunSource } from "./glyphh-harness-run";
 import { closeBridge } from "./harness-mcp-bridge";
 
 export type { ChatMessage };
@@ -190,6 +190,19 @@ export function registerGlyphhIpc(): void {
     const runId = activeRuns.get(chatId)?.id;
     if (!runId) return { updated: false };
     return { updated: await setRunPermission(runId, permission) };
+  });
+
+  // Mid-run prompt injection: the user keeps typing while the agent works —
+  // the message queues on the live pod run and starts a fresh turn at the
+  // next between-turn boundary. injected:false → the caller should fall back
+  // to a normal send (the run settled in the race).
+  ipcMain.handle("glyphh-agent-inject", async (_e, p?: { chatId?: string; text?: string }) => {
+    const chatId = String(p?.chatId || "");
+    const text = String(p?.text || "").trim();
+    if (!chatId || !text) return { injected: false };
+    const runId = activeRuns.get(chatId)?.id;
+    if (!runId) return { injected: false };
+    return { injected: await injectRunMessage(runId, text) };
   });
 
   // ── Composer attachments ──────────────────────────────────────────────

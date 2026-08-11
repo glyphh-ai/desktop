@@ -2257,6 +2257,7 @@ async function init(): Promise<void> {
     const COLLAPSE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const collapseCard = (card: HTMLElement): void => {
       card.classList.remove("expanded");
+      cardsLayer.classList.remove("has-expanded");
       card.style.zIndex = "";
       const b = card.querySelector<HTMLElement>(".echo-card-expand");
       if (b) { b.innerHTML = EXPAND_SVG; b.title = "Expand"; }
@@ -2496,7 +2497,9 @@ async function init(): Promise<void> {
         const r = grid?.get(e) ?? flow.get(e);
         if (r) setRect(e.card, r);
       });
-      paintDividers(grid ? true : false);
+      // A maximized card also retires the grid's resize seams — they sat above
+      // it and kept eating clicks meant for the panel.
+      paintDividers(grid && !openList.some((e) => e.card?.classList.contains("expanded")) ? true : false);
       syncWallVisibility();
       paintSectionToggles();   // an echo card IS the tool's open state
       paintLayoutBar();
@@ -2712,6 +2715,9 @@ async function init(): Promise<void> {
       expandBtn.addEventListener("click", () => {
         if (card.classList.contains("expanded")) { collapseCard(card); layoutCards(); return; }
         card.classList.add("expanded");
+        // The stage belongs to this card alone now: siblings hide entirely
+        // (webviews composite over any z-index — bleed-through otherwise).
+        cardsLayer.classList.add("has-expanded");
         card.style.zIndex = "2";
         expandBtn.innerHTML = COLLAPSE_SVG;
         expandBtn.title = "Collapse";

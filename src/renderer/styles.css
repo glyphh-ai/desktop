@@ -15743,6 +15743,14 @@ body.code-dragging webview { pointer-events: none !important; }
     width .35s cubic-bezier(.2, .8, .25, 1), height .35s cubic-bezier(.2, .8, .25, 1), opacity .3s ease;
 }
 .echo-card.flash { box-shadow: 0 0 0 2px var(--accent), 0 18px 50px var(--shadow); }
+/* A maximized card owns the stage: sibling cards disappear ENTIRELY —
+   webview guests composite above any z-index, so visibility (which does
+   suspend their compositing) is the only real occlusion — and they take
+   their headers, seams and drag affordances with them. */
+.echo-cards.has-expanded .echo-card:not(.expanded) {
+  visibility: hidden;
+  pointer-events: none;
+}
 .echo-card-head {
   display: flex; align-items: center; gap: 6px;
   padding: 5px 6px 5px 10px; font-size: 12px; font-weight: 600; color: var(--text-2);
