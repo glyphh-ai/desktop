@@ -329,6 +329,23 @@ contextBridge.exposeInMainWorld("glyphh", {
   dripsPreview: (recipe: string) => ipcRenderer.invoke("drips-preview", recipe) as Promise<string>,
   dripsBuiltinEffects: () => ipcRenderer.invoke("drips-builtin-effects") as Promise<Array<{ name: string; kind: "one-shot" | "loop" }>>,
 
+  // Run-stream observer (the desktop transport behind attachToActiveRun): the
+  // renderer supplies its own subscription token, so pushed frames are
+  // filterable from the very first event. Returns unsubscribe functions.
+  runStreamAttach: (threadId: string, token: string) =>
+    ipcRenderer.invoke("run-stream-attach", threadId, token) as Promise<{ ok: boolean; error?: string }>,
+  runStreamStop: (token: string) => ipcRenderer.invoke("run-stream-stop", token) as Promise<{ ok: boolean }>,
+  onRunStreamFrame: (cb: (p: { token: string; frame: unknown }) => void) => {
+    const l = (_e: unknown, p: { token: string; frame: unknown }) => cb(p);
+    ipcRenderer.on("run-stream-frame", l);
+    return () => { ipcRenderer.removeListener("run-stream-frame", l); };
+  },
+  onRunStreamRun: (cb: (p: { token: string; runId: string }) => void) => {
+    const l = (_e: unknown, p: { token: string; runId: string }) => cb(p);
+    ipcRenderer.on("run-stream-run", l);
+    return () => { ipcRenderer.removeListener("run-stream-run", l); };
+  },
+
   // Session
   sessionInfo: () => ipcRenderer.invoke("session-info") as Promise<{ hasContent: boolean; label: string; fileName: string }>,
   sessionClear: () => ipcRenderer.invoke("session-clear") as Promise<boolean>,

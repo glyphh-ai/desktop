@@ -23,7 +23,9 @@ function loadDocs() {
 // ── Support ───────────────────────────────────────────────
 // Configurable via the GLYPHH_DISCORD_INVITE env var (exposed through preload),
 // falling back to the canonical server invite.
-const DISCORD_INVITE = window.glyphh.discordInvite || "https://discord.gg/cHGZR764D";
+// Optional-chained: this runs at MODULE SCOPE, so a bare deref takes the whole
+// help import graph down on any surface where the bridge failed to init.
+const DISCORD_INVITE = window.glyphh?.discordInvite || "https://discord.gg/cHGZR764D";
 
 let supportInitialized = false;
 

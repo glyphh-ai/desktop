@@ -477,6 +477,57 @@ interface RunStreamResource {
 
 export interface AttachHandle { readonly runId: string | null; stop(): void }
 
+// ── Desktop observer transport ────────────────────────────────────────────────
+// Web exposes the browser SDK (window.glyphhSdk) so the observer consumes the
+// broker directly. The desktop renderer is IPC-only: the main process holds the
+// SDK client and forwards frames over run-stream-* channels (run-stream-ipc.ts).
+// The renderer mints the subscription token so pushed events are filterable
+// from the very first frame — no id-assignment race.
+interface RunStreamIpc {
+  runStreamAttach?: (threadId: string, token: string) => Promise<{ ok: boolean; error?: string }>;
+  runStreamStop?: (token: string) => Promise<{ ok: boolean }>;
+  onRunStreamFrame?: (cb: (p: { token: string; frame: HarnessWireFrame }) => void) => () => void;
+  onRunStreamRun?: (cb: (p: { token: string; runId: string }) => void) => () => void;
+}
+
+function ipcRunStream(): RunStreamResource | undefined {
+  // Web's window.glyphh is a Proxy that returns a callable for ANY key, so the
+  // typeof probes below can't tell it apart from the real preload — gate on the
+  // surface marker instead (web always observes through glyphhSdk).
+  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return undefined;
+  const ipc = (window as unknown as { glyphh?: RunStreamIpc }).glyphh;
+  if (typeof ipc?.runStreamAttach !== "function" || typeof ipc.onRunStreamFrame !== "function") return undefined;
+  return {
+    attach: (threadId) => {
+      const token = `rs-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const frameCbs = new Set<(f: HarnessWireFrame) => void>();
+      const runCbs = new Set<(runId: string) => void>();
+      let stopped = false;
+      const offFrame = ipc.onRunStreamFrame?.((p) => {
+        if (p.token === token) for (const cb of frameCbs) cb(p.frame);
+      });
+      const offRun = ipc.onRunStreamRun?.((p) => {
+        if (p.token === token) for (const cb of runCbs) cb(p.runId);
+      });
+      void ipc.runStreamAttach?.(threadId, token).then((r) => {
+        // Attach refused (signed out, bad thread) — tear the listeners down so
+        // a dead subscription doesn't linger for the tab's lifetime.
+        if (!r?.ok && !stopped) { offFrame?.(); offRun?.(); }
+      }).catch(() => { /* main unavailable — observer stays a no-op */ });
+      return {
+        on: (cb) => { frameCbs.add(cb); return () => { frameCbs.delete(cb); }; },
+        onRun: (cb) => { runCbs.add(cb); return () => { runCbs.delete(cb); }; },
+        stop: () => {
+          if (stopped) return;
+          stopped = true;
+          offFrame?.(); offRun?.();
+          void ipc.runStreamStop?.(token);
+        },
+      };
+    },
+  };
+}
+
 /**
  * "Open a thread anywhere, see the live turn." A surface OBSERVES a thread's
  * currently-active run — wherever it executes (this user's desktop or a cloud pod)
@@ -495,7 +546,9 @@ export function attachToActiveRun(
   callbacks: RemoteRunCallbacks = {},
   onRun?: (runId: string) => void,
 ): AttachHandle {
-  const rs = (sdk() as unknown as { runStream?: RunStreamResource })?.runStream;
+  // Web: the browser SDK's broker consumer. Desktop: the IPC bridge to the
+  // main-process SDK client. Neither present (tests, logged-out) → no-op.
+  const rs = (sdk() as unknown as { runStream?: RunStreamResource })?.runStream ?? ipcRunStream();
   if (!rs?.attach) return { runId: null, stop: () => {} };
 
   // ONE call: the SDK owns "watch this thread and stream whatever runs on it, run after

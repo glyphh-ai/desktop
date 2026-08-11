@@ -87,6 +87,7 @@ import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
+import { registerRunStreamIpc } from "./run-stream-ipc";
 import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
 import { registerModelsIpc } from "./models-ipc";
@@ -854,6 +855,10 @@ async function boot() {
 
   // Files — the artifacts gallery's transport, same main-process SDK client.
   registerFilesIpc();
+
+  // Run-stream observer bridge — the renderer watches runs executing on OTHER
+  // surfaces (web/cloud) through the main-process SDK client.
+  registerRunStreamIpc();
 
   // API Keys + Support (threaded ticketing) — A4 settings panels' transport.
   registerApiKeysIpc();

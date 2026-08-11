@@ -4570,6 +4570,10 @@ ol.docs-list li::before {
 /* ── Settings modal (A1) — the two-column settings UI in a centered overlay
    instead of a full-page workbench section. Extends the .yo-modal backdrop. */
 .yo-settings-modal .settings-modal-panel {
+  /* NEVER a drag surface: an OS drag region eats clicks at the compositor
+     level regardless of z-index, and in short windows the panel's top strip
+     (where close/expand live) can reach into the titlebar band. */
+  -webkit-app-region: no-drag;
   /* Wide enough for the side-by-side editors (620px controls + a usable
      right pane) that Apps/Connections/Loops/Skills/Agents/Layouts carry —
      trimmed from 1240x848 so the modal doesn't loom over the whole app. */
