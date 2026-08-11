@@ -370,14 +370,22 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "find_tools",
-    doc: "find_tools(query, k?) — search ALL connected-account tools by meaning. Only the tools relevant to the original ask are preloaded, so when you need one that isn't wired (a different app, an unexpected follow-up), find it here, then run it with call_tool. Read-only.",
+    doc: "find_tools(query, k?) — search ALL connected-account tools AND every desktop builtin (including ones not loaded for this session's space, e.g. rpa_*/scrape_page in a Code session) by meaning. When you need a tool that isn't wired, find it here, then run it with call_tool. Read-only.",
     action: (a) => ({ kind: "read", title: `Find tools "${String(a.query ?? "").slice(0, 60)}"` }),
     run: async (a) => {
       const query = String(a.query ?? "").trim();
       if (!query) return "ERROR: query is required";
       const k = Math.max(1, Math.min(20, Number(a.k) || 10));
-      const hits = (await rankConnectorTools(query, lastWireDefs)).filter((r) => r.score > 0).slice(0, k);
-      if (!hits.length) return "(no connected-account tools match — the account may not be connected)";
+      // The space packs exclude tools for PROMPT COST, not permission — the
+      // hatch searches every builtin too, so a Code session can still lazily
+      // reach rpa_*/scrape_page when a task genuinely needs them (each call
+      // is gated on its own action, same as if it were preloaded).
+      const builtinDefs: ConnectorWireDef[] = TOOLS
+        .filter((t) => t.name !== "find_tools" && t.name !== "call_tool")
+        .map((t) => ({ name: t.name, description: t.doc, inputSchema: {} }));
+      const hits = (await rankConnectorTools(query, [...lastWireDefs, ...builtinDefs]))
+        .filter((r) => r.score > 0).slice(0, k);
+      if (!hits.length) return "(no connected-account or builtin tools match — the account may not be connected)";
       return cap(hits.map((r) => `${r.def.name} — ${r.def.description}`).join("\n"));
     },
   },
@@ -469,12 +477,17 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "call_tool",
-    doc: "call_tool(name, arguments?) — run a connected-account tool by its exact find_tools name, including tools not preloaded for this turn. arguments must match the tool's schema.",
-    // Gate on the INNER tool, exactly like a directly-wired connector call —
-    // reads pass quietly, sends/creates/deletes prompt per the mode model.
+    doc: "call_tool(name, arguments?) — run a tool by its exact find_tools name: a connected-account tool, or a desktop builtin that isn't loaded for this session's space. arguments must match the tool's doc.",
+    // Gate on the INNER tool, exactly like a directly-wired call — a builtin
+    // delegates to its own action() so an rpa_click gates as an rpa_click,
+    // and connector reads pass quietly while sends/creates/deletes prompt.
     action: (a) => {
       const inner = String(a.name ?? "");
       const wired = wireMap.get(inner);
+      if (!wired) {
+        const builtin = TOOLS.find((t) => t.name === inner && t.name !== "call_tool");
+        if (builtin) return builtin.action((a.arguments ?? {}) as Record<string, unknown>);
+      }
       return {
         kind: (wired && READ_TOOL_RE.test(wired.tool) ? "read" : "network") as GlyphhActionKind,
         title: wired ? `Call ${wired.slug} → ${wired.tool}` : `Call ${inner}`,
@@ -484,8 +497,10 @@ const TOOLS: ToolDef[] = [
     run: async (a) => {
       const inner = String(a.name ?? "");
       const wired = wireMap.get(inner);
-      if (!wired) return `ERROR: unknown tool "${inner}" — use find_tools to get the exact name`;
-      return cap(await callConnectorTool(wired.slug, wired.tool, (a.arguments ?? {}) as Record<string, unknown>));
+      if (wired) return cap(await callConnectorTool(wired.slug, wired.tool, (a.arguments ?? {}) as Record<string, unknown>));
+      const builtin = TOOLS.find((t) => t.name === inner && t.name !== "call_tool" && t.name !== "find_tools");
+      if (builtin) return builtin.run((a.arguments ?? {}) as Record<string, unknown>);
+      return `ERROR: unknown tool "${inner}" — use find_tools to get the exact name`;
     },
   },
   {
