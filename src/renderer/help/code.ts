@@ -885,13 +885,16 @@ function observeIfRunning(chat: CodeChat): void {
         void saveStore();
         if (chatId === currentId) renderThread();
       },
-      // The agent asked to SHOW something. A CLOUD run has no machine to open
-      // it on — the watching surface renders it. A desktop-executed run's own
-      // machine already opened its panel (glyphh-harness-run), so skip those.
+      // The agent asked to SHOW something. EVERY watching surface renders its
+      // own view: web always (its panels are its own, streamed/iframe); the
+      // DESKTOP renderer only for cloud runs — a machine-executed run's panel
+      // was already opened by main (glyphh-harness-run), never twice.
       onOpenApp: ({ ref, url }) => {
         const ch = chats.find((c) => c.id === chatId);
-        const cloudRun = !!ch?.source && String((ch.source as { kind?: string }).kind || "").startsWith("cloud");
-        if (!ch || !cloudRun || chatId !== currentId) return;
+        if (!ch || chatId !== currentId) return;
+        const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+        const cloudRun = !!ch.source && String((ch.source as { kind?: string }).kind || "").startsWith("cloud");
+        if (!onWeb && !cloudRun) return;
         if (url) openUrlInWorkbench(new URL(url).hostname, url);
         else if (ref) openAppInWorkbench({ slug: ref, name: ref });
       },
@@ -3150,12 +3153,14 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
     prompt,
     bindSave,
     {
-      // The agent asked to SHOW something mid-run. A CLOUD run has no machine
-      // to open it on — THIS surface renders it (web card / desktop panel). A
-      // relayed LOCAL run's machine opens its own panel (glyphh-harness-run).
+      // The agent asked to SHOW something mid-run. EVERY watching surface
+      // renders its own view: web always; the desktop renderer only for cloud
+      // runs (a machine-executed run's panel was opened by main, never twice).
       onOpenApp: ({ ref, url }) => {
+        if (chatId !== currentId) return;
+        const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
         const cloudRun = String((src as { kind?: string }).kind || "").startsWith("cloud");
-        if (!cloudRun || chatId !== currentId) return;
+        if (!onWeb && !cloudRun) return;
         if (url) openUrlInWorkbench(new URL(url).hostname, url);
         else if (ref) openAppInWorkbench({ slug: ref, name: ref });
       },
