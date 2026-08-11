@@ -2247,6 +2247,7 @@ const SUB_TITLE: Record<SettingsSub, string> = {
   profile: 'Profile', billing: 'Billing', usage: 'Usage', appearance: 'Appearance',
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
   runtime: 'Region', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
+  apps: 'Apps',   // never a tray — the row hands off to the Apps sheet
 };
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialSub, onOpenApps }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void; initialSub?: SettingsSub | null; onOpenApps: () => void }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
