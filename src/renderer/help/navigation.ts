@@ -567,9 +567,12 @@ export function initHelp() {
   });
 
   // ── App rail (Code-primary surface) ─────────────────────────────────────
-  // The rail's section nav (Artifacts/Connections/Apps/Layouts) was removed —
-  // the rail is + New session and Recents only; sections open from the
-  // command center / settings modal.
+  // Three rail links — Connections / Apps / Layouts — each opens the SETTINGS
+  // MODAL at its section (the pages live in the modal; the rail is otherwise
+  // + New session and Recents only).
+  document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
+    btn.addEventListener("click", () => openSettingsModal(btn.dataset.settingsSub!));
+  });
 
   // The "More" fly-out (Loops / Skills / Agents) was removed in A3 — those
   // sections live in the Settings modal now, so the rail no longer carries a

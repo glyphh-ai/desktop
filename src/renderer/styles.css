@@ -15170,6 +15170,26 @@ html:not(.glyphh-web) #panel-wc { height: 40px; padding-left: 16px; }
 
 /* Recents shares the rail with the Apps grid below it, so it is capped rather
    than flex:1 — the grid takes the remaining space. */
+.app-rail-nav { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 0; }
+
+.app-rail-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-rail-nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+.app-rail-nav-item:hover { background: var(--hover); color: var(--text); }
+
 /* Recents owns the whole rail below its toggle now — the Apps/Layouts
    sections (and the splitter that shared the height) were removed. */
 .code-history { flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
