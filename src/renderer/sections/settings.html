@@ -73,6 +73,8 @@
 
               <!-- Appearance: Tabs, URL bar, Browser home -->
               <div class="settings-panel" data-sub="usage">
+    <h2>Usage</h2>
+    <p class="section-desc">What your organization has spent and where — credits, models, and members.</p>
     <div class="dash-usage-actions">
       <button class="action-btn primary" id="dash-add-funds">Add credits</button>
     </div>
@@ -496,20 +498,13 @@
                 <div id="ws-body">
                   <div id="ws-error" class="settings-error hidden"></div>
 
-                  <!-- LIST -->
+                  <!-- LIST — same toolbar grammar as every list page: search
+                       left, the create action right. -->
                   <div id="ws-list-view">
-                    <div class="acct-row" style="margin-top:12px;">
-                      <div class="acct-field acct-field-wide">
-                        <label class="settings-label" for="ws-search">Search</label>
-                        <input id="ws-search" type="text" class="settings-input" placeholder="Search workspaces…" spellcheck="false" autocomplete="off" />
-                      </div>
-                      <div class="acct-field acct-field-wide">
-                        <label class="settings-label" for="ws-new-name">New workspace</label>
-                        <div class="settings-inline">
-                          <input id="ws-new-name" type="text" class="settings-input" placeholder="e.g. Contractors" spellcheck="false" autocomplete="off" />
-                          <button id="ws-new-btn" class="action-btn primary" type="button">Create</button>
-                        </div>
-                      </div>
+                    <div class="crud-toolbar" style="margin-top:12px;">
+                      <input id="ws-search" type="text" class="crud-search" placeholder="Search workspaces…" spellcheck="false" autocomplete="off" />
+                      <input id="ws-new-name" type="text" class="settings-input settings-input-md" placeholder="New workspace name" spellcheck="false" autocomplete="off" />
+                      <button id="ws-new-btn" class="action-btn primary" type="button">Create</button>
                     </div>
                     <div id="ws-list" class="mbr-list"></div>
                   </div>
@@ -812,12 +807,12 @@
                      ~/.claude/skills; Gemini/ChatGPT save a file to paste into
                      custom instructions. -->
                 <h3 class="settings-subheading" style="margin:4px 0 4px;">Glyphh Skill</h3>
-                <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">Teach your assistant to drive Glyphh over MCP. Claude installs directly into <code>~/.claude/skills</code>; Gemini and ChatGPT export a file you paste into custom instructions.</p>
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:18px;">
+                <p class="settings-hint" style="margin:0 0 10px;">Teach your assistant to drive Glyphh over MCP. Claude installs directly into <code>~/.claude/skills</code>; Gemini and ChatGPT export a file you paste into custom instructions.</p>
+                <div class="settings-actions" style="flex-wrap:wrap;margin-bottom:18px;">
                   <button id="export-skill-claude" class="action-btn primary" data-provider="claude">Install for Claude</button>
                   <button id="export-skill-gemini" class="action-btn" data-provider="gemini">Export for Gemini</button>
                   <button id="export-skill-openai" class="action-btn" data-provider="openai">Export for ChatGPT</button>
-                  <span id="export-skill-status" style="font-size:11px;color:var(--text-3);"></span>
+                  <span id="export-skill-status" class="settings-hint"></span>
                 </div>
 
                 <div id="mcp-section-wrap" class="settings-form">
@@ -836,27 +831,27 @@
                         <span class="toggle-desc">Serve Glyphh's tools from this machine over 127.0.0.1 — direct, no cloud round-trip. Best for a local LLM on the same computer.</span>
                       </div>
                     </label>
-                    <span id="local-mcp-status" style="font-size:11px;color:var(--text-3);display:inline-block;margin-bottom:8px;">Stopped.</span>
+                    <span id="local-mcp-status" class="settings-hint" style="display:inline-block;margin-bottom:8px;">Stopped.</span>
 
                     <div id="local-mcp-body">
                       <!-- Port -->
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:16px 0 6px;">Port</h4>
-                      <div style="display:flex;gap:6px;align-items:center;">
-                        <input id="local-mcp-port" type="text" class="settings-input" value="7860" style="width:120px;font-size:12px;padding:5px 8px;" />
-                        <button id="local-mcp-port-save" class="action-btn" style="font-size:12px;">Save</button>
+                      <h4 class="acct-row-head" style="margin:16px 0 6px;">Port</h4>
+                      <div class="settings-inline">
+                        <input id="local-mcp-port" type="text" class="settings-input settings-input-sm" value="7860" />
+                        <button id="local-mcp-port-save" class="action-btn">Save</button>
                       </div>
 
                       <!-- Config -->
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Config</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 6px;">Add this to the local tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a token generated below.</p>
+                      <h4 class="acct-row-head" style="margin:18px 0 6px;">Config</h4>
+                      <p class="settings-hint" style="margin:0 0 6px;">Add this to the local tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a token generated below.</p>
                       <div style="position:relative;">
                         <pre id="local-mcp-config" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
                         <button id="local-mcp-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
                       </div>
 
                       <!-- Tokens -->
-                      <h4 style="font-size:12px;font-weight:600;color:var(--text);margin:18px 0 6px;">Access Tokens</h4>
-                      <p style="font-size:11px;color:var(--text-3);margin:0 0 10px;">Each local tool needs a token. Shown <strong>once</strong> on creation — copy immediately.</p>
+                      <h4 class="acct-row-head" style="margin:18px 0 6px;">Access Tokens</h4>
+                      <p class="settings-hint" style="margin:0 0 10px;">Each local tool needs a token. Shown <strong>once</strong> on creation — copy immediately.</p>
                       <div id="local-mcp-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
                         <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
                         <div style="display:flex;gap:6px;align-items:center;">
@@ -865,9 +860,9 @@
                         </div>
                       </div>
                       <div id="local-mcp-tokens-list" style="margin-bottom:10px;"></div>
-                      <div style="display:flex;gap:6px;align-items:center;">
-                        <input id="local-mcp-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop)" style="flex:1;font-size:12px;padding:5px 8px;" />
-                        <button id="local-mcp-gen-token" class="action-btn primary" style="font-size:12px;white-space:nowrap;">+ Generate</button>
+                      <div class="settings-inline">
+                        <input id="local-mcp-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop)" style="flex:1;" />
+                        <button id="local-mcp-gen-token" class="action-btn primary">+ Generate</button>
                       </div>
                     </div>
                   </div>
@@ -899,13 +894,13 @@
             <input type="text" id="drip-name" class="settings-input" placeholder="preset name" spellcheck="false" autocomplete="off" />
 
             <label class="settings-label">Mode</label>
-            <div style="display:flex;gap:8px;align-items:center;">
+            <div class="settings-inline">
               <select id="drip-mode" class="settings-input" style="width:auto;">
                 <option value="oneshot">One-shot</option>
                 <option value="counted">Counted</option>
                 <option value="persistent">Persistent (toggle on/off)</option>
               </select>
-              <input type="number" id="drip-count" class="settings-input hidden" min="2" max="10" value="3" style="width:70px;" />
+              <input type="number" id="drip-count" class="settings-input settings-input-sm hidden" min="2" max="10" value="3" />
             </div>
 
             <label class="settings-label" style="margin-top:8px;">Effects</label>
@@ -954,7 +949,7 @@
             </div>
             <div class="about-version" id="about-version">Version 2.1.3</div>
             <div class="about-copyright">&copy; 2026 Glyphh AI LLC. All rights reserved.</div>
-            <button class="btn btn-secondary about-check-update" id="about-check-update">Check for Updates</button>
+            <button class="action-btn about-check-update" id="about-check-update">Check for Updates</button>
             <div class="about-progress hidden" id="about-progress">
               <div class="about-progress-bar"><div class="about-progress-fill" id="about-progress-fill"></div></div>
               <span class="about-progress-text" id="about-progress-text">Downloading...</span>
@@ -966,7 +961,7 @@
                splash, then quit+install). See docs.ts loadAbout(). -->
           <div class="about-update-prompt hidden" id="about-update-prompt">
             <span class="about-update-prompt-text" id="about-update-prompt-text">An update is ready</span>
-            <button class="btn btn-primary" id="about-update-relaunch">Relaunch to Update</button>
+            <button class="action-btn primary" id="about-update-relaunch">Relaunch to Update</button>
           </div>
               </div>
 
@@ -1014,10 +1009,11 @@
 
                 <!-- LIST -->
                 <div id="support-list-view">
-                  <div class="settings-actions" style="margin-bottom:14px;">
+                  <div class="crud-toolbar">
+                    <div class="crud-spacer"></div>
                     <button id="support-new-btn" class="action-btn primary" type="button">+ New request</button>
                   </div>
-                  <h3 class="acct-row-head">Your requests</h3>
+                  <h3 class="acct-row-head" style="margin-top:0;">Your requests</h3>
                   <div id="support-empty" class="crud-empty hidden">No requests yet. Open one and we'll get back to you.</div>
                   <div id="support-tickets" class="mbr-list"></div>
                 </div>

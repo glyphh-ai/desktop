@@ -6,6 +6,7 @@
 
           <div id="apps-library-page" class="apps-page">
           <h2 class="apps-page-heading">Apps</h2>
+          <p class="section-desc">Web apps and native tools your agent opens as panels beside you.</p>
 
           <!-- Upgrade gate (shown for non-Advanced when trying to connect) -->
           <div id="apps-pro-gate" class="hidden" style="text-align:center;padding:32px 16px;">
@@ -97,7 +98,7 @@
 
           <!-- App detail (tabbed) -->
           <div id="app-detail" class="hidden">
-            <div class="crud-inline-header" style="padding:0 16px;">
+            <div class="crud-inline-header">
               <a class="crud-breadcrumb-back" id="app-detail-close">← Apps</a>
               <span id="app-detail-heading" class="hidden"></span>
               <span style="flex:1;"></span>
@@ -105,7 +106,7 @@
             </div>
 
             <!-- Title under the breadcrumb (icon + name + slug), like the Connections form -->
-            <div id="app-detail-head" class="edit-head" style="padding:0 16px;margin-top:12px;"></div>
+            <div id="app-detail-head" class="edit-head" style="margin-top:12px;"></div>
 
             <div class="app-detail-tabs">
               <button class="app-detail-tab" data-tab="dashboard">General</button>
@@ -228,10 +229,10 @@
                   <textarea id="config-var-value" class="settings-input" rows="4" placeholder="sk-…" spellcheck="false" autocomplete="off" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
                   <label style="display:flex;align-items:flex-start;gap:8px;margin-top:8px;font-size:12px;color:var(--text-2);cursor:pointer;line-height:1.4;">
                     <input id="config-var-readable" type="checkbox" style="width:auto;margin:2px 0 0;flex:none;" />
-                    <span>Readable by app code <span style="color:var(--text-3,#888);">— the app can fetch this value via <code>secrets.get</code>. Leave off (default) for credentials the runtime uses on the app's behalf but never hands to app code.</span></span>
+                    <span>Readable by app code <span style="color:var(--text-3);">— the app can fetch this value via <code>secrets.get</code>. Leave off (default) for credentials the runtime uses on the app's behalf but never hands to app code.</span></span>
                   </label>
                   <div class="settings-actions" style="margin-top:8px;">
-                    <span id="config-var-status" style="flex:1;font-size:12px;color:var(--ok,#22c55e);"></span>
+                    <span id="config-var-status" style="flex:1;font-size:12px;color:var(--success);"></span>
                     <button id="config-var-add" class="action-btn primary">Save var</button>
                   </div>
 

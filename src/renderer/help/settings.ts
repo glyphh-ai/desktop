@@ -219,7 +219,7 @@ function initSettings() {
       if (!res.ok && res.error) {
         if (localMcpStatusEl) {
           localMcpStatusEl.textContent = res.error;
-          localMcpStatusEl.style.color = "#d44a4a";
+          localMcpStatusEl.style.color = "var(--danger)";
         }
         localMcpToggle.checked = false;
         setLocalMcpBodyVisible(false);
@@ -234,7 +234,7 @@ function initSettings() {
       if (!res.ok && res.error) {
         if (localMcpStatusEl) {
           localMcpStatusEl.textContent = res.error;
-          localMcpStatusEl.style.color = "#d44a4a";
+          localMcpStatusEl.style.color = "var(--danger)";
         }
         return;
       }

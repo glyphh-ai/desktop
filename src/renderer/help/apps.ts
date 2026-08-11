@@ -1531,7 +1531,7 @@ async function loadConfigVarsTab() {
       if (s.appReadable) {
         badge.textContent = "app-readable";
         badge.title = "App code can read this value via secrets.get.";
-        badge.style.cssText = "color:var(--ok,#22c55e);border-color:rgba(34,197,94,.4);";
+        badge.style.cssText = "color:var(--success);border-color:color-mix(in srgb, var(--success) 40%, transparent);";
       } else {
         badge.textContent = "runtime-only";
         badge.title = s.hostOnly

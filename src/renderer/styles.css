@@ -3942,6 +3942,14 @@ ol.docs-list li::before {
   gap: 8px;
   margin-bottom: 16px;
 }
+/* A secondary input riding in the toolbar (e.g. Workspaces' new-name field)
+   matches the search box's 34px line so the row reads as one bar. */
+.crud-toolbar .settings-input {
+  height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 13px;
+}
 
 .crud-search {
   flex: 1;
@@ -4540,10 +4548,12 @@ ol.docs-list li::before {
 /* ── Settings modal (A1) — the two-column settings UI in a centered overlay
    instead of a full-page workbench section. Extends the .yo-modal backdrop. */
 .yo-settings-modal .settings-modal-panel {
-  width: min(940px, 94vw);
-  height: min(720px, 90vh);
-  max-width: min(940px, 94vw);
-  max-height: min(720px, 90vh);
+  /* Wide enough for the side-by-side editors (620px controls + a usable
+     right pane) that Apps/Connections/Loops/Skills/Agents/Layouts carry. */
+  width: min(1240px, 96vw);
+  height: min(848px, 92vh);
+  max-width: min(1240px, 96vw);
+  max-height: min(848px, 92vh);
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -4649,12 +4659,34 @@ ol.docs-list li::before {
   padding: 16px 28px 20px;
   box-sizing: border-box;
 }
-/* Kill the section's own page-level <h2> title inside the modal — the settings
-   nav already labels it. Only the DIRECT-child page header (and Apps' library
-   heading); deeper functional <h2>s (marketplace banner, editors) are untouched. */
+/* Normalize the adopted section's page header to the NATIVE settings-panel
+   grammar (18px title + 4px gap + 13px description) — one header voice on
+   every page. (These h2s were previously display:none'd, which left the
+   adopted pages the only headerless pages in the modal.) Only the DIRECT-child
+   page header (and Apps' library heading) is restyled; deeper functional
+   <h2>s (marketplace banner, editors) are untouched. */
 .settings-modal-body .settings-panel-section > [id$="-host"] > .help-section > h2,
 .settings-modal-body .settings-panel-section .apps-page-heading {
-  display: none;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0;
+  margin: 0 0 4px;
+}
+.settings-modal-body .settings-panel-section > [id$="-host"] > .help-section > .section-desc,
+.settings-modal-body .settings-panel-section #apps-library-page > .section-desc {
+  margin: 0 0 16px;
+}
+/* Apps keeps its My apps | Marketplace switcher above the header — snug it to
+   the same top line the other pages start on. */
+.settings-modal-body .settings-panel-section .apps-page-tabs { margin: 0 0 16px; }
+.settings-modal-body .settings-panel-section .apps-page-heading { margin-top: 0; }
+/* Editors align to the page gutter inside the modal — their legacy full-page
+   16px inner insets would double the left edge here. */
+.settings-modal-body .settings-panel-section .crud-inline-header,
+.settings-modal-body .settings-panel-section .edit-head {
+  padding-left: 0;
+  padding-right: 0;
 }
 /* The adopted section owns the gutter + scroll now, so the panels wrapper adds
    neither when a section is active — no double padding, no double scrollbar. */
@@ -4668,6 +4700,42 @@ ol.docs-list li::before {
 .settings-modal-body .settings-panel-section > [id$="-host"] > .help-section[data-section="apps"].active:has(#apps-marketplace-page:not(.hidden)) {
   height: 100%;
   overflow-y: auto;
+}
+
+/* Narrow modal — below this the modal is viewport-bound (96vw) and the
+   side-by-side editors (Apps/Connections builder split, the Loops/Skills/
+   Agents lib splits, the Layouts builder) would squeeze their right pane
+   into a sliver. Stack them vertically instead; the page scrolls as one
+   column. The !importants out-rank the drag-divider's inline width. */
+@media (max-width: 1140px) {
+  #settings-modal .app-builder-split,
+  #settings-modal .lib-split {
+    flex-direction: column;
+    align-items: stretch;
+    overflow: visible;
+  }
+  #settings-modal .app-builder-controls {
+    width: auto !important;
+    overflow-y: visible;
+    padding-right: 0;
+  }
+  #settings-modal .app-builder-divider,
+  #settings-modal .lib-split-divider { display: none; }
+  #settings-modal .lib-split-form {
+    width: auto !important;
+    padding-right: 0;
+  }
+  #settings-modal .lib-split-flow {
+    position: static;
+    height: 380px;
+    margin-left: 0;
+    flex: none;
+  }
+  #settings-modal .lib-split-side { margin-left: 0; }
+  #settings-modal .app-builder-preview { min-height: 340px; }
+  /* The connection detail wrapper clips (overflow:hidden) in the wide split;
+     stacked, it becomes the scroller instead. */
+  #settings-modal #conn-detail { overflow-y: auto; }
 }
 
 .pagination-bar {
@@ -5284,7 +5352,9 @@ ol.docs-list li::before {
   width: 620px;
   flex-shrink: 0;
   overflow-y: auto;
-  padding: 12px 16px;
+  /* Left edge on the page gutter (the tabs row above starts there too);
+     right padding keeps a scrollbar gap from the divider. */
+  padding: 12px 16px 12px 0;
 }
 /* Uniform vertical spacing for EVERY field in the edit forms (app editor +
    connection editor), including the nested Type/native sub-fields — 20px above
@@ -5369,7 +5439,10 @@ ol.docs-list li::before {
   display: flex;
   gap: 0;
   border-bottom: 1px solid var(--border);
-  padding: 0 16px;
+  /* No lead-in inset — tab rows start on the same left edge as the page
+     header and form fields (one gutter everywhere: Apps/Layouts editors,
+     Models, Workspaces). The tab button's own padding shapes the pill. */
+  padding: 0;
   flex-shrink: 0;
 }
 
