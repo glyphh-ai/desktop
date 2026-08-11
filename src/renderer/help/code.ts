@@ -13,7 +13,7 @@
 
 import { showDropDetail, confirmAction } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
-import { gotoSection } from "./navigation.js";
+import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
@@ -4730,6 +4730,10 @@ export function adoptComposer(host: HTMLElement | null): void {
 };
 
 export function seedComposer(text: string): void {
+  // Seeding the composer LEAVES settings ("+ New with AI", "Edit with AI",
+  // prompt starters) — drop the modal (no-op when absent) so the composer
+  // isn't hidden behind it.
+  closeSettingsModal();
   gotoSection("agent");
   const ta = input();
   if (!ta) return;
