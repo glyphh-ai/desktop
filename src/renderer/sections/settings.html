@@ -1087,33 +1087,38 @@
                    org-panel,runtime,guardrails}.ts. ══ -->
 
               <!-- API Keys — user-scoped gy_ak_ headless-auth keys. -->
+              <!-- API Keys — the standard CRUD grammar: toolbar (search left,
+                   + New right) over the list; + New opens the inline create
+                   form with a breadcrumb back, apps-style. -->
               <div class="settings-panel" data-sub="apikeys">
-                <h2>API Keys</h2>
-                <p class="section-desc">Personal keys for headless SDK/CLI use — pass one as <code>apiKey</code> to authenticate as you. The token is shown once on creation.</p>
                 <div id="apikeys-error" class="settings-error hidden"></div>
 
-                <div id="apikeys-new-token" class="acct-section hidden" style="border:1px solid var(--accent);margin-bottom:16px;">
-                  <p class="section-desc" style="color:var(--accent);margin:0 0 8px;">Copy your key now — it won't be shown again.</p>
-                  <div class="settings-inline">
-                    <input id="apikeys-new-token-value" class="settings-input" readonly onfocus="this.select()" />
-                    <button id="apikeys-new-token-copy" class="action-btn primary" type="button">Copy</button>
+                <div id="apikeys-list-view">
+                  <div class="crud-toolbar">
+                    <input id="apikeys-search" type="text" class="crud-search" placeholder="Search keys..." spellcheck="false" autocomplete="off" />
+                    <button id="apikeys-new-btn" class="action-btn primary" type="button">+ New key</button>
                   </div>
+                  <div id="apikeys-empty" class="crud-empty hidden">No keys yet.</div>
+                  <div id="apikeys-list" class="mbr-list"></div>
                 </div>
 
-                <h3 class="acct-row-head">New key</h3>
-                <div class="acct-row">
-                  <div class="acct-field acct-field-wide">
-                    <label class="settings-label" for="apikeys-label">Label</label>
+                <div id="apikeys-editor" class="crud-inline-form hidden">
+                  <div class="crud-inline-header">
+                    <a class="crud-breadcrumb-back" id="apikeys-back-link">&larr; API keys</a>
+                    <div class="crud-spacer"></div>
+                    <button id="apikeys-create-btn" class="action-btn primary" type="button">Create key</button>
+                  </div>
+                  <label class="settings-label" for="apikeys-label">Label</label>
+                  <input id="apikeys-label" type="text" class="settings-input" placeholder="e.g. CI deploy" spellcheck="false" autocomplete="off" />
+                  <span class="settings-hint" style="display:block;margin-top:6px;">Personal key for headless SDK/CLI use — pass it as <code>apiKey</code> to authenticate as you. The token is shown once, right here, on creation.</span>
+                  <div id="apikeys-new-token" class="acct-section hidden" style="border:1px solid var(--accent);margin-top:16px;">
+                    <p class="section-desc" style="color:var(--accent);margin:0 0 8px;">Copy your key now — it won't be shown again.</p>
                     <div class="settings-inline">
-                      <input id="apikeys-label" type="text" class="settings-input" placeholder="e.g. CI deploy" spellcheck="false" autocomplete="off" />
-                      <button id="apikeys-create-btn" class="action-btn primary" type="button">Create key</button>
+                      <input id="apikeys-new-token-value" class="settings-input" readonly onfocus="this.select()" />
+                      <button id="apikeys-new-token-copy" class="action-btn primary" type="button">Copy</button>
                     </div>
                   </div>
                 </div>
-
-                <h3 class="acct-row-head">Your keys</h3>
-                <div id="apikeys-empty" class="crud-empty hidden">No keys yet.</div>
-                <div id="apikeys-list" class="mbr-list"></div>
               </div>
 
               <!-- Support — the stored, threaded ticketing system (list / thread

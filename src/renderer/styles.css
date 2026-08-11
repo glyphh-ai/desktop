@@ -6248,6 +6248,7 @@ ol.docs-list li::before {
 .settings-panel[data-sub="general"],
 .settings-panel[data-sub="appearance"],
 .settings-panel[data-sub="drips"],
+.settings-panel[data-sub="apikeys"],
 .settings-panel[data-sub="account"] { padding-top: 14px; }
 
 .settings-panel.active {

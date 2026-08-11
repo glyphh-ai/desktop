@@ -66,6 +66,19 @@ function transport(): ApiKeysTransport | null {
 const $ = (id: string) => document.getElementById(id);
 let keys: ApiKey[] = [];
 let wired = false;
+let query = "";
+
+/** List ⇄ inline create form (the standard CRUD view switch). */
+function showEditor(open: boolean): void {
+  $("apikeys-list-view")?.classList.toggle("hidden", open);
+  $("apikeys-editor")?.classList.toggle("hidden", !open);
+  if (open) {
+    // Fresh form every open — no stale label, no stale one-time token.
+    const input = $("apikeys-label") as HTMLInputElement | null;
+    if (input) { input.value = ""; input.focus(); }
+    $("apikeys-new-token")?.classList.add("hidden");
+  }
+}
 
 function setError(msg: string): void {
   const el = $("apikeys-error");
@@ -78,9 +91,12 @@ function render(): void {
   const list = $("apikeys-list");
   const empty = $("apikeys-empty");
   if (!list) return;
-  empty?.classList.toggle("hidden", keys.length > 0);
+  const q = query.toLowerCase();
+  const shown = q ? keys.filter((k) => `${k.label || ""} ${k.prefix}`.toLowerCase().includes(q)) : keys;
+  empty?.classList.toggle("hidden", shown.length > 0);
+  if (empty) empty.textContent = keys.length === 0 ? "No keys yet." : `No keys matching "${query}"`;
   list.innerHTML = "";
-  for (const k of keys) {
+  for (const k of shown) {
     const row = document.createElement("div");
     row.className = "a4-row";
     const when = k.createdAt ? new Date(k.createdAt).toLocaleDateString() : "";
@@ -105,6 +121,12 @@ export async function loadApiKeys(): Promise<void> {
 export function initApiKeys(): void {
   if (wired) return;
   wired = true;
+  $("apikeys-new-btn")?.addEventListener("click", () => showEditor(true));
+  $("apikeys-back-link")?.addEventListener("click", () => showEditor(false));
+  $("apikeys-search")?.addEventListener("input", () => {
+    query = (($("apikeys-search") as HTMLInputElement | null)?.value || "").trim();
+    render();
+  });
   $("apikeys-create-btn")?.addEventListener("click", async () => {
     const input = $("apikeys-label") as HTMLInputElement | null;
     const label = (input?.value || "").trim();
