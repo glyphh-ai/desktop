@@ -90,7 +90,9 @@ if (typeof window !== 'undefined') {
   // Renders a fixed overlay reporting what THIS device computed for the top
   // chrome, so the band can be debugged from the user's real screen.
   try {
-    if (typeof document !== 'undefined' && (/[?&]diag=1/.test(location.search) || location.hash === '#diag')) {
+    // TEMPORARILY ALWAYS-ON for web while hunting the top-band bug — the query/
+    // hash triggers kept getting lost across the boot navigation.
+    if (typeof document !== 'undefined') {
       const paint = () => {
         const g = (id) => document.getElementById(id);
         const R = (el) => { if (!el) return 'MISSING'; const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return `top=${Math.round(r.top)} h=${Math.round(r.height)} disp=${s.display} bg=${s.backgroundColor}`; };
@@ -111,7 +113,7 @@ if (typeof window !== 'undefined') {
         d.style.cssText = 'position:fixed;top:70px;left:8px;z-index:2147483647;background:#000;color:#0f0;font:11px/1.5 monospace;padding:10px;border:1px solid #0f0;max-width:92vw;white-space:pre-wrap;pointer-events:none;';
         d.textContent = lines.join('\n');
       };
-      const kick = () => { paint(); setTimeout(paint, 2000); setTimeout(paint, 5000); };
+      const kick = () => { paint(); setTimeout(paint, 2000); setTimeout(paint, 5000); setTimeout(paint, 10000); };
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', kick);
       else kick();
     }
