@@ -1670,6 +1670,7 @@ function renderThread(): void {
   // this one's send must not wear its stop state).
   syncThinking();
   syncActiveRunAttach();   // attach to / detach from a run happening on another surface
+  paintAskDock();          // re-bind the approval dock to the session now on screen
   const thread = el<HTMLDivElement>("code-thread");
   if (!thread) return;
   wireThreadScroll(thread);
@@ -3204,10 +3205,11 @@ function dockHead(label: string, tone: string, item: AskDockItem): HTMLElement {
     step.textContent = `Step ${item.step + 1} of ${item.questions.length}`;
     head.appendChild(step);
   }
-  if (askQueue.length > 1) {
+  const mine = askQueue.filter((q) => q.chatId === item.chatId).length;
+  if (mine > 1) {
     const count = document.createElement("span");
     count.className = "cad-count";
-    count.textContent = `1 of ${askQueue.length} waiting`;
+    count.textContent = `1 of ${mine} waiting`;
     head.appendChild(count);
   }
   return head;
@@ -3216,7 +3218,10 @@ function dockHead(label: string, tone: string, item: AskDockItem): HTMLElement {
 function paintAskDock(): void {
   const dock = el<HTMLDivElement>("code-ask-dock");
   if (!dock) return;
-  const item = askQueue[0];
+  // The dock is bound to the AGENT WINDOW in view — only show the approval/ask
+  // for the CURRENT session. A background session's approval waits (and pings via
+  // pushDockNote) instead of bleeding into whatever session is on screen.
+  const item = askQueue.find((q) => q.chatId === currentId);
   dock.hidden = !item;
   dock.textContent = "";
   stopDockTicker();
