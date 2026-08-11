@@ -154,10 +154,21 @@ export function initApiKeys(): void {
       await loadApiKeys();
     } catch (e) { formError((e as Error).message); }
   });
-  $("apikeys-new-token-copy")?.addEventListener("click", () => {
-    const val = ($("apikeys-new-token-value") as HTMLInputElement | null)?.value || "";
-    void (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard?.(val);
+  $("apikeys-new-token-copy")?.addEventListener("click", async () => {
+    const input = $("apikeys-new-token-value") as HTMLInputElement | null;
+    const val = input?.value || "";
+    if (!val) return;
+    // Browser-native first (works on web, where the bridge has no
+    // copyToClipboard and the old call was a silent no-op); desktop IPC and
+    // the select+execCommand path as fallbacks.
+    let copied = false;
+    try { await navigator.clipboard.writeText(val); copied = true; } catch { /* permission/insecure context */ }
+    if (!copied) {
+      const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
+      if (ipc) { void ipc(val); copied = true; }
+    }
+    if (!copied && input) { input.focus(); input.select(); copied = document.execCommand("copy"); }
     const btn = $("apikeys-new-token-copy") as HTMLButtonElement | null;
-    if (btn) { btn.textContent = "Copied"; setTimeout(() => { btn.textContent = "Copy"; }, 1600); }
+    if (btn) { btn.textContent = copied ? "Copied" : "Select + ⌘C"; setTimeout(() => { btn.textContent = "Copy"; }, 1800); }
   });
 }
