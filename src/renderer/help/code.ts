@@ -26,7 +26,7 @@ import {
   type RemoteChat, type AttachHandle,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
-import { runHeroFlow, syncDashParticles } from "./dashboard.js";
+import { greeting } from "./dashboard.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -664,6 +664,27 @@ const GHOST_QUOTES = [
 ];
 let ghostIdx = Math.floor(Math.random() * GHOST_QUOTES.length);
 let ghostTimer: ReturnType<typeof setInterval> | null = null;
+
+// The new-session landing's title mirrors the HOME hero greeting exactly:
+// the same time-of-day bucket + the same user name. The name is fetched the
+// same way the home gets it (dashboard-data) and cached here; the FIRST paint
+// uses whatever's cached (possibly empty → "Welcome back"), then this backfills
+// the on-screen title once the name resolves. `greeting()` is re-evaluated on
+// every landing paint so the morning/afternoon/evening bucket stays current.
+let ghostName = "";
+let ghostNameFetched = false;
+function ensureGhostName(): void {
+  if (ghostNameFetched) return;
+  ghostNameFetched = true;
+  void window.glyphh.dashboardData?.().then((d) => {
+    const n = (d?.name || "").trim();
+    if (!n) return;
+    ghostName = n;
+    // Backfill the title in place if the landing is still on screen.
+    const t = document.querySelector<HTMLElement>(".code-ghost-title");
+    if (t) t.textContent = greeting(ghostName);
+  }).catch(() => { /* landing already shows the fallback */ });
+}
 
 function stopGhostRotation(): void {
   if (ghostTimer) { clearInterval(ghostTimer); ghostTimer = null; }
@@ -1670,10 +1691,17 @@ function renderThread(): void {
     mark.className = "code-ghost-mark";
     mark.src = "brand/glyphh-mark-purple.png";
     mark.alt = "";
+    // TITLE = the home hero's greeting (title font): time-of-day + user name.
+    // Re-evaluated here so the bucket is current; name backfills async.
+    ensureGhostName();
+    const title = document.createElement("div");
+    title.className = "code-ghost-title";
+    title.textContent = greeting(ghostName);
+    // SAYING = the rotating slogan (secondary font); rotation preserved.
     const quote = document.createElement("div");
     quote.className = "code-ghost-quote";
     quote.textContent = GHOST_QUOTES[ghostIdx];
-    ghost.append(mark, quote);
+    ghost.append(mark, title, quote);
     inner.appendChild(ghost);
     startGhostRotation(quote);
     return;
@@ -4016,24 +4044,10 @@ export function initCode(): void {
   };
   // The rail's + starts a new Code session, straight to the agent.
   el("code-new-chat")?.addEventListener("click", () => newSessionLanding());
-  /** HOME — the rail's mark and the wall's first tile. ALWAYS returns to the
-   *  + New Session landing (everything closes first); the typed shortcut is
-   *  the rail's + New session, which honors the active tab. */
-  const goHome = (): void => {
-    currentId = "";
-    void saveStore();
-    (window as unknown as { __wbCloseAllForNewSession?: () => void }).__wbCloseAllForNewSession?.();
-    renderHistory();
-    renderThread();
-    void checkWorkdirGate();
-    syncSpaceAttrs();
-    gotoSection("dashboard");
-    // The landing was covered until this moment, so its flow engine is either
-    // stopped or running the space the user left. Reconcile once it is on
-    // screen — a frame later, when offsetParent is real again.
-    requestAnimationFrame(() => syncDashParticles());
-  };
-  el("rail-home-btn")?.addEventListener("click", goHome);
+  // HOME — the rail's mark and the wall's first tile. Home IS the new-session
+  // screen now (the dashboard is no longer the landing), so the rail's Home
+  // button runs the exact same full-reset landing as the rail's + New Session.
+  el("rail-home-btn")?.addEventListener("click", () => newSessionLanding());
   // The GLYPHH icon (command-center tile + rail home tile) opens the NEW SESSION
   // screen — same as the rail's + New Session — not the dashboard.
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionLanding;

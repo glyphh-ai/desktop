@@ -103,20 +103,21 @@ void (async () => {
       return;
     }
   } catch { /* fall through */ }
-  // Every restart lands on the HOME page — no matter what was open before.
-  // (?section / ?solo panels above are system windows, not normal boots.)
-  gotoSection("dashboard");
+  // Every restart lands on the NEW-SESSION screen — the agent landing, not the
+  // dashboard — no matter what was open before. (?section / ?solo panels above
+  // are system windows, not normal boots.)
+  gotoSection("agent");
   // Lift the boot veil only once the LANDING is actually hosted — the wall
   // mounts first and its bare paint was the flash between splash and Home.
   let veilTries = 0;
   let settled = 0;
   const lift = (): void => {
-    // The landing is UP when its section holds real layout boxes — but frame
-    // ONE of the card's zoom is mostly bare wall, which was still the flash.
-    // Wait until the box is present AND stable for ~20 frames so the first
-    // visible frame is the settled new-chat screen, then lift.
-    const dash = document.querySelector('.help-section[data-section="dashboard"]');
-    const up = !!dash && dash.getClientRects().length > 0;
+    // The landing is UP when the agent surface holds its rendered thread — but
+    // frame ONE of the card's zoom is mostly bare wall, which was still the
+    // flash. Wait until the agent box is present AND stable for ~20 frames so
+    // the first visible frame is the settled new-session screen, then lift.
+    const agent = document.querySelector('.code-agent .code-thread');
+    const up = !!agent && agent.getClientRects().length > 0;
     settled = up ? settled + 1 : 0;
     if (settled >= 20 || veilTries++ > 360) {
       document.body.classList.remove("wb-booting");

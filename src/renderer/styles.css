@@ -12805,12 +12805,12 @@ select:focus {
 .session-head-menu .code-menu-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-3); }
 .session-head-menu .code-menu-item.danger svg { color: #e5484d; }
 .session-head-kebab { -webkit-app-region: no-drag; }
-/* No open session (a landing): hide the kebab — SessionHeader isn't rendered. */
-.code-agent-head.head-landing #code-session-kebab-wrap { display: none; }
-/* New-chat / landing screen: no header at all (the head carries no drag region
-   of its own — the app drag strip is #shell-drag-strip — so hiding it is safe).
-   A real open session keeps the normal head (back / title / pin / kebab). */
-.code-agent-head.head-landing { display: none; }
+/* New-chat / landing screen: the header STAYS — the code menu (history / +
+   new / session kebab / view toggles) lives in the top-right and must be
+   reachable from the landing. Only the LEFT side (back / locus / title) is
+   suppressed: there's no open session to name, so ‹ + locus + title would be
+   meaningless. The right-side control cluster renders as normal. */
+.code-agent-head.head-landing #code-session-back { display: none; }
 .code-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -13244,7 +13244,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
   padding: 24px;
 }
 .code-ghost-mark {
@@ -13253,13 +13253,24 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   opacity: 0.82;
   user-select: none;
   -webkit-user-drag: none;
+  margin-bottom: 8px;
 }
+/* TITLE — mirrors the home hero's greeting (.dash-greeting): title font. */
+.code-ghost-title {
+  font-family: var(--font-sans);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-align: center;
+  margin: 0;
+}
+/* SAYING — the rotating slogan, in the secondary font (.dash-subtitle). */
 .code-ghost-quote {
   max-width: 440px;
   text-align: center;
-  color: var(--white);
-  opacity: 0.8;
-  font-size: 13.5px;
+  font-size: 15px;
+  color: var(--text-2);
   line-height: 1.65;
   transition: opacity 0.5s ease;
 }

@@ -38,7 +38,7 @@ interface DashboardData {
 
 let chart: { destroy: () => void } | null = null;
 
-function greeting(name: string): string {
+export function greeting(name: string): string {
   const h = new Date().getHours();
   const part = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   return name ? `${part}, ${name}` : "Welcome back";
