@@ -4180,6 +4180,13 @@ export function initCode(): void {
   // the home-panel document (owns gotoSection + the switcher overlay), NOT
   // renderer.ts (the index shell — different webContents, no overlay reach).
   document.addEventListener("keydown", (e) => {
+    // ⌘⇧. — a NEW agent session. Matched on e.code: with shift held, e.key is
+    // ">" on most layouts, so the plain-key check below can never see it.
+    if (e.code === "Period" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+      return;
+    }
     if (e.key === "." && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
     // ⌘⇧Space — same launcher (mirrors the OS-wide global shortcut).
     if (e.code === "Space" && e.shiftKey && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
