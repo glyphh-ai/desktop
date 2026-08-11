@@ -523,6 +523,12 @@ export function toLegacyDrips(items) {
  * @param {Array<Record<string, unknown>>} apps
  */
 export function toLegacyPanelApps(apps) {
+  // mine() wire rows carry `kind` ('web' | 'native' | 'glyphh') + nativeRef +
+  // config, not the desktop's derived fields — mirror org-apps.ts's toRow here
+  // so the shared renderer sees ONE shape. Without the kind fallbacks a user's
+  // GLYPHH apps (kind 'glyphh': prodUrl null until deployed, no url) failed
+  // both surface filters (rail: `url || isBrowser === false`; wall:
+  // `url || archetype === 'glyphh-app'`) and vanished from both lists.
   return (apps ?? []).map((a) => ({
     id: String(a.id ?? a.slug ?? ''),
     orgId: String(a.orgId ?? ''),
@@ -534,10 +540,10 @@ export function toLegacyPanelApps(apps) {
     // stored url); legacy/deployed rows may carry `url` directly. Without this
     // the Apps screen's (url || !isBrowser) filter drops every default app.
     url: a.url ?? a.prodUrl ?? null,
-    isBrowser: a.isBrowser ?? true,
-    execPath: a.execPath ?? null,
-    appArchetype: a.appArchetype ?? null,
-    launchConfig: a.launchConfig ?? null,
+    isBrowser: a.isBrowser ?? (a.kind ? a.kind !== 'native' && a.kind !== 'glyphh' : true),
+    execPath: a.execPath ?? a.nativeRef ?? null,
+    appArchetype: a.appArchetype ?? (a.kind === 'glyphh' ? 'glyphh-app' : a.kind ?? null),
+    launchConfig: a.launchConfig ?? a.config ?? null,
     access: a.access ?? 'members',
     owned: a.owned ?? true,
     latestVersion: a.latestVersion ?? null,

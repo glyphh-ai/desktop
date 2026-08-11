@@ -1934,6 +1934,23 @@ async function init(): Promise<void> {
         cells, layoutRow, kind: "layout",
       };
     };
+    /** The wall tile for an APP row — shared by the first build and by apps
+     *  that appear later (glyphh:apps-changed), so a Glyphh app the user
+     *  creates mid-session joins the wall like a new layout does. */
+    const appTileOf = (a: { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null }): EchoTile => {
+      const slug = (a.slug || a.id).toLowerCase();
+      const icon = { slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null };
+      return {
+        name: a.name, slug, appId: a.id, url: a.url || undefined,
+        glyphh: a.appArchetype === "glyphh-app" || undefined,
+        iconUrl: appIconUrl(icon) || undefined, kind: "app",
+        orderKey: `app:${slug}`,
+      };
+    };
+    /** APPS ONLY — the wall's app filter (no self row, no nav page tiles; a
+     *  glyphh app rides its archetype: it has no url until deployed). */
+    const wallAppRow = (a: { url?: string | null; appArchetype?: string | null }): boolean =>
+      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (!!a.url || a.appArchetype === "glyphh-app");
     const buildWall = (bands: EchoTile[][]): void => {
       wallBands = bands.map((band) => band.map((t) => makeTileEntry(t)));
       positionWall();
@@ -1959,7 +1976,7 @@ async function init(): Promise<void> {
     ]).then(([rows, layouts, orderPref]) => {
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
-      const appsAll = (rows || []).filter((a) => a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (a.url || a.appArchetype === "glyphh-app"));
+      const appsAll = (rows || []).filter(wallAppRow);
       echoRows = (rows || []);
       appsAll.sort((x, y) => (y.appArchetype === "glyphh-app" ? 1 : 0) - (x.appArchetype === "glyphh-app" ? 1 : 0));
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
@@ -1972,17 +1989,7 @@ async function init(): Promise<void> {
       const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
       const seen = new Set(inOrder.map((e) => e.key));
       const ordered = [...inOrder, ...all.filter((e) => !seen.has(e.key))];
-      const iconOf = (a: PanelRowLite): { slug: string; url: string | null; execPath: string | null; appArchetype: string | null; connection: { accountId?: string; pipedreamSlug: string } | null } =>
-        ({ slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null });
-      const glyphOf = (a: PanelRowLite): string | undefined =>
-        appIconInner(iconOf(a), a.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined;
-      const toTile = (e: Entry): EchoTile => {
-        if (e.layout) return layoutTileOf(e.layout);
-        const a = e.app!;
-        const slug = (a.slug || a.id).toLowerCase();
-        if (a.appArchetype === "glyphh-nav") return { name: a.name, slug, glyphSvg: glyphOf(a), kind: "app", navApp: { slug: a.slug || a.id, name: a.name, url: a.url, archetype: a.appArchetype, execPath: a.execPath } };
-        return { name: a.name, slug, appId: a.id, url: a.url || undefined, glyphh: a.appArchetype === "glyphh-app" || undefined, iconUrl: appIconUrl(iconOf(a)) || undefined, kind: "app" };
-      };
+      const toTile = (e: Entry): EchoTile => (e.layout ? layoutTileOf(e.layout) : appTileOf(e.app!));
       // ONE band: Browser, then the apps, then the layouts — nothing else.
       // Navigation pages and workspace tools live in the LEFT RAIL now.
       const browserTile: EchoTile = {
@@ -2011,41 +2018,77 @@ async function init(): Promise<void> {
     // layouts), so an edit there — e.g. the layout's SPACE — must repaint
     // the mounted tiles: refresh each layout tile's row in place and
     // redraw (the badge and the space it activates both read layoutRow).
-    const onLayoutsChanged = (): void => {
-      if (!body.isConnected) { document.removeEventListener("glyphh:apps-changed", onLayoutsChanged); return; }
-      void yoApi?.layoutsList?.().then((fresh) => {
-        if (!body.isConnected || !Array.isArray(fresh)) return;
-        const live = new Map(fresh.map((l) => [(l.name || "").toLowerCase(), l]));
+    const onCatalogChanged = (): void => {
+      if (!body.isConnected) { document.removeEventListener("glyphh:apps-changed", onCatalogChanged); return; }
+      void Promise.all([
+        yoApi?.layoutsList?.().catch(() => null) ?? null,
+        yoApi?.panelAppsList?.().catch(() => null) ?? null,
+      ]).then(([fresh, rows]) => {
+        if (!body.isConnected) return;
         let shifted = false;
-        // Existing tiles follow their row; a layout that's gone leaves the wall.
-        for (const e of [...entries]) {
-          if (e.tile.kind !== "layout" || !e.tile.layoutName) continue;
-          const row = live.get(e.tile.layoutName.toLowerCase());
-          if (!row) {
-            if (!e.card) { dropTileEntry(e); shifted = true; }   // never yank an OPEN panel
-            continue;
+        if (Array.isArray(fresh)) {
+          const live = new Map(fresh.map((l) => [(l.name || "").toLowerCase(), l]));
+          // Existing tiles follow their row; a layout that's gone leaves the wall.
+          for (const e of [...entries]) {
+            if (e.tile.kind !== "layout" || !e.tile.layoutName) continue;
+            const row = live.get(e.tile.layoutName.toLowerCase());
+            if (!row) {
+              if (!e.card) { dropTileEntry(e); shifted = true; }   // never yank an OPEN panel
+              continue;
+            }
+            e.tile.layoutRow = row;
+            drawTile(e);
           }
-          e.tile.layoutRow = row;
-          drawTile(e);
+          // A layout made since the wall was built (a starter card, the Layouts
+          // page) joins it — the wall used to be fixed at mount, so anything
+          // created afterwards simply never appeared.
+          const onWall = new Set(entries.filter((e) => e.tile.kind === "layout" && e.tile.layoutName)
+            .map((e) => e.tile.layoutName!.toLowerCase()));
+          for (const row of fresh) {
+            const key = (row.name || "").toLowerCase();
+            if (!key || onWall.has(key)) continue;
+            const band = wallBands[wallBands.length - 1];
+            if (!band) break;
+            band.push(makeTileEntry(layoutTileOf(row)));
+            shifted = true;
+          }
         }
-        // A layout made since the wall was built (a starter card, the Layouts
-        // page) joins it — the wall used to be fixed at mount, so anything
-        // created afterwards simply never appeared.
-        const onWall = new Set(entries.filter((e) => e.tile.kind === "layout" && e.tile.layoutName)
-          .map((e) => e.tile.layoutName!.toLowerCase()));
-        for (const row of fresh) {
-          const key = (row.name || "").toLowerCase();
-          if (!key || onWall.has(key)) continue;
-          const band = wallBands[wallBands.length - 1];
-          if (!band) break;
-          band.push(makeTileEntry(layoutTileOf(row)));
-          shifted = true;
+        // APPS join and leave the wall the same way — an app the user adds
+        // mid-session (the Apps page, the agent's create_app_entry) appears
+        // without a restart; a deleted one leaves (never an OPEN panel).
+        if (Array.isArray(rows)) {
+          echoRows = rows;   // .dip / layout-cell resolution sees the fresh set too
+          const liveApps = new Map(rows.filter(wallAppRow).map((a) => [(a.slug || a.id).toLowerCase(), a]));
+          for (const e of [...entries]) {
+            if (e.tile.kind !== "app" || !e.tile.appId) continue;   // fixed tiles (Home) have no appId
+            const row = e.tile.slug ? liveApps.get(e.tile.slug) : undefined;
+            if (!row) {
+              if (!e.card) { dropTileEntry(e); shifted = true; }
+              continue;
+            }
+            liveApps.delete(e.tile.slug!);   // seen — the leftovers are NEW
+            // the row is the truth for name/address (a deploy fills in url)
+            if (e.tile.name !== row.name || (e.tile.url || undefined) !== (row.url || undefined)) {
+              e.tile = { ...e.tile, ...appTileOf(row), sticky: e.tile.sticky };
+              drawTile(e);
+            }
+          }
+          for (const a of liveApps.values()) {
+            const band = wallBands[wallBands.length - 1];
+            if (!band) break;
+            // new apps slot in BEFORE the layout tiles, matching the build order
+            const entry = makeTileEntry(appTileOf(a));
+            const li = band.findIndex((x) => x.tile.kind === "layout");
+            if (li >= 0) band.splice(li, 0, entry);
+            else band.push(entry);
+            shifted = true;
+          }
         }
         if (shifted) positionWall();
         dirty = true;
       }).catch(() => { /* next visit refetches */ });
     };
-    document.addEventListener("glyphh:apps-changed", onLayoutsChanged);
+    document.addEventListener("glyphh:apps-changed", onCatalogChanged);
 
     // ── Open panels: click a tile and its LIVE webview zooms up from the
     // tile's spot into a slot row anchored high, so the wall stays visible
@@ -2207,20 +2250,27 @@ async function init(): Promise<void> {
     /** Slot rects: up to 3 across, wrapping, anchored near the top — the
      *  wall's lower rows peek out beneath. */
     /** Loose (non-layout) cards tile like the OLD LAYOUT MANAGER's rails:
-     *  a new panel STACKS under an existing one (two to a column), then
-     *  starts a new column to the side — and the agent keeps its column to
-     *  itself, so the first panel opens BESIDE it, never squeezed beneath. */
+     *  a new panel opens BESIDE the others (its own column, up to 3 across),
+     *  then STACKS under an existing app column (two to a column) once the
+     *  row is full. The agent keeps its column to itself — nothing is ever
+     *  squeezed beneath it — and it keeps the LEFT column ("agent pinned
+     *  left, grid to its right"), so an app opened before OR after the agent
+     *  always lands to the agent's right, never over or left of it. */
     const flowColumns = (cards: TileEntry[]): TileEntry[][] => {
       const cols: TileEntry[][] = [];
       for (const e of cards) {
         const isAgent = e.tile.kind === "agent";
-        const target = isAgent
+        // Prefer a NEW column beside the others ("the next slot") while
+        // there is row width for one; only then stack two to a column.
+        const target = isAgent || cols.length < 3
           ? undefined
           : cols.find((col) => col.length < 2 && !col.some((c) => c.tile.kind === "agent"));
         if (target) target.push(e);
         else cols.push([e]);
       }
-      return cols;
+      const agentCols = cols.filter((col) => col.some((c) => c.tile.kind === "agent"));
+      const appCols = cols.filter((col) => !col.some((c) => c.tile.kind === "agent"));
+      return [...agentCols, ...appCols];
     };
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
       // EDGE-TO-EDGE like the layout grid: seams only BETWEEN cards.
@@ -2318,9 +2368,7 @@ async function init(): Promise<void> {
       const dripBtn = body.querySelector<HTMLElement>(".echo-drip-btn")!;
       const DRIP_EMOJI: Record<string, string> = { fireworks: "🎆", rain: "🌧️", confetti: "🎉", snow: "❄️", hearts: "💖", bubbles: "🫧" };
       const closeDripPop = (): void => dripPop.classList.add("hidden");
-      dripBtn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        if (!dripPop.classList.contains("hidden")) { closeDripPop(); return; }
+      const openDripPop = async (): Promise<void> => {
         const yoD = (window as unknown as { glyphh?: { dripsBuiltinEffects?: () => Promise<string[]>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).glyphh;
         const [builtinsRaw, customsRaw] = await Promise.all([
           yoD?.dripsBuiltinEffects?.().catch(() => [] as string[]) ?? [],
@@ -2348,9 +2396,21 @@ async function init(): Promise<void> {
           dripPop.appendChild(empty);
         }
         dripPop.classList.remove("hidden");
+      };
+      dripBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (!dripPop.classList.contains("hidden")) { closeDripPop(); return; }
+        void openDripPop();
       });
+      // THE global drips opener — the typed `.dip` watcher (help/dip-watch.ts)
+      // lands here from anywhere in the app. Re-published on every Echo mount
+      // so it always points at the LIVE pop.
+      (window as unknown as { __glyphhOpenDrips?: () => void }).__glyphhOpenDrips = () => { void openDripPop(); };
       document.addEventListener("click", (ev) => {
         if (!dripPop.classList.contains("hidden") && !dripPop.contains(ev.target as Node)) closeDripPop();
+      });
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && !dripPop.classList.contains("hidden")) closeDripPop();
       });
     }
     // B1: the layout bar — one control that closes the whole layout. Shown only
@@ -3124,12 +3184,16 @@ async function init(): Promise<void> {
         // fanning out its own cells, and a pin never retargets itself)
         const pinned = openList.find((x) => x.tile.sticky && x.card && x !== e);
         if (pinned && !openingLayout) { retargetCard(pinned, t); return; }
-        // B3: OPEN = WIPE-THEN-MOUNT. A wall app-tile click (this direct path,
-        // not ctl.openApp) replaces the current layout AND any open apps — one
-        // app at a time. NEVER during a layout fan-out (openingLayout guards the
-        // cells this same function builds), and never when this very card is the
-        // only thing open.
-        if (!openingLayout && openList.some((x) => x !== e && x.card)) resetEcho();
+        // B3: an app open WIPES only when a LAYOUT owns the stage — a layout
+        // owns the whole grid, so a new app replaces it rather than jamming
+        // into one of its cells (the reset saves its memory so "last" can
+        // resume). Otherwise apps ACCUMULATE into the next flow slot — beside
+        // the agent (which keeps the left column) or the open apps. This is
+        // THE rule for every open path: the wall tile click lands here
+        // directly, and ctl.openApp / openAppCard / the agent's open_app all
+        // route through this same function. NEVER during a layout fan-out
+        // (openingLayout guards the cells this same function builds).
+        if (!openingLayout && openList.some((x) => x !== e && x.layoutId != null)) resetEcho();
         const card = openShell(e);
         if (!card) return;
         mountAppIntoCard(e, card);
@@ -3262,13 +3326,9 @@ async function init(): Promise<void> {
         const pinned = openList.find((x) => x.tile.sticky && x.card);
         if (pinned) { retargetCard(pinned, tile); return; }
         // An app open ADDS to the next slot when the stage is just apps — apps
-        // accumulate side by side. It only WIPES when the stage is a LAYOUT: a
-        // layout owns the whole grid, so a new app replaces it rather than
-        // jamming into one of its cells. (Opening a LAYOUT always replaces —
-        // see openLayoutInEchoArranged. A PIN above already handled the sticky
-        // case. The reset saves an open layout's memory so "last" can resume it.)
-        const inLayout = openList.some((e) => e.layoutId != null);
-        if (inLayout) resetEcho();
+        // accumulate side by side; only a LAYOUT stage wipes. That ONE rule
+        // lives in activateTile (B3), which this call lands in — the wall's
+        // direct tile clicks share it, so the two paths can never disagree.
         activateTile(adHoc(tile));
       },
       openLayout: (layout) => openLayoutInEcho(layout),

@@ -14,6 +14,7 @@ import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js"
 import { loadAgents, initAgentsEvents } from "./agents.js";
 import { initSkills } from "./skills.js";
 import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
+import { wireDipWatcher } from "./dip-watch.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadModelsAdmin } from "./models-admin.js";
@@ -596,6 +597,9 @@ export function initHelp() {
   initSkills();
   initCode();
   wireGlobalDotCommands();
+  // Typing the exact `.dip` sequence ANYWHERE (agent input, any field, or no
+  // field at all) opens the drip picker — see help/dip-watch.ts.
+  wireDipWatcher();
   // The shell steers sections too (the first-run walkthrough lands on Home).
   window.glyphh.onGotoSection?.((section) => {
     // "settings:account" → section + sub-panel (the nav apps use this).
