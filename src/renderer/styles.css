@@ -3285,6 +3285,11 @@ body.account-locked #dl-btn-wrap {
   display: block;
 }
 
+/* The dashboard landing is RETIRED (the app boots into the new-session
+   screen). Nothing routes here anymore — hard-hide it so a stale .active can
+   never bleed "Welcome back" + the old mascot through an open layout. */
+.help-section[data-section="dashboard"] { display: none !important; }
+
 /* Sections with split detail views need full height */
 .help-section[data-section="dashboard"].active,
 .help-section[data-section="apps"].active,
@@ -4579,6 +4584,10 @@ ol.docs-list li::before {
   transition: background 0.15s, color 0.15s;
 }
 .settings-modal-close:hover { background: var(--active-bg); color: var(--text); }
+/* The floating close X owns the modal's top-right corner — page toolbars keep
+   their primary action CLEAR of it (the Layouts "Open layout" button sat under
+   the X). */
+.settings-modal-body .crud-toolbar { padding-right: 34px; }
 .settings-modal-close svg { width: 17px; height: 17px; }
 .settings-modal-body {
   display: flex;

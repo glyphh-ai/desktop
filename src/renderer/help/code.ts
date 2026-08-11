@@ -1165,7 +1165,7 @@ function leaveSessionToLanding(): void {
   renderThread();
   void checkWorkdirGate();
   syncSpaceAttrs();
-  gotoSection("dashboard");
+  gotoSection("agent");
 }
 
 /**
@@ -4116,7 +4116,7 @@ export function initCode(): void {
     void checkWorkdirGate();
     const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent");
     if (hosted) return;
-    gotoSection("dashboard");
+    gotoSection("agent");
   };
 
   /** The RAIL's "+ New session" — the FULL reset: every panel closes, the
@@ -4180,7 +4180,7 @@ export function initCode(): void {
     void checkWorkdirGate();
     if (!navigate) return;
     if (last) gotoSection("agent");
-    else gotoSection("dashboard");
+    else gotoSection("agent");
     paintCw();
   };
   // The command centre / workbench used to switch spaces; with one type they

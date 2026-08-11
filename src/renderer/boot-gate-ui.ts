@@ -135,7 +135,7 @@ function showTutorial(cb: BootGateCallbacks, onWebComplete?: () => void): void {
     }
     // First run ends at HOME — the dashboard's starters and schedule are the
     // natural next step, not whatever section the panel restored to.
-    void (window.glyphh as unknown as { homeGotoSection?: (s: string) => Promise<unknown> }).homeGotoSection?.("dashboard");
+    void (window.glyphh as unknown as { homeGotoSection?: (s: string) => Promise<unknown> }).homeGotoSection?.("agent");
   }
 
   // Start first step
