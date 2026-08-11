@@ -44,6 +44,12 @@ interface WbApi {
   gitInfo: (root: string) => Promise<{ isRepo: boolean; branch?: string }>;
   onCwdChanged: (cb: (dir: string | null) => void) => () => void;
   onFileChanged: (cb: (absPath: string) => void) => () => void;
+  /** Git state moved (.git/index / .git/HEAD) — one coalesced signal per git
+   *  operation. Optional: older preloads may not expose it yet. */
+  onGitChanged?: (cb: () => void) => () => void;
+  /** WEB target only (wb-relay.js): can the machine-fs transport answer right
+   *  now? Drives the honest desktop-offline / signed-out panel states. */
+  webFsStatus?: () => Promise<"ok" | "desktop-offline" | "signed-out">;
   listDir: (dir: string) => Promise<{ entries: FileEntry[]; error?: string }>;
   searchFiles: (dir: string, query: string) => Promise<{ entries: Array<{ name: string; rel: string; path: string; kind: "dir" | "file" }>; truncated?: boolean; error?: string }>;
   pickFile: () => Promise<string | null>;
@@ -4504,8 +4510,68 @@ async function init(): Promise<void> {
     for (const id of ids) closeSlot(id);
   }
 
+  // ── Live fs-backed panel registry ──
+  // The Files / Diff / Monaco renderers mount into TWO hosts: rail slots
+  // (.ws-rail-slot-body) and Echo cards (.echo-card-body). The watcher fan-in
+  // used to find panels by the rail DOM selector only, so panels on the wall
+  // never refreshed. Each renderer now registers its (slot, body) here on
+  // mount; stale entries drop off via isConnected.
+  interface LiveFsPanel { slot: Slot; body: HTMLElement }
+  const liveFsPanels = new Set<LiveFsPanel>();
+  function registerLiveFsPanel(slot: Slot, body: HTMLElement): void {
+    for (const p of [...liveFsPanels]) {
+      if (!p.body.isConnected || p.slot === slot) liveFsPanels.delete(p);
+    }
+    liveFsPanels.add({ slot, body });
+  }
+  function liveFsPanelsOf(view: ViewKind): LiveFsPanel[] {
+    const out: LiveFsPanel[] = [];
+    for (const p of [...liveFsPanels]) {
+      if (!p.body.isConnected) { liveFsPanels.delete(p); continue; }
+      if (p.slot.view === view) out.push(p);
+    }
+    return out;
+  }
+
+  /**
+   * WEB: the Files / Diff / Monaco panels read the ATTACHED DESKTOP's
+   * filesystem over the relay (wb-relay.js). When that transport can't answer
+   * — no desktop attached, or signed out — paint the SAME honest state card
+   * the streamed panels and remote terminal show (panelStateFragment, working
+   * "Try again") instead of an empty tree / dead pane. Desktop always
+   * proceeds. Returns true when the caller should mount its real renderer.
+   */
+  async function webFsReady(body: HTMLElement, retry: () => void): Promise<boolean> {
+    if (!isWebTarget()) return true;
+    const status = window.wb.webFsStatus;
+    if (!status) return true; // no relay wb (unexpected) — let the renderer show its own error state
+    let state: "ok" | "desktop-offline" | "signed-out" = "desktop-offline";
+    try { state = await status(); } catch { state = "desktop-offline"; }
+    if (!body.isConnected) return false;
+    if (state === "ok") {
+      // The machine just became reachable — the boot-time cwd may predate it.
+      if (!cwd) cwd = (await window.wb.getCwd().catch(() => "")) || "";
+      return true;
+    }
+    body.innerHTML = "";
+    const card = document.createElement("div");
+    card.className = "ws-glyphh-app-state";
+    card.style.cssText = "flex:1 1 auto;min-height:0;width:100%;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;background:var(--surface)";
+    card.innerHTML = panelStateFragment(state, {
+      retryAttrs: 'data-fs-retry="1"',
+      ...(state === "desktop-offline"
+        ? { detail: "This panel reads files on your desktop. Open the Glyphh desktop app and sign in, then try again." }
+        : {}),
+    });
+    card.querySelector<HTMLButtonElement>("[data-fs-retry]")?.addEventListener("click", retry);
+    body.appendChild(card);
+    return false;
+  }
+
   // ── Files view ──
   async function renderFilesIntoSlot(body: HTMLElement, slot: FilesSlot): Promise<void> {
+    registerLiveFsPanel(slot, body);
+    if (!(await webFsReady(body, () => { void renderFilesIntoSlot(body, slot); }))) return;
     body.innerHTML = `
       <div class="ws-file-search">
         <input class="file-search-input" type="text" placeholder="Search files…" spellcheck="false" autocomplete="off" />
@@ -4776,6 +4842,8 @@ async function init(): Promise<void> {
   // tree's openFileInMonaco. Persists editor instance across re-renders by
   // keying off the slot id and re-attaching the DOM host.
   async function renderMonacoIntoSlot(body: HTMLElement, slot: MonacoSlot): Promise<void> {
+    registerLiveFsPanel(slot, body);
+    if (!(await webFsReady(body, () => { void renderMonacoIntoSlot(body, slot); }))) return;
     body.innerHTML = `
       <div class="ws-monaco-tabs"></div>
       <div class="ws-monaco-path">
@@ -4804,6 +4872,10 @@ async function init(): Promise<void> {
       const tab = slot.tabs[slot.activeIdx];
       saveBtn.classList.toggle("hidden", !tab?.dirty);
     };
+    // True while a DISK reload is being folded into the live model — the
+    // change event it fires must not mark the tab dirty (it IS the saved
+    // content) or re-arm autosave paths.
+    let suppressExternalReload = false;
     async function saveActive(): Promise<void> {
       const tab = slot.tabs[slot.activeIdx];
       const editor = (host as unknown as { __editor?: { getValue: () => string } }).__editor;
@@ -4991,6 +5063,7 @@ async function init(): Promise<void> {
         // its buffer back into the right tab.
         (host as unknown as { __modelPath?: string }).__modelPath = tab.path;
         model.onDidChangeContent(() => {
+          if (suppressExternalReload) return;
           const t = slot.tabs[slot.activeIdx];
           if (t && !t.dirty) { t.dirty = true; paintSave(); }
         });
@@ -5019,6 +5092,42 @@ async function init(): Promise<void> {
       }
     }
 
+    // DISK → EDITOR live reload: the workdir watcher saw this tab's file
+    // change while the buffer is NOT dirty. Fold the new content into the
+    // EXISTING model in place — never a fresh model (that would drop the
+    // dirty-tracking listener and reset cursor + scroll) — and restore
+    // cursor + scroll around the swap. Focus is never touched.
+    (body as HTMLElement & { __wbMonacoReload?: (abs: string, content: string) => void }).__wbMonacoReload = (abs, content) => {
+      const idx = slot.tabs.findIndex((t) => t.path === abs);
+      if (idx < 0) return;
+      const tab = slot.tabs[idx];
+      if (tab.dirty) return;              // never clobber unsaved edits
+      if (tab.content === content) return;
+      tab.content = content;
+      if (idx !== slot.activeIdx) return; // inactive tabs pick it up on switch
+      const md = isMarkdown(tab.name);
+      if (md && (tab.mode || "preview") === "preview") {
+        const keep = mdHost.scrollTop;
+        mdHost.innerHTML = formatMarkdown(content);
+        mdHost.scrollTop = keep;
+        return;
+      }
+      const h = host as unknown as { __editor?: any; __modelPath?: string };
+      const editor = h.__editor;
+      const model = editor?.getModel?.();
+      if (!editor || !model || h.__modelPath !== abs) return;
+      const pos = editor.getPosition?.();
+      const scrollTop = editor.getScrollTop?.();
+      const scrollLeft = editor.getScrollLeft?.();
+      suppressExternalReload = true;
+      try { model.setValue(content); } finally { suppressExternalReload = false; }
+      try {
+        if (pos) editor.setPosition(model.validatePosition ? model.validatePosition(pos) : pos);
+        if (typeof scrollTop === "number") editor.setScrollTop(scrollTop);
+        if (typeof scrollLeft === "number") editor.setScrollLeft(scrollLeft);
+      } catch { /* the file shrank past the cursor — Monaco's clamp is enough */ }
+    };
+
     previewBtn.addEventListener("click", () => {
       const tab = slot.tabs[slot.activeIdx];
       if (!tab || !isMarkdown(tab.name)) return;
@@ -5038,6 +5147,8 @@ async function init(): Promise<void> {
 
   // ── Diff view ──
   async function renderDiffIntoSlot(body: HTMLElement, slot: DiffSlot): Promise<void> {
+    registerLiveFsPanel(slot, body);
+    if (!(await webFsReady(body, () => { void renderDiffIntoSlot(body, slot); }))) return;
     body.innerHTML = `
       <div class="ws-diff-toolbar">
         <span class="ws-diff-summary">loading…</span>
@@ -5076,9 +5187,18 @@ async function init(): Promise<void> {
       body.querySelectorAll<HTMLElement>(".ws-diff-file").forEach((el) => el.classList.add("collapsed"));
     });
 
+    // Quiet, in-place refresh: after the first paint, keep the CURRENT diff
+    // (and scroll position) on screen while the new one loads — no "loading…"
+    // flash per agent write. Overlapping refreshes resolve to the newest.
+    let painted = false;
+    let refreshSeq = 0;
     async function refresh(): Promise<void> {
-      summary.textContent = "loading…";
+      const seq = ++refreshSeq;
+      if (!painted) summary.textContent = "loading…";
       const res = cwd ? await window.wb.gitDiff(cwd) : { text: "", error: "no folder" };
+      if (seq !== refreshSeq || !body.isConnected) return; // superseded / slot gone
+      painted = true;
+      const keepScroll = filesEl.scrollTop;
       if (res.error) {
         summary.textContent = "error";
         filesEl.innerHTML = `<div class="ws-diff-empty">${res.error}</div>`;
@@ -5127,8 +5247,14 @@ async function init(): Promise<void> {
         }
         filesEl.appendChild(fileEl);
       }
+      // The expanded set was reapplied above — restoring scroll keeps the
+      // hunk the user was reading under their eyes across a refresh.
+      filesEl.scrollTop = keepScroll;
     }
     refreshBtn.addEventListener("click", refresh);
+    // The workdir watcher's fs/git-changed fan-in refreshes THIS render's
+    // closure (quiet + scroll-preserving) instead of poking the button.
+    (body as HTMLElement & { __wbDiffRefresh?: () => void }).__wbDiffRefresh = () => { void refresh(); };
     void refresh();
   }
 
@@ -6658,83 +6784,93 @@ async function init(): Promise<void> {
   // ── Live file updates ──
   // When anything writes under the cwd (commonly the agent during a spec
   // workflow), refresh whatever views are affected:
-  //  - Monaco tabs whose path matches: re-read content, swap model
-  //  - Diff slot: re-fetch (anything in the tree might have moved)
-  //  - Files tree: invalidate loaded children of the dir containing the
-  //    changed path so the next render re-lists; lightweight repaint.
-  // Refresh ONLY the Files slot trees in place — never a full renderRails().
+  //  - Monaco tabs whose path matches: re-read from disk, fold into the live
+  //    model in place (cursor + scroll preserved; dirty buffers untouched)
+  //  - Diff slot: re-fetch quietly (expanded set + scroll preserved), also on
+  //    the coalesced git-changed signal (commit/stage/checkout)
+  //  - Files tree: re-list the OPEN directories in place, keeping expansion +
+  //    scroll — never a from-scratch rebuild that collapses the tree.
+  // Refresh ONLY the affected slots in place — never a full renderRails().
   // A folder under constant churn (a build, a dev server writing files) would
   // otherwise rebuild the entire workbench on every write, twitching the UI and
   // fighting the user's panel drags.
-  function refreshFilesSlotsInPlace(): void {
-    for (const rail of rails) {
-      for (const slot of rail.slots) {
-        if (slot.view !== "files") continue;
-        (slot as FilesSlot).root = null;
-        const body = document.querySelector<HTMLElement>(`.ws-rail-slot[data-slot-id="${slot.id}"] .ws-rail-slot-body`);
-        if (body) void renderFilesIntoSlot(body, slot as FilesSlot);
-      }
+  async function refreshFilesSlotsInPlace(): Promise<void> {
+    for (const { slot, body } of liveFsPanelsOf("files")) {
+      const fslot = slot as FilesSlot;
+      // Never rendered / re-rooted since — the full renderer owns first paint.
+      if (!fslot.root) { void renderFilesIntoSlot(body, fslot); continue; }
+      const treeEl = body.querySelector<HTMLElement>(".ws-files-tree");
+      if (!treeEl) continue;
+      // A live inline edit (rename / new file input) or an active search
+      // outranks a background refresh — repainting would eat the user's
+      // keystrokes or clobber the result list. The next change re-arms.
+      if (treeEl.querySelector(".ws-files-newinput")) continue;
+      const searchInput = body.querySelector<HTMLInputElement>(".file-search-input");
+      if (searchInput && searchInput.value.trim()) continue;
+      // Re-list every OPEN loaded directory (root included). refreshDirNode
+      // merges by path, so surviving subtrees keep their expanded state.
+      const refreshOpen = async (node: TreeNode): Promise<void> => {
+        if (!node.loaded) return;
+        await refreshDirNode(node);
+        for (const c of node.children ?? []) {
+          if (c.kind === "dir" && c.open && c.loaded) await refreshOpen(c);
+        }
+      };
+      await refreshOpen(fslot.root);
+      if (!treeEl.isConnected || !fslot.root) continue; // slot re-rendered mid-listing
+      const keepScroll = treeEl.scrollTop;
+      renderTreeRows(treeEl, fslot.root);
+      treeEl.scrollTop = keepScroll;
     }
   }
-  // Throttle: at most one refresh per window, with a trailing run for changes
-  // that arrive mid-window — caps the refresh rate no matter how fast files churn.
-  const FILES_REFRESH_MS = 1500;
-  let filesRefreshAt = 0;
-  let filesRefreshPending = false;
+  // Coalesce bursts: ONE trailing repaint per burst — an agent writing 50
+  // files causes one re-list, not 50. Continuous churn repaints at most once
+  // per window.
+  const FS_REFRESH_DEBOUNCE_MS = 300;
   let filesRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleFilesRefresh(): void {
-    const now = Date.now();
-    if (now - filesRefreshAt >= FILES_REFRESH_MS) {
-      filesRefreshAt = now;
-      refreshFilesSlotsInPlace();
-    } else {
-      filesRefreshPending = true;
-      if (!filesRefreshTimer) {
-        filesRefreshTimer = setTimeout(() => {
-          filesRefreshTimer = null;
-          if (filesRefreshPending) { filesRefreshPending = false; filesRefreshAt = Date.now(); refreshFilesSlotsInPlace(); }
-        }, FILES_REFRESH_MS - (now - filesRefreshAt));
-      }
-    }
+    if (filesRefreshTimer) return;
+    filesRefreshTimer = setTimeout(() => {
+      filesRefreshTimer = null;
+      void refreshFilesSlotsInPlace();
+    }, FS_REFRESH_DEBOUNCE_MS);
   }
+  // The Diff panel shells out to git per refresh — same trailing coalescing.
+  let diffRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleDiffRefresh(): void {
+    if (diffRefreshTimer) return;
+    diffRefreshTimer = setTimeout(() => {
+      diffRefreshTimer = null;
+      for (const { body } of liveFsPanelsOf("diff")) {
+        (body as HTMLElement & { __wbDiffRefresh?: () => void }).__wbDiffRefresh?.();
+      }
+    }, FS_REFRESH_DEBOUNCE_MS);
+  }
+
   window.wb.onFileChanged(async (abs) => {
     if (!cwd || !abs.startsWith(cwd)) return;
-    // Monaco viewer tabs — re-read any tab whose path matches.
-    for (const rail of rails) {
-      for (const slot of rail.slots) {
-        if (slot.view !== "monaco") continue;
-        const mslot = slot as MonacoSlot;
-        const tabIdx = mslot.tabs.findIndex((t) => t.path === abs);
-        if (tabIdx < 0) continue;
-        if (mslot.tabs[tabIdx].dirty) continue; // never clobber unsaved edits
-        const res = await window.wb.readFile(abs);
-        const newContent = res.error ? `// error: ${res.error}` : res.content;
-        mslot.tabs[tabIdx].content = newContent;
-        // Only repaint the Monaco editor if this is the active tab — the
-        // others will pick up the new content on tab switch via setModel.
-        if (tabIdx === mslot.activeIdx) {
-          const slotEl = document.querySelector<HTMLElement>(`.ws-rail-slot[data-slot-id="${mslot.id}"]`);
-          const host = slotEl?.querySelector<HTMLElement>(".ws-monaco-host");
-          const existing = host && (host as unknown as { __editor?: any }).__editor;
-          if (existing) {
-            const w = window as unknown as { monaco: any };
-            existing.setModel(w.monaco.editor.createModel(newContent, languageForFile(mslot.tabs[tabIdx].name)));
-          }
-        }
-      }
+    // Monaco viewer tabs — re-read any matching, non-dirty tab and fold the
+    // new content into the live editor via the panel's reload hook (cursor +
+    // scroll preserved, dirty-tracking listener kept).
+    for (const { slot, body } of liveFsPanelsOf("monaco")) {
+      const mslot = slot as MonacoSlot;
+      const tab = mslot.tabs.find((t) => t.path === abs);
+      if (!tab || tab.dirty) continue; // never clobber unsaved edits
+      const res = await window.wb.readFile(abs);
+      if (res.error) continue;   // transient read race (rename/rewrite) — keep what's shown
+      const hook = (body as HTMLElement & { __wbMonacoReload?: (abs: string, content: string) => void }).__wbMonacoReload;
+      if (hook) hook(abs, res.content);
+      else tab.content = res.content; // hook not mounted — next mount shows it
     }
-    // Files tree — refresh just the Files slot(s) in place, throttled.
-    const filesAffected = rails.some((r) => r.slots.some((s) => s.view === "files"));
-    if (filesAffected) scheduleFilesRefresh();
-    // Diff — if open, refresh.
-    for (const rail of rails) {
-      for (const slot of rail.slots) {
-        if (slot.view !== "diff") continue;
-        const slotEl = document.querySelector<HTMLElement>(`.ws-rail-slot[data-slot-id="${slot.id}"]`);
-        const btn = slotEl?.querySelector<HTMLButtonElement>(".ws-diff-refresh");
-        btn?.click();
-      }
-    }
+    // Files tree + Diff — refresh the live panels in place, coalesced
+    // (trailing debounce: a 50-file burst lands as ONE repaint each).
+    if (liveFsPanelsOf("files").length) scheduleFilesRefresh();
+    if (liveFsPanelsOf("diff").length) scheduleDiffRefresh();
+  });
+  // Git state moved without a worktree write (commit, stage, checkout) — the
+  // diff is stale even though no watched file changed.
+  window.wb.onGitChanged?.(() => {
+    if (liveFsPanelsOf("diff").length) scheduleDiffRefresh();
   });
 }
 

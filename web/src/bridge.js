@@ -25,6 +25,7 @@ import {
 } from './glyphh-core.js';
 import { buildContract } from './web-contract.js';
 import { installErrorSurface } from './web-errors.js';
+import { createWbRelay } from './wb-relay.js';
 
 const client = glyphh();
 const noop = () => {};
@@ -58,15 +59,12 @@ const bridge = new Proxy({}, {
   },
 });
 
-// The workbench bridge is entirely machine-only; its UI is hidden on web, so
-// every wb.* call is a quiet no-op (on* → unsubscribe) until attach lands.
-const wb = new Proxy({}, {
-  get(_t, prop) {
-    if (prop === 'then') return undefined;
-    if (typeof prop === 'string' && prop.startsWith('on')) return () => noop;
-    return async () => undefined;
-  },
-});
+// The workbench bridge (window.wb) is REAL on web now: the Files / Diff /
+// Monaco panels reach the user's ATTACHED DESKTOP's working folder over the
+// panel relay (wb-relay.js — attach.dispatch calls + a /ws/panel push socket
+// for live file-change events). Machine-only dialogs stay honest no-ops, and
+// with no desktop attached the panels render their designed offline states.
+const wb = createWbRelay({ client, apiUrl: API_URL, isAuthenticated });
 
 if (typeof window !== 'undefined') {
   window.glyphh = bridge;

@@ -76,6 +76,7 @@ import { installAttachHandlers } from "./attach-handlers";
 import { installAttachRunHandlers } from "./attach-run";
 import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
+import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
@@ -361,6 +362,10 @@ async function boot() {
   // THIS MACHINE over the same relay, output streamed back as byte pushes
   // (relay-pty.ts). Same node-pty spawn as the local workbench terminal.
   installRelayPty();
+  // fs.cwd/listDir/read/write/gitDiff/search/watch — the web workbench's
+  // Files / Diff / Monaco panels read THIS MACHINE's working folder over the
+  // same relay, with watcher events pushed up live (relay-fs.ts).
+  installRelayFs();
   // rpa.* drive an open app panel. The renderer registers each panel's
   // slug → webContents id so main can resolve the live view.
   installRpaHandlers();

@@ -911,6 +911,13 @@ contextBridge.exposeInMainWorld("wb", {
     ipcRenderer.on("workdir:file-changed", handler);
     return () => { ipcRenderer.removeListener("workdir:file-changed", handler); };
   },
+  // Git state moved (.git/index or .git/HEAD written — commit/stage/checkout).
+  // One coalesced signal per git operation; the Diff panel refreshes on it.
+  onGitChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on("workdir:git-changed", handler);
+    return () => { ipcRenderer.removeListener("workdir:git-changed", handler); };
+  },
   listDir: (dir: string) => ipcRenderer.invoke("files:list-dir", dir),
   searchFiles: (dir: string, query: string) =>
     ipcRenderer.invoke("files:search", dir, query) as Promise<{ entries: Array<{ name: string; rel: string; path: string; kind: "dir" | "file" }>; truncated?: boolean; error?: string }>,
