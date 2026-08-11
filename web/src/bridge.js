@@ -90,31 +90,6 @@ if (typeof window !== 'undefined') {
   // Renders a fixed overlay reporting what THIS device computed for the top
   // chrome, so the band can be debugged from the user's real screen.
   try {
-    // The iPad browser paints a chrome-zone band between its toolbar and the
-    // page, tinted from the page. The lime-ruler test proved that band lives
-    // ABOVE the page's y=0 — no page layout can remove it. The one lever a page
-    // has is <meta name="theme-color">: keep it synced to the app's real
-    // background so the band BLENDS with the app instead of reading as a gap.
-    if (typeof document !== 'undefined') {
-      const syncThemeColor = () => {
-        try {
-          // Match the BROWSER TOOLBAR, not the app: the chrome-inset band above
-          // the page (proven on /bare — it tints with the page background) then
-          // merges into the toolbar exactly like light sites (claude.ai) do.
-          const darkUi = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          const c = darkUi ? '#1c1c1e' : '#ffffff';
-          let m = document.querySelector('meta[name="theme-color"]');
-          if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'theme-color'); document.head.appendChild(m); }
-          m.setAttribute('content', c);
-        } catch { /* cosmetic only */ }
-      };
-      const start = () => {
-        syncThemeColor();
-        setTimeout(syncThemeColor, 1500);
-        try { new MutationObserver(syncThemeColor).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] }); } catch { /* ok */ }
-      };
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-    }
     if (typeof document !== 'undefined' && (/[?&]diag=1/.test(location.search) || location.hash === '#diag')) {
       const paint = () => {
         const g = (id) => document.getElementById(id);
