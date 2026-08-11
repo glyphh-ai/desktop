@@ -706,6 +706,28 @@ async function boot() {
             },
           },
           { type: "separator" },
+          // MENU accelerators, not renderer keydowns: with focus inside a
+          // panel <webview> the host document never sees the chord — the
+          // application menu fires regardless of which guest holds the keys.
+          {
+            label: "Command Center",
+            accelerator: "CmdOrCtrl+Shift+.",
+            click: () => {
+              for (const wc of webContents.getAllWebContents()) {
+                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL())) wc.send("home:open-cc"); } catch { /* mid-teardown */ }
+              }
+            },
+          },
+          {
+            label: "New Session",
+            accelerator: "CmdOrCtrl+Shift+N",
+            click: () => {
+              for (const wc of webContents.getAllWebContents()) {
+                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL())) wc.send("home:new-session"); } catch { /* mid-teardown */ }
+              }
+            },
+          },
+          { type: "separator" },
           { role: "reload" },
           { role: "forceReload" },
           { type: "separator" },

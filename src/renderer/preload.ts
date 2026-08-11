@@ -443,6 +443,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
   dashboardRuns: () => ipcRenderer.invoke("dashboard-runs") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   homeGotoSection: (section: string) => ipcRenderer.invoke("home-goto-section", section) as Promise<{ ok: boolean }>,
+  onNewSessionGesture: (cb: () => void) => {
+    ipcRenderer.on("home:new-session", () => cb());
+  },
   onOpenCommandCenter: (cb: () => void) => {
     ipcRenderer.on("home:open-cc", () => cb());
   },

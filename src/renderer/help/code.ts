@@ -3832,6 +3832,10 @@ export function initCode(): void {
   });
   // The OS-wide ⌘⇧Space lands here from main once the window is fronted.
   (window.glyphh as unknown as { onOpenCommandCenter?: (cb: () => void) => void }).onOpenCommandCenter?.(() => openCommandCenter());
+  // ⌘⇧N via the app menu (fires even when a panel webview holds the keys).
+  (window.glyphh as unknown as { onNewSessionGesture?: (cb: () => void) => void }).onNewSessionGesture?.(() => {
+    (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+  });
   // Header launcher button — bound here (home-panel startup) through the
   // cold-safe path, so it works even before the Code workbench first mounts.
   syncDragStripOffset();
