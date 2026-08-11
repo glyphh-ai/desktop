@@ -2063,3 +2063,67 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 .m-chip-inline { margin-left: 8px; padding: 3px 8px; font-size: 12px; }
 .m-key-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .m-field-inline { width: auto; margin-top: 0; flex: 0 0 auto; }
+
+/* ── App tray: a right-slide-in surface hosting the streamed desktop app panel.
+   Slides in from the RIGHT (and off to the right on dismiss), mirrors the sheet
+   scrim + safe-area handling, and hosts the <video>/<canvas> the desktop casts. */
+.m-apptray-overlay { position: fixed; inset: 0; z-index: 230; pointer-events: none; }
+.m-apptray-overlay[data-open="true"] { pointer-events: auto; }
+.m-apptray-scrim {
+  position: absolute; inset: 0;
+  background: var(--overlay-bg);
+  opacity: 0; transition: opacity 0.34s ease;
+}
+.m-apptray-overlay[data-open="true"] .m-apptray-scrim { opacity: 1; }
+.m-apptray {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 100%;
+  display: flex; flex-direction: column;
+  background: #000;
+  padding-top: var(--safe-top);
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
+  transform: translateX(100%);
+  transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+  box-shadow: -12px 0 44px rgba(0, 0, 0, 0.4);
+}
+.m-apptray-overlay[data-open="true"] .m-apptray { transform: translateX(0); }
+/* Left grab edge — swipe right here to dismiss (doesn't overlap the video body). */
+.m-apptray-edge { position: absolute; top: 0; left: 0; bottom: 0; width: 18px; z-index: 2; touch-action: pan-y; }
+.m-apptray-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px 10px 24px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.m-apptray-name { flex: 1; min-width: 0; font: 600 15px/1.2 var(--font-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-apptray-sub { color: var(--text-2); font-weight: 400; }
+.m-apptray-x {
+  flex: 0 0 auto; width: 34px; height: 34px;
+  display: grid; place-items: center;
+  background: none; border: none; color: var(--text-2); cursor: pointer;
+}
+.m-apptray-x svg { width: 22px; height: 22px; }
+.m-apptray-stage { position: relative; flex: 1; min-height: 0; background: #000; }
+.m-apptray-holder { position: absolute; inset: 0; }
+.m-apptray-holder[data-hidden="true"] { visibility: hidden; }
+.m-apptray-state {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  padding: 32px; text-align: center; color: var(--text-2);
+}
+.m-apptray-state svg { width: 40px; height: 40px; opacity: 0.7; }
+.m-apptray-msg { font: 500 14px/1.5 var(--font-sans); max-width: 320px; }
+.m-apptray-retry { padding: 9px 20px; }
+.m-apptray-spin {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 2.5px solid var(--border); border-top-color: var(--accent);
+  animation: m-apptray-spin 0.8s linear infinite;
+}
+@keyframes m-apptray-spin { to { transform: rotate(360deg); } }
+/* Tablet: don't go full-bleed — a right-docked panel reads better. */
+@media (min-width: 768px) {
+  .m-apptray { width: min(720px, 92vw); border-radius: 18px 0 0 18px; }
+}

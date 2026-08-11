@@ -32,6 +32,9 @@ import { timeMascotSvg } from '../../src/renderer/help/mascots';
 // Real markdown + code blocks (copy/fold), tool-step group + diff badges. Own file
 // (mobile.tsx is large); marked + dompurify are bundled — no CDN.
 import { Markdown, copyText, ToolActionRow, DiffBadge, fileFromTitle, summarize, stepVerb, type ToolStep } from './md';
+// Streamed desktop app panel + full touch drive (ported from the renderer's
+// panel-stream.ts — see mobile-panel.ts for the /ws/panel + WebRTC + input port).
+import { mountMobilePanel, type MobilePanelHandle, type PanelState } from './mobile-panel';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -349,13 +352,14 @@ function normalizeMsg(m: ThreadMsg, i: number): Message {
    Spaces are gone — there is no Chat/Work/Code tab. The rail is just the one
    primary action, the recents list, and a single Connections shortcut (which
    opens the Settings modal on its Connections tray — the page stays in settings). */
-function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onConnections, user }: {
+function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onConnections, onApps, user }: {
   onOpenRecent: (r: Recent) => void;
   recents: Recent[];
   onAllSessions: () => void;
   onAccount: () => void;
   onNewSession: () => void;
   onConnections: () => void;
+  onApps: () => void;
   user: DisplayUser;
 }) {
   return (
@@ -376,6 +380,11 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
         <button className="m-nav-item" onClick={onConnections}>
           <Icon name="link" />
           <span>Connections</span>
+        </button>
+        {/* Apps — stream one of your installed apps FROM your attached desktop. */}
+        <button className="m-nav-item" onClick={onApps}>
+          <Icon name="grid" />
+          <span>Apps</span>
         </button>
       </nav>
 
@@ -2805,6 +2814,140 @@ function FolderPickerTray({ machine, onClose, onChoose }: { machine: AttachedMac
   );
 }
 
+/* ── Apps: the installed-app list + the streamed desktop app tray ────────────
+   An "app" here is one of the user's own deployed/installed apps, sourced from
+   the SAME place web/desktop use — glyphh().apps.mine() (name + prodUrl). Tapping
+   one opens the tray AND streams that app's URL FROM the attached desktop over
+   /ws/panel (the desktop opens the page in the user's real logged-in browser and
+   casts it back). The agent can push a panel too (open_app / open_browser). */
+interface AppItem { slug: string; name: string; url: string }
+
+/** The tray: a right-slide-in overlay hosting the streamed <video>/<canvas> the
+    desktop casts, plus the connect / "Desktop disconnected — Try again" states.
+    Full touch drive lives in mobile-panel.ts; this is the React shell around it. */
+function AppTray({ app, onClose }: { app: AppItem | null; onClose: () => void }) {
+  const holderRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<MobilePanelHandle | null>(null);
+  const [state, setState] = useState<PanelState>('connecting');
+  const [title, setTitle] = useState('');
+  const open = !!app;
+
+  // Mount a fresh panel whenever the tray opens onto an app; tear it down on
+  // close (or when the app changes) — the desktop panel is closed far-side too.
+  useEffect(() => {
+    if (!app || !holderRef.current) return;
+    setState('connecting'); setTitle('');
+    const h = mountMobilePanel({
+      url: app.url,
+      onState: (s) => setState(s),
+      onNav: (_u, t) => { if (t) setTitle(t); },
+    });
+    handleRef.current = h;
+    holderRef.current.appendChild(h.el);
+    return () => { try { h.dispose(); } catch { /* noop */ } handleRef.current = null; if (holderRef.current) holderRef.current.innerHTML = ''; };
+  }, [app]);
+
+  // Swipe-right-to-dismiss: a horizontal drag that starts near the LEFT edge (so
+  // it never fights the video's own touch drive) pulls the tray off-screen right.
+  const dragRef = useRef<{ x0: number; active: boolean }>({ x0: 0, active: false });
+  const onEdgeStart = (e: React.TouchEvent) => { const t = e.touches[0]; dragRef.current = { x0: t.clientX, active: true }; };
+  const onEdgeMove = (e: React.TouchEvent) => {
+    if (!dragRef.current.active) return;
+    const dx = e.touches[0].clientX - dragRef.current.x0;
+    if (dx > 60) { dragRef.current.active = false; haptic(); onClose(); }
+  };
+
+  const offline = state === 'desktop-offline' || state === 'signed-out';
+  const dropped = state === 'disconnected' || state === 'failed';
+  const busy = state === 'connecting';
+
+  return createPortal(
+    <div className="m-apptray-overlay" data-open={open ? 'true' : 'false'}>
+      <div className="m-apptray-scrim" onClick={() => { haptic(); onClose(); }} />
+      <div className="m-apptray" role="dialog" aria-label={app?.name || 'App'}>
+        {/* Left grab edge — swipe right here to dismiss without stealing video input. */}
+        <div className="m-apptray-edge" onTouchStart={onEdgeStart} onTouchMove={onEdgeMove} />
+        <div className="m-apptray-head">
+          <span className="m-apptray-name">{app?.name || 'App'}{title ? <span className="m-apptray-sub"> · {title}</span> : null}</span>
+          <button className="m-apptray-x" aria-label="Close" onClick={() => { haptic(); onClose(); }}><Icon name="close" /></button>
+        </div>
+        <div className="m-apptray-stage">
+          <div ref={holderRef} className="m-apptray-holder" data-hidden={offline || dropped ? 'true' : 'false'} />
+          {(offline || dropped || busy) && (
+            <div className="m-apptray-state">
+              {busy && <><div className="m-apptray-spin" /><div className="m-apptray-msg">Connecting to your desktop…</div></>}
+              {offline && (
+                <>
+                  <Icon name="monitor-off" />
+                  <div className="m-apptray-msg">{state === 'signed-out' ? 'Sign in to stream apps from your desktop.' : 'Connect your desktop to view this app live.'}</div>
+                  <button className="m-apptray-retry btn btn-primary" onClick={() => { haptic(); handleRef.current?.retry(); }}>Try again</button>
+                </>
+              )}
+              {dropped && (
+                <>
+                  <Icon name="monitor-off" />
+                  <div className="m-apptray-msg">Desktop disconnected.</div>
+                  <button className="m-apptray-retry btn btn-primary" onClick={() => { haptic(); handleRef.current?.retry(); }}>Try again</button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** The Apps list — a bottom sheet listing the user's installed/deployed apps
+    (glyphh().apps.mine(), the same source web/desktop use). Tapping one hands it
+    up to open the tray. */
+function AppsSheet({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (a: AppItem) => void }) {
+  const [apps, setApps] = useState<AppItem[] | null>(null);
+  const [q, setQ] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    let on = true; setApps(null);
+    glyphh().apps.mine()
+      .then((list: Array<{ slug: string; name: string; prodUrl: string | null; config?: { url?: string } }>) => {
+        if (!on) return;
+        // A streamable app needs an http(s) URL to open on the desktop: prefer the
+        // prod origin (published), else a web entry's configured url.
+        const items = list
+          .map((a) => ({ slug: a.slug, name: a.name, url: a.prodUrl || a.config?.url || '' }))
+          .filter((a) => /^https?:\/\//i.test(a.url));
+        setApps(items);
+      })
+      .catch(() => { if (on) setApps([]); });
+    return () => { on = false; };
+  }, [open]);
+  const filtered = (apps ?? []).filter((a) => !q.trim() || a.name.toLowerCase().includes(q.trim().toLowerCase()));
+  return createPortal(
+    <div className="m-sel-overlay" data-open={open ? 'true' : 'false'}>
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel">
+        <div className="m-sel-grip" />
+        <div className="m-sel-panel">
+          <div className="m-sel-head"><button className="m-sel-x" aria-label="Close" onClick={onClose}><Icon name="close" /></button><span className="m-sel-title">Apps</span></div>
+          <div className="m-sel-search"><Icon name="search" /><input className="m-conn-in" placeholder="Search apps" value={q} onChange={(e) => setQ(e.currentTarget.value)} /></div>
+          <div className="m-sel-body">
+            {apps == null ? <div className="m-set-loading">Loading…</div>
+              : filtered.length === 0 ? <div className="m-conn-empty">No streamable apps. Deploy or install an app with a live URL to open it here.</div>
+              : filtered.map((a) => (
+                <button key={a.slug} className="m-action-row" onClick={() => { haptic(); onPick(a); }}>
+                  <span className="m-action-ico"><Icon name="grid" /></span>
+                  <span className="m-action-name">{a.name}</span>
+                  <span className="m-action-chev"><Icon name="external" /></span>
+                </button>
+              ))}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function App() {
   const [drawer, setDrawer] = useState(false);
   const [screen, setScreen] = useState<'home' | 'list' | 'session'>('home');
@@ -2814,6 +2957,9 @@ function App() {
   const [minSplash, setMinSplash] = useState(false);   // hold the splash for its full beat
   const [settings, setSettings] = useState(false);
   const [settingsSub, setSettingsSub] = useState<SettingsSub | null>(null);   // rail shortcut → open a specific tray
+  const [appsOpen, setAppsOpen] = useState(false);            // the Apps list sheet
+  const [trayApp, setTrayApp] = useState<AppItem | null>(null); // the app streamed in the tray (null = closed)
+  const pushedRunRef = useRef<string>('');                    // last run we auto-opened a panel for (dedupe)
   const [attach, setAttach] = useState(false);
   const [attachImgs, setAttachImgs] = useState<AttachImage[]>([]);     // pending image attachments (vision)
   const [folderPick, setFolderPick] = useState<AttachedMachine | null>(null); // desktop whose folder picker is open
@@ -2946,7 +3092,7 @@ function App() {
       ensureMsg(); const m = msgOf(); if (!m) return;
       const steps = (m.steps ??= []); m.parts ??= [];
       const toolsPart = () => { let last = m.parts![m.parts!.length - 1]; if (!last || last.kind !== 'tools') { last = { kind: 'tools', steps: [] }; m.parts!.push(last); } return last; };
-      if (t.phase === 'start') { const step = { name: t.name, status: 'running' as const, ...(t.thought ? { thought: t.thought } : {}) }; steps.push(step); toolsPart().steps.push(step); }
+      if (t.phase === 'start') { const step = { name: t.name, status: 'running' as const, ...(t.thought ? { thought: t.thought } : {}) }; steps.push(step); toolsPart().steps.push(step); maybePushPanel(sess.id, t); }
       else {
         let idx = -1; for (let i = steps.length - 1; i >= 0; i--) { if (steps[i].name === t.name && steps[i].status === 'running') { idx = i; break; } }
         let target = idx >= 0 ? steps[idx] : null;
@@ -3071,6 +3217,7 @@ function App() {
       if (t.phase === 'start') {
         const step = { name: t.name, status: 'running' as const, ...(t.thought ? { thought: t.thought } : {}) };
         steps.push(step); toolsPart().steps.push(step);
+        maybePushPanel(sess.id, t);   // agent opened an app panel → preview it in the tray
       } else {
         let idx = -1;
         for (let i = steps.length - 1; i >= 0; i--) { if (steps[i].name === t.name && steps[i].status === 'running') { idx = i; break; } }
@@ -3356,6 +3503,41 @@ function App() {
   const openRecent = (r: Recent) => openSession(r);
   const allSessionsList = () => { haptic(); setScreen('list'); setDrawer(false); };
   const openConnections = () => { haptic(); setSettingsSub('connections'); setSettings(true); };
+  const openApps = () => { haptic(); setAppsOpen(true); };
+  const openAppTray = (a: AppItem) => { haptic(); setAppsOpen(false); setTrayApp(a); };
+  /** Agent-push: the running turn opened an app panel on the desktop (open_app /
+   *  open_browser). Auto-open the tray onto it — "preview the app I just built".
+   *  Reuses the observe path's tool frames rather than a new channel. Best-effort:
+   *  open_browser carries the URL in its title/preview; open_app carries a slug we
+   *  resolve against the user's apps. Deduped per run so it fires once. */
+  const maybePushPanel = (runId: string, tool: { name: string; title?: string; url?: string }): void => {
+    if (trayApp) return;                                     // already showing something
+    const key = `${runId}:${tool.name}`;
+    if (pushedRunRef.current === key) return;
+    const isBrowser = tool.name === 'open_browser';
+    const isApp = tool.name === 'open_app';
+    if (!isBrowser && !isApp) return;
+    const url = tool.url || (/(https?:\/\/[^\s"')]+)/.exec(tool.title || '')?.[1] ?? '');
+    if (isBrowser && /^https?:\/\//i.test(url)) {
+      pushedRunRef.current = key;
+      let name = 'Preview';
+      try { name = new URL(url).hostname.replace(/^www\./, ''); } catch { /* keep default */ }
+      setTrayApp({ slug: url, name, url });
+      return;
+    }
+    if (isApp) {
+      // Resolve the slug/name against the user's apps to get a streamable URL.
+      const wanted = (tool.title || '').trim().toLowerCase();
+      pushedRunRef.current = key;
+      void glyphh().apps.mine()
+        .then((list: Array<{ slug: string; name: string; prodUrl: string | null; config?: { url?: string } }>) => {
+          const hit = list.find((a) => a.slug.toLowerCase() === wanted || a.name.toLowerCase() === wanted);
+          const u = hit?.prodUrl || hit?.config?.url || '';
+          if (hit && /^https?:\/\//i.test(u)) setTrayApp({ slug: hit.slug, name: hit.name, url: u });
+        })
+        .catch(() => { /* no reachable URL — nothing to stream */ });
+    }
+  };
   const backToList = () => { haptic(); setScreen('list'); };
   const savePins = (s: Set<string>) => { setPins(new Set(s)); try { localStorage.setItem('yoPins', JSON.stringify([...s])); } catch { /* */ } };
   const togglePin = (id: string) => { const s = new Set(pins); if (s.has(id)) s.delete(id); else s.add(id); savePins(s); };
@@ -3458,7 +3640,7 @@ function App() {
       {authState === 'in' && (
       <>
       <div className="m-shell">
-        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onConnections={openConnections} user={user} />
+        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onConnections={openConnections} onApps={openApps} user={user} />
         <main className="m-main">
           {(screen === 'list' || screen === 'session') && (
             <div className="m-nav" data-screen={screen} data-noanim={navNoAnimRef.current ? 'true' : 'false'} ref={() => { navNoAnimRef.current = false; }}>
@@ -3499,6 +3681,9 @@ function App() {
         models={models}
       />
       <PermissionSheet open={permOpen} onClose={() => { haptic(); setPermOpen(false); }} perm={perm} setPerm={setPerm} />
+      {/* Apps: the installed-app list + the streamed desktop app tray. */}
+      <AppsSheet open={appsOpen} onClose={() => { haptic(); setAppsOpen(false); }} onPick={openAppTray} />
+      <AppTray app={trayApp} onClose={() => setTrayApp(null)} />
       <SearchOverlay open={search} inputRef={searchInputRef} onClose={closeSearch} />
       {/* The approval/ask card ONLY shows inside its own session — never on a list
           or another session. Elsewhere the list row's "needs input" chip stands in. */}
