@@ -4180,9 +4180,17 @@ export function initCode(): void {
   // the home-panel document (owns gotoSection + the switcher overlay), NOT
   // renderer.ts (the index shell — different webContents, no overlay reach).
   document.addEventListener("keydown", (e) => {
-    // ⌘⇧. — a NEW agent session. Matched on e.code: with shift held, e.key is
-    // ">" on most layouts, so the plain-key check below can never see it.
+    // ⌘⇧> (the shifted period key) — the command center. NOTE: "." and ">"
+    // share one physical key, so ⌘⇧. and ⌘⇧> are the SAME chord — it can only
+    // carry one action, and it carries the launcher.
     if (e.code === "Period" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      openCommandCenter();
+      return;
+    }
+    // ⌘⇧N — a NEW agent session (the ⌘N "new" convention, shifted clear of
+    // the OS new-window accelerator).
+    if (e.code === "KeyN" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
       return;
