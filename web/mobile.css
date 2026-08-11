@@ -317,9 +317,11 @@ body {
   width: 104px;
   height: 104px;
   opacity: 0.82;             /* the real mascot, lightly softened */
+  color: var(--accent);      /* the inline time-of-day mascot SVG is accent-colored */
   user-select: none;
   -webkit-user-drag: none;
 }
+.m-ghost-mark svg { width: 100%; height: 100%; display: block; }
 .m-ghost-quote {
   max-width: 460px;
   text-align: center;

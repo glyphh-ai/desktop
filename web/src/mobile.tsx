@@ -28,6 +28,7 @@ import { runRemoteTurn, ensureRuntime, answerPending, attachToActiveRun,
 // The app's real working indicator — the tumbling wireframe cube + typed phrase.
 // Pure DOM/Canvas, so we mount it verbatim (brand parity in the chat thread).
 import { createGlyphhSpinner } from '../../src/renderer/glyphh-spinner';
+import { timeMascotSvg } from '../../src/renderer/help/mascots';
 // Real markdown + code blocks (copy/fold), tool-step group + diff badges. Own file
 // (mobile.tsx is large); marked + dompurify are bundled — no CDN.
 import { Markdown, copyText, ToolActionRow, DiffBadge, fileFromTitle, summarize, stepVerb, type ToolStep } from './md';
@@ -486,7 +487,7 @@ function Ghost() {
   }, []);
   return (
     <div className="m-ghost">
-      <img className="m-ghost-mark" src="/brand/glyphh-mark-purple.png" alt="" />
+      <div className="m-ghost-mark" dangerouslySetInnerHTML={{ __html: timeMascotSvg() }} />
       <div className="m-ghost-quote" style={fading ? { opacity: 0 } : undefined}>{GHOST_QUOTES[idx]}</div>
     </div>
   );
