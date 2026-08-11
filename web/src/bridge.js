@@ -86,6 +86,36 @@ if (typeof window !== 'undefined') {
         .catch(() => {});
     }
   } catch { /* no SW API */ }
+  // ── ?diag=1 — on-device layout diagnostic for the top-band bug ─────────────
+  // Renders a fixed overlay reporting what THIS device computed for the top
+  // chrome, so the band can be debugged from the user's real screen.
+  try {
+    if (typeof document !== 'undefined' && /[?&]diag=1/.test(location.search)) {
+      const paint = () => {
+        const g = (id) => document.getElementById(id);
+        const R = (el) => { if (!el) return 'MISSING'; const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return `top=${Math.round(r.top)} h=${Math.round(r.height)} disp=${s.display} bg=${s.backgroundColor}`; };
+        const at = (y) => { const e = document.elementFromPoint(Math.floor(innerWidth / 2), y); return e ? `${e.tagName}#${e.id || '-'}.${String(e.className).split(' ')[0] || '-'} bg=${getComputedStyle(e).backgroundColor}` : 'null'; };
+        const lines = [
+          `url=${location.pathname} title=${document.title}`,
+          `html.class=${document.documentElement.className}`,
+          `body.class=${document.body.className}`,
+          `--titlebar-h(body)=${getComputedStyle(document.body).getPropertyValue('--titlebar-h')}`,
+          `strip: ${R(g('shell-drag-strip'))}`,
+          `overlay: ${R(g('help-overlay'))}`,
+          `rail: ${R(g('app-rail'))}`,
+          `panel-wc: ${R(g('panel-wc'))}`,
+          `@y5: ${at(5)}`, `@y20: ${at(20)}`, `@y40: ${at(40)}`,
+        ];
+        let d = g('glyphh-diag');
+        if (!d) { d = document.createElement('pre'); d.id = 'glyphh-diag'; document.body.appendChild(d); }
+        d.style.cssText = 'position:fixed;top:70px;left:8px;z-index:2147483647;background:#000;color:#0f0;font:11px/1.5 monospace;padding:10px;border:1px solid #0f0;max-width:92vw;white-space:pre-wrap;pointer-events:none;';
+        d.textContent = lines.join('\n');
+      };
+      const kick = () => { paint(); setTimeout(paint, 2000); setTimeout(paint, 5000); };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', kick);
+      else kick();
+    }
+  } catch { /* diagnostics must never break the page */ }
 
   // ── LOGIN-FIRST wall (2026-08-03, Claude model — no anonymous app access) ────
   // `/` serves the login shell; `/home` is the AUTHED app surface. `isAuthed()`
