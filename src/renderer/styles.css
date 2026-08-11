@@ -6243,6 +6243,13 @@ ol.docs-list li::before {
   display: none;
 }
 
+/* Panels that dropped their page title start a touch lower so the content
+   doesn't crowd the panel's top edge. */
+.settings-panel[data-sub="general"],
+.settings-panel[data-sub="appearance"],
+.settings-panel[data-sub="drips"],
+.settings-panel[data-sub="account"] { padding-top: 14px; }
+
 .settings-panel.active {
   display: block;
 }
