@@ -6937,6 +6937,17 @@ select.settings-input {
 
 /* A quiet divider-heading inside a section (Address, Billing address…) — the
    subheading weight would compete with the section titles above it. */
+/* GENERAL page rhythm — groups breathe instead of jamming into one another:
+   real space between the compaction form, Sessions, Guardrails, and toggles;
+   headings get a genuine bottom margin (the global -2px reads as jammed). */
+.settings-panel[data-sub="general"] .settings-form { gap: 12px; }
+.settings-panel[data-sub="general"] #general-runtime-group,
+.settings-panel[data-sub="general"] #general-guardrails-group { margin-top: 30px; }
+.settings-panel[data-sub="general"] .acct-row-head { margin: 0 0 8px; }
+.settings-panel[data-sub="general"] .section-desc { margin: 0 0 14px; }
+.settings-panel[data-sub="general"] #runtime-region-select { margin-top: 2px; }
+.settings-panel[data-sub="general"] .settings-toggles { margin-top: 30px !important; }
+
 .acct-row-head {
   margin: 6px 0 -2px;
   font-size: 12px;
