@@ -13,8 +13,9 @@
     html, body { margin:0; padding:0; height:100%; overflow:hidden; background: var(--bg); }
     #home-root { position: absolute; inset: 0; overflow: hidden; }
     /* Force overlay to fill the page and override any .hidden from help.ts */
-    /* Below the 38px app header — inset-top must match #shell-drag-strip. */
-    #help-overlay { position: absolute !important; inset: 38px 0 0 !important; display: block !important; background: var(--bg); }
+    /* Below the app header — inset-top tracks #shell-drag-strip via --titlebar-h
+       (38px on desktop, 0 on web so the app is flush under the browser chrome). */
+    #help-overlay { position: absolute !important; inset: var(--titlebar-h, 38px) 0 0 !important; display: block !important; background: var(--bg); }
     #help-layout { position: absolute; inset: 0; display: flex; }
     /* The nav lives in the app's left rail now — keep it in the DOM (its
        buttons still drive section switching) but hide the sidebar. */
@@ -82,7 +83,7 @@
                in the modal). Everything else stays modal-only. -->
           <button class="app-rail-nav-item" data-section="files">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
-            <span>Files</span>
+            <span>Artifacts</span>
           </button>
           <button class="app-rail-nav-item" data-section="connections">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>

@@ -407,6 +407,12 @@ body {
   overflow: hidden;
   height: 100vh;
   --content-top: 72px;  /* 38px titlebar + 34px URL bar (default: shown) */
+  /* Height of the desktop draggable title bar (#shell-drag-strip) and the top
+     offset every panel opens below. On the web target there is no OS window to
+     drag, so this collapses to 0 (see the .glyphh-web override below) — the
+     empty surface-2 strip that produced the dark band at the top disappears and
+     content sits flush under the browser chrome. */
+  --titlebar-h: 38px;
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -1251,7 +1257,7 @@ body {
    the user must always be able to quit, even while locked out. */
 #lockout-overlay {
   position: fixed;
-  top: 38px;
+  top: var(--titlebar-h);
   left: 0;
   right: 0;
   bottom: 0;
@@ -1490,6 +1496,51 @@ body.account-locked #dl-btn-wrap {
 .glyphh-web #onboarding-close { -webkit-app-region: no-drag !important; }
 .glyphh-web #shell-drag-strip .shell-drag-area,
 .glyphh-web .app-rail-top { margin-left: 0 !important; }
+
+/* ── Web: COLLAPSE the desktop title-bar band entirely ───────────────────────
+   On the desktop, #shell-drag-strip is a full-width 38px var(--surface-2) bar
+   with a bottom border — the OS window-drag surface. #help-overlay opens 38px
+   below it and the #panel-wc wordmark cluster rides on top. In a browser tab
+   there is no window to drag, so that bar was EMPTY except for the ~200px
+   cluster on its left; the remaining full-width strip read as an unwanted dark
+   band across the very top (reported repeatedly). Recoloring it was not enough —
+   the 38px band must be GONE so the app sits flush under the browser chrome.
+
+   Collapse it: --titlebar-h → 0 zeroes the strip's height and pulls every top
+   offset routed through it (#help-overlay, #panel-container, #lockout-overlay,
+   .files-rail, .yo-panel, #drag-overlay) up to the very top; the strip itself is
+   hidden so its bottom border can't leave a 1px line. The #panel-wc wordmark /
+   rail-toggle / CC cluster (fixed at top:0, its own 38px) becomes the very top
+   row, and the app rail below gets a matching top pad so + New session clears
+   the cluster instead of sliding under it. Desktop is untouched — --titlebar-h
+   stays 38px there and the draggable strip keeps painting.
+
+   .echo-layout-bar (the "Close layout" pill) is re-parented INTO the strip by
+   code-workbench.ts and absolute-centered within it; with the strip collapsed
+   on web we re-pin it fixed to the top-center of the viewport so it stays
+   visible + clickable. */
+.glyphh-web {
+  --titlebar-h: 0px;
+}
+/* Height already collapses to 0 via --titlebar-h; strip its paint (surface-2
+   fill + bottom border) so no band and no 1px line remain. NOT display:none —
+   code-workbench.ts re-parents .echo-layout-bar INTO this strip, and a
+   display:none parent would hide that child regardless of its own position. */
+.glyphh-web #shell-drag-strip {
+  background: transparent !important;
+  border-bottom: none !important;
+  overflow: visible !important;
+}
+.glyphh-web #app-rail { padding-top: 38px; }
+/* The Close-layout pill lives inside the now-zero-height strip; re-pin it fixed
+   to the top-center of the viewport so it stays visible + clickable on web. */
+.glyphh-web .echo-layout-bar {
+  position: fixed !important;
+  top: 6px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 320 !important;
+}
 
 .wc {
   width: 12px;
@@ -3137,7 +3188,7 @@ body.account-locked #dl-btn-wrap {
 
 #drag-overlay {
   position: fixed;
-  inset: 38px 0 0 0;
+  inset: var(--titlebar-h) 0 0 0;
   z-index: 45;
   background: transparent;
 }
@@ -3149,7 +3200,7 @@ body.account-locked #dl-btn-wrap {
 
 #help-overlay {
   position: fixed;
-  top: 38px;
+  top: var(--titlebar-h);
   left: 0;
   right: 0;
   bottom: 0;
@@ -5837,7 +5888,7 @@ ol.docs-list li::before {
 /* ── Panel container ─────────────────────────────────────── */
 
 #panel-container {
-  height: calc(100vh - 38px);
+  height: calc(100vh - var(--titlebar-h));
   background: var(--bg);
   position: relative;
 }
@@ -7263,7 +7314,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 
 .yo-panel {
   position: fixed;
-  top: 38px;
+  top: var(--titlebar-h);
   right: 0;
   bottom: 0;
   width: 380px;
@@ -7339,7 +7390,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 
 .files-rail {
   position: fixed;
-  top: 38px;
+  top: var(--titlebar-h);
   left: 0;
   bottom: 0;
   width: 240px;
@@ -11406,7 +11457,7 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
    bar is a window-drag surface; #panel-wc (fixed, z 300) rides on top with
    no-drag buttons. */
 #shell-drag-strip {
-  position: fixed; top: 0; left: 0; right: 0; height: 38px; z-index: 200;
+  position: fixed; top: 0; left: 0; right: 0; height: var(--titlebar-h); z-index: 200;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
 }
@@ -13255,6 +13306,13 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   user-select: none;
   -webkit-user-drag: none;
   margin-bottom: 8px;
+  color: var(--accent);
+}
+/* The mascot is now inline SVG — size the svg child to fill the square box. */
+.code-ghost-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 /* TITLE — mirrors the home hero's greeting (.dash-greeting): title font. */
 .code-ghost-title {
