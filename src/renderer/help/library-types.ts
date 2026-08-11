@@ -26,6 +26,9 @@ export interface LoopRole {
 
 export interface LoopManifest {
   version?: number;
+  /** The loop's KIND: a normal work `turn`, or a `memory` loop whose role
+   *  slots power the memory rotor (not selectable for agents). */
+  type?: "turn" | "memory";
   roles?: LoopRole[];
   skills?: string[];
   connections?: string[];
