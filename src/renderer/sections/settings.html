@@ -48,7 +48,11 @@
                   <h3 class="acct-row-head">Sessions</h3>
                   <p class="section-desc">The regional runtime + stator your sessions run on — where your memory lives. One choice for the whole org; NAM is the default.</p>
                   <div id="runtime-error" class="settings-error hidden"></div>
-                  <div id="runtime-regions" class="mbr-list"></div>
+                  <label class="settings-label" for="runtime-region-select">Region</label>
+                  <div class="settings-inline">
+                    <select id="runtime-region-select" class="settings-input settings-input-md"></select>
+                    <span id="runtime-region-status" class="set-save-state"></span>
+                  </div>
                 </div>
 
                 <!-- Guardrails — org-wide runtime limits (moved in from the

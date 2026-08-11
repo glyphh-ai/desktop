@@ -65,37 +65,48 @@ function setError(msg: string): void {
   el.classList.toggle("hidden", !msg);
 }
 
-const TICK_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-
+/* The region picker is a standard form DROPDOWN (settings grammar), not a
+   row-button list — left-aligned like every other field on General. */
 function render(): void {
-  const host = $("runtime-regions");
-  if (!host) return;
+  const sel = $("runtime-region-select") as HTMLSelectElement | null;
+  if (!sel) return;
   const regions = infra?.regions?.length ? infra.regions : [{ id: "nam", label: "NAM" }];
   const current = infra?.region ?? "nam";
-  host.innerHTML = "";
+  sel.innerHTML = "";
   for (const o of regions) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "set-list-row";
-    row.disabled = !!busy;
-    const chosen = current === o.id;
-    row.innerHTML =
-      `<span class="set-list-main"><span class="set-list-name">${regionName(o.id, o.label)}</span><span class="set-list-sub">${REGION_DESC[o.id] || "Shared runtime"}</span></span>` +
-      `<span class="set-list-aside">${busy === o.id ? '<span class="set-spinner"></span>' : chosen ? TICK_SVG : ""}</span>`;
-    row.addEventListener("click", () => void pick(o.id));
-    host.appendChild(row);
+    const opt = document.createElement("option");
+    opt.value = o.id;
+    opt.textContent = `${regionName(o.id, o.label)} — ${REGION_DESC[o.id] || "Shared runtime"}`;
+    sel.appendChild(opt);
   }
+  sel.value = current;
+  sel.disabled = !!busy;
+  if (!sel.dataset.wired) {
+    sel.dataset.wired = "1";
+    sel.addEventListener("change", () => void pick(sel.value));
+  }
+  const st = $("runtime-region-status");
+  if (st && busy) { st.textContent = "Saving…"; st.className = "set-save-state"; }
 }
 
 async function pick(id: string): Promise<void> {
   const current = infra?.region ?? "nam";
   if (busy || current === id) return;
   const t = transport();
-  if (!t) { setError(NO_TRANSPORT); return; }
+  if (!t) { setError(NO_TRANSPORT); render(); return; }
   busy = id; setError(""); render();
-  try { infra = await t.choose(id); busy = ""; render(); }
-  catch (e) {
+  const st = $("runtime-region-status");
+  try {
+    infra = await t.choose(id);
     busy = ""; render();
+    if (st) {
+      st.textContent = "Saved";
+      st.className = "set-save-state success";
+      setTimeout(() => { st.textContent = ""; }, 1600);
+    }
+  } catch (e) {
+    busy = ""; render();   // render resets the select back to the real current
+    if (st) st.textContent = "";
     const msg = (e as Error).message || "";
     setError(/forbidden|403|admin/i.test(msg) ? "Only an org admin can change the region." : "Could not change the region.");
   }
