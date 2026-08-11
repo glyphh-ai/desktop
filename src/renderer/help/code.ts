@@ -520,9 +520,18 @@ function openChipDropUp(menu: HTMLElement): void {
   if (!wrap) return;
   closeAllDrops(menu);   // one picker at a time, across BOTH chip families
   const wrapBox = wrap.getBoundingClientRect();
+  // Clamp against the AGENT PANEL, not the viewport: a narrow panel inside a
+  // wide window has a narrow window still wide, so a viewport clamp lets the
+  // menu spill past the panel edge into the rest of the layout. Fall back to
+  // the viewport when the menu isn't inside an agent panel (e.g. the Home
+  // composer). An 8px gutter is kept on each side.
+  const panel = menu.closest<HTMLElement>(".code-agent");
+  const panelBox = panel?.getBoundingClientRect();
+  const boundLeft = panelBox ? panelBox.left : 0;
+  const boundRight = panelBox ? panelBox.right : window.innerWidth;
   // Align to the chip's side of the bar: a LEFT-side chip (permission mode)
   // grows rightward — right-anchoring it shoved the pane far off to the left.
-  if (wrapBox.left < window.innerWidth / 2) {
+  if (wrapBox.left < (boundLeft + boundRight) / 2) {
     menu.style.left = "0px";
     menu.style.right = "auto";
   } else {
@@ -534,13 +543,13 @@ function openChipDropUp(menu: HTMLElement): void {
   menu.style.maxHeight = `${Math.round(room)}px`;
   menu.style.overflowY = "auto";
   const menuBox = menu.getBoundingClientRect();
-  if (menuBox.left < 8) {
+  if (menuBox.left < boundLeft + 8) {
     menu.style.right = "auto";
-    menu.style.left = `${Math.round(8 - wrapBox.left)}px`;
+    menu.style.left = `${Math.round(boundLeft + 8 - wrapBox.left)}px`;
   }
-  if (menuBox.right > window.innerWidth - 8) {
+  if (menuBox.right > boundRight - 8) {
     menu.style.left = "auto";
-    menu.style.right = `${Math.round(8 - (window.innerWidth - wrapBox.right))}px`;
+    menu.style.right = `${Math.round(8 - (boundRight - wrapBox.right))}px`;
   }
 }
 
