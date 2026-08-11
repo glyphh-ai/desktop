@@ -567,15 +567,9 @@ export function initHelp() {
   });
 
   // ── App rail (Code-primary surface) ─────────────────────────────────────
-  // The Home|Code switcher is gone: the agent (code) is the always-present
-  // base, Home is a nav item like the rest, and clicking the ACTIVE section
-  // returns to the agent — so every section toggles back to code.
-  document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item").forEach((btn) => {
-    if (!btn.dataset.section) return; // non-section rail buttons are skipped
-    btn.addEventListener("click", () => {
-      gotoSection(btn.classList.contains("active") ? "code" : btn.dataset.section!);
-    });
-  });
+  // The rail's section nav (Artifacts/Connections/Apps/Layouts) was removed —
+  // the rail is + New session and Recents only; sections open from the
+  // command center / settings modal.
 
   // The "More" fly-out (Loops / Skills / Agents) was removed in A3 — those
   // sections live in the Settings modal now, so the rail no longer carries a

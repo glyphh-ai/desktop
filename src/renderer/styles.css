@@ -15170,7 +15170,9 @@ html:not(.glyphh-web) #panel-wc { height: 40px; padding-left: 16px; }
 
 /* Recents shares the rail with the Apps grid below it, so it is capped rather
    than flex:1 — the grid takes the remaining space. */
-.code-history { flex: 0 1 170px; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
+/* Recents owns the whole rail below its toggle now — the Apps/Layouts
+   sections (and the splitter that shared the height) were removed. */
+.code-history { flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
 
 .code-history-item {
   display: flex;
@@ -15232,29 +15234,15 @@ body.code-dragging { cursor: col-resize; user-select: none; }
 body.code-dragging #app-rail { transition: none; }
 
 
-/* App rail — Home|Code switcher */
-/* App rail — section nav */
-.app-rail-nav { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 0; }
 
-.app-rail-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-2);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
 
-.app-rail-nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
 
-.app-rail-nav-item:hover { background: var(--hover); color: var(--text); }
 
-.app-rail-nav-item.active { background: var(--rail-active-bg); color: var(--white); }
+
+
+
+
+
 
 
 /* App rail — user area (bottom) */
@@ -15325,17 +15313,9 @@ body.code-dragging #app-rail { transition: none; }
 .app-rail-user-menu .code-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
 
 
-/* Recents vertical resize + Recent apps search */
-.recents-vsplit {
-  flex: 0 0 4px;
-  margin: 1px 8px;
-  border-radius: 2px;
-  cursor: row-resize;
-  background: var(--text-faint);
-  opacity: 0.7;
-}
 
-.recents-vsplit:hover { background: var(--accent); opacity: 1; }
+
+
 
 body.code-vdragging { cursor: row-resize; user-select: none; }
 
@@ -15356,17 +15336,7 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 
 .app-rail-search input:focus { border-color: var(--accent); }
 
-/* Apps grid (rail) — Apps-page icons in tiles */
-.app-rail-grid {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 2px 10px 10px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
-  gap: 6px;
-  align-content: start;
-}
+
 
 /* Empty rail grid: one action, spanning the whole grid so it can't be
    squeezed into a 58px column and wrap mid-word. */
@@ -15446,9 +15416,9 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   padding: 10px 2px 2px;
 }
 
-.rail-grid-pager { grid-column: 1 / -1; padding: 2px 0 4px; }
 
-.rail-grid-pager .pagination-nav { justify-content: center; }
+
+
 
 
 /* Apps label row — open icon on the far right */
@@ -15458,31 +15428,13 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   justify-content: space-between;
 }
 
-/* Collapsible rail section header — disclosure toggle (chevron + label) on the
-   left, the open-page icon on the right. */
-.app-rail-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
 
-.app-rail-section-head .app-rail-section-toggle { flex: 1; min-width: 0; }
 
-.app-rail-section-head .rail-label-btn { flex: none; }
 
-/* Open section bodies SHARE the rail space below Recents (two open → split
-   evenly). A collapsed body is display:none, so its space flows to the other
-   open body — or, when both are closed, to Recents (see syncRailLayout). */
-/* An OPEN section must always show its list. `flex: 1 1 0` with `min-height: 0`
-   let both bodies shrink to nothing when the rail ran short (a laptop window,
-   or once "+ New session" grew into a primary button) — the apps and layouts
-   lists rendered their tiles into a 0-30px box, so the rail looked empty while
-   the DOM was full. A floor keeps them usable; the rail scrolls instead. */
-.app-rail-section-body {
-  display: flex; flex-direction: column;
-  flex: 1 1 auto; min-height: 132px; overflow: hidden;
-}
+
+
+
+
 /* Below ~620px of rail there isn't room for two lists AND recents — let the
    rail itself scroll rather than crushing the lists to nothing. */
 #app-rail { overflow-y: auto; overscroll-behavior: contain; }
@@ -15676,8 +15628,9 @@ body.code-dragging webview { pointer-events: none !important; }
 .ws-echo-body {
   position: relative; overflow: hidden;
   /* The command center wears the theme's own background — NO bloom. (The splash
-     purple lives on the new-session HeroFlow backdrop, not here.) */
-  background: var(--bg);
+     purple lives on the new-session HeroFlow backdrop, not here.) Slightly
+     DARKENED so the wall reads as its own room, theme-aware via color-mix. */
+  background: color-mix(in srgb, var(--bg) 88%, black);
 }
 .echo-stage { position: absolute; inset: 0; z-index: 1; overflow: hidden; cursor: grab; }
 .echo-stage:active { cursor: grabbing; }
@@ -16285,11 +16238,7 @@ body[data-session-space="code"] #code-session-kebab-wrap { display: none; }
 body[data-session-space="chat"] #code-plus-wrap,
 body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 
-/* Rail section titles + app tile names are CONTENT, not links — they follow
-   the standard text colors in every theme rather than picking up the accent
-   from an ancestor (which read purple). */
-.app-rail-section-head .code-rail-disclosure,
-.app-rail-section-head .code-rail-label { color: var(--text); }
+
 .app-rail-tile .tile-name { color: var(--text-2); }
 .app-rail-tile:hover .tile-name { color: var(--text); }
 
