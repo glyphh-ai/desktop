@@ -1481,8 +1481,9 @@ body.account-locked #dl-btn-wrap {
    traffic-light buttons (.wc) are hidden. With the lights gone, the mark no
    longer needs the cluster's left inset that made room for them: pull it flush so
    the header reads as a clean native-web bar, not an off-set desktop strip. */
-.glyphh-web #panel-wc { padding-left: 2px; }
+.glyphh-web #panel-wc { padding-left: 2px; height: 24px; }
 .glyphh-web #panel-wc .app-rail-mark { margin-left: 8px; }
+.glyphh-web #panel-wc .app-rail-wordmark { height: 18px; }
 /* A browser tab has no OS window to drag — kill every drag-region claim (incl.
    the header's drag band) so the splash/login/header behave like ordinary pages.
    The empty drag GAP right of the cluster (margin-left offsets sized to clear the
@@ -1531,7 +1532,7 @@ body.account-locked #dl-btn-wrap {
   border-bottom: none !important;
   overflow: visible !important;
 }
-.glyphh-web #app-rail { padding-top: 30px; }
+.glyphh-web #app-rail { padding-top: 24px; }
 /* The Close-layout pill lives inside the now-zero-height strip; re-pin it fixed
    to the top-center of the viewport so it stays visible + clickable on web. */
 .glyphh-web .echo-layout-bar {
@@ -14888,7 +14889,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* + New session IS the theme's primary button (.btn .btn-primary). Keep it a
    content-width pill — align-self:flex-start stops the rail's stretch from
    blowing it edge-to-edge. */
-.code-new-session-rail { margin: 4px 10px 10px; align-self: center; }
+/* A substantial primary button: stretches to the rail width minus a comfortable
+   inset (not edge-to-edge, not a tiny content-width pill). */
+.code-new-session-rail { margin: 6px 12px 12px; align-self: stretch; }
 
 .code-rail-label {
   padding: 12px 14px 6px;
