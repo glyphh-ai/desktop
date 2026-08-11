@@ -15008,12 +15008,13 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* A substantial primary button: stretches to the rail width minus a comfortable
    inset (not edge-to-edge, not a tiny content-width pill). */
 .code-new-session-rail { margin: 6px 12px 12px; align-self: stretch; }
-/* DESKTOP (Electron) only: the btn-lg scale reads oversized in the native rail —
-   drop it to the standard .btn scale. Web keeps the larger button. */
+/* DESKTOP (Electron) only: keep the btn-lg pill SHAPE (10px radius, generous
+   proportions) but scaled down — the full btn-lg bulk read oversized in the
+   native rail. Web keeps the full-size button. */
 html:not(.glyphh-web) .code-new-session-rail {
-  padding: 0.5rem 1rem;
-  font-size: 0.8125rem;
-  border-radius: var(--radius-sm);
+  padding: 0.6rem 1.1rem;
+  font-size: 0.875rem;
+  border-radius: 10px;
   margin: 10px 12px 12px;
 }
 /* DESKTOP only: the 30px header crammed the wordmark — give the logo row its
