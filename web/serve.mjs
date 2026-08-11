@@ -310,13 +310,18 @@ if (PROXY) {
   server.on('upgrade', (req, socket, head) => {
     const rp = new URL(req.url, 'http://x').pathname;
     // /rt/* → the runtime pod (legacy direct path); /api/* → the local server
-    // (the front door's /api/harness/ws live frame pipe). Anything else drops.
+    // (the front door's /api/harness/ws live frame pipe); /ws/* → the local
+    // server too (/ws/panel = streamed app panels, /ws/attach = desktop link).
+    // Without /ws here the panel socket got destroyed and streamed panels never
+    // rendered over the tunnel. Anything else drops.
     const isApi = rp.startsWith('/api/');
-    if (!rp.startsWith('/rt/') && !isApi) { socket.destroy(); return; }
-    const target = new URL(isApi ? API_TARGET : RT_TARGET);
+    const isWs = rp.startsWith('/ws/');
+    const toLocal = isApi || isWs;
+    if (!rp.startsWith('/rt/') && !toLocal) { socket.destroy(); return; }
+    const target = new URL(toLocal ? API_TARGET : RT_TARGET);
     const preq = http.request({
       hostname: target.hostname, port: target.port,
-      path: isApi ? req.url : (req.url.slice('/rt'.length) || '/'),
+      path: toLocal ? req.url : (req.url.slice('/rt'.length) || '/'),
       method: req.method, headers: { ...req.headers, host: target.host },
     });
     preq.on('upgrade', (pres, psock, phead) => {
