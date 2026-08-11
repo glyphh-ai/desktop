@@ -486,7 +486,7 @@ function Ghost() {
   }, []);
   return (
     <div className="m-ghost">
-      <img className="m-ghost-mark" src="/brand/glyphh-mark.png" alt="" />
+      <img className="m-ghost-mark" src="/brand/glyphh-mark-purple.png" alt="" />
       <div className="m-ghost-quote" style={fading ? { opacity: 0 } : undefined}>{GHOST_QUOTES[idx]}</div>
     </div>
   );

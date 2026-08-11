@@ -13248,10 +13248,9 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   padding: 24px;
 }
 .code-ghost-mark {
-  width: 96px;
-  height: 96px;
-  opacity: 0.10;
-  filter: grayscale(1);
+  width: 104px;
+  height: 104px;
+  opacity: 0.82;
   user-select: none;
   -webkit-user-drag: none;
 }

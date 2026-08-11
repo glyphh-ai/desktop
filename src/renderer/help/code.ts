@@ -1668,7 +1668,7 @@ function renderThread(): void {
     ghost.className = "code-ghost";
     const mark = document.createElement("img");
     mark.className = "code-ghost-mark";
-    mark.src = "brand/glyphh-mark.png";
+    mark.src = "brand/glyphh-mark-purple.png";
     mark.alt = "";
     const quote = document.createElement("div");
     quote.className = "code-ghost-quote";
@@ -3646,7 +3646,7 @@ function renderRailApps(): void {
   const homeIcon = document.createElement("div");
   homeIcon.className = "tile-icon";
   const homeImg = document.createElement("img");
-  homeImg.src = "brand/glyphh-mark.png";
+  homeImg.src = "brand/glyphh-mark-purple.png";
   homeImg.alt = "";
   homeIcon.appendChild(homeImg);
   const homeName = document.createElement("div");
