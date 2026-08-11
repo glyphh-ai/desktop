@@ -1380,7 +1380,9 @@ body.account-locked #dl-btn-wrap {
 .btn-primary:hover:not(:disabled),
 .btn-primary:active:not(:disabled),
 .btn-primary:focus-visible:not(:disabled) {
-  color: #000;
+  /* The gradient wipe slides under the label — white text on the accent, not
+     black. */
+  color: #fff;
 }
 .btn-secondary {
   background: var(--surface);
@@ -15007,13 +15009,12 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
    blowing it edge-to-edge. */
 /* A substantial primary button: stretches to the rail width minus a comfortable
    inset (not edge-to-edge, not a tiny content-width pill). */
-.code-new-session-rail { margin: 6px 12px 12px; align-self: stretch; }
-/* DESKTOP (Electron) only: the full btn-lg button, transform-scaled down on
-   both axes. Web keeps it full-size. */
-html:not(.glyphh-web) .code-new-session-rail {
+/* Both surfaces: the full btn-lg button, transform-scaled down on both axes. */
+.code-new-session-rail {
+  margin: 10px 12px 8px;
+  align-self: stretch;
   transform: scale(0.85);
   transform-origin: top center;
-  margin: 10px 12px 8px;
 }
 /* DESKTOP only: the 30px header crammed the wordmark — give the logo row its
    room back (the drag strip + every offset follows --titlebar-h). Web stays 0. */
