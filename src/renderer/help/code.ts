@@ -3677,7 +3677,7 @@ function renderRailApps(): void {
   const homeIcon = document.createElement("div");
   homeIcon.className = "tile-icon";
   const homeImg = document.createElement("img");
-  homeImg.src = "brand/glyphh-mark-purple.png";
+  homeImg.src = "brand/glyphh-mark.png";
   homeImg.alt = "";
   homeIcon.appendChild(homeImg);
   const homeName = document.createElement("div");
