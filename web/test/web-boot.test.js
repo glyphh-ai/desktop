@@ -54,6 +54,7 @@ const infra = {
 };
 const web = {
   isAuthenticated: vi.fn(async () => false),
+  serverReachable: vi.fn(async () => true),
   syncGating: vi.fn(async () => ({ email: 'a@b.co' })),
   signInWithGoogle: vi.fn(async () => {}),
   startEmailLink: vi.fn(async () => ({})),

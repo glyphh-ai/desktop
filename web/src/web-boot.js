@@ -27,7 +27,7 @@
 
 import { decideBootState, parseCallbackParams, shouldShowFirstRun, CALLBACK_PATH } from './glyphh-core.js';
 import {
-  isAuthenticated, syncGating,
+  isAuthenticated, syncGating, serverReachable,
   signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode, approveDevice,
 } from './glyphh-web.js';
 import { mountLogin } from './web-login.js';
@@ -304,6 +304,24 @@ export async function startWebBoot(overrides = {}) {
   }
 
   // LOGIN SHELL (the deliberate /auth page + the OAuth/magic-link callback).
+  // SERVER DOWN — hold a stable "can't reach" screen on the splash instead of
+  // mounting a login that can't work or entering an app that bounces. Re-probes
+  // until the control plane answers, then continues the normal decision.
+  const reachable = overrides.serverReachable || serverReachable;
+  if (!(await reachable())) {
+    splashStatus('Can’t reach the server — retrying…');
+    await new Promise((resolve) => {
+      const tick = async () => {
+        if (await reachable()) { resolve(); return; }
+        setTimeout(tick, 4000);
+      };
+      setTimeout(tick, 4000);
+    });
+    splashStatus('Loading…');
+    // The outage may have been an expired-session refresh failure too — redo
+    // the presence check now that the server answers.
+    try { authed = await isAuthed(); } catch { authed = false; }
+  }
   const state = decideBootState({
     pathname: window.location.pathname,
     search: window.location.search,

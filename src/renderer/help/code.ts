@@ -4088,6 +4088,26 @@ export function openUrlInWorkbench(name: string, url: string): void {
   open();
 }
 
+/** Open an app ROW as a workbench panel — Settings → Apps "Open app" and any
+ *  other out-of-workbench entry point. Same cold-safe mechanics as
+ *  openUrlInWorkbench, but the caller passes the real slug and the glyphh
+ *  flag (a glyphh app has no url until deployed; the workbench resolves it). */
+export function openAppInWorkbench(app: { slug: string; name: string; url?: string | null; glyphh?: boolean }): void {
+  showWorkspaceSurface();
+  const w = window as unknown as {
+    __initCodeWorkbench?: () => void;
+    __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
+  };
+  w.__initCodeWorkbench?.();
+  const ref = { slug: app.slug, name: app.name, url: app.url || "", glyphh: app.glyphh || undefined };
+  let tries = 0;
+  const open = (): void => {
+    if (w.__wbOpenApp) { w.__wbOpenApp(ref); return; }
+    if (tries++ < 40) setTimeout(open, 50);
+  };
+  open();
+}
+
 /** Open the command center (app/layout launcher) from ANY section — even before
  *  the Code workbench has ever mounted. Flips to the agent surface, boots the
  *  workbench (idempotent async init), then retries the toggle over rAF because

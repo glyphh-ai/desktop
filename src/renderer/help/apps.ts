@@ -7,7 +7,8 @@ import {
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
-import { gotoSection } from "./navigation.js";
+import { gotoSection, closeSettingsModal } from "./navigation.js";
+import { openAppInWorkbench } from "./code.js";
 import { formatMarkdown } from "../format-markdown.js";
 
 declare const Chart: any;
@@ -2122,13 +2123,22 @@ function initApps() {
   // App detail back button
   document.getElementById("app-detail-close")?.addEventListener("click", () => closeAppDetail());
 
-  // App detail "Open app" — opens the app per its config (webview window,
-  // native Chrome, or a native executable). Surfaces launch errors inline.
+  // App detail "Open app" — leaves settings: close the modal and open the app
+  // as a WORKBENCH panel (web + glyphh apps). A native executable can't run
+  // in a panel — it keeps the OS launch, closing the modal only on success so
+  // a launch error stays visible inline.
   document.getElementById("app-detail-open")?.addEventListener("click", async () => {
     const app = panelApps.find((a) => a.id === currentAppId);
     if (!app) return;
+    const glyphh = app.appArchetype === "glyphh-app";
+    if (app.url || glyphh) {
+      closeSettingsModal();
+      openAppInWorkbench({ slug: app.slug, name: app.name, url: app.url, glyphh: glyphh || undefined });
+      return;
+    }
     const r = await launchPanelApp(app);
-    if (!r?.ok && r?.error) { appFormError.textContent = r.error; appFormError.classList.remove("hidden"); }
+    if (!r?.ok && r?.error) { appFormError.textContent = r.error; appFormError.classList.remove("hidden"); return; }
+    closeSettingsModal();
   });
 
   // App add form cancel

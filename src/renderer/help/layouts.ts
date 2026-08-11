@@ -4,7 +4,7 @@
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
-import { gotoSection } from "./navigation.js";
+import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
 
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
@@ -15,6 +15,9 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.glyphh.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
+  // Opening a layout LEAVES settings — drop the modal (no-op when absent) so
+  // the workbench isn't hidden behind it.
+  closeSettingsModal();
   showWorkspaceSurface();   // neutral flip — the layout's cells define the view
   // Open BY NAME so the workbench's recall path runs: the layout's definition
   // plus the geometry the user last dragged it into (its named memory). The

@@ -7,7 +7,7 @@
  * adapted to the renderer (no Next): onSignedOut dispatches a `glyphh:signed-out`
  * event the boot-gate/router handles instead of a Next redirect.
  */
-import { createClient } from '@glyphh/sdk';
+import { createClient, AuthError } from '@glyphh/sdk';
 import {
   resolveApiUrl, gatingCookieStrings, makeTokenStore, toLegacyUser, USER_KEY,
 } from './glyphh-core.js';
@@ -73,7 +73,13 @@ export function glyphh() {
   return _client;
 }
 
-/** After sign-in (or on load): resolve who-am-I, cache it, stamp the role cookie. */
+/** After sign-in (or on load): resolve who-am-I, cache it, stamp the role cookie.
+ *  Only a DEFINITIVE auth failure (AuthError — the session is dead) clears the
+ *  gating state. A transient failure (server offline / 5xx / network) keeps the
+ *  cached user + cookies as they are — clearing them on an outage made the
+ *  /home route guard bounce to `/`, which saw the still-stored session and
+ *  bounced back, flashing the two shells in a loop for as long as the server
+ *  was down. */
 export async function syncGating() {
   try {
     const me = await glyphh().me();
@@ -81,10 +87,26 @@ export async function syncGating() {
     const user = toLegacyUser(me);
     cacheUser(user);
     return user;
+  } catch (e) {
+    if (e instanceof AuthError) {
+      setGatingCookies(false);
+      cacheUser(null);
+      return null;
+    }
+    return cachedUser();   // transient — serve the stale identity, stay put
+  }
+}
+
+/** Can the control plane be reached at all? (Unauthenticated liveness probe —
+ *  distinguishes "signed out" from "server down" so boot can hold a stable
+ *  offline screen instead of redirect-looping.) */
+export async function serverReachable() {
+  if (!hasWindow) return true;
+  try {
+    const r = await fetch(`${API_URL}/healthz`, { method: 'GET', cache: 'no-store' });
+    return r.status < 500;
   } catch {
-    setGatingCookies(false);
-    cacheUser(null);
-    return null;
+    return false;
   }
 }
 
