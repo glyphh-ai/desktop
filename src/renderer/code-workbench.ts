@@ -3261,13 +3261,14 @@ async function init(): Promise<void> {
         if (!tile) return;
         const pinned = openList.find((x) => x.tile.sticky && x.card);
         if (pinned) { retargetCard(pinned, tile); return; }
-        // B3: OPEN = WIPE-THEN-MOUNT. An app open REPLACES whatever is up — the
-        // current layout AND any other open apps — so only the one new app
-        // remains (one app or one layout at a time; opens never accumulate).
-        // The reset saves an open layout's memory ("last" resumes it); a PIN
-        // above still captures the open into the pinned slot with the rest
-        // intact (the deliberate sticky-slot exception).
-        if (openList.length) resetEcho();
+        // An app open ADDS to the next slot when the stage is just apps — apps
+        // accumulate side by side. It only WIPES when the stage is a LAYOUT: a
+        // layout owns the whole grid, so a new app replaces it rather than
+        // jamming into one of its cells. (Opening a LAYOUT always replaces —
+        // see openLayoutInEchoArranged. A PIN above already handled the sticky
+        // case. The reset saves an open layout's memory so "last" can resume it.)
+        const inLayout = openList.some((e) => e.layoutId != null);
+        if (inLayout) resetEcho();
         activateTile(adHoc(tile));
       },
       openLayout: (layout) => openLayoutInEcho(layout),
