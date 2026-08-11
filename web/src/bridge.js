@@ -90,6 +90,19 @@ if (typeof window !== 'undefined') {
   // Renders a fixed overlay reporting what THIS device computed for the top
   // chrome, so the band can be debugged from the user's real screen.
   try {
+    // TEMP: a lime RULER at the page's absolute top edge (y=0..4). If the dark
+    // band sits BETWEEN the browser toolbar and this line, the band is OUTSIDE
+    // the page (browser/OS chrome) and no page CSS can remove it. If the line
+    // touches the toolbar, the page is flush and the band is internal styling.
+    if (typeof document !== 'undefined') {
+      const ruler = () => {
+        let r = document.getElementById('glyphh-ruler');
+        if (!r) { r = document.createElement('div'); r.id = 'glyphh-ruler'; (document.body || document.documentElement).appendChild(r); }
+        r.style.cssText = 'position:fixed;top:0;left:0;right:0;height:4px;background:#0f0;z-index:2147483647;pointer-events:none;';
+      };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ruler); else ruler();
+      setTimeout(ruler, 2000);
+    }
     if (typeof document !== 'undefined' && (/[?&]diag=1/.test(location.search) || location.hash === '#diag')) {
       const paint = () => {
         const g = (id) => document.getElementById(id);
