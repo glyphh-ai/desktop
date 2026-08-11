@@ -2264,21 +2264,22 @@ async function init(): Promise<void> {
      *  squeezed beneath it — and it keeps the LEFT column ("agent pinned
      *  left, grid to its right"), so an app opened before OR after the agent
      *  always lands to the agent's right, never over or left of it. */
+    /** ORIGINAL flow order, restored: cards fill columns in OPEN ORDER (two to
+     *  a column, then a new column) — the ONLY skip is the agent keeping its
+     *  column to itself, so when the agent is the sole panel the first app
+     *  opens BESIDE it, never squeezed beneath. No re-sorting, no column-first
+     *  preference — order stays exactly as it was. */
     const flowColumns = (cards: TileEntry[]): TileEntry[][] => {
       const cols: TileEntry[][] = [];
       for (const e of cards) {
         const isAgent = e.tile.kind === "agent";
-        // Prefer a NEW column beside the others ("the next slot") while
-        // there is row width for one; only then stack two to a column.
-        const target = isAgent || cols.length < 3
+        const target = isAgent
           ? undefined
           : cols.find((col) => col.length < 2 && !col.some((c) => c.tile.kind === "agent"));
         if (target) target.push(e);
         else cols.push([e]);
       }
-      const agentCols = cols.filter((col) => col.some((c) => c.tile.kind === "agent"));
-      const appCols = cols.filter((col) => !col.some((c) => c.tile.kind === "agent"));
-      return [...agentCols, ...appCols];
+      return cols;
     };
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
       // EDGE-TO-EDGE like the layout grid: seams only BETWEEN cards.
