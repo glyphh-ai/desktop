@@ -27,6 +27,7 @@ import {
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
 import { greeting } from "./dashboard.js";
+import { timeMascotSvg } from "./mascots.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -1687,10 +1688,12 @@ function renderThread(): void {
   if (!c || !c.messages.length) {
     const ghost = document.createElement("div");
     ghost.className = "code-ghost";
-    const mark = document.createElement("img");
+    // MASCOT = the time-of-day cousin, picked by the user's LOCAL hour and
+    // rendered as inline SVG (purple/accent). Re-evaluated on every landing
+    // paint, so the bucket stays current.
+    const mark = document.createElement("div");
     mark.className = "code-ghost-mark";
-    mark.src = "brand/glyphh-mark-purple.png";
-    mark.alt = "";
+    mark.innerHTML = timeMascotSvg();
     // TITLE = the home hero's greeting (title font): time-of-day + user name.
     // Re-evaluated here so the bucket is current; name backfills async.
     ensureGhostName();

@@ -12,7 +12,10 @@
  * eyes with a glint, thin dark feelers, and a soft floor shadow.
  */
 
-export type MascotKey = "scout" | "byte" | "post" | "patch" | "sage" | "tally";
+export type MascotKey =
+  | "scout" | "byte" | "post" | "patch" | "sage" | "tally"
+  // Time-of-day cousins — same creature, one readable prop or expression each.
+  | "morning" | "lunch" | "afternoon" | "evening" | "latenight";
 
 export interface Mascot {
   /** The character's name — rendered beside them. */
@@ -169,7 +172,103 @@ const CHARACTERS: Record<MascotKey, (c: string) => string> = {
     slitEye(18.4, 25.4, 5.5) +
     slitEye(29.6, 25.4, 5.5) +
     feelers("tally", 33.6) + mouth(35.8, 4, 0.4)),
+
+  // MORNING — the scout body, wide awake, cradling a coffee cup with a curl
+  // of steam. The cup + handle are stroked in the same colour as the antennae.
+  morning: (c) => shell("morning",
+    `<path d="M31.4 39.6 Q41.2 38.8 41.6 30.2" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>` +
+    `<g stroke="${c}" stroke-width="1.6" stroke-linecap="round">` +
+    `<line x1="16.4" y1="6" x2="12.8" y2="1.4"/><line x1="30.6" y1="5.4" x2="35.2" y2="2.2"/></g>` +
+    `<circle cx="12.8" cy="1.4" r="1.7" fill="${c}"/><circle cx="35.2" cy="2.2" r="1.4" fill="${c}"/>` +
+    lit("morning", "M13.4 4.6 L19.2 18.6 Q24 17.2 28.4 18.4 L34.4 5.6 L36 26.4 Q35.6 37 24 44.8 Q12.8 37 12.4 26.6 Z", c) +
+    ringEye(24, 24.6, 7.4) +
+    feelers("morning", 33.6) + mouth(37, 3.2) +
+    // steam curl
+    `<path d="M35.4 27.8 Q37.4 26 36 24.2 Q34.6 22.4 36.6 20.6" fill="none" stroke="${K}" stroke-opacity="0.4" stroke-width="1.2" stroke-linecap="round"/>` +
+    // coffee cup + handle, held to the side
+    `<path d="M31.6 30 L40.6 30 L39.4 39 Q39 40.6 37 40.6 L34.2 40.6 Q32.2 40.6 31.8 39 Z" fill="${W}"/>` +
+    `<path d="M31.6 30 L40.6 30 L39.4 39 Q39 40.6 37 40.6 L34.2 40.6 Q32.2 40.6 31.8 39 Z" fill="none" stroke="${c}" stroke-width="1.5" stroke-linejoin="round"/>` +
+    `<path d="M40.6 31.8 Q43.6 31.8 43.4 34.2 Q43.2 36.4 40.4 36.2" fill="none" stroke="${c}" stroke-width="1.4" stroke-linecap="round"/>`),
+
+  // LUNCH — the scout body over a little food bowl with two rising wisps.
+  lunch: (c) => shell("lunch",
+    `<path d="M31.4 39.6 Q41.2 38.8 41.6 30.2" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>` +
+    `<g stroke="${c}" stroke-width="1.6" stroke-linecap="round">` +
+    `<line x1="16.4" y1="6" x2="12.8" y2="1.4"/><line x1="30.6" y1="5.4" x2="35.2" y2="2.2"/></g>` +
+    `<circle cx="12.8" cy="1.4" r="1.7" fill="${c}"/><circle cx="35.2" cy="2.2" r="1.4" fill="${c}"/>` +
+    lit("lunch", "M13.4 4.6 L19.2 18.6 Q24 17.2 28.4 18.4 L34.4 5.6 L36 26.4 Q35.6 37 24 44.8 Q12.8 37 12.4 26.6 Z", c) +
+    ringEye(24, 22.8, 7.2) +
+    feelers("lunch", 32.4) + mouth(35, 3.2, 1.8) +
+    // rising wisps off the bowl
+    `<g stroke="${K}" stroke-opacity="0.36" stroke-width="1.1" stroke-linecap="round">` +
+    `<path d="M20.4 39.6 Q19.2 38.2 20.4 36.8" fill="none"/>` +
+    `<path d="M27.6 39.6 Q28.8 38.2 27.6 36.8" fill="none"/></g>` +
+    // bowl: a rounded half-ellipse with a lip
+    `<path d="M15 41 A9 6 0 0 0 33 41 Z" fill="${W}"/>` +
+    `<path d="M15 41 A9 6 0 0 0 33 41" fill="none" stroke="${c}" stroke-width="1.5" stroke-linecap="round"/>` +
+    `<line x1="14" y1="41" x2="34" y2="41" stroke="${c}" stroke-width="1.6" stroke-linecap="round"/>`),
+
+  // AFTERNOON — bright + alert: wide-open ring eye under a little sun arc
+  // with rays, riding high behind the ears.
+  afternoon: (c) => shell("afternoon",
+    // sun arc + rays, top-right
+    `<path d="M37 9 A5.4 5.4 0 0 0 27.6 12.6" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round"/>` +
+    `<g stroke="${c}" stroke-opacity="0.8" stroke-width="1.2" stroke-linecap="round">` +
+    `<line x1="32.4" y1="1.6" x2="32.4" y2="3.6"/><line x1="40.8" y1="5" x2="39.4" y2="6.4"/>` +
+    `<line x1="43.4" y1="12.4" x2="41.4" y2="12.4"/><line x1="24.6" y1="5.6" x2="26" y2="7"/></g>` +
+    `<path d="M31.4 39.6 Q41.2 38.8 41.6 30.2" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>` +
+    `<g stroke="${c}" stroke-width="1.6" stroke-linecap="round">` +
+    `<line x1="16.4" y1="6" x2="12.8" y2="1.4"/></g>` +
+    `<circle cx="12.8" cy="1.4" r="1.7" fill="${c}"/>` +
+    lit("afternoon", "M13.4 4.6 L19.2 18.6 Q24 17.2 28.4 18.4 L34.4 5.6 L36 26.4 Q35.6 37 24 44.8 Q12.8 37 12.4 26.6 Z", c) +
+    ringEye(24, 25, 7.8, 0.28) +
+    feelers("afternoon", 34) + mouth(37.4, 3.6, 1.9)),
+
+  // EVENING — the scout body wearing a little pointed nightcap with a pom,
+  // eye half-open, winding down.
+  evening: (c) => shell("evening",
+    lit("evening", "M13.4 4.6 L19.2 18.6 Q24 17.2 28.4 18.4 L34.4 5.6 L36 26.4 Q35.6 37 24 44.8 Q12.8 37 12.4 26.6 Z", c) +
+    // nightcap: a drooping pointed cone with a band, pom on the tip
+    `<path d="M12.8 8.4 Q24 -1.2 34.6 6 Q40 9.6 43 4.6" fill="${W}"/>` +
+    `<path d="M12.8 8.4 Q24 -1.2 34.6 6 Q40 9.6 43 4.6" fill="none" stroke="${c}" stroke-width="1.5" stroke-linejoin="round"/>` +
+    `<path d="M12.4 8.6 Q24 12 35 7.4" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>` +
+    `<circle cx="43.4" cy="4.2" r="2.2" fill="${W}"/>` +
+    `<circle cx="43.4" cy="4.2" r="2.2" fill="none" stroke="${c}" stroke-width="1.3"/>` +
+    ringEye(24, 26, 6.6) +
+    feelers("evening", 34.4) + mouth(37, 3, 1)),
+
+  // LATENIGHT — asleep: a lidded eye and a small "z z z" trailing off.
+  latenight: (c) => shell("latenight",
+    `<path d="M31.4 39.6 Q41.2 38.8 41.6 30.2" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>` +
+    `<g stroke="${c}" stroke-width="1.6" stroke-linecap="round">` +
+    `<line x1="16.4" y1="6" x2="12.8" y2="1.4"/><line x1="30.6" y1="5.4" x2="35.2" y2="2.2"/></g>` +
+    `<circle cx="12.8" cy="1.4" r="1.7" fill="${c}"/><circle cx="35.2" cy="2.2" r="1.4" fill="${c}"/>` +
+    lit("latenight", "M13.4 4.6 L19.2 18.6 Q24 17.2 28.4 18.4 L34.4 5.6 L36 26.4 Q35.6 37 24 44.8 Q12.8 37 12.4 26.6 Z", c) +
+    lidEye(24, 25.6, 7) +
+    feelers("latenight", 33.6) + mouth(37.4, 3, -0.6) +
+    // z z z, rising to the right
+    `<g fill="none" stroke="${c}" stroke-opacity="0.85" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="M33.6 20 L37 20 L33.6 24 L37 24"/>` +
+    `<path d="M38.4 13.4 L41.2 13.4 L38.4 16.6 L41.2 16.6"/>` +
+    `<path d="M42.4 8 L44.6 8 L42.4 10.6 L44.6 10.6"/></g>`),
 };
+
+/** The accent colour these cousins wear — theme-aligned, follows --accent. */
+const ACCENT = "var(--accent, #8c3bf2)";
+
+/** Local-hour → time-of-day mascot. Buckets: 5–10 morning, 10–14 lunch,
+ * 14–17 afternoon, 17–22 evening, else latenight. Returns the SVG string. */
+export function timeMascotSvg(hour: number = new Date().getHours()): string {
+  let key: MascotKey;
+  if (hour >= 5 && hour < 10) key = "morning";
+  else if (hour >= 10 && hour < 14) key = "lunch";
+  else if (hour >= 14 && hour < 17) key = "afternoon";
+  else if (hour >= 17 && hour < 22) key = "evening";
+  else key = "latenight";
+  // Guard: if the bucket logic ever falls through, land on the true cyclops.
+  const draw = CHARACTERS[key] ?? CHARACTERS.scout;
+  return `<svg viewBox="0 0 48 48" role="img" aria-label="${key}">${draw(ACCENT)}</svg>`;
+}
 
 /** One mascot as inline SVG, sized by CSS (the box is square). */
 export function mascotSvg(m: Mascot): string {
