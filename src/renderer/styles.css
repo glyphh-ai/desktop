@@ -7435,17 +7435,9 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   gap: 8px;
 }
 .billing-plan-name { font-size: 14px; font-weight: 600; color: var(--text-bright); }
-.billing-plan-flag {
-  padding: 1px 7px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--accent);
-  white-space: nowrap;
-}
+/* The current/bespoke marker is the EXISTING .acct-chip component — no
+   bespoke pill here. The card's selected state mirrors .theme-option.active
+   (accent border), the house selected-card grammar. */
 .billing-plan-price { margin: 2px 0 4px; }
 .billing-plan-amount { font-size: 20px; font-weight: 600; color: var(--text-bright); }
 .billing-plan-period { font-size: 11px; color: var(--text-3); }

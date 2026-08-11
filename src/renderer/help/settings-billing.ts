@@ -252,8 +252,8 @@ function paintPlans(): void {
     card.innerHTML =
       `<div class="billing-plan-head">` +
         `<span class="billing-plan-name">${escapeHtml(p.displayName || p.tier)}</span>` +
-        (isCurrent ? `<span class="billing-plan-flag">Current plan</span>`
-          : p.bespoke ? `<span class="billing-plan-flag">Custom deal</span>` : "") +
+        (isCurrent ? `<span class="acct-chip">Current plan</span>`
+          : p.bespoke ? `<span class="acct-chip">Custom deal</span>` : "") +
       `</div>` +
       `<div class="billing-plan-price"><span class="billing-plan-amount">${escapeHtml(amount)}</span> <span class="billing-plan-period">${escapeHtml(period)}</span></div>` +
       `<div class="billing-plan-line">${generic ? "Volume credits" : `${escapeHtml(fmtInt(p.monthlyCredits || 0))} credits / month`}</div>` +
