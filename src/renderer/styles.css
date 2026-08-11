@@ -3004,7 +3004,9 @@ body.account-locked #dl-btn-wrap {
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  /* Confirms can be raised FROM inside the settings modal (z 9000) — e.g.
+     revoking an API key — so they must float above it, like the cell picker. */
+  z-index: 9600;
   background: var(--overlay-bg);
   display: flex;
   align-items: center;
