@@ -216,7 +216,7 @@ function wireDefaultModelPickers(): void {
         const res = await window.glyphh.loopSetRoleDefault(current.id, role, sel.value || null);
         sel.disabled = false;
         if (!msg) return;
-        if (res.ok) { msg.textContent = "Saved."; msg.classList.remove("hidden", "danger"); }
+        if (res?.ok) { msg.textContent = "Saved."; msg.classList.remove("hidden", "danger"); }
         else {
           msg.textContent = res.error?.includes("forbidden") || res.error?.includes("admin")
             ? "Only org admins can change a loop's default models."

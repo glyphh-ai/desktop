@@ -242,6 +242,25 @@ export function buildContract(client, deps) {
     loopRoles: (loop) =>
       read(() => client.loops.roles(loop), (roles) => toLegacyLoopRoles(loop, roles), (error) => EMPTY.loopRoles(loop, error))(),
     libraryLoopGet: lib((ref) => client.loops.get(ref)),
+    // Mirror of the desktop's loop-set-role-default IPC: read the loop, patch
+    // the role slot's default in the manifest, write it back. Pure SDK — the
+    // web bridge lacked this, so changing a model in a loop crashed on web.
+    loopSetRoleDefault: async (loopId, role, modelId) => {
+      try {
+        const loop = await client.loops.get(loopId);
+        const manifest = { ...(loop.manifest ?? {}) };
+        const roles = Array.isArray(manifest.roles) && manifest.roles.length
+          ? manifest.roles.map((r) => ({ ...r }))
+          : [{ name: 'default', label: 'Model', description: 'The model this loop runs on.' }];
+        const slot = roles.find((r) => r.name === role);
+        if (slot) slot.default = modelId ?? null;
+        else roles.push({ name: role, default: modelId ?? null });
+        await client.loops.update(loop.id ?? loopId, { manifest: { ...manifest, roles } });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: String((e && e.message) || e) };
+      }
+    },
 
     // ── Skills / Agents (library {ok,data} envelope) ──────────────────────────────
     librarySkillsList: lib(() => client.skills.list()),

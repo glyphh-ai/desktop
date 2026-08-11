@@ -74,12 +74,15 @@ function paintSeats(): void {
   if (!note) return;
   const full = seatsFull();
   note.classList.toggle("hidden", !full);
+  // ALWAYS reconcile the button with the current seat state — the old one-way
+  // disable LATCHED: the first paint (org not loaded yet → reads as full)
+  // disabled Invite and nothing ever re-enabled it.
+  const invite = $<HTMLButtonElement>("members-invite-btn");
+  if (invite) invite.disabled = full;
   if (!full) return;
   note.textContent = (org?.tier || "free") === "free"
     ? "The Free plan is single-seat — change your plan under Billing to invite your team."
     : `All ${org?.maxSeats} seats are in use — change your plan under Billing to add more.`;
-  const invite = $<HTMLButtonElement>("members-invite-btn");
-  if (invite) invite.disabled = true;
 }
 
 /** Debounced write for a member's name, keyed per row so two edits can't
