@@ -231,20 +231,25 @@ const server = http.createServer(async (req, res) => {
     const ext = extname(file);
     if (ext === '.html') {
       body = body.toString();
-      // Web-only: ensure the viewport opts into the safe-area insets so the phone
-      // splash/login can pad around the notch + home indicator via env(safe-area-*).
-      // Desktop Electron loads the template directly and never sees this rewrite.
+      // MOBILE shell only: opt into the safe-area insets so the phone splash/
+      // login can pad around the notch via env(safe-area-*). The DESKTOP shells
+      // must NOT get viewport-fit=cover — in an iPad browser tab, cover makes
+      // the page paint its own (dark) background into the zone around the
+      // floating browser toolbar, which read as an unremovable dark band above
+      // the app (the page's y=0 proved to sit BELOW the band; a lime-ruler test
+      // pinned it). Plain width=device-width for desktop shells.
+      const wantsCover = /mobile\.html$/.test(file);
       if (/viewport-fit\s*=\s*cover/i.test(body)) {
-        /* already opted in */
+        if (!wantsCover) body = body.replace(/,?\s*viewport-fit\s*=\s*cover/gi, '');
       } else if (/<meta\s+name=["']viewport["'][^>]*>/i.test(body)) {
-        body = body.replace(
+        if (wantsCover) body = body.replace(
           /(<meta\s+name=["']viewport["']\s+content=["'])([^"']*)(["'][^>]*>)/i,
           (_m, pre, content, post) => `${pre}${content.replace(/\s*$/, '')}, viewport-fit=cover${post}`,
         );
       } else {
         body = body.replace(
           /<head(\s[^>]*)?>/i,
-          (m) => `${m}\n  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">`,
+          (m) => `${m}\n  <meta name="viewport" content="width=device-width, initial-scale=1.0${wantsCover ? ', viewport-fit=cover' : ''}">`,
         );
       }
       // Inject, as the FIRST things in <head>: (1) on a nested shell route, a
