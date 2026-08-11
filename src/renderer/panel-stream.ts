@@ -69,8 +69,9 @@ export interface StreamedPanelHandle {
 /**
  * Mount a streamed panel into a fresh element. Returns immediately with a handle
  * whose `.el` can be appended anywhere; the connect + open happen asynchronously
- * and surface their state in the UI. `dispose()` (or the element being removed
- * from the DOM — we self-observe) tears everything down.
+ * and surface their state in the UI. `dispose()` tears everything down —
+ * callers that remove `.el` from the DOM must call it, or the far side keeps
+ * casting into the void until the socket dies on its own.
  */
 export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHandle {
   const root = document.createElement("div");
@@ -99,6 +100,9 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   let transport: "webrtc" | "screencast" = "screencast";
   let lastUrl = opts.url;
   let pc: RTCPeerConnection | null = null;
+  /** Bumped by every boot(); a superseded run must go silent — its socket's
+   *  late onClose used to paint "Desktop disconnected" OVER the fresh run. */
+  let bootGen = 0;
 
   function setOverlay(html: string | null): void {
     if (html == null) { overlay.style.display = "none"; overlay.innerHTML = ""; return; }
@@ -249,7 +253,22 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   ro.observe(root);
 
   // ── connect + open ─────────────────────────────────────────────────────────
+  /** RE-ENTRANT by design: the retry button re-runs it, so every (re)boot
+   *  SUPERSEDES the previous run — old socket/peer closed, panel forgotten,
+   *  and every await gen-checked so a superseded run can never touch the UI
+   *  again (a stale socket's onClose used to stomp the live overlay). */
   async function boot(): Promise<void> {
+    const gen = ++bootGen;
+    const old = relay;
+    relay = null;
+    panelId = null;
+    try { pc?.close(); } catch { /* noop */ }
+    pc = null;
+    try { old?.close(); } catch { /* noop */ }
+    // Back to the JPEG floor — a retry after a WebRTC session starts clean.
+    transport = "screencast";
+    video.style.display = "none"; video.srcObject = null; canvas.style.pointerEvents = "";
+
     const client = relaySdk();
     if (!client) { setOverlay(offlineHtml("signed-out")); return; }
     setOverlay(`<div>Connecting to your desktop…</div>`);
@@ -257,30 +276,33 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     // Honest offline state: check attach BEFORE opening a socket.
     let attached = false;
     try { attached = (await client.attach.status()).attached; } catch { attached = false; }
-    if (disposed) return;
+    if (disposed || gen !== bootGen) return;
     if (!attached) { setOverlay(offlineHtml("desktop-offline")); return; }
 
     const token = await client.token().catch(() => null);
-    if (disposed) return;
+    if (disposed || gen !== bootGen) return;
     if (!token) { setOverlay(offlineHtml("signed-out")); return; }
 
-    await connect(token);
+    await connect(token, gen);
   }
 
-  async function connect(token: string): Promise<void> {
+  async function connect(token: string, gen: number): Promise<void> {
     let sock: RelaySocket;
     try {
       sock = await connectRelaySocket(token);
     } catch {
-      if (!disposed) setOverlay(offlineHtml("disconnected"));
+      if (!disposed && gen === bootGen) setOverlay(offlineHtml("disconnected"));
       return;
     }
+    if (disposed || gen !== bootGen) { try { sock.close(); } catch { /* noop */ } return; }
     relay = sock;
-    sock.onClose(() => { if (!disposed) setOverlay(offlineHtml("disconnected")); });
+    // `relay === sock` gates both callbacks: once a newer boot swaps the
+    // socket out, this one's events are history, not state.
+    sock.onClose(() => { if (!disposed && relay === sock) setOverlay(offlineHtml("disconnected")); });
     // Filter to OUR panel's channel — panelId isn't known until panel.open
     // returns, so match at delivery time rather than subscribing per-channel.
     sock.onPush(null, (channel, data) => {
-      if (panelId && channel === panelId && data) onPush(data as PanelPush);
+      if (relay === sock && panelId && channel === panelId && data) onPush(data as PanelPush);
     });
     try {
       // Open at the element's REAL box, not the canvas's 1280x800 default —
@@ -289,7 +311,10 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
       const box = root.getBoundingClientRect();
       const w0 = Math.max(1, Math.round(box.width)) || canvas.width;
       const h0 = Math.max(1, Math.round(box.height)) || canvas.height;
-      const r = (await call("panel.open", { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 })) as { panelId: string };
+      // sock.call, not the shared call(): if a newer boot has already swapped
+      // `relay`, this superseded open must ride (and die with) ITS socket.
+      const r = (await sock.call("panel.open", { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 })) as { panelId: string };
+      if (disposed || gen !== bootGen) { sock.send("panel.close", { panelId: r.panelId }); return; }
       panelId = r.panelId;
       // Layout may have settled while the socket/open round-tripped — sync
       // once now that resize events are deliverable.
@@ -301,7 +326,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
       canvas.focus();
       void startWebrtc();
     } catch (err) {
-      setOverlay(offlineHtml("failed", (err as Error).message || undefined));
+      if (!disposed && gen === bootGen) setOverlay(offlineHtml("failed", (err as Error).message || undefined));
     }
   }
 

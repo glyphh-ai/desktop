@@ -71,6 +71,13 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --surface:     #ffffff;
   --surface-2:   #fafafa;
   --surface-3:   #f0f0f0;
+  /* --bg-2 is used across the app (streamed panels, skill explorer, attach
+     rows) but was never DEFINED by any theme, so every use computed to
+     transparent — which is how the Browser panel went white: the streamed
+     panel's var(--bg-2) backing vanished and the holder's #fff showed
+     through. One alias here serves every theme (var() resolves against the
+     active theme's --surface-2 at use time). */
+  --bg-2:        var(--surface-2);
   --border:      #e5e5e5;
   --border-2:    #d4d4d4;
   --border-3:    #c4c4c4;
@@ -11469,7 +11476,11 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
   width: 100%;
   height: 100%;
   border: none;
-  background: #fff;
+  /* Theme-follow, never hard white: on web this holder sits BEHIND the
+     streamed panel (whose backing is var(--bg-2)) and it's what shows in
+     every empty/loading/error state — #fff here was the white rectangle in
+     dark themes. Native webviews paint their own page over it either way. */
+  background: var(--ws-bg-card);
 }
 .ws-preview-frame[hidden] { display: none; }
 

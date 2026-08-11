@@ -22,6 +22,7 @@ import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-te
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
+import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
@@ -1582,6 +1583,9 @@ async function init(): Promise<void> {
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
     interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
+      /** WEB: the card's streamed-panel handle. Card teardown must dispose it
+       *  or the desktop keeps casting to a removed element. */
+      streamed?: StreamedPanelHandle;
       /** B1/B2: the layout open that spawned this card. Every panel a layout
        *  fans out shares one id; a standalone app open has none. A card with a
        *  layoutId hides its own X (closing is via the layout bar) and is torn
@@ -2578,6 +2582,11 @@ async function init(): Promise<void> {
       }
       e.card = undefined;
       e.open = false;
+      // WEB: stop the desktop-side page + socket NOW — the card's DOM lingers
+      // 380ms for the zoom-back, but the stream has no business outliving the
+      // close click.
+      e.streamed?.dispose();
+      e.streamed = undefined;
       drawTile(e);
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
@@ -3075,6 +3084,12 @@ async function init(): Promise<void> {
         // as a plain iframe). Same card, same chrome, different transport.
         const body = card.querySelector(".echo-card-body")!;
         if (t.glyphh && t.slug) {
+          // A DEPLOYED Glyphh app renders in-browser from its public host. An
+          // app with no deployment exists only on the user's desktop — there
+          // is nothing at the hosted URL, and the old unconditional iframe
+          // dead-ended in a blank rectangle with none of the state cards the
+          // streamed panels show. Same family of problem → the SAME card.
+          if (!t.url) { body.appendChild(mountGlyphhAppWebState(t.name)); return; }
           const frame = document.createElement("iframe");
           frame.src = `https://${t.slug}.glyphh.app/`;
           frame.style.cssText = "flex:1;min-height:0;width:100%;border:0;background:var(--bg-2)";
@@ -3087,6 +3102,7 @@ async function init(): Promise<void> {
           url,
           onNav: (u) => { if (u) t.url = u; navTarget.dispatchEvent(Object.assign(new Event("did-navigate"), { url: u })); },
         });
+        e.streamed = streamed;
         const adapter = {
           loadURL: (u: string) => streamed.navigate(u),
           goBack: () => streamed.back(),
@@ -3160,6 +3176,10 @@ async function init(): Promise<void> {
       });
       if (e.toolSlot?.view === "terminal") for (const t of e.toolSlot.terminals) { try { killTerminal(t); } catch { /* gone */ } }
       e.toolSlot = undefined;
+      // WEB: the streamed panel must be CLOSED, not just unparented — the
+      // desktop keeps rendering + casting the page otherwise.
+      e.streamed?.dispose();
+      e.streamed = undefined;
       if (e.tile.slug && card.querySelector("webview")) rpaYo().rpaUnregister?.(e.tile.slug);
       card.querySelector(".ws-app-chrome")?.remove();
       card.querySelector<HTMLElement>(".echo-card-body")!.replaceChildren();
@@ -3943,12 +3963,76 @@ async function init(): Promise<void> {
   }
 
   /**
+   * WEB: the interior of a Glyphh-app panel that has NO hosted deployment.
+   * The app itself is installed on the user's desktop and a file:// entry has
+   * no web transport, so the panel's job is the HONEST state card the streamed
+   * panels show — same panelStateFragment states, same wording family, same
+   * working "Try again" — never a dead iframe pointed at a URL that serves
+   * nothing. Shared by the Echo card and the rail-slot holder.
+   */
+  function mountGlyphhAppWebState(name: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "ws-glyphh-app-state";
+    el.style.cssText = "flex:1 1 auto;min-height:0;width:100%;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;background:var(--surface)";
+    const render = (state: PanelStateKey, detail: string, retry: boolean): void => {
+      el.innerHTML = panelStateFragment(state, { detail, ...(retry ? { retryAttrs: 'data-app-retry="1"' } : {}) });
+      el.querySelector<HTMLButtonElement>("[data-app-retry]")?.addEventListener("click", () => { void check(); });
+    };
+    const check = async (): Promise<void> => {
+      el.innerHTML = `<div style="color:var(--text-2);font:13px system-ui,sans-serif">Checking your desktop…</div>`;
+      const client = relaySdk();
+      if (!client) {
+        render("signed-out", `${name} is a Glyphh app on your own account, so it needs a sign-in before this panel can say where it lives.`, true);
+        return;
+      }
+      let attached = false;
+      try { attached = (await client.attach.status()).attached; } catch { attached = false; }
+      if (!el.isConnected) return;
+      if (!attached) {
+        render("desktop-offline", `${name} is installed on your desktop. Open the Glyphh desktop app and sign in, then try again.`, true);
+        return;
+      }
+      // Desktop reachable, but an installed app renders from its own disk —
+      // there is no web transport for it (only DEPLOYED apps render here).
+      // An honest dead-end with directions beats a retry that can't succeed.
+      render("failed", `${name} is installed on your desktop and isn't deployed to the web yet. Open it in the desktop app, or deploy it to use it here.`, false);
+    };
+    void check();
+    return el;
+  }
+
+  /**
+   * WEB drop-in for a GLYPHH-app rail slot. The native path's <webview> is an
+   * inert unknown element in a real browser — it rendered NOTHING, not even
+   * its failure page. A deployed app renders as a plain iframe (no desktop
+   * needed, same as the Echo card); an undeployed one gets the state card.
+   */
+  function mountGlyphhAppWebView(slot: AppSlot): AppView {
+    const holder = document.createElement("div");
+    holder.className = "ws-app-holder entering";
+    if (slot.url) {
+      const frame = document.createElement("iframe");
+      frame.src = slot.url;
+      frame.style.cssText = "flex:1 1 auto;min-height:0;width:100%;border:0;background:var(--bg-2)";
+      holder.appendChild(frame);
+    } else {
+      holder.appendChild(mountGlyphhAppWebState(slot.name));
+    }
+    ensureAppLayer().appendChild(holder);
+    requestAnimationFrame(() => requestAnimationFrame(() => holder.classList.remove("entering")));
+    const view: AppView = { holder, webview: document.createElement("div") as WebviewEl, slug: slot.slug };
+    appViews.set(slot.id, view);
+    return view;
+  }
+
+  /**
    * The WEB drop-in for a URL app panel: a <webview> does nothing on web, so a
    * streamed panel (canvas/WebRTC of a page rendered on the user's attached
    * desktop) takes its place. Same holder + chrome shell as the native path, so
    * syncAppViews positions it identically. Installed Glyphh apps (file:// entry)
    * aren't streamed here — their entry URL is resolved on-machine and isn't known
-   * to the web client — they keep the native path (and no-op on web).
+   * to the web client — they take mountGlyphhAppWebView (hosted iframe, or the
+   * honest state card) instead.
    */
   function mountStreamedAppView(slot: AppSlot): AppView {
     const holder = document.createElement("div");
@@ -3994,7 +4078,7 @@ async function init(): Promise<void> {
   }
 
   function mountAppView(slot: AppSlot): AppView {
-    if (isWebTarget() && !slot.glyphh) return mountStreamedAppView(slot);
+    if (isWebTarget()) return slot.glyphh ? mountGlyphhAppWebView(slot) : mountStreamedAppView(slot);
 
     const holder = document.createElement("div");
     holder.className = "ws-app-holder entering";
