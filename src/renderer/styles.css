@@ -3298,7 +3298,10 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
 /* The landing's chip row above the composer's top-left. It shows in EVERY
    space — chat keeps the source chip alone (reading "Cloud"), and paints the
    folder/add chips `.hidden` itself; work and code fill the rest of the row. */
-.dash-wd-chips { display: flex; align-items: center; gap: 4px; margin: 18px 0 6px; }
+/* Chips row — the composer's snug top row. A comfortable gap ABOVE separates
+   the whole composer unit from the two-column body; only 4px BELOW so the
+   chips hug the input directly beneath them (one cohesive composer). */
+.dash-wd-chips { display: flex; align-items: center; gap: 4px; margin: 22px 0 4px; }
 
 /* A chip that states a fact rather than offering a choice (chat's source). */
 .cl-chip-static .cl-runtime-btn { pointer-events: none; }
@@ -3358,7 +3361,11 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
 }
 .space-pill svg { width: 10px; height: 10px; }
 
-.dash-composer-slot { width: 100%; margin: 4px 0 26px; }
+/* The composer is ONE unit: the chips row (#dash-wd-chips) hugs the input,
+   which carries the mode/model/loop bar right beneath it. No top margin here —
+   the chips row directly above owns the small gap to the input, so the input
+   never floats detached from its buttons. */
+.dash-composer-slot { width: 100%; margin: 0 0 26px; }
 /* flush with the cowork columns: the composer's own thread-matching
    max-width and gutters don't apply on Home */
 .dash-composer-slot .code-composer { width: 100%; max-width: none; padding: 0; margin: 0; }
@@ -3366,10 +3373,10 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
    full extra row over the in-session composer's single line). autoGrow sets an
    inline height to scrollHeight, but min-height clamps the empty box up to two
    rows; the textarea still grows past this as you type (max-height 220px).
-   Scoped to Home (the dash slot / composer-on-home) so the in-session and
-   layout-hosted composers keep their one-line start. */
+   Kept to a true 2 rows so the input doesn't balloon away from the mode bar
+   below it. Scoped to Home so the in-session/layout composers keep one line. */
 .dash-composer-slot .code-input,
-body.composer-on-home .dash-composer-slot .code-input { min-height: 88px; }
+body.composer-on-home .dash-composer-slot .code-input { min-height: 64px; }
 
 /* Chat mode hides the cowork content but KEEPS its space — the composer
    stays fixed in the page; the toggle never makes the layout jump */
