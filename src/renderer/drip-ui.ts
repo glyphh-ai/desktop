@@ -108,10 +108,13 @@ export function initDrip(): { openDripPicker: () => void; closeDripPicker: () =>
     dripPickerBuiltin.innerHTML = "";
     dripPickerCustom.innerHTML = "";
     const [builtins, customs] = await Promise.all([
-      window.glyphh.dripsBuiltinEffects().catch(() => [] as string[]),
+      window.glyphh.dripsBuiltinEffects().catch(() => [] as Array<{ name: string; kind: "one-shot" | "loop" }>),
       window.glyphh.dripsList().catch(() => [] as Array<{ name: string; recipe: string }>),
     ]);
-    for (const name of builtins) {
+    // Standard effects: one-shots then loops (the IPC's order), each tile
+    // previewing by name (a loop effect previews as its bounded one-shot).
+    for (const fx of builtins) {
+      const name = typeof fx === "string" ? fx : fx.name;   // tolerate a stale string[] bridge
       dripPickerBuiltin.appendChild(makeDripTile(name, name, EFFECT_EMOJI[name] || "🎨", closeDripPicker));
     }
     if (customs.length > 0) {

@@ -30,6 +30,11 @@ import {
   toLegacyLayouts, toLegacyDrips, toLegacyPanelApps, toAccountInfo,
   toDashboardData, emptyDashboardData,
 } from './glyphh-core.js';
+// STANDARD drip effects ship with the product — the same shared catalog +
+// generators the desktop main process uses (electron-free by design).
+import { BUILTIN_EFFECT_LIST } from '../../src/shared/drip-effects';
+// DOM-free at import time; only running a recipe touches the document.
+import { runDripRecipe } from './drip-web-runner.js';
 
 /**
  * The canonical EMPTY shape per contract type — the value a cloud read resolves to
@@ -249,7 +254,13 @@ export function buildContract(client, deps) {
     // ── Library grids (LibraryClient: layouts / drips) ────────────────────────────
     layoutsList: read(() => client.layouts.list(), toLegacyLayouts, EMPTY.list),
     dripsList: read(() => client.drips.list(), toLegacyDrips, EMPTY.list),
-    dripsBuiltinEffects: async () => [],
+    // The standard effects are code, not a cloud read — same catalog as the
+    // desktop IPC (one-shots then loops, 'timme' hidden). Fresh objects so a
+    // caller can never mutate the shared catalog.
+    dripsBuiltinEffects: async () => BUILTIN_EFFECT_LIST.map((fx) => ({ ...fx })),
+    // Drips RENDER HERE on web: the recipe plays in a sandboxed full-viewport
+    // iframe overlay (see drip-web-runner.js) — no machine needed.
+    dripsPreview: async (recipe) => runDripRecipe(recipe),
 
     // ── Apps (AppsClient) ─────────────────────────────────────────────────────────
     // WEB app launch (2026-08-03): panels can't host third-party sites in a

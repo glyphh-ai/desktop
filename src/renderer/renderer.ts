@@ -245,7 +245,7 @@ declare global {
       dripsSave: (name: string, recipe: string) => Promise<string>;
       dripsDelete: (name: string) => Promise<string>;
       dripsPreview: (recipe: string) => Promise<string>;
-      dripsBuiltinEffects: () => Promise<string[]>;
+      dripsBuiltinEffects: () => Promise<Array<{ name: string; kind: "one-shot" | "loop" }>>;
       // Theme
       getTheme: () => Promise<string>;
       exportGlyphhSkill: (provider: string) => Promise<{ ok: boolean; path?: string; error?: string }>;

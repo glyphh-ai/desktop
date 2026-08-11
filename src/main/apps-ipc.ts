@@ -17,6 +17,7 @@ import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
 import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
 import { resolveRoles, setSelection, invalidateRoles, applyLoopConfig, currentLoop } from "./loop-selections";
+import { BUILTIN_EFFECT_LIST } from "../shared/drip-effects";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -603,10 +604,11 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("drips-list", async () => (await dripManager?.refreshAndList()) ?? []);
   ipcMain.handle("drips-save", async (_e, name: string, recipe: string) => (await dripManager?.saveCustomAsync(name, recipe)) ?? "");
   ipcMain.handle("drips-delete", async (_e, name: string) => (await dripManager?.deleteCustomAsync(name)) ?? "");
-  ipcMain.handle("drips-builtin-effects", () => {
-    const { BUILTIN_EFFECTS } = require("./drip-manager");
-    return BUILTIN_EFFECTS as string[];
-  });
+  // STATIC import (../shared/drip-effects) — the old lazy `require` here was
+  // invisible to the typechecker (an untyped any), so a rename/move could break
+  // it with no compile error and the renderer's catch would silently render an
+  // empty menu. A missing module now fails main at boot, loudly.
+  ipcMain.handle("drips-builtin-effects", () => BUILTIN_EFFECT_LIST);
   ipcMain.handle("drips-preview", async (_e, recipe: string) => {
     if (!dripManager) return "drip manager not ready";
     return dripManager.execute(recipe.split(/\s+/));

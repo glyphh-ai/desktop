@@ -292,7 +292,9 @@ const NATIVE = new Set([
 const LOCAL_PREFIXES = ['files:', 'git:', 'pty:', 'terminal:', 'localMcp', 'workingDir'];
 const LOCAL_NAMES = new Set([
   'getWorkingDir', 'setWorkingDir', 'pickWorkingDir', 'getWorkingDirRecents',
-  'deployAppFromWorkdir', 'dripsPreview',
+  // dripsPreview is NOT local anymore — drips render on web (web-contract wires
+  // it to drip-web-runner's sandboxed-iframe overlay).
+  'deployAppFromWorkdir',
   // Local OS file/exec pickers + path classification — need a real filesystem.
   // P6 routes these over attach to a connected provider.
   'pickExecutable', 'pickDirectory', 'layoutsPickFolder',

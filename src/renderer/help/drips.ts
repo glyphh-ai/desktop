@@ -103,7 +103,10 @@ async function loadDrips() {
   dripsListEl.classList.remove("hidden");
 
   if (builtinEffects.length === 0) {
-    builtinEffects = await window.glyphh.dripsBuiltinEffects();
+    // The IPC returns {name, kind} rows (one-shots then loops); the recipe
+    // builder's select needs the names. Tolerate a stale string[] bridge.
+    const fx = await window.glyphh.dripsBuiltinEffects();
+    builtinEffects = (fx || []).map((f) => (typeof f === "string" ? f : f.name));
   }
   allDrips = await window.glyphh.dripsList();
   renderDripsList();

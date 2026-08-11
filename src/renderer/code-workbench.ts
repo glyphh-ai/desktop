@@ -2370,15 +2370,25 @@ async function init(): Promise<void> {
       // effects + the user's saved drips; a tile plays its recipe.
       const dripPop = body.querySelector<HTMLElement>(".echo-drip-pop")!;
       const dripBtn = body.querySelector<HTMLElement>(".echo-drip-btn")!;
-      const DRIP_EMOJI: Record<string, string> = { fireworks: "🎆", rain: "🌧️", confetti: "🎉", snow: "❄️", hearts: "💖", bubbles: "🫧" };
+      const DRIP_EMOJI: Record<string, string> = {
+        fireworks: "🎆", hearts: "💖", confetti: "🎉", stars: "⭐", rain: "🌧️",
+        bubbles: "🫧", sparkle: "✨", spiral: "🌀", emoji: "😀", wave: "🌊",
+        thumbsup: "👍", peace: "✌️", cat: "🐱", snow: "❄️",
+        matrix: "🟩", aurora: "🌌", nebula: "💜", plasma: "🔮", fireflies: "🪲", starfield: "🌠",
+      };
       const closeDripPop = (): void => dripPop.classList.add("hidden");
       const openDripPop = async (): Promise<void> => {
-        const yoD = (window as unknown as { glyphh?: { dripsBuiltinEffects?: () => Promise<string[]>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).glyphh;
+        type BuiltinFx = { name: string; kind: "one-shot" | "loop" };
+        const yoD = (window as unknown as { glyphh?: { dripsBuiltinEffects?: () => Promise<Array<BuiltinFx | string>>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).glyphh;
         const [builtinsRaw, customsRaw] = await Promise.all([
-          yoD?.dripsBuiltinEffects?.().catch(() => [] as string[]) ?? [],
+          yoD?.dripsBuiltinEffects?.().catch(() => [] as Array<BuiltinFx | string>) ?? [],
           yoD?.dripsList?.().catch(() => [] as Array<{ name: string; recipe: string }>) ?? [],
         ]);
-        const builtins = builtinsRaw || [];
+        // Standard effects (one-shots then loops, the IPC's order); tolerate the
+        // legacy string[] shape from a stale bridge. Each previews by NAME — a
+        // loop effect's preview is its bounded one-shot doc.
+        const builtins: BuiltinFx[] = (builtinsRaw || []).map((b) =>
+          typeof b === "string" ? { name: b, kind: "one-shot" as const } : b);
         const customs = customsRaw || [];
         dripPop.innerHTML = "";
         const tile = (name: string, recipe: string, emoji: string): void => {
@@ -2391,7 +2401,7 @@ async function init(): Promise<void> {
           b.addEventListener("click", (e2) => { e2.stopPropagation(); void yoD?.dripsPreview?.(recipe); closeDripPop(); });
           dripPop.appendChild(b);
         };
-        for (const n of builtins) tile(n, n, DRIP_EMOJI[n] || "🎨");
+        for (const fx of builtins) tile(fx.name, fx.name, DRIP_EMOJI[fx.name] || (fx.kind === "loop" ? "♾️" : "🎨"));
         for (const c of customs) tile(c.name, c.recipe, "💧");
         if (!dripPop.childElementCount) {
           const empty = document.createElement("div");
