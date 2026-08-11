@@ -1952,24 +1952,12 @@ function pickSource(next: Source): void {
   const cur = current();
   const onHome = document.body.classList.contains("composer-on-home");
 
-  // A BORN session (already sent — bound runtime) never mutates its own source.
+  // A BORN session's source is LOCKED — only a NEW (unborn) session can change
+  // its source. Ignore any pick on a born session (the chip is also made static
+  // in paintSourceDependents; this also guards the folder/repo pickers, which
+  // route through here). Just resettle the chip on the session's real source.
   if (cur && cur.messages.length > 0 && !onHome) {
-    // Same source → the pick is a no-op; just resettle the chip on it.
-    if (sameSource(cur.source, next)) { repaintSourceUi(); return; }
-    // Different source → spawn a NEW session that carries it. LAZY, like
-    // startNew(): drop the selection and remember the pick; the record is born
-    // on the first send. Crucially we do NOT touch the workbench/layout here —
-    // the agent stays in whatever panel it was hosted in (mirrors switch/
-    // ensureCodeSection, which never clear panels).
-    pendingSource = next;
-    void window.glyphh.setPreference?.(SOURCE_PREF, next);
-    currentId = "";
-    void saveStore();
-    renderHistory();
-    renderThread();
     repaintSourceUi();
-    void checkWorkdirGate();
-    input()?.focus();
     return;
   }
 
@@ -2274,13 +2262,16 @@ function paintSourceDependents(): void {
     el2.classList.toggle("hidden", cloud && FOLDER_CHIPS.has(id));
     el2.setAttribute("title", title);
   }
-  // The source chip stays a live CONTROL at all times. A born session's source
-  // is still immutable in place — but picking a DIFFERENT source now SPAWNS a
-  // new session that carries it (pickSource), so the chip must stay clickable
-  // (even inside a layout, where it used to go `cl-chip-static` /
-  // pointer-events:none and left the user with no way to change the source at
-  // all — Bug 1). Immutability is preserved by respawning, not by disabling.
-  sourceChip?.el.classList.remove("cl-chip-static");
+  // The source is changeable ONLY on a NEW (unborn) session. Once a session is
+  // born (sent — runtime bound) its source is LOCKED: the chip goes static
+  // (pointer-events:none) so the picker won't open. A new/unborn session (on
+  // Home OR hosted in a layout) keeps the chip live so the source can be set.
+  {
+    const c2 = current();
+    const bornLocked = !!c2 && c2.messages.length > 0
+      && !document.body.classList.contains("composer-on-home");
+    sourceChip?.el.classList.toggle("cl-chip-static", bornLocked);
+  }
   paintGitState();
   // GIT position: local → the passive branch mirror; cloud → the repo chip.
   const mirror = document.getElementById("dash-wd-branch-wrap");
