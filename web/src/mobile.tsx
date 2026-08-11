@@ -35,6 +35,7 @@ import { Markdown, copyText, ToolActionRow, DiffBadge, fileFromTitle, summarize,
 // Streamed desktop app panel + full touch drive (ported from the renderer's
 // panel-stream.ts — see mobile-panel.ts for the /ws/panel + WebRTC + input port).
 import { mountMobilePanel, type MobilePanelHandle, type PanelState } from './mobile-panel';
+import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -3147,6 +3148,27 @@ function App() {
    *  streaming the agent's reply into the transcript. */
   const sendPrompt = async (override?: string, opts?: { noUserBubble?: boolean }) => {
     const prompt = (override ?? draft).trim();
+    // Dot-commands run LOCALLY — the same composer grammar as desktop/web
+    // (help/code.ts send()). They are never a turn and never reach the agent.
+    if (override === undefined) {
+      const drip = /^\.drip(?:\s+(.+))?$/is.exec(prompt);
+      if (drip) {
+        setDraft('');
+        const ref = (drip[1] || 'fireworks').trim();
+        if (ref === 'stop') stopAllDrips();
+        else void runDripRecipe(ref);
+        return;
+      }
+      // .dip opens app/layout PANELS — a workbench concept this surface does
+      // not have. Say so in the transcript instead of sending the command to
+      // the agent as prose.
+      if (/^\.dip(\s|$)/i.test(prompt)) {
+        setDraft('');
+        convoRef.current = [...convoRef.current, { id: 'dip' + Date.now().toString(36), role: 'glyphh', text: '.dip opens app panels — use the desktop app or the web workbench for layouts and apps.' }];
+        renderConvo();
+        return;
+      }
+    }
     // Images only ride a fresh composer send (not retry/edit-resend).
     const imgs = override === undefined ? attachImgs.map((a) => ({ mediaType: a.mediaType, data: a.data })) : [];
     const imgUrls = override === undefined ? attachImgs.map((a) => a.url) : [];

@@ -2639,6 +2639,24 @@ async function injectOrQueue(): Promise<void> {
   const ta = input();
   const text = ta?.value.trim();
   if (!ta || !text) return;
+  // Dot-commands are LOCAL — typed mid-run they must still run here, never be
+  // injected into the turn as prose (".drip rain" during a run played nothing
+  // and confused the model instead).
+  const drip = /^\.drip(?:\s+(.+))?$/is.exec(text);
+  if (drip) {
+    ta.value = "";
+    autoGrow(ta);
+    void (window.glyphh as unknown as { dripsPreview?: (r: string) => Promise<string> })
+      .dripsPreview?.((drip[1] || "fireworks").trim());
+    return;
+  }
+  const dip = /^\.dip\s+(.+)$/is.exec(text);
+  if (dip) {
+    ta.value = "";
+    autoGrow(ta);
+    runDip(dip[1].trim());
+    return;
+  }
   const c = current();
   const inject = (window.glyphh as unknown as { glyphhInject?: (chatId: string, text: string) => Promise<{ injected: boolean }> }).glyphhInject;
   if (c && inject) {
