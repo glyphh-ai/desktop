@@ -2360,17 +2360,42 @@ async function init(): Promise<void> {
       }
       return cols;
     };
+    // User-slid flow seams: a width fraction per column + row fractions per
+    // column. Reset whenever the flow SHAPE changes (columns appear/vanish,
+    // a column gains/loses a row) — a slide only lives for the shape it
+    // shaped; fresh shapes go back to even splits.
+    let flowColFr: number[] = [];
+    const flowRowFr = new Map<number, number[]>();
+    const syncFlowFracs = (cols: TileEntry[][]): void => {
+      if (flowColFr.length !== cols.length) flowColFr = cols.map(() => 1);
+      cols.forEach((col, ci) => {
+        const fr = flowRowFr.get(ci);
+        if (!fr || fr.length !== col.length) flowRowFr.set(ci, col.map(() => 1));
+      });
+      for (const k of [...flowRowFr.keys()]) if (k >= cols.length) flowRowFr.delete(k);
+    };
+    const normFr = (a: number[]): number[] => { const t = a.reduce((x, y) => x + y, 0) || 1; return a.map((v) => v / t); };
+    const preFr = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
       // EDGE-TO-EDGE like the layout grid: seams only BETWEEN cards.
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 7;
       const cols = flowColumns(cards);
-      const cw = (w - gap * (cols.length - 1)) / Math.max(1, cols.length);
+      syncFlowFracs(cols);
+      const cwFr = normFr(flowColFr);
+      const availW = w - gap * (cols.length - 1);
       const out = new Map<TileEntry, { left: number; top: number; width: number; height: number }>();
+      let x = 0;
       cols.forEach((col, ci) => {
-        const ch = (h - gap * (col.length - 1)) / Math.max(1, col.length);
+        const colW = availW * cwFr[ci];
+        const rhFr = normFr(flowRowFr.get(ci) ?? col.map(() => 1));
+        const availH = h - gap * (col.length - 1);
+        let y = 0;
         col.forEach((e, ri) => {
-          out.set(e, { left: ci * (cw + gap), top: ri * (ch + gap), width: Math.max(160, cw), height: Math.max(110, ch) });
+          const cellH = availH * rhFr[ri];
+          out.set(e, { left: x, top: y, width: Math.max(160, colW), height: Math.max(110, cellH) });
+          y += cellH + gap;
         });
+        x += colW + gap;
       });
       return out;
     };
@@ -2550,9 +2575,12 @@ async function init(): Promise<void> {
         const r = grid?.get(e) ?? flow.get(e);
         if (r) setRect(e.card, r);
       });
-      // A maximized card also retires the grid's resize seams — they sat above
-      // it and kept eating clicks meant for the panel.
-      paintDividers(grid && !openList.some((e) => e.card?.classList.contains("expanded")) ? true : false);
+      // A maximized card retires ALL resize seams — they sat above it and kept
+      // eating clicks meant for the panel. Otherwise the grid paints the
+      // layout's seams and the FLOW paints its own slideable ones.
+      const anyExpanded = openList.some((e) => e.card?.classList.contains("expanded"));
+      if (grid) paintDividers(!anyExpanded);
+      else paintFlowDividers(anyExpanded ? null : openList.filter((e) => e.card));
       syncWallVisibility();
       paintSectionToggles();   // an echo card IS the tool's open state
       paintLayoutBar();
@@ -2640,6 +2668,77 @@ async function init(): Promise<void> {
           wire(el, true, i, ci);
           dividerLayer.appendChild(el);
         }
+      });
+    };
+    /** Slideable seams for the FLOW (accumulated panels) — the grid's
+     *  dividers, driving flowColFr/flowRowFr instead of the layout's fracs.
+     *  Same visuals (.echo-div), same live no-anim reshape. */
+    const paintFlowDividers = (cards: TileEntry[] | null): void => {
+      dividerLayer.innerHTML = "";
+      if (!cards || cards.length < 2) return;
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 7;
+      const cols = flowColumns(cards);
+      syncFlowFracs(cols);
+      const cwFr = normFr(flowColFr);
+      const availW = w - gap * (cols.length - 1);
+      const wireFlow = (el: HTMLElement, horiz: boolean, idx: number, colIdx: number): void => {
+        el.addEventListener("mousedown", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const startPos = horiz ? ev.clientY : ev.clientX;
+          const fr = horiz ? flowRowFr.get(colIdx) : flowColFr;
+          if (!fr) return;
+          const total = fr.reduce((x, y) => x + y, 0) || 1;
+          const a0 = fr[idx - 1], b0 = fr[idx];
+          const span = horiz ? h : w;
+          document.body.classList.add("wb-mouse-drag");
+          cardsLayer.classList.add("echo-no-anim");
+          const onMove = (m: MouseEvent): void => {
+            const d = ((horiz ? m.clientY : m.clientX) - startPos) / span * total;
+            const min = total * 0.08;
+            fr[idx - 1] = Math.max(min, Math.min(a0 + b0 - min, a0 + d));
+            fr[idx] = a0 + b0 - fr[idx - 1];
+            layoutCards();
+          };
+          const onUp = (): void => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            document.body.classList.remove("wb-mouse-drag");
+            cardsLayer.classList.remove("echo-no-anim");
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        });
+      };
+      let x = 0;
+      cols.forEach((col, ci) => {
+        const colW = availW * cwFr[ci];
+        if (ci > 0) {
+          const el = document.createElement("div");
+          el.className = "echo-div echo-div-v";
+          el.style.left = `${x - gap + (gap - 8) / 2}px`;
+          el.style.top = "0px";
+          el.style.height = `${h}px`;
+          wireFlow(el, false, ci, 0);
+          dividerLayer.appendChild(el);
+        }
+        const rhFr = normFr(flowRowFr.get(ci) ?? col.map(() => 1));
+        const availH = h - gap * (col.length - 1);
+        let y = 0;
+        col.forEach((_e, ri) => {
+          const cellH = availH * rhFr[ri];
+          if (ri > 0) {
+            const el = document.createElement("div");
+            el.className = "echo-div echo-div-h";
+            el.style.top = `${y - gap + (gap - 8) / 2}px`;
+            el.style.left = `${x}px`;
+            el.style.width = `${colW}px`;
+            wireFlow(el, true, ri, ci);
+            dividerLayer.appendChild(el);
+          }
+          y += cellH + gap;
+        });
+        x += colW + gap;
       });
     };
     /** Terminals PARKED when their layout let go (nav-away, replace, reset):

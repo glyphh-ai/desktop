@@ -15752,8 +15752,26 @@ body.code-dragging webview { pointer-events: none !important; }
   pointer-events: none;
 }
 /* Flow panels reorder by dragging their header (up/down/across columns). */
-.echo-card-head { cursor: grab; }
+.echo-card-head { cursor: grab; position: relative; }
 .echo-card-head:active { cursor: grabbing; }
+/* The grab HANDLE — a short line at the head's top center. Appears as the
+   hover affordance, turns accent while the panel is being dragged. */
+.echo-card-head::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.echo-card-head:hover::after { opacity: 0.8; }
+.echo-card.echo-card-dragging .echo-card-head::after { opacity: 1; background: var(--accent); }
 .echo-card.echo-card-dragging { opacity: 0.88; z-index: 3; }
 /* While a drag is live, embedded pages must not swallow the pointer, and
    text selection would fight the gesture. */
