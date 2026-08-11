@@ -120,6 +120,12 @@ export interface ConfirmOptions {
 export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => {
     const overlay = document.getElementById("confirm-modal")!;
+    // PORTAL: the overlay is authored inside #help-overlay, whose ancestor
+    // stacking context caps it BELOW the body-mounted settings modal — no
+    // z-index can win from in there (the revoke-key confirm opened invisibly
+    // behind settings). Re-parent to <body> once; fixed positioning is
+    // unaffected and every getElementById keeps resolving.
+    if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
     const titleEl = document.getElementById("confirm-title")!;
     const bodyWrap = overlay.querySelector<HTMLElement>(".confirm-body")!;
     const msgEl = document.getElementById("confirm-message")!;
