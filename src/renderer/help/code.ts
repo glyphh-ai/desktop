@@ -343,7 +343,9 @@ function showModeInfoModal(): void {
 async function refreshLoops(): Promise<void> {
   try {
     const r = await window.glyphh.loopsList?.();
-    if (r?.loops?.length) { loops = r.loops; loopsCanBuild = !!r.canBuild; }
+    // Memory loops (kind:"memory") power the rotor — they are NOT work loops the
+    // user picks, so keep them out of the loop dropdown on every surface.
+    if (r?.loops?.length) { loops = r.loops.filter((l) => (l as { kind?: string }).kind !== "memory"); loopsCanBuild = !!r.canBuild; }
     if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = loops[0]?.id || "default";
     paintChips();
   } catch { /* offline — the built-in default stands */ }

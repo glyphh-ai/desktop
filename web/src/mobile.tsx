@@ -3429,7 +3429,7 @@ function App() {
     if (authState !== 'in') return;
     let on = true;
     glyphh().loops.list()
-      .then((r: { loops: LoopItem[] }) => { if (!on) return; const ls = r?.loops ?? []; setLoops(ls); setLoop((cur) => cur || defaultLoopSlug(ls)); })
+      .then((r: { loops: LoopItem[] }) => { if (!on) return; const ls = (r?.loops ?? []).filter((l) => (l as { kind?: string }).kind !== "memory"); setLoops(ls); setLoop((cur) => cur || defaultLoopSlug(ls)); })
       .catch(() => { if (on) setLoops([]); });
     glyphh().models.available()
       .then((m: ModelChoice[]) => { if (on) setModels(Array.isArray(m) ? m : []); })
