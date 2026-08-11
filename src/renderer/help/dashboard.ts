@@ -501,6 +501,8 @@ function paintSpaceColumns(): void {
   // The landing's chrome is CSS-driven off body[data-session-space]; keep it
   // correct whenever the landing repaints (boot included).
   (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs?.();
+  // Minimal Home (intro + input only) has no columns — nothing to paint here.
+  if (!document.getElementById("dash-tasks-list")) return;
   // RIGHT — TASKS: the scheduled-task runs list, ungated from the old
   // chat-space check (spaces collapsed to one session type).
   document.getElementById("dash-right-label")!.textContent = "Tasks";

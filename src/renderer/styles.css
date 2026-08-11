@@ -3265,9 +3265,9 @@ body.account-locked #dl-btn-wrap {
 
 /* HERO — greeting + composer as one unit, pushed DOWN the page (not centered
    high): a big top offset drops it lower, cards flow beneath (dash-hero). */
-.dash-hero { display: flex; flex-direction: column; width: 100%; margin-top: 10vh; }
+.dash-hero { display: flex; flex-direction: column; width: 100%; margin-top: 22vh; }
 .dash-hero > .dash-header { margin-bottom: 18px; }
-@container dash (max-width: 720px) { .dash-hero { margin-top: 5vh; } }
+@container dash (max-width: 720px) { .dash-hero { margin-top: 12vh; } }
 .dash-header {
   display: flex;
   align-items: center;
