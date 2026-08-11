@@ -15008,6 +15008,18 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* A substantial primary button: stretches to the rail width minus a comfortable
    inset (not edge-to-edge, not a tiny content-width pill). */
 .code-new-session-rail { margin: 6px 12px 12px; align-self: stretch; }
+/* DESKTOP (Electron) only: the btn-lg scale reads oversized in the native rail —
+   drop it to the standard .btn scale. Web keeps the larger button. */
+html:not(.glyphh-web) .code-new-session-rail {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  border-radius: var(--radius-sm);
+  margin: 10px 12px 12px;
+}
+/* DESKTOP only: the 30px header crammed the wordmark — give the logo row its
+   room back (the drag strip + every offset follows --titlebar-h). Web stays 0. */
+html:not(.glyphh-web) body { --titlebar-h: 40px; }
+html:not(.glyphh-web) #panel-wc { height: 40px; padding-left: 16px; }
 
 .code-rail-label {
   padding: 12px 14px 6px;
