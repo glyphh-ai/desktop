@@ -4,8 +4,9 @@
   <canvas id="dash-particles" class="dash-particles" aria-hidden="true"></canvas>
   <div class="dash-scroll">
 
-    <!-- HERO — greeting header. The composer follows the two-column body below
-         (Landing stack: header → starters → [recs | tasks] → composer). -->
+    <!-- HERO — greeting header. The composer sits directly BELOW the title and
+         ABOVE the cards (Landing stack: header → composer → starters →
+         [continue | tasks]). -->
     <div class="dash-hero">
       <!-- Header: the mark beside the greeting + the per-space subtitle. -->
       <div class="dash-header">
@@ -23,34 +24,6 @@
 
       <!-- App notifications — hidden until an app posts one. -->
       <div id="dash-notifications" class="dash-notifications hidden"></div>
-    </div>
-
-    <!-- Full-width STARTERS strip — a compact single row of front-door cards,
-         above the two-column body. Each card wears the SPACE it opens into.
-         Built by help/dashboard.ts. -->
-    <div id="dash-starters" class="dash-starters"></div>
-
-    <!-- The landing body — two balanced columns beneath the starters:
-         LEFT  = CONTINUE — the user's recent sessions, a jump back into work.
-         RIGHT = the cross-agent TASKS list (scheduled-task runs, searchable).
-         Populated by help/dashboard.ts. Stacks to one column in a narrow
-         panel via @container. -->
-    <div class="dash-two-col">
-      <div class="dash-col dash-col-recs">
-        <div class="dash-card-label">Continue</div>
-        <!-- Recent sessions — click a row to jump back into that work. -->
-        <div id="dash-sessions-list" class="dash-tasks-list"></div>
-        <!-- "Recommended for you" prompts are redundant now that the
-             full-width starter strip sits above — the plumbing stays but the
-             list is hidden. -->
-        <div id="dash-recs" class="dash-recs hidden"></div>
-      </div>
-      <div class="dash-col dash-col-tasks">
-        <div class="dash-card-label" id="dash-right-label">Tasks</div>
-        <input id="dash-tasks-search" class="crud-search dash-tasks-search" type="text" placeholder="Search runs..." spellcheck="false" autocomplete="off" />
-        <div id="dash-tasks-list" class="dash-tasks-list"></div>
-        <div id="dash-tasks-pager"></div>
-      </div>
     </div>
 
     <!-- Work + Code: ONE left-justified row above the input —
@@ -72,9 +45,14 @@
       </button>
     </div>
 
-    <!-- The FULL glyphh agent footer adopts into this slot while Home is
-         up — input, chips, the entire second row (adoptComposer). -->
+    <!-- The FULL glyphh agent footer adopts into this slot while Home is up —
+         input, chips, the entire second row (adoptComposer). Sits below the
+         title, above the suggestion cards. -->
     <div id="dash-composer-slot" class="dash-composer-slot"></div>
+
+    <!-- Home is intentionally minimal: the intro message + the input, nothing
+         else. Starters / Continue / Tasks were removed ("too much on the home
+         page"). help/dashboard.ts's renderers no-op when their elements absent. -->
 
   </div>
 </div>

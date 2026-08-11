@@ -14834,14 +14834,11 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 
 .code-new-session:hover { border-color: var(--accent); color: var(--text-bright); }
 
-/* Link treatment: same row, no button chrome. Accent in light mode; plain
-   WHITE in dark — a purple link at the rail's top read as noise there. */
-/* + New session is a LINK again — the rail's three tabs are the prominent
-   control up top; a filled button competed with them for the eye and ate
-   vertical space the apps/layouts lists need. */
+/* + New session is the PRIMARY rail control — a filled accent button (white
+   label on the accent, in every theme). */
 .code-new-session.code-new-session-link {
-  border: none; background: none; padding: 8px 6px; border-radius: 6px;
-  color: var(--accent); font-weight: 500;
+  border: none; background: var(--accent); padding: 9px 12px; border-radius: 9px;
+  color: #fff; font-weight: 600;
 }
 [data-theme="dark"] .code-new-session.code-new-session-link,
 [data-theme="purple"] .code-new-session.code-new-session-link,
@@ -14849,7 +14846,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   color: #fff;
 }
 
-.code-new-session.code-new-session-link:hover { color: var(--text-bright); background: var(--hover); }
+.code-new-session.code-new-session-link:hover { color: #fff; background: var(--accent-hover); }
 
 .code-rail-label {
   padding: 12px 14px 6px;
