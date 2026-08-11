@@ -3249,7 +3249,7 @@ body.account-locked #dl-btn-wrap {
 .dash-particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .help-section[data-section="dashboard"] .dash-scroll { position: relative; z-index: 1; }
 .dash-scroll {
-  padding: 44px 36px 48px;
+  padding: 28px 36px 48px;
   max-width: 900px;
   margin: 0 auto;
   width: 100%;
@@ -3265,9 +3265,9 @@ body.account-locked #dl-btn-wrap {
 
 /* HERO — greeting + composer as one unit, pushed DOWN the page (not centered
    high): a big top offset drops it lower, cards flow beneath (dash-hero). */
-.dash-hero { display: flex; flex-direction: column; width: 100%; margin-top: 18vh; }
+.dash-hero { display: flex; flex-direction: column; width: 100%; margin-top: 10vh; }
 .dash-hero > .dash-header { margin-bottom: 18px; }
-@container dash (max-width: 720px) { .dash-hero { margin-top: 8vh; } }
+@container dash (max-width: 720px) { .dash-hero { margin-top: 5vh; } }
 .dash-header {
   display: flex;
   align-items: center;
@@ -3298,7 +3298,7 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
 /* The landing's chip row above the composer's top-left. It shows in EVERY
    space — chat keeps the source chip alone (reading "Cloud"), and paints the
    folder/add chips `.hidden` itself; work and code fill the rest of the row. */
-.dash-wd-chips { display: flex; align-items: center; gap: 4px; margin: 0 0 6px; }
+.dash-wd-chips { display: flex; align-items: center; gap: 4px; margin: 18px 0 6px; }
 
 /* A chip that states a fact rather than offering a choice (chat's source). */
 .cl-chip-static .cl-runtime-btn { pointer-events: none; }
@@ -3313,22 +3313,22 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
    which is why the greeting kept sitting too high instead of centred.) */
 .dash-starters {
   display: grid;
-  /* LEFT column of the landing — two starter cards across; the column itself
-     is ~half the body, so a 2-up grid keeps each card a comfortable width. */
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  /* Full-width strip above the two-column body — a compact single row, three
+     cards across. Narrows to 2, then 1 in a tight panel. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
   width: 100%;
-  margin: 2px 0 8px;
+  margin: 6px 0 18px;
 }
 @container dash (max-width: 780px) { .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container dash (max-width: 520px) { .dash-starters { grid-template-columns: 1fr; } }
 
 .dash-starter {
   position: relative;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 14px 14px 15px;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 12px 11px;
   text-align: left; cursor: pointer;
-  border: 1px solid var(--border-2); border-radius: 14px;
+  border: 1px solid var(--border-2); border-radius: 12px;
   background:
     linear-gradient(160deg, color-mix(in srgb, var(--surface-3) 88%, transparent), var(--surface-2));
   color: var(--text);
@@ -3346,8 +3346,8 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
 .dash-starter-mascot svg { width: 100%; height: 100%; display: block; }
 .dash-starter-name { font-size: 12px; font-weight: 650; color: var(--text-2); letter-spacing: .01em; }
 .dash-starter-top .space-pill { margin-left: auto; }
-.dash-starter-title { font-size: 14.5px; font-weight: 650; }
-.dash-starter-blurb { font-size: 12.5px; line-height: 1.45; color: var(--text-3); }
+.dash-starter-title { font-size: 13px; font-weight: 650; }
+.dash-starter-blurb { font-size: 11.5px; line-height: 1.4; color: var(--text-3); }
 
 /* The space pill — the same badge language as the layout cards. */
 .space-pill {
@@ -3358,7 +3358,7 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
 }
 .space-pill svg { width: 10px; height: 10px; }
 
-.dash-composer-slot { width: 100%; margin: 0 0 26px; }
+.dash-composer-slot { width: 100%; margin: 4px 0 26px; }
 /* flush with the cowork columns: the composer's own thread-matching
    max-width and gutters don't apply on Home */
 .dash-composer-slot .code-composer { width: 100%; max-width: none; padding: 0; margin: 0; }
@@ -14403,19 +14403,15 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-run-body.md pre { background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 0 0 8px; }
 .se-status { font-size: 11px; color: var(--text-3); }
 
-/* ── Dashboard landing body: a balanced two-column split — prompt starters +
-   recommendations LEFT, the cross-agent tasks list RIGHT. ── */
+/* ── Dashboard landing body: a balanced two-column split beneath the
+   full-width starters strip — recommendations LEFT, the cross-agent tasks
+   list RIGHT. ── */
 .dash-two-col {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 16px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 4px;
   align-items: start;
 }
-/* In a narrow panel the columns stack: starters on top, tasks beneath. */
+/* In a narrow panel the columns stack: recommendations on top, tasks beneath. */
 @container dash (max-width: 780px) { .dash-two-col { grid-template-columns: 1fr; gap: 20px; } }
-
-/* LEFT column: starters then the "Recommended for you" prompt rows. The
-   starters grid brings its own bottom margin; add a little breathing room
-   before the recommendations label. */
-.dash-col-starters .dash-card-label { margin-top: 6px; }
 
 /* Recommended for you — prompt starters, icon on the right. */
 .dash-recs { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -15715,9 +15711,9 @@ body.code-dragging webview { pointer-events: none !important; }
 .desktop-attach-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .desktop-attach-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 
-/* Starter cards live in the LEFT landing column — 2 across (three rows of two
-   for the six starters), title leads the top row with its pill. */
-.dash-starters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+/* Starter cards — a compact full-width strip, 3 across (two rows of three for
+   the six starters), title leads the top row with its pill. */
+.dash-starters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .dash-starter-top { display: flex; align-items: center; gap: 8px; }
 .dash-starter-title { flex: 1; min-width: 0; font-weight: 600; }
 @media (max-width: 900px) { .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
