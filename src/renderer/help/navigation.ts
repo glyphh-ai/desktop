@@ -421,6 +421,8 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
   else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
+  // Artifacts adopts the FILES section (the gallery page) — same page, second door.
+  else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
 
 // ── Docs-in-modal adoption ───────────────────────────────
@@ -477,6 +479,7 @@ const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   skills: { host: "settings-skills-host" },
   agents: { host: "settings-agents-host" },
   layouts: { host: "settings-layouts-host" },
+  files: { host: "settings-files-host" },
 };
 
 /** Where a moved section lives when NOT adopted (the hidden #page-body pen),
@@ -574,9 +577,11 @@ export function initHelp() {
     btn.addEventListener("click", () => openSettingsModal(btn.dataset.settingsSub!));
   });
   // Artifacts is a PAGE (the files gallery), not a settings section — it
-  // routes through gotoSection like any section nav.
+  // routes through gotoSection like any section nav. The files node is ALSO
+  // adoptable into the settings modal (Settings → Artifacts), so drop the
+  // modal first: closing parks the node back into its page pen.
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-section]").forEach((btn) => {
-    btn.addEventListener("click", () => gotoSection(btn.dataset.section!));
+    btn.addEventListener("click", () => { closeSettingsModal(); gotoSection(btn.dataset.section!); });
   });
 
   // The "More" fly-out (Loops / Skills / Agents) was removed in A3 — those

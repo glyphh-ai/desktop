@@ -1360,6 +1360,47 @@ async function resolveConnIcon(slug: string): Promise<string | null> {
   return _connIcon[slug];
 }
 
+/** Artifacts — the caller's saved files (same store the desktop gallery
+    reads: glyphh().files). Tapping one fetches its short-lived downloadUrl
+    (files.get) and opens it in a new tab — the browser's own viewers render
+    pdf/images/text, exactly what the desktop viewers read from. */
+function ArtifactsTray() {
+  type Row = { id: string; name: string; kind: string; sizeBytes: number; createdAt: string };
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    let on = true;
+    glyphh().files.list().then((list: Row[]) => { if (on) setRows(list); }).catch(() => { if (on) setRows([]); });
+    return () => { on = false; };
+  }, []);
+  const fmtSize = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : b >= 1024 ? `${Math.round(b / 1024)} KB` : `${b} B`);
+  const openRow = async (r: Row) => {
+    if (busy) return;
+    haptic(); setBusy(r.id);
+    try {
+      const full = await glyphh().files.get(r.id);
+      if (full?.downloadUrl) window.open(full.downloadUrl, '_blank', 'noopener');
+    } catch { /* the row stays; nothing to open */ }
+    setBusy(null);
+  };
+  const filtered = (rows ?? []).filter((r) => !q.trim() || r.name.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <div className="m-conn">
+      <div className="m-sel-search"><Icon name="search" /><input className="m-conn-in" placeholder="Search artifacts" value={q} onChange={(e) => setQ(e.currentTarget.value)} /></div>
+      {rows == null ? <div className="m-set-loading">Loading…</div>
+        : filtered.length === 0 ? <div className="m-conn-empty">No artifacts yet — files the agent saves for you land here.</div>
+        : filtered.map((r) => (
+          <button key={r.id} className="m-action-row" onClick={() => void openRow(r)} disabled={busy === r.id}>
+            <span className="m-action-ico"><Icon name={r.kind === 'image' ? 'image' : 'filedoc'} /></span>
+            <span className="m-action-name">{r.name}<span className="m-action-file">{fmtSize(r.sizeBytes)}</span></span>
+            <span className="m-action-chev"><Icon name="external" /></span>
+          </button>
+        ))}
+    </div>
+  );
+}
+
 function ConnectionsTray() {
   type Conn = { id: string; appSlug: string; appName: string; label: string | null; healthy: boolean };
   type App = { id: string; name: string; icon: string | null };
@@ -2243,12 +2284,14 @@ function RuntimeTray() {
 
 type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help'
   | 'general' | 'apikeys' | 'runtime' | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces'
-  | 'apps';   // never a tray — the row hands off to the Apps sheet
+  | 'apps'   // never a tray — the row hands off to the Apps sheet
+  | 'artifacts';
 const SUB_TITLE: Record<SettingsSub, string> = {
   profile: 'Profile', billing: 'Billing', usage: 'Usage', appearance: 'Appearance',
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
   runtime: 'Region', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
   apps: 'Apps',   // never a tray — the row hands off to the Apps sheet
+  artifacts: 'Artifacts',
 };
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialSub, onOpenApps }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void; initialSub?: SettingsSub | null; onOpenApps: () => void }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
@@ -2342,6 +2385,7 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
               {sub === 'models' && <ModelsTray />}
               {sub === 'workspaces' && <WorkspacesTray />}
               {sub === 'connections' && <ConnectionsTray />}
+              {sub === 'artifacts' && <ArtifactsTray />}
               {sub === 'appearance' && <AppearanceTray />}
               {sub === 'help' && <HelpTray />}
             </div>
