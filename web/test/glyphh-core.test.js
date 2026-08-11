@@ -441,6 +441,20 @@ describe('toLegacyPanelApps', () => {
       isBrowser: true, access: 'members', mcp: null, commands: {}, connectionIds: [],
     });
   });
+  it('derives the desktop shape from a mine() wire row by kind', () => {
+    const out = toLegacyPanelApps([
+      // an UNDEPLOYED glyphh app: no url, no prodUrl — must still be tagged so
+      // the rail (isBrowser===false) and wall (archetype glyphh-app) keep it
+      { id: 'u1', slug: 'my-app', name: 'My App', kind: 'glyphh', prodUrl: null, config: { a: 1 } },
+      { id: 'u2', slug: 'live-app', name: 'Live App', kind: 'glyphh', prodUrl: 'https://live-app.glyphh.app' },
+      { id: 'u3', slug: 'tool', name: 'Tool', kind: 'native', nativeRef: '/Applications/Tool.app' },
+      { id: 'u4', slug: 'site', name: 'Site', kind: 'web', prodUrl: 'https://site' },
+    ]);
+    expect(out[0]).toMatchObject({ url: null, isBrowser: false, appArchetype: 'glyphh-app', launchConfig: { a: 1 } });
+    expect(out[1]).toMatchObject({ url: 'https://live-app.glyphh.app', isBrowser: false, appArchetype: 'glyphh-app' });
+    expect(out[2]).toMatchObject({ isBrowser: false, appArchetype: 'native', execPath: '/Applications/Tool.app' });
+    expect(out[3]).toMatchObject({ url: 'https://site', isBrowser: true, appArchetype: 'web' });
+  });
 });
 
 describe('toAccountInfo', () => {

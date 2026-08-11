@@ -32,6 +32,11 @@ const appsToolbar = document.getElementById("apps-toolbar")!;
 const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
+// WEB surface (browser tab): there is no privileged <webview>, so the editor's
+// preview pane renders as a sandboxed <iframe> instead — see renderWebPreview.
+// Same branch flag the rest of the renderer uses (set by web/src/bridge.js).
+const IS_WEB = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+
 let currentAppId = "";
 let currentApp: PanelApp | null = null;
 let activeAppTab: "dashboard" | "config" = "dashboard";
@@ -148,7 +153,8 @@ function syncMcpTabs(app: PanelApp): void {
   // including newly-appeared tools (safe default).
   const approved = new Set(Array.isArray(lc.mcpApproved) ? (lc.mcpApproved as string[]) : []);
   const tools = appExposableTools(app);
-  const list = document.getElementById("app-mcp-tools")!;
+  const list = document.getElementById("app-mcp-tools");
+  if (!list) return;
   const empty = document.getElementById("app-mcp-tools-empty");
   empty?.classList.toggle("hidden", tools.length > 0);
   list.innerHTML = "";
@@ -175,7 +181,10 @@ function syncMcpTabs(app: PanelApp): void {
 
   // Guardrails fields.
   const g = (lc.guardrails || {}) as Record<string, unknown>;
-  const setNum = (id: string, v: unknown) => { (document.getElementById(id) as HTMLInputElement).value = v == null ? "" : String(v); };
+  const setNum = (id: string, v: unknown) => {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (el) el.value = v == null ? "" : String(v);
+  };
   setNum("app-gr-max-input", g.maxInputTokens ?? DEFAULT_GUARDRAILS.maxInputTokens);
   setNum("app-gr-max-output", g.maxOutputTokens ?? DEFAULT_GUARDRAILS.maxOutputTokens);
   setNum("app-gr-window", g.windowSeconds ?? DEFAULT_GUARDRAILS.windowSeconds);
@@ -225,7 +234,7 @@ async function saveMcpGuardrails(statusId: string): Promise<void> {
   const launchConfig = { ...base, mcpApproved, guardrails };
   const statusEl = document.getElementById(statusId);
   if (statusEl) statusEl.textContent = "Saving…";
-  const res = await window.glyphh.panelAppsUpdate(currentAppId, { launchConfig });
+  const res = await window.glyphh.panelAppsUpdate?.(currentAppId, { launchConfig });
   if (res?.ok && currentApp) currentApp.launchConfig = launchConfig;
   if (statusEl) {
     statusEl.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
@@ -249,7 +258,7 @@ async function testMcpTool(): Promise<void> {
   }
   out.classList.remove("hidden");
   out.textContent = "Running…";
-  const res = await window.glyphh.appCallTool(currentApp.slug, tool, args);
+  const res = await window.glyphh.appCallTool?.(currentApp.slug, tool, args);
   out.textContent = res?.ok
     ? (typeof res.result === "string" ? res.result : JSON.stringify(res.result, null, 2))
     : `Error: ${res?.error || "failed"}`;
@@ -317,23 +326,23 @@ let panelApps: PanelApp[] = [];
  *  the configured real browser (window or tab). Returns the launch result so callers can
  *  surface an error. */
 async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: string }> {
-  return window.glyphh.appLaunch({
+  return (await window.glyphh.appLaunch?.({
     slug: app.slug, name: app.name, url: app.url,
     isBrowser: app.isBrowser,
     execPath: app.execPath, appArchetype: app.appArchetype, launchConfig: app.launchConfig,
-  });
+  })) ?? { ok: false, error: "Launching apps isn't available on this surface." };
 }
 
 async function loadApps() {
   appDetail.classList.add("hidden");
   appAddForm.classList.add("hidden");
 
-  document.getElementById("apps-pro-gate")!.classList.add("hidden");
+  document.getElementById("apps-pro-gate")?.classList.add("hidden");
   appsList.classList.remove("hidden");
   appsToolbar.classList.remove("hidden");
 
   try {
-    const apps = await window.glyphh.panelAppsList();
+    const apps = (await window.glyphh.panelAppsList?.()) || [];
     // Keep browser apps (have a url) and native apps (isBrowser === false).
     // Legacy rows have neither field set but always carry a url, so the url
     // check still covers them.
@@ -343,7 +352,7 @@ async function loadApps() {
   // The rail's Apps grid mirrors this list — tell it to refresh.
   document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
 
-  document.getElementById("apps-limit-msg")!.classList.add("hidden");
+  document.getElementById("apps-limit-msg")?.classList.add("hidden");
 
   renderAppsList();
   // Async — re-renders once OS file icons (native apps) land. Apps no longer
@@ -602,9 +611,11 @@ let lastMktRes: MktRes | null = null;
 async function loadMarketplace(): Promise<void> {
   mktListEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
   try {
-    lastMktRes = await window.glyphh.marketplaceList({ scope: mktScope, category: mktCategory || undefined, q: mktQuery || undefined, sort: mktSort, page: mktPage });
+    lastMktRes = (await window.glyphh.marketplaceList?.({ scope: mktScope, category: mktCategory || undefined, q: mktQuery || undefined, sort: mktSort, page: mktPage })) ?? null;
   } catch {
     lastMktRes = null;
+  }
+  if (!lastMktRes) {
     mktListEl.innerHTML = `<div class="crud-empty">Marketplace unavailable right now.</div>`;
     return;
   }
@@ -697,7 +708,7 @@ async function openMktDetail(id: string): Promise<void> {
   marketplacePage.scrollTop = 0;
 
   let detail: MktDetail | null = null;
-  try { detail = await window.glyphh.marketplaceDetail(id); }
+  try { detail = (await window.glyphh.marketplaceDetail?.(id)) ?? null; }
   catch { detail = null; }
   if (!detail) {
     mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Couldn't load this app right now.</div>`;
@@ -868,9 +879,9 @@ function renderMktDetail(d: MktDetail): void {
   if (installEl && !d.installed) {
     installEl.addEventListener("click", async () => {
       installEl.disabled = true; installEl.textContent = "Installing…";
-      const res = await window.glyphh.marketplaceInstall(d.id);
-      if (res.ok) { installEl.textContent = "Installed"; }
-      else { installEl.disabled = false; installEl.textContent = "Install"; flashMktNote(res.error || "Install failed"); }
+      const res = await window.glyphh.marketplaceInstall?.(d.id);
+      if (res?.ok) { installEl.textContent = "Installed"; }
+      else { installEl.disabled = false; installEl.textContent = "Install"; flashMktNote(res?.error || "Install failed"); }
     });
   }
 
@@ -942,20 +953,28 @@ function switchAppTab(tab: string) {
 
 function listingEls() {
   return {
-    title: document.getElementById("listing-title") as HTMLInputElement,
-    tagline: document.getElementById("listing-tagline") as HTMLInputElement,
-    category: document.getElementById("listing-category") as HTMLSelectElement,
-    body: document.getElementById("listing-body") as HTMLTextAreaElement,
-    video: document.getElementById("listing-video") as HTMLInputElement,
-    website: document.getElementById("listing-website") as HTMLInputElement,
-    support: document.getElementById("listing-support") as HTMLInputElement,
+    title: document.getElementById("listing-title") as HTMLInputElement | null,
+    tagline: document.getElementById("listing-tagline") as HTMLInputElement | null,
+    category: document.getElementById("listing-category") as HTMLSelectElement | null,
+    body: document.getElementById("listing-body") as HTMLTextAreaElement | null,
+    video: document.getElementById("listing-video") as HTMLInputElement | null,
+    website: document.getElementById("listing-website") as HTMLInputElement | null,
+    support: document.getElementById("listing-support") as HTMLInputElement | null,
   };
 }
 
-function loadMarketplaceTab(): void {
-  document.getElementById("listing-error")!.classList.add("hidden");
-  const l = currentApp?.listing;
+/** All listing form fields, or null when the tab's markup isn't present. */
+function listingElsChecked(): { [K in keyof ReturnType<typeof listingEls>]: NonNullable<ReturnType<typeof listingEls>[K]> } | null {
   const el = listingEls();
+  if (!el.title || !el.tagline || !el.category || !el.body || !el.video || !el.website || !el.support) return null;
+  return el as { [K in keyof ReturnType<typeof listingEls>]: NonNullable<ReturnType<typeof listingEls>[K]> };
+}
+
+function loadMarketplaceTab(): void {
+  document.getElementById("listing-error")?.classList.add("hidden");
+  const l = currentApp?.listing;
+  const el = listingElsChecked();
+  if (!el) return;
   el.title.value = l?.title || currentApp?.name || "";
   el.tagline.value = l?.tagline || "";
   el.category.value = l?.category || "";
@@ -965,8 +984,9 @@ function loadMarketplaceTab(): void {
   el.support.value = l?.supportEmail || "";
 
   // Icon + screenshots.
-  const icon = document.getElementById("listing-icon-preview")!;
-  const clear = document.getElementById("listing-icon-clear")!;
+  const icon = document.getElementById("listing-icon-preview");
+  const clear = document.getElementById("listing-icon-clear");
+  if (!icon || !clear) return;
   if (l?.iconUrl) {
     icon.innerHTML = `<img src="${escMkt(l.iconUrl)}" alt="" />`;
     clear.classList.remove("hidden");
@@ -975,8 +995,9 @@ function loadMarketplaceTab(): void {
     clear.classList.add("hidden");
   }
 
-  const shots = document.getElementById("listing-shots")!;
-  const shotsEmpty = document.getElementById("listing-shots-empty")!;
+  const shots = document.getElementById("listing-shots");
+  const shotsEmpty = document.getElementById("listing-shots-empty");
+  if (!shots || !shotsEmpty) return;
   const list = l?.screenshots ?? [];
   shotsEmpty.classList.toggle("hidden", list.length > 0);
   shots.innerHTML = "";
@@ -986,15 +1007,16 @@ function loadMarketplaceTab(): void {
     cell.className = "listing-shot";
     cell.innerHTML = `<img src="${escMkt(shot.url)}" alt="${escMkt(shot.caption)}" />
       <button class="listing-shot-remove" type="button" data-key="${escMkt(key)}" aria-label="Remove screenshot">×</button>`;
-    cell.querySelector<HTMLButtonElement>(".listing-shot-remove")!
-      .addEventListener("click", () => void removeListingImage(key));
+    cell.querySelector<HTMLButtonElement>(".listing-shot-remove")
+      ?.addEventListener("click", () => void removeListingImage(key));
     shots.appendChild(cell);
   }
 
   // Listed state + which button to offer.
-  const state = document.getElementById("listing-listed-state")!;
-  const listBtn = document.getElementById("listing-list-btn")!;
-  const unlistBtn = document.getElementById("listing-unlist-btn")!;
+  const state = document.getElementById("listing-listed-state");
+  const listBtn = document.getElementById("listing-list-btn");
+  const unlistBtn = document.getElementById("listing-unlist-btn");
+  if (!state || !listBtn || !unlistBtn) return;
   const listed = !!l?.listedAt;
   state.innerHTML = listed
     ? `<span class="deploy-dot on"></span>Listed${l?.ratingCount ? ` · ${l.ratingAvg.toFixed(1)}★ from ${l.ratingCount} review${l.ratingCount === 1 ? "" : "s"}` : " · no reviews yet"}`
@@ -1011,7 +1033,8 @@ function mediaKeyFromUrl(url: string): string {
 }
 
 function listingError(msg: string): void {
-  const el = document.getElementById("listing-error")!;
+  const el = document.getElementById("listing-error");
+  if (!el) return;
   el.textContent = msg;
   el.classList.remove("hidden");
 }
@@ -1025,16 +1048,17 @@ function listingStatus(msg: string): void {
 
 /** Re-read the app so the tab renders what the server actually stored. */
 async function refreshCurrentApp(): Promise<void> {
-  const apps = await window.glyphh.panelAppsList();
-  reloadPanelApps(apps.map(toPanelApp));
+  const apps = await window.glyphh.panelAppsList?.();
+  reloadPanelApps((apps || []).map(toPanelApp));
   const fresh = panelApps.find((a) => a.id === currentAppId);
   if (fresh) currentApp = fresh;
 }
 
 async function saveListing(): Promise<void> {
   if (!currentApp) return;
-  document.getElementById("listing-error")!.classList.add("hidden");
-  const el = listingEls();
+  document.getElementById("listing-error")?.classList.add("hidden");
+  const el = listingElsChecked();
+  if (!el) return;
   const patch: Record<string, unknown> = {
     title: el.title.value.trim() || undefined,
     tagline: el.tagline.value.trim() || undefined,
@@ -1046,8 +1070,8 @@ async function saveListing(): Promise<void> {
     videoUrl: el.video.value.trim() || null,
   };
   listingStatus("Saving…");
-  const res = await window.glyphh.appListingSet(currentApp.slug, patch);
-  if (!res.ok) { listingStatus(""); listingError(res.error || "Couldn't save the listing."); return; }
+  const res = await window.glyphh.appListingSet?.(currentApp.slug, patch);
+  if (!res?.ok) { listingStatus(""); listingError(res?.error || "Couldn't save the listing."); return; }
   listingStatus("Saved ✓");
   await refreshCurrentApp();
   loadMarketplaceTab();
@@ -1055,12 +1079,12 @@ async function saveListing(): Promise<void> {
 
 async function addListingImage(kind: "icon" | "screenshot"): Promise<void> {
   if (!currentApp) return;
-  document.getElementById("listing-error")!.classList.add("hidden");
+  document.getElementById("listing-error")?.classList.add("hidden");
   listingStatus("Uploading…");
-  const res = await window.glyphh.appListingImageAdd(currentApp.slug, kind);
-  if (!res.ok) {
+  const res = await window.glyphh.appListingImageAdd?.(currentApp.slug, kind);
+  if (!res?.ok) {
     listingStatus("");
-    if (res.error !== "Canceled") listingError(res.error || "Couldn't upload the image.");
+    if (res?.error !== "Canceled") listingError(res?.error || "Couldn't upload the image.");
     return;
   }
   listingStatus("Uploaded ✓");
@@ -1070,15 +1094,15 @@ async function addListingImage(kind: "icon" | "screenshot"): Promise<void> {
 
 async function removeListingImage(key: string): Promise<void> {
   if (!currentApp || !key) return;
-  const res = await window.glyphh.appListingImageRemove(currentApp.slug, key);
-  if (!res.ok) { listingError(res.error || "Couldn't remove the image."); return; }
+  const res = await window.glyphh.appListingImageRemove?.(currentApp.slug, key);
+  if (!res?.ok) { listingError(res?.error || "Couldn't remove the image."); return; }
   await refreshCurrentApp();
   loadMarketplaceTab();
 }
 
 async function setListed(listed: boolean): Promise<void> {
   if (!currentApp) return;
-  document.getElementById("listing-error")!.classList.add("hidden");
+  document.getElementById("listing-error")?.classList.add("hidden");
   if (listed) {
     const confirmed = await confirmAction({
       title: `List ${currentApp.name} on the marketplace?`,
@@ -1088,8 +1112,8 @@ async function setListed(listed: boolean): Promise<void> {
     if (!confirmed) return;
   }
   listingStatus(listed ? "Listing…" : "Unlisting…");
-  const res = await window.glyphh.appListingList(currentApp.slug, listed);
-  if (!res.ok) { listingStatus(""); listingError(res.error || "Couldn't change the listing."); return; }
+  const res = await window.glyphh.appListingList?.(currentApp.slug, listed);
+  if (!res?.ok) { listingStatus(""); listingError(res?.error || "Couldn't change the listing."); return; }
   listingStatus(listed ? "Listed ✓" : "Unlisted ✓");
   await refreshCurrentApp();
   loadMarketplaceTab();
@@ -1124,10 +1148,13 @@ function releaseDate(iso: string): string {
 }
 
 async function loadReleasesTab(): Promise<void> {
-  const listEl = document.getElementById("release-list")!;
-  const emptyEl = document.getElementById("release-empty")!;
-  const countEl = document.getElementById("release-count")!;
-  document.getElementById("release-error")!.classList.add("hidden");
+  // Missing markup (a surface without this tab) must degrade to a quiet
+  // no-op, never an unhandled rejection that takes the whole panel down.
+  const listEl = document.getElementById("release-list");
+  const emptyEl = document.getElementById("release-empty");
+  const countEl = document.getElementById("release-count");
+  if (!listEl || !emptyEl || !countEl) return;
+  document.getElementById("release-error")?.classList.add("hidden");
   listEl.innerHTML = `<div class="inline-empty">Loading…</div>`;
 
   // Owner sees the notes editor + promotion; an installer sees a read-only
@@ -1138,7 +1165,13 @@ async function loadReleasesTab(): Promise<void> {
   if (!owned) renderInstalledReleaseView();
 
   const slug = currentApp?.slug || currentAppId;
-  const res = await window.glyphh.appReleases(slug);
+  // The bridge may lack this call on a surface (web's cloud placeholder
+  // resolves undefined) — say so honestly instead of throwing on `res.ok`.
+  const res = await window.glyphh.appReleases?.(slug);
+  if (!res) {
+    listEl.innerHTML = `<div class="inline-empty">Release history isn't available on this surface yet.</div>`;
+    return;
+  }
   if (!res.ok) {
     listEl.innerHTML = "";
     releaseError(res.error || "Couldn't load the release history.");
@@ -1205,10 +1238,11 @@ function selectRelease(id: string | null): void {
   document.querySelectorAll<HTMLElement>(".release-row").forEach((el) => {
     el.classList.toggle("selected", el.dataset.id === id);
   });
-  const notes = document.getElementById("release-notes") as HTMLTextAreaElement;
-  const promote = document.getElementById("release-promote") as HTMLButtonElement;
-  const save = document.getElementById("release-save-notes") as HTMLButtonElement;
-  const head = document.getElementById("release-selected")!;
+  const notes = document.getElementById("release-notes") as HTMLTextAreaElement | null;
+  const promote = document.getElementById("release-promote") as HTMLButtonElement | null;
+  const save = document.getElementById("release-save-notes") as HTMLButtonElement | null;
+  const head = document.getElementById("release-selected");
+  if (!notes || !promote || !save || !head) return;
 
   if (!r) {
     head.textContent = "Select a release from the history →";
@@ -1236,7 +1270,8 @@ function selectRelease(id: string | null): void {
 }
 
 function releaseError(msg: string): void {
-  const el = document.getElementById("release-error")!;
+  const el = document.getElementById("release-error");
+  if (!el) return;
   el.textContent = msg;
   el.classList.remove("hidden");
 }
@@ -1277,17 +1312,18 @@ function renderInstalledReleaseView(): void {
   const app = currentApp;
   const have = installedVersion(app);
   const latest = app?.latestVersion ?? null;
-  document.getElementById("release-installed-version")!.textContent = have ? `v${have}` : "—";
+  const versionEl = document.getElementById("release-installed-version");
+  if (versionEl) versionEl.textContent = have ? `v${have}` : "—";
 
-  const banner = document.getElementById("release-update-banner")!;
-  const text = document.getElementById("release-update-text")!;
+  const banner = document.getElementById("release-update-banner");
+  const text = document.getElementById("release-update-text");
   const updatable = !!(latest && have && versionNewer(latest, have));
-  banner.classList.toggle("hidden", !updatable);
-  if (updatable) text.textContent = `Version ${latest} is available — you have ${have}.`;
+  banner?.classList.toggle("hidden", !updatable);
+  if (updatable && text) text.textContent = `Version ${latest} is available — you have ${have}.`;
 
   // Toggle reflects the stored preference (default on).
-  const toggle = document.getElementById("release-autoupdate") as HTMLInputElement;
-  void window.glyphh.getPreference?.(autoUpdateKey(app?.slug || ""), true).then((v) => { toggle.checked = v !== false; });
+  const toggle = document.getElementById("release-autoupdate") as HTMLInputElement | null;
+  if (toggle) void window.glyphh.getPreference?.(autoUpdateKey(app?.slug || ""), true).then((v) => { toggle.checked = v !== false; });
 }
 
 // ── Connections tab: the app's required connections + their tools ────
@@ -1298,8 +1334,9 @@ function requiredConnSlugs(app: PanelApp | null): { slug: string; connected: boo
 }
 
 async function loadAppConnectionsTab(): Promise<void> {
-  const listEl = document.getElementById("app-conns-list")!;
-  const emptyEl = document.getElementById("app-conns-empty")!;
+  const listEl = document.getElementById("app-conns-list");
+  const emptyEl = document.getElementById("app-conns-empty");
+  if (!listEl || !emptyEl) return;
   const required = requiredConnSlugs(currentApp);
   emptyEl.classList.toggle("hidden", required.length > 0);
   listEl.innerHTML = "";
@@ -1308,8 +1345,8 @@ async function loadAppConnectionsTab(): Promise<void> {
   // Map required slugs → the user's actual connection (for the id → tools lookup).
   let byslug = new Map<string, { id: string; hiddenTools: string[] }>();
   try {
-    const res = await window.glyphh.connectionsList();
-    byslug = new Map((res.connections || []).map((c) => [c.appSlug, { id: c.id, hiddenTools: c.hiddenTools }]));
+    const res = await window.glyphh.connectionsList?.();
+    byslug = new Map((res?.connections || []).map((c) => [c.appSlug, { id: c.id, hiddenTools: c.hiddenTools }]));
   } catch { /* offline — everything renders as not connected */ }
 
   for (const { slug, connected } of required) {
@@ -1334,8 +1371,8 @@ async function loadAppConnectionsTab(): Promise<void> {
       tools.dataset.loaded = "1";
       if (!conn) { tools.innerHTML = `<div class="app-conn-tool-empty">Connect ${escMkt(connLabel(slug))} to see its tools.</div>`; return; }
       tools.innerHTML = `<div class="app-conn-tool-empty">Loading tools…</div>`;
-      const tres = await window.glyphh.connectionToolsList(conn.id).catch(() => ({ ok: false as const, tools: [] }));
-      if (!tres.ok || !tres.tools.length) { tools.innerHTML = `<div class="app-conn-tool-empty">No tools.</div>`; return; }
+      const tres = await window.glyphh.connectionToolsList?.(conn.id)?.catch(() => ({ ok: false as const, tools: [] }));
+      if (!tres?.ok || !tres.tools?.length) { tools.innerHTML = `<div class="app-conn-tool-empty">No tools.</div>`; return; }
       // A tool the user/org has hidden is BLOCKED — the app can't call it, so the
       // dependency is unmet even though the account is connected.
       tools.innerHTML = tres.tools.map((t) => `
@@ -1347,9 +1384,10 @@ async function loadAppConnectionsTab(): Promise<void> {
     listEl.appendChild(row);
     // Any required connection that's connected but has all tools blocked is a
     // silent failure — surface it on the row without needing expansion.
-    if (conn) void window.glyphh.connectionToolsList(conn.id).then((tres) => {
-      if (tres.ok && tres.tools.length && tres.tools.every((t) => t.hidden)) {
-        const st = row.querySelector<HTMLElement>(".app-conn-status")!;
+    if (conn) void window.glyphh.connectionToolsList?.(conn.id)?.then((tres) => {
+      if (tres?.ok && tres.tools?.length && tres.tools.every((t) => t.hidden)) {
+        const st = row.querySelector<HTMLElement>(".app-conn-status");
+        if (!st) return;
         st.textContent = "Tools blocked";
         st.className = "app-conn-status missing";
       }
@@ -1382,11 +1420,11 @@ function initReleasesTab(): void {
 
   document.getElementById("release-save-notes")?.addEventListener("click", async () => {
     if (!selectedReleaseId) return;
-    document.getElementById("release-error")!.classList.add("hidden");
-    const notes = (document.getElementById("release-notes") as HTMLTextAreaElement).value;
+    document.getElementById("release-error")?.classList.add("hidden");
+    const notes = (document.getElementById("release-notes") as HTMLTextAreaElement | null)?.value ?? "";
     releaseStatus("Saving…");
-    const res = await window.glyphh.appReleaseNotes(currentApp?.slug || currentAppId, selectedReleaseId, notes || null);
-    if (!res.ok) { releaseStatus(""); releaseError(res.error || "Couldn't save the notes."); return; }
+    const res = await window.glyphh.appReleaseNotes?.(currentApp?.slug || currentAppId, selectedReleaseId, notes || null);
+    if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Couldn't save the notes."); return; }
     releaseStatus("Saved ✓");
     await loadReleasesTab();
   });
@@ -1398,12 +1436,12 @@ function initReleasesTab(): void {
   document.getElementById("release-build")?.addEventListener("click", async () => {
     const btn = document.getElementById("release-build") as HTMLButtonElement;
     const slug = currentApp?.slug || currentAppId;
-    document.getElementById("release-error")!.classList.add("hidden");
+    document.getElementById("release-error")?.classList.add("hidden");
     btn.disabled = true;
     releaseStatus("Building from your working folder…");
     try {
-      const res = await window.glyphh.appBuildDeploy(slug);
-      if (!res.ok) { releaseStatus(""); releaseError(res.error || "Build failed."); return; }
+      const res = await window.glyphh.appBuildDeploy?.(slug);
+      if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Build failed."); return; }
       releaseStatus(`Built v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : " — uploaded"} ✓`);
       await loadReleasesTab();
     } finally { btn.disabled = false; }
@@ -1413,7 +1451,7 @@ function initReleasesTab(): void {
     if (!selectedReleaseId) return;
     const r = releases.find((x) => x.id === selectedReleaseId);
     if (!r) return;
-    document.getElementById("release-error")!.classList.add("hidden");
+    document.getElementById("release-error")?.classList.add("hidden");
     const confirmed = await confirmAction({
       title: `Promote ${r.version} to live?`,
       body: "Everyone who installs this app gets this version. Promoting an older release again is how you roll back.",
@@ -1421,8 +1459,8 @@ function initReleasesTab(): void {
     });
     if (!confirmed) return;
     releaseStatus("Promoting…");
-    const res = await window.glyphh.appReleasePromote(currentApp?.slug || currentAppId, selectedReleaseId);
-    if (!res.ok) { releaseStatus(""); releaseError(res.error || "Couldn't promote the release."); return; }
+    const res = await window.glyphh.appReleasePromote?.(currentApp?.slug || currentAppId, selectedReleaseId);
+    if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Couldn't promote the release."); return; }
     releaseStatus("Live ✓");
     await loadReleasesTab();
   });
@@ -1432,12 +1470,13 @@ function initReleasesTab(): void {
 let deployCurrentId: string | null = null;
 
 async function loadDeployTab(): Promise<void> {
-  const statusEl = document.getElementById("deploy-status")!;
-  const urlRow = document.getElementById("deploy-url-row")!;
-  const urlEl = document.getElementById("deploy-url") as HTMLAnchorElement;
-  const takedown = document.getElementById("deploy-takedown-btn")!;
-  const deployBtn = document.getElementById("deploy-btn") as HTMLButtonElement;
-  document.getElementById("deploy-error")!.classList.add("hidden");
+  const statusEl = document.getElementById("deploy-status");
+  const urlRow = document.getElementById("deploy-url-row");
+  const urlEl = document.getElementById("deploy-url") as HTMLAnchorElement | null;
+  const takedown = document.getElementById("deploy-takedown-btn");
+  const deployBtn = document.getElementById("deploy-btn") as HTMLButtonElement | null;
+  if (!statusEl || !urlRow || !urlEl || !takedown || !deployBtn) return;
+  document.getElementById("deploy-error")?.classList.add("hidden");
   statusEl.textContent = "Checking…";
   urlRow.classList.add("hidden");
   takedown.classList.add("hidden");
@@ -1445,13 +1484,13 @@ async function loadDeployTab(): Promise<void> {
 
   // Who can reach it — the app's own setting, not the deployment's. Shown here
   // because "it's live" and "who can open it" are one question to the owner.
-  const accessSel = document.getElementById("deploy-access") as HTMLSelectElement;
-  accessSel.value = currentApp?.access === "public" ? "public" : "members";
+  const accessSel = document.getElementById("deploy-access") as HTMLSelectElement | null;
+  if (accessSel) accessSel.value = currentApp?.access === "public" ? "public" : "members";
   syncDeployAccessHint();
 
   const slug = currentApp?.slug || currentAppId;
-  const res = await window.glyphh.hostingStatus(slug);
-  if (!res.ok) { statusEl.textContent = "Couldn't load deploy status."; return; }
+  const res = await window.glyphh.hostingStatus?.(slug);
+  if (!res?.ok) { statusEl.textContent = "Couldn't load deploy status."; return; }
   const d = res.deployment;
   if (d && (d.status === "live" || d.status === "building" || d.status === "queued")) {
     deployCurrentId = d.id;
@@ -1469,7 +1508,7 @@ async function loadDeployTab(): Promise<void> {
  *  can surprise someone, so it says so plainly. */
 function syncDeployAccessHint(): void {
   const hint = document.getElementById("deploy-access-hint");
-  const isPublic = (document.getElementById("deploy-access") as HTMLSelectElement).value === "public";
+  const isPublic = (document.getElementById("deploy-access") as HTMLSelectElement | null)?.value === "public";
   if (hint) {
     hint.textContent = isPublic
       ? "Anyone with the link can open this app, signed in or not, and their requests spend your org's credits."
@@ -1481,9 +1520,11 @@ function syncDeployAccessHint(): void {
 async function saveDeployAccess(): Promise<void> {
   if (!currentAppId) return;
   const status = document.getElementById("deploy-access-status");
-  const access = (document.getElementById("deploy-access") as HTMLSelectElement).value as "public" | "members";
+  const sel = document.getElementById("deploy-access") as HTMLSelectElement | null;
+  if (!sel) return;
+  const access = sel.value as "public" | "members";
   if (status) status.textContent = "Saving…";
-  const res = await window.glyphh.panelAppsUpdate(currentAppId, { access });
+  const res = await window.glyphh.panelAppsUpdate?.(currentAppId, { access });
   if (res?.ok && currentApp) currentApp.access = access;
   if (status) {
     status.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
@@ -1492,7 +1533,7 @@ async function saveDeployAccess(): Promise<void> {
 }
 
 async function loadProductionTab(): Promise<void> {
-  document.getElementById("graduate-error")!.classList.add("hidden");
+  document.getElementById("graduate-error")?.classList.add("hidden");
 }
 
 // ── Config Vars tab (per-app encrypted secrets) ──────────
@@ -1504,13 +1545,17 @@ async function loadProductionTab(): Promise<void> {
 async function loadConfigVarsTab() {
   // Never let unsaved plaintext linger in the entry fields across a tab switch
   // or app reopen — a value only ever exists here while actively being typed.
-  (document.getElementById("config-var-key") as HTMLInputElement).value = "";
-  (document.getElementById("config-var-value") as HTMLTextAreaElement).value = "";
-  (document.getElementById("config-var-readable") as HTMLInputElement).checked = false;
-  const listEl = document.getElementById("config-var-list")!;
-  const res = await window.glyphh.appSecretsList(currentAppId);
+  const keyField = document.getElementById("config-var-key") as HTMLInputElement | null;
+  const valueField = document.getElementById("config-var-value") as HTMLTextAreaElement | null;
+  const readableField = document.getElementById("config-var-readable") as HTMLInputElement | null;
+  if (keyField) keyField.value = "";
+  if (valueField) valueField.value = "";
+  if (readableField) readableField.checked = false;
+  const listEl = document.getElementById("config-var-list");
+  if (!listEl) return;
+  const res = await window.glyphh.appSecretsList?.(currentAppId);
   listEl.innerHTML = "";
-  if (!res.ok) {
+  if (!res?.ok) {
     listEl.innerHTML = `<div class="inline-empty">Couldn't load config vars.</div>`;
     return;
   }
@@ -1550,14 +1595,17 @@ async function loadConfigVarsTab() {
     edit.textContent = "Edit";
     edit.title = "Load this var into the form to change its value or its \"readable by app code\" setting. Values are write-only, so editing clears the value — re-enter it to save.";
     edit.addEventListener("click", () => {
-      (document.getElementById("config-var-key") as HTMLInputElement).value = s.key;
-      (document.getElementById("config-var-readable") as HTMLInputElement).checked = !!s.appReadable;
+      const editKey = document.getElementById("config-var-key") as HTMLInputElement | null;
+      const editReadable = document.getElementById("config-var-readable") as HTMLInputElement | null;
+      if (editKey) editKey.value = s.key;
+      if (editReadable) editReadable.checked = !!s.appReadable;
       // Write-only: the stored value can never be shown again, so editing wipes
       // the field — the user re-enters the value (and can flip app-readable) to save.
-      const valueField = document.getElementById("config-var-value") as HTMLTextAreaElement;
-      valueField.value = "";
-      document.getElementById("config-var-status")!.textContent = `Editing ${s.key} — re-enter its value to save (values are write-only and can't be shown).`;
-      valueField.focus();
+      const editValue = document.getElementById("config-var-value") as HTMLTextAreaElement | null;
+      if (editValue) editValue.value = "";
+      const statusEl = document.getElementById("config-var-status");
+      if (statusEl) statusEl.textContent = `Editing ${s.key} — re-enter its value to save (values are write-only and can't be shown).`;
+      editValue?.focus();
     });
     const del = document.createElement("button");
     del.className = "action-btn danger";
@@ -1570,7 +1618,7 @@ async function loadConfigVarsTab() {
         confirmLabel: "Delete var",
         danger: true,
       }))) return;
-      await window.glyphh.appSecretsDelete(currentAppId, s.key);
+      await window.glyphh.appSecretsDelete?.(currentAppId, s.key);
       void loadConfigVarsTab();
     });
     row.append(keyEl, valEl, edit, del);
@@ -1579,19 +1627,20 @@ async function loadConfigVarsTab() {
 }
 
 function wireConfigVarsForm() {
-  const keyEl = document.getElementById("config-var-key") as HTMLInputElement;
-  const valueEl = document.getElementById("config-var-value") as HTMLTextAreaElement;
-  const readableEl = document.getElementById("config-var-readable") as HTMLInputElement;
-  const errEl = document.getElementById("config-var-error")!;
-  const statusEl = document.getElementById("config-var-status")!;
-  document.getElementById("config-var-add")!.addEventListener("click", async () => {
+  const keyEl = document.getElementById("config-var-key") as HTMLInputElement | null;
+  const valueEl = document.getElementById("config-var-value") as HTMLTextAreaElement | null;
+  const readableEl = document.getElementById("config-var-readable") as HTMLInputElement | null;
+  const errEl = document.getElementById("config-var-error");
+  const statusEl = document.getElementById("config-var-status");
+  if (!keyEl || !valueEl || !readableEl || !errEl || !statusEl) return;
+  document.getElementById("config-var-add")?.addEventListener("click", async () => {
     errEl.classList.add("hidden");
     statusEl.textContent = "";
     const key = keyEl.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
     const value = valueEl.value;
-    const res = await window.glyphh.appSecretsSet(currentAppId, key, value, readableEl.checked);
-    if (!res.ok) {
-      errEl.textContent = res.error || "Couldn't save";
+    const res = await window.glyphh.appSecretsSet?.(currentAppId, key, value, readableEl.checked);
+    if (!res?.ok) {
+      errEl.textContent = res?.error || "Couldn't save";
       errEl.classList.remove("hidden");
       return;
     }
@@ -1607,11 +1656,91 @@ function wireConfigVarsForm() {
 
 // ── Panel tab ────────────────────────────────────────────
 
+// ── WEB preview (browser tab) ────────────────────────────
+// Desktop previews through a privileged <webview>; a browser has none, so the
+// web surface previews an app the way its other web panels work — an <iframe>
+// of the app's public address (glyphh apps: their deployed <slug>.glyphh.app
+// URL, which the web bridge maps into `url` from prodUrl; url apps: their
+// configured http(s) URL) — with an honest card when nothing is framable yet.
+
+/** The address the web preview can frame, or null (undeployed / non-http). */
+function webPreviewUrl(app: PanelApp | null): string | null {
+  const url = app?.url || null;
+  return url && /^https?:\/\//i.test(url) ? url : null;
+}
+
+/** The dashboard tab's right pane — the slot the desktop webview lives in. */
+function webPreviewHost(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(".app-builder-preview .app-tab-right[data-tab='dashboard']");
+}
+
+/** Ensure the preview iframe exists in the slot and show `url` in it. */
+function webPreviewNavigate(url: string): void {
+  const host = webPreviewHost();
+  if (!host) return;
+  document.getElementById("app-preview-fallback")?.remove();
+  let frame = document.getElementById("app-preview-frame") as HTMLIFrameElement | null;
+  if (!frame) {
+    frame = document.createElement("iframe");
+    frame.id = "app-preview-frame";
+    frame.className = "app-preview-frame";
+    // Scripts + same-origin + forms is enough for a real app to run; no
+    // top-navigation and no popups from inside the preview.
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
+    // A hard load failure is detectable; a frame-ancestors refusal mostly is
+    // not (the browser hides it from the embedder) — the toolbar's "Open in
+    // new tab" stays as the honest escape hatch either way.
+    frame.addEventListener("error", () => {
+      webPreviewFallback("This site refused to load in the preview.", frame?.src || null);
+    });
+    host.appendChild(frame);
+  }
+  if (frame.src !== url) frame.src = url;
+}
+
+/** Show the no-preview card (replacing any iframe). */
+function webPreviewFallback(message: string, openUrl: string | null): void {
+  const host = webPreviewHost();
+  if (!host) return;
+  document.getElementById("app-preview-frame")?.remove();
+  let card = document.getElementById("app-preview-fallback");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "app-preview-fallback";
+    card.className = "app-preview-fallback";
+    host.appendChild(card);
+  }
+  card.innerHTML = `<div class="app-preview-fallback-card">
+      <p>${escMkt(message)}</p>
+      ${openUrl ? `<button type="button" class="action-btn app-preview-open-tab">Open in new tab</button>` : ""}
+    </div>`;
+  card.querySelector<HTMLButtonElement>(".app-preview-open-tab")?.addEventListener("click", () => {
+    if (openUrl) window.open(openUrl, "_blank", "noopener");
+  });
+}
+
+/** WEB: render the preview pane for `app` — iframe when framable, honest card
+ *  when not. Idempotent; the desktop <webview> is CSS-hidden on web. */
+function renderWebPreview(app: PanelApp): void {
+  const url = webPreviewUrl(app);
+  if (url) { webPreviewNavigate(url); return; }
+  webPreviewFallback(
+    app.appArchetype === "glyphh-app"
+      ? "This app isn't deployed yet. Deploy it from the Public hosting tab, then preview it here."
+      : "No URL configured for this app. Add one on the left to preview it.",
+    null,
+  );
+}
+
 let panelLoaded = false;
 
 async function loadPanelTab() {
   const app = panelApps.find((a) => a.id === currentAppId);
   if (!app) return;
+
+  // WEB: the desktop <webview> path below is inert in a browser — preview via
+  // a sandboxed iframe of the app's public address instead. No machine IPC.
+  if (IS_WEB) { renderWebPreview(app); return; }
 
   // Installed glyphh-apps have no url — their UI lives on disk at execPath
   // (~/.glyphh/custom-apps/<slug>/index.html). Mirror isGlyphhAppRow so native
@@ -1695,13 +1824,13 @@ async function openPanelAppDetail(app: PanelApp) {
   // carry a url, so they default to browser.
   const isBrowser = app.isBrowser !== undefined ? app.isBrowser : true;
   const detailType: AppType = isBrowser ? "browser" : "native";
-  (document.getElementById("app-detail-type") as HTMLSelectElement).value = detailType;
-  {
-    const lc = (app.launchConfig || {}) as Record<string, unknown>;
-  }
-  (document.getElementById("app-detail-exec-path") as HTMLInputElement).value = app.execPath || "";
+  const typeSel = document.getElementById("app-detail-type") as HTMLSelectElement | null;
+  if (typeSel) typeSel.value = detailType;
+  const execEl = document.getElementById("app-detail-exec-path") as HTMLInputElement | null;
+  if (execEl) execEl.value = app.execPath || "";
   const detailArchetype = (app.appArchetype as Archetype) || "generic";
-  (document.getElementById("app-detail-archetype") as HTMLSelectElement).value = detailArchetype;
+  const archSel = document.getElementById("app-detail-archetype") as HTMLSelectElement | null;
+  if (archSel) archSel.value = detailArchetype;
   writeLaunchConfig("app-detail", detailArchetype, app.launchConfig);
   toggleTypeFields("app-detail", detailType);
   toggleArchetypeFields("app-detail", detailArchetype);
@@ -1711,7 +1840,8 @@ async function openPanelAppDetail(app: PanelApp) {
 
   // Shared edit header: icon + name + slug (the header title span is now blank).
   appDetailHeading.textContent = "";
-  document.getElementById("app-detail-head")!.innerHTML =
+  const headEl = document.getElementById("app-detail-head");
+  if (headEl) headEl.innerHTML =
     `<div class="app-card-icon">${appIconInner(app, app.name, "app-card-initial")}</div>` +
     `<div class="edit-head-name">${escMkt(app.name)}<span class="edit-head-slug">${escMkt(app.slug)}</span></div>`;
 
@@ -1741,8 +1871,11 @@ function getPreviewWebContentsId(): number | undefined {
 
 function closeAppDetail() {
   // Drop any glyphh capability grant on the reused preview webContents.
-  void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());
+  void window.glyphh.glyphhAppPreviewClear?.(getPreviewWebContentsId());
   appPreview.src = "about:blank";
+  // WEB preview cleanup — the iframe/fallback card are created per-app.
+  document.getElementById("app-preview-frame")?.remove();
+  document.getElementById("app-preview-fallback")?.remove();
   panelLoaded = false;
   appDetail.classList.add("hidden");
   appsList.classList.remove("hidden");
@@ -1812,6 +1945,8 @@ function initApps() {
       if (!u) return;
       let normalized = u;
       try { normalized = new URL(u).toString(); } catch { return; /* not yet a full URL */ }
+      // WEB: navigate the preview iframe instead of the (inert) webview.
+      if (IS_WEB) { webPreviewNavigate(normalized); return; }
       if (appPreview && appPreview.src !== normalized) {
         appPreview.partition = "persist:yo";
         appPreview.src = normalized;
@@ -1819,6 +1954,28 @@ function initApps() {
       }
     }, 400);
   });
+
+  // WEB preview toolbar: Refresh re-navigates the iframe, and "Open in new
+  // tab" mirrors web appLaunch's tab fallback — a browser can't force a site
+  // to allow framing, so the honest affordance is always on offer.
+  if (IS_WEB) {
+    const refreshBtn = document.getElementById("app-preview-refresh");
+    refreshBtn?.addEventListener("click", () => {
+      const frame = document.getElementById("app-preview-frame") as HTMLIFrameElement | null;
+      if (frame?.src) { const u = frame.src; frame.src = u; }
+      else if (currentApp) renderWebPreview(currentApp);
+    });
+    const openTab = document.createElement("button");
+    openTab.id = "app-preview-open-tab";
+    openTab.type = "button";
+    openTab.className = "preview-action preview-action-visible";
+    openTab.textContent = "Open in new tab";
+    openTab.addEventListener("click", () => {
+      const url = webPreviewUrl(currentApp);
+      if (url) window.open(url, "_blank", "noopener");
+    });
+    refreshBtn?.insertAdjacentElement("beforebegin", openTab);
+  }
 
   // Slug helpers
   const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -1871,7 +2028,7 @@ function initApps() {
     mktRefreshBtn.classList.remove("spinning");
   });
 
-  document.getElementById("apps-add-btn")!.addEventListener("click", () => {
+  document.getElementById("apps-add-btn")?.addEventListener("click", () => {
     addNameInput.value = "";
     addSlugInput.value = "";
     slugTouched = false;
@@ -1890,14 +2047,14 @@ function initApps() {
   });
 
   // Add-form archetype toggle + Browse… button (the type control is gone).
-  addArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
-  document.getElementById("app-add-exec-browse")!.addEventListener("click", async () => {
-    const picked = await window.glyphh.pickExecutable();
+  addArchetypeSelect?.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
+  document.getElementById("app-add-exec-browse")?.addEventListener("click", async () => {
+    const picked = await window.glyphh.pickExecutable?.();
     if (picked) addExecPath.value = picked;
   });
 
   // App add form save
-  document.getElementById("app-add-save")!.addEventListener("click", async () => {
+  document.getElementById("app-add-save")?.addEventListener("click", async () => {
     let valid = true;
     const name = addNameInput.value.trim();
     const url = addUrlInput.value.trim();
@@ -1930,7 +2087,7 @@ function initApps() {
       return;
     }
     // Uniqueness check — apps and vibes share one namespace.
-    const existing = await window.glyphh.panelAppsList();
+    const existing = (await window.glyphh.panelAppsList?.()) || [];
     if (existing.some((a) => a.slug === id)) {
       addSlugInput.classList.add("invalid"); clearInvalid(addSlugInput);
       appFormError.textContent = `Slug "${id}" is already taken. Pick a different one.`;
@@ -1946,16 +2103,16 @@ function initApps() {
           launchConfig: (document.getElementById("app-add-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {},
         }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
-    const created = await window.glyphh.panelAppsCreate(createInput);
-    if (!created.ok || !created.app) {
-      appFormError.textContent = created.error || "Failed to create app.";
+    const created = await window.glyphh.panelAppsCreate?.(createInput);
+    if (!created?.ok || !created.app) {
+      appFormError.textContent = created?.error || "Failed to create app.";
       appFormError.classList.remove("hidden");
       return;
     }
     // Force-web / do-not-record are set from the app's detail screen now; new
     // apps already default to capture-off.
     appAddForm.classList.add("hidden");
-    const apps = await window.glyphh.panelAppsList();
+    const apps = (await window.glyphh.panelAppsList?.()) || [];
     reloadPanelApps(apps.map(toPanelApp));
     const createdLocal = panelApps.find((a) => a.id === created.app!.id);
     if (createdLocal) openPanelAppDetail(createdLocal);
@@ -1963,20 +2120,20 @@ function initApps() {
   });
 
   // App detail back button
-  document.getElementById("app-detail-close")!.addEventListener("click", () => closeAppDetail());
+  document.getElementById("app-detail-close")?.addEventListener("click", () => closeAppDetail());
 
   // App detail "Open app" — opens the app per its config (webview window,
   // native Chrome, or a native executable). Surfaces launch errors inline.
-  document.getElementById("app-detail-open")!.addEventListener("click", async () => {
+  document.getElementById("app-detail-open")?.addEventListener("click", async () => {
     const app = panelApps.find((a) => a.id === currentAppId);
     if (!app) return;
     const r = await launchPanelApp(app);
-    if (!r.ok && r.error) { appFormError.textContent = r.error; appFormError.classList.remove("hidden"); }
+    if (!r?.ok && r?.error) { appFormError.textContent = r.error; appFormError.classList.remove("hidden"); }
   });
 
   // App add form cancel
-  document.getElementById("app-add-cancel")!.addEventListener("click", () => { loadApps(); });
-  document.getElementById("app-add-cancel-btn")!.addEventListener("click", () => { loadApps(); });
+  document.getElementById("app-add-cancel")?.addEventListener("click", () => { loadApps(); });
+  document.getElementById("app-add-cancel-btn")?.addEventListener("click", () => { loadApps(); });
 
   // Tab buttons
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
@@ -1990,20 +2147,20 @@ function initApps() {
   const detailTypeSelect = document.getElementById("app-detail-type") as HTMLSelectElement;
   const detailArchetypeSelect = document.getElementById("app-detail-archetype") as HTMLSelectElement;
   const detailExecPath = document.getElementById("app-detail-exec-path") as HTMLInputElement;
-  detailTypeSelect.addEventListener("change", () => {
+  detailTypeSelect?.addEventListener("change", () => {
     toggleTypeFields("app-detail", detailTypeSelect.value as AppType);
   });
-  detailArchetypeSelect.addEventListener("change", () => toggleArchetypeFields("app-detail", detailArchetypeSelect.value as Archetype));
-  document.getElementById("app-detail-exec-browse")!.addEventListener("click", async () => {
-    const picked = await window.glyphh.pickExecutable();
+  detailArchetypeSelect?.addEventListener("change", () => toggleArchetypeFields("app-detail", detailArchetypeSelect.value as Archetype));
+  document.getElementById("app-detail-exec-browse")?.addEventListener("click", async () => {
+    const picked = await window.glyphh.pickExecutable?.();
     if (picked) detailExecPath.value = picked;
   });
 
   // Dashboard save
-  document.getElementById("app-dash-save")!.addEventListener("click", async () => {
+  document.getElementById("app-dash-save")?.addEventListener("click", async () => {
     if (!currentAppId) return;
     const newSlug = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    const type = detailTypeSelect.value as AppType;
+    const type = (detailTypeSelect?.value || "browser") as AppType;
     // A BUILT app keeps its kind (the server refuses to retype one) and its bundle
     // config; only its owner-set fields — name, tool approvals, limits — move here.
     const isBuilt = currentApp?.appArchetype === "glyphh-app";
@@ -2024,12 +2181,12 @@ function initApps() {
       patch.execPath = null;
     } else {
       patch.url = null;
-      patch.execPath = detailExecPath.value.trim();
-      const archetype = detailArchetypeSelect.value as Archetype;
+      patch.execPath = detailExecPath?.value.trim() ?? "";
+      const archetype = (detailArchetypeSelect?.value || "generic") as Archetype;
       patch.appArchetype = archetype;
       patch.launchConfig = readLaunchConfig("app-detail", archetype);
     }
-    const saved = await window.glyphh.panelAppsUpdate(currentAppId, patch);
+    const saved = await window.glyphh.panelAppsUpdate?.(currentAppId, patch);
     if (!saved?.ok) {
       appFormError.textContent = saved?.error || "Failed to save app.";
       appFormError.classList.remove("hidden");
@@ -2040,10 +2197,10 @@ function initApps() {
   });
 
   // Dashboard cancel
-  document.getElementById("app-dash-cancel")!.addEventListener("click", () => closeAppDetail());
+  document.getElementById("app-dash-cancel")?.addEventListener("click", () => closeAppDetail());
 
   // Delete
-  document.getElementById("app-detail-delete")!.addEventListener("click", async () => {
+  document.getElementById("app-detail-delete")?.addEventListener("click", async () => {
     if (!currentAppId) return;
     const confirmed = await confirmAction({
       title: `Delete “${appDetailName.value}”?`,
@@ -2052,7 +2209,7 @@ function initApps() {
       danger: true,
     });
     if (!confirmed) return;
-    await window.glyphh.panelAppsDelete(currentAppId);
+    await window.glyphh.panelAppsDelete?.(currentAppId);
     closeAppDetail();
   });
 
@@ -2083,35 +2240,35 @@ function initApps() {
   // Deploy tab: deploy + take-down.
   document.getElementById("deploy-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("deploy-btn") as HTMLButtonElement;
-    const err = document.getElementById("deploy-error")!;
-    err.classList.add("hidden");
+    const err = document.getElementById("deploy-error");
+    err?.classList.add("hidden");
     btn.disabled = true; const prev = btn.textContent; btn.textContent = "Deploying…";
-    const res = await window.glyphh.hostingDeploy(currentApp?.slug || currentAppId);
+    const res = await window.glyphh.hostingDeploy?.(currentApp?.slug || currentAppId);
     btn.disabled = false; btn.textContent = prev;
-    if (!res.ok) { err.textContent = res.error || "Deploy failed."; err.classList.remove("hidden"); return; }
+    if (!res?.ok) { if (err) { err.textContent = res?.error || "Deploy failed."; err.classList.remove("hidden"); } return; }
     await loadDeployTab();
   });
   document.getElementById("deploy-takedown-btn")?.addEventListener("click", async () => {
     if (!deployCurrentId) return;
     const btn = document.getElementById("deploy-takedown-btn") as HTMLButtonElement;
-    const err = document.getElementById("deploy-error")!;
-    err.classList.add("hidden");
+    const err = document.getElementById("deploy-error");
+    err?.classList.add("hidden");
     btn.disabled = true; const prev = btn.textContent; btn.textContent = "Taking down…";
-    const res = await window.glyphh.hostingDestroy(deployCurrentId);
+    const res = await window.glyphh.hostingDestroy?.(deployCurrentId);
     btn.disabled = false; btn.textContent = prev;
-    if (!res.ok) { err.textContent = res.error || "Take-down failed."; err.classList.remove("hidden"); return; }
+    if (!res?.ok) { if (err) { err.textContent = res?.error || "Take-down failed."; err.classList.remove("hidden"); } return; }
     await loadDeployTab();
   });
 
   // Production tab: graduate to a standalone Supabase repo (download zip).
   document.getElementById("graduate-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("graduate-btn") as HTMLButtonElement;
-    const err = document.getElementById("graduate-error")!;
-    err.classList.add("hidden");
+    const err = document.getElementById("graduate-error");
+    err?.classList.add("hidden");
     btn.disabled = true; const prev = btn.textContent; btn.textContent = "Exporting…";
-    const res = await window.glyphh.appGraduate(currentApp?.slug || currentAppId);
-    btn.disabled = false; btn.textContent = res.ok ? "Exported ✓" : prev;
-    if (!res.ok && res.error !== "Canceled") { err.textContent = res.error || "Export failed."; err.classList.remove("hidden"); }
+    const res = await window.glyphh.appGraduate?.(currentApp?.slug || currentAppId);
+    btn.disabled = false; btn.textContent = res?.ok ? "Exported ✓" : prev;
+    if (!res?.ok && res?.error !== "Canceled" && err) { err.textContent = res?.error || "Export failed."; err.classList.remove("hidden"); }
     setTimeout(() => { btn.textContent = prev; }, 1800);
   });
 
@@ -2142,8 +2299,19 @@ function initApps() {
   // the preview pane is a webview, and a webview swallows mouse events — the
   // old document-level mouseup never fired over it, so the handle stuck to
   // the cursor until the next click on host chrome.
+  //
+  // The controls lookup is SCOPED to this divider's own split: the Layouts and
+  // Connections editors reuse `.app-builder-controls`, and layouts.html sits
+  // EARLIER in the assembled document (the settings-modal adoption also moves
+  // whole sections around the DOM), so a bare
+  // `document.querySelector(".app-builder-controls")` resolved to a DIFFERENT
+  // editor's hidden column — every drag wrote its width and this pane never
+  // moved. (Below the 1140px collapse breakpoint the divider is display:none
+  // and the stacked columns are width:auto !important — dragging is off there
+  // by design.)
   const divider = document.getElementById("app-builder-divider")!;
-  const controls = document.querySelector(".app-builder-controls") as HTMLElement;
+  const split = divider.closest<HTMLElement>(".app-builder-split")!;
+  const controls = split.querySelector<HTMLElement>(":scope > .app-builder-controls")!;
   let startX = 0;
   let startW = 0;
   divider.addEventListener("pointerdown", (e) => {
@@ -2157,7 +2325,12 @@ function initApps() {
   });
   divider.addEventListener("pointermove", (e) => {
     if (!divider.hasPointerCapture(e.pointerId)) return;
-    const w = Math.max(200, Math.min(800, startW + (e.clientX - startX)));
+    // Clamp against the split's LIVE width — inside the settings modal the
+    // split is much narrower than the old full page, so a fixed 800px max
+    // could shove the preview pane out of the modal. The preview always keeps
+    // at least 260px.
+    const max = Math.min(800, split.clientWidth - 260);
+    const w = Math.max(200, Math.min(max, startW + (e.clientX - startX)));
     controls.style.width = w + "px";
   });
   const releaseDivider = (e: PointerEvent): void => {

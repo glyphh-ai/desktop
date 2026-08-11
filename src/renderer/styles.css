@@ -4594,12 +4594,24 @@ ol.docs-list li::before {
   transition: background 0.15s, color 0.15s;
 }
 .settings-modal-close:hover { background: var(--active-bg); color: var(--text); }
-/* The floating close X owns the modal's top-right corner — page toolbars AND
-   inline-editor headers keep their right-edge primary action CLEAR of it (the
-   Layouts list toolbar, and the layout EDITOR's "Open layout" button, both sat
-   under the X). */
+/* Expand/collapse (fullscreen) toggle — same icon-button voice as the X, one
+   slot to its left (12px edge + 30px X + 8px gap). Session-local: the state
+   lives on the panel node, which is removed on close. */
+.settings-modal-max { right: 50px; }
+.yo-settings-modal .settings-modal-panel.fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  border-radius: 0;
+}
+/* The floating expand + close buttons own the modal's top-right corner — page
+   toolbars AND inline-editor headers keep their right-edge primary action
+   CLEAR of them (the Layouts list toolbar, and the layout EDITOR's "Open
+   layout" button, both sat under the X). 84px = 12 edge + 30 X + 8 gap + 30
+   expand + 4 breathing room. */
 .settings-modal-body .crud-toolbar,
-.settings-modal-body .crud-inline-header { padding-right: 44px; }
+.settings-modal-body .crud-inline-header { padding-right: 84px; }
 .settings-modal-close svg { width: 17px; height: 17px; }
 .settings-modal-body {
   display: flex;
@@ -4705,13 +4717,13 @@ ol.docs-list li::before {
 .settings-modal-body .settings-panel-section .apps-page-heading { margin-top: 0; }
 /* Editors align to the page gutter inside the modal — their legacy full-page
    16px inner insets would double the left edge here. The RIGHT edge keeps the
-   close-X clearance (this rule out-specifies the generic 4598 clearance, so it
-   must carry the 44px itself — padding-right:0 here was why the Layouts
-   editor's "Open layout" button kept landing under the X). */
+   floating-buttons clearance (this rule out-specifies the generic clearance
+   above, so it must carry the 84px itself — padding-right:0 here was why the
+   Layouts editor's "Open layout" button kept landing under the X). */
 .settings-modal-body .settings-panel-section .crud-inline-header,
 .settings-modal-body .settings-panel-section .edit-head {
   padding-left: 0;
-  padding-right: 44px;
+  padding-right: 84px;
 }
 /* The adopted section owns the gutter + scroll now, so the panels wrapper adds
    neither when a section is active — no double padding, no double scrollbar. */
@@ -5850,6 +5862,38 @@ ol.docs-list li::before {
   flex: 1;
   border: none;
   background: var(--bg);
+}
+/* WEB surface app-editor preview — a browser has no <webview>, so the pane
+   renders a sandboxed iframe (or an honest fallback card) in the same slot.
+   The inert webview element is hidden outright on web. */
+.glyphh-web #app-preview { display: none; }
+.app-preview-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  background: var(--bg);
+}
+.app-preview-fallback {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.app-preview-fallback-card {
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.app-preview-fallback-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
 }
 
 .app-detail-option {

@@ -79,6 +79,9 @@ export function resetEditors() {
     document.getElementById("apps-toolbar")?.classList.remove("hidden");
     const preview = document.getElementById("app-preview") as HTMLElement & { src: string } | null;
     if (preview) preview.src = "about:blank";
+    // Web-surface preview (iframe + fallback card) — created per-app by apps.ts.
+    document.getElementById("app-preview-frame")?.remove();
+    document.getElementById("app-preview-fallback")?.remove();
   }
   const af = document.getElementById("app-add-form");
   if (af && !af.classList.contains("hidden")) {
@@ -276,12 +279,31 @@ export function openSettingsModal(sub?: string): void {
   closeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
   closeBtn.addEventListener("click", () => closeSettingsModal());
 
+  // Expand / collapse — toggles the panel between its normal size and full
+  // screen (see .settings-modal-panel.fullscreen). Session-local by design:
+  // nothing is persisted, and closing the modal (which removes the overlay)
+  // resets it. The side-by-side editors are %/flex based, so they simply get
+  // the extra room.
+  const EXPAND_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+  const COLLAPSE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+  const maxBtn = document.createElement("button");
+  maxBtn.type = "button";
+  maxBtn.className = "settings-modal-close settings-modal-max";
+  maxBtn.setAttribute("aria-label", "Expand settings to full screen");
+  maxBtn.innerHTML = EXPAND_SVG;
+  maxBtn.addEventListener("click", () => {
+    const full = panel.classList.toggle("fullscreen");
+    maxBtn.innerHTML = full ? COLLAPSE_SVG : EXPAND_SVG;
+    maxBtn.setAttribute("aria-label", full ? "Exit full screen" : "Expand settings to full screen");
+  });
+
   const body = document.createElement("div");
   body.className = "settings-modal-body";
   // Adopt the real two-column layout — same nodes, so every loader + the
   // admin-only nav gating keep working exactly as before.
   body.appendChild(layout);
 
+  panel.appendChild(maxBtn);
   panel.appendChild(closeBtn);
   panel.appendChild(body);
   overlay.appendChild(backdrop);
