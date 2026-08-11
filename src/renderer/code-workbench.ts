@@ -3111,9 +3111,31 @@ async function init(): Promise<void> {
           // streamed panels show. Same family of problem → the SAME card.
           if (!t.url) { body.appendChild(mountGlyphhAppWebState(t.name)); return; }
           const frame = document.createElement("iframe");
-          frame.src = `https://${t.slug}.glyphh.app/`;
+          // The SERVER owns the app's reachable address (prodUrl): the brand
+          // origin in prod, the /hosted dev route locally. Hardcoding the
+          // brand origin here iframed the edge's no-match page on dev.
+          const appUrl = t.url;
+          frame.src = appUrl;
           frame.style.cssText = "flex:1;min-height:0;width:100%;border:0;background:var(--bg-2)";
           body.appendChild(frame);
+          // Same chrome + Settings default as every other app card (the bar
+          // was skipped here entirely, so the showAppUrlBar setting read as
+          // ignored for glyphh apps). Cross-origin iframes can't drive
+          // history, so back/forward are inert; reload re-sets src.
+          const glyphhAdapter = {
+            loadURL: (u: string) => { frame.src = u; },
+            goBack: () => {},
+            goForward: () => {},
+            reload: () => { frame.src = frame.src; },
+            canGoBack: () => false,
+            canGoForward: () => false,
+            getURL: () => appUrl,
+            addEventListener: () => {},
+          } as unknown as WebviewEl;
+          const { chrome: gChrome, urlbar: gUrlbar } = buildAppChrome(glyphhAdapter, () => appUrl);
+          gUrlbar.value = appUrl;
+          card.querySelector(".echo-card-head")!.after(gChrome);
+          wireCardUrlBar(card, gChrome);
           return;
         }
         const url = t.url || "https://www.google.com";
