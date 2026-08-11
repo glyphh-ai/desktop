@@ -26,16 +26,26 @@ interface Running { proc: pty.IPty; wc: WebContents }
 const ptys = new Map<string, Running>();
 function key(wcId: number, termId: string): string { return `${wcId}:${termId}`; }
 
-function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, rows: number): void {
+/**
+ * Spawn the user's login shell in a pty — THE spawn used by every terminal
+ * surface (the local workbench slot below, and the web-relay ptys in
+ * relay-pty.ts). One place so shell choice / `-il` / env inheritance never
+ * drift between the local and relayed paths.
+ */
+export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number }): pty.IPty {
   const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "/bin/zsh");
   const shellArgs = os.platform() === "win32" ? [] : ["-il"];
-  const proc = pty.spawn(shell, shellArgs, {
+  return pty.spawn(shell, shellArgs, {
     name: "xterm-256color",
-    cols: cols || 80,
-    rows: rows || 24,
-    cwd: cwd && cwd.length > 0 ? cwd : os.homedir(),
+    cols: opts.cols || 80,
+    rows: opts.rows || 24,
+    cwd: opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir(),
     env: process.env as Record<string, string>,
   });
+}
+
+function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, rows: number): void {
+  const proc = spawnShellPty({ cwd, cols, rows });
   proc.onData((data) => {
     if (wc.isDestroyed()) return;
     wc.send(`wb-term:data:${termId}`, data);

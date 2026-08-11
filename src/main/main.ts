@@ -75,6 +75,7 @@ import { installRelayHandlers } from "./relay-handlers";
 import { installAttachHandlers } from "./attach-handlers";
 import { installAttachRunHandlers } from "./attach-run";
 import { installPanelHost, closeAllPanels } from "./panel-host";
+import { installRelayPty, killAllRelayPtys } from "./relay-pty";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
@@ -354,6 +355,10 @@ async function boot() {
   // web client over the attach relay (panel-host.ts). Same registry, same
   // socket. On web + desktop-attached, an app panel renders here and streams.
   installPanelHost();
+  // pty.open/input/resize/close — a web Terminal panel runs a live shell ON
+  // THIS MACHINE over the same relay, output streamed back as byte pushes
+  // (relay-pty.ts). Same node-pty spawn as the local workbench terminal.
+  installRelayPty();
   // rpa.* drive an open app panel. The renderer registers each panel's
   // slug → webContents id so main can resolve the live view.
   installRpaHandlers();
@@ -1104,6 +1109,7 @@ function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;
   try { closeAllPanels(); } catch { /* noop */ }
+  try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on
   // its own — a clean teardown exits well before this fires. The UPDATE path

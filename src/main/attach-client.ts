@@ -23,6 +23,18 @@ let backoff = 1000;
 const MAX_BACKOFF = 30_000;
 let stopped = true;
 
+/**
+ * Listeners run when the attach socket goes DOWN (drop or explicit stop).
+ * Machine-side resources that only exist to serve the relay (the web-terminal
+ * ptys in relay-pty.ts) register here so a dead socket never leaves orphaned
+ * processes behind. Listener errors are swallowed — teardown must not cascade.
+ */
+const downListeners = new Set<() => void>();
+export function onAttachDown(cb: () => void): void { downListeners.add(cb); }
+function notifyAttachDown(): void {
+  for (const cb of downListeners) { try { cb(); } catch { /* teardown must not cascade */ } }
+}
+
 function wsUrl(): string {
   const base = SERVER_URL.replace(/^http/, "ws").replace(/\/$/, "");
   return `${base}/ws/attach`;
@@ -76,7 +88,7 @@ function connect(): void {
   });
 
   const drop = (): void => {
-    if (ws === socket) ws = null;
+    if (ws === socket) { ws = null; notifyAttachDown(); }
     scheduleReconnect();
   };
   socket.on("close", drop);
@@ -95,7 +107,7 @@ export function startAttach(): void {
 export function stopAttach(): void {
   stopped = true;
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-  if (ws) { try { ws.close(); } catch { /* noop */ } ws = null; }
+  if (ws) { try { ws.close(); } catch { /* noop */ } ws = null; notifyAttachDown(); }
 }
 
 /** True when the outbound socket is open. */

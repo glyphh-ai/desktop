@@ -17,7 +17,8 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
-import { browserErrorPage, type BrowserErrorInfo, type ErrorPalette } from "./browser-error-page.js";
+import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
+import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-terminal.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
@@ -90,6 +91,9 @@ interface WbTerminal {
   /** Persistent host-size observer — keeps the xterm filling its container no
    *  matter when/how the host grows (solo windows, layout settle, resizes). */
   ro?: ResizeObserver;
+  /** WEB target only: the pty running on the ATTACHED DESKTOP over the relay
+   *  (remote-terminal.ts). Desktop keeps using local wb-term IPC (unset). */
+  remote?: RemotePtyHandle;
 }
 interface TermSlot {
   id: number; view: "terminal";
@@ -5514,19 +5518,31 @@ async function init(): Promise<void> {
       const doSpawn = (): void => {
         try { fit.fit(); } catch { /* noop */ }
         const { cols, rows } = term;
-        window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows);
-        if (wbt.initCmd) {
-          // The layout's slotted first command — once, after the shell boots.
-          const cmd = wbt.initCmd;
-          wbt.initCmd = undefined;
-          setTimeout(() => window.wb.termWrite(wbt.ptyId, `${cmd}\r`), 600);
+        if (isWebTarget()) {
+          // WEB: window.wb is a no-op — the shell runs on the user's ATTACHED
+          // DESKTOP over the pty relay instead (remote-terminal.ts).
+          void spawnRemoteTerm(wbt, hostEl, cols, rows);
+        } else {
+          window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows);
+          if (wbt.initCmd) {
+            // The layout's slotted first command — once, after the shell boots.
+            const cmd = wbt.initCmd;
+            wbt.initCmd = undefined;
+            setTimeout(() => window.wb.termWrite(wbt.ptyId, `${cmd}\r`), 600);
+          }
         }
         // One more fit next frame — the first can land mid-reflow.
         requestAnimationFrame(() => { try { fit.fit(); } catch { /* noop */ } });
       };
       requestAnimationFrame(spawnWhenSized);
-      term.onData((data) => window.wb.termWrite(wbt.ptyId, data));
-      term.onResize(({ cols, rows }) => window.wb.termResize(wbt.ptyId, cols, rows));
+      term.onData((data) => {
+        if (wbt.remote) { wbt.remote.write(data); return; }
+        window.wb.termWrite(wbt.ptyId, data);
+      });
+      term.onResize(({ cols, rows }) => {
+        if (wbt.remote) { wbt.remote.resize(cols, rows); return; }
+        window.wb.termResize(wbt.ptyId, cols, rows);
+      });
       const off1 = window.wb.termOnData(wbt.ptyId, (data) => term.write(data));
       const off2 = window.wb.termOnExit(wbt.ptyId, () => { /* leave the buffer up so the user can read it */ });
       wbt.term = term;
@@ -5559,9 +5575,73 @@ async function init(): Promise<void> {
   function killTerminal(t: WbTerminal): void {
     t.detach?.();
     t.ro?.disconnect();
-    window.wb.termKill(t.ptyId);
+    if (t.remote) { t.remote.dispose(); t.remote = undefined; }
+    else window.wb.termKill(t.ptyId);
     try { t.term?.dispose(); } catch { /* noop */ }
     t.term = undefined; t.fit = undefined; t.detach = undefined; t.ro = undefined;
+  }
+
+  // ── WEB terminal transport (remote pty on the attached desktop) ──
+  /**
+   * Open the relayed shell for a web Terminal tab. Failure renders the SAME
+   * honest state card the streamed panel shows (desktop-offline / signed-out /
+   * failed / disconnected) into the terminal host, with a retry — never a
+   * dead black rectangle.
+   */
+  async function spawnRemoteTerm(wbt: WbTerminal, hostEl: HTMLElement, cols: number, rows: number): Promise<void> {
+    const term = wbt.term;
+    if (wbt.remote || !term) return;
+    try {
+      const remote = await openRemotePty({ cols, rows, cwd: cwd || undefined }, {
+        onData: (bytes) => term.write(bytes),
+        // Leave the buffer up on exit so the user can read it (local parity).
+        onExit: () => { wbt.remote = undefined; },
+        onDrop: () => {
+          wbt.remote = undefined;
+          showRemoteTermState(wbt, hostEl, "disconnected");
+        },
+      });
+      if (wbt.term !== term) { remote.dispose(); return; } // tab killed while connecting
+      wbt.remote = remote;
+      hostEl.querySelector(".ws-term-offline")?.remove();
+      if (wbt.initCmd) {
+        // The layout's slotted first command — once, after the shell boots.
+        const cmd = wbt.initCmd;
+        wbt.initCmd = undefined;
+        setTimeout(() => wbt.remote?.write(`${cmd}\r`), 600);
+      }
+      // The layout may have settled while the open round-tripped.
+      if (term.cols !== cols || term.rows !== rows) remote.resize(term.cols, term.rows);
+    } catch (err) {
+      const state: PanelStateKey = err instanceof RemotePtyError ? err.state : "failed";
+      showRemoteTermState(wbt, hostEl, state, err instanceof Error && !(err instanceof RemotePtyError) ? err.message : undefined);
+    }
+  }
+  /** The panel-state card (mascot + badge + Try again) over the terminal host. */
+  function showRemoteTermState(wbt: WbTerminal, host: HTMLElement, state: PanelStateKey, detail?: string): void {
+    // The slot may have re-rendered since spawn (DnD reorder moves the xterm
+    // element into a NEW host) — follow the live element, not the stale ref.
+    const hostEl = (wbt.term?.element?.closest(".ws-terminal-host") as HTMLElement | null) ?? host;
+    if (!hostEl.isConnected) return;
+    hostEl.querySelector(".ws-term-offline")?.remove();
+    if (getComputedStyle(hostEl).position === "static") hostEl.style.position = "relative";
+    const overlay = document.createElement("div");
+    overlay.className = "ws-term-offline";
+    overlay.style.cssText = "position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center;padding:24px;overflow:auto;background:var(--ws-bg-card,#1e1e1e);";
+    overlay.innerHTML = panelStateFragment(state, {
+      retryAttrs: 'data-term-retry="1"',
+      ...(state === "desktop-offline"
+        ? { detail: "This terminal runs a shell on your desktop. Open the Glyphh desktop app and sign in, then try again." }
+        : detail ? { detail } : {}),
+    });
+    overlay.querySelector<HTMLButtonElement>("[data-term-retry]")?.addEventListener("click", () => {
+      overlay.remove();
+      const term = wbt.term;
+      if (!term || wbt.remote) return;
+      try { wbt.fit?.fit(); } catch { /* noop */ }
+      void spawnRemoteTerm(wbt, hostEl, term.cols, term.rows);
+    });
+    hostEl.appendChild(overlay);
   }
 
   // ── Resizers ──

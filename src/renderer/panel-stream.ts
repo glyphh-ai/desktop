@@ -26,30 +26,9 @@
  */
 
 import { panelStateFragment, type PanelStateKey } from "./browser-error-page.js";
-
-// ── the SDK handle the web bridge exposes (window.glyphhSdk) ─────────────────
-
-interface SdkAttachStatus { attached: boolean; machines?: unknown[] }
-interface SdkClient {
-  token(): Promise<string | null>;
-  attach: { status(): Promise<SdkAttachStatus> };
-}
-
-function sdk(): SdkClient | null {
-  return (window as unknown as { glyphhSdk?: SdkClient }).glyphhSdk ?? null;
-}
-
-/** The API origin the web target boots against (bridge stamps it before us). */
-function apiUrl(): string {
-  const w = window as unknown as { __GLYPHH_API_URL__?: string };
-  return (w.__GLYPHH_API_URL__ || "https://api.glyphh.ai").replace(/\/$/, "");
-}
-
-/** ws(s):// base for /ws/panel, derived from the API origin. */
-function panelWsUrl(token: string): string {
-  const base = apiUrl().replace(/^http/, "ws");
-  return `${base}/ws/panel?token=${encodeURIComponent(token)}`;
-}
+// The relay envelope (auth'd /ws/panel socket, req/res/push frames) lives in
+// the shared relay-socket helper — the remote terminal rides the same one.
+import { connectRelaySocket, relaySdk, type RelaySocket } from "./relay-socket.js";
 
 // ── wire shapes (mirror src/main/panel-host.ts + panel-webrtc.ts) ────────────
 
@@ -87,8 +66,6 @@ export interface StreamedPanelHandle {
   dispose(): void;
 }
 
-const RPC_TIMEOUT_MS = 15_000;
-
 /**
  * Mount a streamed panel into a fresh element. Returns immediately with a handle
  * whose `.el` can be appended anywhere; the connect + open happen asynchronously
@@ -116,11 +93,9 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   root.append(canvas, video, overlay);
 
   const ctx = canvas.getContext("2d");
-  let ws: WebSocket | null = null;
+  let relay: RelaySocket | null = null;
   let panelId: string | null = null;
   let disposed = false;
-  let seq = 0;
-  const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   let transport: "webrtc" | "screencast" = "screencast";
   let lastUrl = opts.url;
   let pc: RTCPeerConnection | null = null;
@@ -139,19 +114,12 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   }
 
   function call(method: string, params: unknown): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error("panel socket not open")); return; }
-      const id = "w" + (++seq);
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`panel.${method} timed out`)); }, RPC_TIMEOUT_MS);
-      pending.set(id, { resolve, reject, timer });
-      try { ws.send(JSON.stringify({ t: "req", id, method, params })); }
-      catch (err) { clearTimeout(timer); pending.delete(id); reject(err as Error); }
-    });
+    if (!relay || !relay.isOpen()) return Promise.reject(new Error("panel socket not open"));
+    return relay.call(method, params);
   }
   /** Fire-and-forget request (input events don't need a reply). */
   function send(method: string, params: unknown): void {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    try { ws.send(JSON.stringify({ t: "req", id: "i" + (++seq), method, params })); } catch { /* dropped */ }
+    relay?.send(method, params);
   }
 
   // ── frame + control handling ───────────────────────────────────────────────
@@ -215,7 +183,10 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
         if (peer.connectionState === "failed" || peer.connectionState === "disconnected") {
           // Desktop's decideTransport will also fail us over; hiding the video
           // here makes the canvas visible again immediately.
-          transport = "screencast"; video.style.display = "none"; canvas.style.pointerEvents = ""; setBadge();
+          // (setBadge() used to be called here but was never defined anywhere —
+          // a latent ReferenceError on the WebRTC-failover path, caught the
+          // first time this file was actually typechecked.)
+          transport = "screencast"; video.style.display = "none"; canvas.style.pointerEvents = "";
         }
       };
       await peer.setRemoteDescription({ type: "offer", sdp: o.sdp });
@@ -279,7 +250,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
 
   // ── connect + open ─────────────────────────────────────────────────────────
   async function boot(): Promise<void> {
-    const client = sdk();
+    const client = relaySdk();
     if (!client) { setOverlay(offlineHtml("signed-out")); return; }
     setOverlay(`<div>Connecting to your desktop…</div>`);
 
@@ -296,47 +267,42 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     await connect(token);
   }
 
-  function connect(token: string): Promise<void> {
-    return new Promise((resolve) => {
-      const socket = new WebSocket(panelWsUrl(token));
-      ws = socket;
-      socket.onopen = async () => {
-        try {
-          // Open at the element's REAL box, not the canvas's 1280x800 default —
-          // otherwise the page renders at the wrong size until the user happens
-          // to resize (the ResizeObserver drops events while panelId is null).
-          const box = root.getBoundingClientRect();
-          const w0 = Math.max(1, Math.round(box.width)) || canvas.width;
-          const h0 = Math.max(1, Math.round(box.height)) || canvas.height;
-          const r = (await call("panel.open", { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 })) as { panelId: string };
-          panelId = r.panelId;
-          // Layout may have settled while the socket/open round-tripped — sync
-          // once now that resize events are deliverable.
-          const after = root.getBoundingClientRect();
-          const w1 = Math.max(1, Math.round(after.width));
-          const h1 = Math.max(1, Math.round(after.height));
-          if ((w1 !== w0 || h1 !== h0) && w1 > 1 && h1 > 1) input({ type: "resize", width: w1, height: h1 });
-          setOverlay(null);
-          canvas.focus();
-          void startWebrtc();
-        } catch (err) {
-          setOverlay(offlineHtml("failed", (err as Error).message || undefined));
-        }
-        resolve();
-      };
-      socket.onclose = () => { if (!disposed) setOverlay(offlineHtml("disconnected")); };
-      socket.onerror = () => { /* onclose follows */ };
-      socket.onmessage = (ev) => {
-        let f: { t?: string; id?: string; ok?: boolean; result?: unknown; error?: string; channel?: string; data?: PanelPush };
-        try { f = JSON.parse(String(ev.data)); } catch { return; }
-        if (f.t === "res" && typeof f.id === "string") {
-          const p = pending.get(f.id); if (!p) return; pending.delete(f.id); clearTimeout(p.timer);
-          f.ok ? p.resolve(f.result) : p.reject(new Error(f.error || "panel error"));
-        } else if (f.t === "push" && f.channel === panelId && f.data) {
-          onPush(f.data);
-        }
-      };
+  async function connect(token: string): Promise<void> {
+    let sock: RelaySocket;
+    try {
+      sock = await connectRelaySocket(token);
+    } catch {
+      if (!disposed) setOverlay(offlineHtml("disconnected"));
+      return;
+    }
+    relay = sock;
+    sock.onClose(() => { if (!disposed) setOverlay(offlineHtml("disconnected")); });
+    // Filter to OUR panel's channel — panelId isn't known until panel.open
+    // returns, so match at delivery time rather than subscribing per-channel.
+    sock.onPush(null, (channel, data) => {
+      if (panelId && channel === panelId && data) onPush(data as PanelPush);
     });
+    try {
+      // Open at the element's REAL box, not the canvas's 1280x800 default —
+      // otherwise the page renders at the wrong size until the user happens
+      // to resize (the ResizeObserver drops events while panelId is null).
+      const box = root.getBoundingClientRect();
+      const w0 = Math.max(1, Math.round(box.width)) || canvas.width;
+      const h0 = Math.max(1, Math.round(box.height)) || canvas.height;
+      const r = (await call("panel.open", { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 })) as { panelId: string };
+      panelId = r.panelId;
+      // Layout may have settled while the socket/open round-tripped — sync
+      // once now that resize events are deliverable.
+      const after = root.getBoundingClientRect();
+      const w1 = Math.max(1, Math.round(after.width));
+      const h1 = Math.max(1, Math.round(after.height));
+      if ((w1 !== w0 || h1 !== h0) && w1 > 1 && h1 > 1) input({ type: "resize", width: w1, height: h1 });
+      setOverlay(null);
+      canvas.focus();
+      void startWebrtc();
+    } catch (err) {
+      setOverlay(offlineHtml("failed", (err as Error).message || undefined));
+    }
   }
 
   /**
@@ -355,15 +321,13 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     disposed = true;
     try { ro.disconnect(); } catch { /* noop */ }
     if (resizeTimer) clearTimeout(resizeTimer);
-    for (const [, p] of pending) { clearTimeout(p.timer); p.reject(new Error("panel disposed")); }
-    pending.clear();
     try { pc?.close(); } catch { /* noop */ }
     pc = null;
     // Best-effort close on the far side, then the socket.
-    if (panelId && ws && ws.readyState === WebSocket.OPEN) {
-      try { ws.send(JSON.stringify({ t: "req", id: "close" + (++seq), method: "panel.close", params: { panelId } })); } catch { /* noop */ }
-    }
-    setTimeout(() => { try { ws?.close(); } catch { /* noop */ } }, 100);
+    if (panelId) send("panel.close", { panelId });
+    const sock = relay;
+    relay = null;
+    setTimeout(() => { try { sock?.close(); } catch { /* noop */ } }, 100);
   }
 
   const navCall = (action: "url" | "back" | "forward" | "reload", url?: string): void => {
