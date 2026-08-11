@@ -164,10 +164,10 @@ const server = http.createServer(async (req, res) => {
   // whether the top band is the app's doing or the browser's.
   if (new URL(req.url, 'http://x').pathname === '/bare') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    res.end('<!doctype html><html>'
-      + '<body style="margin:0;background:#d33;color:#fff;font:16px monospace">'
-      + '<div style="height:44px;background:#2a2;display:flex;align-items:center;padding-left:12px">TOP OF PAGE — this green row is y=0</div>'
-      + '<p style="padding:12px">No head at all — no viewport meta, no title.</p>'
+    res.end('<!doctype html><html style="margin:0;padding:0">'
+      + '<body style="margin:0;padding:0;background:#d33;color:#fff;font:16px monospace">'
+      + '<div style="height:44px;background:#2a2;margin:0;padding:0">TOP OF PAGE</div>'
+      + '<div style="margin:0;padding:0">no head, no margin, no padding anywhere</div>'
       + '</body></html>');
     return;
   }
