@@ -804,6 +804,44 @@ function runEntry(runId: string): [string, LiveRun] | null {
 }
 const currentRun = (): LiveRun | null => liveRuns.get(currentId) ?? null;
 
+// ── Tool breadcrumb labels — ONE grammar for every producer path ────────────
+// The frame's `title` carries the call's key input, preformatted by whoever
+// ran the tool ("Run: npm test", "Write /abs/path", "Grep \"x\" in src/") —
+// glyph + title is then exactly the text toolLineEl upgrades into terminal /
+// file cards. No title (an old producer, a stored row) falls back to the bare
+// name + thought, which is the previous behavior verbatim.
+function toolStartLabel(d: { name: string; title?: string; thought?: string }): string {
+  return `⚙ ${d.title || (d.thought ? `${d.name} — ${d.thought}` : d.name)}`;
+}
+function toolDoneLabel(d: { name: string; title?: string; bad: boolean; reason?: string; diff?: string }): string {
+  return `${d.bad ? "✕" : "✓"} ${d.title || d.name}${d.reason ? ` — ${d.reason}` : ""}${d.diff ? ` ${d.diff}` : ""}`;
+}
+
+// A tool's ⚙ start row, awaiting its ✓/✕ done rewrite. FIFO per chat+tool so
+// parallel same-name calls settle in order (a done always follows ITS start on
+// the frame stream). Keyed `${chatId}:${name}`; cleared when the run finishes
+// so a lost done can never strand a stale row reference.
+const pendingToolRows = new Map<string, CodeMsg[]>();
+function pushToolRow(chat: CodeChat, name: string, label: string): void {
+  const msg: CodeMsg = { role: "assistant", kind: "tool", text: label, at: Date.now() };
+  chat.messages.push(msg);
+  const k = `${chat.id}:${name}`;
+  const q = pendingToolRows.get(k);
+  if (q) q.push(msg);
+  else pendingToolRows.set(k, [msg]);
+}
+function settleToolRow(chat: CodeChat, name: string, label: string): void {
+  const k = `${chat.id}:${name}`;
+  const q = pendingToolRows.get(k);
+  const msg = q?.shift();
+  if (q && !q.length) pendingToolRows.delete(k);
+  if (msg) msg.text = label;                    // rewrite the ⚙ row in place
+  else chat.messages.push({ role: "assistant", kind: "tool", text: label, at: Date.now() });
+}
+function clearToolRows(chatId: string): void {
+  for (const k of [...pendingToolRows.keys()]) if (k.startsWith(`${chatId}:`)) pendingToolRows.delete(k);
+}
+
 // ── Observe a run happening ELSEWHERE (run-stream broker consumer) ─────────────
 // "Open a thread anywhere, see the live turn." When the thread on screen has a run
 // executing on ANOTHER surface (this user's desktop, or a cloud pod), we subscribe
@@ -847,15 +885,43 @@ function observeIfRunning(chat: CodeChat): void {
         void saveStore();
         if (chatId === currentId) renderThread();
       },
-      onStep: (step) => {
+      // Rich per-tool breadcrumbs: the start row shows the WORK (`⚙ Run: <cmd>`,
+      // `⚙ Write /path` — the frame's title carries the tool's key input) and the
+      // done frame rewrites that same row into the settled ✓/✕ card the local
+      // path renders (toolLineEl), instead of leaving bare "⚙ Bash" rows behind.
+      onTool: (t) => {
         const r = liveRuns.get(chatId);
         const ch = chats.find((c) => c.id === chatId);
         if (!r || !ch) return;
-        if (r.text.trim()) { ch.messages.push({ role: "assistant", text: r.text, at: Date.now() }); r.text = ""; r.bubble = null; }
-        const bad = step.status === "denied" || step.status === "failed" || !!step.error;
-        const glyph = bad ? "✕" : step.status ? "✓" : "⚙";
-        const detail = step.error || (step.status && step.status !== "ok" ? step.status : "");
-        const label = `${glyph} ${step.type}${detail ? ` — ${detail}` : ""}`;
+        if (t.phase === "start") {
+          if (r.text.trim()) { ch.messages.push({ role: "assistant", text: r.text, at: Date.now() }); r.text = ""; r.bubble = null; }
+          const label = toolStartLabel(t);
+          r.steps.push(label);
+          pushToolRow(ch, t.name, label);
+        } else {
+          const bad = t.status === "denied" || t.status === "failed";
+          const label = toolDoneLabel({
+            name: t.name,
+            ...(t.title ? { title: t.title } : {}),
+            bad,
+            ...(t.status === "denied" ? { reason: "denied" } : t.error ? { reason: t.error } : {}),
+            ...(!bad && t.diff ? { diff: t.diff } : {}),
+          });
+          if (r.steps.length) r.steps[r.steps.length - 1] = label;
+          else r.steps.push(label);
+          settleToolRow(ch, t.name, label);
+        }
+        void saveStore();
+        if (chatId === currentId) { broadcastTimeline(true); renderThread(); }
+      },
+      // The observer omits onApproval/onAsk (the OWNING surface answers those),
+      // so a parked run surfaces as an honest breadcrumb here instead.
+      onStep: (step) => {
+        if (step.type !== "approval" && step.type !== "question") return; // tools ride onTool above
+        const r = liveRuns.get(chatId);
+        const ch = chats.find((c) => c.id === chatId);
+        if (!r || !ch) return;
+        const label = `⚙ ${step.type}${step.status ? ` — ${step.status}` : ""}`;
         r.steps.push(label);
         ch.messages.push({ role: "assistant", kind: "tool", text: label, at: Date.now() });
         void saveStore();
@@ -1883,10 +1949,10 @@ const escAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 function toolLineEl(text: string): HTMLElement {
   const { rest, badge } = diffBadgeHtml(text);
 
-  // "✓ Write /abs/path" (and Read) → file card; click routes through the
+  // "✓ Write /abs/path" (and Read/Edit) → file card; click routes through the
   // workbench's smart opener (editor / Browser panel / native viewer by
   // type). Unix and Windows absolute paths both match.
-  const write = /^([✓✕⚙]) (?:Write|Read) ((?:\/|[A-Za-z]:[\\/])\S.*?)\s*$/.exec(rest);
+  const write = /^([✓✕⚙]) (?:Write|Read|Edit) ((?:\/|[A-Za-z]:[\\/])\S.*?)\s*$/.exec(rest);
   if (write && write[1] === "✓") {
     const path = write[2];
     const base = path.split(/[\\/]/).pop() || path;
@@ -3014,34 +3080,40 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
   const run = liveRuns.get(chatId);
   if (run && !run.runId) run.runId = `r-remote-${chatId}`;
 
-  const pushStep = (label: string): void => {
-    const chat = chats.find((ch) => ch.id === chatId);
-    const r = liveRuns.get(chatId);
-    if (!chat || !r) return;
-    // Commit streamed text before the breadcrumb, then start a fresh block —
-    // text → step → text flows DOWN the page (same order the local path keeps).
-    if (r.text.trim()) { chat.messages.push({ role: "assistant", text: r.text, at: Date.now() }); r.text = ""; r.bubble = null; }
-    r.steps.push(label);
-    chat.messages.push({ role: "assistant", kind: "tool", text: label, at: Date.now() });
-    void saveStore();
-    if (chatId === currentId) { broadcastTimeline(true); renderThread(); }
-  };
-
   void runRemoteTurn(
     c as unknown as RemoteChat,
     prompt,
     bindSave,
     {
-      onStep: (step) => {
+      // Rich per-tool breadcrumbs, LOCAL-path grammar: the start row carries the
+      // tool's key input (`⚙ Run: <cmd>` — the frame's title), and the done frame
+      // rewrites that row in place into the ✓/✕ card toolLineEl renders.
+      onTool: (t) => {
+        const chat = chats.find((ch) => ch.id === chatId);
         const r = liveRuns.get(chatId);
-        if (!r) return;
-        // Match the LOCAL path's grammar exactly (✓ done / ✕ denied-or-failed /
-        // ⚙ started) — remote breadcrumbs were rendering every outcome as ⚙,
-        // so a denial read like a tool that was merely starting.
-        const bad = step.status === "denied" || step.status === "failed" || !!step.error;
-        const glyph = bad ? "✕" : step.status ? "✓" : "⚙";
-        const detail = step.error || (step.status && step.status !== "ok" ? step.status : "");
-        pushStep(`${glyph} ${step.type}${detail ? ` — ${detail}` : ""}`);
+        if (!chat || !r) return;
+        if (t.phase === "start") {
+          // Commit streamed text before the breadcrumb (text → step → text
+          // flows DOWN the page, same order the local path keeps).
+          if (r.text.trim()) { chat.messages.push({ role: "assistant", text: r.text, at: Date.now() }); r.text = ""; r.bubble = null; }
+          const label = toolStartLabel(t);
+          r.steps.push(label);
+          pushToolRow(chat, t.name, label);
+        } else {
+          const bad = t.status === "denied" || t.status === "failed";
+          const label = toolDoneLabel({
+            name: t.name,
+            ...(t.title ? { title: t.title } : {}),
+            bad,
+            ...(t.status === "denied" ? { reason: "denied" } : t.error ? { reason: t.error } : {}),
+            ...(!bad && t.diff ? { diff: t.diff } : {}),
+          });
+          if (r.steps.length) r.steps[r.steps.length - 1] = label;
+          else r.steps.push(label);
+          settleToolRow(chat, t.name, label);
+        }
+        void saveStore();
+        if (chatId === currentId) { broadcastTimeline(true); renderThread(); }
       },
       onToken: (delta) => {
         const r = liveRuns.get(chatId);
@@ -3168,6 +3240,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   }
   void saveStore();
   liveRuns.delete(chatId);
+  clearToolRows(chatId);   // any ⚙ row whose done never arrived stays as-is
   // This run's pending cards vanish; other runs' stay queued. (paintAskDock
   // restarts the countdown for whatever card is now on top, or stops it.)
   if (run?.runId) askQueue = askQueue.filter((q) => q.runId !== run.runId);
@@ -3476,12 +3549,14 @@ function initGlyphhAgentEvents(): void {
     const [runChatId, run] = e;
     const chat = chats.find((ch) => ch.id === runChatId);
     if (!chat) return;
-    if (d.phase === "start") run.steps.push(`⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`);
-    else if (d.phase === "done" && run.steps.length) {
-      run.steps[run.steps.length - 1] = `${d.denied || d.failed ? "✕" : "✓"} ${d.title || d.name}`;
-    }
-    if (runChatId === currentId) broadcastTimeline(true);
+    const name = d.name ?? "tool";
     if (d.phase === "start") {
+      // The start label SHOWS THE WORK: the frame's title carries the tool's
+      // key input (`⚙ Run: <cmd>`, `⚙ Write /path`); thought (the gate's card
+      // title) is the fallback, the bare name the last resort.
+      const label = toolStartLabel({ name, ...(d.title ? { title: d.title } : {}), ...(d.thought ? { thought: d.thought } : {}) });
+      run.steps.push(label);
+      if (runChatId === currentId) broadcastTimeline(true);
       // COMMIT the text streamed so far before appending the tool row, and
       // start a fresh live block after it. Without this the live bubble stays
       // pinned at the bottom while tool rows insert above it — the run reads
@@ -3492,17 +3567,23 @@ function initGlyphhAgentEvents(): void {
         run.text = "";
         run.bubble = null;
       }
-      chat.messages.push({ role: "assistant", kind: "tool", text: `⚙ ${d.name}${d.thought ? ` — ${d.thought}` : ""}`, at: Date.now() });
+      pushToolRow(chat, name, label);
     } else if (d.phase === "done") {
-      const bad = d.denied || d.failed;
+      const bad = Boolean(d.denied || d.failed);
       // Failures surface the tool's own first line — the model can gloss,
       // the breadcrumb doesn't. Successful edits keep their "+N -M" diff badge.
-      const reason = d.denied ? " — denied" : d.failed ? ` — ${String(d.preview || "").split("\n")[0].slice(0, 90)}` : "";
+      const reason = d.denied ? "denied" : d.failed ? String(d.preview || "").split("\n")[0].slice(0, 90) : "";
       const diff = !bad ? (/\[\+\d+ -\d+\]/.exec(String(d.preview || ""))?.[0] ?? "") : "";
-      const text = `${bad ? "✕" : "✓"} ${d.title || d.name}${reason}${diff ? ` ${diff}` : ""}`;
-      const last = chat.messages[chat.messages.length - 1];
-      if (last?.kind === "tool" && last.text.startsWith(`⚙ ${d.name}`)) last.text = text;
-      else chat.messages.push({ role: "assistant", kind: "tool", text, at: Date.now() });
+      const text = toolDoneLabel({
+        name,
+        ...(d.title ? { title: d.title } : {}),
+        bad,
+        ...(reason ? { reason } : {}),
+        ...(diff ? { diff } : {}),
+      });
+      if (run.steps.length) run.steps[run.steps.length - 1] = text;
+      if (runChatId === currentId) broadcastTimeline(true);
+      settleToolRow(chat, name, text);
     }
     void saveStore();
     if (currentId === runChatId) renderThread();

@@ -33,7 +33,7 @@ import type { WebContents } from "electron";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { executeGlyphhTool, type ConnectorWireDef } from "./glyphh-agent-tools";
+import { executeGlyphhTool, glyphhToolTitle, type ConnectorWireDef } from "./glyphh-agent-tools";
 
 /** The lent server's name on the wire. rrotor rejects `glyphh` (its own
  *  in-process ask_user server) and anything outside ^[a-z0-9_-]{1,32}$. */
@@ -138,7 +138,10 @@ function buildServer(run: LendOptions): McpServer {
   mcp.server.setRequestHandler(CallToolRequestSchema, async (rq) => {
     const name = String(rq.params.name || "");
     const args = (rq.params.arguments ?? {}) as Record<string, unknown>;
-    run.onTool({ phase: "start", name });
+    // The start breadcrumb carries the call's key input (the same title the
+    // outcome will carry) so the row shows WHAT is running, not just "Bash".
+    const startTitle = glyphhToolTitle(name, args);
+    run.onTool({ phase: "start", name, ...(startTitle ? { title: startTitle } : {}) });
     const outcome = await executeGlyphhTool(
       run.wc,
       { name, arguments: args },

@@ -1135,6 +1135,22 @@ export function glyphhToolDefs(mode: AgentMode = "cowork"): Array<{ name: string
 
 export interface ToolOutcome { result: string; denied: boolean; title: string }
 
+/**
+ * The human title for one tool call WITHOUT executing or gating it — what a
+ * breadcrumb producer shows while the tool is still running (`⚙ Run: <cmd>`),
+ * so the row's key detail doesn't wait for the outcome. Same grammar the
+ * outcome titles use (each tool's own `action()` classifier: "Run: <cmd>",
+ * "Write /path", "Call slug → tool"). Null when the tool is unknown here.
+ */
+export function glyphhToolTitle(name: string, args: Record<string, unknown> = {}): string | null {
+  const tool = TOOLS.find((t) => t.name === name);
+  if (tool) {
+    try { return tool.action(args).title || null; } catch { return null; }
+  }
+  const wired = wireMap.get(name);
+  return wired ? `Call ${wired.slug} → ${wired.tool}` : null;
+}
+
 /** Gate → execute. Denials and failures come back as results the model can
  *  react to — the loop never throws on a tool. */
 // ── run_role — delegate a work packet to another role of the ACTIVE loop ─────

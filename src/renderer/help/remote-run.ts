@@ -307,7 +307,15 @@ function dispatchFrame(
     case "tool":
       if (frame.phase === "start") {
         cb.onStep?.({ id: `${frame.name}#${frame.seq}`, type: frame.name, status: "" });
-        cb.onTool?.({ name: frame.name, phase: "start", status: "running", ...(frame.thought ? { thought: frame.thought } : {}) });
+        // `title` rides the start frame too now (the call's key input — the
+        // command, the file path); forward it so live rows show the work.
+        cb.onTool?.({
+          name: frame.name,
+          phase: "start",
+          status: "running",
+          ...(frame.thought ? { thought: frame.thought } : {}),
+          ...(frame.title ? { title: frame.title } : {}),
+        });
       } else {
         if (frame.denied || frame.failed) {
           cb.onStep?.({ id: `${frame.name}#${frame.seq}`, type: frame.name, status: frame.denied ? "denied" : "failed", ...(frame.title ? { error: frame.title } : {}) });
