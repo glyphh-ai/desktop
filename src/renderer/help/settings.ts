@@ -202,7 +202,10 @@ function initSettings() {
     if (localMcpBody) localMcpBody.style.display = on ? "" : "none";
   }
 
-  if (localMcpSection && localMcpToggle) {
+  // The local MCP server runs ON THIS MACHINE (127.0.0.1) — a browser tab has
+  // no machine to run it on, and the web bridge has no localMcp* IPC (the
+  // toggle threw). Keep the whole section hidden on web.
+  if (localMcpSection && localMcpToggle && !isWeb) {
     localMcpSection.classList.remove("hidden");
     void (async () => {
       const enabled = (await window.glyphh.getPreference("localMcpEnabled", false)) as boolean;

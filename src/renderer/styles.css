@@ -4549,11 +4549,12 @@ ol.docs-list li::before {
    instead of a full-page workbench section. Extends the .yo-modal backdrop. */
 .yo-settings-modal .settings-modal-panel {
   /* Wide enough for the side-by-side editors (620px controls + a usable
-     right pane) that Apps/Connections/Loops/Skills/Agents/Layouts carry. */
-  width: min(1240px, 96vw);
-  height: min(848px, 92vh);
-  max-width: min(1240px, 96vw);
-  max-height: min(848px, 92vh);
+     right pane) that Apps/Connections/Loops/Skills/Agents/Layouts carry —
+     trimmed from 1240x848 so the modal doesn't loom over the whole app. */
+  width: min(1120px, 92vw);
+  height: min(800px, 90vh);
+  max-width: min(1120px, 92vw);
+  max-height: min(800px, 90vh);
   padding: 0;
   gap: 0;
   overflow: hidden;
