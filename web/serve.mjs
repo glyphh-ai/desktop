@@ -167,8 +167,9 @@ const server = http.createServer(async (req, res) => {
     res.end('<!doctype html><html style="margin:0;padding:0">'
       + '<body style="margin:0;padding:0;background:#d33;color:#fff;font:16px monospace">'
       + '<style>* { margin: 0 !important; padding: 0 !important; border: 0 !important; }</style>'
-      + '<div style="height:44px;background:#2a2">TOP OF PAGE</div>'
-      + '<div>universal * reset active — no margin, padding, or border can exist on this page</div>'
+      + '<div style="height:44px;background:#2a2">TOP OF PAGE — universal reset, scrollable</div>'
+      + [1,2,3,4,5,6].map((i) => `<div style="height:500px;background:${i % 2 ? '#d33' : '#36c'}">y=${44 + (i - 1) * 500}px</div>`).join('')
+      + '<div style="height:44px;background:#2a2">BOTTOM OF PAGE</div>'
       + '</body></html>');
     return;
   }
