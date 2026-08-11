@@ -3187,6 +3187,19 @@ function App() {
       // The turn's user prompt (first frame) — render it BEFORE the assistant bubble the
       // next frame creates, so an observed turn reads user -> assistant like a local one.
       onUserPrompt: (text) => { convoRef.current = [...convoRef.current, { id: 'obsu' + Date.now().toString(36), role: 'user', text }]; renderConvo(); },
+      // The agent asked to SHOW something — this surface renders it: a url
+      // opens in a new tab (the browser IS this surface's viewer); an app ref
+      // opens the streamed app tray when the app is streamable here.
+      onOpenApp: ({ ref, url }: { ref?: string; url?: string }) => {
+        haptic();
+        if (url) { window.open(url, '_blank', 'noopener'); return; }
+        if (!ref) return;
+        void glyphh().apps.mine().then((list: Array<{ slug: string; name: string; prodUrl: string | null; config?: { url?: string } }>) => {
+          const a = list.find((x) => x.slug === ref || x.name.toLowerCase() === ref.toLowerCase());
+          const u = a ? (a.prodUrl || a.config?.url || '') : '';
+          if (a && /^https?:\/\//i.test(u)) setTrayApp({ slug: a.slug, name: a.name, url: u });
+        }).catch(() => { /* not resolvable here — the machine-side open already happened for local runs */ });
+      },
       onToken: appendText,
       onAnswer: (full) => { ensureMsg(); const m = msgOf(); if (m) { m.text = full; renderThrottled(); } },
       onTool: applyTool,
@@ -3354,6 +3367,17 @@ function App() {
         onAnswer: () => { setConnecting(false); },
         onStep: () => setConnecting(false),
         onTool: applyTool,
+        // Initiator twin of the observer's handler: show what the agent opened.
+        onOpenApp: ({ ref, url }: { ref?: string; url?: string }) => {
+          haptic();
+          if (url) { window.open(url, '_blank', 'noopener'); return; }
+          if (!ref) return;
+          void glyphh().apps.mine().then((list: Array<{ slug: string; name: string; prodUrl: string | null; config?: { url?: string } }>) => {
+            const a = list.find((x) => x.slug === ref || x.name.toLowerCase() === ref.toLowerCase());
+            const u = a ? (a.prodUrl || a.config?.url || '') : '';
+            if (a && /^https?:\/\//i.test(u)) setTrayApp({ slug: a.slug, name: a.name, url: u });
+          }).catch(() => { /* not resolvable here */ });
+        },
         onUsage: (u) => { if (typeof u.creditsMicro === 'number') creditsMicro = u.creditsMicro; },
         onApproval: (a) => { setConnecting(false); setPending({ t: 'approval', ...a }); setPendingSessionId(sid); setAct(sid, 'waiting'); notifyNeedsInput(sess!, a.title || 'Approve an action'); },
         onAsk: (a) => { setConnecting(false); setPending({ t: 'ask', ...a }); setPendingSessionId(sid); setAct(sid, 'waiting'); notifyNeedsInput(sess!, a.questions?.[0]?.question || 'The agent has a question'); },

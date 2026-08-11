@@ -30,6 +30,7 @@ import type { Source } from "./code-source-chip.js";
  *  itself the desktop's glyphh-agent frame vocabulary, enveloped). */
 type HarnessWireFrame = (
   | { type: "prompt"; text: string }
+  | { type: "open-app"; ref?: string; url?: string }
   | { type: "delta"; delta: string }
   | { type: "tool"; phase: "start" | "done"; name: string; thought?: string; title?: string; denied?: boolean; failed?: boolean; preview?: string }
   | { type: "progress"; inTokens: number; outTokens: number }
@@ -257,6 +258,10 @@ export interface RemoteRunCallbacks {
    *  started elsewhere render this (the initiating surface already has its own bubble,
    *  so it omits this callback). */
   onUserPrompt?: (text: string) => void;
+  /** The agent asked to SHOW an app/page — the watching surface renders it
+   *  natively (web/desktop → workbench panel, mobile → tray). Only fired on
+   *  frames from CLOUD runs here; desktop-executed runs open machine-side. */
+  onOpenApp?: (t: { ref?: string; url?: string }) => void;
   onDone?: (fullText: string) => void;
   onStopped?: () => void;
   onError?: (detail: string) => void;
@@ -296,6 +301,9 @@ function dispatchFrame(
   run: HarnessRunHandle,
 ): void {
   switch (frame.type) {
+    case "open-app":
+      cb.onOpenApp?.({ ...(frame.ref ? { ref: frame.ref } : {}), ...(frame.url ? { url: frame.url } : {}) });
+      break;
     case "prompt":
       cb.onUserPrompt?.(frame.text);
       return;

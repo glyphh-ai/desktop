@@ -885,6 +885,16 @@ function observeIfRunning(chat: CodeChat): void {
         void saveStore();
         if (chatId === currentId) renderThread();
       },
+      // The agent asked to SHOW something. A CLOUD run has no machine to open
+      // it on — the watching surface renders it. A desktop-executed run's own
+      // machine already opened its panel (glyphh-harness-run), so skip those.
+      onOpenApp: ({ ref, url }) => {
+        const ch = chats.find((c) => c.id === chatId);
+        const cloudRun = !!ch?.source && String((ch.source as { kind?: string }).kind || "").startsWith("cloud");
+        if (!ch || !cloudRun || chatId !== currentId) return;
+        if (url) openUrlInWorkbench(new URL(url).hostname, url);
+        else if (ref) openAppInWorkbench({ slug: ref, name: ref });
+      },
       // Rich per-tool breadcrumbs: the start row shows the WORK (`⚙ Run: <cmd>`,
       // `⚙ Write /path` — the frame's title carries the tool's key input) and the
       // done frame rewrites that same row into the settled ✓/✕ card the local
@@ -3140,6 +3150,15 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
     prompt,
     bindSave,
     {
+      // The agent asked to SHOW something mid-run. A CLOUD run has no machine
+      // to open it on — THIS surface renders it (web card / desktop panel). A
+      // relayed LOCAL run's machine opens its own panel (glyphh-harness-run).
+      onOpenApp: ({ ref, url }) => {
+        const cloudRun = String((src as { kind?: string }).kind || "").startsWith("cloud");
+        if (!cloudRun || chatId !== currentId) return;
+        if (url) openUrlInWorkbench(new URL(url).hostname, url);
+        else if (ref) openAppInWorkbench({ slug: ref, name: ref });
+      },
       // Rich per-tool breadcrumbs, LOCAL-path grammar: the start row carries the
       // tool's key input (`⚙ Run: <cmd>` — the frame's title), and the done frame
       // rewrites that row in place into the ✓/✕ card toolLineEl renders.

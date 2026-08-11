@@ -28,6 +28,7 @@
  */
 
 import { app, type WebContents } from "electron";
+import { openAppByRef, openBrowserAt } from "./app-resolver";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ensureLocalHarnessPod } from "@glyphh/sdk/runtime";
@@ -384,6 +385,16 @@ export async function harnessRun(
 
     run.on((frame: HarnessWireFrame) => {
       switch (frame.type) {
+        case "open-app" as never: {
+          // The pod asked to SHOW something. This machine executes the run, so
+          // it opens the panel here (RPA needs the desktop webview; a user at
+          // the desktop sees it); a web/mobile surface watching the run's
+          // stream renders its own view from the same frame.
+          const f = frame as unknown as { ref?: string; url?: string };
+          if (f.url) openBrowserAt(f.url);
+          else if (f.ref) void openAppByRef(f.ref).catch(() => { /* unknown app — the tool result already told the model */ });
+          return;
+        }
         case "delta":
           finalText += frame.delta;
           emit("glyphh-agent:delta", { delta: frame.delta });
