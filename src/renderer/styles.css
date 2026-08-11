@@ -412,7 +412,7 @@ body {
      drag, so this collapses to 0 (see the .glyphh-web override below) — the
      empty surface-2 strip that produced the dark band at the top disappears and
      content sits flush under the browser chrome. */
-  --titlebar-h: 38px;
+  --titlebar-h: 30px;
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -1531,7 +1531,7 @@ body.account-locked #dl-btn-wrap {
   border-bottom: none !important;
   overflow: visible !important;
 }
-.glyphh-web #app-rail { padding-top: 38px; }
+.glyphh-web #app-rail { padding-top: 30px; }
 /* The Close-layout pill lives inside the now-zero-height strip; re-pin it fixed
    to the top-center of the viewport so it stays visible + clickable on web. */
 .glyphh-web .echo-layout-bar {
@@ -13234,7 +13234,7 @@ body.wb-max .ws-right-rails { width: 100%; }
   position: fixed;
   top: 0;
   left: 0;
-  height: 38px;
+  height: 30px;
   display: flex;
   align-items: center;
   gap: 8px;
