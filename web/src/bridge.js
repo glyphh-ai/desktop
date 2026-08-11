@@ -90,18 +90,27 @@ if (typeof window !== 'undefined') {
   // Renders a fixed overlay reporting what THIS device computed for the top
   // chrome, so the band can be debugged from the user's real screen.
   try {
-    // TEMP: a lime RULER at the page's absolute top edge (y=0..4). If the dark
-    // band sits BETWEEN the browser toolbar and this line, the band is OUTSIDE
-    // the page (browser/OS chrome) and no page CSS can remove it. If the line
-    // touches the toolbar, the page is flush and the band is internal styling.
+    // The iPad browser paints a chrome-zone band between its toolbar and the
+    // page, tinted from the page. The lime-ruler test proved that band lives
+    // ABOVE the page's y=0 — no page layout can remove it. The one lever a page
+    // has is <meta name="theme-color">: keep it synced to the app's real
+    // background so the band BLENDS with the app instead of reading as a gap.
     if (typeof document !== 'undefined') {
-      const ruler = () => {
-        let r = document.getElementById('glyphh-ruler');
-        if (!r) { r = document.createElement('div'); r.id = 'glyphh-ruler'; (document.body || document.documentElement).appendChild(r); }
-        r.style.cssText = 'position:fixed;top:0;left:0;right:0;height:4px;background:#0f0;z-index:2147483647;pointer-events:none;';
+      const syncThemeColor = () => {
+        try {
+          const bg = getComputedStyle(document.body).backgroundColor;
+          if (!bg || bg === 'rgba(0, 0, 0, 0)') return;
+          let m = document.querySelector('meta[name="theme-color"]');
+          if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'theme-color'); document.head.appendChild(m); }
+          m.setAttribute('content', bg);
+        } catch { /* cosmetic only */ }
       };
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ruler); else ruler();
-      setTimeout(ruler, 2000);
+      const start = () => {
+        syncThemeColor();
+        setTimeout(syncThemeColor, 1500);
+        try { new MutationObserver(syncThemeColor).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] }); } catch { /* ok */ }
+      };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
     }
     if (typeof document !== 'undefined' && (/[?&]diag=1/.test(location.search) || location.hash === '#diag')) {
       const paint = () => {
