@@ -957,6 +957,8 @@ function ensureCodeSection(): void {
     syncThinking();   // this session's own run state, not the last one's
     renderHistory();
     renderThread();
+    // The switched-to session's OWN source drives the chip/locus/run.
+    repaintSourceUi();
     broadcastTimeline(!!currentRun());
     // SURFACE THE AGENT: called from the + New Session screen's session column,
     // this used to set the session and repaint a thread nobody could see — the
@@ -1420,18 +1422,22 @@ function historyRow(c: CodeChat): HTMLDivElement {
   // Rename is a menu action (⋯ → Rename), not a click on the title — a
   // selection-gated title click fought the row's own select handler and
   // never reliably fired. The label is now just a label.
-  // Leading slot: the RUNNING pulse while live, the session icon when idle
-  // (no emojis). Either way it TOGGLES THE PIN on click.
+  // Leading slot: the RUNNING pulse while live, else the session's LOCUS icon
+  // (cloud vs machine) — one session type now, so the old `<>` code glyph was
+  // dead weight; the icon reads from this session's own source (locusKey), so it
+  // stays correct once the per-session source is restored. Either way it
+  // TOGGLES THE PIN on click.
   const working = liveRuns.has(c.id);
+  const local = locusKey(c).startsWith("local:");
   const dot = document.createElement("span");
   if (working) {
     dot.className = "code-chat-dot working";
   } else {
     dot.className = "code-sess-ic";
-    dot.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+    dot.innerHTML = local ? HEAD_LOCUS_LOCAL : HEAD_LOCUS_REMOTE;
   }
   dot.classList.toggle("pinned", !!c.pinned);
-  const typeName = working ? "Working" : "Code";
+  const typeName = working ? "Working" : local ? "Local" : "Cloud";
   dot.title = `${typeName} — click to ${c.pinned ? "unpin" : "pin"}`;
   dot.addEventListener("click", (e) => {
     e.stopPropagation();   // pinning must not also open the session
@@ -1454,6 +1460,10 @@ function historyRow(c: CodeChat): HTMLDivElement {
     renderThread();
     refreshCtxMeter();
     void checkWorkdirGate();
+    // The opened session's OWN source drives the chip, the head locus and the
+    // run — without this the chip stays on the previous (pending) source and
+    // every rail-opened session looked like it ran in the cloud.
+    repaintSourceUi();
     // a rail session press behaves like the Glyphh icon: the agent ALONE
     gotoSection("agent");
   });
@@ -1626,6 +1636,9 @@ function openLocalSession(id: string): void {
   renderThread();
   refreshCtxMeter();
   void checkWorkdirGate();
+  // The opened session's stored source drives the chip/locus/run (see the rail
+  // row handler) — not the pending pick that was showing before.
+  repaintSourceUi();
   gotoSection("agent");
 }
 
@@ -1899,14 +1912,69 @@ function activeSource(): Source {
   return pendingSource;
 }
 
-/** A source pick from the chip: stamp the CURRENT session if one exists (only
- *  before its first send — after that the runtime is bound), else remember it
- *  as the pending pick. Persisted either way. */
+/** Value-equality for two sources — a pick that matches the session's own
+ *  source is a no-op, so we never spawn a redundant new session for it. */
+function sameSource(a?: Source, b?: Source): boolean {
+  if (!a || !b) return a === b;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "cloud-repo" && b.kind === "cloud-repo") return a.repo === b.repo;
+  if (a.kind === "local" && b.kind === "local") return a.path === b.path && (a.machineId ?? "") === (b.machineId ?? "");
+  return true; // cloud-new === cloud-new
+}
+
+/** Repaint EVERY source-dependent surface from the active source: the chip's
+ *  label + session id, the head locus icon, and the folder/repo/static chrome.
+ *  The rail-open paths call this so an opened session's real source shows up
+ *  instead of the last-painted (pending) one. */
+function repaintSourceUi(): void {
+  sourceChip?.setSource(activeSource());
+  sourceChip?.setSessionId(current()?.id ?? null);
+  paintSessionHeadLocus();
+  paintSourceDependents();
+}
+
+/**
+ * A source pick from the chip.
+ *
+ * Source is IMMUTABLE per session (the runtime/workspace/transcript bind to it
+ * at birth), so the pick behaves differently by session state:
+ *   · no session, or the composer is on Home  → set the pending pick.
+ *   · an UNBORN current session (no messages)  → re-stamp its source in place.
+ *   · a BORN current session, picking the SAME source → nothing to do.
+ *   · a BORN current session, picking a DIFFERENT source → start a NEW session
+ *     carrying the pick (lazily, like startNew): clear currentId + set
+ *     pendingSource, WITHOUT tearing down an open layout — the new session is
+ *     born on the next send, in the same panel. This is what makes a layout's
+ *     source change actually take effect (it used to hit the guard and no-op).
+ * Persisted either way.
+ */
 function pickSource(next: Source): void {
   const cur = current();
-  // An OPEN session keeps the source it was born with. Guarded here as well as
-  // in the chip, because the folder browser and the repo picker call this too.
-  if (cur && !document.body.classList.contains("composer-on-home")) return;
+  const onHome = document.body.classList.contains("composer-on-home");
+
+  // A BORN session (already sent — bound runtime) never mutates its own source.
+  if (cur && cur.messages.length > 0 && !onHome) {
+    // Same source → the pick is a no-op; just resettle the chip on it.
+    if (sameSource(cur.source, next)) { repaintSourceUi(); return; }
+    // Different source → spawn a NEW session that carries it. LAZY, like
+    // startNew(): drop the selection and remember the pick; the record is born
+    // on the first send. Crucially we do NOT touch the workbench/layout here —
+    // the agent stays in whatever panel it was hosted in (mirrors switch/
+    // ensureCodeSection, which never clear panels).
+    pendingSource = next;
+    void window.glyphh.setPreference?.(SOURCE_PREF, next);
+    currentId = "";
+    void saveStore();
+    renderHistory();
+    renderThread();
+    repaintSourceUi();
+    void checkWorkdirGate();
+    input()?.focus();
+    return;
+  }
+
+  // No session / Home / an UNBORN current session — set the pending pick and,
+  // for an unborn current session, re-stamp its source (still cheap to change).
   pendingSource = next;
   paintSourceDependents();
   void window.glyphh.setPreference?.(SOURCE_PREF, next);
@@ -2206,13 +2274,13 @@ function paintSourceDependents(): void {
     el2.classList.toggle("hidden", cloud && FOLDER_CHIPS.has(id));
     el2.setAttribute("title", title);
   }
-  // The source chip shows everywhere, but it is only a CONTROL while the
-  // session is still pending. An EXISTING session's source is fixed at birth:
-  // the runtime, the workspace and the transcript are all bound to it, so
-  // re-pointing a live session would silently move where its work runs. It
-  // reads as a label from then on.
-  const bound = !document.body.classList.contains("composer-on-home") && !!current();
-  sourceChip?.el.classList.toggle("cl-chip-static", bound);
+  // The source chip stays a live CONTROL at all times. A born session's source
+  // is still immutable in place — but picking a DIFFERENT source now SPAWNS a
+  // new session that carries it (pickSource), so the chip must stay clickable
+  // (even inside a layout, where it used to go `cl-chip-static` /
+  // pointer-events:none and left the user with no way to change the source at
+  // all — Bug 1). Immutability is preserved by respawning, not by disabling.
+  sourceChip?.el.classList.remove("cl-chip-static");
   paintGitState();
   // GIT position: local → the passive branch mirror; cloud → the repo chip.
   const mirror = document.getElementById("dash-wd-branch-wrap");
