@@ -56,38 +56,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The Claude Agent SDK ships its native `claude` CLI as platform-specific
-      # packages gated by `cpu`/`os`, so `npm ci` on the arm64 runner installs
-      # ONLY the arm64 variant. We build BOTH mac arches here, so the x64 dmg
-      # would otherwise ship with no binary ("Native CLI binary for darwin-x64
-      # not found"). We fetch each variant's tarball directly with `npm pack`
-      # and extract it in place — deterministic, and (unlike a second
-      # `npm install --cpu=x64`) it can't prune the arm64 variant we already
-      # have. The guard then fails the build if either binary is missing, so a
-      # half-armed release can never ship silently.
-      - name: Vendor BOTH mac native CLI binaries (arm64 + x64)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Read the file directly — the SDK's package.json is NOT exposed via
-          # its "exports" map, so require()/require.resolve() throw ERR_PACKAGE_PATH_NOT_EXPORTED.
-          VER="$(node -p "JSON.parse(require('fs').readFileSync('node_modules/@anthropic-ai/claude-agent-sdk/package.json','utf8')).version")"
-          echo "claude-agent-sdk version: $VER"
-          for ARCH in arm64 x64; do
-            DEST="node_modules/@anthropic-ai/claude-agent-sdk-darwin-$ARCH"
-            if [ ! -f "$DEST/claude" ]; then
-              echo "Fetching darwin-$ARCH binary…"
-              TGZ="$(npm pack "@anthropic-ai/claude-agent-sdk-darwin-$ARCH@$VER" --silent)"
-              mkdir -p "$DEST"
-              tar -xzf "$TGZ" -C "$DEST" --strip-components=1
-              rm -f "$TGZ"
-            fi
-            chmod +x "$DEST/claude"
-          done
-          # Hard guard — a missing binary must fail the build, not the user's app.
-          test -x node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude
-          test -x node_modules/@anthropic-ai/claude-agent-sdk-darwin-x64/claude
-          echo "Both mac native CLI binaries present."
+      # (The pre-cutover "vendor claude CLI binaries" step lived here. THE
+      # CUTOVER (0a31fe25) removed @anthropic-ai/claude-agent-sdk from the
+      # desktop — turns run on the harness pod now — so there is nothing to
+      # vendor, and the old hard guard failed every post-cutover tag build.)
 
       - name: Build
         run: npm run build
