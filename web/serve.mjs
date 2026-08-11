@@ -284,15 +284,20 @@ const server = http.createServer(async (req, res) => {
         /<head(\s[^>]*)?>/i,
         (m) => `${m}${base}\n  ${inject}`,
       );
-      // Cache-bust the mobile app's OWN assets: every load references a fresh
-      // URL, so the device can never serve a stale css/js copy no matter what
-      // (SW or HTTP cache). Dev preview; production would use content hashes.
-      if (isMobileShell) {
+      // Cache-bust the shell's OWN assets: every load references a fresh URL, so
+      // NO shell (mobile OR the desktop app-web) can serve a stale css/js copy
+      // (SW or HTTP cache). This is why web fixes appeared "not applied" — the
+      // desktop shell's styles.css was cached. Dev preview; prod uses hashes.
+      {
         const v = Date.now();
         body = body
-          .replace('href="/mobile.css"', `href="/mobile.css?v=${v}"`)
           .replace('href="/styles.css"', `href="/styles.css?v=${v}"`)
-          .replace('src="/glyphh-mobile.js"', `src="/glyphh-mobile.js?v=${v}"`);
+          .replace('src="/code-workbench-bundle.js"', `src="/code-workbench-bundle.js?v=${v}"`);
+        if (isMobileShell) {
+          body = body
+            .replace('href="/mobile.css"', `href="/mobile.css?v=${v}"`)
+            .replace('src="/glyphh-mobile.js"', `src="/glyphh-mobile.js?v=${v}"`);
+        }
       }
     }
     res.setHeader('content-type', TYPES[ext] || 'application/octet-stream');

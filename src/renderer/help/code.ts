@@ -3583,7 +3583,7 @@ async function loadRecentApps(): Promise<void> {
     // Palette parity: web apps (have a url) + native library apps. The
     // agent's own row (glyphh-self) stays OUT — the Glyphh mark in the
     // header is the chat entry, not an app in the list.
-    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.appArchetype !== "glyphh-self" && (a.url || a.isBrowser === false));
+    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.url || a.isBrowser === false);
     railLayouts = (layouts || []) as unknown as RailLayout[];
     railRecentTs = {};
     // the wall's arranged order (same preference the command centre writes)
