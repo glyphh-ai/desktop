@@ -2248,7 +2248,7 @@ const SUB_TITLE: Record<SettingsSub, string> = {
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
   runtime: 'Region', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
 };
-function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialSub }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void; initialSub?: SettingsSub | null }) {
+function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialSub, onOpenApps }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void; initialSub?: SettingsSub | null; onOpenApps: () => void }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
   const [subOpen, setSubOpen] = useState(false);   // drives the track; sub persists during slide-back
   const [snapSub, setSnapSub] = useState(false);   // track jumps to the sub with NO horizontal slide (rail shortcut)
@@ -2300,7 +2300,12 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
                     <div className="m-set-label">{g.label}</div>
                     <div className="m-set-group">
                       {rows.map((r) => (
-                        <button key={r.label} className="m-set-row" onClick={() => openSub(r.sub as SettingsSub)}>
+                        <button key={r.label} className="m-set-row" onClick={() => {
+                          // Apps is the SHEET (the same list the rail opens), not a
+                          // settings tray — hand off and drop the settings sheet.
+                          if (r.sub === 'apps') { haptic(); onClose(); onOpenApps(); return; }
+                          openSub(r.sub as SettingsSub);
+                        }}>
                           <span className="m-set-ico"><Icon name={r.icon as IconName} /></span>
                           <span className="m-set-name">{r.label}</span>
                           {r.value && <span className="m-set-val">{r.value}</span>}
@@ -3684,7 +3689,7 @@ function App() {
         </main>
       </div>
       <SettingsSheet open={settings} initialSub={settingsSub} onClose={() => { haptic(); setSettings(false); }} user={user} onSignOut={onSignOut}
-        onUserChanged={() => { void syncGating().then((u) => setUser(toDisplayUser(u))); }} />
+        onUserChanged={() => { void syncGating().then((u) => setUser(toDisplayUser(u))); }} onOpenApps={() => { setSettings(false); setAppsOpen(true); }} />
       {/* Tap a desktop → choose a folder over the relay → start a session there. */}
       <FolderPickerTray machine={folderPick} onClose={() => { haptic(); setFolderPick(null); }}
         onChoose={(path) => { const d = folderPick; setFolderPick(null); if (d) startDesktopSession(d, path); }} />
