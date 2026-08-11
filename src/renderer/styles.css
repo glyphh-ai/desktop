@@ -1481,11 +1481,12 @@ body.account-locked #dl-btn-wrap {
    traffic-light buttons (.wc) are hidden. With the lights gone, the mark no
    longer needs the cluster's left inset that made room for them: pull it flush so
    the header reads as a clean native-web bar, not an off-set desktop strip. */
-/* The wordmark header keeps its natural, comfortable size on web (the base
-   #panel-wc height + 26px wordmark) — only the left inset changes since the
-   traffic lights are hidden. */
-.glyphh-web #panel-wc { padding-left: 2px; }
+/* Web wordmark header: a bigger logo with a touch of top padding so it sits
+   comfortably below the window edge (traffic lights are hidden, left inset
+   pulled in). */
+.glyphh-web #panel-wc { padding-left: 2px; padding-top: 10px; height: auto; }
 .glyphh-web #panel-wc .app-rail-mark { margin-left: 8px; }
+.glyphh-web #panel-wc .app-rail-mark.app-rail-wordmark { height: 32px; }
 /* A browser tab has no OS window to drag — kill every drag-region claim (incl.
    the header's drag band) so the splash/login/header behave like ordinary pages.
    The empty drag GAP right of the cluster (margin-left offsets sized to clear the
@@ -1549,8 +1550,9 @@ body.account-locked #dl-btn-wrap {
    bar in the report). */
 .glyphh-web #help-overlay { inset: 0 !important; }
 .glyphh-web #panel-container { height: 100vh !important; }
-/* The rail clears the fixed wordmark header with comfortable breathing room. */
-.glyphh-web #app-rail { padding-top: 36px; }
+/* The rail clears the fixed wordmark header (now taller: 10px pad + 32px logo)
+   with comfortable breathing room. */
+.glyphh-web #app-rail { padding-top: 50px; }
 /* The Close-layout pill lives inside the now-zero-height strip; re-pin it fixed
    to the top-center of the viewport so it stays visible + clickable on web. */
 .glyphh-web .echo-layout-bar {
