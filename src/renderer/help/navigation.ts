@@ -615,25 +615,31 @@ export function initHelp() {
   void window.glyphh.getAccountInfo?.().then(fillRailUser).catch(() => { /* signed out — placeholder stays */ });
   window.glyphh.onAccountUpdated?.(fillRailUser);
 
-  // Initialize all section event handlers
-  initDashboardEvents();
-  initSettings();
-  initApps();
-  initConnections();
-  initLayoutsEvents();
-  initFiles();
+  // Initialize all section event handlers. Each init is ISOLATED — one panel
+  // throwing (a moved element, a missing id after a refactor) must not kill
+  // every init after it in the chain (that's how "the button isn't wired"
+  // bugs happen silently).
+  const boot = (name: string, fn: () => void): void => {
+    try { fn(); } catch (err) { console.error(`[init] ${name} failed:`, err); }
+  };
+  boot("dashboard", initDashboardEvents);
+  boot("settings", initSettings);
+  boot("apps", initApps);
+  boot("connections", initConnections);
+  boot("layouts", initLayoutsEvents);
+  boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
-  initApiKeys();
-  initSupportPanel();
-  initGuardrails();
-  initOrgPanel();
-  initDripsEvents();
-  initLoopsEvents();
-  initSkillsLibraryEvents();
-  initAgentsEvents();
-  initSkills();
-  initCode();
-  wireGlobalDotCommands();
+  boot("apikeys", initApiKeys);
+  boot("support", initSupportPanel);
+  boot("guardrails", initGuardrails);
+  boot("org", initOrgPanel);
+  boot("drips", initDripsEvents);
+  boot("loops", initLoopsEvents);
+  boot("skills-library", initSkillsLibraryEvents);
+  boot("agents", initAgentsEvents);
+  boot("skills", initSkills);
+  boot("code", initCode);
+  boot("dot-commands", wireGlobalDotCommands);
   // Typing the exact `.dip` sequence ANYWHERE (agent input, any field, or no
   // field at all) opens the drip picker — see help/dip-watch.ts.
   wireDipWatcher();
