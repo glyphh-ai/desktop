@@ -766,7 +766,6 @@
                     <span class="set-bar-sub" id="billing-plan-sub">—</span>
                   </span>
                   <span class="set-fold-aside">
-                    <button id="billing-plans-web" class="action-btn" type="button">Compare plans</button>
                     <button id="billing-portal-btn" class="action-btn" type="button">Payment method</button>
                     <span id="billing-portal-status" class="set-save-state"></span>
                   </span>
@@ -774,6 +773,21 @@
                 <div class="billing-seats">
                   <div class="billing-seats-bar"><div class="billing-seats-fill" id="billing-seats-fill"></div></div>
                   <p class="section-desc" id="billing-seats-count">—</p>
+                </div>
+
+                <!-- The plan picker — the old platform pricing page's grid,
+                     folded shut so the page keeps its rhythm (the catalog is
+                     consulted occasionally; the balance is why you're here). -->
+                <button type="button" id="billing-plans-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="billing-plans-body">
+                  <span class="set-fold-head">
+                    <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
+                    <span class="set-fold-title">Compare &amp; change plans</span>
+                  </span>
+                </button>
+                <div id="billing-plans-body" class="set-fold-body hidden">
+                  <div id="billing-plans-note" class="crud-empty hidden">Only an organization admin can change the plan.</div>
+                  <div id="billing-plans-error" class="settings-error hidden"></div>
+                  <div class="billing-plan-grid" id="billing-plan-grid"></div>
                 </div>
 
                 <!-- Organization — the org record (moved in from the retired
@@ -839,7 +853,11 @@
                   </div>
                 </div>
 
-                <h3 class="acct-row-head">Credits</h3>
+                <h3 class="acct-row-head">Credits
+                  <button id="billing-credits-refresh" class="acct-chip-refresh" title="Refresh balance" aria-label="Refresh balance">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+                  </button>
+                </h3>
                 <div class="dash-grid">
                   <div class="dash-card">
                     <div class="dash-card-label">Available</div>

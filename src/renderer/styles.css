@@ -7408,6 +7408,68 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .billing-topup-unit { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .billing-topup-price { margin-top: 6px; font-size: 13px; color: var(--text-2); }
 
+/* The plan picker — the old platform pricing page's grid, folded under the
+   Plan bar. Cards share the top-up cards' surface grammar; the current plan
+   is marked by the accent border + flag, and every action is a real
+   .action-btn so the theme owns all color. */
+.billing-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.billing-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.billing-plan-card.current { border-color: var(--accent); }
+.billing-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.billing-plan-name { font-size: 14px; font-weight: 600; color: var(--text-bright); }
+.billing-plan-flag {
+  padding: 1px 7px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.billing-plan-price { margin: 2px 0 4px; }
+.billing-plan-amount { font-size: 20px; font-weight: 600; color: var(--text-bright); }
+.billing-plan-period { font-size: 11px; color: var(--text-3); }
+.billing-plan-line { font-size: 12px; color: var(--text-2); }
+.billing-plan-sso {
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+/* The action pins to the card's bottom edge (margin-top:auto in the column
+   flex) so a short card's button lines up with its neighbors'; the min-margin
+   keeps it off the text when the card is already full. */
+.billing-plan-card .billing-plan-btn {
+  margin-top: auto;
+  width: 100%;
+  justify-content: center;
+}
+.billing-plan-line:last-of-type { margin-bottom: 8px; }
+
 .billing-seats { max-width: 420px; margin-top: 10px; }
 /* The meter reads first; the count is the caption under it. */
 .billing-seats-count { margin: 6px 0 0; }
