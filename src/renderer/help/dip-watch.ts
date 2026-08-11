@@ -50,25 +50,48 @@ function isEditable(t: unknown): t is HTMLInputElement | HTMLTextAreaElement {
 
 export function wireDipWatcher(): void {
   // ── Inside inputs/textareas: watch the text at the caret on every input
-  // event (fires after the field's value updated), strip the sequence, open. ──
+  // event (fires after the field's value updated). The open is DEBOUNCED:
+  // `.dip <app-or-layout>` is also a real composer command, and the instant
+  // form ate the sequence before an argument could be typed. The picker now
+  // opens only when the user PAUSES on a bare `.dip`; any further keystroke
+  // (they're typing the argument) cancels the pending open, and Enter runs
+  // the command path as usual. ──
+  let pendingOpen: number | null = null;
+  const cancelPending = (): void => {
+    if (pendingOpen !== null) { clearTimeout(pendingOpen); pendingOpen = null; }
+  };
   document.addEventListener("input", (ev) => {
     if ((ev as InputEvent).isComposing) return;   // never strip mid-IME-composition
     const t = ev.target;
     if (!isEditable(t)) return;
+    cancelPending();                              // still typing — not a pause
     const caret = t.selectionStart;
     if (caret == null || caret < SEQ.length) return;
     const before = t.value.slice(0, caret);
     if (!endsWithDip(before)) return;
-    // Remove the typed ".dip" so it doesn't pollute the message.
-    t.value = before.slice(0, caret - SEQ.length) + t.value.slice(caret);
-    const pos = caret - SEQ.length;
-    try { t.setSelectionRange(pos, pos); } catch { /* non-text input */ }
-    // The field's own listeners (composer autoGrow, live search) must see the
-    // change; this synthetic event re-enters this handler but the value no
-    // longer ends in ".dip", so it passes straight through.
-    t.dispatchEvent(new Event("input", { bubbles: true }));
-    openDrips();
+    pendingOpen = window.setTimeout(() => {
+      pendingOpen = null;
+      // Re-check at fire time: the field must STILL end in the bare sequence
+      // (the user may have sent, cleared, or moved on during the pause).
+      const c = t.selectionStart;
+      if (c == null || c < SEQ.length || !endsWithDip(t.value.slice(0, c))) return;
+      // Remove the typed ".dip" so it doesn't pollute the message.
+      t.value = t.value.slice(0, c - SEQ.length) + t.value.slice(c);
+      const pos = c - SEQ.length;
+      try { t.setSelectionRange(pos, pos); } catch { /* non-text input */ }
+      // The field's own listeners (composer autoGrow, live search) must see
+      // the change; this synthetic event re-enters this handler but the value
+      // no longer ends in ".dip", so it passes straight through.
+      t.dispatchEvent(new Event("input", { bubbles: true }));
+      openDrips();
+    }, 600);
   }, true);
+  // Enter/Esc/blur while a bare-`.dip` pause is pending: the user is sending
+  // the command (or leaving) — never fight the command path for the text.
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === "Escape") cancelPending();
+  }, true);
+  document.addEventListener("focusout", cancelPending, true);
 
   // ── Outside inputs: a rolling buffer of the last few printable keys. Any
   // non-printable key or a click breaks the sequence. ──

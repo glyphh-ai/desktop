@@ -21,7 +21,16 @@
  * it), so a forgotten instance can't leak a rAF loop.
  */
 
-export interface GlyphhSpinner { el: HTMLElement; destroy: () => void; setMeta: (text: string) => void }
+export interface GlyphhSpinner {
+  el: HTMLElement;
+  destroy: () => void;
+  setMeta: (text: string) => void;
+  /** Park the phrase on a WAITING message (stops the busy rotation) — the run
+   *  is blocked on the user (connect an account, answer a question), and
+   *  "Painting with logic…" would be a lie. resume() rejoins the rotation. */
+  wait: (text: string) => void;
+  resume: () => void;
+}
 
 const PHRASES = [
   "Glyphhing…", "Twiddling…", "Noodling…", "Conjuring…", "Brewing…",
@@ -98,8 +107,9 @@ export function createGlyphhSpinner(opts?: { size?: number; phrases?: boolean })
   // ── Phrase typing ──
   let typeTimer: ReturnType<typeof setInterval> | null = null;
   let lastIdx = -1;
+  let waiting = false;
   const typePhrase = () => {
-    if (!showPhrases) return;
+    if (!showPhrases || waiting) return;
     let i = lastIdx;
     while (i === lastIdx) i = Math.floor(Math.random() * PHRASES.length);
     lastIdx = i;
@@ -222,5 +232,16 @@ export function createGlyphhSpinner(opts?: { size?: number; phrases?: boolean })
     el: root,
     destroy,
     setMeta: (text: string) => { metaEl.textContent = text ? `${text} · ` : ""; },
+    wait: (text: string) => {
+      waiting = true;
+      if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
+      phraseEl.classList.remove("typing");
+      phraseEl.textContent = text;
+    },
+    resume: () => {
+      if (!waiting) return;
+      waiting = false;
+      typePhrase();
+    },
   };
 }

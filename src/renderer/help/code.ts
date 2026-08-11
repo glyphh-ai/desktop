@@ -1699,6 +1699,7 @@ function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
       // answer the WAITING tool (retries after a failure answer again — the
       // respond handler ignores unknown ids, so that's harmless)
       void window.glyphh.glyphhAgentConnectRespond?.({ id: card.id, connected: res.ok, ...(res.ok ? {} : { reason: card.error }) });
+      spinner?.resume();   // answered — the run is working again
     });
   });
   return wrap;
@@ -3639,7 +3640,13 @@ function initGlyphhAgentEvents(): void {
       at: Date.now(),
     });
     void saveStore();
-    if (chat.id === currentId) { renderThread(); pinThreadToBottom(); }
+    if (chat.id === currentId) {
+      renderThread();
+      pinThreadToBottom();
+      // The run is PARKED on the user now — an honest waiting line instead of
+      // the busy rotation ("Painting with logic…" while blocked read as hung).
+      spinner?.wait(`Waiting for you to connect ${p.app.name}…`);
+    }
   });
   window.glyphh.onGlyphhAgentDelta?.((d) => {
     const e = runEntry(d.runId);
