@@ -3964,6 +3964,17 @@ export function initCode(): void {
    *  layout clears, and the new-session screen loads. */
   const newSessionLanding = (): void => {
     currentId = "";
+    // CLEAN SLATE: + New session wipes the remembered source, folder, and
+    // GitHub repo — the next session starts from this surface's default with
+    // no inherited workspace. (A LAYOUT-born session is the one override: it
+    // stamps its own folder/space on the chat and never routes through here.)
+    pendingSource = resolvedDefaultSource.kind === "local"
+      ? { kind: "local", path: "" }
+      : { ...resolvedDefaultSource };
+    void window.glyphh.setPreference?.(SOURCE_PREF, null);
+    pendingWorkdir = "";
+    sourceChip?.setSource(activeSource());
+    paintSourceDependents();
     void saveStore();
     syncSpaceAttrs();
     // CLOSE EVERYTHING FIRST: every open card, panel and layout goes, then the
