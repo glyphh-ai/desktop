@@ -2439,8 +2439,11 @@ async function init(): Promise<void> {
       const canvas = stage.querySelector<HTMLElement>("canvas");
       if (!canvas) return;
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
+      // ANY open panel retires the wall completely — a translucent veil left
+      // it ghosting through behind flow cards. The ⌃⌥ / eye peek still lifts.
+      const cardsUp = openList.some((e) => e.card);
       const shadowOn = cardsLayer.classList.contains("echo-shadow");
-      const hidden = layoutUp && !shadowOn;
+      const hidden = (layoutUp || cardsUp) && !shadowOn;
       canvas.style.visibility = hidden ? "hidden" : "";
       // The Chat/Work/Code space tabs were removed — every session is one type
     // (the most-capable Code toolset), so the wall no longer switches spaces.
