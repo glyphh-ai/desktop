@@ -90,7 +90,7 @@ if (typeof window !== 'undefined') {
   // Renders a fixed overlay reporting what THIS device computed for the top
   // chrome, so the band can be debugged from the user's real screen.
   try {
-    if (typeof document !== 'undefined' && /[?&]diag=1/.test(location.search)) {
+    if (typeof document !== 'undefined' && (/[?&]diag=1/.test(location.search) || location.hash === '#diag')) {
       const paint = () => {
         const g = (id) => document.getElementById(id);
         const R = (el) => { if (!el) return 'MISSING'; const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return `top=${Math.round(r.top)} h=${Math.round(r.height)} disp=${s.display} bg=${s.backgroundColor}`; };
