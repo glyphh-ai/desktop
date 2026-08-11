@@ -17,9 +17,6 @@
               <div class="settings-nav-group">Organization</div>
               <button class="settings-nav-item hidden" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
               <button class="settings-nav-item hidden" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Workspaces</span></button>
-              <button class="settings-nav-item hidden" data-sub="organization"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><line x1="9.5" y1="9" x2="9.51" y2="9"/><line x1="14.5" y1="9" x2="14.51" y2="9"/><line x1="9.5" y1="13" x2="9.51" y2="13"/><line x1="14.5" y1="13" x2="14.51" y2="13"/></svg><span>Organization</span></button>
-              <button class="settings-nav-item hidden" data-sub="runtime"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5a15 15 0 0 1 0 19 15 15 0 0 1 0-19z"/></svg><span>Runtime</span></button>
-              <button class="settings-nav-item hidden" data-sub="guardrails"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V5.5z"/><polyline points="9 12 11 14 15 10"/></svg><span>Guardrails</span></button>
               <button class="settings-nav-item" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Models</span></button>
               <button class="settings-nav-item" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
               <button class="settings-nav-item" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="20.5" x2="21" y2="20.5"/><rect x="5" y="11" width="3.4" height="6.6" rx="1"/><rect x="10.3" y="6.5" width="3.4" height="11.1" rx="1"/><rect x="15.6" y="13.6" width="3.4" height="4" rx="1"/></svg><span>Usage</span></button>
@@ -37,12 +34,72 @@
                 <h2>General</h2>
                 <p class="section-desc">App-wide preferences.</p>
                 <div class="settings-form">
-                  <label class="settings-label">Compaction guidance</label>
+                  <label class="settings-label">Compaction guidance <span id="glyphh-agent-compact-status" class="set-save-state"></span></label>
                   <textarea id="glyphh-agent-compact-prompt" class="settings-input" rows="4" spellcheck="false" placeholder="e.g. Always keep API decisions, file paths, and open bugs."></textarea>
-                  <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Folded into every session compaction — automatic and manual. One-shot focus from the compact dialog rides on top.</span>
-                  <div class="settings-actions" style="margin-top:14px;">
-                    <button id="glyphh-agent-compact-save" class="action-btn primary">Save</button>
-                    <span id="glyphh-agent-compact-status" style="font-size:12px;color:var(--text-3);"></span>
+                  <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Your session's memory lives in your org's regional stator — the memory plane sessions recall from. When a conversation outgrows its context window it's compacted: folded into a summary the session carries forward. This guidance is advisory to that compaction, automatic and manual alike; changes save on their own.</span>
+                </div>
+
+                <!-- Sessions — the org's regional runtime + stator (moved in from
+                     the retired Runtime tab). Read for any member; chooseInfra is
+                     org_admin. The group is admin-gated like its nav item was
+                     (navigation.ts gateAdminSubs); settings-runtime.ts binds the
+                     same ids unchanged. -->
+                <div id="general-runtime-group" class="hidden">
+                  <h3 class="acct-row-head">Sessions</h3>
+                  <p class="section-desc">The regional runtime + stator your sessions run on — where your memory lives. One choice for the whole org; NAM is the default.</p>
+                  <div id="runtime-error" class="settings-error hidden"></div>
+                  <div id="runtime-regions" class="mbr-list"></div>
+                </div>
+
+                <!-- Guardrails — org-wide runtime limits (moved in from the
+                     retired Guardrails tab), folded shut by default with the
+                     same disclosure grammar as Billing's Auto top-up. Ids are
+                     unchanged so settings-guardrails.ts binds as before; the
+                     group is admin-gated in navigation.ts gateAdminSubs. -->
+                <div id="general-guardrails-group" class="hidden">
+                  <h3 class="acct-row-head">Guardrails <span id="guardrails-status" class="set-save-state"></span></h3>
+                  <button type="button" id="guardrails-fold-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="guardrails-fold-body">
+                    <span class="set-fold-head">
+                      <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
+                      <span class="set-fold-title">Org-wide runtime limits</span>
+                    </span>
+                  </button>
+                  <div id="guardrails-fold-body" class="set-fold-body hidden">
+                    <p class="section-desc">Blank means no limit. Applies to every member of your org.</p>
+                    <div id="guardrails-admin-only" class="crud-empty hidden">Only an organization admin can set guardrails.</div>
+                    <div id="guardrails-body">
+                      <div id="guardrails-error" class="settings-error hidden"></div>
+                      <div class="acct-section">
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="gr-maxInputTokens">Max input tokens</label>
+                            <input id="gr-maxInputTokens" data-gr="maxInputTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="gr-maxOutputTokens">Max output tokens</label>
+                            <input id="gr-maxOutputTokens" data-gr="maxOutputTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="gr-maxConcurrent">Max concurrent runs</label>
+                            <input id="gr-maxConcurrent" data-gr="maxConcurrent" type="number" min="0" class="settings-input" placeholder="No limit" />
+                          </div>
+                        </div>
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="gr-windowSeconds">Rate window (seconds)</label>
+                            <input id="gr-windowSeconds" data-gr="windowSeconds" type="number" min="0" class="settings-input" placeholder="No limit" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="gr-windowTokens">Tokens per window</label>
+                            <input id="gr-windowTokens" data-gr="windowTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="gr-windowCalls">Calls per window</label>
+                            <input id="gr-windowCalls" data-gr="windowCalls" type="number" min="0" class="settings-input" placeholder="No limit" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -715,6 +772,69 @@
                   <p class="section-desc" id="billing-seats-count">—</p>
                 </div>
 
+                <!-- Organization — the org record (moved in from the retired
+                     Organization tab), folded shut under the plan block with
+                     the same disclosure grammar as Auto top-up / Invoices.
+                     Ids unchanged so settings-org-panel.ts binds as before;
+                     the group is admin-gated in navigation.ts gateAdminSubs. -->
+                <div id="billing-org-group" class="hidden">
+                  <h3 class="acct-row-head">Organization <span id="org-panel-status" class="set-save-state"></span></h3>
+                  <button type="button" id="org-panel-fold-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="org-panel-fold-body">
+                    <span class="set-fold-head">
+                      <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
+                      <span class="set-fold-title">Name, address &amp; seats</span>
+                    </span>
+                  </button>
+                  <div id="org-panel-fold-body" class="set-fold-body hidden">
+                    <p class="section-desc">Your organization's name and address. Seats and plan live in the Plan bar above.</p>
+                    <div id="org-panel-admin-only" class="crud-empty hidden">Only an organization admin can manage the organization.</div>
+                    <div id="org-panel-body">
+                      <div id="org-panel-error" class="settings-error hidden"></div>
+                      <div class="dash-grid" style="margin-bottom:16px;">
+                        <div class="dash-card"><div class="dash-card-label">Seats</div><div class="dash-card-value" id="org-panel-seats">—</div><div class="dash-card-sub">used / total</div></div>
+                        <div class="dash-card"><div class="dash-card-label">Plan</div><div class="dash-card-value" id="org-panel-tier">—</div><div class="dash-card-sub">current tier</div></div>
+                      </div>
+                      <div class="acct-section">
+                        <div class="acct-row">
+                          <div class="acct-field acct-field-wide">
+                            <label class="settings-label" for="org-panel-name">Organization name</label>
+                            <input id="org-panel-name" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                        </div>
+                        <h4 class="acct-row-head">Address</h4>
+                        <div class="acct-row">
+                          <div class="acct-field acct-field-wide">
+                            <label class="settings-label" for="org-panel-addr-line1">Address line 1</label>
+                            <input id="org-panel-addr-line1" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                          <div class="acct-field acct-field-wide">
+                            <label class="settings-label" for="org-panel-addr-line2">Address line 2</label>
+                            <input id="org-panel-addr-line2" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                        </div>
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="org-panel-addr-city">City</label>
+                            <input id="org-panel-addr-city" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="org-panel-addr-state">State / Region</label>
+                            <input id="org-panel-addr-state" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="org-panel-addr-postal">Postal code</label>
+                            <input id="org-panel-addr-postal" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="org-panel-addr-country">Country</label>
+                            <input id="org-panel-addr-country" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <h3 class="acct-row-head">Credits</h3>
                 <div class="dash-grid">
                   <div class="dash-card">
@@ -725,7 +845,7 @@
                   <div class="dash-card">
                     <div class="dash-card-label">Plan allowance</div>
                     <div class="dash-card-value" id="billing-grants">—</div>
-                    <div class="dash-card-sub">expires each cycle</div>
+                    <div class="dash-card-sub">credits / month</div>
                   </div>
                   <div class="dash-card">
                     <div class="dash-card-label">Purchased</div>
@@ -1047,109 +1167,14 @@
                 </div>
               </div>
 
-              <!-- Organization — org record (name + address). org_admin only;
-                   the server enforces the write. Standalone here (also folded in
-                   Account for continuity). -->
-              <div class="settings-panel" data-sub="organization">
-                <h2>Organization <span id="org-panel-status" class="set-save-state"></span></h2>
-                <p class="section-desc">Your organization's name and address. Seats and plan live under Billing.</p>
-                <div id="org-panel-admin-only" class="crud-empty hidden">Only an organization admin can manage the organization.</div>
-                <div id="org-panel-body">
-                  <div id="org-panel-error" class="settings-error hidden"></div>
-                  <div class="dash-grid" style="margin-bottom:16px;">
-                    <div class="dash-card"><div class="dash-card-label">Seats</div><div class="dash-card-value" id="org-panel-seats">—</div><div class="dash-card-sub">used / total</div></div>
-                    <div class="dash-card"><div class="dash-card-label">Plan</div><div class="dash-card-value" id="org-panel-tier">—</div><div class="dash-card-sub">current tier</div></div>
-                  </div>
-                  <div class="acct-section">
-                    <div class="acct-row">
-                      <div class="acct-field acct-field-wide">
-                        <label class="settings-label" for="org-panel-name">Organization name</label>
-                        <input id="org-panel-name" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                    </div>
-                    <h4 class="acct-row-head">Address</h4>
-                    <div class="acct-row">
-                      <div class="acct-field acct-field-wide">
-                        <label class="settings-label" for="org-panel-addr-line1">Address line 1</label>
-                        <input id="org-panel-addr-line1" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                      <div class="acct-field acct-field-wide">
-                        <label class="settings-label" for="org-panel-addr-line2">Address line 2</label>
-                        <input id="org-panel-addr-line2" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                    </div>
-                    <div class="acct-row">
-                      <div class="acct-field">
-                        <label class="settings-label" for="org-panel-addr-city">City</label>
-                        <input id="org-panel-addr-city" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="org-panel-addr-state">State / Region</label>
-                        <input id="org-panel-addr-state" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="org-panel-addr-postal">Postal code</label>
-                        <input id="org-panel-addr-postal" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="org-panel-addr-country">Country</label>
-                        <input id="org-panel-addr-country" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <!-- (The standalone Organization panel moved into Billing — the
+                   folded Organization group under the Plan bar; loadOrgPanel
+                   binds the same org-panel-* ids there.) -->
 
-              <!-- Runtime — the org's regional runtime + stator (where memory
-                   lives). One choice for the whole org. Read for any member;
-                   chooseInfra is org_admin. -->
-              <div class="settings-panel" data-sub="runtime">
-                <h2>Runtime</h2>
-                <p class="section-desc">The regional runtime + stator your sessions run on — where your memory lives. One choice for the whole org; NAM is the default.</p>
-                <div id="runtime-error" class="settings-error hidden"></div>
-                <div id="runtime-regions" class="mbr-list"></div>
-              </div>
-
-              <!-- Guardrails — org-wide runtime limits (org_admin). Blank = no
-                   limit; the runtime enforces under its own floor. -->
-              <div class="settings-panel" data-sub="guardrails">
-                <h2>Guardrails <span id="guardrails-status" class="set-save-state"></span></h2>
-                <p class="section-desc">Org-wide runtime limits. Blank means no limit. Applies to every member of your org.</p>
-                <div id="guardrails-admin-only" class="crud-empty hidden">Only an organization admin can set guardrails.</div>
-                <div id="guardrails-body">
-                  <div id="guardrails-error" class="settings-error hidden"></div>
-                  <div class="acct-section">
-                    <div class="acct-row">
-                      <div class="acct-field">
-                        <label class="settings-label" for="gr-maxInputTokens">Max input tokens</label>
-                        <input id="gr-maxInputTokens" data-gr="maxInputTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="gr-maxOutputTokens">Max output tokens</label>
-                        <input id="gr-maxOutputTokens" data-gr="maxOutputTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="gr-maxConcurrent">Max concurrent runs</label>
-                        <input id="gr-maxConcurrent" data-gr="maxConcurrent" type="number" min="0" class="settings-input" placeholder="No limit" />
-                      </div>
-                    </div>
-                    <div class="acct-row">
-                      <div class="acct-field">
-                        <label class="settings-label" for="gr-windowSeconds">Rate window (seconds)</label>
-                        <input id="gr-windowSeconds" data-gr="windowSeconds" type="number" min="0" class="settings-input" placeholder="No limit" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="gr-windowTokens">Tokens per window</label>
-                        <input id="gr-windowTokens" data-gr="windowTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="gr-windowCalls">Calls per window</label>
-                        <input id="gr-windowCalls" data-gr="windowCalls" type="number" min="0" class="settings-input" placeholder="No limit" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <!-- (Runtime and Guardrails moved onto the General tab — the
+                   Sessions group and the folded Guardrails group. Their loaders
+                   bind the same ids there; navigation.ts aliases the old
+                   data-subs to "general".) -->
 
               <!-- Docs — the docs body (its own topics nav + content, from
                    sections/docs.html) is MOVED into this host on open and parked

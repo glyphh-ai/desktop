@@ -75,13 +75,45 @@ function initSettings() {
   initOrg();
   initMembers();
   initWorkspaces();
-  document.getElementById("glyphh-agent-compact-save")?.addEventListener("click", () => {
+  // Compaction guidance saves ITSELF — debounced while typing, immediately on
+  // blur — with the standard "Saved" flash. No Save button (General's rule:
+  // every control owns its own save).
+  {
     const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
     const status = document.getElementById("glyphh-agent-compact-status");
-    void Promise.resolve(window.glyphh.setPreference?.("glyphhCompactionPrompt", (wcp?.value || "").trim())).then(() => {
-      if (status) { status.textContent = "Saved."; setTimeout(() => { status.textContent = ""; }, 1800); }
+    let timer = 0;
+    const save = (): void => {
+      if (!wcp) return;
+      const value = wcp.value.trim();
+      // The loader stamps the stored value into data-saved — an untouched (or
+      // reverted) field neither writes nor flashes.
+      if (value === (wcp.dataset.saved ?? "")) return;
+      wcp.dataset.saved = value;
+      void Promise.resolve(window.glyphh.setPreference?.("glyphhCompactionPrompt", value)).then(() => {
+        if (status) {
+          status.textContent = "Saved";
+          status.className = "set-save-state success";
+          setTimeout(() => { status.textContent = ""; }, 1600);
+        }
+      });
+    };
+    wcp?.addEventListener("input", () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(save, 700);
     });
-  });
+    wcp?.addEventListener("blur", () => { window.clearTimeout(timer); save(); });
+  }
+
+  // The General tab's Guardrails group folds — same disclosure grammar as
+  // Billing's Auto top-up / Invoices (aria-expanded bar + hidden body).
+  {
+    const toggle = document.getElementById("guardrails-fold-toggle");
+    toggle?.addEventListener("click", () => {
+      const open = toggle.getAttribute("aria-expanded") !== "true";
+      toggle.setAttribute("aria-expanded", String(open));
+      document.getElementById("guardrails-fold-body")?.classList.toggle("hidden", !open);
+    });
+  }
 
   // Theme picker
   const themePicker = document.getElementById("theme-picker");
@@ -366,7 +398,11 @@ async function loadSettings() {
   void loadWorkspacesPanel();
   // Glyphh: standing compaction guidance + training capture
   const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
-  if (wcp) wcp.value = String((await window.glyphh.getPreference?.("glyphhCompactionPrompt", "")) || "");
+  if (wcp) {
+    wcp.value = String((await window.glyphh.getPreference?.("glyphhCompactionPrompt", "")) || "");
+    // Baseline for the auto-save (initSettings): unchanged content never writes.
+    wcp.dataset.saved = wcp.value.trim();
+  }
 
   // The Account header's ORG + PLAN chips. Name, email, role and the avatar
   // come from the server profile via loadProfile() — one painter each, so the

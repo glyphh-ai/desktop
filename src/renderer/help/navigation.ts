@@ -295,17 +295,16 @@ export function openSettingsModal(sub?: string): void {
   selectSettingsSub(sub || "general");
 }
 
-/** Hide the A4 admin-only nav items (Organization, Runtime, Guardrails) for
- *  non-admins on modal open — the SAME rule Members/Workspaces use (their own
- *  loaders gate on the eager loadSettings() call; these panels load only when
- *  selected, so their nav items are gated here up front). Each panel's own
- *  loader re-asserts the gate + the admin-only body message. */
+/** Hide the admin-only surfaces for non-admins on modal open — the SAME rule
+ *  Members/Workspaces use (their own loaders gate on the eager loadSettings()
+ *  call). The old Organization/Runtime/Guardrails TABS live as groups on
+ *  Billing/General now, so the gate toggles those groups instead of nav
+ *  entries. Each loader re-asserts the gate + the admin-only body message. */
 function gateAdminSubs(): void {
   void window.glyphh.getAccountInfo?.().then((info) => {
     const admin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
-    for (const s of ["organization", "runtime", "guardrails"]) {
-      document.querySelector<HTMLElement>(`.settings-nav .settings-nav-item[data-sub="${s}"]`)
-        ?.classList.toggle("hidden", !admin);
+    for (const id of ["general-runtime-group", "general-guardrails-group", "billing-org-group"]) {
+      document.getElementById(id)?.classList.toggle("hidden", !admin);
     }
   }).catch(() => { /* signed out — items stay hidden (they start hidden) */ });
 }
@@ -321,8 +320,12 @@ const SETTINGS_SUB_ALIAS: Record<string, string> = {
   // the app-level customization panel (themes, browser). General/Appearance/
   // Drips/Desktop/MCP are the app-config subs; Appearance is the natural anchor.
   app: "appearance",
-  // (The old organization→account alias is gone — Organization is its own
-  //  standalone Admin panel now, data-sub="organization".)
+  // Organization / Runtime / Guardrails retired as tabs — Organization lives
+  // in Billing (folded under the Plan bar); Runtime + Guardrails live on
+  // General (the Sessions group and the folded Guardrails group).
+  organization: "billing",
+  runtime: "general",
+  guardrails: "general",
 };
 
 /** Retired top-level sections, redirected to the Settings sub-panel that
@@ -331,15 +334,27 @@ const SETTINGS_SUB_ALIAS: Record<string, string> = {
 const SECTION_ALIAS: Record<string, { section: string; sub: string }> = {
   models: { section: "settings", sub: "models" },
 };
-const settingsSubAlias = (sub: string): string => SETTINGS_SUB_ALIAS[sub] || sub;
+const settingsSubAlias = (sub: string): string => {
+  const target = SETTINGS_SUB_ALIAS[sub] || sub;
+  // MCP is a desktop-machine feature — a browser tab has no machine to run the
+  // 127.0.0.1 server on. The nav item + panel are CSS-hidden on web; any stale
+  // deep link (saved nav app, remembered homeLastSub) lands on General instead.
+  if (target === "mcp" && document.documentElement.classList.contains("glyphh-web")) return "general";
+  return target;
+};
 
 /** Settings sub-panels that fetch on show. Shared by the sub-nav click handler
  *  and gotoSection's deep-link path so both populate identically. */
 function loadSettingsSub(sub: string): void {
-  if (sub === "support") void loadSupportPanel();
+  // General carries the Sessions (runtime region) + Guardrails groups now —
+  // both fetch on show, exactly as their retired tabs did.
+  if (sub === "general") { void loadRuntime(); void loadGuardrails(); }
+  else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "drips") loadDrips();
-  else if (sub === "billing") void loadBilling();
+  // Billing also hosts the folded Organization group (the retired tab) — its
+  // loader fires with the panel, like the invoice fold's data does.
+  else if (sub === "billing") { void loadBilling(); void loadOrgPanel(); }
   // Organization is ALSO folded into Account (org admins only), so Account
   // still loads the org section; the standalone Organization panel (A4) is its
   // own sub below.
@@ -348,9 +363,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "models") loadModelsAdmin();
   else if (sub === "apikeys") void loadApiKeys();
-  else if (sub === "organization") void loadOrgPanel();
-  else if (sub === "runtime") void loadRuntime();
-  else if (sub === "guardrails") void loadGuardrails();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
   else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }

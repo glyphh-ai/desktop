@@ -1461,6 +1461,12 @@ body.account-locked #dl-btn-wrap {
    .wc covers both the titlebar (#window-controls) and the home rail (#panel-wc). */
 .glyphh-web .wc,
 .glyphh-web #window-controls { display: none !important; }
+/* MCP is a desktop-MACHINE feature (a 127.0.0.1 server) — a browser tab has no
+   machine to run it on, so the whole tab hides on web, not just the local-MCP
+   section inside it. Stale deep links fall back to General (navigation.ts
+   settingsSubAlias). */
+.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="mcp"],
+.glyphh-web .settings-panel[data-sub="mcp"] { display: none !important; }
 
 /* ── Web: neutralize OS window chrome, KEEP the app header ───────────────────
    The frameless-window TITLEBAR (#titlebar — the login/splash shell's desktop

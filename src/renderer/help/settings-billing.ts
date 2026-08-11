@@ -72,7 +72,12 @@ function fail(msg: string): void {
 
 function paintCredits(): void {
   setText("billing-balance", credits ? fmtInt(toCredits(credits.balance)) : "—");
-  setText("billing-grants", credits ? fmtInt(toCredits(credits.grants)) : "—");
+  // "Plan allowance" = what the CURRENT PLAN allocates each month, from the
+  // plan catalog — NOT credits.grants, which the server computes as the sum of
+  // REMAINING expiring grant credits (a burn-down that read like the balance).
+  // Painted after plans + status settle in loadBilling; "—" until both known.
+  const plan = plans.find((p) => p.tier === (sub?.tier || "free"));
+  setText("billing-grants", plan ? fmtInt(plan.monthlyCredits || 0) : "—");
   setText("billing-purchases", credits ? fmtInt(toCredits(credits.purchases)) : "—");
 }
 
@@ -332,7 +337,13 @@ export function initBilling(): void {
   });
   $("billing-portal-btn")?.addEventListener("click", () => { void openPortal(); });
 
-  for (const [btn, body] of [["billing-at-toggle", "billing-at-body"], ["billing-inv-toggle", "billing-invoices-wrap"]]) {
+  // The folded Organization group (the retired Organization tab) shares the
+  // same disclosure wiring as Auto top-up / Invoices.
+  for (const [btn, body] of [
+    ["billing-at-toggle", "billing-at-body"],
+    ["billing-inv-toggle", "billing-invoices-wrap"],
+    ["org-panel-fold-toggle", "org-panel-fold-body"],
+  ]) {
     $(btn)?.addEventListener("click", () => {
       const open = $(btn)?.getAttribute("aria-expanded") !== "true";
       $(btn)?.setAttribute("aria-expanded", String(open));

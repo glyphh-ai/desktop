@@ -1071,6 +1071,11 @@ function ensureCodeSection(): void {
     void saveStore();
     renderHistory();
     renderThread();
+    // The source chip must repaint too: a layout opening on "new session"
+    // lands here with the PREVIOUS (born) session's cl-chip-static lock still
+    // painted — pointer-events:none — so the picker never opened on a fresh
+    // session hosted in a layout. Recompute from the now-empty selection.
+    repaintSourceUi();
   },
   /** Repaint the thread + history from the store. The agent card calls this
    *  after adoption so an empty session shows the BRANDED landing (mark +
@@ -1184,8 +1189,9 @@ function forgetCurrentSession(_space?: "chat" | "cowork" | "code"): void {
   lastSession = "";
   void window.glyphh.setPreference?.(LAST_SESSION_PREF, "");
   // ...AND the workspace state that belonged to it: a closed session must not
-  // leave its folder behind for the next new session to inherit.
-  pendingSource = { ...DEFAULT_SOURCE };
+  // leave its folder behind for the next new session to inherit. Falls back to
+  // the RESOLVED default (local on desktop), not raw cloud.
+  pendingSource = { ...resolvedDefaultSource };
   void window.glyphh.setPreference?.(SOURCE_PREF, null);
   pendingWorkdir = "";
   sourceChip?.setSource(activeSource());
@@ -2005,6 +2011,11 @@ let cwPaint: (() => void) | null = null;
 // folder). One pending pick now (spaces are gone), stamped onto the record the
 // first send creates.
 const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
+/** The RESOLVED default for this surface — LOCAL on the desktop (and on web
+ *  with a desktop attached), cloud-new otherwise. Computed once at boot by the
+ *  SOURCE_PREF restore below; closing a session falls back to THIS, not the
+ *  raw cloud constant, so the desktop's default stays the user's machine. */
+let resolvedDefaultSource: Source = { ...DEFAULT_SOURCE };
 let pendingSource: Source = { ...DEFAULT_SOURCE };
 const SOURCE_PREF = "workspaceSourceCode";
 let sourceChip: ReturnType<typeof createSourceChip> | null = null;
@@ -4206,28 +4217,36 @@ export function initCode(): void {
       return null;
     };
     const cc = coerce(sc); if (cc) pendingSource = cc;
-    // LOCAL machine wins whenever one exists — Chris's rule verbatim:
-    // "Default to local machine if available, then to cloud." A stored CLOUD
-    // pick applies only when no machine is attached; picking cloud stays a
-    // per-visit choice from the chip, never a sticky default that buries the
-    // folder picker.
-    const ccPinned = cc && cc.kind === "local";
-    if (!ccPinned) {
-      void (async () => {
-        let local: Source | null = null;
-        if (!onWebTarget()) local = { kind: "local", path: "" };
-        else {
-          try {
-            const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean }> } } }).glyphhSdk?.attach?.status?.();
-            if (st?.attached) local = { kind: "local", path: "" };
-          } catch { /* stays cloud */ }
-        }
-        if (!local) return;
+    // DEFAULT RESOLUTION — the user's own MACHINE wins where one exists: on
+    // the desktop this process IS the machine; on web only an ATTACHED desktop
+    // counts (no machine → cloud-new stays). An EXPLICIT stored pick — cloud
+    // or local — is always respected: the default applies only when the user
+    // has never picked. The resolved default also backs forgetCurrentSession,
+    // so a closed session falls back to the machine, not to cloud.
+    void (async () => {
+      let local: Source | null = null;
+      if (!onWebTarget()) {
+        // Seed the machine's last-used working folder; none yet → an empty
+        // path flows through the workdir gate / home-dir default, exactly
+        // like a hand-picked machine with no folder.
+        const dir = (await wb()?.getCwdExplicit?.().catch(() => null)) || "";
+        local = { kind: "local", path: dir };
+      } else {
+        try {
+          const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean }> } } }).glyphhSdk?.attach?.status?.();
+          if (st?.attached) local = { kind: "local", path: "" };
+        } catch { /* stays cloud */ }
+      }
+      if (!local) return;
+      resolvedDefaultSource = { ...local };
+      // Apply only where the DEFAULT is in play: no stored pick, and the user
+      // hasn't picked something else while we resolved.
+      if (!cc && sameSource(pendingSource, DEFAULT_SOURCE)) {
         pendingSource = { ...local };
         sourceChip?.setSource(activeSource());
         paintSourceDependents();
-      })();
-    }
+      }
+    })();
     mountSourceChip();
     paintSourceDependents();
   });
@@ -4543,6 +4562,10 @@ export function adoptComposer(host: HTMLElement | null): void {
     document.body.classList.remove("composer-on-home");
   }
   cwPaint?.();   // the Chat/Co-work toggle exists only on the Home composer
+  // The chip's static/live state keys off composer-on-home (paintSourceDependents)
+  // — recompute it for the surface the composer just landed on, so an adoption
+  // into a layout card never carries a stale lock (or a stale unlock) with it.
+  repaintSourceUi();
 }
 
 // The workbench bundle can't import this module — openAgentCard calls the
