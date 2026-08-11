@@ -98,11 +98,14 @@ if (typeof window !== 'undefined') {
     if (typeof document !== 'undefined') {
       const syncThemeColor = () => {
         try {
-          const bg = getComputedStyle(document.body).backgroundColor;
-          if (!bg || bg === 'rgba(0, 0, 0, 0)') return;
+          // Match the BROWSER TOOLBAR, not the app: the chrome-inset band above
+          // the page (proven on /bare — it tints with the page background) then
+          // merges into the toolbar exactly like light sites (claude.ai) do.
+          const darkUi = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const c = darkUi ? '#1c1c1e' : '#ffffff';
           let m = document.querySelector('meta[name="theme-color"]');
           if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'theme-color'); document.head.appendChild(m); }
-          m.setAttribute('content', bg);
+          m.setAttribute('content', c);
         } catch { /* cosmetic only */ }
       };
       const start = () => {
