@@ -1999,7 +1999,7 @@ async function init(): Promise<void> {
       const glyphhTile: EchoTile = {
         name: "New session",
         slug: "glyphh-home",
-        iconUrl: "brand/glyphh-mark-purple.png",
+        iconUrl: "brand/glyphh-mark.png",
         kind: "app",
         sticky: true,
       };
