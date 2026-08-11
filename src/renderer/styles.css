@@ -1523,6 +1523,13 @@ body.account-locked #dl-btn-wrap {
 .glyphh-web {
   --titlebar-h: 0px;
 }
+/* CRITICAL: `body { --titlebar-h: 30px }` re-declares the var, and body is a
+   CLOSER ancestor than html.glyphh-web — so the drag strip + every offset inside
+   body inherited 30px, NOT 0. That shadow is why the web drag bar never collapsed.
+   Set it on body itself so descendants actually inherit 0 on web. */
+.glyphh-web body {
+  --titlebar-h: 0px !important;
+}
 /* Height already collapses to 0 via --titlebar-h; strip its paint (surface-2
    fill + bottom border) so no band and no 1px line remain. NOT display:none —
    code-workbench.ts re-parents .echo-layout-bar INTO this strip, and a
