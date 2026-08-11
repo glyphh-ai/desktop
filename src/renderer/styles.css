@@ -14816,37 +14816,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 
 #app-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
 
-.code-new-session {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 10px 6px;
-  padding: 8px 12px;
-  border: 1px solid var(--border-2);
-  border-radius: 9px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-}
-
-.code-new-session:hover { border-color: var(--accent); color: var(--text-bright); }
-
-/* + New session is the PRIMARY rail control — a filled accent button (white
-   label on the accent, in every theme). */
-.code-new-session.code-new-session-link {
-  border: none; background: var(--accent); padding: 9px 12px; border-radius: 9px;
-  color: #fff; font-weight: 600;
-}
-[data-theme="dark"] .code-new-session.code-new-session-link,
-[data-theme="purple"] .code-new-session.code-new-session-link,
-[data-theme="aurora"] .code-new-session.code-new-session-link {
-  color: #fff;
-}
-
-.code-new-session.code-new-session-link:hover { color: #fff; background: var(--accent-hover); }
+/* + New session IS the theme's primary button — markup carries
+   `.btn .btn-primary .btn-full` (home.template.html); this only positions it
+   in the rail. */
+.code-new-session-rail { margin: 12px 10px 6px; }
 
 .code-rail-label {
   padding: 12px 14px 6px;
