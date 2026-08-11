@@ -31,7 +31,7 @@ interface DesktopApiKeysIpc {
 
 interface ApiKeysTransport {
   list(): Promise<ApiKey[]>;
-  create(label: string): Promise<CreatedApiKey>;
+  create(label: string, expiresInDays?: number): Promise<CreatedApiKey>;
   revoke(id: string): Promise<void>;
 }
 
@@ -45,14 +45,14 @@ function transport(): ApiKeysTransport | null {
   if (isWeb()) {
     const a = (window as unknown as { glyphhSdk?: { apiKeys?: SdkApiKeys } }).glyphhSdk?.apiKeys;
     if (!a?.list || !a.create || !a.revoke) return null;
-    return { list: () => a.list!(), create: (label) => a.create!({ label }), revoke: (id) => a.revoke!(id) };
+    return { list: () => a.list!(), create: (label, expiresInDays) => a.create!({ label, ...(expiresInDays ? { expiresInDays } : {}) }), revoke: (id) => a.revoke!(id) };
   }
   const g = (window as unknown as { glyphh?: DesktopApiKeysIpc }).glyphh;
   if (!g?.apiKeysList || !g.apiKeysCreate || !g.apiKeysRevoke) return null;
   return {
     list: () => g.apiKeysList!(),
-    create: async (label) => {
-      const r = await g.apiKeysCreate!({ label });
+    create: async (label, expiresInDays) => {
+      const r = await g.apiKeysCreate!({ label, ...(expiresInDays ? { expiresInDays } : {}) });
       if (!r?.ok || !r.created) throw new Error(r?.error || "Could not create the key.");
       return r.created;
     },
@@ -73,9 +73,12 @@ function showEditor(open: boolean): void {
   $("apikeys-list-view")?.classList.toggle("hidden", open);
   $("apikeys-editor")?.classList.toggle("hidden", !open);
   if (open) {
-    // Fresh form every open — no stale label, no stale one-time token.
+    // Fresh form every open — no stale label/expiry/error, no stale token.
     const input = $("apikeys-label") as HTMLInputElement | null;
     if (input) { input.value = ""; input.focus(); }
+    const exp = $("apikeys-expires") as HTMLSelectElement | null;
+    if (exp) exp.value = "";
+    $("apikeys-form-error")?.classList.add("hidden");
     $("apikeys-new-token")?.classList.add("hidden");
   }
 }
@@ -123,25 +126,33 @@ export function initApiKeys(): void {
   wired = true;
   $("apikeys-new-btn")?.addEventListener("click", () => showEditor(true));
   $("apikeys-back-link")?.addEventListener("click", () => showEditor(false));
+  $("apikeys-cancel-btn")?.addEventListener("click", () => showEditor(false));
   $("apikeys-search")?.addEventListener("input", () => {
     query = (($("apikeys-search") as HTMLInputElement | null)?.value || "").trim();
     render();
   });
+  const formError = (msg: string): void => {
+    const el = $("apikeys-form-error");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.toggle("hidden", !msg);
+  };
   $("apikeys-create-btn")?.addEventListener("click", async () => {
     const input = $("apikeys-label") as HTMLInputElement | null;
     const label = (input?.value || "").trim();
-    if (!label) return;
+    if (!label) { formError("Give the key a label."); input?.focus(); return; }
+    const days = parseInt(($("apikeys-expires") as HTMLSelectElement | null)?.value || "", 10);
     const t = transport();
-    if (!t) { setError(NO_TRANSPORT); return; }
-    setError("");
+    if (!t) { formError(NO_TRANSPORT); return; }
+    formError("");
     try {
-      const created = await t.create(label);
+      const created = await t.create(label, Number.isFinite(days) && days > 0 ? days : undefined);
       if (input) input.value = "";
       const box = $("apikeys-new-token");
       const val = $("apikeys-new-token-value") as HTMLInputElement | null;
       if (box && val) { val.value = created.token; box.classList.remove("hidden"); }
       await loadApiKeys();
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { formError((e as Error).message); }
   });
   $("apikeys-new-token-copy")?.addEventListener("click", () => {
     const val = ($("apikeys-new-token-value") as HTMLInputElement | null)?.value || "";
