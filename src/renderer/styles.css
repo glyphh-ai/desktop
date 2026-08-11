@@ -1522,6 +1522,15 @@ body.account-locked #dl-btn-wrap {
    visible + clickable. */
 .glyphh-web {
   --titlebar-h: 0px;
+  /* The iPad browser paints its chrome-inset band with the page CANVAS color
+     (= the root element's background; proven on /bare where a red body made a
+     red band). Paint the ROOT toolbar-white so that band merges into the
+     browser chrome like any light site; the app's own dark comes from body/
+     #help-overlay, which cover the full viewport. */
+  background: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  .glyphh-web { background: #1c1c1e; }
 }
 /* CRITICAL: `body { --titlebar-h: 30px }` re-declares the var, and body is a
    CLOSER ancestor than html.glyphh-web — so the drag strip + every offset inside
