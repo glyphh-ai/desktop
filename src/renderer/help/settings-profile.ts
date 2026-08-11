@@ -80,6 +80,9 @@ function paintIdentity(): void {
   const last = (saved?.lastName || "").trim();
   const full = `${first} ${last}`.trim();
   if (nameEl) nameEl.textContent = full || saved?.email || "—";
+  // No name set → the name line already shows the email; hide the duplicate
+  // email line so the identity reads as ONE line, one size.
+  $("profile-email")?.classList.toggle("hidden", !full);
   if (initialsEl) {
     const letters = (first.charAt(0) + last.charAt(0)).trim() || (saved?.email || "").charAt(0);
     initialsEl.textContent = letters.toUpperCase() || "—";
@@ -174,6 +177,13 @@ function scheduleSave(delay = 700): void {
 export function initProfile(): void {
   if (wired) return;
   wired = true;
+
+  // The plan chip is a CONTROL: click navigates to Billing (where the plan is
+  // managed). The refresh icon inside it keeps its own behavior.
+  document.querySelector<HTMLElement>(".acct-chip-plan")?.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest("#account-refresh-tier")) return;
+    document.querySelector<HTMLElement>(".settings-nav-item[data-sub='billing']")?.click();
+  });
 
   const tz = $<HTMLSelectElement>("profile-timezone");
   if (tz) {

@@ -6841,9 +6841,10 @@ select.settings-input {
 }
 
 .acct-email {
-  font-size: 13px;
-  color: var(--text-2);
-  font-family: var(--font-mono);
+  /* One quiet size, the page's own face — the mono/13px combo read as yet
+     another font under the 18px name. */
+  font-size: 12px;
+  color: var(--text-3);
   margin-top: 2px;
   overflow-wrap: anywhere;
 }
@@ -6871,13 +6872,17 @@ select.settings-input {
   white-space: nowrap;
 }
 
-/* A paid plan is the one chip worth reading first. */
-.acct-chip-plan { padding-right: 5px; }
-.acct-chip-plan.paid {
-  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent-text, var(--accent));
+/* The plan chip wears the PRIMARY button color and navigates to Billing —
+   it's the one chip that's also a control. */
+.acct-chip-plan {
+  padding-right: 5px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  cursor: pointer;
 }
+.acct-chip-plan:hover { background: var(--accent-hover, var(--accent)); }
+.acct-chip-plan .acct-chip-refresh { color: #fff; }
 
 .acct-chip-refresh {
   display: inline-flex;
