@@ -2310,8 +2310,11 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
   useEffect(() => {
     if (open && initialSub) {
       setSnapSub(true); setSub(initialSub); setSubOpen(true);
-      const r = requestAnimationFrame(() => requestAnimationFrame(() => setSnapSub(false)));
-      return () => cancelAnimationFrame(r);
+      // Hold the snap until the sheet's RISE (400ms, .m-sheet) has fully
+      // landed — re-enabling the track transition after two frames let the
+      // horizontal slide start mid-rise and the handoff read as cut short.
+      const t = window.setTimeout(() => setSnapSub(false), 450);
+      return () => clearTimeout(t);
     }
   }, [open, initialSub]);
   useEffect(() => {
