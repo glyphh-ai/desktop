@@ -6,7 +6,6 @@ import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./sh
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
-import { SPACE_LABEL, SPACE_GLYPH_SVG, AUTO_GLYPH_SVG, type Space } from "./space-meta.js";
 
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
  *  right) instead of tiling OS windows. Resolves each cell's panel to its
@@ -16,15 +15,6 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.glyphh.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
-  // A layout also sets the loop + its slot models — apply before the panels
-  // tile so the composer is already in the layout's program state.
-  if (layout.loop) {
-    try {
-      await window.glyphh.loopApplyConfig(layout.loop, layout.modelSelections ?? {});
-      // Tell the composer to re-sync its loop + model chips to the new state.
-      document.dispatchEvent(new CustomEvent("glyphh:loop-applied"));
-    } catch { /* offline — the panels still open; the loop just stays as-is */ }
-  }
   showWorkspaceSurface();   // neutral flip — the layout's cells define the view
   // Open BY NAME so the workbench's recall path runs: the layout's definition
   // plus the geometry the user last dragged it into (its named memory). The
@@ -113,20 +103,6 @@ const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
 ];
 const toolPanelIcon = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.icon || "";
 
-// ── Layout SPACE (which agent rides it) — mirrors code-workbench ─────────
-// Explicit `space` wins; else dev tool panels make it a Code layout, and
-// anything else is Work. The badge glyphs are the rail tabs' own icons.
-type LayoutSpace = Space;
-const DEV_PANEL_RE = /^tool:(coding|terminal|editor|diff|git)/;
-const explicitSpace = (layout: unknown): LayoutSpace | null => {
-  const s = (layout as { space?: string | null } | null)?.space;
-  return s === "chat" || s === "cowork" || s === "code" ? s : null;
-};
-function cardSpace(layout: { space?: string | null; splits?: Array<{ panelId: string }> }): LayoutSpace {
-  const s = layout?.space;
-  if (s === "chat" || s === "cowork" || s === "code") return s;
-  return (layout?.splits ?? []).some((p) => DEV_PANEL_RE.test(String(p.panelId || ""))) ? "code" : "cowork";
-}
 const isToolPanel = (id: string): boolean => id.startsWith("tool:");
 const toolPanelLabel = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.label || id.slice(5);
 /** One app-icon square for a layout card — identical icon resolution to the
@@ -160,54 +136,6 @@ const layoutEditor = document.getElementById("layout-editor")!;
 const layoutsToolbar = document.getElementById("layouts-toolbar")!;
 const layoutSearchInput = document.getElementById("layout-search") as HTMLInputElement;
 
-// ── Space filter (funnel beside the search) — the standard check dropdown ──
-let layoutSpaceFilter: "" | LayoutSpace = "";
-const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-function initSpaceFilter(): void {
-  const btn = document.getElementById("layout-space-filter") as HTMLButtonElement | null;
-  if (!btn || btn.dataset.wired) return;
-  btn.dataset.wired = "1";
-  const menu = document.createElement("div");
-  menu.className = "yo-workdir-menu layout-space-menu";
-  menu.setAttribute("role", "menu");
-  document.body.appendChild(menu);
-  const close = (): void => menu.classList.remove("open");
-  const paintBtn = (): void => { btn.classList.toggle("active", !!layoutSpaceFilter); };
-  const open = (): void => {
-    menu.innerHTML = "";
-    const rows: Array<["" | LayoutSpace, string]> = [["", "All"], ["chat", "Chat"], ["cowork", "Work"], ["code", "Code"]];
-    for (const [val, label] of rows) {
-      const item = document.createElement("button");
-      item.className = "yo-workdir-menu-item";
-      item.innerHTML = `<span class="check">${layoutSpaceFilter === val ? CHECK_SVG : ""}</span><span class="nm"></span>`;
-      (item.querySelector(".nm") as HTMLElement).textContent = label;
-      item.addEventListener("click", () => {
-        layoutSpaceFilter = val;
-        layoutsPage = 1;
-        close();
-        paintBtn();
-        renderLayoutsList();
-      });
-      menu.appendChild(item);
-    }
-    const r = btn.getBoundingClientRect();
-    menu.style.left = `${Math.round(r.right - 150)}px`;
-    menu.style.top = `${Math.round(r.bottom + 4)}px`;
-    menu.style.bottom = "auto";
-    menu.classList.add("open");
-  };
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    menu.classList.contains("open") ? close() : open();
-  });
-  document.addEventListener("click", (e) => {
-    if (!menu.classList.contains("open")) return;
-    if (menu.contains(e.target as Node) || btn.contains(e.target as Node)) return;
-    close();
-  });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
-}
-initSpaceFilter();
 const layoutNameInput = document.getElementById("layout-new-name") as HTMLInputElement;
 const layoutFormError = document.getElementById("layout-form-error")!;
 const layoutDeleteBtn = document.getElementById("layout-delete-btn") as HTMLButtonElement;
@@ -236,25 +164,6 @@ const splitBtn = document.getElementById("grid-split-btn") as HTMLButtonElement;
 const folderModeRow = document.getElementById("layout-folder-mode-row");
 const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSelectElement | null;
 
-// ── Loop + models this layout activates on open ──────────────────────────
-const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
-const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
-// The space control is now the three TABS at the top of the editor; they write
-// this hidden input, so every read/write below (and the save payload) is
-// unchanged — the value contract is identical to the old <select>.
-const layoutSpaceSelect = document.getElementById("layout-space") as HTMLInputElement | null;
-const layoutSpaceTabs = document.querySelector<HTMLElement>(".layout-space-tabs");
-function paintLayoutSpaceTabs(): void {
-  const v = layoutSpaceSelect?.value ?? "";
-  layoutSpaceTabs?.querySelectorAll<HTMLElement>(".code-space-opt")
-    .forEach((b) => b.classList.toggle("active", (b.dataset.space ?? "") === v));
-}
-layoutSpaceTabs?.querySelectorAll<HTMLElement>(".code-space-opt").forEach((b) => {
-  b.addEventListener("click", () => {
-    if (layoutSpaceSelect) layoutSpaceSelect.value = b.dataset.space ?? "";
-    paintLayoutSpaceTabs();
-  });
-});
 const layoutFolderInput = document.getElementById("layout-folder-input") as HTMLInputElement | null;
 const layoutFolderPickBtn = document.getElementById("layout-folder-pick") as HTMLButtonElement | null;
 const layoutFolderClearBtn = document.getElementById("layout-folder-clear") as HTMLButtonElement | null;
@@ -266,10 +175,6 @@ layoutFolderPickBtn?.addEventListener("click", () => {
 layoutFolderClearBtn?.addEventListener("click", () => {
   if (layoutFolderInput) layoutFolderInput.value = "";
 });
-const layoutLoopModels = document.getElementById("layout-loop-models");
-/** The layout's loop ("" = leave the active loop as-is) + its per-role picks. */
-let builderLoop = "";
-let builderModelSelections: Record<string, string> = {};
 
 /** Recompute whether this layout is folder-bound. No-op now the control is
  *  gone; kept so callers don't need to know it was cut. */
@@ -287,51 +192,6 @@ async function refreshFolderModeRow(): Promise<void> {
   } catch {
     folderModeRow.classList.add("hidden");
   }
-}
-
-/** Fill the loop dropdown once — "Leave as-is" plus every loop the caller has. */
-async function ensureLoopOptions(): Promise<void> {
-  if (!layoutLoopSelect || layoutLoopSelect.dataset.filled) return;
-  try {
-    const res = await window.glyphh.loopsList();
-    const opts = [`<option value="">Leave as-is</option>`];
-    for (const l of res.loops) opts.push(`<option value="${l.id}">${escLayout(l.name)}</option>`);
-    layoutLoopSelect.innerHTML = opts.join("");
-    layoutLoopSelect.dataset.filled = "1";
-  } catch { layoutLoopSelect.innerHTML = `<option value="">Leave as-is</option>`; }
-}
-
-/** One model dropdown per slot the chosen loop declares. "" = Auto (the loop's
- *  own default). Absent loop → nothing to configure. */
-async function renderLoopModels(): Promise<void> {
-  if (!layoutLoopModels) return;
-  if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
-  layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
-  let roles: Awaited<ReturnType<typeof window.glyphh.loopRoles>>["roles"] = [];
-  try { roles = (await window.glyphh.loopRoles(builderLoop)).roles; }
-  catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load this loop's models.</div>`; return; }
-  if (!roles.length) { layoutLoopModels.innerHTML = ""; return; }
-  layoutLoopModels.innerHTML = roles.map((r) => {
-    const picked = builderModelSelections[r.name] ?? "";
-    const opts = [`<option value="">Auto — loop default</option>`]
-      .concat(r.choices.map((c) => `<option value="${c.id}"${c.id === picked ? " selected" : ""}>${escLayout(c.name)}</option>`));
-    return `<label class="layout-loop-model">
-      <span class="layout-loop-model-label">${escLayout(r.label || r.name)}</span>
-      <select class="settings-input" data-role="${escLayout(r.name)}">${opts.join("")}</select>
-    </label>`;
-  }).join("");
-  layoutLoopModels.querySelectorAll<HTMLSelectElement>("select[data-role]").forEach((sel) => {
-    sel.addEventListener("change", () => {
-      const role = sel.dataset.role!;
-      if (sel.value) builderModelSelections[role] = sel.value;
-      else delete builderModelSelections[role];
-    });
-  });
-}
-
-/** Minimal HTML escape for option labels. */
-function escLayout(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 interface BuilderCell {
@@ -694,8 +554,7 @@ async function loadLayouts() {
 
 function renderLayoutsList() {
   const query = layoutSearchInput.value.trim().toLowerCase();
-  const bySpace = layoutSpaceFilter ? allLayouts.filter((l) => cardSpace(l) === layoutSpaceFilter) : allLayouts;
-  const filtered = query ? bySpace.filter((l) => l.name.toLowerCase().includes(query)) : bySpace;
+  const filtered = query ? allLayouts.filter((l) => l.name.toLowerCase().includes(query)) : allLayouts;
 
   // Same tile grid as the Apps/Connections pages (.app-list-wrap .app-grid).
   // Preserve the hidden state — async icon re-renders must not pop the list
@@ -717,22 +576,14 @@ function renderLayoutsList() {
   layoutsPage = state.page;
 
   // Cards mirror the command center's layout tiles: a geometric mini-grid
-  // preview (no app icons) + the name. One visual language across surfaces —
-  // including the SPACE badge (which agent rides the layout).
+  // preview (no app icons) + the name. One visual language across surfaces.
   const grid = document.createElement("div");
   grid.className = "cc-layouts layouts-page-grid";
   for (const layout of layouts) {
     const card = document.createElement("div");
     card.className = "cc-layout-card";
-    const space = cardSpace(layout);
-    const chosen = explicitSpace(layout);
-    const badgeTitle = chosen ? `${SPACE_LABEL[chosen]} layout` : `Auto — opens as ${SPACE_LABEL[space]}`;
-    const badgeGlyph = chosen ? SPACE_GLYPH_SVG[chosen] : AUTO_GLYPH_SVG;
     card.innerHTML =
       `${layoutMini(layout)}` +
-      `<span class="cc-card-space" title="${badgeTitle}">` +
-      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${badgeGlyph}</svg>` +
-      `</span>` +
       `<span class="cc-card-name"></span>`;
     card.querySelector(".cc-card-name")!.textContent = layout.name;
     // The Layouts page is for EDITING — the left-rail Layouts tiles open them.
@@ -787,22 +638,7 @@ async function editLayout(name: string) {
   gridColsSelect.value = String(builderCols);
   gridRowsSelect.value = String(builderRows);
   if (folderModeSelect) folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
-  if (layoutSessionSelect) {
-    const sm = (layout as { sessionMode?: string })?.sessionMode;
-    layoutSessionSelect.value = sm === "new" || sm === "last" ? sm : "keep";
-  }
-  if (layoutSpaceSelect) {
-    const sp = (layout as { space?: string | null })?.space;
-    layoutSpaceSelect.value = sp === "chat" || sp === "cowork" || sp === "code" ? sp : "";
-    paintLayoutSpaceTabs();
-  }
   if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
-  // Loop + models this layout activates on open.
-  builderLoop = (layout as { loop?: string })?.loop ?? "";
-  builderModelSelections = { ...((layout as { modelSelections?: Record<string, string> })?.modelSelections ?? {}) };
-  await ensureLoopOptions();
-  if (layoutLoopSelect) layoutLoopSelect.value = builderLoop;
-  void renderLoopModels();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
   document.getElementById("layout-open-btn")?.classList.remove("hidden");
@@ -826,12 +662,7 @@ async function newLayout() {
   gridColsSelect.value = "2";
   gridRowsSelect.value = "1";
   if (folderModeSelect) folderModeSelect.value = "single";
-  if (layoutSessionSelect) layoutSessionSelect.value = "keep";
-  if (layoutSpaceSelect) { layoutSpaceSelect.value = ""; paintLayoutSpaceTabs(); }
   if (layoutFolderInput) layoutFolderInput.value = "";
-  builderLoop = "";
-  builderModelSelections = {};
-  void ensureLoopOptions().then(() => { if (layoutLoopSelect) layoutLoopSelect.value = ""; void renderLoopModels(); });
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
   document.getElementById("layout-open-btn")?.classList.add("hidden");
@@ -895,9 +726,6 @@ async function saveLayout() {
     layoutFormError.classList.remove("hidden");
     return;
   }
-  // Only keep model picks for slots the chosen loop still declares — a stale
-  // pick from a loop the user switched away from must not ride along.
-  const selections = builderLoop ? builderModelSelections : {};
   // An EDITED layout invalidates its remembered arrangement — the workbench's
   // named-layout snapshot recalls the OLD geometry whenever the panel set is
   // unchanged, which is exactly the common edit (resize rows/cols, re-place
@@ -915,13 +743,7 @@ async function saveLayout() {
     rowHeights: Array(builderRows).fill(1 / builderRows),
     cells: assignedCells,
     folderMode,
-    ...(builderLoop ? { loop: builderLoop } : {}),
-    ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
-    sessionMode: (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last"
-      ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
     folder: layoutFolderInput?.value.trim() || null,
-    ...(layoutSpaceSelect?.value === "chat" || layoutSpaceSelect?.value === "cowork" || layoutSpaceSelect?.value === "code"
-      ? { space: layoutSpaceSelect.value as "chat" | "cowork" | "code" } : {}),
   });
   cancelLayout();
   // Settle pass: re-pull once the server write has certainly landed, so the
@@ -967,14 +789,6 @@ export function initLayoutsEvents() {
     void openLayoutInWorkbench(editingLayoutName);
   });
   layoutSearchInput.addEventListener("input", () => { layoutsPage = 0; renderLayoutsList(); });
-
-  // Loop picker: switching loops clears the old loop's model picks (its slots
-  // don't apply to the new program) and re-renders the per-slot dropdowns.
-  layoutLoopSelect?.addEventListener("change", () => {
-    builderLoop = layoutLoopSelect.value;
-    builderModelSelections = {};
-    void renderLoopModels();
-  });
 
   // Grid builder dimension controls
   gridColsSelect.addEventListener("change", () => {

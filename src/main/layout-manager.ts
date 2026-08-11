@@ -29,22 +29,9 @@ export interface ServerLayout {
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
   glyphh?: GlyphhPlacement;
-  /** The loop this layout activates on open — its program AND its models. Absent
-   *  → the layout has no opinion; the active loop stays as-is. */
-  loop?: string;
-  /** For that loop: role → catalog model id. Binds each of the loop's slots to a
-   *  model when the layout opens. Empty/absent → the loop's own defaults stand. */
-  modelSelections?: Record<string, string>;
-  /** What the agent's session does when this layout opens: keep the current
-   *  one (default), start fresh, or resume the layout's own last session. */
-  sessionMode?: "keep" | "new" | "last";
   /** Opening this layout switches the agent to this folder. Absent → the
    *  current working folder stays. */
   folder?: string;
-  /** The SPACE this layout belongs to — which agent rides it (chat | cowork |
-   *  code). Absent → derived from content (dev tool panels ⇒ code, else
-   *  cowork). One layout, one space: dual use means two layouts. */
-  space?: "chat" | "cowork" | "code";
 }
 
 const LAYOUTS_CACHE_KEY = "/api/layouts";
@@ -67,13 +54,7 @@ export function fetchServerLayouts(): Promise<ServerLayout[]> {
         folderMode: data.folderMode === "multi" ? "multi" : "single",
         target: data.target === "desktop" ? "desktop" : "glyphh",
         ...(data.glyphh && typeof data.glyphh === "object" ? { glyphh: data.glyphh as GlyphhPlacement } : {}),
-        ...(typeof data.loop === "string" && data.loop ? { loop: data.loop } : {}),
-        ...(data.sessionMode === "new" || data.sessionMode === "last" ? { sessionMode: data.sessionMode } : {}),
         ...(typeof data.folder === "string" && data.folder ? { folder: data.folder } : {}),
-        ...(data.space === "chat" || data.space === "cowork" || data.space === "code" ? { space: data.space } : {}),
-        ...(data.modelSelections && typeof data.modelSelections === "object"
-          ? { modelSelections: data.modelSelections as Record<string, string> }
-          : {}),
       });
     }
     return layouts;
@@ -120,17 +101,8 @@ export interface GridLayout {
   target?: "glyphh" | "desktop";
   /** Desktop layouts: where Glyphh itself sits (rail/left/right/none). */
   glyphh?: GlyphhPlacement;
-  /** The loop this layout activates on open — its program AND its models. */
-  loop?: string;
-  /** For that loop: role → catalog model id. */
-  modelSelections?: Record<string, string>;
-  /** Session behavior on open: keep (default) | new | last. */
-  sessionMode?: "keep" | "new" | "last";
   /** Folder the agent switches to on open. */
   folder?: string;
-  /** The space this layout belongs to (chat | cowork | code). Absent →
-   *  derived from content at open time. */
-  space?: "chat" | "cowork" | "code";
 }
 
 // ── Legacy types (migration only) ───────────────────────────
@@ -232,11 +204,7 @@ export class LayoutManager {
       folderMode: sl.folderMode,
       target: sl.target,
       ...(sl.glyphh ? { glyphh: sl.glyphh } : {}),
-      ...(sl.loop ? { loop: sl.loop } : {}),
-      ...(sl.modelSelections ? { modelSelections: sl.modelSelections } : {}),
-      ...(sl.sessionMode ? { sessionMode: sl.sessionMode } : {}),
       ...(sl.folder ? { folder: sl.folder } : {}),
-      ...(sl.space ? { space: sl.space } : {}),
     };
   }
 
@@ -250,11 +218,7 @@ export class LayoutManager {
       folderMode: grid.folderMode ?? "single",
       target: grid.target ?? "glyphh",
       ...(grid.glyphh ? { glyphh: grid.glyphh } : {}),
-      ...(grid.loop ? { loop: grid.loop } : {}),
-      ...(grid.modelSelections && Object.keys(grid.modelSelections).length ? { modelSelections: grid.modelSelections } : {}),
-      ...(grid.sessionMode && grid.sessionMode !== "keep" ? { sessionMode: grid.sessionMode } : {}),
       ...(grid.folder ? { folder: grid.folder } : {}),
-      ...(grid.space ? { space: grid.space } : {}),
     };
     const id = this.serverIds.get(grid.name);
     const saved = await getClient().layouts.save({ name: grid.name, data: body, ...(id ? { id } : {}) });

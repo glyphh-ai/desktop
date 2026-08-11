@@ -3,11 +3,6 @@
           <div id="layouts-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 5 layouts. <a id="layouts-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
           <div id="layouts-toolbar" class="crud-toolbar">
             <input id="layout-search" type="text" class="crud-search" placeholder="Search layouts..." spellcheck="false" autocomplete="off" />
-            <span class="layout-filter-wrap">
-              <button id="layout-space-filter" class="code-icon-btn" title="Filter by space" type="button">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-              </button>
-            </span>
             <button id="layout-new-btn" class="action-btn primary">+ New</button>
           </div>
           <div id="layouts-list" class="crud-cards"></div>
@@ -24,20 +19,7 @@
             </div>
             <div class="app-builder-split">
             <div class="app-builder-controls">
-            <!-- WHICH AGENT rides this layout — the same three tabs the rail
-                 uses. Opening the layout loads that agent; Auto derives it
-                 from the panels (dev tools ⇒ Code). -->
-            <label class="settings-label">Agent</label>
-            <div class="settings-hint" style="margin:-2px 0 8px;">Which agent opens with this layout.</div>
-            <div class="layout-space-tabs" role="tablist" aria-label="Agent">
-              <button type="button" class="code-space-opt" data-space="chat">Chat</button>
-              <button type="button" class="code-space-opt" data-space="cowork">Work</button>
-              <button type="button" class="code-space-opt" data-space="code">Code</button>
-              <button type="button" class="code-space-opt" data-space="">Auto</button>
-            </div>
-            <input type="hidden" id="layout-space" value="" />
-
-            <label class="settings-label" style="margin-top:16px;">Name</label>
+            <label class="settings-label">Name</label>
             <input id="layout-new-name" type="text" class="settings-input" placeholder="layout name" spellcheck="false" autocomplete="off" />
 
             <label class="settings-label" style="margin-top:8px;">Grid</label>
@@ -53,21 +35,6 @@
               <div id="grid-preview"></div>
             </div>
 
-
-            <label class="settings-label" style="margin-top:16px;">Loop &amp; models</label>
-            <div class="settings-hint" style="margin:-2px 0 8px;">Opening this layout switches to this loop and binds its models. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>
-            <div id="layout-loop-row" class="layout-loop-row">
-              <select id="layout-loop-select" class="settings-input"></select>
-              <div id="layout-loop-models" class="layout-loop-models"></div>
-            </div>
-
-            <label class="settings-label" style="margin-top:16px;">Agent session</label>
-            <div class="settings-hint" style="margin:-2px 0 8px;">What the agent&rsquo;s session does when this layout opens.</div>
-            <select id="layout-session-mode" class="settings-input">
-              <option value="keep">Keep the current session</option>
-              <option value="new">Start a new session</option>
-              <option value="last">Resume this layout&rsquo;s last session</option>
-            </select>
 
             <label class="settings-label" style="margin-top:16px;">Working folder</label>
             <div class="settings-hint" style="margin:-2px 0 8px;">Opening this layout switches the agent to this folder. Leave empty to keep the current folder.</div>
