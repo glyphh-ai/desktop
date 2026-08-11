@@ -14888,7 +14888,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* + New session IS the theme's primary button (.btn .btn-primary). Keep it a
    content-width pill — align-self:flex-start stops the rail's stretch from
    blowing it edge-to-edge. */
-.code-new-session-rail { margin: 12px 10px 8px; align-self: flex-start; }
+.code-new-session-rail { margin: 4px 10px 10px; align-self: center; }
 
 .code-rail-label {
   padding: 12px 14px 6px;
