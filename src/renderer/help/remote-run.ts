@@ -431,6 +431,10 @@ export async function runRemoteTurn(
   // on-machine run, a synthetic api binding for the front door (no pod url to hold).
   chat.runtime = isLocal ? RELAY_RUNTIME(chat) : { sessionId: chat.id, url: "api", token: "api" };
   const workdir = chat.source?.kind === "local" ? chat.source.path : undefined;
+  // The session's GitHub repo — the cloud workspace's SOURCE. The pod tells
+  // the agent and instructs clone-if-absent, so "clone the repo" needs no
+  // follow-up question.
+  const repo = chat.source?.kind === "cloud-repo" ? String((chat.source as { repo?: string }).repo || "") : "";
 
   let run: HarnessRunHandle;
   try {
@@ -440,6 +444,7 @@ export async function runRemoteTurn(
       threadId: chat.id, // stable chat id → transcript + memory scope
       mode: modeFor(chat),
       ...(workdir ? { workdir } : {}),
+      ...(repo ? { repo } : {}),
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.permission ? { permission: opts.permission } : {}),
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
