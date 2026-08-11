@@ -164,10 +164,10 @@ const server = http.createServer(async (req, res) => {
   // whether the top band is the app's doing or the browser's.
   if (new URL(req.url, 'http://x').pathname === '/bare') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>bare</title></head>'
+    res.end('<!doctype html><html>'
       + '<body style="margin:0;background:#d33;color:#fff;font:16px monospace">'
       + '<div style="height:44px;background:#2a2;display:flex;align-items:center;padding-left:12px">TOP OF PAGE — this green row is y=0</div>'
-      + '<p style="padding:12px">If a dark band sits between the browser toolbar and the green row, the browser put it there. If green touches the toolbar, the app was doing it.</p>'
+      + '<p style="padding:12px">No head at all — no viewport meta, no title.</p>'
       + '</body></html>');
     return;
   }
