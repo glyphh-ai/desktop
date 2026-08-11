@@ -3984,6 +3984,26 @@ export function initCode(): void {
     pendingWorkdir = "";
     sourceChip?.setSource(activeSource());
     paintSourceDependents();
+    // WEB: the boot-time default is stale the moment the desktop attaches or
+    // drops — re-resolve LIVE so a clean session lands on the machine when one
+    // is reachable now, and on cloud-new (no folder, no repo) when not.
+    if (onWebTarget()) {
+      void (async () => {
+        let attached = false;
+        try {
+          const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean }> } } }).glyphhSdk?.attach?.status?.();
+          attached = !!st?.attached;
+        } catch { /* unreachable → cloud */ }
+        const next: Source = attached ? { kind: "local", path: "" } : { kind: "cloud-new" };
+        resolvedDefaultSource = { ...next };
+        // Only apply while the slate is still clean (the user may have picked).
+        if (!current() && !pendingWorkdir) {
+          pendingSource = { ...next };
+          sourceChip?.setSource(activeSource());
+          paintSourceDependents();
+        }
+      })();
+    }
     void saveStore();
     syncSpaceAttrs();
     // CLOSE EVERYTHING FIRST: every open card, panel and layout goes, then the
