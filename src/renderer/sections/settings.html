@@ -31,6 +31,8 @@
             <div class="settings-panels">
 
               <div class="settings-panel active" data-sub="general">
+                <h2>General</h2>
+                <p class="section-desc">App-wide preferences.</p>
                 <div class="settings-form">
                   <label class="settings-label">Compaction guidance <span id="glyphh-agent-compact-status" class="set-save-state"></span></label>
                   <textarea id="glyphh-agent-compact-prompt" class="settings-input" rows="4" spellcheck="false" placeholder="e.g. Always keep API decisions, file paths, and open bugs."></textarea>
@@ -193,6 +195,8 @@
     </div>
               </div>
               <div class="settings-panel" data-sub="appearance">
+                <h2>Appearance</h2>
+                <p class="section-desc">Customize the workspace interface.</p>
                 <h3 class="settings-subheading" style="margin-top:0;">Theme</h3>
                 <div id="theme-picker" class="theme-picker">
                   <button class="theme-option active" data-theme="dark">
@@ -290,6 +294,8 @@
                    section is folded in for org admins (it is the same record
                    the identity chip names); members never see it. -->
               <div class="settings-panel" data-sub="account">
+                <h2>Account</h2>
+                <p class="section-desc">Who you are across Glyphh — your profile, your sign-in, and the plan you are on.</p>
                 <div class="acct-identity">
                   <div class="acct-id-face">
                     <!-- Initials carry the slot until an avatar resolves, so the
@@ -989,6 +995,8 @@
               </div>
 
               <div class="settings-panel" data-sub="drips">
+                <h2>Drips</h2>
+                <p class="section-desc">Celebration effects — play them by hand or from an agent run.</p>
           <div id="drips-upgrade-gate" class="hidden" style="padding:24px 0;">
             <p style="color:var(--text-2);font-size:14px;margin:0 0 12px;">Custom drips require a Basic or Advanced subscription.</p>
             <button id="drips-upgrade-btn" class="action-btn primary">Upgrade to Basic</button>
@@ -1091,6 +1099,8 @@
                    + New right) over the list; + New opens the inline create
                    form with a breadcrumb back, apps-style. -->
               <div class="settings-panel" data-sub="apikeys">
+                <h2>API Keys</h2>
+                <p class="section-desc">Personal keys for headless SDK/CLI use — pass one as <code>apiKey</code> to authenticate as you. The token is shown once on creation.</p>
                 <div id="apikeys-error" class="settings-error hidden"></div>
 
                 <div id="apikeys-list-view">
