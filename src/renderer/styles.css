@@ -14815,10 +14815,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 
 #app-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
 
-/* + New session IS the theme's primary button — markup carries
-   `.btn .btn-primary .btn-full` (home.template.html); this only positions it
-   in the rail. */
-.code-new-session-rail { margin: 12px 10px 6px; }
+/* + New session IS the theme's primary button (.btn .btn-primary). Keep it a
+   content-width pill — align-self:flex-start stops the rail's stretch from
+   blowing it edge-to-edge. */
+.code-new-session-rail { margin: 12px 10px 8px; align-self: flex-start; }
 
 .code-rail-label {
   padding: 12px 14px 6px;

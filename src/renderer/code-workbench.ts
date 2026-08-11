@@ -1997,9 +1997,9 @@ async function init(): Promise<void> {
       // the + New Session landing. It is not an installed app — it can't be
       // reordered out of first place, edited, or deleted (no app row backs it).
       const glyphhTile: EchoTile = {
-        name: "Home",
+        name: "New session",
         slug: "glyphh-home",
-        iconUrl: "brand/glyphh-mark.png",
+        iconUrl: "brand/glyphh-mark-purple.png",
         kind: "app",
         sticky: true,
       };

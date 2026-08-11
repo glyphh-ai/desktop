@@ -4034,7 +4034,9 @@ export function initCode(): void {
     requestAnimationFrame(() => syncDashParticles());
   };
   el("rail-home-btn")?.addEventListener("click", goHome);
-  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = goHome;
+  // The GLYPHH icon (command-center tile + rail home tile) opens the NEW SESSION
+  // screen — same as the rail's + New Session — not the dashboard.
+  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionLanding;
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.
