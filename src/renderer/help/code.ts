@@ -1307,11 +1307,15 @@ async function deleteChat(chat: CodeChat): Promise<void> {
   chats = chats.filter((x) => x.id !== chat.id);
   // A deleted session can never be the resume target again.
   if (lastSession === chat.id) forgetCurrentSession();
-  if (currentId === chat.id) currentId = chats[0]?.id || "";
+  const wasCurrent = currentId === chat.id;
+  if (wasCurrent) currentId = "";
   threadStore.remove(chat.id); // server tombstone (offline-safe)
   void saveStore();
   renderHistory();
   renderThread();
+  // Deleting the session you were IN lands on a fresh + New Session screen —
+  // never a surprise jump into some other session.
+  if (wasCurrent) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
 }
 
 let menuEl: HTMLDivElement | null = null;
