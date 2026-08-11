@@ -353,12 +353,13 @@ function normalizeMsg(m: ThreadMsg, i: number): Message {
    Spaces are gone — there is no Chat/Work/Code tab. The rail is just the one
    primary action, the recents list, and a single Connections shortcut (which
    opens the Settings modal on its Connections tray — the page stays in settings). */
-function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onConnections, onApps, user }: {
+function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onArtifacts, onConnections, onApps, user }: {
   onOpenRecent: (r: Recent) => void;
   recents: Recent[];
   onAllSessions: () => void;
   onAccount: () => void;
   onNewSession: () => void;
+  onArtifacts: () => void;
   onConnections: () => void;
   onApps: () => void;
   user: DisplayUser;
@@ -378,6 +379,11 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
       {/* Connections — the one rail destination (opens Settings → Connections),
           directly under New Session and above Recents. */}
       <nav className="m-rail-nav">
+        {/* Artifacts first — the desktop rail's order (Artifacts → Connections → Apps). */}
+        <button className="m-nav-item" onClick={onArtifacts}>
+          <Icon name="filedoc" />
+          <span>Artifacts</span>
+        </button>
         <button className="m-nav-item" onClick={onConnections}>
           <Icon name="link" />
           <span>Connections</span>
@@ -3596,6 +3602,7 @@ function App() {
   const openRecent = (r: Recent) => openSession(r);
   const allSessionsList = () => { haptic(); setScreen('list'); setDrawer(false); };
   const openConnections = () => { haptic(); setSettingsSub('connections'); setSettings(true); };
+  const openArtifacts = () => { haptic(); setSettingsSub('artifacts'); setSettings(true); };
   const openApps = () => { haptic(); setAppsOpen(true); };
   const openAppTray = (a: AppItem) => { haptic(); setAppsOpen(false); setTrayApp(a); };
   /** Agent-push: the running turn opened an app panel on the desktop (open_app /
@@ -3733,7 +3740,7 @@ function App() {
       {authState === 'in' && (
       <>
       <div className="m-shell">
-        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onConnections={openConnections} onApps={openApps} user={user} />
+        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onArtifacts={openArtifacts} onConnections={openConnections} onApps={openApps} user={user} />
         <main className="m-main">
           {(screen === 'list' || screen === 'session') && (
             <div className="m-nav" data-screen={screen} data-noanim={navNoAnimRef.current ? 'true' : 'false'} ref={() => { navNoAnimRef.current = false; }}>
