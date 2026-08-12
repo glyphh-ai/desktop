@@ -128,8 +128,28 @@ export function mountLogin(deps) {
 
   const render = () => {
     step.innerHTML = '';
-    step.append(el('h1', 'auth-shell-title', deps.title || 'Sign in'));
-    step.append(el('p', 'auth-shell-lede', deps.lede || 'Enter your email for a magic link, or continue with a provider.'));
+    if (deps.title) {
+      // OVERRIDDEN heading (the device-approval page) keeps its own title + lede.
+      step.append(el('h1', 'auth-shell-title', deps.title));
+      step.append(el('p', 'auth-shell-lede', deps.lede || 'Enter your email for a magic link, or continue with a provider.'));
+    } else {
+      // The LOGIN landing: the product headline, the desktop download card,
+      // then the form itself — no "Sign in" title, no instructional lede.
+      step.append(el('h1', 'auth-shell-title', 'A New Way of Working with AI'));
+      const card = doc.createElement('a');
+      card.className = 'auth-download-card';
+      card.href = 'https://github.com/glyphh-ai/glyphh-releases/releases/latest';
+      card.target = '_blank';
+      card.rel = 'noopener';
+      const ic = doc.createElement('span');
+      ic.className = 'auth-download-ic';
+      ic.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+      const txt = el('span', 'auth-download-copy');
+      txt.append(el('strong', 'auth-download-title', 'Get the desktop app'));
+      txt.append(el('span', 'auth-download-sub', 'The full workspace on your machine — macOS, free.'));
+      card.append(ic, txt);
+      step.append(card);
+    }
     if (deps.intro) step.append(deps.intro(doc));
 
     let loading = '';

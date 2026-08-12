@@ -857,6 +857,35 @@ body {
   margin-bottom: 0.75rem;
 }
 
+/* The desktop-download card between the headline and the form — token-driven
+   so it sits naturally on the login's fixed ground. */
+#onboarding-overlay .auth-download-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 18px 0 26px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+#onboarding-overlay .auth-download-card:hover {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+#onboarding-overlay .auth-download-ic {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--accent-text, var(--accent));
+}
+#onboarding-overlay .auth-download-ic svg { width: 22px; height: 22px; }
+#onboarding-overlay .auth-download-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#onboarding-overlay .auth-download-title { font-size: 14px; font-weight: 600; color: var(--white); }
+#onboarding-overlay .auth-download-sub { font-size: 12.5px; color: var(--text-2); }
+
 #onboarding-overlay .auth-shell-lede {
   font-size: 0.9375rem;
   color: var(--text-2);
