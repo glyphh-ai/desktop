@@ -1001,10 +1001,14 @@ body {
 }
 
 #onboarding-overlay .auth-shell-legal {
-  margin-top: 2rem;
+  /* Snug under the button (was 2rem — read as detached) and centered,
+     mirroring the homepage's legal-line placement. Colors are the homepage's
+     exact rules already (text-3 body / text-2 links / white hover). */
+  margin-top: 0.875rem;
   font-size: 0.75rem;
   color: var(--text-3);
   line-height: 1.6;
+  text-align: center;
 }
 #onboarding-overlay .auth-shell-legal a {
   color: var(--text-2);
