@@ -893,7 +893,7 @@ body {
 html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data-theme="github"],
   [data-theme="highvis"], [data-theme="chatgpt"], [data-theme="gemini"], [data-theme="dracula"],
   [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) #onboarding-overlay .auth-download-ic { background: #fff; }
-#onboarding-overlay .auth-download-ic img { width: 33px; height: 33px; object-fit: contain; }
+#onboarding-overlay .auth-download-ic img { width: 38px; height: 38px; object-fit: contain; }
 #onboarding-overlay .auth-download-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 #onboarding-overlay .auth-download-title { font-size: 14px; font-weight: 600; color: var(--white); }
 #onboarding-overlay .auth-download-sub { font-size: 12.5px; color: var(--text-2); }
@@ -1017,7 +1017,7 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   /* Snug under the button (was 2rem — read as detached) and centered,
      mirroring the homepage's legal-line placement. Colors are the homepage's
      exact rules already (text-3 body / text-2 links / white hover). */
-  margin-top: 0.875rem;
+  margin-top: 0.5rem;
   font-size: 0.75rem;
   color: var(--text-3);
   line-height: 1.6;
