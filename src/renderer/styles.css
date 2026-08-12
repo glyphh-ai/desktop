@@ -681,18 +681,20 @@ body {
   align-items: center;
   justify-content: center;
 }
-/* ── Hero footage: a PADDED, CENTERED portrait card (not full-bleed) —
-   height-driven, width follows the footage's own ratio, both capped so the
-   frame never touches the panel edges. Invisible until it has real frames;
+/* ── Hero footage: a PADDED, CENTERED **LANDSCAPE** card (not full-bleed,
+   not the old portrait sliver that read as a phone). Width-driven with a
+   16:10 frame, capped so it never touches the panel edges; portrait footage
+   center-crops into it via object-fit. Invisible until it has real frames;
    the probe script removes it on error. The whole panel disappears under
-   980px, so mobile never letterboxes a portrait sliver. */
+   980px, so mobile never letterboxes a sliver. */
 .auth-muse-video {
   position: absolute;
   inset: 0;
   margin: auto;
-  width: auto;
-  height: calc(100% - 96px);
-  max-width: calc(100% - 96px);
+  width: min(calc(100% - 96px), 920px);
+  height: auto;
+  aspect-ratio: 16 / 10;
+  max-height: calc(100% - 96px);
   object-fit: cover;
   border-radius: 16px;
   box-shadow: 0 18px 50px var(--shadow);
@@ -855,7 +857,10 @@ body {
   line-height: 1.1;
   color: var(--white);
   margin-bottom: 0.75rem;
+  /* The headline (and its lede, below) sit CENTERED in the login column. */
+  text-align: center;
 }
+#onboarding-overlay .auth-shell-lede { text-align: center; }
 
 /* The desktop-download card between the headline and the form — token-driven
    so it sits naturally on the login's fixed ground. */

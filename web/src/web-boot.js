@@ -54,17 +54,11 @@ function goHome() {
   catch { window.location.href = HOME_PATH; }
 }
 
-/** Fade the splash out (mirrors boot-gate-ui.ts finishSplash), respecting a
- *  minimum on-screen time so it never flashes. */
-function dismissSplash(shownAt) {
-  const splash = document.getElementById('splash');
-  if (!splash) return;
-  const finish = () => {
-    splash.classList.add('fade-out');
-    setTimeout(() => splash.remove(), 600);
-  };
-  const elapsed = Date.now() - (shownAt || 0);
-  setTimeout(finish, Math.max(0, SPLASH_MIN_MS - elapsed));
+/** app-web has NO splash beat — the login/app paints immediately. The splash
+ *  markup still exists in the shell (desktop uses it), so remove it the moment
+ *  boot runs; every dismissSplash call site collapses to this same removal. */
+function dismissSplash() {
+  document.getElementById('splash')?.remove();
 }
 
 /** Paint a status line on the splash while we resolve auth / exchange a code. */
@@ -285,7 +279,7 @@ export async function startWebBoot(overrides = {}) {
   const isAuthed = overrides.isAuthenticated || isAuthenticated;
   const loginShell = overrides.isLoginShell ? overrides.isLoginShell() : isLoginShell();
 
-  splashStatus('Loading…');
+  dismissSplash(); // no splash on app-web — straight to the surface
   let authed = false;
   try {
     authed = await isAuthed();
@@ -317,7 +311,7 @@ export async function startWebBoot(overrides = {}) {
       };
       setTimeout(tick, 4000);
     });
-    splashStatus('Loading…');
+    dismissSplash(); // no splash on app-web — straight to the surface
     // The outage may have been an expired-session refresh failure too — redo
     // the presence check now that the server answers.
     try { authed = await isAuthed(); } catch { authed = false; }
