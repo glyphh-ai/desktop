@@ -320,7 +320,7 @@ function defaultLoopSlug(loops: LoopItem[]): string {
    session; there is no Chat/Work/Code bucketing anymore (spaces are gone). The
    `mode` field is still written as "code" for server compatibility, but nothing
    here branches on it. ────── */
-interface ThreadMeta { id: string; title: string; mode?: string; createdAt: number; updatedAt: number; messageCount: number; }
+interface ThreadMeta { id: string; title: string; mode?: string; source?: { kind?: string; path?: string; machineId?: string } | null; createdAt: number; updatedAt: number; messageCount: number; }
 interface ThreadMsg { role: string; text?: string; [k: string]: unknown; }
 
 /** Relative "when" label from an epoch-ms timestamp (now / 2h / Yesterday / Aug 1). */
@@ -353,13 +353,15 @@ function normalizeMsg(m: ThreadMsg, i: number): Message {
    Spaces are gone — there is no Chat/Work/Code tab. The rail is just the one
    primary action, the recents list, and a single Connections shortcut (which
    opens the Settings modal on its Connections tray — the page stays in settings). */
-function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onArtifacts, onConnections, onApps, user }: {
+function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onArtifacts, onConnections, onApps, user, iconOf }: {
   onOpenRecent: (r: Recent) => void;
   recents: Recent[];
   onAllSessions: () => void;
   onAccount: () => void;
   onNewSession: () => void;
   onArtifacts: () => void;
+  /** The session's locus glyph — the same laptop/cloud the All Sessions list shows. */
+  iconOf?: (id: string) => 'laptop' | 'cloud';
   onConnections: () => void;
   onApps: () => void;
   user: DisplayUser;
@@ -400,6 +402,7 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
         <div className="m-recents-list">
           {recents.map((r) => (
             <button key={r.id} className="m-recent" onClick={() => onOpenRecent(r)}>
+              {iconOf && <span className="m-recent-locus"><Icon name={iconOf(r.id)} /></span>}
               <span className="m-recent-title">{r.title}</span>
             </button>
           ))}
@@ -3622,6 +3625,17 @@ function App() {
       const connected = desktops.some((d) => (d.name || d.app) === l.machineName);
       return { local: true, name: l.machineName || 'Local machine', connected };
     }
+    // Sessions born on OTHER surfaces never touch this device's locus store —
+    // but their SOURCE syncs with the thread (thread-store → server). A local
+    // source classifies by it; connected = its machine (by id when stamped,
+    // else any) is attached right now.
+    if (!l) {
+      const src = (threads ?? []).find((t) => t.id === id)?.source;
+      if (src && src.kind === 'local') {
+        const d = src.machineId ? desktops.find((x) => x.id === src.machineId) : desktops[0];
+        return { local: true, name: d?.name || d?.app || 'Desktop', connected: !!d };
+      }
+    }
     return { local: false, connected: activity[id] === 'working' || activity[id] === 'waiting' };
   };
 
@@ -3768,7 +3782,7 @@ function App() {
       {authState === 'in' && (
       <>
       <div className="m-shell">
-        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onArtifacts={openArtifacts} onConnections={openConnections} onApps={openApps} user={user} />
+        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onArtifacts={openArtifacts} onConnections={openConnections} onApps={openApps} user={user} iconOf={(id) => (sourceOf(id).local ? 'laptop' : 'cloud')} />
         <main className="m-main">
           {(screen === 'list' || screen === 'session') && (
             <div className="m-nav" data-screen={screen} data-noanim={navNoAnimRef.current ? 'true' : 'false'} ref={() => { navNoAnimRef.current = false; }}>

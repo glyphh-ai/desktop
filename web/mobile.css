@@ -235,6 +235,10 @@ body {
   text-align: left;
   cursor: pointer;
 }
+/* The session's locus glyph beside its title (same laptop/cloud as All Sessions). */
+.m-recent-locus { display: inline-flex; flex: 0 0 auto; color: var(--text-3); margin-right: 7px; }
+.m-recent-locus svg { width: 13px; height: 13px; }
+
 .m-recent:hover { background: var(--hover); }
 .m-recent-title {
   font: 600 22px/1.3 var(--font-sans);
