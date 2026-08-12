@@ -673,35 +673,20 @@ body {
   grid-column: 2;
   position: relative;
   overflow: hidden;
-  /* deep violet-black ground with a center glow the copy floats in, plus a
-     faint punch-card dot lattice (Jacquard nod) under the threads */
-  background:
-    radial-gradient(1.5px 1.5px at 13px 13px, rgba(185, 117, 249, 0.10) 1px, transparent 1.5px),
-    radial-gradient(60% 55% at 50% 46%, rgba(140, 59, 242, 0.16), transparent 70%),
-    linear-gradient(165deg, #141218 0%, #0f0e13 55%, #131019 100%);
-  background-size: 26px 26px, 100% 100%, 100% 100%;
-  border-left: 1px solid var(--border);
+  /* NO fallback treatment and NO seam: the right side is the same ground as
+     the login column, with the hero footage floating as a centered card.
+     Footage absent/failed → just the matching background. */
+  background: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
 }
-/* Vignette above the weave, below the words — keeps edges quiet. */
-.auth-muse::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  box-shadow: inset 0 0 140px 40px rgba(10, 9, 13, 0.85);
-}
-/* ── Hero footage (claude.ai-style full-height video panel; platform 4ddb46d) ──
-   The video fills the panel edge-to-edge; invisible until it has frames, so
-   the muse treatment beneath IS the panel whenever the footage is absent or
-   still loading — both states look intentional. The whole panel already
-   disappears under 980px, so mobile never letterboxes a portrait sliver. */
+/* ── Hero footage: a PADDED, CENTERED portrait card (not full-bleed) —
+   height-driven, width follows the footage's own ratio, both capped so the
+   frame never touches the panel edges. Invisible until it has real frames;
+   the probe script removes it on error. The whole panel disappears under
+   980px, so mobile never letterboxes a portrait sliver. */
 .auth-muse-video {
-  /* PADDED + CENTERED (not full-bleed): a portrait card floating on the
-     muse's woven ground — height-driven, width follows the footage's own
-     ratio, both capped so the frame never touches the panel edges. */
   position: absolute;
   inset: 0;
   margin: auto;
@@ -716,107 +701,6 @@ body {
   pointer-events: none;
 }
 .auth-muse.has-video .auth-muse-video { opacity: 1; }
-/* Footage on: the copy bows out; the WEAVE stays — it is the card's ground. */
-.auth-muse.has-video .auth-muse-copy {
-  opacity: 0;
-  transition: opacity 400ms ease;
-}
-.auth-muse-weave, .auth-muse-weave::before, .auth-muse-weave::after {
-  content: "";
-  position: absolute;
-  inset: -60%;
-}
-/* Warp + weft: two thread systems crossing at right angles, drifting slowly.
-   A third layer carries the "flowers and leaves" — soft radial blooms. */
-.auth-muse-weave {
-  background: repeating-linear-gradient(
-    100deg,
-    transparent 0 22px,
-    rgba(140, 59, 242, 0.12) 22px 23px,
-    transparent 23px 46px
-  );
-  animation: muse-warp 44s linear infinite;
-}
-.auth-muse-weave::before {
-  background: repeating-linear-gradient(
-    10deg,
-    transparent 0 34px,
-    rgba(185, 117, 249, 0.08) 34px 35px,
-    transparent 35px 70px
-  );
-  animation: muse-weft 58s linear infinite;
-}
-.auth-muse-weave::after {
-  background:
-    radial-gradient(340px 340px at 30% 28%, rgba(140, 59, 242, 0.22), transparent 65%),
-    radial-gradient(260px 260px at 72% 62%, rgba(236, 72, 153, 0.10), transparent 70%),
-    radial-gradient(200px 200px at 55% 85%, rgba(185, 117, 249, 0.12), transparent 70%);
-  animation: muse-bloom 36s ease-in-out infinite alternate;
-}
-@keyframes muse-warp  { to { transform: translate3d(6%, -4%, 0); } }
-@keyframes muse-weft  { to { transform: translate3d(-5%, 5%, 0); } }
-@keyframes muse-bloom { to { transform: translate3d(-3%, -5%, 0) scale(1.08); opacity: 0.85; } }
-@media (prefers-reduced-motion: reduce) {
-  .auth-muse-weave, .auth-muse-weave::before, .auth-muse-weave::after { animation: none; }
-}
-.auth-muse-copy {
-  position: relative;
-  z-index: 1;
-  padding: 48px;
-  max-width: 32rem;
-  text-align: center;
-}
-.auth-muse-eyebrow {
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 11px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--accent-text, #b975f9);
-}
-.auth-muse-quote {
-  margin: 22px 0 0;
-  font-size: 15.5px;
-  line-height: 1.7;
-  color: #cfcfcf;
-  font-style: italic;
-}
-/* a small woven divider between the quote and the title */
-.auth-muse-quote::after {
-  content: "";
-  display: block;
-  width: 72px;
-  height: 1px;
-  margin: 26px auto 0;
-  background: linear-gradient(to right, transparent, var(--accent, #8c3bf2), transparent);
-}
-.auth-muse-quote cite {
-  display: block;
-  margin-top: 8px;
-  font-style: normal;
-  font-size: 12px;
-  color: #808080;
-}
-.auth-muse-title {
-  margin: 28px 0 0;
-  font-size: 30px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  color: #ffffff;
-  text-wrap: balance;
-}
-.auth-muse-body {
-  margin: 12px 0 0;
-  font-size: 14.5px;
-  line-height: 1.7;
-  color: #a7a7a7;
-}
-.auth-muse-sign {
-  margin: 18px 0 0;
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 12.5px;
-  letter-spacing: 0.04em;
-  color: var(--accent-text, #b975f9);
-}
 @media (max-width: 979px) {
   #onboarding-overlay { grid-template-columns: 1fr; }
   .auth-muse { display: none; }
