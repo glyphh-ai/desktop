@@ -879,9 +879,8 @@ body {
 #onboarding-overlay .auth-download-ic {
   display: inline-flex;
   flex: 0 0 auto;
-  color: var(--accent-text, var(--accent));
 }
-#onboarding-overlay .auth-download-ic svg { width: 22px; height: 22px; }
+#onboarding-overlay .auth-download-ic img { width: 34px; height: 34px; object-fit: contain; }
 #onboarding-overlay .auth-download-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 #onboarding-overlay .auth-download-title { font-size: 14px; font-weight: 600; color: var(--white); }
 #onboarding-overlay .auth-download-sub { font-size: 12.5px; color: var(--text-2); }

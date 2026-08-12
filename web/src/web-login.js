@@ -143,7 +143,11 @@ export function mountLogin(deps) {
       card.rel = 'noopener';
       const ic = doc.createElement('span');
       ic.className = 'auth-download-ic';
-      ic.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+      // The APP'S OWN mark, not a generic arrow — the card advertises the app.
+      const mark = doc.createElement('img');
+      mark.src = 'brand/glyphh-mark.png';
+      mark.alt = '';
+      ic.append(mark);
       const txt = el('span', 'auth-download-copy');
       txt.append(el('strong', 'auth-download-title', 'Get the desktop app'));
       txt.append(el('span', 'auth-download-sub', 'The full workspace on your machine — macOS, free.'));
