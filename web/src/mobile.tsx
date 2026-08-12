@@ -617,7 +617,7 @@ function HomeList({ desktops, sessions, pinnedIds, loading, activity, sourceOf, 
                     return (
                       <span className="m-code-meta" data-where={info.connected ? 'connected' : 'off'}>
                         <Icon name={info.local ? 'laptop' : 'cloud'} />
-                        <span className="m-code-state">{info.connected ? 'Connected' : 'Disconnected'}</span>
+                        <span className="m-code-state">{info.local ? (info.connected ? 'Connected' : 'Disconnected') : (info.connected ? 'Running' : 'Ready')}</span>
                         <span className="m-code-loc">· {info.local ? info.name : 'Cloud'}</span>
                       </span>
                     );
@@ -3613,8 +3613,9 @@ function App() {
   const sessions = pinnedFirst(allSessions(threads));
   // Per-session meta: the IMMUTABLE locus (persisted — forever cloud or forever
   // THIS desktop) + a DYNAMIC status. Local is "connected" while its machine (matched
-  // by NAME, stable across reconnects) is attached; cloud is "connected" only while a
-  // turn is actively running (an idle cloud pod is ephemeral → disconnected).
+  // by NAME, stable across reconnects) is attached. Cloud sessions live on the
+  // ALWAYS-ON shared runtime with persistent workspaces (2026-08-11), so idle is
+  // "Ready", not disconnected; `connected` flags an actively running turn.
   const sourceOf = (id: string): { local: boolean; name?: string; connected: boolean } => {
     const l = locusOf(id);
     if (l?.kind === 'local') {
