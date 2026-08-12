@@ -227,9 +227,7 @@ export function mountLogin(deps) {
       }
     });
 
-    step.append(form);
-
-    // ── Google (GIS) — hidden when no client id is configured ────────────────
+    // ── Google (GIS) LEADS — social first, "or", then the email form ─────────
     if (deps.googleClientId) {
       const divider = el('div', 'auth-shell-divider');
       divider.append(el('span', undefined, 'or'));
@@ -241,7 +239,7 @@ export function mountLogin(deps) {
       face.append(googleG(), el('span', undefined, 'Continue with Google'));
       gWrap.append(gis, face);
       social.append(gWrap);
-      step.append(divider, social);
+      step.append(social, divider);
 
       renderGoogleButton(gis, deps.googleClientId, async (idToken) => {
         clearErrs();
@@ -264,6 +262,9 @@ export function mountLogin(deps) {
         console.warn('[web-login] Google sign-in disabled:', ex && ex.message);
       });
     }
+
+    // The email form follows Google (or stands alone when GIS is off).
+    step.append(form);
   };
 
   // The "check your email" state — the emailed link completes the sign-in on return.
