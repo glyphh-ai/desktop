@@ -339,6 +339,27 @@ function initSettings() {
     document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
   });
 
+  // WEB on a TOUCH device (tablet / iPad-as-Mac): the door back to the mobile
+  // app — the twin of mobile's Appearance → "Desktop site" toggle. Flipping it
+  // clears the glyphh_force_desktop escape hatch (which is what keeps a tablet
+  // pinned to this layout) and lands on /m. Hidden everywhere else: Electron
+  // has no mobile shell, and a fine-pointer desktop was never redirected.
+  {
+    const row = document.getElementById("settings-mobile-ui-row");
+    const toggle = document.getElementById("settings-mobile-ui") as HTMLInputElement | null;
+    const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+    let coarse = false;
+    try { coarse = window.matchMedia("(pointer: coarse)").matches; } catch { /* keep hidden */ }
+    if (row && toggle && onWeb && coarse) {
+      row.classList.remove("hidden");
+      toggle.addEventListener("change", () => {
+        if (!toggle.checked) return;
+        try { localStorage.removeItem("glyphh_force_desktop"); } catch { /* private mode */ }
+        window.location.href = "/m";
+      });
+    }
+  }
+
   // Relaunch button
   document.getElementById("settings-relaunch-btn")?.addEventListener("click", () => {
     window.glyphh.relaunch();
