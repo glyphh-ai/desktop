@@ -265,6 +265,7 @@ export function mountLogin(deps) {
 
     // The email form follows Google (or stands alone when GIS is off).
     step.append(form);
+    step.append(el('p', 'auth-shell-slogan', 'Challenge Everything!'));
   };
 
   // The "check your email" state — the emailed link completes the sign-in on return.

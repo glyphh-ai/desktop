@@ -1036,6 +1036,16 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
 }
 #onboarding-overlay .auth-shell-legal a:hover { color: var(--white); }
 
+/* The sign-off under the login — small, quiet, centered. */
+#onboarding-overlay .auth-shell-slogan {
+  margin-top: 1.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+  text-align: center;
+}
+
 /* Web login (web-login.js) appends the legal line INSIDE .auth-shell-form,
    whose 1.125rem flex gap stacks under the button before the margin even
    applies. Counteract the gap so it sits snug (net ~0.25rem), matching the
