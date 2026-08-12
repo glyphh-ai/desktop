@@ -43,7 +43,7 @@ interface FsListing { path: string; parent: string | null; root?: string; entrie
 
 interface SdkHandle {
   sessions?: { list?: () => Promise<unknown[]> };
-  git?: { status?: () => Promise<GitConnection>; repos?: () => Promise<Repo[]>; connect?: () => Promise<GitConnectLink> };
+  git?: { status?: () => Promise<GitConnection>; repos?: () => Promise<Repo[]>; connect?: () => Promise<GitConnectLink>; disconnect?: () => Promise<void> };
   attach?: { status?: () => Promise<AttachStatus>; fsList?: (path?: string) => Promise<FsListing>; dispatch?: (method: string, params?: Record<string, unknown>) => Promise<unknown> };
 }
 interface WbHandle {
@@ -643,6 +643,21 @@ function renderRepos(
       if (!st?.connected) return false;
       const repos = s.git!.repos ? await s.git!.repos() : [];
       paintRepos(Array.isArray(repos) ? repos : []);
+      // ── account rows under the list ─────────────────────────────────────
+      // A GitHub App only lists repos its INSTALLATION was granted — a short
+      // list is a grant question, not a bug, so say where to widen it. And
+      // the connection needs a door OUT (there was none anywhere).
+      const manage = drillItem("Manage repository access…", "Grant the Glyphh app more repositories on GitHub", "");
+      manage.addEventListener("click", () => { window.open("https://github.com/settings/installations", "_blank", "noopener"); });
+      body.appendChild(manage);
+      const disc = drillItem("Disconnect GitHub", "Unlink this account (repos stop listing here)", "");
+      disc.addEventListener("click", () => {
+        if (!s.git?.disconnect) return;
+        void s.git.disconnect()
+          .then(() => { body.textContent = ""; connectRow(); })
+          .catch(() => { /* the row stays; a failed unlink changes nothing */ });
+      });
+      body.appendChild(disc);
       return true;
     } catch { return false; }
   };

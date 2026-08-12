@@ -2163,13 +2163,20 @@ function pickSource(next: Source): void {
   const cur = current();
   const onHome = document.body.classList.contains("composer-on-home");
 
-  // A BORN session's source is LOCKED — only a NEW (unborn) session can change
-  // its source. Ignore any pick on a born session (the chip is also made static
-  // in paintSourceDependents; this also guards the folder/repo pickers, which
-  // route through here). Just resettle the chip on the session's real source.
+  // A BORN session's source is IMMUTABLE — but a DIFFERENT pick on a born
+  // session means "work on THIS now", so it starts a NEW session lazily (the
+  // header comment's contract; the code used to silently ignore the pick,
+  // which read as "selecting the repo doesn't select it"). The born session
+  // keeps its source; currentId clears and the next send births a session
+  // carrying the pick — layout panels stay up, same seat.
   if (cur && cur.messages.length > 0 && !onHome) {
-    repaintSourceUi();
-    return;
+    if (sameSource(cur.source ?? pendingSource, next)) { repaintSourceUi(); return; }
+    currentId = "";
+    lastSession = "";
+    void window.glyphh.setPreference?.(LAST_SESSION_PREF, "");
+    void saveStore();
+    renderHistory();
+    renderThread();
   }
 
   // No session / Home / an UNBORN current session — set the pending pick and,
