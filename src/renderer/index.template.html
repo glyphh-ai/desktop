@@ -226,6 +226,14 @@
       </footer>
     </div>
     <aside class="auth-muse" aria-hidden="true">
+      <!-- Hero footage (claude.ai-style full-height video; ported from the
+           platform login, 4ddb46d). Invisible until it has real frames
+           (loadeddata) and REMOVED on error — the muse treatment beneath IS
+           the panel whenever footage is absent, so both states look
+           intentional. Muted must be attribute AND property or Safari
+           refuses autoplay (the inline script below sets the property). -->
+      <video class="auth-muse-video" src="brand/videos/login-hero.mp4"
+             autoplay loop muted playsinline preload="auto" tabindex="-1"></video>
       <div class="auth-muse-weave"></div>
       <div class="auth-muse-copy">
         <span class="auth-muse-eyebrow">Poetical science</span>
@@ -245,6 +253,23 @@
     </aside>
     <!-- Kept for backwards-compat status messaging; visually unused now. -->
     <div id="onboarding-status" class="hidden"></div>
+    <script>
+      // Hero-video probe (vanilla twin of the platform's AuthScene logic).
+      (function () {
+        var v = document.querySelector(".auth-muse-video");
+        var muse = document.querySelector(".auth-muse");
+        if (!v || !muse) return;
+        v.muted = true; v.defaultMuted = true; v.setAttribute("muted", "");
+        function on() {
+          muse.classList.add("has-video");
+          var p = v.play(); if (p && p.catch) p.catch(function () { /* poster frame covers */ });
+        }
+        function off() { muse.classList.remove("has-video"); if (v.parentNode) v.parentNode.removeChild(v); }
+        if (v.readyState >= 2) on();
+        v.addEventListener("loadeddata", on);
+        v.addEventListener("error", off);
+      })();
+    </script>
   </div>
 
   <!-- Account-inactive (admin-disabled) gate -->

@@ -693,6 +693,29 @@ body {
   pointer-events: none;
   box-shadow: inset 0 0 140px 40px rgba(10, 9, 13, 0.85);
 }
+/* ── Hero footage (claude.ai-style full-height video panel; platform 4ddb46d) ──
+   The video fills the panel edge-to-edge; invisible until it has frames, so
+   the muse treatment beneath IS the panel whenever the footage is absent or
+   still loading — both states look intentional. The whole panel already
+   disappears under 980px, so mobile never letterboxes a portrait sliver. */
+.auth-muse-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 600ms ease;
+  pointer-events: none;
+}
+.auth-muse.has-video .auth-muse-video { opacity: 1; }
+/* Footage on: the woven threads + copy bow out (the vignette above stays to
+   keep the panel's edges quiet under the shell's border). */
+.auth-muse.has-video .auth-muse-weave,
+.auth-muse.has-video .auth-muse-copy {
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
 .auth-muse-weave, .auth-muse-weave::before, .auth-muse-weave::after {
   content: "";
   position: absolute;
