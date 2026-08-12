@@ -150,7 +150,7 @@ export function mountLogin(deps) {
       ic.append(mark);
       const txt = el('span', 'auth-download-copy');
       txt.append(el('strong', 'auth-download-title', 'Get the desktop app'));
-      txt.append(el('span', 'auth-download-sub', 'The full workspace on your machine — macOS, free.'));
+      txt.append(el('span', 'auth-download-sub', 'The full workspace on your Mac — free.'));
       card.append(ic, txt);
       step.append(card);
     }

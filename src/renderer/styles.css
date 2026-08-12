@@ -895,8 +895,8 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) #onboarding-overlay .auth-download-ic { background: #fff; }
 #onboarding-overlay .auth-download-ic img { width: 38px; height: 38px; object-fit: contain; }
 #onboarding-overlay .auth-download-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-#onboarding-overlay .auth-download-title { font-size: 14px; font-weight: 600; color: var(--white); }
-#onboarding-overlay .auth-download-sub { font-size: 12.5px; color: var(--text-2); }
+#onboarding-overlay .auth-download-title { font-size: 16px; font-weight: 600; color: var(--white); }
+#onboarding-overlay .auth-download-sub { font-size: 13.5px; color: var(--text-2); }
 
 #onboarding-overlay .auth-shell-lede {
   font-size: 0.9375rem;
