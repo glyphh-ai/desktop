@@ -110,6 +110,8 @@ const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   { id: "tool:files",    label: "Files", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
   { id: "tool:plan",     label: "Plan", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   { id: "tool:terminal", label: "Terminal", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>` },
+  // Releases — release management for built apps (deploy, promote, notes).
+  { id: "tool:releases", label: "Releases", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   // Echo — the command center as a 3D wall (moved here from the agent's
   // ⋮ menu: it opens like an app, via layouts or the picker).
   { id: "tool:echo",     label: "Echo", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
@@ -298,7 +300,10 @@ async function ensureLoopOptions(): Promise<void> {
   try {
     const res = await window.glyphh.loopsList();
     const opts = [`<option value="">Leave as-is</option>`];
-    for (const l of res.loops) opts.push(`<option value="${l.id}">${escLayout(l.name)}</option>`);
+    // Memory loops power the memory rotor — not bindable to a layout panel.
+    for (const l of res.loops.filter((x) => (x as { type?: string }).type !== "memory")) {
+      opts.push(`<option value="${l.id}">${escLayout(l.name)}</option>`);
+    }
     layoutLoopSelect.innerHTML = opts.join("");
     layoutLoopSelect.dataset.filled = "1";
   } catch { layoutLoopSelect.innerHTML = `<option value="">Leave as-is</option>`; }

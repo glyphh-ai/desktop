@@ -339,6 +339,18 @@ function initSettings() {
     document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
   });
 
+  // Sidebar trays (Apps / Layouts under Recents) — opt-in; the rail listens
+  // for the change event and shows/hides the sections live.
+  for (const [id, pref] of [["settings-rail-apps", "railShowApps"], ["settings-rail-layouts", "railShowLayouts"]] as const) {
+    const toggle = document.getElementById(id) as HTMLInputElement | null;
+    toggle?.addEventListener("change", () => {
+      // Persist BEFORE announcing — the rail re-reads the pref on the event.
+      void Promise.resolve(window.glyphh.setPreference(pref, toggle.checked)).then(() => {
+        document.dispatchEvent(new CustomEvent("glyphh:rail-sections-changed"));
+      });
+    });
+  }
+
   // WEB on a TOUCH device (tablet / iPad-as-Mac): the door back to the mobile
   // app — the twin of mobile's Appearance → "Desktop site" toggle. Flipping it
   // clears the glyphh_force_desktop escape hatch (which is what keeps a tablet
@@ -448,6 +460,12 @@ async function loadSettings() {
   }
   const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
   if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
+
+  // Sidebar trays — reflect the opt-in state.
+  const railApps = document.getElementById("settings-rail-apps") as HTMLInputElement | null;
+  if (railApps) railApps.checked = (await window.glyphh.getPreference("railShowApps", false)) === true;
+  const railLayouts = document.getElementById("settings-rail-layouts") as HTMLInputElement | null;
+  if (railLayouts) railLayouts.checked = (await window.glyphh.getPreference("railShowLayouts", false)) === true;
 }
 
 /** MCP is its own top-level dashboard tab (data-section="mcp"). navigation.ts

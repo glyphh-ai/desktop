@@ -475,7 +475,8 @@ export function registerWorkingDirectoryIpc(deps: {
 
   // Set the current dir to an already-known path (e.g. picked from recents).
   ipcMain.handle("working-dir:set", (_e, dir: string) => {
-    if (dir) setWorkingDirectory(dir);
+    // Empty = RESET to the default (home) — the new-session clean slate.
+    setWorkingDirectory(dir || null);
     return getWorkingDirectory();
   });
 

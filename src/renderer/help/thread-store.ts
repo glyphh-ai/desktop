@@ -15,9 +15,11 @@
  * copy; equal stamps are replay no-ops, so the one-time cache→server migration
  * on first boot never repeats. Deletes tombstone (server-side + a local
  * `deleted` map so an offline delete still lands). Boot hydration pulls the
- * thread LIST and reconciles both directions; message BODIES fetch lazily on
- * open (ensureMessages). Server unreachable → cache-only mode with ONE quiet
- * console.warn; queued pushes retry on the next successful push or a 60s timer.
+ * thread LIST and reconciles both directions; the same reconcile then re-runs
+ * every 60s and on window focus/visible, so another surface's deletes/renames
+ * reach this rail without a reboot. Message BODIES fetch lazily on open
+ * (ensureMessages). Server unreachable → cache-only mode with ONE quiet
+ * console.warn; queued pushes retry on the next reconcile pass.
  *
  * The renderer cannot import from @glyphh/sdk (preload boundary), so the SDK
  * handle's thread shapes are mirrored structurally below (remote-run.ts's
@@ -422,16 +424,38 @@ export async function ensureMessages(id: string): Promise<boolean> {
 // ── Lifecycle ─────────────────────────────────────────────────────────────
 
 let lifecycleWired = false;
+let reconciling = false;
+let lastReconcileAt = 0;
+/** Re-entrancy-safe reconcile — the timer, focus wake, and retry paths can
+ *  all fire while one is in flight; only one runs. */
+async function safeReconcile(): Promise<void> {
+  if (reconciling) return;
+  reconciling = true;
+  try { await reconcile(); }
+  finally { reconciling = false; lastReconcileAt = Date.now(); }
+}
+
 function wireLifecycle(): void {
   if (lifecycleWired) return;
   lifecycleWired = true;
-  // Retry queue: a 60s timer re-runs the reconcile whenever anything is owed.
-  window.setInterval(() => {
-    if (needsReconcile || pending.size || Object.keys(deleted).length) void reconcile();
-  }, RETRY_MS);
+  // The 60s timer reconciles UNCONDITIONALLY (metadata list only — cheap), not
+  // just when this surface owes something: a session deleted or renamed on the
+  // OTHER surface arrives through the same pass, so the rail stays live
+  // without a reboot. onChangeCb repaints only when something actually moved.
+  window.setInterval(() => { void safeReconcile(); }, RETRY_MS);
+  // Focus/visible = the user's "refresh" gesture — coming back to the window
+  // pulls the other surface's changes at once (10s floor so alt-tabbing
+  // doesn't hammer the list endpoint).
+  const wake = (): void => {
+    if (Date.now() - lastReconcileAt > 10_000) void safeReconcile();
+  };
+  window.addEventListener("focus", wake);
   // Best-effort flush on close/hide — the cache already holds everything, so
   // a lost push simply re-queues from the stamps on the next boot's reconcile.
   const kick = (): void => { void flushNow(); };
   window.addEventListener("pagehide", kick);
-  document.addEventListener("visibilitychange", () => { if (document.hidden) kick(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) kick();
+    else wake();
+  });
 }

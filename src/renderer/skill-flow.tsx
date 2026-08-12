@@ -10,8 +10,6 @@
 import { createRoot, type Root } from "react-dom/client";
 import {
   ReactFlow,
-  Background,
-  BackgroundVariant,
   Controls,
   Handle,
   Position,
@@ -194,7 +192,7 @@ function SkillFlow({ nodes: initial, edges, onPositionsChange, onOpenApp }: { no
       proOptions={{ hideAttribution: true }}
       defaultEdgeOptions={{ type: "floating", style: { stroke: "var(--sf-edge)", strokeWidth: 2.5 } }}
     >
-      <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--sf-dot)" />
+      {/* No <Background> — the viewer is a clean surface, no dot grid. */}
       {/* zoom in/out + fit-to-components — the pan/zoom controls the read views need */}
       {/* Top-right per design: zoom ± and the re-center (fit) button. */}
       <Controls position="top-right" showInteractive={false} showZoom showFitView />

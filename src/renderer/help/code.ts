@@ -27,7 +27,6 @@ import {
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
 import { greeting } from "./dashboard.js";
-import { timeMascotSvg } from "./mascots.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -343,9 +342,11 @@ function showModeInfoModal(): void {
 async function refreshLoops(): Promise<void> {
   try {
     const r = await window.glyphh.loopsList?.();
-    // Memory loops (kind:"memory") power the rotor — they are NOT work loops the
-    // user picks, so keep them out of the loop dropdown on every surface.
-    if (r?.loops?.length) { loops = r.loops.filter((l) => (l as { kind?: string }).kind !== "memory"); loopsCanBuild = !!r.canBuild; }
+    // Memory loops (type:"memory" — the SDK contract's discriminator) power the
+    // rotor — they are NOT work loops the user picks, so keep them out of the
+    // loop dropdown on every surface. (This filtered on `kind` for a while,
+    // which is not a field loops have — memory rotors leaked into the list.)
+    if (r?.loops?.length) { loops = r.loops.filter((l) => (l as { type?: string }).type !== "memory"); loopsCanBuild = !!r.canBuild; }
     if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = loops[0]?.id || "default";
     paintChips();
   } catch { /* offline — the built-in default stands */ }
@@ -1085,9 +1086,20 @@ async function loadStore(): Promise<void> {
         }
       } catch { /* no legacy sessions */ }
     }
-    // A background reconcile (retry timer / another surface's write) changed
-    // the shared array — repaint the lists (never the live thread mid-run).
-    threadStore.onRemoteChange(() => renderHistory());
+    // A background reconcile (poll timer / focus / another surface's write)
+    // changed the shared array — repaint the lists (never the live thread
+    // mid-run). If the session ON SCREEN was deleted elsewhere, land on
+    // + New Session exactly like a local delete would.
+    threadStore.onRemoteChange(() => {
+      if (currentId && !chats.some((c) => c.id === currentId)) {
+        currentId = "";
+        renderHistory();
+        renderThread();
+        (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+        return;
+      }
+      renderHistory();
+    });
     storeLoaded = true;
   })();
   return storeLoading;
@@ -1378,9 +1390,14 @@ function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
   del.addEventListener("click", () => { closeMenu(); void deleteChat(chat); });
   m.appendChild(del);
   const r = anchor.getBoundingClientRect();
-  m.style.top = `${r.bottom + 4}px`;
   m.style.left = `${Math.max(8, r.right - 120)}px`;
   document.body.appendChild(m);
+  // A row near the page bottom flips the menu UP — measured, not guessed, so
+  // it holds if the menu ever grows an item.
+  const h = m.offsetHeight;
+  m.style.top = r.bottom + 4 + h > window.innerHeight - 8
+    ? `${Math.max(8, r.top - 4 - h)}px`
+    : `${r.bottom + 4}px`;
   menuEl = m;
 }
 
@@ -1863,12 +1880,11 @@ function renderThread(): void {
   if (!c || !c.messages.length) {
     const ghost = document.createElement("div");
     ghost.className = "code-ghost";
-    // MASCOT = the time-of-day cousin, picked by the user's LOCAL hour and
-    // rendered as inline SVG (purple/accent). Re-evaluated on every landing
-    // paint, so the bucket stays current.
+    // MASCOT = the standard Glyphh mark, black & white (the time-of-day
+    // cousins read as purple cats — retired from the landing).
     const mark = document.createElement("div");
     mark.className = "code-ghost-mark";
-    mark.innerHTML = timeMascotSvg();
+    mark.innerHTML = `<img src="brand/glyphh-mark.png" alt="" draggable="false" />`;
     // TITLE = the home hero's greeting (title font): time-of-day + user name.
     // Re-evaluated here so the bucket is current; name backfills async.
     ensureGhostName();
@@ -2029,11 +2045,42 @@ function toolGroupEl(chatId: string, msgs: CodeMsg[], live = false): HTMLElement
   head.type = "button";
   head.className = "code-tool-summary" + (open ? " open" : "");
   head.innerHTML = `<span></span><svg class="tg-chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
-  // Live = present-tense "Working" tray (the count updates as tools stream in); settled =
-  // the recap with a failure count. Collapsed by default either way — expand for detail.
-  (head.firstChild as HTMLElement).textContent = live
-    ? `Working — ${msgs.length} tool call${msgs.length === 1 ? "" : "s"}…`
-    : `Ran ${msgs.length} tool call${msgs.length === 1 ? "" : "s"}${failed ? ` · ${failed} failed` : ""}`;
+  // Live = present-tense "Working" tray (the count updates as tools stream in);
+  // settled = the CC-style recap: "Ran 17 commands, edited 2 files +22 -2" —
+  // commands counted from Run: lines, DISTINCT files from Write/Edit lines,
+  // and the net diff summed from their [+N -M] suffixes.
+  if (live) {
+    (head.firstChild as HTMLElement).textContent =
+      `Working — ${msgs.length} tool call${msgs.length === 1 ? "" : "s"}…`;
+  } else {
+    const cmds = msgs.filter((m) => /^[✓✕] Run: /.test(m.text)).length;
+    const editPaths = new Set<string>();
+    let added = 0;
+    let removed = 0;
+    for (const m of msgs) {
+      const w = /^[✓⚙] (?:Write|Edit) (.*?)(?:\s\[\+(\d+) -(\d+)\])?\s*$/.exec(m.text);
+      if (!w) continue;
+      editPaths.add(w[1]);
+      added += Number(w[2] || 0);
+      removed += Number(w[3] || 0);
+    }
+    const editCalls = msgs.filter((m) => /^[✓⚙] (?:Write|Edit) /.test(m.text)).length;
+    const nonEdit = msgs.length - editCalls;
+    // The non-edit half reads "commands" when that's all it is, else "tool calls".
+    const ranLabel = nonEdit
+      ? (cmds === nonEdit ? `${cmds} command${cmds === 1 ? "" : "s"}` : `${nonEdit} tool call${nonEdit === 1 ? "" : "s"}`)
+      : "";
+    const editLabel = editPaths.size ? `edited ${editPaths.size} file${editPaths.size === 1 ? "" : "s"}` : "";
+    let label: string;
+    if (ranLabel && editLabel) label = `Ran ${ranLabel}, ${editLabel}`;
+    else if (editLabel) label = `Edited ${editLabel.slice("edited ".length)}`;
+    else label = `Ran ${ranLabel}`;
+    if (failed) label += ` · ${failed} failed`;
+    const badge = (added || removed)
+      ? ` <span class="code-diff-badge"><span class="diff-add">+${added}</span> <span class="diff-del">-${removed}</span></span>`
+      : "";
+    (head.firstChild as HTMLElement).innerHTML = escAttr(label) + badge;
+  }
   head.addEventListener("click", () => {
     if (expandedToolGroups.has(key)) expandedToolGroups.delete(key);
     else expandedToolGroups.add(key);
@@ -3735,11 +3782,400 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
   el("recents-toggle")?.classList.toggle("closed", !open);
   el("code-history")?.classList.toggle("hidden", !open);
   if (persist) void window.glyphh.setPreference?.("codeRecentsOpen", open);
+  syncRailLayout();
 }
 
-// The rail's Apps + Layouts quick-launch sections were REMOVED (the rail is
-// + New session and Recents only now — apps and layouts open from the command
-// center / settings). Recents owns the full height below its toggle.
+// ── Rail sections (Apps, Layouts) — each collapsible, state remembered ───────
+interface RailSectionDef { toggle: string; body: string; pref: string; head: string; showPref: string }
+// Both sections are OPT-IN (Settings → Appearance → sidebar toggles) and start
+// COLLAPSED — the rail leads with sessions; Apps and Layouts are there when
+// wanted. The open-pref keys carry a "2": the v1 keys hold stale "open" values
+// from before these sections were hidden, and honoring those would expand the
+// rail on exactly the machines that were using it.
+const RAIL_SECTIONS: RailSectionDef[] = [
+  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railAppsOpen2", head: "rail-apps-head", showPref: "railShowApps" },
+  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railLayoutsOpen2", head: "rail-layouts-head", showPref: "railShowLayouts" },
+];
+// Enabled (Appearance opt-in) and open (disclosure) are separate axes: a
+// section's body shows only when BOTH hold, so flipping the Appearance toggle
+// preserves the user's collapsed/expanded choice.
+const railSectionEnabled: Record<string, boolean> = {};
+const railSectionOpen: Record<string, boolean> = {};
+/** The user's chosen Recents height — the splitter's flex-basis. Kept in a var
+ *  so syncRailLayout can restore it after a "both sections closed" fill. */
+let railRecentsH = 170;
+
+function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
+  railSectionOpen[def.toggle] = open;
+  el(def.toggle)?.classList.toggle("closed", !open);
+  el(def.body)?.classList.toggle("hidden", !(open && railSectionEnabled[def.toggle] === true));
+  if (persist) void window.glyphh.setPreference?.(def.pref, open);
+  syncRailLayout();
+}
+
+/** Show/hide whole sections per the Appearance opt-in. Settings dispatches
+ *  glyphh:rail-sections-changed after flipping a toggle; this re-reads. */
+async function applyRailSectionsVisibility(): Promise<void> {
+  for (const def of RAIL_SECTIONS) {
+    const on = (await window.glyphh.getPreference?.(def.showPref, false)) === true;
+    railSectionEnabled[def.toggle] = on;
+    el(def.head)?.classList.toggle("hidden", !on);
+    el(def.body)?.classList.toggle("hidden", !(on && railSectionOpen[def.toggle] === true));
+  }
+  syncRailLayout();
+}
+
+/**
+ * One authority over how the rail's lower stack shares vertical space:
+ *
+ *   - Recents open + a section open → the splitter is live; Recents holds its
+ *     chosen height and the open section(s) take the rest.
+ *   - Recents open + BOTH sections closed → nothing below to resize, so Recents
+ *     fills all the way to the user area and the splitter hides.
+ *   - Recents closed → the sections own the whole stack; no splitter.
+ *
+ * Without this, collapsing both sections left Recents pinned at its dragged
+ * height with dead space beneath it — the "doesn't go past a certain point" bug.
+ */
+function syncRailLayout(): void {
+  const hist = el("code-history");
+  const vs = el("recents-vsplit");
+  const recentsOpen = !hist?.classList.contains("hidden");
+  const anySectionOpen = RAIL_SECTIONS.some((d) => !el(d.body)?.classList.contains("hidden"));
+  vs?.classList.toggle("hidden", !(recentsOpen && anySectionOpen));
+  if (hist && recentsOpen) hist.style.flex = anySectionOpen ? `0 1 ${railRecentsH}px` : "1 1 auto";
+}
+
+/** Bind each rail section's disclosure toggle + restore its remembered state. */
+function initRailSections(): void {
+  for (const def of RAIL_SECTIONS) {
+    el(def.toggle)?.addEventListener("click", () => {
+      const open = el(def.toggle)!.classList.contains("closed"); // was closed → open it
+      setRailSectionOpen(def, open, true);
+    });
+    void window.glyphh.getPreference?.(def.pref, false).then((v) => setRailSectionOpen(def, v === true, false));
+  }
+  void applyRailSectionsVisibility();
+  document.addEventListener("glyphh:rail-sections-changed", () => { void applyRailSectionsVisibility(); });
+}
+
+// ── Apps grid (rail, below Recents) — the same list + icons as the Apps page
+//    / command center, ordered by last-opened (recents), opened with the same
+//    launch the Apps page uses. All apps show; recents float to the top so the
+//    search still covers the long tail. ─────────────────────────────────────
+interface RailApp {
+  id: string;
+  slug?: string | null;
+  name: string;
+  url?: string | null;
+  execPath?: string | null;
+  isBrowser?: boolean;
+  appArchetype?: string | null;
+  launchConfig?: Record<string, unknown> | null;
+  system?: boolean;
+  connection?: { accountId?: string; pipedreamSlug: string } | null;
+}
+interface RailLayout { name: string; splits: Array<{ panelId: string }> }
+let railApps: RailApp[] = [];
+let railLayouts: RailLayout[] = [];
+let railRecentTs: Record<string, number> = {};
+let railAppsPage = 0;
+let railLayoutsPage = 0;
+// Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
+// as one system rather than two differently-sized lists.
+const RAIL_APPS_PER_PAGE = 15;
+const RAIL_LAYOUTS_PER_PAGE = 15;
+
+/** Slice items to a page, clamping in-range (palette parity). */
+function railPaginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; totalPages: number } {
+  const totalPages = Math.max(1, Math.ceil(items.length / size));
+  const pp = Math.max(0, Math.min(page, totalPages - 1));
+  return { items: items.slice(pp * size, (pp + 1) * size), page: pp, totalPages };
+}
+
+/** Prev / n / Next bar (reuses .pagination-* styling), spanning the grid. */
+function railPager(page: number, totalPages: number, onPage: (p: number) => void): HTMLElement {
+  const bar = document.createElement("div");
+  bar.className = "pagination-bar rail-grid-pager";
+  if (totalPages <= 1) return bar;
+  const nav = document.createElement("div");
+  nav.className = "pagination-nav";
+  const mk = (label: string, to: number, disabled: boolean) => {
+    const b = document.createElement("button");
+    b.className = "pagination-btn";
+    b.textContent = label;
+    b.disabled = disabled;
+    b.addEventListener("click", () => onPage(to));
+    return b;
+  };
+  nav.appendChild(mk("‹", page - 1, page === 0));
+  const info = document.createElement("span");
+  info.className = "pagination-info";
+  info.textContent = `${page + 1}/${totalPages}`;
+  nav.appendChild(info);
+  nav.appendChild(mk("›", page + 1, page >= totalPages - 1));
+  bar.appendChild(nav);
+  return bar;
+}
+
+async function loadRecentApps(): Promise<void> {
+  try {
+    const [apps, layouts, recents] = await Promise.all([
+      window.glyphh.panelAppsList?.() ?? Promise.resolve([]),
+      window.glyphh.layoutsList?.() ?? Promise.resolve([]),
+      window.glyphh.recentsList?.() ?? Promise.resolve([]),
+    ]);
+    // Palette parity: web apps (have a url) + native library apps. The
+    // agent's own row (glyphh-self) stays OUT — the Glyphh mark in the
+    // header is the chat entry, not an app in the list.
+    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.url || a.isBrowser === false);
+    railLayouts = (layouts || []) as unknown as RailLayout[];
+    railRecentTs = {};
+    // the wall's arranged order (same preference the command centre writes)
+    try {
+      const pref = await window.glyphh.getPreference?.("ccIconOrder", []);
+      railCcOrder = Array.isArray(pref) ? pref.map(String) : [];
+    } catch { railCcOrder = []; }
+    for (const r of recents || []) {
+      const key = `${r.kind}:${r.id}`;
+      railRecentTs[key] = Math.max(railRecentTs[key] || 0, r.ts || 0);
+    }
+    // Render INSIDE the try so a render-path error is contained here (an empty rail),
+    // not escalated to an app-level unhandled rejection / blank screen. Desktop
+    // behavior is identical — it doesn't throw here.
+    renderRecentApps();
+  } catch { railApps = []; railLayouts = []; railRecentTs = {}; renderRecentApps(); }
+  // Icons land async (Pipedream catalog + OS file icons), then re-render —
+  // same as the palette / Apps page.
+  void primeConnectedIcons(railApps as never, renderRecentApps);
+  void primeNativeIcons(railApps as never, renderRecentApps);
+}
+
+/** Both rail sections. Apps and Layouts each own a search + pagination and live
+ *  under their own collapsible header (see initRailSections). */
+let railCcOrder: string[] = [];
+function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); }
+// The wall re-saves its order on every drag — mirror it into the rail at once,
+// so the two lists can never disagree about what the user arranged.
+window.addEventListener("glyphh:cc-order-changed", (e) => {
+  const keys = (e as CustomEvent).detail;
+  if (Array.isArray(keys)) { railCcOrder = keys.map(String); renderRecentApps(); }
+});
+
+/** The empty state for a rail grid: a short "No matches." while searching,
+ *  otherwise a single ACTION — the sentence that used to sit here ("Your
+ *  layouts land here") described nothing the user could do and wrapped
+ *  badly in a narrow rail. */
+function railEmpty(list: HTMLElement, q: string, label: string, section: string): void {
+  if (q) {
+    const none = document.createElement("div");
+    none.className = "code-empty app-rail-empty";
+    none.textContent = "No matches.";
+    list.appendChild(none);
+    return;
+  }
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "app-rail-empty-btn";
+  btn.textContent = `+ ${label}`;
+  btn.title = `New ${label.toLowerCase()}`;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    gotoSection(section);
+    // Land ON the create form, not just the page — the button says "+".
+    // The page's own New button is the one authority for what "new" means.
+    window.setTimeout(() => document.getElementById(`${section === "apps" ? "app" : "layout"}-new-btn`)?.click(), 60);
+  });
+  list.appendChild(btn);
+}
+
+function renderRailApps(): void {
+  const list = el<HTMLDivElement>("recent-apps-list");
+  if (!list) return;
+  const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
+  list.textContent = "";
+
+  // ORDER FOLLOWS THE COMMAND CENTRE: the wall is where apps are dragged, and
+  // its saved order (ccIconOrder) is the one the user arranged — the rail was
+  // sorting by recency instead, so the two disagreed. Anything not in that
+  // order falls in after it, recency-first.
+  const order = railCcOrder;
+  const rank = (a: RailApp): number => {
+    const i = order.indexOf(`app:${(a.slug || a.id || "").toLowerCase()}`);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const apps = railApps
+    .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ra = rank(a), rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      const ta = railRecentTs[`app:${a.id}`] || 0;
+      const tb = railRecentTs[`app:${b.id}`] || 0;
+      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
+    });
+  // HOME is a FIXED first tile — same control as the wall's, not an installed
+  // app: it can't be reordered, paged away, edited or deleted.
+  const home = document.createElement("button");
+  home.className = "app-rail-tile app-rail-tile-home";
+  home.type = "button";
+  home.title = "Home — new session";
+  const homeIcon = document.createElement("div");
+  homeIcon.className = "tile-icon";
+  const homeImg = document.createElement("img");
+  homeImg.src = "brand/glyphh-mark.png";
+  homeImg.alt = "";
+  homeIcon.appendChild(homeImg);
+  const homeName = document.createElement("div");
+  homeName.className = "tile-name";
+  homeName.textContent = "Home";
+  home.append(homeIcon, homeName);
+  home.addEventListener("click", () => {
+    (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+  });
+  list.appendChild(home);
+
+  const ap = railPaginate(apps, railAppsPage, RAIL_APPS_PER_PAGE);
+  railAppsPage = ap.page;
+  for (const a of ap.items) {
+    const tile = document.createElement("button");
+    tile.className = "app-rail-tile";
+    tile.type = "button";
+    tile.title = a.name;
+    const icon = document.createElement("div");
+    icon.className = "tile-icon";
+    icon.innerHTML = appIconInner(a, a.name, "tile-initial");
+    const nm = document.createElement("span");
+    nm.className = "tile-name";
+    nm.textContent = a.name;
+    tile.append(icon, nm);
+    tile.addEventListener("click", () => {
+      // Same open the Apps page's "Open app" uses (per-config launch).
+      openCommandCenter();   // rail clicks land in Echo — the layout manager
+      void window.glyphh.appLaunch?.({
+        slug: a.slug || a.id, name: a.name, url: a.url,
+        isBrowser: a.isBrowser, execPath: a.execPath,
+        appArchetype: a.appArchetype, launchConfig: a.launchConfig,
+      });
+    });
+    list.appendChild(tile);
+  }
+  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { railAppsPage = pg; renderRailApps(); }));
+  if (!apps.length) railEmpty(list, q, "App", "apps");
+}
+
+function renderRailLayouts(): void {
+  const list = el<HTMLDivElement>("recent-layouts-list");
+  if (!list) return;
+  const q = (el<HTMLInputElement>("recent-layouts-search")?.value || "").trim().toLowerCase();
+  list.textContent = "";
+
+  // Mini icon stacks; same open (into the workbench) as the Layouts page.
+  const layouts = railLayouts
+    .filter((l) => !q || (l.name || "").toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ta = railRecentTs[`layout:${a.name}`] || 0;
+      const tb = railRecentTs[`layout:${b.name}`] || 0;
+      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
+    });
+  const lp = railPaginate(layouts, railLayoutsPage, RAIL_LAYOUTS_PER_PAGE);
+  railLayoutsPage = lp.page;
+  for (const l of lp.items) {
+    const tile = document.createElement("button");
+    tile.className = "app-rail-tile";
+    tile.type = "button";
+    tile.title = `${l.name} (layout)`;
+    const icon = document.createElement("div");
+    icon.className = "tile-icon tile-layout";
+    const seen = new Set<string>();
+    // A render function must never throw on a missing field: `splits` can be absent
+    // for layouts from the web bridge / a malformed row — guard before mapping.
+    const ids = (l.splits || [])
+      .map((s) => s.panelId)
+      .filter((id) => id && !seen.has(id) && (seen.add(id), true))
+      .slice(0, 4);
+    icon.innerHTML = ids.length
+      ? ids.map((id) => {
+          const app = railApps.find((a) => a.id === id || a.slug === id);
+          return `<span class="mini">${appIconInner(app || {}, app?.name || id, "tile-mini-initial")}</span>`;
+        }).join("")
+      : `<span class="tile-initial">▦</span>`;
+    const nm = document.createElement("span");
+    nm.className = "tile-name";
+    nm.textContent = l.name;
+    tile.append(icon, nm);
+    tile.addEventListener("click", () => { openCommandCenter(); void openLayoutInWorkbench(l.name); });
+    list.appendChild(tile);
+  }
+  if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRailLayouts(); }));
+  if (!layouts.length) railEmpty(list, q, "Layout", "layouts");
+}
+
+// ── Recents vertical resize ──────────────────────────────────────────────
+function initRecentsVsplit(): void {
+  const vs = el("recents-vsplit");
+  const hist = el("code-history");
+  if (!vs || !hist) return;
+  vs.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    document.body.classList.add("code-vdragging");
+    const startY = e.clientY;
+    const startTop = hist.getBoundingClientRect().top;
+    const startH = hist.getBoundingClientRect().height;
+    // The cap is computed against the WHOLE lower stack, not a snapshot of one
+    // grid: Recents may grow until the still-open section(s) hit a usable
+    // minimum. A collapsed section reserves nothing, so Recents reclaims its
+    // space. This is what makes the splitter reach far down when only one
+    // section is open (the old cap stopped at the apps grid's 96px).
+    const MIN_BODY = 110;
+    const userTop = el("app-rail-user")?.getBoundingClientRect().top ?? window.innerHeight;
+    const available = userTop - startTop;
+    const move = (ev: MouseEvent) => {
+      let reserve = vs.offsetHeight;
+      document.querySelectorAll<HTMLElement>(".app-rail-section-head").forEach((h) => { reserve += h.offsetHeight; });
+      const openBodies = RAIL_SECTIONS.filter((d) => !el(d.body)?.classList.contains("hidden")).length;
+      reserve += openBodies * MIN_BODY;
+      const maxH = Math.max(60, available - reserve);
+      const h = Math.max(60, Math.min(maxH, startH + (ev.clientY - startY)));
+      hist.style.flex = `0 1 ${h}px`;
+      railRecentsH = h;
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("code-vdragging");
+      if (railRecentsH > 0) void window.glyphh.setPreference?.("codeRecentsH", railRecentsH);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+}
+
+/** Wire the rail's Apps grid: restore its height, load, and bind search. */
+function initRailApps(): void {
+  void (async () => {
+    const recentsH = Number(await window.glyphh.getPreference?.("codeRecentsH", 0)) || 0;
+    if (recentsH > 0) railRecentsH = recentsH;
+    syncRailLayout();
+  })();
+  void loadRecentApps();
+  // The Apps + Layouts rail open-page buttons were removed (A2/A5); their
+  // sections open via the rail nav / settings modal now, and the trays below
+  // are pure quick-launch grids.
+  // Live updates: Apps/Layouts CRUD announces itself (same renderer).
+  document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
+  initRecentsVsplit();
+  initRailSections();
+
+  // Apps search — its own page; Enter runs the text as a command (palette parity).
+  wireRailSearch(el<HTMLInputElement>("recent-apps-search"), () => { railAppsPage = 0; renderRailApps(); });
+  el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const text = (e.target as HTMLInputElement).value.trim();
+    if (text) void window.glyphh.execCommand(text.replace(/^\./, ""));
+  });
+  // Layouts search — its own page + list.
+  wireRailSearch(el<HTMLInputElement>("recent-layouts-search"), () => { railLayoutsPage = 0; renderRailLayouts(); });
+}
 
 // ── Left-rail splitter ───────────────────────────────────────────────────
 function initRailSplitter(): void {
@@ -3958,6 +4394,7 @@ export function initCode(): void {
     renderHistory();   // the search box follows the disclosure
   });
   wireRailSearch(el<HTMLInputElement>("recents-search"), (v) => { recentsQuery = v; renderHistory(); });
+  initRailApps();
   /** NEW creates NOTHING — the record is born on the first send. Clears the
    *  selection and shows the space's landing. Both entry points use this:
    *  the rail's "+ New session" and the agent header's +, which used to call
@@ -3991,6 +4428,12 @@ export function initCode(): void {
     pendingWorkdir = "";
     sourceChip?.setSource(activeSource());
     paintSourceDependents();
+    // DESKTOP: the machine's saved working folder resets too — the folder
+    // chip on a fresh landing must not carry the previous session's folder
+    // (empty = main falls back to the default/home).
+    if (!onWebTarget()) {
+      void (window as unknown as { wb?: { setCwd?: (dir: string) => Promise<unknown> } }).wb?.setCwd?.("");
+    }
     // WEB: the boot-time default is stale the moment the desktop attaches or
     // drops — re-resolve LIVE so a clean session lands on the machine when one
     // is reachable now, and on cloud-new (no folder, no repo) when not.
@@ -4336,9 +4779,22 @@ export function initCode(): void {
   })();
   // A folder change while a session is current binds THAT session to it —
   // its runs keep working there even after another layout moves the global.
+  // With NO session (the new-session landing), the pick used to be DROPPED —
+  // newChat() then seeded the workdir from the stale persisted source path,
+  // so the user's chosen folder "reverted" at send. Hold it in pendingWorkdir
+  // (which newChat applies FIRST, beating any source path) and keep the
+  // pending source's path in agreement so the chip tells the truth.
   (window as unknown as { wb?: { onCwdChanged?: (cb: (dir: string | null) => void) => void } }).wb?.onCwdChanged?.((dir) => {
     const c = current();
-    if (c && dir) { c.workdir = dir; void saveStore(); }
+    if (!dir) return;
+    if (c) { c.workdir = dir; void saveStore(); return; }
+    pendingWorkdir = dir;
+    if (pendingSource.kind === "local") {
+      pendingSource = { ...pendingSource, path: dir };
+      void window.glyphh.setPreference?.(SOURCE_PREF, pendingSource);
+      sourceChip?.setSource(activeSource());
+      paintSourceDependents();
+    }
   });
   // Another window (the ghost overlay) saved the shared store — adopt its
   // list so a ghost-created session appears in the history dropdown immediately. The

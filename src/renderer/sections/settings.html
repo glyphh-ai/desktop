@@ -270,6 +270,29 @@
                   </button>
                 </div>
 
+                <h3 class="settings-subheading">Sidebar</h3>
+                <div class="settings-form">
+                  <!-- Opt-in quick-launch trays in the left rail (removed by
+                       default) — code.ts listens for the change event and
+                       shows/hides the sections live. -->
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="settings-rail-apps" />
+                    <span class="toggle-switch"></span>
+                    <div class="toggle-info">
+                      <span class="toggle-title">Show Apps in the sidebar</span>
+                      <span class="toggle-desc">A collapsible Apps section under Recents — search and click to launch, without opening the command center.</span>
+                    </div>
+                  </label>
+                  <label class="settings-toggle" style="margin-top:16px;">
+                    <input type="checkbox" id="settings-rail-layouts" />
+                    <span class="toggle-switch"></span>
+                    <div class="toggle-info">
+                      <span class="toggle-title">Show Layouts in the sidebar</span>
+                      <span class="toggle-desc">A collapsible Layouts section under Recents — click a layout to open it in the workbench.</span>
+                    </div>
+                  </label>
+                </div>
+
                 <h3 class="settings-subheading">Browser</h3>
                 <div class="settings-form">
                   <label class="settings-label">Default Homepage</label>

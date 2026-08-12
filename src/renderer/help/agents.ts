@@ -471,7 +471,9 @@ async function openDetail(id: string): Promise<void> {
   current = env.data as Agent;
 
   const r = await window.glyphh.loopsList?.();
-  loops = ((r?.loops ?? []) as unknown as LoopSummary[]);
+  // Memory loops power the memory rotor, not agents — never pickable here.
+  loops = ((r?.loops ?? []) as unknown as LoopSummary[])
+    .filter((l) => (l as { type?: string }).type !== "memory");
 
   liveToggle.checked = current.live;
 
@@ -767,7 +769,8 @@ async function openForm(agent: Agent | null): Promise<void> {
   // loops power the memory rotor, not agents — filtered out. Built-ins other
   // than Default are absent because the API only binds custom loops (uuid).
   const r = await window.glyphh.loopsList?.();
-  loops = ((r?.loops ?? []) as unknown as LoopSummary[]);
+  loops = ((r?.loops ?? []) as unknown as LoopSummary[])
+    .filter((l) => (l as { type?: string }).type !== "memory");
   const custom = loops.filter((l) => !l.builtIn);
   await Promise.all(custom.map((l) => loopManifest(l.slug ?? l.id)));
 

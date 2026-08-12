@@ -74,7 +74,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "section" | "app";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "section" | "app";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -111,6 +111,10 @@ interface TermSlot {
 }
 /** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
 interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: boolean }
+/** Releases — the release-management view for BUILT (glyphh-hosted) apps:
+ *  pick an app, see its release history, cut a build, promote to live.
+ *  `slug` remembers the picked app across renders/layout saves. */
+interface ReleasesSlot { id: number; view: "releases"; slug?: string; sticky?: boolean }
 /** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
  *  composer); nothing of its own beyond the header's session controls. */
 interface CodingSlot { id: number; view: "coding"; sticky?: boolean }
@@ -157,7 +161,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | EchoSlot | SectionSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | EchoSlot | ReleasesSlot | SectionSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -186,6 +190,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   echo:     { title: "Echo",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
   coding:   { title: "Coding Agent", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
+  releases: { title: "Releases", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
 };
 
@@ -413,8 +418,15 @@ async function init(): Promise<void> {
     if (anchor) {
       const r = anchor.getBoundingClientRect();
       dropdown.style.left = `${r.left}px`;
-      dropdown.style.top = `${r.bottom + 4}px`;
-      dropdown.style.bottom = "auto";
+      // Open UP from a low anchor (the landing / composer chip rows) — the
+      // source popup's direction — and down only from a header-top anchor.
+      if (r.top > window.innerHeight / 2) {
+        dropdown.style.top = "auto";
+        dropdown.style.bottom = `${window.innerHeight - r.top + 4}px`;
+      } else {
+        dropdown.style.bottom = "auto";
+        dropdown.style.top = `${r.bottom + 4}px`;
+      }
     }
     dropdown.classList.add("open");
   }
@@ -640,7 +652,7 @@ async function init(): Promise<void> {
           // NEVER restore an agent slot — the agent opens on demand; a stale one
           // saved by the old force-place would otherwise re-open every load.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "releases") {
           slots.push(makeSlot(v));
         }
       }
@@ -761,7 +773,7 @@ async function init(): Promise<void> {
     // Echo owns the workspace while it's up — a tool opens as an ECHO CARD,
     // never as a rail slot beside it. (echo/coding have their own paths.)
     if (echoCtl && view !== "echo" && view !== "coding") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases");
       return;
     }
     placeSlot(makeSlot(view));
@@ -825,7 +837,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases"): void;
     openPreviewHtml(html: string, label?: string): void;
     openPreviewUrl(url: string): void;
     openFileTab(node: { name: string; path: string }, content: string, mode?: "preview" | "code"): void;
@@ -934,6 +946,7 @@ async function init(): Promise<void> {
     if (view === "diff") return { id, view };
     if (view === "coding") return { id, view };
     if (view === "echo") return { id, view };
+    if (view === "releases") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1465,6 +1478,7 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
+    else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "echo") {
       // The 3D command-center wall can throw on browsers the desktop shell was
@@ -3133,7 +3147,7 @@ async function init(): Promise<void> {
           if (id.startsWith("tool:")) {
             const v = id.slice(5) === "editor" ? "monaco" : id.slice(5);
             if (v === "coding") entry = openAgentCard();
-            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan") {
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "releases") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
@@ -3493,6 +3507,7 @@ async function init(): Promise<void> {
         else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
+        else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
         return;
       }
       if (t.navApp) {
@@ -3552,7 +3567,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases"): TileEntry => {
       let entry = openList.find((x) => x.tile.toolView === view);
       if (!entry) {
         entry = entries.find((x) => x.tile.toolView === view)
@@ -5155,6 +5170,258 @@ async function init(): Promise<void> {
     await mountActive();
   }
 
+  // ── Releases view — release management for BUILT (glyphh-hosted) apps ──
+  // Pick an app, see its release history, cut a build from the working
+  // folder, promote dev → live, edit notes. Same IPC the Settings → Apps →
+  // Releases tab uses; while a build is in flight the panel polls until it
+  // settles (the settings tab is manual-refresh only).
+  interface WbReleaseRow {
+    id: string;
+    version: string;
+    status: "pending" | "uploading" | "building" | "ready" | "failed";
+    error: string | null;
+    notes: string | null;
+    channel: "dev" | "live";
+    promotedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }
+  // Structural mirror of the preload surface (remote-run.ts's discipline —
+  // this bundle can't import preload types).
+  interface WbReleasesIpc {
+    panelAppsList?: () => Promise<Array<{ id: string; slug: string; name: string; system: boolean; appArchetype?: string | null; access?: string }>>;
+    panelAppsUpdate?: (id: string, patch: { access?: string }) => Promise<{ ok?: boolean } | unknown>;
+    appReleases?: (slug: string) => Promise<{ ok: boolean; releases: WbReleaseRow[]; error?: string }>;
+    appReleaseNotes?: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; error?: string }>;
+    appReleasePromote?: (slug: string, releaseId: string) => Promise<{ ok: boolean; error?: string }>;
+    appBuildDeploy?: (slug: string) => Promise<{ ok: boolean; result?: { slug: string; version: string; url?: string }; error?: string }>;
+    hostingStatus?: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string } | null; error?: string }>;
+    hostingDeploy?: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
+    appExport?: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  }
+  const relIpc = (): WbReleasesIpc => (window as unknown as { glyphh?: WbReleasesIpc }).glyphh ?? {};
+  const REL_POLL_MS = 5000;
+  const REL_BUILDING = new Set(["pending", "uploading", "building"]);
+  const relEsc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  function relDate(iso: string | null): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  }
+
+  async function renderReleasesIntoSlot(body: HTMLElement, slot: ReleasesSlot): Promise<void> {
+    body.classList.add("ws-rel-body");
+    body.innerHTML = `
+      <div class="ws-rel-toolbar">
+        <select class="ws-rel-app" title="Which app to manage"></select>
+        <span class="ws-rel-note"></span>
+        <button type="button" class="action-btn primary ws-rel-deploy" title="Package the working folder, cut a release, and deploy it">Build &amp; deploy</button>
+        <button type="button" class="ws-icon-btn ws-rel-refresh" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+        </button>
+      </div>
+      <div class="ws-rel-hosting hidden">
+        <span class="ws-rel-host-status"></span>
+        <select class="ws-rel-access" title="Who can reach the deployed app">
+          <option value="members">Org members</option>
+          <option value="public">Public</option>
+        </select>
+        <button type="button" class="action-btn ws-rel-host-deploy" title="Serve this app's latest build at its Glyphh address">Deploy</button>
+        <button type="button" class="action-btn ws-rel-export" title="Export a standalone repo — the app no longer needs Glyphh">Export repo</button>
+      </div>
+      <div class="ws-rel-list"><div class="ws-rel-empty">Loading…</div></div>`;
+    const sel = body.querySelector(".ws-rel-app") as HTMLSelectElement;
+    const note = body.querySelector(".ws-rel-note") as HTMLElement;
+    const deployBtn = body.querySelector(".ws-rel-deploy") as HTMLButtonElement;
+    const hosting = body.querySelector(".ws-rel-hosting") as HTMLElement;
+    const hostStatus = body.querySelector(".ws-rel-host-status") as HTMLElement;
+    const accessSel = body.querySelector(".ws-rel-access") as HTMLSelectElement;
+    const hostDeploy = body.querySelector(".ws-rel-host-deploy") as HTMLButtonElement;
+    const exportBtn = body.querySelector(".ws-rel-export") as HTMLButtonElement;
+    const list = body.querySelector(".ws-rel-list") as HTMLElement;
+    let pollTimer = 0;
+
+    // BUILT apps only (the Settings tabs' own gate: appArchetype "glyphh-app").
+    // "Current folder" leads: Build & deploy reads the workdir's
+    // glyphh.app.json and deploys THAT app — no pick needed.
+    interface RelApp { id: string; slug: string; name: string; access?: string }
+    let apps: RelApp[] = [];
+    try {
+      const all = (await relIpc().panelAppsList?.()) || [];
+      apps = all.filter((a) => !a.system && a.appArchetype === "glyphh-app")
+        .map((a) => ({ id: a.id, slug: a.slug, name: a.name, access: a.access }));
+    } catch { /* offline — current-folder deploy still works */ }
+    sel.innerHTML = [`<option value="">Current folder</option>`,
+      ...apps.map((a) => `<option value="${relEsc(a.slug)}">${relEsc(a.name)}</option>`)].join("");
+    if (slot.slug && apps.some((a) => a.slug === slot.slug)) sel.value = slot.slug;
+    slot.slug = sel.value;
+
+    const pickedApp = (): RelApp | null => apps.find((a) => a.slug === sel.value) ?? null;
+    const setNote = (text: string, err = false): void => {
+      note.textContent = text;
+      note.classList.toggle("err", err);
+    };
+
+    async function refreshHosting(): Promise<void> {
+      const app = pickedApp();
+      hosting.classList.toggle("hidden", !app);
+      if (!app) return;
+      accessSel.value = app.access === "public" ? "public" : "members";
+      hostStatus.textContent = "checking…";
+      try {
+        const r = await relIpc().hostingStatus?.(app.slug);
+        if (!r?.ok) { hostStatus.textContent = r?.error || "Couldn't load deploy status"; return; }
+        if (!r.deployment) { hostStatus.textContent = "Not deployed"; return; }
+        const st = r.deployment.status || "";
+        hostStatus.innerHTML = r.deployment.url
+          ? `${relEsc(st)} · <a href="${relEsc(r.deployment.url)}" target="_blank" rel="noreferrer">${relEsc(r.deployment.url.replace(/^https?:\/\//, ""))}</a>`
+          : relEsc(st);
+      } catch { hostStatus.textContent = "Couldn't load deploy status"; }
+    }
+
+    async function refresh(): Promise<void> {
+      if (pollTimer) { clearTimeout(pollTimer); pollTimer = 0; }
+      const slug = sel.value;
+      void refreshHosting();
+      if (!slug) {
+        list.innerHTML = `<div class="ws-rel-empty">Current folder — Build &amp; deploy reads the working folder's <code>glyphh.app.json</code> and deploys that app. Pick an app above to see its release history and hosting.</div>`;
+        return;
+      }
+      let releases: WbReleaseRow[] = [];
+      try {
+        const r = await relIpc().appReleases?.(slug);
+        if (!r?.ok) { list.innerHTML = `<div class="ws-rel-empty">${relEsc(r?.error || "Couldn't load releases")}</div>`; return; }
+        releases = r.releases || [];
+      } catch (err) {
+        list.innerHTML = `<div class="ws-rel-empty">${relEsc(err instanceof Error ? err.message : "Couldn't load releases")}</div>`;
+        return;
+      }
+      if (!body.isConnected || sel.value !== slug) return; // stale — panel closed or app switched
+      if (!releases.length) {
+        list.innerHTML = `<div class="ws-rel-empty">No releases yet — Build &amp; deploy cuts the first one from your working folder.</div>`;
+        return;
+      }
+      list.textContent = "";
+      for (const r of releases) {
+        const row = document.createElement("div");
+        row.className = "ws-rel-row" + (r.status === "failed" ? " failed" : "");
+        const badge = r.channel === "live"
+          ? `<span class="ws-rel-badge live">live</span>`
+          : `<span class="ws-rel-badge">dev</span>`;
+        const state = r.status !== "ready" ? `<span class="ws-rel-state ${r.status}">${r.status}</span>` : "";
+        row.innerHTML = `
+          <div class="ws-rel-row-head">
+            <span class="ws-rel-version">${relEsc(r.version)}</span>${badge}${state}
+            <span class="ws-rel-date">${relEsc(relDate(r.promotedAt || r.createdAt))}</span>
+            <span class="ws-rel-actions">
+              ${r.channel === "dev" && r.status === "ready" ? `<button type="button" class="action-btn ws-rel-promote" title="Publish this release to everyone">Promote to live</button>` : ""}
+              <button type="button" class="action-btn ws-rel-notes-btn" title="Release notes">Notes</button>
+            </span>
+          </div>
+          ${r.notes ? `<div class="ws-rel-notes-preview">${relEsc(r.notes.split("\n").slice(0, 2).join(" · ").slice(0, 140))}</div>` : ""}
+          ${r.status === "failed" && r.error ? `<div class="ws-rel-error">${relEsc(r.error.slice(0, 300))}</div>` : ""}`;
+        row.querySelector(".ws-rel-promote")?.addEventListener("click", async (e) => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.disabled = true;
+          btn.textContent = "Promoting…";
+          const res = await relIpc().appReleasePromote?.(slug, r.id).catch(() => ({ ok: false, error: "promote failed" }));
+          if (!res?.ok) setNote(res?.error || "Promote failed", true);
+          else setNote(`v${r.version} is live`);
+          void refresh();
+        });
+        // Notes: an inline editor under the row — save writes through, blank clears.
+        row.querySelector(".ws-rel-notes-btn")?.addEventListener("click", () => {
+          const openEd = row.querySelector(".ws-rel-notes-edit");
+          if (openEd) { openEd.remove(); return; }
+          const ed = document.createElement("div");
+          ed.className = "ws-rel-notes-edit";
+          ed.innerHTML = `<textarea rows="3" placeholder="What changed in ${relEsc(r.version)}…">${relEsc(r.notes || "")}</textarea><button type="button" class="action-btn">Save</button>`;
+          ed.querySelector("button")!.addEventListener("click", async () => {
+            const text = (ed.querySelector("textarea") as HTMLTextAreaElement).value.trim();
+            const res = await relIpc().appReleaseNotes?.(slug, r.id, text || null).catch(() => ({ ok: false, error: "save failed" }));
+            if (!res?.ok) { setNote(res?.error || "Couldn't save the notes", true); return; }
+            setNote("Notes saved");
+            void refresh();
+          });
+          row.appendChild(ed);
+        });
+        list.appendChild(row);
+      }
+      // A build in flight → poll until it settles; nothing owed → sleep.
+      if (releases.some((r) => REL_BUILDING.has(r.status))) {
+        pollTimer = window.setTimeout(() => { if (body.isConnected) void refresh(); }, REL_POLL_MS);
+      }
+    }
+
+    sel.addEventListener("change", () => {
+      slot.slug = sel.value;
+      setNote("");
+      saveLayout();
+      void refresh();
+    });
+    body.querySelector(".ws-rel-refresh")?.addEventListener("click", () => { setNote(""); void refresh(); });
+    deployBtn.addEventListener("click", async () => {
+      deployBtn.disabled = true;
+      setNote("Building from your working folder…");
+      try {
+        // Empty slug = deploy WHATEVER the working folder builds (its
+        // manifest names the app); a picked app is a guard — the build
+        // refuses if the folder holds a different project.
+        const res = await relIpc().appBuildDeploy?.(sel.value);
+        if (res?.ok) {
+          setNote(`Built v${res.result?.version || "?"}${res.result?.url ? ` — live at ${res.result.url}` : ""}`);
+          // A current-folder build names its app — land the picker on it so
+          // the history below shows what was just cut.
+          const builtSlug = res.result?.slug;
+          if (!sel.value && builtSlug && apps.some((a) => a.slug === builtSlug)) {
+            sel.value = builtSlug;
+            slot.slug = builtSlug;
+          }
+        } else setNote(res?.error || "Build failed", true);
+      } catch (err) {
+        setNote(err instanceof Error ? err.message : "Build failed", true);
+      } finally {
+        deployBtn.disabled = false;
+        void refresh();
+      }
+    });
+    accessSel.addEventListener("change", async () => {
+      const app = pickedApp();
+      if (!app) return;
+      try {
+        await relIpc().panelAppsUpdate?.(app.id, { access: accessSel.value });
+        app.access = accessSel.value;
+        setNote(accessSel.value === "public" ? "Anyone with the link can reach it" : "Only signed-in org members can reach it");
+      } catch { setNote("Couldn't change access", true); }
+    });
+    hostDeploy.addEventListener("click", async () => {
+      const app = pickedApp();
+      if (!app) return;
+      hostDeploy.disabled = true;
+      setNote("Deploying…");
+      try {
+        const r = await relIpc().hostingDeploy?.(app.slug);
+        if (r?.ok) setNote(r.deployment?.url ? `Deploying — ${r.deployment.url}` : "Deploying");
+        else setNote(r?.error || "Deploy failed", true);
+      } catch (err) { setNote(err instanceof Error ? err.message : "Deploy failed", true); }
+      finally { hostDeploy.disabled = false; void refreshHosting(); }
+    });
+    exportBtn.addEventListener("click", async () => {
+      const app = pickedApp();
+      if (!app) return;
+      exportBtn.disabled = true;
+      setNote("Exporting…");
+      try {
+        const r = await relIpc().appExport?.(app.id);
+        if (r?.ok) setNote(r.path ? `Exported to ${r.path}` : "Exported");
+        else setNote(r?.error || "Export failed", true);
+      } catch (err) { setNote(err instanceof Error ? err.message : "Export failed", true); }
+      finally { exportBtn.disabled = false; }
+    });
+    void refresh();
+  }
+
   // ── Diff view ──
   async function renderDiffIntoSlot(body: HTMLElement, slot: DiffSlot): Promise<void> {
     registerLiveFsPanel(slot, body);
@@ -6227,7 +6494,7 @@ async function init(): Promise<void> {
       // In Echo the toggle acts on the CARD, not on a rail slot.
       if (echoCtl && v !== "echo" && v !== "coding") {
         if (echoCtl.hasTool(v)) echoCtl.closeTool(v);
-        else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan");
+        else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases");
         moreMenu?.classList.add("hidden");
         return;
       }
@@ -6534,7 +6801,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "releases"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -6726,8 +6993,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

@@ -13526,6 +13526,12 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   color: var(--accent);
 }
 /* The mascot is now inline SVG — size the svg child to fill the square box. */
+.code-ghost-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  -webkit-user-drag: none;
+}
 .code-ghost-mark svg {
   width: 100%;
   height: 100%;
@@ -14425,8 +14431,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
      and stays pinned while the left column scrolls. */
   flex: 1; min-width: 0; height: 560px;
   position: sticky; top: 0;
+  /* Borderless viewer — the graph floats on the page (no frame, no dot grid;
+     the dots died with skill-flow's <Background>). */
   background: var(--surface); overflow: hidden; margin-left: 16px;
-  border: 1px solid var(--border-2); border-radius: 10px;
+  border-radius: 10px;
 }
 /* The divider line still spans the row's full height. */
 .lib-split > .lib-split-divider { align-self: stretch; }
@@ -15156,9 +15164,60 @@ html:not(.glyphh-web) #panel-wc { height: 40px; padding-left: 16px; }
 
 .app-rail-nav-item:hover { background: var(--hover); color: var(--text); }
 
-/* Recents owns the whole rail below its toggle now — the Apps/Layouts
-   sections (and the splitter that shared the height) were removed. */
-.code-history { flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
+/* Recents shares the rail with the OPT-IN Apps/Layouts trays below it. It is
+   capped rather than flex:1; when no tray is open (the default — they're
+   Appearance opt-ins) syncRailLayout() flexes it to fill the rail. */
+.code-history { flex: 0 1 170px; min-height: 60px; overflow-y: auto; padding: 0 8px 6px; }
+
+/* ── Rail Apps/Layouts trays (opt-in via Settings → Appearance) ─────────── */
+/* Recents vertical resize */
+.recents-vsplit {
+  flex: 0 0 4px;
+  margin: 1px 8px;
+  border-radius: 2px;
+  cursor: row-resize;
+  background: var(--text-faint);
+  opacity: 0.7;
+}
+.recents-vsplit:hover { background: var(--accent); opacity: 1; }
+
+/* Apps grid (rail) — Apps-page icons in tiles */
+.app-rail-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 10px 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 6px;
+  align-content: start;
+}
+
+.rail-grid-pager { grid-column: 1 / -1; padding: 2px 0 4px; }
+.rail-grid-pager .pagination-nav { justify-content: center; }
+
+/* Collapsible rail section header — disclosure toggle (chevron + label) on the
+   left, the open-page icon on the right. */
+.app-rail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.app-rail-section-head .app-rail-section-toggle { flex: 1; min-width: 0; }
+.app-rail-section-head .rail-label-btn { flex: none; }
+
+/* An OPEN section must always show its list — a floor keeps the lists usable
+   when the rail runs short; the rail scrolls instead (see #app-rail). */
+.app-rail-section-body {
+  display: flex; flex-direction: column;
+  flex: 1 1 auto; min-height: 132px; overflow: hidden;
+}
+
+/* Rail section titles are CONTENT, not links — standard text colors in every
+   theme rather than the ancestor accent (which read purple). */
+.app-rail-section-head .code-rail-disclosure,
+.app-rail-section-head .code-rail-label { color: var(--text); }
 
 .code-history-item {
   display: flex;
@@ -16240,3 +16299,64 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 /* HOME leads the rail's app list and is never draggable/paged. */
 .app-rail-tile-home { order: -1; }
 .app-rail-tile-home img { width: 22px; height: 22px; object-fit: contain; }
+
+/* ── Releases workbench view (ws-rel-*) — release management for built apps ── */
+.ws-rel-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.ws-rel-toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--border-2);
+  flex: 0 0 auto;
+}
+.ws-rel-app {
+  max-width: 45%; min-width: 0; flex: 0 1 auto;
+  padding: 4px 8px; font-size: 12.5px;
+  background: var(--bg-2); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: 7px; outline: none;
+}
+.ws-rel-note { flex: 1; min-width: 0; font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-rel-note.err { color: var(--danger); }
+/* Buttons are the app-standard .action-btn — the THEME owns their colors;
+   only sizing is adjusted for the compact panel. */
+.ws-rel-body .action-btn { flex: 0 0 auto; padding: 4px 10px; font-size: 11.5px; }
+.ws-rel-body .action-btn:disabled { opacity: 0.55; cursor: default; }
+.ws-rel-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 10px 10px; }
+.ws-rel-empty { padding: 14px 4px; font-size: 12.5px; color: var(--text-3); line-height: 1.55; }
+.ws-rel-row { padding: 9px 2px 8px; border-bottom: 1px solid var(--border-2); }
+.ws-rel-row:last-child { border-bottom: 0; }
+.ws-rel-row-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ws-rel-version { font-size: 13px; font-weight: 600; color: var(--text); }
+.ws-rel-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 1.5px 6px; border-radius: 99px;
+  background: var(--bg-2); color: var(--text-3); border: 1px solid var(--border-2);
+}
+.ws-rel-badge.live { background: var(--accent-glow); color: var(--accent-light); border-color: transparent; }
+.ws-rel-state { font-size: 10.5px; color: var(--text-3); }
+.ws-rel-state.building, .ws-rel-state.pending, .ws-rel-state.uploading { color: var(--accent-light); }
+.ws-rel-state.failed { color: var(--danger); }
+.ws-rel-date { margin-left: auto; font-size: 11px; color: var(--text-4); flex: 0 0 auto; }
+.ws-rel-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.ws-rel-actions .action-btn { padding: 2.5px 8px; font-size: 11px; }
+.ws-rel-notes-preview { margin-top: 4px; font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-rel-error { margin-top: 4px; font-size: 11px; color: var(--danger); white-space: pre-wrap; word-break: break-word; }
+.ws-rel-notes-edit { display: flex; gap: 6px; margin-top: 6px; align-items: flex-start; }
+.ws-rel-notes-edit textarea {
+  flex: 1; min-width: 0; resize: vertical;
+  padding: 6px 8px; font-size: 12px; font-family: var(--font-sans);
+  background: var(--bg-2); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: 7px; outline: none;
+}
+/* The hosting strip — the Public-hosting tab's essentials in one row. */
+.ws-rel-hosting {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-bottom: 1px solid var(--border-2);
+  flex: 0 0 auto;
+}
+.ws-rel-host-status { flex: 1; min-width: 0; font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-rel-host-status a { color: var(--text-2); }
+.ws-rel-host-status a:hover { color: var(--text); }
+.ws-rel-access {
+  flex: 0 0 auto; padding: 3px 7px; font-size: 11.5px;
+  background: var(--bg-2); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: 7px; outline: none;
+}

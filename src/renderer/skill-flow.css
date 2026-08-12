@@ -4,8 +4,8 @@
 
 /* Theme-aware chrome colors for the canvas (edges, dot grid). */
 :root,
-html[data-theme="light"] { --sf-edge: #c2c2c2; --sf-dot: #d8d8d8; }
-html[data-theme="dark"]  { --sf-edge: #454545; --sf-dot: #333333; }
+html[data-theme="light"] { --sf-edge: #c2c2c2; }
+html[data-theme="dark"]  { --sf-edge: #454545; }
 
 .lib-split-flow {
   flex: 1 1 auto;
