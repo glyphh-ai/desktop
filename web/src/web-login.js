@@ -135,10 +135,26 @@ export function mountLogin(deps) {
     } else {
       // The LOGIN landing: the product headline, the desktop download card,
       // then the form itself — no "Sign in" title, no instructional lede.
-      step.append(el('h1', 'auth-shell-title', 'A New Way of Working with AI'));
+      step.append(el('h1', 'auth-shell-title', 'Question Everything.'));
+      step.append(el('p', 'auth-shell-slogan', 'Every dream starts with a dreamer.'));
       const card = doc.createElement('a');
       card.className = 'auth-download-card';
-      card.href = 'https://github.com/glyphh-ai/glyphh-releases/releases/latest';
+      // DIRECT download for the visitor's OS — the release publishes stable,
+      // versionless asset names, so /latest/download/<asset> always fetches
+      // the current build. Unknown platforms fall back to the releases page.
+      const DL = 'https://github.com/glyphh-ai/glyphh-releases/releases/latest/download/';
+      const ua = (navigator.userAgent || '').toLowerCase();
+      if (ua.includes('mac')) {
+        card.href = `${DL}Glyphh-arm64.dmg`; // every current Mac; refined below for Intel
+        // Chromium exposes the real architecture — Intel Macs get the x64 dmg.
+        navigator.userAgentData?.getHighEntropyValues?.(['architecture'])
+          .then((v) => { if (v && v.architecture === 'x86') card.href = `${DL}Glyphh-x64.dmg`; })
+          .catch(() => { /* keep arm64 */ });
+      } else if (ua.includes('windows')) {
+        card.href = `${DL}Glyphh-Setup.exe`;
+      } else {
+        card.href = 'https://github.com/glyphh-ai/glyphh-releases/releases/latest';
+      }
       card.target = '_blank';
       card.rel = 'noopener';
       const ic = doc.createElement('span');
@@ -182,7 +198,7 @@ export function mountLogin(deps) {
     const err = el('p', 'auth-shell-error');
     err.style.display = 'none';
 
-    const submit = el('button', 'btn btn-primary btn-lg btn-full', 'Email me a magic link');
+    const submit = el('button', 'btn btn-primary btn-lg btn-full', 'Continue with email');
     submit.type = 'submit';
     const actions = el('div', 'auth-shell-actions');
     actions.append(submit);
@@ -207,7 +223,7 @@ export function mountLogin(deps) {
       loading = which;
       submit.disabled = !!which;
       input.disabled = !!which;
-      submit.textContent = which === 'email' ? 'Sending link…' : 'Email me a magic link';
+      submit.textContent = which === 'email' ? 'Sending link…' : 'Continue with email';
     };
 
     form.addEventListener('submit', async (e) => {
@@ -265,7 +281,6 @@ export function mountLogin(deps) {
 
     // The email form follows Google (or stands alone when GIS is off).
     step.append(form);
-    step.append(el('p', 'auth-shell-slogan', 'Challenge Everything!'));
   };
 
   // The "check your email" state — the emailed link completes the sign-in on return.
