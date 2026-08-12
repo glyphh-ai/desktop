@@ -3507,7 +3507,14 @@ function App() {
     // From the IMMUTABLE locus (stable name), never volatile machine ids.
     const l = locusOf(session.id);
     if (l?.kind === 'local') return { icon: 'laptop', text: l.machineName || 'Local machine' };
-    const src = chatFor(session.id).source;
+    // Sessions born on OTHER surfaces never touch this device's locus store —
+    // classify by the SYNCED thread source (same rule as the session list).
+    const metaSrc = (threads ?? []).find((t) => t.id === session.id)?.source;
+    const src = (metaSrc ?? chatFor(session.id).source) as { kind?: string; repo?: string } | null | undefined;
+    if (!l && src?.kind === 'local') {
+      const d = desktops[0];
+      return { icon: 'laptop', text: d?.name || d?.app || 'Desktop' };
+    }
     if (src?.kind === 'cloud-repo' && src.repo) return { icon: 'cloud', text: `Cloud · ${src.repo.split('/').pop()}` };
     return { icon: 'cloud', text: 'Cloud' };
   })();
