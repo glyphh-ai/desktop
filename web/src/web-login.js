@@ -176,7 +176,18 @@ export function mountLogin(deps) {
     submit.type = 'submit';
     const actions = el('div', 'auth-shell-actions');
     actions.append(submit);
-    form.append(field, err, actions);
+    // The consent line under the button — the Privacy Policy opens in a new
+    // tab (glyphh.ai/privacy, the marketing site's page, same as platform's
+    // legal line), and continuing doubles as the promotional-email opt-in.
+    const legal = el('p', 'auth-shell-legal');
+    legal.append(doc.createTextNode('By continuing, you acknowledge Glyphh\u2019s '));
+    const pp = el('a', '', 'Privacy Policy');
+    pp.href = 'https://glyphh.ai/privacy';
+    pp.target = '_blank';
+    pp.rel = 'noreferrer';
+    legal.append(pp);
+    legal.append(doc.createTextNode(' and agree to receive occasional promotional emails and notifications.'));
+    form.append(field, err, actions, legal);
 
     const showFieldErr = (m) => { fieldErr.textContent = m; fieldErr.style.display = ''; input.classList.add('has-error'); };
     const clearErrs = () => { fieldErr.style.display = 'none'; input.classList.remove('has-error'); err.style.display = 'none'; };
