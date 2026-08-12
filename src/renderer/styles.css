@@ -1017,7 +1017,7 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   /* Snug under the button (was 2rem — read as detached) and centered,
      mirroring the homepage's legal-line placement. Colors are the homepage's
      exact rules already (text-3 body / text-2 links / white hover). */
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
   font-size: 0.75rem;
   color: var(--text-3);
   line-height: 1.6;
@@ -1030,6 +1030,12 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   transition: color 200ms ease;
 }
 #onboarding-overlay .auth-shell-legal a:hover { color: var(--white); }
+
+/* Web login (web-login.js) appends the legal line INSIDE .auth-shell-form,
+   whose 1.125rem flex gap stacks under the button before the margin even
+   applies. Counteract the gap so it sits snug (net ~0.25rem), matching the
+   desktop read where legal lives outside the form. */
+#onboarding-overlay .auth-shell-form .auth-shell-legal { margin-top: -0.5rem; }
 
 #onboarding-overlay .auth-shell-footer {
   padding: 1.5rem 2.5rem;

@@ -168,7 +168,13 @@ export function mountLogin(deps) {
     input.id = 'login-email';
     input.type = 'email';
     input.placeholder = 'you@example.com';
-    input.autofocus = true;
+    // No autofocus: on mobile it summons the keyboard + the browser's
+    // autofill/keychain sheet the instant the page loads. Nothing should
+    // open until the user taps the field (Claude-login behavior).
+    input.autocomplete = 'off';
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('autocapitalize', 'none');
+    input.spellcheck = false;
     const fieldErr = el('p', 'auth-shell-field-error');
     fieldErr.style.display = 'none';
     field.append(label, input, fieldErr);

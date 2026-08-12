@@ -1671,7 +1671,10 @@ body {
 .m-login-google { display: flex; justify-content: center; min-height: 44px; width: 100%; }
 .m-login-err { color: #ff8a8a; font: 400 14px/1.4 var(--font-sans); }
 .m-login-alt { border: 0; background: none; color: rgba(255,255,255,0.72); font: 500 15px/1 var(--font-sans); cursor: pointer; text-decoration: underline; }
-.m-login-legal { margin-top: 6px; font: 400 13px/1.55 var(--font-sans); color: rgba(255,255,255,0.45); }
+/* .m-login-card is a flex column with a 16px gap already applied between every
+   child, so this margin STACKS on top of that gap rather than replacing it —
+   pull it negative to counteract most of the gap and sit snug under the button. */
+.m-login-legal { margin-top: -8px; font: 400 13px/1.55 var(--font-sans); color: rgba(255,255,255,0.45); }
 .m-login-legal a { color: rgba(255,255,255,0.78); }
 .m-login-sent { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 
