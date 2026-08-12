@@ -1425,6 +1425,9 @@ body.account-locked #dl-btn-wrap {
 .glyphh-web .app-rail-top,
 .glyphh-web .auth-shell-header,
 .glyphh-web #onboarding-close { -webkit-app-region: no-drag !important; }
+/* The web login has nothing to close — the X is a DESKTOP affordance (it
+   dismisses the onboarding overlay back to the app). Hidden on web. */
+.glyphh-web #onboarding-close { display: none !important; }
 .glyphh-web #shell-drag-strip .shell-drag-area,
 .glyphh-web .app-rail-top { margin-left: 0 !important; }
 
