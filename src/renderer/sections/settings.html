@@ -292,6 +292,17 @@
                       <span class="toggle-desc">New workbench app panels open with the browser address bar visible. You can still show or hide it per panel from the panel header.</span>
                     </div>
                   </label>
+                  <!-- WEB + touch devices only (navigation.ts shows it): the twin of the
+                       mobile app's Appearance → "Desktop site" toggle. A tablet that
+                       opted into the desktop layout needs a door BACK. -->
+                  <label class="settings-toggle hidden" id="settings-mobile-ui-row" style="margin-top:16px;">
+                    <input type="checkbox" id="settings-mobile-ui" />
+                    <span class="toggle-switch"></span>
+                    <div class="toggle-info">
+                      <span class="toggle-title">Use the mobile app on this device</span>
+                      <span class="toggle-desc">Switch this tablet back to the mobile interface. You can return here from the mobile app's Appearance settings.</span>
+                    </div>
+                  </label>
                 </div>
 
               </div>
