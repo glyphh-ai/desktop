@@ -61,6 +61,8 @@ interface AdminPlan {
   active: boolean;
   org_id: string | null;
   org_name: string | null;
+  /** Gateway requests/minute for orgs on this plan; null = unlimited. */
+  rate_limit_rpm?: number | null;
 }
 interface AdminPlanPatch {
   display_name?: string;
@@ -68,6 +70,7 @@ interface AdminPlanPatch {
   included_credits?: number;
   max_seats?: number;
   active?: boolean;
+  rate_limit_rpm?: number | null;
 }
 interface AdminPlanPrice { id: string; stripePriceId: string; active: boolean; createdAt: string }
 interface AdminUsageByUser { userId: string; email: string; name: string; requests: number; credits: number; tokens: number }
@@ -485,7 +488,7 @@ function paintPlans(): void {
   const globals = plans.filter((p) => !p.org_id);
   wrap.innerHTML = "";
   if (!globals.length) { wrap.innerHTML = `<div class="crud-empty">No plans yet.</div>`; return; }
-  const { table, tbody } = mkTable(["Plan", "Tier", "$ / seat / mo", "Credits / mo", "Seats", "Status"], true);
+  const { table, tbody } = mkTable(["Plan", "Tier", "$ / seat / mo", "Credits / mo", "Seats", "Rpm", "Status"], true);
   for (const p of globals) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -493,7 +496,8 @@ function paintPlans(): void {
       <td class="lib-table-desc"></td>
       <td>$${fmtInt((p.monthly_usd_cents || 0) / 100)}</td>
       <td>${fmtInt(microToCredits(p.included_credits))}</td>
-      <td class="lib-table-dim">${fmtInt(p.max_seats || 1)}</td>`;
+      <td class="lib-table-dim">${fmtInt(p.max_seats || 1)}</td>
+      <td class="lib-table-dim">${p.rate_limit_rpm ? fmtInt(p.rate_limit_rpm) : "∞"}</td>`;
     const status = document.createElement("td");
     status.innerHTML = p.active ? `<span class="lib-badge">Active</span>` : `<span class="lib-table-dim">Inactive</span>`;
     tr.appendChild(status);
@@ -635,6 +639,7 @@ async function openPlanEditor(p: AdminPlan): Promise<void> {
   set("pa-plan-price", String(Math.round((p.monthly_usd_cents || 0) / 100)));
   set("pa-plan-credits", String(microToCredits(p.included_credits)));
   set("pa-plan-seats", String(p.max_seats || 1));
+  set("pa-plan-rpm", p.rate_limit_rpm != null ? String(p.rate_limit_rpm) : "");
   const active = $<HTMLInputElement>("pa-plan-active");
   if (active) active.checked = p.active;
   const priceInput = $<HTMLInputElement>("pa-price-new");
@@ -654,6 +659,10 @@ async function savePlan(): Promise<void> {
     included_credits: Math.max(0, Math.round(Number(inputVal("pa-plan-credits")) || 0)) * MICRO,
     max_seats: Math.max(1, Math.round(Number(inputVal("pa-plan-seats")) || 1)),
     active: !!$<HTMLInputElement>("pa-plan-active")?.checked,
+    // Empty clears the limit (null = unlimited); 0 is treated as empty too.
+    rate_limit_rpm: inputVal("pa-plan-rpm") && Number(inputVal("pa-plan-rpm")) > 0
+      ? Math.round(Number(inputVal("pa-plan-rpm")))
+      : null,
   };
   const btn = $<HTMLButtonElement>("pa-plan-save");
   if (btn) btn.disabled = true;

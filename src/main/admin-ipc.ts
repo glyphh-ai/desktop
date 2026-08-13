@@ -35,6 +35,7 @@ interface AdminPlanPatch {
   included_credits?: number;
   max_seats?: number;
   active?: boolean;
+  rate_limit_rpm?: number | null;
 }
 interface AdminDailyQueryInput {
   from: string;
