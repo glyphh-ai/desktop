@@ -3383,7 +3383,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   clearToolRows(chatId);   // any ⚙ row whose done never arrived stays as-is
   // This run's pending cards vanish; other runs' stay queued. (paintAskDock
   // restarts the countdown for whatever card is now on top, or stops it.)
-  if (run?.runId) askQueue = askQueue.filter((q) => q.runId !== run.runId);
+  askQueue = askQueue.filter((q) => q.chatId !== chatId && (!run?.runId || q.runId !== run.runId));
   paintAskDock();
   stopRunTickerIfIdle();
   renderHistory();   // the panel header goes idle even for a background session
@@ -3673,12 +3673,25 @@ function initGlyphhAgentEvents(): void {
   // (glyphh-agent-permissions.ts), so the card counts down identically.
   // A LOCAL gate parks in main with the same deadlines the pod uses
   // (glyphh-agent-permissions.ts), so the card counts down identically.
+  // The dock renders ONLY cards stamped with the on-screen session's chatId
+  // (paintAskDock) — but the LOCAL gate's IPC carries no chat context, so these
+  // pushes went in unstamped and never painted (the ask sat invisible until its
+  // timeout). Stamp them here: runId → chat when the payload has one, else the
+  // session with the live local run, else whatever is on screen.
+  const dockChatFor = (runId?: string): string => {
+    if (runId) {
+      const e = runEntry(runId);
+      if (e) return e[0];
+    }
+    const live = chats.filter((c) => liveRuns.has(c.id));
+    return live.length === 1 ? live[0].id : currentId;
+  };
   window.glyphh.onGlyphhAgentApproval?.((a) => {
-    askQueue.push({ type: "approval", ...a, deadline: Date.now() + APPROVAL_TIMEOUT_MS });
+    askQueue.push({ type: "approval", ...a, chatId: dockChatFor((a as { runId?: string }).runId), deadline: Date.now() + APPROVAL_TIMEOUT_MS });
     paintAskDock();
   });
   window.glyphh.onGlyphhAgentAsk?.((d) => {
-    askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0, runId: (d as { runId?: string }).runId, deadline: Date.now() + ASK_TIMEOUT_MS });
+    askQueue.push({ type: "ask", id: d.id, questions: d.questions, answers: [], step: 0, runId: (d as { runId?: string }).runId, chatId: dockChatFor((d as { runId?: string }).runId), deadline: Date.now() + ASK_TIMEOUT_MS });
     paintAskDock();
   });
   // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
