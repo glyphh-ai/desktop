@@ -11635,14 +11635,6 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
 }
 .cc-layout-card:hover { transform: scale(1.06); }
 /* Space badge — same glyph chip the echo tiles wear, upper-right of the mini. */
-.cc-card-space {
-  position: absolute; top: -4px; right: 8px;
-  width: 18px; height: 18px; border-radius: 5px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--surface-2); border: 1px solid var(--border-2);
-  color: var(--text-2);
-}
-.cc-card-space svg { width: 11px; height: 11px; }
 
 /* "Maintain on close" — the terminal cell's keep-alive toggle in App Setup. */
 .layout-cell-config-keep {
@@ -11652,9 +11644,6 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
 .layout-cell-config-keep input { accent-color: var(--accent); }
 
 /* Space filter beside the layouts search — funnel button + check dropdown. */
-.layout-filter-wrap { display: inline-flex; align-items: center; }
-#layout-space-filter.active { color: var(--accent); border-color: var(--accent); }
-.layout-space-menu { min-width: 150px; }
 .cc-mini {
   position: relative; width: 150px; height: 94px; border-radius: 10px;
   background: var(--surface-2); border: 1px solid var(--border); overflow: hidden;
