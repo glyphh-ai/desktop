@@ -28,7 +28,7 @@
 import { decideBootState, parseCallbackParams, shouldShowFirstRun, CALLBACK_PATH } from './glyphh-core.js';
 import {
   isAuthenticated, syncGating, serverReachable,
-  signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode, approveDevice,
+  signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode, approveDevice, signOut,
 } from './glyphh-web.js';
 import { mountLogin } from './web-login.js';
 
@@ -252,7 +252,26 @@ async function showDevice(shownAt) {
     }
   });
 
-  step.append(h, lede, grid);
+  // WHO approves — the trap this kills: the approving browser (or origin) can
+  // hold a different account than the user expects, and a silent approve binds
+  // the device to it. Name the account and offer the switch right here.
+  const who = el('p', 'auth-shell-lede device-approve-as');
+  who.append(document.createTextNode('Approving as '));
+  const whoName = el('strong', '', user.email || user.name || 'this account');
+  who.append(whoName);
+  who.append(document.createTextNode(' — '));
+  const switchLink = el('a', 'device-switch-account', 'use a different account');
+  switchLink.href = '#';
+  switchLink.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    void (async () => {
+      try { await signOut(); } catch { /* local clear still happened */ }
+      void showDevice(shownAt); // re-enters signed-out → the login shell, code intact
+    })();
+  });
+  who.append(switchLink);
+
+  step.append(h, lede, who, grid);
   if (!code) step.append(input);
   // Error ABOVE the button — below it, a full-height card clips/overlaps it at
   // the viewport's bottom edge (it read as "hidden behind the button").
