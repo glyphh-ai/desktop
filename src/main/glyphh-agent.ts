@@ -22,6 +22,7 @@
  * `glyphh-agent-stop` aborts a session's run.
  */
 
+import os from "node:os";
 import { ipcMain, type WebContents } from "electron";
 import { runMaxOutputTokens } from "./loop-selections";
 import { registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
@@ -94,26 +95,30 @@ export function registerGlyphhIpc(): void {
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
     if (activeRuns.has(chatId)) throw new Error("this session is already running — stop it or wait");
-    // Sessions run inside a folder the USER chose — never ~/, never the
-    // launch cwd. The SESSION's own folder (stamped by its layout or the
-    // pick made while it was current) wins over the global pick, so
-    // concurrent sessions can work different projects at once.
+    // The SESSION's own folder (stamped by its workspace or the pick made
+    // while it was current) wins over the global pick, so concurrent
+    // sessions can work different projects at once. No pick at all falls
+    // back to the home dir below — never a block.
     // The SESSION RECORD is the source of truth for the run's mode — a
     // renderer bug or version skew must never run a chat session with code
     // tools (or vice versa). The payload's mode is only the fallback for a
     // record the store hasn't caught up on.
     const stored = loadSessions().chats.find((c) => c.id === chatId);
     const mode = stored?.mode ?? (stored?.chat ? "chat" : undefined) ?? payload?.mode ?? (payload?.chat ? "chat" : "code");
-    const runWorkdir = (typeof payload?.workdir === "string" && payload.workdir) || getExplicitWorkingDirectory();
     // Where the session RUNS. The record wins over the payload for the same
     // reason `mode` does; a cloud session runs on its provisioned pod, from
     // the desktop just as it does from the web.
     const source = stored?.source ?? payload?.source;
     const onCloud = isCloudSource(source);
-    // A CHAT run executes no tools — it has no use for a folder, so it never
-    // demands one. Neither does a cloud run: its folder is the pod's own
-    // project workspace, not a path on this machine.
-    if (!runWorkdir && mode !== "chat" && !onCloud) throw new Error("NO_WORKDIR: pick a working folder to start");
+    // A folder is NOT a hard requirement (2026-08-13): a session with no
+    // explicit pick runs from the DEFAULT ROOT — the user's home dir — the
+    // same doctrine the cloud pod follows with its project workspace. The
+    // old NO_WORKDIR throw force-opened the OS picker on the first send,
+    // blocking someone who just wanted to talk. Chat and cloud runs never
+    // touch a local folder at all.
+    const runWorkdir = (typeof payload?.workdir === "string" && payload.workdir)
+      || getExplicitWorkingDirectory()
+      || (mode !== "chat" && !onCloud ? os.homedir() : "");
     // Composer attachments: validate paths, then whitelist them for reads
     // (attach = consent) for the duration of this run.
     const attachments = validAttachments(payload?.attachments);
