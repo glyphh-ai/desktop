@@ -5,8 +5,8 @@
  * search_files, run_command. Paths resolve inside the working folder;
  * anything escaping it escalates to a "dangerous" gate action.
  *
- * Workspace windows & apps: open_app / open_layout (unified resolver —
- * everything lands in the workspace), list_windows / list_layouts, plus
+ * Workspace windows & apps: open_app / open_workspace (unified resolver —
+ * everything lands in the workbench), list_windows / list_workspaces, plus
  * the RPA-class surface: app_list_tools / app_call_tool run installed
  * Glyphh apps' declared MCP tools headlessly. The user's connected
  * accounts (Slack, GitHub, …) ride as FIRST-CLASS tools — each governed
@@ -678,27 +678,27 @@ const TOOLS: ToolDef[] = [
     run: async (a) => cap(JSON.stringify(await dispatchRelayMethod("scrape.page", a), null, 1)),
   },
   {
-    name: "list_layouts",
-    doc: "list_layouts() — the user's saved layouts (open one with open_layout)",
-    action: () => ({ kind: "read", title: "List layouts" }),
+    name: "list_workspaces",
+    doc: "list_workspaces() — the user's saved workspaces (open one with open_workspace)",
+    action: () => ({ kind: "read", title: "List workspaces" }),
     run: async () => {
       const layouts = await fetchServerLayouts();
       return cap(layouts.map((l) => `${l.name}${l.cols && l.rows ? ` (${l.cols}×${l.rows})` : ""}`).join("\n") || "(none saved)");
     },
   },
   {
-    name: "open_layout",
-    doc: "open_layout(name) — open a saved layout: its apps tile as panels beside this conversation",
-    action: (a) => ({ kind: "command", title: `Open layout "${String(a.name ?? "")}"` }),
+    name: "open_workspace",
+    doc: "open_workspace(name) — open a saved workspace: its apps tile as panels beside this conversation",
+    action: (a) => ({ kind: "command", title: `Open workspace "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const r = await openLayoutByName(String(a.name ?? ""));
-      return `opened layout ${r.layout} — apps: ${r.apps.join(", ")}`;
+      return `opened workspace ${r.layout} — apps: ${r.apps.join(", ")}`;
     },
   },
   {
-    name: "save_layout",
-    doc: 'save_layout(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved layout. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan. Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the layout switches the agent to on open.',
-    action: (a) => ({ kind: "edit", title: `Save layout "${String(a.name ?? "")}"` }),
+    name: "save_workspace",
+    doc: 'save_workspace(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved workspace. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan. Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the workspace switches the agent to on open.',
+    action: (a) => ({ kind: "edit", title: `Save workspace "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const name = String(a.name ?? "").trim();
       if (!name) return "ERROR: name is required";
@@ -736,7 +736,7 @@ const TOOLS: ToolDef[] = [
       const existing = (await client.layouts.list()).find((it) => it.name.toLowerCase() === name.toLowerCase());
       const saved = await client.layouts.save({ name, data: body, ...(existing ? { id: existing.id } : {}) });
       appCache.invalidate("/api/layouts");
-      return `saved ✓ layout "${name}" (${cols}×${rows}, ${cells.length} panels)${existing ? " — updated" : ""}. Open it with open_layout("${saved.name ?? name}").`;
+      return `saved ✓ workspace "${name}" (${cols}×${rows}, ${cells.length} panels)${existing ? " — updated" : ""}. Open it with open_workspace("${saved.name ?? name}").`;
     },
   },
   {
@@ -1134,7 +1134,7 @@ export type AgentMode = "cowork" | "code";
 const CODE_EXCLUDED = new Set([
   "rpa_read", "rpa_click", "rpa_type", "rpa_goto", "scrape_page",
   "send_email_with_attachment",
-  "list_layouts", "open_layout", "save_layout",
+  "list_workspaces", "open_workspace", "save_workspace",
   "list_drips", "run_drip",
   "app_list_tools", "app_call_tool",
 ]);
@@ -1158,7 +1158,7 @@ export interface ToolOutcome { result: string; denied: boolean; title: string }
  * "Write /path", "Call slug → tool"). Null when the tool is unknown here.
  */
 export function glyphhToolTitle(name: string, args: Record<string, unknown> = {}): string | null {
-  const tool = TOOLS.find((t) => t.name === name);
+  const tool = TOOLS.find((t) => t.name === (RENAMED_TOOLS[name] ?? name));
   if (tool) {
     try { return tool.action(args).title || null; } catch { return null; }
   }
@@ -1261,6 +1261,14 @@ async function runRolePacket(
   return `ERROR: the ${role} packet stopped after ${ROLE_RUN_ROUNDS} tool rounds without finishing — split the task into smaller packets`;
 }
 
+/** Layouts became WORKSPACES (2026-08-13): recorded skills and old prompts may
+ *  still call the layout-named tools — resolve them to the new names. */
+const RENAMED_TOOLS: Record<string, string> = {
+  list_layouts: "list_workspaces",
+  open_layout: "open_workspace",
+  save_layout: "save_workspace",
+};
+
 export async function executeGlyphhTool(
   wc: WebContents,
   call: { name: string; arguments?: Record<string, unknown> },
@@ -1281,7 +1289,8 @@ async function executeGlyphhToolInner(
   call: { name: string; arguments?: Record<string, unknown> },
   signal?: AbortSignal,
 ): Promise<ToolOutcome> {
-  const tool = TOOLS.find((t) => t.name === call.name);
+  const callName = RENAMED_TOOLS[call.name] ?? call.name;
+  const tool = TOOLS.find((t) => t.name === callName);
   if (!tool) {
     // Not a builtin — a wired connector tool dispatches through yo-server.
     const wired = wireMap.get(call.name);

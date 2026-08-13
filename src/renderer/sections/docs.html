@@ -8,7 +8,7 @@
               <button class="settings-nav-item" data-doc="mentions">Mentions &amp; Ghost</button>
               <button class="settings-nav-item" data-doc="workspace">Workspace</button>
               <button class="settings-nav-item" data-doc="apps">Apps</button>
-              <button class="settings-nav-item" data-doc="layouts">Layouts</button>
+              <button class="settings-nav-item" data-doc="layouts">Workspaces</button>
               <button class="settings-nav-item" data-doc="building">Build &amp; publish</button>
               <button class="settings-nav-item" data-doc="connections">Connections</button>
               <button class="settings-nav-item" data-doc="cli">CLI</button>
@@ -25,7 +25,7 @@
               <p>Signing in opens your browser at <code>platform.glyphh.ai</code> — approve the device code shown in the app (Google, Apple, or email). Your session is stored locally under <code>~/.glyphh</code> and follows you into the CLI too.</p>
 
               <h4>Your workspace comes furnished</h4>
-              <p>A new account starts with the apps most people already live in — Gmail, Calendar, Drive, Docs, Sheets, Slack, GitHub, Notion, the AI chats, and more — plus two starter layouts:</p>
+              <p>A new account starts with the apps most people already live in — Gmail, Calendar, Drive, Docs, Sheets, Slack, GitHub, Notion, the AI chats, and more — plus two starter workspaces:</p>
               <ul class="docs-list">
                 <li><strong>Email</strong> — Gmail on the left, Calendar on the right</li>
                 <li><strong>Dev</strong> — Files and Diff on the left, Editor over Terminal in the center, the Coding Agent on the right</li>
@@ -52,7 +52,7 @@
               <div class="cmd-row"><code>read-only</code><span>Reads only; nothing on disk changes</span></div>
 
               <h4>Loops</h4>
-              <p>A <strong>loop</strong> is the agent's program: its roles (planner, worker, &hellip;) and the model bound to each. Switch loops from the loop chip; edit them (or build new ones) on the platform's Loops page. Layouts can carry a loop, so opening "Dev" can also mean "plan with Fable, work with a local model".</p>
+              <p>A <strong>loop</strong> is the agent's program: its roles (planner, worker, &hellip;) and the model bound to each. Switch loops from the loop chip; edit them (or build new ones) on the platform's Loops page. Workspaces can carry a loop, so opening "Dev" can also mean "plan with Fable, work with a local model".</p>
 
               <h4>Context</h4>
               <p>The context meter shows how full the model's window is and where compaction kicks in. The agent folds older turns automatically; your working-folder choice, plans, and receipts survive it.</p>
@@ -110,7 +110,7 @@
 
             <div class="docs-panel" data-doc="workspace">
               <h3>Workspace</h3>
-              <p>The workbench tiles live tools next to the agent. Open them from the header toggles or a layout; drag headers to rearrange; drag edges to resize. Arrangements are remembered per working folder, and named layouts remember exactly how you left them.</p>
+              <p>The workbench tiles live tools next to the agent. Open them from the header toggles or a workspace; drag headers to rearrange; drag edges to resize. Arrangements are remembered per working folder, and named workspaces remember exactly how you left them.</p>
 
               <h4>Tiles</h4>
               <ul class="docs-list">
@@ -120,7 +120,7 @@
                 <li><strong>Diff</strong> — what changed, as the agent works.</li>
                 <li><strong>Browser</strong> — web preview with an address bar; right-click a page to save it as an app.</li>
                 <li><strong>Plan</strong> — the agent's plan files, live.</li>
-                <li><strong>Coding Agent</strong> — the agent itself, hostable as a tile in any layout.</li>
+                <li><strong>Coding Agent</strong> — the agent itself, hostable as a tile in any workspace.</li>
               </ul>
 
               <h4>Apps beside the agent</h4>
@@ -140,7 +140,7 @@
               <div class="cmd-row"><code>.sup</code><span>Capture the panel's content to the clipboard</span></div>
               <div class="cmd-row"><code>.sup ..</code><span>Capture the agent's last result</span></div>
               <div class="cmd-row"><code>.dip &lt;app&gt;</code><span>Switch panels</span></div>
-              <div class="cmd-row"><code>.dip layout &lt;name&gt;</code><span>Open a saved layout</span></div>
+              <div class="cmd-row"><code>.dip layout &lt;name&gt;</code><span>Open a saved workspace</span></div>
               <div class="cmd-row"><code>.drip</code><span>Fireworks. You earned it.</span></div>
               <p>The command text is intercepted before the app sees it — nothing leaks into the page.</p>
 
@@ -149,21 +149,21 @@
             </div>
 
             <div class="docs-panel" data-doc="layouts">
-              <h3>Layouts</h3>
-              <p>A layout is a saved arrangement — which tools and apps, in what grid — restorable in one click from the rail, the command palette, or <code>.dip layout &lt;name&gt;</code>.</p>
+              <h3>Workspaces</h3>
+              <p>A workspace is a saved arrangement — which tools and apps, in what grid — restorable in one click from the rail, the command palette, or <code>.dip layout &lt;name&gt;</code>.</p>
 
-              <h4>What a layout can carry</h4>
+              <h4>What a workspace can carry</h4>
               <ul class="docs-list">
                 <li><strong>Panels + tools</strong> — any mix of apps, Files, Editor, Terminal, Diff, Browser, Plan, and the Coding Agent.</li>
-                <li><strong>App setup per panel</strong> — the Browser cell opens <em>at a URL</em> you set; the Terminal cell runs a <em>first command</em> (after the working folder is set). Set both in the layout editor&rsquo;s App setup section.</li>
-                <li><strong>A working folder</strong> — opening the layout switches the agent to it.</li>
-                <li><strong>Session behavior</strong> — keep the current session, start fresh, or resume this layout&rsquo;s own last session.</li>
-                <li><strong>A loop + its models</strong> — opening the layout activates that loop with those model bindings.</li>
+                <li><strong>App setup per panel</strong> — the Browser cell opens <em>at a URL</em> you set; the Terminal cell runs a <em>first command</em> (after the working folder is set). Set both in the workspace editor&rsquo;s App setup section.</li>
+                <li><strong>A working folder</strong> — opening the workspace switches the agent to it.</li>
+                <li><strong>Session behavior</strong> — keep the current session, start fresh, or resume this workspace&rsquo;s own last session.</li>
+                <li><strong>A loop + its models</strong> — opening the workspace activates that loop with those model bindings.</li>
                 <li><strong>A target</strong> — <em>glyphh</em> (tiles inside the window) or <em>desktop</em> (panels open as positioned OS windows; native apps launch).</li>
               </ul>
 
               <h4>Your changes stick</h4>
-              <p>Rearrange or resize inside an open layout and it remembers — reopening brings back exactly what you left, not the original definition. Starting a new agent session never resets an open layout.</p>
+              <p>Rearrange or resize inside an open workspace and it remembers — reopening brings back exactly what you left, not the original definition. Starting a new agent session never resets an open workspace.</p>
 
               <h4>Starters</h4>
               <p>Every account begins with <strong>Email</strong> (Gmail | Calendar) and <strong>Dev</strong> (Files/Diff | Editor/Terminal | Coding Agent) as working examples.</p>
@@ -234,7 +234,7 @@ glyphh</pre>
     }
   }
 }</pre>
-              <p>Connected tools can open your apps and layouts, run your installed apps' tools, call your connections, and build + deploy Glyphh apps. Security model: your desktop holds an <em>outbound</em> connection to the cloud — nothing ever dials into your machine, and only clients you approve get through.</p>
+              <p>Connected tools can open your apps and workspaces, run your installed apps' tools, call your connections, and build + deploy Glyphh apps. Security model: your desktop holds an <em>outbound</em> connection to the cloud — nothing ever dials into your machine, and only clients you approve get through.</p>
             </div>
 
             <div class="docs-panel" data-doc="links">

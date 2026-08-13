@@ -154,7 +154,7 @@ function panelIconHtml(panelId: string): string {
 function renderLayoutHead(layout: { name: string; splits: Array<{ panelId: string }> } | null): void {
   const head = document.getElementById("layout-detail-head");
   if (!head) return;
-  if (!layout) { head.innerHTML = `<div class="edit-head-name">New layout</div>`; return; }
+  if (!layout) { head.innerHTML = `<div class="edit-head-name">New workspace</div>`; return; }
   const seen = new Set<string>();
   const ids = layout.splits.map((s) => s.panelId).filter(Boolean).filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
   head.innerHTML = `<div class="edit-head-icons">${ids.map((id) => panelIconHtml(id)).join("")}</div><div class="edit-head-name"></div>`;
@@ -529,7 +529,7 @@ function renderCellConfigs(): void {
           cell.config = { ...(cell.config || {}), keepAlive: false };
         }
       });
-      keep.append(cb, document.createTextNode(" Maintain on close — keeps the terminal (and anything running in it) alive when the layout closes"));
+      keep.append(cb, document.createTextNode(" Maintain on close — keeps the terminal (and anything running in it) alive when the workspace closes"));
       row.append(keep);
     }
     list.appendChild(row);
@@ -734,7 +734,7 @@ function renderLayoutsList() {
     card.className = "cc-layout-card";
     const space = cardSpace(layout);
     const chosen = explicitSpace(layout);
-    const badgeTitle = chosen ? `${SPACE_LABEL[chosen]} layout` : `Auto — opens as ${SPACE_LABEL[space]}`;
+    const badgeTitle = chosen ? `${SPACE_LABEL[chosen]} workspace` : `Auto — opens as ${SPACE_LABEL[space]}`;
     const badgeGlyph = chosen ? SPACE_GLYPH_SVG[chosen] : AUTO_GLYPH_SVG;
     card.innerHTML =
       `${layoutMini(layout)}` +
@@ -877,7 +877,7 @@ async function saveLayout() {
   if (!name) {
     layoutNameInput.classList.add("invalid");
     clearInvalid(layoutNameInput);
-    layoutFormError.textContent = "Layout name is required.";
+    layoutFormError.textContent = "Workspace name is required.";
     layoutFormError.classList.remove("hidden");
     return;
   }
@@ -898,8 +898,8 @@ async function saveLayout() {
     .map((c) => panelLabel(c.panelId));
   if (offenders.length) {
     layoutFormError.textContent =
-      `A layout can't contain native apps: ${offenders.join(", ")}. ` +
-      "A layout arranges panels inside Glyphh; a native app opens in its own OS window.";
+      `A workspace can't contain native apps: ${offenders.join(", ")}. ` +
+      "A workspace arranges panels inside Glyphh; a native app opens in its own OS window.";
     layoutFormError.classList.remove("hidden");
     return;
   }
@@ -944,8 +944,8 @@ async function deleteLayout() {
   if (!editingLayoutName) return;
   const confirmed = await confirmAction({
     title: `Delete “${editingLayoutName}”?`,
-    body: "The layout disappears from your library — the apps it arranged are untouched.",
-    confirmLabel: "Delete layout",
+    body: "The workspace disappears from your library — the apps it arranged are untouched.",
+    confirmLabel: "Delete workspace",
     danger: true,
   });
   if (!confirmed) return;

@@ -3263,7 +3263,7 @@ function App() {
       // the agent as prose.
       if (/^\.dip(\s|$)/i.test(prompt)) {
         setDraft('');
-        convoRef.current = [...convoRef.current, { id: 'dip' + Date.now().toString(36), role: 'glyphh', text: '.dip opens app panels — use the desktop app or the web workbench for layouts and apps.' }];
+        convoRef.current = [...convoRef.current, { id: 'dip' + Date.now().toString(36), role: 'glyphh', text: '.dip opens app panels — use the desktop app or the web workbench for workspaces and apps.' }];
         renderConvo();
         return;
       }

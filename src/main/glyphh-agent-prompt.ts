@@ -94,7 +94,7 @@ export async function workspaceExtras(workdirOverride?: string): Promise<string>
     "RULE: NEVER start a local web server to show something — no `python3 -m http.server`, no `npx serve`, no `vite preview`. Publish the app and open its URL instead.",
     "RULE: shipping goes through the tools — never a CLI, never npx, and NEVER any login/device-auth flow. Your session is already authenticated; initiating authentication is forbidden.",
     GLYPHH_APP_SPEC,
-    "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/layouts by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
+    "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/workspaces by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",
     "MEMORY: you have layers — Ada (long-term facts), the rolling summary (mid-term), and <relevant_earlier_context> blocks (short-term recall of this session's own turns). On unfamiliar code, semantic_search(query) FIRST — it finds the right spans by meaning; read_file the spans it names instead of whole files.",
   ].filter(Boolean).join("\n\n");
 }

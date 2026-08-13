@@ -3007,10 +3007,10 @@ export function runDip(ref: string): void {
     // Name the layouts the resolver actually sees — "not found" with no
     // context turns into a support question; this answers it in place.
     const known = await window.glyphh.layoutsList?.().then((ls) => ls.map((l) => l.name)).catch(() => [] as string[]);
-    const hint = known?.length ? ` Layouts: ${known.join(", ")}.` : "";
+    const hint = known?.length ? ` Workspaces: ${known.join(", ")}.` : "";
     current()!.messages.push({
       role: "assistant",
-      text: `⚠ .dip: ${asApp?.error || `no app or layout named "${ref}"`}.${hint}`,
+      text: `⚠ .dip: ${asApp?.error || `no app or workspace named "${ref}"`}.${hint}`,
       at: Date.now(),
     });
     void saveStore(); renderHistory(); renderThread();
@@ -4086,7 +4086,7 @@ function renderRailLayouts(): void {
     const tile = document.createElement("button");
     tile.className = "app-rail-tile";
     tile.type = "button";
-    tile.title = `${l.name} (layout)`;
+    tile.title = `${l.name} (workspace)`;
     const icon = document.createElement("div");
     icon.className = "tile-icon tile-layout";
     const seen = new Set<string>();
@@ -4110,7 +4110,7 @@ function renderRailLayouts(): void {
     list.appendChild(tile);
   }
   if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRailLayouts(); }));
-  if (!layouts.length) railEmpty(list, q, "Layout", "layouts");
+  if (!layouts.length) railEmpty(list, q, "Workspace", "layouts");
 }
 
 // ── Recents vertical resize ──────────────────────────────────────────────

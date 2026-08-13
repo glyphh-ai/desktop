@@ -213,7 +213,7 @@ function scheduleGeneral(delay = 700): void {
 async function saveGeneral(): Promise<void> {
   if (!editing) return;
   const name = ($<HTMLInputElement>("ws-name")?.value || "").trim();
-  if (!name) { setError("A workspace needs a name."); setStatus("", ""); return; }
+  if (!name) { setError("A role needs a name."); setStatus("", ""); return; }
   const cap = num($<HTMLInputElement>("ws-cap")?.value || "");
   await patch({
     name,
@@ -268,7 +268,7 @@ function paintList(): void {
   if (!rows.length) {
     const empty = document.createElement("div");
     empty.className = "crud-empty";
-    empty.textContent = q ? "No workspaces match your search." : "No workspaces yet.";
+    empty.textContent = q ? "No roles match your search." : "No roles yet.";
     list.appendChild(empty);
     return;
   }
@@ -291,7 +291,7 @@ function paintList(): void {
         const badge = document.createElement("span");
         badge.className = "lib-badge";
         badge.textContent = "Base";
-        badge.title = "Unassigned members fall back to this workspace; it can't be deleted.";
+        badge.title = "Unassigned members fall back to this role; it can't be deleted.";
         nameCell.append(" ", badge);
       }
     }
@@ -317,7 +317,7 @@ function paintList(): void {
 async function removeWorkspace(w: Workspace): Promise<void> {
   const ok = await confirmAction({
     title: `Delete ${w.name}?`,
-    body: "Members assigned to it fall back to the base workspace.",
+    body: "Members assigned to it fall back to the base role.",
     confirmLabel: "Delete",
     danger: true,
   });
@@ -329,7 +329,7 @@ async function removeWorkspace(w: Workspace): Promise<void> {
   } else {
     const fn = ipcFns()["workspacesDelete"] as ((id: string) => Promise<{ ok: boolean; error?: string }>) | undefined;
     const res = await fn?.(w.id);
-    if (!res || typeof res.ok !== "boolean") { setError("Deleting a workspace is unavailable on this surface."); return; }
+    if (!res || typeof res.ok !== "boolean") { setError("Deleting a role is unavailable on this surface."); return; }
     if (!res.ok) { setError(res.error || "Delete failed"); return; }
   }
   setError("");
@@ -339,7 +339,7 @@ async function removeWorkspace(w: Workspace): Promise<void> {
 async function createWorkspace(): Promise<void> {
   const field = $<HTMLInputElement>("ws-new-name");
   const name = (field?.value || "").trim();
-  if (!name) { setError("Give the new workspace a name."); return; }
+  if (!name) { setError("Give the new role a name."); return; }
   setStatus("Creating…", "");
   const created = await via<Workspace>((c) => c.workspaces?.create?.({ name }), "workspacesCreate", { name });
   if (!created) { setStatus("Not created", "error"); return; }
@@ -406,7 +406,7 @@ function paintModels(): void {
   if (toggle) toggle.checked = limited;
   if (hint) {
     hint.textContent = limited
-      ? "Uncheck a model to hide it from members with this workspace."
+      ? "Uncheck a model to hide it from members with this role."
       : "Off — it can use every model the org supports.";
   }
   const q = ($<HTMLInputElement>("ws-models-search")?.value || "").trim().toLowerCase();
@@ -486,7 +486,7 @@ function paintConnections(): void {
   if (blurb) {
     blurb.textContent = personal
       ? "Apps a member connects with their OWN account, and which of each app's tools they may use."
-      : "The org's shared, org-authenticated connectors this workspace may use, and which of each app's tools.";
+      : "The org's shared, org-authenticated connectors this role may use, and which of each app's tools.";
   }
   // Custom MCP is a PERSONAL-side decision — it's the member registering their
   // own server, which has no meaning on the shared side.

@@ -190,7 +190,7 @@ export class CommandParser {
     showThinking();
     try {
       const opened = await openLayoutByName(sub);
-      return `Layout: ${opened.layout}`;
+      return `Workspace: ${opened.layout}`;
     } catch {
       // Not a saved layout — fall through to app resolution.
     } finally {

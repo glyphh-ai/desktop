@@ -40,7 +40,7 @@ export type RecentEntry = {
   kind: "app" | "layout";
   /** App slug (e.g. "vibe") or layout name. */
   id: string;
-  /** Display name shown in the row (e.g. "Vibe", "Layout: fullstack"). */
+  /** Display name shown in the row (e.g. "Vibe", "Workspace: fullstack"). */
   name: string;
   /** The folder this mount bound to. */
   folder: string;

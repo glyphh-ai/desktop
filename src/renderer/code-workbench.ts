@@ -257,7 +257,7 @@ function showBrowserError(wv: { setAttribute: (n: string, v: string) => void }, 
 
 /** Panel titles for hosted sections (slot headers + layout minis). */
 const SECTION_TITLES: Record<string, string> = {
-  dashboard: "Home", connections: "Connections", apps: "Apps", layouts: "Layouts",
+  dashboard: "Home", connections: "Connections", apps: "Apps", layouts: "Workspaces",
   skills: "Skills", loops: "Loops", agents: "Agents", models: "Models",
   settings: "Settings", docs: "Docs",
 };
@@ -1534,9 +1534,9 @@ async function init(): Promise<void> {
       <div class="echo-veil"></div>
       <div class="echo-layout-bar hidden">
         <span class="echo-layout-bar-name"></span>
-        <button class="ws-icon-btn echo-layout-close" type="button" title="Close layout — close every panel in it">
+        <button class="ws-icon-btn echo-layout-close" type="button" title="Close workspace — close every panel in it">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
-          <span>Close layout</span>
+          <span>Close workspace</span>
         </button>
       </div>
       <div class="echo-cards"></div>
@@ -2578,7 +2578,7 @@ async function init(): Promise<void> {
     const paintLayoutBar = (): void => {
       const inLayout = openList.some((e) => e.layoutId != null);
       layoutBar.classList.toggle("hidden", !inLayout);
-      if (inLayout) layoutBarName.textContent = echoLayoutName || "Layout";
+      if (inLayout) layoutBarName.textContent = echoLayoutName || "Workspace";
     };
     const layoutCards = (): void => {
       const n = openList.length;
@@ -3821,7 +3821,7 @@ async function init(): Promise<void> {
         const ok = await appConfirm({
           title: `Delete "${t.name}"?`,
           body: t.kind === "layout"
-            ? "The layout is removed from your library."
+            ? "The workspace is removed from your library."
             : "The app is removed from your library on every device.",
           confirmLabel: "Delete",
           danger: true,
