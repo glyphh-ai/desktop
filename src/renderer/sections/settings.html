@@ -1344,38 +1344,47 @@
                       <input id="pa-provider-search" type="text" class="crud-search" placeholder="Search providers..." spellcheck="false" autocomplete="off" />
                       <button id="pa-provider-add-btn" class="action-btn primary" type="button">+ Provider</button>
                     </div>
-                    <div id="pa-provider-create" class="settings-form hidden">
-                      <div class="settings-error hidden" id="pa-provider-create-error"></div>
-                      <label class="settings-label">Slug</label>
-                      <input id="pa-pc-slug" class="settings-input settings-input-md" placeholder="mistral" spellcheck="false" />
-                      <label class="settings-label">Name</label>
-                      <input id="pa-pc-name" class="settings-input settings-input-md" placeholder="Mistral" />
-                      <label class="settings-label">Kind</label>
-                      <select id="pa-pc-kind" class="settings-input settings-input-md">
-                        <option value="proxied">Proxied (platform key)</option>
-                        <option value="open_weight">Open weight</option>
-                      </select>
-                      <label class="settings-label">Base URL <span class="auth-shell-label-aside">optional</span></label>
-                      <input id="pa-pc-url" class="settings-input" placeholder="https://api.mistral.ai" spellcheck="false" />
-                      <!-- PLATFORM API KEYS — several per provider (rotation:
-                           append + activate/deactivate). Encrypted in the DB;
-                           write-only: rows show label + last-4, never the key. -->
-                      <div id="pa-pc-keys-group" class="hidden">
-                        <h4 class="acct-row-head">API keys</h4>
-                        <p class="section-desc">The platform keys the gateway calls this vendor with — several allowed; each call picks a random active key, so rotation is add-the-new, deactivate-the-old. Stored encrypted, never shown again.</p>
-                        <div id="pa-pc-keys-list"></div>
-                        <div class="settings-inline" style="margin-top:8px">
-                          <input id="pa-pc-key-new" type="password" class="settings-input" placeholder="paste the API key…" spellcheck="false" autocomplete="off" />
-                          <input id="pa-pc-key-label" type="text" class="settings-input settings-input-md" placeholder="label (optional)" spellcheck="false" autocomplete="off" />
-                          <button id="pa-pc-key-add" class="action-btn primary" type="button">Add key</button>
-                        </div>
-                      </div>
-                      <div class="settings-inline" style="margin-top:12px">
-                        <button id="pa-pc-cancel" class="action-btn" type="button">Cancel</button>
-                        <button id="pa-pc-save" class="action-btn primary" type="button">Release provider</button>
+                    <div id="pa-providers-list"></div>
+                  </div>
+
+                  <!-- Provider editor — the SAME full-panel standard as the
+                       model/plan editors: only the form shows, breadcrumb back. -->
+                  <div id="pa-provider-create" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="pa-provider-back">&larr; Providers</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div class="crud-form-error hidden" id="pa-provider-create-error"></div>
+                    <h3 class="settings-subheading" id="pa-provider-title">New provider</h3>
+                    <label class="settings-label">Slug</label>
+                    <input id="pa-pc-slug" class="settings-input settings-input-md" placeholder="mistral" spellcheck="false" />
+                    <label class="settings-label">Name</label>
+                    <input id="pa-pc-name" class="settings-input settings-input-md" placeholder="Mistral" />
+                    <label class="settings-label">Kind</label>
+                    <select id="pa-pc-kind" class="settings-input settings-input-md">
+                      <option value="proxied">Proxied (platform key)</option>
+                      <option value="open_weight">Open weight</option>
+                    </select>
+                    <label class="settings-label">Base URL <span class="auth-shell-label-aside">optional</span></label>
+                    <input id="pa-pc-url" class="settings-input" placeholder="https://api.mistral.ai" spellcheck="false" />
+                    <!-- PLATFORM API KEYS — several per provider (rotation:
+                         append + activate/deactivate). Encrypted in the DB;
+                         write-only: rows show label + last-4, never the key. -->
+                    <div id="pa-pc-keys-group" class="hidden">
+                      <h4 class="acct-row-head">API keys</h4>
+                      <p class="section-desc">The platform keys the gateway calls this vendor with — several allowed; each call picks a random active key, so rotation is add-the-new, deactivate-the-old. Stored encrypted, never shown again.</p>
+                      <div id="pa-pc-keys-list"></div>
+                      <div class="settings-inline" style="margin-top:8px">
+                        <input id="pa-pc-key-new" type="password" class="settings-input" placeholder="paste the API key…" spellcheck="false" autocomplete="off" />
+                        <input id="pa-pc-key-label" type="text" class="settings-input settings-input-md" placeholder="label (optional)" spellcheck="false" autocomplete="off" />
+                        <button id="pa-pc-key-add" class="action-btn primary" type="button">Add key</button>
                       </div>
                     </div>
-                    <div id="pa-providers-list"></div>
+                    <div class="settings-actions" style="margin-top:28px;">
+                      <div style="flex:1;"></div>
+                      <button id="pa-pc-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="pa-pc-save" class="action-btn primary" type="button">Release provider</button>
+                    </div>
                   </div>
 
                   <!-- Model editor — the app form standard: breadcrumb back,

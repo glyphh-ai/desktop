@@ -91,6 +91,10 @@ interface SdkAdmin {
   plans?: () => Promise<{ plans: AdminPlan[] }>;
   updatePlan?: (tier: string, patch: AdminPlanPatch) => Promise<{ plan: AdminPlan }>;
   createPlan?: (input: AdminPlanPatch & { tier: string }) => Promise<{ plan: AdminPlan }>;
+  providerKeys?: (slug: string) => Promise<{ keys: AdminProviderKey[] }>;
+  addProviderKey?: (slug: string, key: string, label?: string) => Promise<{ key: AdminProviderKey }>;
+  setProviderKeyActive?: (id: string, active: boolean) => Promise<{ key: AdminProviderKey }>;
+  removeProviderKey?: (id: string) => Promise<void>;
   planPrices?: (tier: string) => Promise<AdminPlanPrice[]>;
   addPlanPrice?: (tier: string, stripePriceId: string) => Promise<AdminPlanPrice>;
   activatePlanPrice?: (id: string) => Promise<AdminPlanPrice>;
@@ -109,6 +113,10 @@ interface DesktopAdminIpc {
   adminPlans?: () => Promise<{ plans: AdminPlan[] }>;
   adminPlanUpdate?: (tier: string, patch: AdminPlanPatch) => Promise<{ ok: boolean; plan?: AdminPlan; error?: string }>;
   adminPlanCreate?: (input: AdminPlanPatch & { tier: string }) => Promise<{ ok: boolean; plan?: AdminPlan; error?: string }>;
+  adminProviderKeys?: (slug: string) => Promise<{ ok: boolean; keys?: AdminProviderKey[]; error?: string }>;
+  adminProviderKeyAdd?: (slug: string, key: string, label?: string) => Promise<{ ok: boolean; key?: AdminProviderKey; error?: string }>;
+  adminProviderKeyActive?: (id: string, active: boolean) => Promise<{ ok: boolean; key?: AdminProviderKey; error?: string }>;
+  adminProviderKeyRemove?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   adminPlanPrices?: (tier: string) => Promise<AdminPlanPrice[]>;
   adminPlanPriceAdd?: (tier: string, priceId: string) => Promise<{ ok: boolean; price?: AdminPlanPrice; error?: string }>;
   adminPlanPriceActivate?: (id: string) => Promise<{ ok: boolean; price?: AdminPlanPrice; error?: string }>;
@@ -318,10 +326,17 @@ let editingProviderSlug: string | null = null;
 
 async function loadProviders(): Promise<void> {
   try {
-    const r = await (window.glyphh as unknown as {
-      orgProvidersList?: () => Promise<{ ok: boolean; data?: CatalogProvider[] }>;
-    }).orgProvidersList?.();
-    if (r?.ok && Array.isArray(r.data)) providers = r.data;
+    // Web first: the raw SDK client (window.glyphh there is a fabricating
+    // Proxy whose calls resolve undefined). Desktop: the models IPC.
+    const sdk = (window as unknown as { glyphhSdk?: { catalog?: { providers?: () => Promise<CatalogProvider[]> } } }).glyphhSdk;
+    if (sdk?.catalog?.providers) {
+      providers = await sdk.catalog.providers();
+    } else {
+      const r = await (window.glyphh as unknown as {
+        orgProvidersList?: () => Promise<{ ok: boolean; data?: CatalogProvider[] }>;
+      }).orgProvidersList?.();
+      if (r?.ok && Array.isArray(r.data)) providers = r.data;
+    }
   } catch { /* offline — the model-derived counts still paint below */ }
   paintProviders();
 }
@@ -366,10 +381,20 @@ function paintProviders(): void {
   wrap.appendChild(table);
 }
 
+/** The provider editor replaces the WHOLE catalog list view (the model/plan
+ *  editor standard) — only the form + its ← Providers breadcrumb show. */
+function showProviderEditor(on: boolean): void {
+  $("pa-models-list-view")?.classList.toggle("hidden", on);
+  $("pa-provider-create")?.classList.toggle("hidden", !on);
+  if (!on) editingProviderSlug = null;
+}
+
 /** Open the provider form pre-filled for an EDIT (slug is identity — locked). */
 function openProviderEditor(p: CatalogProvider): void {
   editingProviderSlug = p.slug;
   setErr("pa-provider-create-error", "");
+  const title = $("pa-provider-title");
+  if (title) title.textContent = `${p.name} · ${p.slug}`;
   const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
   set("pa-pc-slug", p.slug);
   set("pa-pc-name", p.name);
@@ -380,8 +405,7 @@ function openProviderEditor(p: CatalogProvider): void {
   if (slug) slug.readOnly = true;
   const save = $<HTMLButtonElement>("pa-pc-save");
   if (save) save.textContent = "Save provider";
-  $("pa-provider-create")?.classList.remove("hidden");
-  $("pa-model-create")?.classList.add("hidden");
+  showProviderEditor(true);
   // Platform keys exist only for a SAVED provider — the section shows on edit.
   $("pa-pc-keys-group")?.classList.remove("hidden");
   providerKeys = [];
@@ -393,19 +417,21 @@ function openProviderEditor(p: CatalogProvider): void {
 interface AdminProviderKey { id: string; label: string; hint: string; active: boolean; createdAt: string }
 let providerKeys: AdminProviderKey[] = [];
 
-const keysIpc = (): {
-  adminProviderKeys?: (slug: string) => Promise<{ ok: boolean; keys?: AdminProviderKey[]; error?: string }>;
-  adminProviderKeyAdd?: (slug: string, key: string, label?: string) => Promise<{ ok: boolean; key?: AdminProviderKey; error?: string }>;
-  adminProviderKeyActive?: (id: string, active: boolean) => Promise<{ ok: boolean; error?: string }>;
-  adminProviderKeyRemove?: (id: string) => Promise<{ ok: boolean; error?: string }>;
-} => (window as unknown as { glyphh?: Record<string, never> }).glyphh ?? {};
-
 async function refreshProviderKeys(): Promise<void> {
-  if (!editingProviderSlug) return;
+  const slug = editingProviderSlug;
+  if (!slug) return;
+  // BOTH transports (the file's read() contract) — window.glyphh on web is a
+  // fabricating Proxy, so an IPC-only call silently resolves undefined there.
   try {
-    const r = await keysIpc().adminProviderKeys?.(editingProviderSlug);
-    if (r?.ok && Array.isArray(r.keys)) providerKeys = r.keys;
-  } catch { /* the empty state stands */ }
+    const r = await read(
+      (a) => a.providerKeys?.(slug)?.then((x) => x.keys),
+      (g) => g.adminProviderKeys?.(slug)?.then((x) => x.keys ?? []),
+    );
+    if (Array.isArray(r)) providerKeys = r;
+    setErr("pa-provider-create-error", "");
+  } catch (err) {
+    setErr("pa-provider-create-error", `Couldn't load keys — ${errText(err)}`);
+  }
   paintProviderKeys();
 }
 
@@ -427,8 +453,10 @@ function paintProviderKeys(): void {
     tr.appendChild(kebabCell(() => [
       { icon: ROW_MENU_ICONS.edit, label: k.active ? "Deactivate" : "Activate", onClick: () => {
         void (async () => {
-          const r = await keysIpc().adminProviderKeyActive?.(k.id, !k.active);
-          if (r && !r.ok) { setErr("pa-provider-create-error", r.error || "Couldn't update the key."); return; }
+          const r = await write<AdminProviderKey>(
+            (a) => a.setProviderKeyActive?.(k.id, !k.active)?.then((x) => x.key),
+            (g) => g.adminProviderKeyActive?.(k.id, !k.active), "key");
+          if (!r.ok) { setErr("pa-provider-create-error", r.error); return; }
           await refreshProviderKeys();
         })();
       } },
@@ -436,8 +464,10 @@ function paintProviderKeys(): void {
         void (async () => {
           const sure = await confirmAction({ title: `Remove key ••••${k.hint}?`, body: "Calls stop using it immediately. This cannot be undone.", confirmLabel: "Remove", danger: true });
           if (!sure) return;
-          const r = await keysIpc().adminProviderKeyRemove?.(k.id);
-          if (r && !r.ok) { setErr("pa-provider-create-error", r.error || "Couldn't remove the key."); return; }
+          const r = await write<unknown>(
+            (a) => a.removeProviderKey?.(k.id)?.then(() => true),
+            (g) => g.adminProviderKeyRemove?.(k.id), "ok");
+          if (!r.ok) { setErr("pa-provider-create-error", r.error); return; }
           await refreshProviderKeys();
         })();
       } },
@@ -448,12 +478,18 @@ function paintProviderKeys(): void {
 }
 
 async function addProviderKeyFromForm(): Promise<void> {
-  if (!editingProviderSlug) return;
+  const slug = editingProviderSlug;
+  if (!slug) return;
   const key = inputVal("pa-pc-key-new").trim();
   if (key.length < 8) { setErr("pa-provider-create-error", "Paste the full API key."); return; }
   const label = inputVal("pa-pc-key-label").trim();
-  const r = await keysIpc().adminProviderKeyAdd?.(editingProviderSlug, key, label || undefined);
-  if (r && !r.ok) { setErr("pa-provider-create-error", r.error || "Couldn't add the key."); return; }
+  const btn = $<HTMLButtonElement>("pa-pc-key-add");
+  if (btn) btn.disabled = true;
+  const r = await write<AdminProviderKey>(
+    (a) => a.addProviderKey?.(slug, key, label || undefined)?.then((x) => x.key),
+    (g) => g.adminProviderKeyAdd?.(slug, key, label || undefined), "key");
+  if (btn) btn.disabled = false;
+  if (!r.ok) { setErr("pa-provider-create-error", r.error); return; }
   setErr("pa-provider-create-error", "");
   for (const id of ["pa-pc-key-new", "pa-pc-key-label"]) { const el = $<HTMLInputElement>(id); if (el) el.value = ""; }
   await refreshProviderKeys();
@@ -512,7 +548,7 @@ async function saveModel(): Promise<void> {
 /** The release flows — the old platform's add-provider / add-model forms. */
 function wireCatalogCreate(): void {
   const toggle = (id: string, on: boolean) => $(id)?.classList.toggle("hidden", !on);
-  $("pa-model-add-btn")?.addEventListener("click", () => { toggle("pa-model-create", true); toggle("pa-provider-create", false); });
+  $("pa-model-add-btn")?.addEventListener("click", () => { toggle("pa-model-create", true); showProviderEditor(false); });
   $("pa-mc-cancel")?.addEventListener("click", () => toggle("pa-model-create", false));
   // + Provider = CREATE mode: reset whatever an edit left in the shared form.
   $("pa-provider-add-btn")?.addEventListener("click", () => {
@@ -522,13 +558,17 @@ function wireCatalogCreate(): void {
     if (slug) slug.readOnly = false;
     const save = $<HTMLButtonElement>("pa-pc-save");
     if (save) save.textContent = "Release provider";
+    const title = $("pa-provider-title");
+    if (title) title.textContent = "New provider";
     setErr("pa-provider-create-error", "");
     $("pa-pc-keys-group")?.classList.add("hidden"); // keys attach after the first save
-    toggle("pa-provider-create", true); toggle("pa-model-create", false);
+    toggle("pa-model-create", false);
+    showProviderEditor(true);
   });
   $("pa-pc-key-add")?.addEventListener("click", () => { void addProviderKeyFromForm(); });
   $("pa-pc-key-new")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void addProviderKeyFromForm(); });
-  $("pa-pc-cancel")?.addEventListener("click", () => { editingProviderSlug = null; toggle("pa-provider-create", false); });
+  $("pa-provider-back")?.addEventListener("click", () => showProviderEditor(false));
+  $("pa-pc-cancel")?.addEventListener("click", () => showProviderEditor(false));
   $("pa-provider-search")?.addEventListener("input", () => {
     providerSearch = inputVal("pa-provider-search");
     paintProviders();
@@ -551,8 +591,7 @@ function wireCatalogCreate(): void {
         (g) => g.adminProviderCreate?.(input), "provider");
       if (!res.ok) { setErr("pa-provider-create-error", res.error); return; }
       setErr("pa-provider-create-error", "");
-      editingProviderSlug = null;
-      toggle("pa-provider-create", false);
+      showProviderEditor(false);
       await Promise.all([loadAdminModelsAsync(), loadProviders()]);
     })();
   });
@@ -588,6 +627,7 @@ async function loadAdminModelsAsync(): Promise<void> {
   if (allowed === false) { gatePanel("pa-models-gate", "pa-models-body", false); return; }
   gatePanel("pa-models-gate", "pa-models-body", true);
   showModelEditor(false);
+  showProviderEditor(false);
   const wrap = $("pa-models-list");
   if (wrap && !models.length) wrap.innerHTML = `<div class="crud-empty">Loading…</div>`;
   try {
