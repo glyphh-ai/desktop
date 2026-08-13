@@ -4575,6 +4575,19 @@ async function init(): Promise<void> {
       return true;
     }
     body.innerHTML = "";
+    // A CLOUD source with no live pod isn't a desktop problem — the workspace
+    // simply doesn't exist until the first send births the session. Quiet
+    // empty state, no offline alarm, no retry theater.
+    if (state === "desktop-offline") {
+      const src = (window as unknown as { __glyphhActiveSource?: () => { kind?: string } }).__glyphhActiveSource?.();
+      if (src && src.kind !== "local") {
+        const quiet = document.createElement("div");
+        quiet.style.cssText = "flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--text-3);font-size:12.5px;line-height:1.6;background:var(--surface)";
+        quiet.textContent = "This panel fills from the session's cloud workspace — it starts with your first message.";
+        body.appendChild(quiet);
+        return false;
+      }
+    }
     const card = document.createElement("div");
     card.className = "ws-glyphh-app-state";
     card.style.cssText = "flex:1 1 auto;min-height:0;width:100%;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;background:var(--surface)";

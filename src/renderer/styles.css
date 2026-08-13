@@ -1053,6 +1053,15 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
 }
 #onboarding-overlay .auth-shell-legal a:hover { color: var(--white); }
 
+/* Device-approval page: the title one step smaller so "Approve this sign-in"
+   holds ONE line in the auth column, and the button gets air after the code
+   tiles instead of cramming against them. */
+#onboarding-overlay .auth-device .auth-shell-title {
+  font-size: clamp(1.75rem, 2.2vw, 2.25rem);
+}
+#onboarding-overlay .auth-device .auth-shell-actions { margin-top: 1.75rem; }
+#onboarding-overlay .auth-device .auth-shell-legal { margin-top: 1.25rem; }
+
 /* The tagline under the hero title — brand-gradient text, centered. */
 #onboarding-overlay .auth-shell-slogan {
   margin: 0 0 2rem;

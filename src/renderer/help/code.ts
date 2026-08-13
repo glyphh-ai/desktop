@@ -1230,6 +1230,9 @@ function syncSpaceAttrs(): void {
   paintSourceDependents();
 }
 (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs = syncSpaceAttrs;
+// The workbench's web FS gate reads this to tell a CLOUD-pending landing (no
+// pod yet — quiet empty state) apart from a desktop source that's offline.
+(window as unknown as { __glyphhActiveSource?: () => Source }).__glyphhActiveSource = () => activeSource();
 
 function newChat(): void {
   // Every session is a Code session (the most-capable toolset). The mode field

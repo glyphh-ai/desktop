@@ -209,6 +209,7 @@ async function showDevice(shownAt) {
   // Same components as the DESKTOP device screen (onboarding.ts): auth-shell
   // title/lede, the code as device-code-grid TILES, btn-primary btn-lg btn-full.
   // The tile styles are scoped to #onboarding-overlay, which this renders inside.
+  step.classList.add('auth-device'); // page-scoped type + spacing (title must not wrap)
   const h = el('h1', 'auth-shell-title', 'Approve this sign-in');
   const lede = el('p', 'auth-shell-lede', code
     ? 'Make sure this matches the code shown in your terminal or app.'
@@ -256,6 +257,14 @@ async function showDevice(shownAt) {
   // Error ABOVE the button — below it, a full-height card clips/overlaps it at
   // the viewport's bottom edge (it read as "hidden behind the button").
   step.append(err, actions);
+  // The same consent line the login carries, under the button.
+  const legal = el('p', 'auth-shell-legal');
+  legal.append(document.createTextNode('By continuing, you acknowledge Glyphh\u2019s '));
+  const pp = el('a', '', 'Privacy Policy');
+  pp.href = 'https://glyphh.ai/privacy'; pp.target = '_blank'; pp.rel = 'noreferrer';
+  legal.append(pp);
+  legal.append(document.createTextNode(' and agree to receive occasional promotional emails and notifications.'));
+  step.append(legal);
 }
 
 function showLogin(shownAt, initialError) {
