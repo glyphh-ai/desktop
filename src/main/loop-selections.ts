@@ -137,7 +137,11 @@ export async function runModel(role = "default"): Promise<string | null> {
     // row. (Loop PROGRAMS hop per model call in the SDK runner; the
     // interactive agent hops per turn here.)
     if ((await loopType(loop)) === "rover") {
-      const pool = [...new Set(roles.map((r) => r.modelId).filter((m): m is string => !!m))];
+      // Only seats the gateway can serve join the rotation — a seat that can
+      // only 409 (no key / no base URL / on-device) would retry-storm the run.
+      const pool = [...new Set(roles
+        .filter((r) => !!r.modelId && r.choices?.find((c) => c.id === r.modelId)?.gatewayReady !== false)
+        .map((r) => r.modelId as string))];
       if (pool.length > 0) {
         const next = ((roverLast.get(loop) ?? -1) + 1) % pool.length;
         roverLast.set(loop, next);
