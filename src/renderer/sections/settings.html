@@ -1413,6 +1413,10 @@
                   <div id="pa-plans-error" class="settings-error hidden"></div>
 
                   <div id="pa-plans-list-view">
+                    <div class="crud-toolbar">
+                      <input id="pa-plans-search" type="text" class="crud-search" placeholder="Search plans..." spellcheck="false" autocomplete="off" />
+                      <button id="pa-plan-add-btn" class="action-btn primary" type="button">+ Plan</button>
+                    </div>
                     <div id="pa-plans-list"></div>
                     <h3 id="pa-orgplans-head" class="acct-row-head hidden">Bespoke org plans</h3>
                     <div id="pa-orgplans-list" class="hidden"></div>
@@ -1425,6 +1429,10 @@
                     </div>
                     <div id="pa-plan-form-error" class="crud-form-error hidden"></div>
                     <h3 class="settings-subheading" id="pa-plan-title">—</h3>
+                    <div id="pa-plan-tier-row" class="hidden">
+                      <label class="settings-label" for="pa-plan-tier">Tier key <span class="mdl-hint">(lowercase, digits, dashes &mdash; permanent)</span></label>
+                      <input id="pa-plan-tier" type="text" class="settings-input settings-input-md" placeholder="team" spellcheck="false" autocomplete="off" />
+                    </div>
                     <label class="settings-label" for="pa-plan-name">Display name</label>
                     <input id="pa-plan-name" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
                     <label class="settings-label" for="pa-plan-price">Price (USD / seat / month)</label>

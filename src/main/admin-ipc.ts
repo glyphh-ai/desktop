@@ -72,6 +72,10 @@ export function registerAdminIpc(): void {
     try { return { ok: true as const, plan: (await getClient().admin.updatePlan(String(tier), patch)).plan }; }
     catch (err) { return fail(err); }
   });
+  ipcMain.handle("admin-plan-create", async (_e, input: { tier: string; display_name: string; monthly_usd_cents: number; included_credits: number; max_seats: number; rate_limit_rpm?: number | null; active?: boolean }) => {
+    try { return { ok: true as const, plan: (await getClient().admin.createPlan(input)).plan }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("admin-plan-prices", (_e, tier: string) => getClient().admin.planPrices(String(tier)));
   ipcMain.handle("admin-plan-price-add", async (_e, tier: string, stripePriceId: string) => {
     try { return { ok: true as const, price: await getClient().admin.addPlanPrice(String(tier), String(stripePriceId)) }; }

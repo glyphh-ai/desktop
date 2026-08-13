@@ -5090,6 +5090,10 @@ ol.docs-list li::before {
   transform: translateX(0);
   transition: none;
 }
+/* Light theme: a white button vanishes on a light surface — the primary rests
+   FILLED with the accent gradient, so its text is white, not black. */
+[data-theme="light"] .action-btn.primary { color: #fff; }
+[data-theme="light"] .action-btn.primary::before { transform: translateX(0); transition: none; }
 
 .inline-empty {
   padding: 32px 16px;

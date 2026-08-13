@@ -90,6 +90,7 @@ interface SdkAdmin {
   createModel?: (input: { id: string; providerSlug: string; name: string; kind: "proxied" | "open_weight"; alias?: string | null; contextWindow?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => Promise<unknown>;
   plans?: () => Promise<{ plans: AdminPlan[] }>;
   updatePlan?: (tier: string, patch: AdminPlanPatch) => Promise<{ plan: AdminPlan }>;
+  createPlan?: (input: AdminPlanPatch & { tier: string }) => Promise<{ plan: AdminPlan }>;
   planPrices?: (tier: string) => Promise<AdminPlanPrice[]>;
   addPlanPrice?: (tier: string, stripePriceId: string) => Promise<AdminPlanPrice>;
   activatePlanPrice?: (id: string) => Promise<AdminPlanPrice>;
@@ -107,6 +108,7 @@ interface DesktopAdminIpc {
   adminModelCreate?: (input: Record<string, unknown>) => Promise<{ ok: boolean; model?: unknown; error?: string }>;
   adminPlans?: () => Promise<{ plans: AdminPlan[] }>;
   adminPlanUpdate?: (tier: string, patch: AdminPlanPatch) => Promise<{ ok: boolean; plan?: AdminPlan; error?: string }>;
+  adminPlanCreate?: (input: AdminPlanPatch & { tier: string }) => Promise<{ ok: boolean; plan?: AdminPlan; error?: string }>;
   adminPlanPrices?: (tier: string) => Promise<AdminPlanPrice[]>;
   adminPlanPriceAdd?: (tier: string, priceId: string) => Promise<{ ok: boolean; price?: AdminPlanPrice; error?: string }>;
   adminPlanPriceActivate?: (id: string) => Promise<{ ok: boolean; price?: AdminPlanPrice; error?: string }>;
@@ -543,9 +545,16 @@ let editingPlan: AdminPlan | null = null;
 let planPrices: AdminPlanPrice[] = [];
 let plansWired = false;
 
-/** The self-serve tiers that carry a Stripe subscription price — the platform
- *  page's exact rule (enterprise is sales-led, free has no price). */
-const PRICED_TIERS = new Set(["basic", "pro"]);
+/** A tier carries the Stripe price section when it is actually PRICED — any
+ *  paid self-serve tier, including admin-created ones (free = no price;
+ *  enterprise is sales-led via bespoke org plans). */
+function tierIsPriced(p: AdminPlan): boolean {
+  return p.tier !== "enterprise" && (p.monthly_usd_cents || 0) > 0;
+}
+
+/** True while the editor is CREATING a new tier (editingPlan is null then). */
+let creatingPlan = false;
+let plansSearch = "";
 
 function showPlanEditor(on: boolean): void {
   $("pa-plans-list-view")?.classList.toggle("hidden", on);
@@ -555,9 +564,11 @@ function showPlanEditor(on: boolean): void {
 function paintPlans(): void {
   const wrap = $("pa-plans-list");
   if (!wrap) return;
-  const globals = plans.filter((p) => !p.org_id);
+  const q = plansSearch.trim().toLowerCase();
+  const globals = plans.filter((p) => !p.org_id)
+    .filter((p) => !q || p.tier.toLowerCase().includes(q) || (p.display_name || "").toLowerCase().includes(q));
   wrap.innerHTML = "";
-  if (!globals.length) { wrap.innerHTML = `<div class="crud-empty">No plans yet.</div>`; return; }
+  if (!globals.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "No plans match." : "No plans yet."}</div>`; return; }
   const { table, tbody } = mkTable(["Plan", "Tier", "$ / seat / mo", "Credits / mo", "Seats", "Rpm", "Status"], true);
   for (const p of globals) {
     const tr = document.createElement("tr");
@@ -632,7 +643,7 @@ function paintPlanPrices(): void {
   const group = $("pa-prices-group");
   const wrap = $("pa-prices-list");
   if (!group || !wrap || !editingPlan) return;
-  const priced = PRICED_TIERS.has(editingPlan.tier);
+  const priced = tierIsPriced(editingPlan);
   group.classList.toggle("hidden", !priced);
   if (!priced) return;
   wrap.innerHTML = "";
@@ -687,7 +698,7 @@ function paintPlanPrices(): void {
 }
 
 async function refreshPlanPrices(): Promise<void> {
-  if (!editingPlan || !PRICED_TIERS.has(editingPlan.tier)) { planPrices = []; paintPlanPrices(); return; }
+  if (!editingPlan || !tierIsPriced(editingPlan)) { planPrices = []; paintPlanPrices(); return; }
   try {
     planPrices = (await read((a) => a.planPrices?.(editingPlan!.tier), (g) => g.adminPlanPrices?.(editingPlan!.tier))) || [];
     setErr("pa-plan-form-error", "");
@@ -700,6 +711,8 @@ async function refreshPlanPrices(): Promise<void> {
 
 async function openPlanEditor(p: AdminPlan): Promise<void> {
   editingPlan = p;
+  creatingPlan = false;
+  $("pa-plan-tier-row")?.classList.add("hidden");
   planPrices = [];
   setErr("pa-plan-form-error", "");
   const title = $("pa-plan-title");
@@ -719,8 +732,29 @@ async function openPlanEditor(p: AdminPlan): Promise<void> {
   await refreshPlanPrices();
 }
 
+/** Open the editor EMPTY for a new tier (the tier-key field shows; Stripe
+ *  prices attach after the first save, once the tier exists). */
+function openPlanCreate(): void {
+  editingPlan = null;
+  creatingPlan = true;
+  planPrices = [];
+  setErr("pa-plan-form-error", "");
+  const title = $("pa-plan-title");
+  if (title) title.textContent = "New plan";
+  const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
+  for (const id of ["pa-plan-tier", "pa-plan-name", "pa-plan-rpm"]) set(id, "");
+  set("pa-plan-price", "0");
+  set("pa-plan-credits", "0");
+  set("pa-plan-seats", "1");
+  const active = $<HTMLInputElement>("pa-plan-active");
+  if (active) active.checked = true;
+  $("pa-plan-tier-row")?.classList.remove("hidden");
+  showPlanEditor(true);
+  paintPlanPrices();
+}
+
 async function savePlan(): Promise<void> {
-  if (!editingPlan) return;
+  if (!editingPlan && !creatingPlan) return;
   const name = inputVal("pa-plan-name");
   if (!name) { setErr("pa-plan-form-error", "The plan needs a display name."); return; }
   const patch: AdminPlanPatch = {
@@ -736,13 +770,28 @@ async function savePlan(): Promise<void> {
   };
   const btn = $<HTMLButtonElement>("pa-plan-save");
   if (btn) btn.disabled = true;
-  const res = await write<AdminPlan>(
-    (a) => a.updatePlan?.(editingPlan!.tier, patch)?.then((r) => r.plan),
-    (g) => g.adminPlanUpdate?.(editingPlan!.tier, patch), "plan");
+  let res: WriteResult<AdminPlan>;
+  if (creatingPlan) {
+    const tier = inputVal("pa-plan-tier").trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(tier)) {
+      if (btn) btn.disabled = false;
+      setErr("pa-plan-form-error", "The tier key needs lowercase letters, digits and dashes (e.g. team).");
+      return;
+    }
+    const input = { ...patch, tier } as AdminPlanPatch & { tier: string };
+    res = await write<AdminPlan>(
+      (a) => a.createPlan?.(input)?.then((r) => r.plan),
+      (g) => g.adminPlanCreate?.(input), "plan");
+  } else {
+    res = await write<AdminPlan>(
+      (a) => a.updatePlan?.(editingPlan!.tier, patch)?.then((r) => r.plan),
+      (g) => g.adminPlanUpdate?.(editingPlan!.tier, patch), "plan");
+  }
   if (btn) btn.disabled = false;
   if (!res.ok) { setErr("pa-plan-form-error", res.error); return; }
   showPlanEditor(false);
   editingPlan = null;
+  creatingPlan = false;
   await refreshPlans();
 }
 
@@ -774,11 +823,13 @@ async function refreshPlans(): Promise<void> {
 export function loadAdminPlans(): void {
   if (!plansWired) {
     plansWired = true;
-    $("pa-plan-back")?.addEventListener("click", () => { editingPlan = null; showPlanEditor(false); });
-    $("pa-plan-cancel")?.addEventListener("click", () => { editingPlan = null; showPlanEditor(false); });
+    $("pa-plan-back")?.addEventListener("click", () => { editingPlan = null; creatingPlan = false; showPlanEditor(false); });
+    $("pa-plan-cancel")?.addEventListener("click", () => { editingPlan = null; creatingPlan = false; showPlanEditor(false); });
     $("pa-plan-save")?.addEventListener("click", () => { void savePlan(); });
     $("pa-price-add")?.addEventListener("click", () => { void addPrice(); });
     $("pa-price-new")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void addPrice(); });
+    $("pa-plan-add-btn")?.addEventListener("click", () => openPlanCreate());
+    $("pa-plans-search")?.addEventListener("input", () => { plansSearch = inputVal("pa-plans-search"); paintPlans(); });
   }
   void (async () => {
     const allowed = await isSuperAdmin();

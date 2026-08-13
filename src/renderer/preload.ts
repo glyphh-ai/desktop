@@ -581,6 +581,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   adminPlans: () => ipcRenderer.invoke("admin-plans") as Promise<{ plans: unknown[] }>,
   adminPlanUpdate: (tier: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("admin-plan-update", tier, patch) as Promise<{ ok: boolean; plan?: unknown; error?: string }>,
+  adminPlanCreate: (input: Record<string, unknown>) =>
+    ipcRenderer.invoke("admin-plan-create", input) as Promise<{ ok: boolean; plan?: unknown; error?: string }>,
   adminPlanPrices: (tier: string) => ipcRenderer.invoke("admin-plan-prices", tier) as Promise<unknown[]>,
   adminPlanPriceAdd: (tier: string, stripePriceId: string) =>
     ipcRenderer.invoke("admin-plan-price-add", tier, stripePriceId) as Promise<{ ok: boolean; price?: unknown; error?: string }>,
