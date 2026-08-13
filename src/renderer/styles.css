@@ -14607,7 +14607,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 }
 .lib-row-kebab:hover { background: var(--hover); color: var(--text); }
 .lib-row-menu {
-  position: fixed; z-index: 300; min-width: 140px; padding: 5px;
+  /* Above .yo-modal (9000): these tables also render inside the Settings
+     modal, where 300 put the popover BEHIND the panel. */
+  position: fixed; z-index: 9500; min-width: 140px; padding: 5px;
   background: var(--surface); border: 1px solid var(--border-2); border-radius: 9px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }

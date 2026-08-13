@@ -1338,8 +1338,12 @@
                       </div>
                     </div>
                     <div id="pa-models-list"></div>
-                    <h3 class="acct-row-head">Providers <button id="pa-provider-add-btn" class="action-btn" type="button" style="margin-left:10px">+ Provider</button></h3>
-                    <p class="section-desc">The vendors behind the catalog, from the model list. Platform proxy keys are server configuration and are never shown here.</p>
+                    <h3 class="acct-row-head">Providers</h3>
+                    <p class="section-desc">The vendors behind the catalog. Platform proxy keys are server configuration and are never shown here.</p>
+                    <div class="crud-toolbar">
+                      <input id="pa-provider-search" type="text" class="crud-search" placeholder="Search providers..." spellcheck="false" autocomplete="off" />
+                      <button id="pa-provider-add-btn" class="action-btn primary" type="button">+ Provider</button>
+                    </div>
                     <div id="pa-provider-create" class="settings-form hidden">
                       <div class="settings-error hidden" id="pa-provider-create-error"></div>
                       <label class="settings-label">Slug</label>

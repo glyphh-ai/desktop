@@ -305,29 +305,81 @@ function paintModels(): void {
   if (state.totalPages > 1) wrap.appendChild(renderPaginationBar(state, (p) => { modelsPage = p; paintModels(); }));
 }
 
-/** Distinct providers behind the catalog, derived from the model list — the
- *  server exposes no platform-key read (keys are server config; never shown). */
+/** The catalog's providers — real rows (GET /api/catalog/providers), searchable,
+ *  click to EDIT (the create form pre-filled; POST /api/admin/providers is an
+ *  upsert, so the same save updates). Platform keys are server config; never shown. */
+interface CatalogProvider { slug: string; name: string; kind: string; baseUrl: string | null; alias: string | null }
+let providers: CatalogProvider[] = [];
+let providerSearch = "";
+/** The slug being edited, or null when the form is creating a new provider. */
+let editingProviderSlug: string | null = null;
+
+async function loadProviders(): Promise<void> {
+  try {
+    const r = await (window.glyphh as unknown as {
+      orgProvidersList?: () => Promise<{ ok: boolean; data?: CatalogProvider[] }>;
+    }).orgProvidersList?.();
+    if (r?.ok && Array.isArray(r.data)) providers = r.data;
+  } catch { /* offline — the model-derived counts still paint below */ }
+  paintProviders();
+}
+
 function paintProviders(): void {
   const wrap = $("pa-providers-list");
   if (!wrap) return;
-  const byProvider = new Map<string, { total: number; active: number }>();
+  const counts = new Map<string, { total: number; active: number }>();
   for (const m of models) {
-    const cur = byProvider.get(m.provider) || { total: 0, active: 0 };
+    const cur = counts.get(m.provider) || { total: 0, active: 0 };
     cur.total += 1;
     if (m.active) cur.active += 1;
-    byProvider.set(m.provider, cur);
+    counts.set(m.provider, cur);
   }
+  // Real provider rows when the list loaded; model-derived slugs as fallback.
+  const rows: CatalogProvider[] = providers.length
+    ? providers
+    : [...counts.keys()].map((slug) => ({ slug, name: slug, kind: "proxied", baseUrl: null, alias: null }));
+  const q = providerSearch.trim().toLowerCase();
+  const shown = rows
+    .filter((p) => !q || p.slug.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+    .sort((a, b) => a.slug.localeCompare(b.slug));
   wrap.innerHTML = "";
-  if (!byProvider.size) { wrap.innerHTML = `<div class="crud-empty">No providers yet.</div>`; return; }
-  const { table, tbody } = mkTable(["Provider", "Models", "Active"], false);
-  for (const [slug, c] of [...byProvider.entries()].sort((x, y) => x[0].localeCompare(y[0]))) {
+  if (!shown.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "No providers match." : "No providers yet."}</div>`; return; }
+  const { table, tbody } = mkTable(["Provider", "Slug", "Base URL", "Models", "Active"], false);
+  for (const p of shown) {
+    const c = counts.get(p.slug) || { total: 0, active: 0 };
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="lib-table-name"></td><td>${fmtInt(c.total)}</td><td class="lib-table-dim">${fmtInt(c.active)}</td>`;
-    const cell = tr.querySelector(".lib-table-name");
-    if (cell) cell.textContent = slug;
+    tr.innerHTML = `
+      <td class="lib-table-name"></td>
+      <td class="lib-table-desc"></td>
+      <td class="lib-table-dim pa-prov-url"></td>
+      <td>${fmtInt(c.total)}</td>
+      <td class="lib-table-dim">${fmtInt(c.active)}</td>`;
+    (tr.querySelector(".lib-table-name") as HTMLElement).textContent = p.name;
+    (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = p.slug;
+    (tr.querySelector(".pa-prov-url") as HTMLElement).textContent = p.baseUrl || "—";
+    tr.style.cursor = "pointer";
+    tr.addEventListener("click", () => openProviderEditor(p));
     tbody.appendChild(tr);
   }
   wrap.appendChild(table);
+}
+
+/** Open the provider form pre-filled for an EDIT (slug is identity — locked). */
+function openProviderEditor(p: CatalogProvider): void {
+  editingProviderSlug = p.slug;
+  setErr("pa-provider-create-error", "");
+  const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
+  set("pa-pc-slug", p.slug);
+  set("pa-pc-name", p.name);
+  set("pa-pc-url", p.baseUrl || "");
+  const kind = $<HTMLSelectElement>("pa-pc-kind");
+  if (kind) kind.value = p.kind === "open_weight" ? "open_weight" : "proxied";
+  const slug = $<HTMLInputElement>("pa-pc-slug");
+  if (slug) slug.readOnly = true;
+  const save = $<HTMLButtonElement>("pa-pc-save");
+  if (save) save.textContent = "Save provider";
+  $("pa-provider-create")?.classList.remove("hidden");
+  $("pa-model-create")?.classList.add("hidden");
 }
 
 function openModelEditor(m: AdminModel): void {
@@ -385,16 +437,33 @@ function wireCatalogCreate(): void {
   const toggle = (id: string, on: boolean) => $(id)?.classList.toggle("hidden", !on);
   $("pa-model-add-btn")?.addEventListener("click", () => { toggle("pa-model-create", true); toggle("pa-provider-create", false); });
   $("pa-mc-cancel")?.addEventListener("click", () => toggle("pa-model-create", false));
-  $("pa-provider-add-btn")?.addEventListener("click", () => { toggle("pa-provider-create", true); toggle("pa-model-create", false); });
-  $("pa-pc-cancel")?.addEventListener("click", () => toggle("pa-provider-create", false));
+  // + Provider = CREATE mode: reset whatever an edit left in the shared form.
+  $("pa-provider-add-btn")?.addEventListener("click", () => {
+    editingProviderSlug = null;
+    for (const id of ["pa-pc-slug", "pa-pc-name", "pa-pc-url"]) { const el = $<HTMLInputElement>(id); if (el) el.value = ""; }
+    const slug = $<HTMLInputElement>("pa-pc-slug");
+    if (slug) slug.readOnly = false;
+    const save = $<HTMLButtonElement>("pa-pc-save");
+    if (save) save.textContent = "Release provider";
+    setErr("pa-provider-create-error", "");
+    toggle("pa-provider-create", true); toggle("pa-model-create", false);
+  });
+  $("pa-pc-cancel")?.addEventListener("click", () => { editingProviderSlug = null; toggle("pa-provider-create", false); });
+  $("pa-provider-search")?.addEventListener("input", () => {
+    providerSearch = inputVal("pa-provider-search");
+    paintProviders();
+  });
 
   $("pa-pc-save")?.addEventListener("click", () => {
     void (async () => {
+      const url = inputVal("pa-pc-url").trim();
       const input = {
-        slug: inputVal("pa-pc-slug").trim().toLowerCase(),
+        slug: (editingProviderSlug ?? inputVal("pa-pc-slug").trim().toLowerCase()),
         name: inputVal("pa-pc-name").trim(),
         kind: (inputVal("pa-pc-kind") || "proxied") as "proxied" | "open_weight",
-        ...(inputVal("pa-pc-url").trim() ? { baseUrl: inputVal("pa-pc-url").trim() } : {}),
+        // POST /api/admin/providers upserts: omitted baseUrl KEEPS the stored
+        // one, null CLEARS it — an edit that empties the field means "clear".
+        ...(url ? { baseUrl: url } : editingProviderSlug ? { baseUrl: null } : {}),
       };
       if (!input.slug || !input.name) { setErr("pa-provider-create-error", "Slug and name are required."); return; }
       const res = await write(
@@ -402,8 +471,9 @@ function wireCatalogCreate(): void {
         (g) => g.adminProviderCreate?.(input), "provider");
       if (!res.ok) { setErr("pa-provider-create-error", res.error); return; }
       setErr("pa-provider-create-error", "");
+      editingProviderSlug = null;
       toggle("pa-provider-create", false);
-      await loadAdminModelsAsync();
+      await Promise.all([loadAdminModelsAsync(), loadProviders()]);
     })();
   });
 
@@ -449,7 +519,7 @@ async function loadAdminModelsAsync(): Promise<void> {
     models = [];
   }
   paintModels();
-  paintProviders();
+  void loadProviders(); // paints providers when the list lands (fallback inside)
 }
 
 export function loadAdminModels(): void {
