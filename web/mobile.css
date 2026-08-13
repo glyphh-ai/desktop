@@ -1637,7 +1637,17 @@ body {
   text-align: center;
 }
 .m-login-logo { width: 176px; max-width: 62%; height: auto; margin-bottom: 6px; }
-.m-login-title { font: 700 25px/1.2 var(--font-sans); color: #fff; }
+.m-login-title { font: 700 32px/1.12 var(--font-sans); letter-spacing: -0.03em; color: #fff; }
+/* The web login's gradient tagline, phone-scaled. */
+.m-login-tagline {
+  font: 600 17px/1.35 var(--font-sans);
+  letter-spacing: -0.015em;
+  background: linear-gradient(to top right, #c084fc, #f0abfc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin: -6px 0 6px;
+}
 .m-login-sub { margin: 0; max-width: 32ch; font: 400 16px/1.55 var(--font-sans); color: rgba(255,255,255,0.62); }
 .m-login-form { width: 100%; display: flex; flex-direction: column; gap: 10px; }
 .m-login-input {

@@ -55,6 +55,16 @@ export function registerAdminIpc(): void {
     catch (err) { return fail(err); }
   });
 
+  // Releasing NEW catalog entries (the old platform's release flows).
+  ipcMain.handle("admin-provider-create", async (_e, input: { slug: string; name: string; kind: "proxied" | "open_weight"; alias?: string | null; baseUrl?: string | null }) => {
+    try { return { ok: true as const, provider: await getClient().admin.createProvider(input) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("admin-model-create", async (_e, input: { id: string; providerSlug: string; name: string; kind: "proxied" | "open_weight"; alias?: string | null; contextWindow?: number | null; maxOutputTokens?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => {
+    try { return { ok: true as const, model: await getClient().admin.createModel(input) }; }
+    catch (err) { return fail(err); }
+  });
+
   // ── plans + the Stripe price history ────────────────────────────────────
   ipcMain.handle("admin-plans", () => getClient().admin.plans());
   ipcMain.handle("admin-plan-update", async (_e, tier: string, patch: AdminPlanPatch) => {

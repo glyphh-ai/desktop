@@ -83,6 +83,8 @@ interface AdminOrgRow { id: string; name: string; tier: string; billing_status: 
 interface SdkAdmin {
   models?: () => Promise<{ models: AdminModel[] }>;
   updateModel?: (provider: string, model: string, patch: AdminModelPatch) => Promise<{ model: AdminModel }>;
+  createProvider?: (input: { slug: string; name: string; kind: "proxied" | "open_weight"; alias?: string | null; baseUrl?: string | null }) => Promise<unknown>;
+  createModel?: (input: { id: string; providerSlug: string; name: string; kind: "proxied" | "open_weight"; alias?: string | null; contextWindow?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => Promise<unknown>;
   plans?: () => Promise<{ plans: AdminPlan[] }>;
   updatePlan?: (tier: string, patch: AdminPlanPatch) => Promise<{ plan: AdminPlan }>;
   planPrices?: (tier: string) => Promise<AdminPlanPrice[]>;
@@ -98,6 +100,8 @@ interface SdkAdmin {
 interface DesktopAdminIpc {
   adminModels?: () => Promise<{ models: AdminModel[] }>;
   adminModelUpdate?: (provider: string, model: string, patch: AdminModelPatch) => Promise<{ ok: boolean; model?: AdminModel; error?: string }>;
+  adminProviderCreate?: (input: Record<string, unknown>) => Promise<{ ok: boolean; provider?: unknown; error?: string }>;
+  adminModelCreate?: (input: Record<string, unknown>) => Promise<{ ok: boolean; model?: unknown; error?: string }>;
   adminPlans?: () => Promise<{ plans: AdminPlan[] }>;
   adminPlanUpdate?: (tier: string, patch: AdminPlanPatch) => Promise<{ ok: boolean; plan?: AdminPlan; error?: string }>;
   adminPlanPrices?: (tier: string) => Promise<AdminPlanPrice[]>;
@@ -373,6 +377,78 @@ async function saveModel(): Promise<void> {
   await loadAdminModels();
 }
 
+/** The release flows — the old platform's add-provider / add-model forms. */
+function wireCatalogCreate(): void {
+  const toggle = (id: string, on: boolean) => $(id)?.classList.toggle("hidden", !on);
+  $("pa-model-add-btn")?.addEventListener("click", () => { toggle("pa-model-create", true); toggle("pa-provider-create", false); });
+  $("pa-mc-cancel")?.addEventListener("click", () => toggle("pa-model-create", false));
+  $("pa-provider-add-btn")?.addEventListener("click", () => { toggle("pa-provider-create", true); toggle("pa-model-create", false); });
+  $("pa-pc-cancel")?.addEventListener("click", () => toggle("pa-provider-create", false));
+
+  $("pa-pc-save")?.addEventListener("click", () => {
+    void (async () => {
+      const input = {
+        slug: inputVal("pa-pc-slug").trim().toLowerCase(),
+        name: inputVal("pa-pc-name").trim(),
+        kind: (inputVal("pa-pc-kind") || "proxied") as "proxied" | "open_weight",
+        ...(inputVal("pa-pc-url").trim() ? { baseUrl: inputVal("pa-pc-url").trim() } : {}),
+      };
+      if (!input.slug || !input.name) { setErr("pa-provider-create-error", "Slug and name are required."); return; }
+      const res = await write(
+        (a) => a.createProvider?.(input),
+        (g) => g.adminProviderCreate?.(input), "provider");
+      if (!res.ok) { setErr("pa-provider-create-error", res.error); return; }
+      setErr("pa-provider-create-error", "");
+      toggle("pa-provider-create", false);
+      await loadAdminModelsAsync();
+    })();
+  });
+
+  $("pa-mc-save")?.addEventListener("click", () => {
+    void (async () => {
+      const num = (id: string): number => Number(inputVal(id).replace(/[^0-9.]/g, "")) || 0;
+      const input = {
+        id: inputVal("pa-mc-id").trim(),
+        providerSlug: inputVal("pa-mc-provider").trim().toLowerCase(),
+        name: inputVal("pa-mc-name").trim(),
+        kind: (inputVal("pa-mc-kind") || "proxied") as "proxied" | "open_weight",
+        ...(inputVal("pa-mc-alias").trim() ? { alias: inputVal("pa-mc-alias").trim() } : {}),
+        ...(num("pa-mc-ctx") ? { contextWindow: num("pa-mc-ctx") } : {}),
+        inputCreditsPerMTok: num("pa-mc-in"),
+        outputCreditsPerMTok: num("pa-mc-out"),
+      };
+      if (!input.id || !input.providerSlug || !input.name) { setErr("pa-model-create-error", "Provider, id, and name are required."); return; }
+      const res = await write(
+        (a) => a.createModel?.(input),
+        (g) => g.adminModelCreate?.(input), "model");
+      if (!res.ok) { setErr("pa-model-create-error", res.error); return; }
+      setErr("pa-model-create-error", "");
+      toggle("pa-model-create", false);
+      await loadAdminModelsAsync();
+    })();
+  });
+}
+
+/** The load body, awaitable (the create flows refresh through it). */
+async function loadAdminModelsAsync(): Promise<void> {
+  const allowed = await isSuperAdmin();
+  if (allowed === false) { gatePanel("pa-models-gate", "pa-models-body", false); return; }
+  gatePanel("pa-models-gate", "pa-models-body", true);
+  showModelEditor(false);
+  const wrap = $("pa-models-list");
+  if (wrap && !models.length) wrap.innerHTML = `<div class="crud-empty">Loading…</div>`;
+  try {
+    const r = await read((a) => a.models?.(), (g) => g.adminModels?.());
+    models = r?.models || [];
+    setErr("pa-models-error", "");
+  } catch (err) {
+    setErr("pa-models-error", `Couldn't load the catalog — ${errText(err)}`);
+    models = [];
+  }
+  paintModels();
+  paintProviders();
+}
+
 export function loadAdminModels(): void {
   if (!modelsWired) {
     modelsWired = true;
@@ -380,25 +456,9 @@ export function loadAdminModels(): void {
     $("pa-model-back")?.addEventListener("click", () => { editingModel = null; showModelEditor(false); });
     $("pa-model-cancel")?.addEventListener("click", () => { editingModel = null; showModelEditor(false); });
     $("pa-model-save")?.addEventListener("click", () => { void saveModel(); });
+    wireCatalogCreate();
   }
-  void (async () => {
-    const allowed = await isSuperAdmin();
-    if (allowed === false) { gatePanel("pa-models-gate", "pa-models-body", false); return; }
-    gatePanel("pa-models-gate", "pa-models-body", true);
-    showModelEditor(false);
-    const wrap = $("pa-models-list");
-    if (wrap && !models.length) wrap.innerHTML = `<div class="crud-empty">Loading…</div>`;
-    try {
-      const r = await read((a) => a.models?.(), (g) => g.adminModels?.());
-      models = r?.models || [];
-      setErr("pa-models-error", "");
-    } catch (err) {
-      setErr("pa-models-error", `Couldn't load the catalog — ${errText(err)}`);
-      models = [];
-    }
-    paintModels();
-    paintProviders();
-  })();
+  void loadAdminModelsAsync();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

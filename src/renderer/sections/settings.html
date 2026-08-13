@@ -1301,10 +1301,63 @@
                   <div id="pa-models-list-view">
                     <div class="crud-toolbar">
                       <input id="pa-models-search" type="text" class="crud-search" placeholder="Search models…" spellcheck="false" autocomplete="off" />
+                      <button id="pa-model-add-btn" class="action-btn primary" type="button">+ Model</button>
+                    </div>
+                    <div id="pa-model-create" class="settings-form hidden">
+                      <div class="settings-error hidden" id="pa-model-create-error"></div>
+                      <label class="settings-label">Provider slug</label>
+                      <input id="pa-mc-provider" class="settings-input settings-input-md" placeholder="anthropic" spellcheck="false" />
+                      <label class="settings-label">Model id</label>
+                      <input id="pa-mc-id" class="settings-input" placeholder="claude-fable-5" spellcheck="false" />
+                      <label class="settings-label">Display name</label>
+                      <input id="pa-mc-name" class="settings-input" placeholder="Claude Fable 5" />
+                      <label class="settings-label">Alias <span class="auth-shell-label-aside">@-mention, optional</span></label>
+                      <input id="pa-mc-alias" class="settings-input settings-input-md" placeholder="fable" spellcheck="false" />
+                      <label class="settings-label">Kind</label>
+                      <select id="pa-mc-kind" class="settings-input settings-input-md">
+                        <option value="proxied">Proxied (platform key)</option>
+                        <option value="open_weight">Open weight</option>
+                      </select>
+                      <div class="settings-inline">
+                        <span>
+                          <label class="settings-label">Input cr/MTok</label>
+                          <input id="pa-mc-in" class="settings-input settings-input-md" inputmode="numeric" placeholder="300" />
+                        </span>
+                        <span>
+                          <label class="settings-label">Output cr/MTok</label>
+                          <input id="pa-mc-out" class="settings-input settings-input-md" inputmode="numeric" placeholder="1500" />
+                        </span>
+                        <span>
+                          <label class="settings-label">Context window</label>
+                          <input id="pa-mc-ctx" class="settings-input settings-input-md" inputmode="numeric" placeholder="200000" />
+                        </span>
+                      </div>
+                      <div class="settings-inline" style="margin-top:12px">
+                        <button id="pa-mc-cancel" class="action-btn" type="button">Cancel</button>
+                        <button id="pa-mc-save" class="action-btn primary" type="button">Release model</button>
+                      </div>
                     </div>
                     <div id="pa-models-list"></div>
-                    <h3 class="acct-row-head">Providers</h3>
+                    <h3 class="acct-row-head">Providers <button id="pa-provider-add-btn" class="action-btn" type="button" style="margin-left:10px">+ Provider</button></h3>
                     <p class="section-desc">The vendors behind the catalog, from the model list. Platform proxy keys are server configuration and are never shown here.</p>
+                    <div id="pa-provider-create" class="settings-form hidden">
+                      <div class="settings-error hidden" id="pa-provider-create-error"></div>
+                      <label class="settings-label">Slug</label>
+                      <input id="pa-pc-slug" class="settings-input settings-input-md" placeholder="mistral" spellcheck="false" />
+                      <label class="settings-label">Name</label>
+                      <input id="pa-pc-name" class="settings-input settings-input-md" placeholder="Mistral" />
+                      <label class="settings-label">Kind</label>
+                      <select id="pa-pc-kind" class="settings-input settings-input-md">
+                        <option value="proxied">Proxied (platform key)</option>
+                        <option value="open_weight">Open weight</option>
+                      </select>
+                      <label class="settings-label">Base URL <span class="auth-shell-label-aside">optional</span></label>
+                      <input id="pa-pc-url" class="settings-input" placeholder="https://api.mistral.ai" spellcheck="false" />
+                      <div class="settings-inline" style="margin-top:12px">
+                        <button id="pa-pc-cancel" class="action-btn" type="button">Cancel</button>
+                        <button id="pa-pc-save" class="action-btn primary" type="button">Release provider</button>
+                      </div>
+                    </div>
                     <div id="pa-providers-list"></div>
                   </div>
 

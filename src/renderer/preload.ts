@@ -574,6 +574,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   adminModels: () => ipcRenderer.invoke("admin-models") as Promise<{ models: unknown[] }>,
   adminModelUpdate: (provider: string, model: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("admin-model-update", provider, model, patch) as Promise<{ ok: boolean; model?: unknown; error?: string }>,
+  adminProviderCreate: (input: Record<string, unknown>) =>
+    ipcRenderer.invoke("admin-provider-create", input) as Promise<{ ok: boolean; provider?: unknown; error?: string }>,
+  adminModelCreate: (input: Record<string, unknown>) =>
+    ipcRenderer.invoke("admin-model-create", input) as Promise<{ ok: boolean; model?: unknown; error?: string }>,
   adminPlans: () => ipcRenderer.invoke("admin-plans") as Promise<{ plans: unknown[] }>,
   adminPlanUpdate: (tier: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("admin-plan-update", tier, patch) as Promise<{ ok: boolean; plan?: unknown; error?: string }>,

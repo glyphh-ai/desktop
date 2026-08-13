@@ -2801,20 +2801,22 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
           </div>
         ) : (
           <>
-            <div className="m-login-title">Sign in to Glyphh</div>
+            <div className="m-login-title">Question Everything.</div>
+            <div className="m-login-tagline">Every dream starts with a dreamer.</div>
+            {clientId && <div className="m-login-google" ref={gRef} />}
+            {clientId && <div className="m-login-or"><span>or</span></div>}
             <form className="m-login-form" onSubmit={submit}>
               <input className="m-login-input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none"
                 placeholder="you@work.com" value={email} onChange={(e) => setEmail((e.target as HTMLInputElement).value)} />
-              <button className="m-login-primary" type="submit" disabled={busy}>{busy ? 'Sending…' : 'Email me a magic link'}</button>
+              <button className="m-login-primary" type="submit" disabled={busy}>{busy ? 'Sending…' : 'Continue with email'}</button>
             </form>
-            {clientId && <div className="m-login-or"><span>or</span></div>}
-            {clientId && <div className="m-login-google" ref={gRef} />}
             {err && <div className="m-login-err">{err}</div>}
           </>
         )}
         <div className="m-login-legal">
-          By continuing you agree to our <a href={LEGAL.terms} target="_blank" rel="noopener noreferrer">Terms</a> &amp;{' '}
-          <a href={LEGAL.privacy} target="_blank" rel="noopener noreferrer">Privacy</a>.
+          By continuing, you acknowledge Glyphh&rsquo;s{' '}
+          <a href={LEGAL.privacy} target="_blank" rel="noopener noreferrer">Privacy Policy</a> and agree to
+          receive occasional promotional emails and notifications.
         </div>
       </div>
     </div>
