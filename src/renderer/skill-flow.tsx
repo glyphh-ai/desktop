@@ -7,6 +7,7 @@
  * computes the graph (flow-graph.ts) and calls window.SkillFlow.mount().
  */
 
+import { useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
   ReactFlow,
@@ -135,10 +136,17 @@ interface FlowOpts {
 
 function SkillFlow({ nodes: initial, edges, onPositionsChange, onOpenApp }: { nodes: Node[]; edges: Edge[] } & FlowOpts) {
   // Controlled nodes so the user can drag them; edges follow automatically.
-  const [nodes, , onNodesChange] = useNodesState(initial);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initial);
   // Keep the graph FITTED: the split divider resizes the canvas, and a fit
   // computed at the old size leaves the components off-center or clipped.
-  const instRef = { current: null as null | { fitView: (o?: { padding?: number; duration?: number }) => void } };
+  const instRef = useRef<null | { fitView: (o?: { padding?: number; duration?: number }) => void }>(null);
+  // `useNodesState(initial)` seeds ONCE — mount() re-renders this same
+  // component instance for every object, so switching loop/skill left the
+  // previous graph's nodes in state. Adopt each new graph and re-fit.
+  useEffect(() => {
+    setNodes(initial);
+    requestAnimationFrame(() => instRef.current?.fitView({ padding: 0.2 }));
+  }, [initial, setNodes]);
   const hostRef = (el: HTMLDivElement | null) => {
     if (!el) return;
     // Fit ONLY at a real size: the pane collapses to 0 when the editor hides,
