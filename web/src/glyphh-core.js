@@ -574,6 +574,7 @@ export function toAccountInfo(me, org, sub) {
     firstName: parts[0] || '',
     lastName: parts.slice(1).join(' '),
     role: me.role,
+    isPlatformAdmin: !!me.isPlatformAdmin,
     orgName: org?.name || '',
     tier: sub?.tier || me.tier || 'free',
     billingStatus: sub?.billingStatus || 'none',

@@ -348,7 +348,9 @@ function gateAdminSubs(): void {
     // The Platform group (the super-admin console — Catalog / Plans / Usage /
     // Orgs) is a TIER above the org-admin gate: super_admin only. The server
     // enforces the role on every route regardless — this only hides the nav.
-    const superAdmin = info?.role === "super_admin";
+    // The platform axis is the REAL gate (bootstrap seeds the admin as an
+    // org_admin member with is_platform_admin=true); role kept as fallback.
+    const superAdmin = (info as { isPlatformAdmin?: boolean } | null)?.isPlatformAdmin === true || info?.role === "super_admin";
     document.querySelectorAll<HTMLElement>(".settings-nav:not(.docs-nav) > .nav-super")
       .forEach((el) => el.classList.toggle("hidden", !superAdmin));
   }).catch(() => { /* signed out — items stay hidden (they start hidden) */ });

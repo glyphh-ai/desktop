@@ -34,6 +34,11 @@ export interface AccountInfo {
   firstName: string;
   lastName: string;
   role: string;
+  /** The PLATFORM axis (users.is_platform_admin) — orthogonal to org roles;
+   *  gates the super-admin console. The bootstrap-seeded admin is an
+   *  org_admin MEMBER of glyphh with this flag true, so role alone is the
+   *  wrong gate. */
+  isPlatformAdmin: boolean;
   orgName: string;
   orgSlug: string;
   tier: string;
@@ -380,6 +385,7 @@ async function refreshAccountState(): Promise<HeartbeatResult | null> {
     firstName: profile?.firstName ?? identity.name ?? "",
     lastName: profile?.lastName ?? "",
     role: identity.role,
+    isPlatformAdmin: !!(identity as { isPlatformAdmin?: boolean }).isPlatformAdmin,
     orgName: orgInfo?.name ?? "",
     orgSlug: orgInfo?.slug ?? "",
     tier: subscription?.tier ?? identity.tier,

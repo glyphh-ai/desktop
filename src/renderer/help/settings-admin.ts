@@ -190,6 +190,7 @@ function setErr(id: string, msg: string): void {
 async function isSuperAdmin(): Promise<boolean | null> {
   try {
     const info = await window.glyphh.getAccountInfo?.();
+    if ((info as { isPlatformAdmin?: boolean } | null)?.isPlatformAdmin === true) return true;
     return info?.role ? info.role === "super_admin" : null;
   } catch { return null; }
 }
