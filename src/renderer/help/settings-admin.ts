@@ -382,6 +382,81 @@ function openProviderEditor(p: CatalogProvider): void {
   if (save) save.textContent = "Save provider";
   $("pa-provider-create")?.classList.remove("hidden");
   $("pa-model-create")?.classList.add("hidden");
+  // Platform keys exist only for a SAVED provider — the section shows on edit.
+  $("pa-pc-keys-group")?.classList.remove("hidden");
+  providerKeys = [];
+  paintProviderKeys();
+  void refreshProviderKeys();
+}
+
+// ── Platform provider keys (rotation: append + activate/deactivate) ─────────
+interface AdminProviderKey { id: string; label: string; hint: string; active: boolean; createdAt: string }
+let providerKeys: AdminProviderKey[] = [];
+
+const keysIpc = (): {
+  adminProviderKeys?: (slug: string) => Promise<{ ok: boolean; keys?: AdminProviderKey[]; error?: string }>;
+  adminProviderKeyAdd?: (slug: string, key: string, label?: string) => Promise<{ ok: boolean; key?: AdminProviderKey; error?: string }>;
+  adminProviderKeyActive?: (id: string, active: boolean) => Promise<{ ok: boolean; error?: string }>;
+  adminProviderKeyRemove?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+} => (window as unknown as { glyphh?: Record<string, never> }).glyphh ?? {};
+
+async function refreshProviderKeys(): Promise<void> {
+  if (!editingProviderSlug) return;
+  try {
+    const r = await keysIpc().adminProviderKeys?.(editingProviderSlug);
+    if (r?.ok && Array.isArray(r.keys)) providerKeys = r.keys;
+  } catch { /* the empty state stands */ }
+  paintProviderKeys();
+}
+
+function paintProviderKeys(): void {
+  const wrap = $("pa-pc-keys-list");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  if (!providerKeys.length) {
+    wrap.innerHTML = `<div class="crud-empty">No platform keys yet — the gateway falls back to the server's env keys.</div>`;
+    return;
+  }
+  const { table, tbody } = mkTable(["Key", "Label", "Status", "Added"], true);
+  for (const k of providerKeys) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="lib-table-name">••••${escapeHtml(k.hint)}</td><td class="lib-table-desc"></td><td></td><td class="lib-table-dim">${escapeHtml(fmtDate(k.createdAt))}</td>`;
+    (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = k.label || "—";
+    (tr.querySelector("td:nth-child(3)") as HTMLElement).innerHTML = k.active
+      ? `<span class="lib-badge">Active</span>` : `<span class="lib-table-dim">Off</span>`;
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.edit, label: k.active ? "Deactivate" : "Activate", onClick: () => {
+        void (async () => {
+          const r = await keysIpc().adminProviderKeyActive?.(k.id, !k.active);
+          if (r && !r.ok) { setErr("pa-provider-create-error", r.error || "Couldn't update the key."); return; }
+          await refreshProviderKeys();
+        })();
+      } },
+      { icon: ROW_MENU_ICONS.delete, label: "Remove", danger: true, onClick: () => {
+        void (async () => {
+          const sure = await confirmAction({ title: `Remove key ••••${k.hint}?`, body: "Calls stop using it immediately. This cannot be undone.", confirmLabel: "Remove", danger: true });
+          if (!sure) return;
+          const r = await keysIpc().adminProviderKeyRemove?.(k.id);
+          if (r && !r.ok) { setErr("pa-provider-create-error", r.error || "Couldn't remove the key."); return; }
+          await refreshProviderKeys();
+        })();
+      } },
+    ]));
+    tbody.appendChild(tr);
+  }
+  wrap.appendChild(table);
+}
+
+async function addProviderKeyFromForm(): Promise<void> {
+  if (!editingProviderSlug) return;
+  const key = inputVal("pa-pc-key-new").trim();
+  if (key.length < 8) { setErr("pa-provider-create-error", "Paste the full API key."); return; }
+  const label = inputVal("pa-pc-key-label").trim();
+  const r = await keysIpc().adminProviderKeyAdd?.(editingProviderSlug, key, label || undefined);
+  if (r && !r.ok) { setErr("pa-provider-create-error", r.error || "Couldn't add the key."); return; }
+  setErr("pa-provider-create-error", "");
+  for (const id of ["pa-pc-key-new", "pa-pc-key-label"]) { const el = $<HTMLInputElement>(id); if (el) el.value = ""; }
+  await refreshProviderKeys();
 }
 
 function openModelEditor(m: AdminModel): void {
@@ -448,8 +523,11 @@ function wireCatalogCreate(): void {
     const save = $<HTMLButtonElement>("pa-pc-save");
     if (save) save.textContent = "Release provider";
     setErr("pa-provider-create-error", "");
+    $("pa-pc-keys-group")?.classList.add("hidden"); // keys attach after the first save
     toggle("pa-provider-create", true); toggle("pa-model-create", false);
   });
+  $("pa-pc-key-add")?.addEventListener("click", () => { void addProviderKeyFromForm(); });
+  $("pa-pc-key-new")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void addProviderKeyFromForm(); });
   $("pa-pc-cancel")?.addEventListener("click", () => { editingProviderSlug = null; toggle("pa-provider-create", false); });
   $("pa-provider-search")?.addEventListener("input", () => {
     providerSearch = inputVal("pa-provider-search");

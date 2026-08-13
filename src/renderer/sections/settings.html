@@ -1357,6 +1357,19 @@
                       </select>
                       <label class="settings-label">Base URL <span class="auth-shell-label-aside">optional</span></label>
                       <input id="pa-pc-url" class="settings-input" placeholder="https://api.mistral.ai" spellcheck="false" />
+                      <!-- PLATFORM API KEYS — several per provider (rotation:
+                           append + activate/deactivate). Encrypted in the DB;
+                           write-only: rows show label + last-4, never the key. -->
+                      <div id="pa-pc-keys-group" class="hidden">
+                        <h4 class="acct-row-head">API keys</h4>
+                        <p class="section-desc">The platform keys the gateway calls this vendor with — several allowed; each call picks a random active key, so rotation is add-the-new, deactivate-the-old. Stored encrypted, never shown again.</p>
+                        <div id="pa-pc-keys-list"></div>
+                        <div class="settings-inline" style="margin-top:8px">
+                          <input id="pa-pc-key-new" type="password" class="settings-input" placeholder="paste the API key…" spellcheck="false" autocomplete="off" />
+                          <input id="pa-pc-key-label" type="text" class="settings-input settings-input-md" placeholder="label (optional)" spellcheck="false" autocomplete="off" />
+                          <button id="pa-pc-key-add" class="action-btn primary" type="button">Add key</button>
+                        </div>
+                      </div>
                       <div class="settings-inline" style="margin-top:12px">
                         <button id="pa-pc-cancel" class="action-btn" type="button">Cancel</button>
                         <button id="pa-pc-save" class="action-btn primary" type="button">Release provider</button>

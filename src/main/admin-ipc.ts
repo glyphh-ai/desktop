@@ -76,6 +76,28 @@ export function registerAdminIpc(): void {
     try { return { ok: true as const, plan: (await getClient().admin.createPlan(input)).plan }; }
     catch (err) { return fail(err); }
   });
+
+  // ── platform provider keys (encrypted in the DB; rotation via activate) ───
+  ipcMain.handle("admin-providers", async () => {
+    try { return { ok: true as const, providers: (await getClient().admin.providers()).providers }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("admin-provider-keys", async (_e, slug: string) => {
+    try { return { ok: true as const, keys: (await getClient().admin.providerKeys(String(slug))).keys }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("admin-provider-key-add", async (_e, slug: string, key: string, label?: string) => {
+    try { return { ok: true as const, key: (await getClient().admin.addProviderKey(String(slug), String(key), label)).key }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("admin-provider-key-active", async (_e, id: string, active: boolean) => {
+    try { return { ok: true as const, key: (await getClient().admin.setProviderKeyActive(String(id), !!active)).key }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("admin-provider-key-remove", async (_e, id: string) => {
+    try { await getClient().admin.removeProviderKey(String(id)); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("admin-plan-prices", (_e, tier: string) => getClient().admin.planPrices(String(tier)));
   ipcMain.handle("admin-plan-price-add", async (_e, tier: string, stripePriceId: string) => {
     try { return { ok: true as const, price: await getClient().admin.addPlanPrice(String(tier), String(stripePriceId)) }; }

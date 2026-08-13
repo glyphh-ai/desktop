@@ -583,6 +583,14 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("admin-plan-update", tier, patch) as Promise<{ ok: boolean; plan?: unknown; error?: string }>,
   adminPlanCreate: (input: Record<string, unknown>) =>
     ipcRenderer.invoke("admin-plan-create", input) as Promise<{ ok: boolean; plan?: unknown; error?: string }>,
+  adminProviders: () => ipcRenderer.invoke("admin-providers") as Promise<{ ok: boolean; providers?: unknown[]; error?: string }>,
+  adminProviderKeys: (slug: string) => ipcRenderer.invoke("admin-provider-keys", slug) as Promise<{ ok: boolean; keys?: unknown[]; error?: string }>,
+  adminProviderKeyAdd: (slug: string, key: string, label?: string) =>
+    ipcRenderer.invoke("admin-provider-key-add", slug, key, label) as Promise<{ ok: boolean; key?: unknown; error?: string }>,
+  adminProviderKeyActive: (id: string, active: boolean) =>
+    ipcRenderer.invoke("admin-provider-key-active", id, active) as Promise<{ ok: boolean; key?: unknown; error?: string }>,
+  adminProviderKeyRemove: (id: string) =>
+    ipcRenderer.invoke("admin-provider-key-remove", id) as Promise<{ ok: boolean; error?: string }>,
   adminPlanPrices: (tier: string) => ipcRenderer.invoke("admin-plan-prices", tier) as Promise<unknown[]>,
   adminPlanPriceAdd: (tier: string, stripePriceId: string) =>
     ipcRenderer.invoke("admin-plan-price-add", tier, stripePriceId) as Promise<{ ok: boolean; price?: unknown; error?: string }>,
