@@ -122,6 +122,14 @@ export function buildContract(client, deps) {
     catch (err) { return libError(err); }
   };
 
+  // Per-loop model picks — the web's counterpart of the desktop's main-process
+  // selection store. { [loop]: { [role]: modelId } } in localStorage.
+  const LOOP_SELECTIONS_KEY = 'glyphh.loopSelections';
+  const loopSelections = () => {
+    try { return JSON.parse(localStorage.getItem(LOOP_SELECTIONS_KEY) || '{}') || {}; }
+    catch { return {}; }
+  };
+
   return {
     // ── Auth / account ────────────────────────────────────────────────────────
     isAuthenticated: () => isAuthenticated(),
@@ -244,7 +252,25 @@ export function buildContract(client, deps) {
     // ── Loops (LoopsClient) ───────────────────────────────────────────────────────
     loopsList: read(() => client.loops.list(), toLegacyLoops, EMPTY.loops),
     loopRoles: (loop) =>
-      read(() => client.loops.roles(loop), (roles) => toLegacyLoopRoles(loop, roles), (error) => EMPTY.loopRoles(loop, error))(),
+      read(() => client.loops.roles(loop, loopSelections()[loop] || {}), (roles) => toLegacyLoopRoles(loop, roles), (error) => EMPTY.loopRoles(loop, error))(),
+    // Bind a slot to a model (null clears back to the loop's default). The
+    // desktop stores picks in main-process prefs; on web they live in
+    // localStorage and ride the roles call as `select=` params. This method
+    // simply didn't exist on web before — the picker's click was a silent
+    // no-op (the glyphh Proxy fabricated it).
+    loopRoleSet: async (loop, role, modelId) => {
+      const all = loopSelections();
+      const forLoop = { ...(all[loop] || {}) };
+      if (modelId) forLoop[role] = modelId; else delete forLoop[role];
+      all[loop] = forLoop;
+      try { localStorage.setItem(LOOP_SELECTIONS_KEY, JSON.stringify(all)); } catch { /* storage full/blocked */ }
+      try {
+        const roles = await client.loops.roles(loop, forLoop);
+        return toLegacyLoopRoles(loop, roles);
+      } catch (err) {
+        return EMPTY.loopRoles(loop, err?.message || String(err));
+      }
+    },
     libraryLoopGet: lib((ref) => client.loops.get(ref)),
     // Mirror of the desktop's loop-set-role-default IPC: read the loop, patch
     // the role slot's default in the manifest, write it back. Pure SDK — the
@@ -332,6 +358,16 @@ export function buildContract(client, deps) {
     // Provider rows are a CATALOG read (the whole catalog ⊕ the org's enablement state);
     // ProvidersClient itself is write-only.
     orgProvidersList: lib(() => client.catalog.providers()),
+    // WRITES — these existed only as desktop IPC; on web the glyphh Proxy
+    // fabricated them (resolved undefined) and the Models page threw on `r.ok`.
+    // Same SDK calls the desktop's main process makes.
+    orgModelsSetSupported: lib((id, supported) => client.orgModels.setSupported(id, supported)),
+    orgModelsSetSupportedBulk: lib((ids) => client.orgModels.setSupportedBulk(ids)),
+    orgCustomModelsSave: lib((input) => client.orgModels.saveCustom(input)),
+    orgCustomModelsDelete: lib((id) => client.orgModels.deleteCustom(id)),
+    orgProviderEnable: lib((slug, key) => client.providers.enable(slug, key)),
+    orgProviderDisable: lib((slug) => client.providers.disable(slug)),
+    orgProviderClearKey: lib((slug) => client.providers.clearKey(slug)),
 
     // ── Support (SupportClient) ────────────────────────────────────────────────────
     submitSupportTicket: async (ticket) => {

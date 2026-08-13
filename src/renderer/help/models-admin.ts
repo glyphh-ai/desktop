@@ -86,7 +86,7 @@ function renderModelGrid(kind: "proxied" | "open_weight"): void {
     const box = card.querySelector("input[type=checkbox]") as HTMLInputElement;
     box.addEventListener("change", () => {
       void window.glyphh.orgModelsSetSupported(m.id, box.checked).then((r) => {
-        if (!r.ok) { box.checked = !box.checked; showError(r.error || "Update failed"); return; }
+        if (!r?.ok) { box.checked = !box.checked; showError(r.error || "Update failed"); return; }
         m.supported = box.checked;
         showError("");
       });
@@ -136,7 +136,7 @@ function renderProviders(): void {
       if (!value) return;
       saveBtn.disabled = true;
       void window.glyphh.orgProviderEnable(p.slug, value).then((r) => {
-        if (!r.ok) { showError(r.error || "Save failed"); saveBtn.disabled = false; return; }
+        if (!r?.ok) { showError(r.error || "Save failed"); saveBtn.disabled = false; return; }
         showError("");
         void refresh();
       });
@@ -149,7 +149,7 @@ function renderProviders(): void {
       removeBtn.disabled = true;
       void window.glyphh.orgProviderClearKey(p.slug).then((r) => {
         removeBtn.disabled = false;
-        if (!r.ok) { showError(r.error || "Remove failed"); return; }
+        if (!r?.ok) { showError(r.error || "Remove failed"); return; }
         showError("");
         void refresh();
       });
@@ -158,7 +158,7 @@ function renderProviders(): void {
     toggle.addEventListener("change", () => {
       const call = toggle.checked ? window.glyphh.orgProviderEnable(p.slug) : window.glyphh.orgProviderDisable(p.slug);
       void call.then((r) => {
-        if (!r.ok) { toggle.checked = !toggle.checked; showError(r.error || "Update failed"); return; }
+        if (!r?.ok) { toggle.checked = !toggle.checked; showError(r.error || "Update failed"); return; }
         p.enabledForOrg = toggle.checked;
         showError("");
         // Support cards show "Provider off" chips — keep them truthful.
@@ -201,7 +201,7 @@ function renderCustom(): void {
     });
     row.querySelector(".mdl-del")?.addEventListener("click", () => {
       void window.glyphh.orgCustomModelsDelete(m.id).then((r) => {
-        if (!r.ok) { showError(r.error || "Delete failed"); return; }
+        if (!r?.ok) { showError(r.error || "Delete failed"); return; }
         showError("");
         void refresh();
       });
@@ -274,7 +274,7 @@ async function saveCustom(): Promise<void> {
     ...(v("mc-key") ? { key: v("mc-key") } : {}),
   });
   btn.disabled = false;
-  if (!r.ok) { showError(r.error || "Save failed"); return; }
+  if (!r?.ok) { showError(r.error || "Save failed"); return; }
   showError("");
   clearCustomForm();
   void refresh();
