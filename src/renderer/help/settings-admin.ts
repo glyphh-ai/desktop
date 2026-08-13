@@ -545,11 +545,10 @@ let editingPlan: AdminPlan | null = null;
 let planPrices: AdminPlanPrice[] = [];
 let plansWired = false;
 
-/** A tier carries the Stripe price section when it is actually PRICED — any
- *  paid self-serve tier, including admin-created ones (free = no price;
- *  enterprise is sales-led via bespoke org plans). */
-function tierIsPriced(p: AdminPlan): boolean {
-  return p.tier !== "enterprise" && (p.monthly_usd_cents || 0) > 0;
+/** Every tier shows its Stripe price history — the old platform hid it for
+ *  free/enterprise, which just read as "where do I put the price id". */
+function tierIsPriced(_p: AdminPlan): boolean {
+  return true;
 }
 
 /** True while the editor is CREATING a new tier (editingPlan is null then). */
