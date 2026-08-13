@@ -197,7 +197,9 @@ async function runLoopTask(agent: Agent, task: AgentTask): Promise<string> {
       roles: agent.selections.roles ?? {},
       skills: loop.manifest.skills ?? [],
       connections: loop.manifest.connections ?? [],
-      ...(loop.manifest.memory ? { memory: loop.manifest.memory } : {}),
+      ...(loop.manifest.memory ? { memory: loop.manifest.memory }
+        : loop.manifest.type === "rover" ? { memory: { read: true, write: true } } : {}),
+      ...(loop.manifest.type === "rover" ? { rotation: "rover" as const } : {}),
     },
     input: task.args,
     guardrails: agent.guardrailsEffective,
@@ -266,7 +268,9 @@ export async function runLoopBySlug(slug: string, input: Record<string, unknown>
       roles: {},
       skills: loop.manifest.skills ?? [],
       connections: loop.manifest.connections ?? [],
-      ...(loop.manifest.memory ? { memory: loop.manifest.memory } : {}),
+      ...(loop.manifest.memory ? { memory: loop.manifest.memory }
+        : loop.manifest.type === "rover" ? { memory: { read: true, write: true } } : {}),
+      ...(loop.manifest.type === "rover" ? { rotation: "rover" as const } : {}),
     },
     input,
   });

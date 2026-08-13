@@ -118,10 +118,32 @@ export async function resolveRoles(loop: string): Promise<ResolvedLoopRole[]> {
  * asking for a role its manifest no longer declares should still run rather than
  * refuse. Null only when the caller may use no model at all.
  */
+/** Rover state: loop → the pool index of the LAST model handed out, so the
+ *  interactive agent hops per turn and never repeats consecutively. */
+const roverLast = new Map<string, number>();
+
+async function loopType(loop: string): Promise<string | undefined> {
+  try {
+    const doc = await cache.cached(`manifest:${loop}`, () => getClient().loops.get(loop));
+    return (doc as { manifest?: { type?: string } })?.manifest?.type;
+  } catch { return undefined; }
+}
+
 export async function runModel(role = "default"): Promise<string | null> {
   const loop = currentLoop();
   try {
     const roles = await resolveRoles(loop);
+    // ROVER: hop across the distinct bound models — never the same twice in a
+    // row. (Loop PROGRAMS hop per model call in the SDK runner; the
+    // interactive agent hops per turn here.)
+    if ((await loopType(loop)) === "rover") {
+      const pool = [...new Set(roles.map((r) => r.modelId).filter((m): m is string => !!m))];
+      if (pool.length > 0) {
+        const next = ((roverLast.get(loop) ?? -1) + 1) % pool.length;
+        roverLast.set(loop, next);
+        return pool[next] ?? null;
+      }
+    }
     return roles.find((r) => r.name === role)?.modelId ?? roles[0]?.modelId ?? null;
   } catch (err) {
     console.warn(`[loop-selections] resolving "${loop}.${role}" failed:`, err instanceof Error ? err.message : String(err));

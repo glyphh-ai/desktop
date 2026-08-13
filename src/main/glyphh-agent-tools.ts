@@ -900,7 +900,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "loops_save",
-    doc: 'loops_save(slug, name, description?, manifest?, code?) — create or update a loop. manifest: {roles:[{name,label,description}], skills:[], connections:[], memory:{read,write}}; code: the .js program (export async function start(ctx))',
+    doc: 'loops_save(slug, name, description?, manifest?, code?) — create or update a loop. manifest: {type?, roles:[{name,label,description}], skills:[], connections:[], memory:{read,write}}; code: the .js program (export async function start(ctx)). type "rover" = a ROVER loop: declare 2+ role slots and every model call HOPS to the next bound model, never the same twice in a row — memory defaults ON so the hot prompt carries full context across hops. Great for cross-checking, variety, and resilience.',
     action: (a) => ({ kind: "edit", title: `Save loop ${String(a.slug ?? "")}` }),
     run: async (a) => {
       const client = getClient();
