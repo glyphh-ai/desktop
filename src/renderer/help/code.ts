@@ -3195,6 +3195,25 @@ function send(): void {
 // provisions once, reuses it for later turns), persisted via saveStore.
 const remoteAborters = new Map<string, AbortController>();
 
+/** The model a CLOUD turn runs on — the picker's resolved primary slot (the
+ *  pod does not resolve loop roles itself). A rover loop hops the distinct
+ *  pickable models per turn, mirroring desktop main's roverLast. */
+const remoteRoverLast = new Map<string, number>();
+function resolveRemoteTurnModel(): string | null {
+  const roles = picker.currentRoles();
+  const primary = roles[0]?.modelId ?? null;
+  const type = (loops.find((l) => l.id === glyphhLoop) as { type?: string } | undefined)?.type;
+  if (type === "rover") {
+    const pool = [...new Set(roles.map((r) => r.modelId).filter((m): m is string => !!m))];
+    if (pool.length > 0) {
+      const next = ((remoteRoverLast.get(glyphhLoop) ?? -1) + 1) % pool.length;
+      remoteRoverLast.set(glyphhLoop, next);
+      return pool[next] ?? primary;
+    }
+  }
+  return primary;
+}
+
 /** Provision (or reuse) a Fly runtime for this chat's remote source and stream
  *  the turn through it, driving the SAME liveRuns entry the local path uses so
  *  the thread renders identically. Any unavailable stage lands the app's honest
@@ -3208,6 +3227,8 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
   // the local path (there's no main-side ack to stamp one here).
   const run = liveRuns.get(chatId);
   if (run && !run.runId) run.runId = `r-remote-${chatId}`;
+  // Resolved ONCE per turn (a rover loop advances its pool here).
+  const remoteModel = resolveRemoteTurnModel();
 
   void runRemoteTurn(
     c as unknown as RemoteChat,
@@ -3283,12 +3304,15 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         finishRun(chatId, `${prefix}⚠ ${detail}`);
       },
     },
-    // No model override — the loop resolves its own model server-side (matches
-    // the local path, where main resolves the loop's roles). The permission mode
-    // DOES ride the turn and is the SESSION's mode (per-session), so the pod's own
-    // default (`auto`) never overrides a session left in Ask; a mid-run flip is
-    // pushed separately via setRemotePermission.
-    { rotor: glyphhLoop, permission: c.permission ?? defaultMode, signal: ac.signal },
+    // The MODEL rides the turn: the pod does NOT resolve loop roles (its
+    // cfg.model comes only from the body — absent meant the harness default,
+    // so the picker painted a choice the cloud run silently ignored). The
+    // picker's resolved primary slot is governance-filtered server-side
+    // already; a rover loop hops the pool per turn, same as desktop main.
+    // The permission mode is the SESSION's mode (per-session), so the pod's
+    // own default (`auto`) never overrides a session left in Ask; a mid-run
+    // flip is pushed separately via setRemotePermission.
+    { rotor: glyphhLoop, ...(remoteModel ? { model: remoteModel } : {}), permission: c.permission ?? defaultMode, signal: ac.signal },
   ).then((outcome) => {
     remoteAborters.delete(chatId);
     // An UNAVAILABLE stage is the honest "runtime not connected" state: the
