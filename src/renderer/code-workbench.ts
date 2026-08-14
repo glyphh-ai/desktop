@@ -5568,6 +5568,9 @@ async function init(): Promise<void> {
     // run-history detail; ‹ returns to the overview.
     body.innerHTML = `
       <div class="ws-tasks-scroll">
+        <div class="ws-tasks-page">
+        <h2 class="ws-tasks-title">Tasks</h2>
+        <p class="section-desc">Everything your agents run on a schedule — what fires next, how recent runs went, and a place to create more.</p>
         <div class="ws-tasks-chartwrap">
           <canvas class="ws-tasks-canvas"></canvas>
           <button type="button" class="ws-icon-btn ws-tasks-refresh" title="Refresh">
@@ -5605,6 +5608,7 @@ async function init(): Promise<void> {
         </div>
         <div class="ws-tasks-coltitle ws-tasks-alltitle">All tasks</div>
         <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>
+        </div>
       </div>`;
     const scroll = body.querySelector(".ws-tasks-scroll") as HTMLElement;
     const list = body.querySelector(".ws-tasks-list") as HTMLElement;
@@ -5757,13 +5761,15 @@ async function init(): Promise<void> {
       if (!detail) { detail = document.createElement("div"); detail.className = "ws-task-detailwrap"; body.appendChild(detail); }
       detail.classList.remove("hidden");
       detail.innerHTML = `
+        <div class="ws-tasks-page">
         <div class="ws-task-detail-head">
           <button type="button" class="action-btn ws-task-back">‹ All tasks</button>
           <span class="ws-task-name">${relEsc(r.task.name)}</span>
           <span class="ws-task-cron">${relEsc(cronHuman(r.task.cron))}</span>
           ${canRunNow ? `<button type="button" class="action-btn primary ws-task-run">Run now</button>` : ""}
         </div>
-        <div class="ws-task-runs"><div class="ws-rel-empty">Loading history…</div></div>`;
+        <div class="ws-task-runs"><div class="ws-rel-empty">Loading history…</div></div>
+        </div>`;
       detail.querySelector(".ws-task-back")?.addEventListener("click", () => {
         slot.taskId = undefined;
         detail!.classList.add("hidden");

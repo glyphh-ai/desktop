@@ -16370,7 +16370,12 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
    its own classes carry only card/feed layout (sizes; colors from theme vars). */
 .ws-tasks-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .ws-tasks-heading { font-weight: 700; font-size: 12.5px; color: var(--text); }
-.ws-tasks-scroll { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.ws-tasks-scroll { flex: 1; overflow-y: auto; padding: 10px 32px 24px; }
+/* The centered page column — same voice as the section pages (heading +
+   .section-desc + a bounded content width). */
+.ws-tasks-page { width: 100%; max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.ws-tasks-title { font-size: 18px; font-weight: 600; color: var(--text); letter-spacing: 0; margin: 14px 0 0; }
+.ws-tasks-page > .section-desc { margin: 0 0 4px; }
 .ws-tasks-scroll.hidden { display: none; }
 .ws-tasks-chartwrap { position: relative; height: 140px; flex: 0 0 auto; border: 1px solid var(--border-2); border-radius: 10px; background: var(--surface-2); padding: 10px 12px; }
 .ws-tasks-canvas { width: 100% !important; height: 100% !important; }
