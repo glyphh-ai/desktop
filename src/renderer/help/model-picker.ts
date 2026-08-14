@@ -42,10 +42,12 @@ export function currentRoles(): RoleView[] {
   return roles;
 }
 
-/** Pull this loop's slots from the server. Safe to call on every loop change. */
-export async function refreshRoles(loop: string, force?: boolean): Promise<RoleView[]> {
+/** Pull this loop's slots from the server. Safe to call on every loop change.
+ *  `context: "cloud"` resolves for a pod-executed session — the server excludes
+ *  on-device models, whose weights only exist on the user's machine. */
+export async function refreshRoles(loop: string, force?: boolean, context?: "local" | "cloud"): Promise<RoleView[]> {
   try {
-    const r = await window.glyphh.loopRoles?.(loop, force);
+    const r = await window.glyphh.loopRoles?.(loop, force, context);
     roles = r?.roles ?? [];
   } catch {
     roles = []; // Offline — the chip falls back to a neutral label.
@@ -123,6 +125,11 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
     return;
   }
 
+  // A MULTI-slot loop turns the menu into a small form: picking one slot's model
+  // must not close it (the other slots still need setting) — the X does. A
+  // single-slot menu keeps the one-click-and-done behavior.
+  const multi = roles.length > 1;
+
   // Search stays pinned; only the list below it scrolls. A workspace can allow
   // dozens of models across several slots, and scrolling past the search box to
   // reach the filter defeats the point of having one.
@@ -141,11 +148,25 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
   menu.appendChild(pane);
   pane.appendChild(searchWrap);
 
+  const closeTips = (): void => { menu.querySelector(".drop-detail")?.remove(); pane.classList.remove("hidden"); };
+  const closeMenu = (): void => { closeTips(); menu.classList.add("hidden"); };
+  const closeX = document.createElement("button");
+  closeX.className = "drop-close-x";
+  closeX.type = "button";
+  closeX.title = "Close";
+  closeX.setAttribute("aria-label", "Close");
+  closeX.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  closeX.addEventListener("click", (ev) => { ev.stopPropagation(); closeMenu(); });
+  searchWrap.appendChild(closeX);
+
   const list = document.createElement("div");
   list.className = "drop-scroll";
   pane.appendChild(list);
 
-  const closeTips = (): void => { menu.querySelector(".drop-detail")?.remove(); pane.classList.remove("hidden"); };
+  // Collapsible sections: the FIRST slot open, the rest folded — a five-slot
+  // loop's menu stays one screen tall. A live search overrides the folds (a
+  // match hidden under a closed section reads as "missing").
+  const open = new Map<string, boolean>(roles.map((r, i) => [r.name, i === 0]));
 
   const paint = (query: string): void => {
     list.textContent = "";
@@ -161,12 +182,13 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
       // leaving a heading over an empty gap.
       if (!choices.length) continue;
       shown += choices.length;
+      const expanded = !!q || !multi || !!open.get(role.name);
 
-      if (roles.length > 1 || role.description) {
+      if (multi || role.description) {
         const head = document.createElement("div");
         head.className = "code-drop-head" + (role.description ? " drop-head-2line" : "");
         const label = document.createElement("span");
-        label.textContent = roles.length > 1 ? role.label : "Model";
+        label.textContent = multi ? role.label : "Model";
         head.appendChild(label);
         if (role.description) {
           const desc = document.createElement("span");
@@ -174,8 +196,18 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
           desc.textContent = role.description;
           head.appendChild(desc);
         }
+        if (multi) {
+          head.classList.add("drop-head-toggle");
+          const chev = document.createElement("span");
+          chev.className = "drop-chev";
+          chev.textContent = expanded ? "▾" : "▸";
+          head.appendChild(chev);
+          head.addEventListener("click", () => { open.set(role.name, !open.get(role.name)); paint(search.value); });
+        }
         list.appendChild(head);
       }
+
+      if (!expanded) continue;
 
       for (const choice of choices) {
         const selected = choice.id === role.modelId;
@@ -220,13 +252,16 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
 
         item.addEventListener("click", () => {
           closeTips();
-          menu.classList.add("hidden");
+          // One slot: pick-and-done. Several: the menu is a form — it stays up
+          // (the check moves live) and the X closes it.
+          if (!multi) menu.classList.add("hidden");
           void (async () => {
             try {
               const r = await window.glyphh.loopRoleSet?.(loop, role.name, choice.id);
               if (r?.roles) roles = r.roles;
             } catch { /* the pick did not take; the next open shows the truth */ }
             onPicked();
+            if (multi && !menu.classList.contains("hidden")) paint(search.value);
           })();
         });
         list.appendChild(item);

@@ -698,8 +698,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   libraryAgentTaskRunning: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-running", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentTaskDelete: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-delete", ref, taskId) as Promise<LibEnvelope>,
   // The loop decides the picker's shape: one slot → one dropdown, two → two.
-  loopRoles: (loop: string, force?: boolean) =>
-    ipcRenderer.invoke("loop-roles", { loop, force }) as Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>,
+  loopRoles: (loop: string, force?: boolean, context?: "local" | "cloud") =>
+    ipcRenderer.invoke("loop-roles", { loop, force, context }) as Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>,
   /** Bind a slot to a model, or pass null to hand it back to the loop's default. */
   loopRoleSet: (loop: string, role: string, modelId: string | null) =>
     ipcRenderer.invoke("loop-role-set", { loop, role, modelId }) as Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>,

@@ -95,17 +95,19 @@ export function setSelection(loop: string, role: string, modelId: string | null)
   invalidateRoles(loop);
 }
 
-/** Resolve every slot for this caller — what the picker renders. */
-export async function resolveRoles(loop: string): Promise<ResolvedLoopRole[]> {
-  const key = `roles:${loop}:${JSON.stringify(selectionsFor(loop))}`;
+/** Resolve every slot for this caller — what the picker renders. A "cloud"
+ *  context resolves for a pod-executed session: the server excludes on-device
+ *  models, whose weights only exist on this machine. */
+export async function resolveRoles(loop: string, context: "local" | "cloud" = "local"): Promise<ResolvedLoopRole[]> {
+  const key = `roles:${loop}:${context}:${JSON.stringify(selectionsFor(loop))}`;
   try {
-    const roles = await cache.cached(key, () => getClient().loops.roles(loop, selectionsFor(loop)));
-    lastGood.set(loop, roles);
+    const roles = await cache.cached(key, () => getClient().loops.roles(loop, selectionsFor(loop), { context }));
+    lastGood.set(`${loop}:${context}`, roles);
     return roles;
   } catch (err) {
     // A stale answer beats none: the models a caller may use rarely change, and
     // blocking the composer on a transient failure is the worse outcome.
-    const stale = lastGood.get(loop);
+    const stale = lastGood.get(`${loop}:${context}`);
     if (stale) return stale;
     throw err;
   }

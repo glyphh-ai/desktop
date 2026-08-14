@@ -243,10 +243,16 @@ function paintModelChip(): void {
   mc.className = "code-chip";
 }
 
-/** Re-resolve the current loop's slots. Called on load and on every loop change,
- *  because a different loop means different slots. */
+/** Where the active session EXECUTES — a cloud source resolves models without
+ *  the on-device set (their weights only exist on this machine). */
+function modelContext(): "local" | "cloud" {
+  return String((activeSource() as { kind?: string })?.kind || "").startsWith("cloud") ? "cloud" : "local";
+}
+
+/** Re-resolve the current loop's slots. Called on load, on every loop change,
+ *  and on a local↔cloud source change — different context, different choices. */
 async function refreshModelList(force?: boolean): Promise<void> {
-  await picker.refreshRoles(glyphhLoop, force);
+  await picker.refreshRoles(glyphhLoop, force, modelContext());
   paintModelChip();
   refreshCtxMeter();
 }
@@ -1153,8 +1159,10 @@ function ensureCodeSection(): void {
     syncThinking();   // this session's own run state, not the last one's
     renderHistory();
     renderThread();
-    // The switched-to session's OWN source drives the chip/locus/run.
+    // The switched-to session's OWN source drives the chip/locus/run — and the
+    // model set (a cloud session offers no on-device models).
     repaintSourceUi();
+    void refreshModelList();
     broadcastTimeline(!!currentRun());
     // SURFACE THE AGENT: called from the + New Session screen's session column,
     // this used to set the session and repaint a thread nobody could see — the
@@ -2236,6 +2244,9 @@ function pickSource(next: Source): void {
   void window.glyphh.setPreference?.(SOURCE_PREF, next);
   if (cur && cur.messages.length === 0) { cur.source = next; void saveStore(); }
   sourceChip?.setSource(next);
+  // A local↔cloud flip changes which models are offered (on-device models only
+  // exist on this machine) — re-resolve so the chip and menu match the source.
+  void refreshModelList();
 }
 
 /** Mount the source chip above the composer (once). */

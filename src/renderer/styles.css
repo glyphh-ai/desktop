@@ -14337,7 +14337,30 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 
 /* Model picker — a loop can offer many models across several slots, so the list
    scrolls while the search stays pinned. */
-#code-model-menu .drop-search { padding: 2px 2px 6px; }
+#code-model-menu .drop-search { padding: 2px 2px 6px; display: flex; align-items: center; gap: 6px; }
+/* The X — same icon-button voice as .settings-modal-close, picker-sized. It is
+   the multi-slot menu's ONLY close affordance (picks keep the form open). */
+.drop-close-x {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.drop-close-x:hover { background: var(--active-bg); color: var(--text); }
+/* Collapsible slot sections: header is the toggle, chevron rides its right edge. */
+.code-drop-head.drop-head-toggle { cursor: pointer; user-select: none; }
+.code-drop-head .drop-chev { margin-left: auto; flex: 0 0 auto; font-size: 10px; color: var(--text-3); }
+.code-drop-head.drop-head-2line .drop-chev { position: absolute; right: 10px; top: 8px; margin-left: 0; }
+.code-drop-head.drop-head-2line.drop-head-toggle { position: relative; }
 .drop-search-input {
   width: 100%;
   box-sizing: border-box;

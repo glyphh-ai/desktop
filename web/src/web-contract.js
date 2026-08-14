@@ -251,8 +251,11 @@ export function buildContract(client, deps) {
 
     // ── Loops (LoopsClient) ───────────────────────────────────────────────────────
     loopsList: read(() => client.loops.list(), toLegacyLoops, EMPTY.loops),
-    loopRoles: (loop) =>
-      read(() => client.loops.roles(loop, loopSelections()[loop] || {}), (roles) => toLegacyLoopRoles(loop, roles), (error) => EMPTY.loopRoles(loop, error))(),
+    // (loop, force?, context?) — force is meaningless here (no main-process
+    // cache on web); context="cloud" resolves without on-device models, whose
+    // weights only exist on a desktop machine.
+    loopRoles: (loop, _force, context) =>
+      read(() => client.loops.roles(loop, loopSelections()[loop] || {}, context === "cloud" ? { context: "cloud" } : {}), (roles) => toLegacyLoopRoles(loop, roles), (error) => EMPTY.loopRoles(loop, error))(),
     // Bind a slot to a model (null clears back to the loop's default). The
     // desktop stores picks in main-process prefs; on web they live in
     // localStorage and ride the roles call as `select=` params. This method

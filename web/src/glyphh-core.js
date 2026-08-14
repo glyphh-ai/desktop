@@ -434,6 +434,11 @@ export function toLegacyLoops(res) {
     id: l.id,
     name: l.name,
     description: l.description,
+    // The manifest's discriminator RIDES the summary. Dropping it broke two
+    // things on web: memory loops leaked into the dropdown (the `type !==
+    // "memory"` filter saw undefined), and ROVER loops never hopped — the
+    // remote turn's rover check read `type` and always fell to the first model.
+    type: l.type,
     builtIn: !!l.builtIn,
   }));
   return { ok: true, loops, canBuild: true };

@@ -299,7 +299,7 @@ declare global {
       libraryAgentTaskRuns: (ref: string, taskId: string) => Promise<LibEnvelope>;
       libraryAgentTaskRunning: (ref: string, taskId: string) => Promise<LibEnvelope>;
       libraryAgentTaskDelete: (ref: string, taskId: string) => Promise<LibEnvelope>;
-      loopRoles: (loop: string, force?: boolean) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
+      loopRoles: (loop: string, force?: boolean, context?: "local" | "cloud") => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       // Org-admin Models page.
       workspacesList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;

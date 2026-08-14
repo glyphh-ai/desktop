@@ -217,13 +217,14 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   // dropdown, a planner-and-coder loop gets two. Resolution and storage live in
   // loop-selections so the turn resolves a slot exactly as the dropdown showed it.
 
-  ipcMain.handle("loop-roles", async (_e, p: { loop?: string; force?: boolean }) => {
+  ipcMain.handle("loop-roles", async (_e, p: { loop?: string; force?: boolean; context?: string }) => {
     const loop = String(p?.loop || "default");
+    const context = p?.context === "cloud" ? ("cloud" as const) : ("local" as const);
     try {
       // force → drop the 60s cache first, so an org-side model change (a model
       // added/removed/toggled on the platform) is seen without an app restart.
       if (p?.force) invalidateRoles(loop);
-      return { ok: true, loop, roles: await resolveRoles(loop) };
+      return { ok: true, loop, roles: await resolveRoles(loop, context) };
     } catch (err) {
       // Signed out or offline: no slots rather than a broken picker.
       console.warn(`[loop-roles] "${loop}" failed:`, err instanceof Error ? err.message : String(err));
