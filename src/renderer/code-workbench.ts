@@ -74,7 +74,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "section" | "app";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "section" | "app";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -115,6 +115,11 @@ interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: 
  *  pick an app, see its release history, cut a build, promote to live.
  *  `slug` remembers the picked app across renders/layout saves. */
 interface ReleasesSlot { id: number; view: "releases"; slug?: string; sticky?: boolean }
+/** Tasks — the user's SCHEDULED work in one place: every agent task, when it
+ *  fires next, how the last run went, and (per task) the full run history.
+ *  Deliberately NOT in TOOL_VIEWS or the layout tool list — it opens ONLY
+ *  from its rail tab. `taskId` remembers an opened detail across renders. */
+interface TasksSlot { id: number; view: "tasks"; taskId?: string; sticky?: boolean }
 /** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
  *  composer); nothing of its own beyond the header's session controls. */
 interface CodingSlot { id: number; view: "coding"; sticky?: boolean }
@@ -161,7 +166,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | EchoSlot | ReleasesSlot | SectionSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -191,6 +196,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   coding:   { title: "Coding Agent", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   releases: { title: "Releases", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
+  tasks:    { title: "Tasks",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
 };
 
@@ -947,6 +953,7 @@ async function init(): Promise<void> {
     if (view === "coding") return { id, view };
     if (view === "echo") return { id, view };
     if (view === "releases") return { id, view };
+    if (view === "tasks") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1479,6 +1486,7 @@ async function init(): Promise<void> {
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
+    else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "echo") {
       // The 3D command-center wall can throw on browsers the desktop shell was
@@ -3508,6 +3516,7 @@ async function init(): Promise<void> {
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
         else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
+    else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
         return;
       }
       if (t.navApp) {
@@ -5435,6 +5444,220 @@ async function init(): Promise<void> {
     void refresh();
   }
 
+  // ── Tasks view — every scheduled task, next fire, last outcome, run feed ──
+  //
+  // Data rides the EXISTING agent-task surface (library-agent-* IPC / the web
+  // bridge's lib() mirrors) — no new endpoints. Next-run is DERIVED from the
+  // cron here (nothing stores it): the 5-field expression is parsed once into
+  // per-field sets, then minutes are scanned forward — worst case (a yearly
+  // date) is a few hundred thousand set-lookups, well under a frame budget.
+  interface WbAgentRow { id: string; slug?: string; name: string }
+  interface WbTaskRow {
+    id: string; name: string; kind: string; target: string; cron: string;
+    enabled: boolean; lastRunAt: string | null; lastStatus: string | null; lastError: string | null;
+  }
+  interface WbTaskRun { id: string; startedAt: string; durationMs: number | null; status: string; error: string | null; output: string | null }
+  interface WbTasksIpc {
+    libraryAgentsList?: () => Promise<{ ok: boolean; data?: WbAgentRow[]; error?: string }>;
+    libraryAgentTasks?: (ref: string) => Promise<{ ok: boolean; data?: WbTaskRow[]; error?: string }>;
+    libraryAgentTaskRuns?: (ref: string, taskId: string) => Promise<{ ok: boolean; data?: WbTaskRun[]; error?: string }>;
+    libraryAgentTaskRunNow?: (ref: string, taskId: string) => Promise<{ ok: boolean; error?: string }>;
+    libraryAgentTaskUpdate?: (ref: string, taskId: string, patch: { enabled?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+  }
+  const tasksIpc = (): WbTasksIpc => (window as unknown as { glyphh: WbTasksIpc }).glyphh;
+
+  /** Parse a five-field cron into per-field membership sets. Null = invalid. */
+  function cronSets(cron: string): Array<Set<number>> | null {
+    const RANGES: Array<[number, number]> = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
+    const fields = cron.trim().split(/\s+/);
+    if (fields.length !== 5) return null;
+    const out: Array<Set<number>> = [];
+    for (let f = 0; f < 5; f++) {
+      const [lo, hi] = RANGES[f];
+      const set = new Set<number>();
+      for (const part of fields[f].split(",")) {
+        const m = /^(\*|\d+)(?:-(\d+))?(?:\/(\d+))?$/.exec(part);
+        if (!m) return null;
+        const start = m[1] === "*" ? lo : Number(m[1]);
+        const end = m[1] === "*" ? hi : m[2] !== undefined ? Number(m[2]) : m[3] ? hi : start;
+        const step = m[3] ? Number(m[3]) : 1;
+        if (!step || start < lo || end > hi) return null;
+        for (let v = start; v <= end; v += step) set.add(v);
+      }
+      out.push(set);
+    }
+    return out;
+  }
+
+  /** The next wall-clock minute the cron matches, or null (invalid / >400d out). */
+  function cronNext(cron: string, from: Date): Date | null {
+    const sets = cronSets(cron);
+    if (!sets) return null;
+    const t = new Date(from);
+    t.setSeconds(0, 0);
+    t.setMinutes(t.getMinutes() + 1);
+    for (let i = 0; i < 400 * 24 * 60; i++) {
+      if (sets[0].has(t.getMinutes()) && sets[1].has(t.getHours()) && sets[2].has(t.getDate())
+        && sets[3].has(t.getMonth() + 1) && sets[4].has(t.getDay())) return t;
+      t.setMinutes(t.getMinutes() + 1);
+    }
+    return null;
+  }
+
+  /** "every 15 min", "daily at 9:00", "Mon at 8:30" — falls back to the raw cron. */
+  function cronHuman(cron: string): string {
+    const f = cron.trim().split(/\s+/);
+    if (f.length !== 5) return cron;
+    const [min, hr, dom, mon, dow] = f;
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const at = (m: string, h: string) => `${h}:${m.padStart(2, "0")}`;
+    if (cron === "* * * * *") return "every minute";
+    if (/^\*\/(\d+)$/.test(min) && hr === "*" && dom === "*" && mon === "*" && dow === "*") return `every ${min.slice(2)} min`;
+    if (/^\d+$/.test(min) && hr === "*" && dom === "*" && mon === "*" && dow === "*") return `hourly at :${min.padStart(2, "0")}`;
+    if (/^\d+$/.test(min) && /^\d+$/.test(hr) && dom === "*" && mon === "*" && dow === "*") return `daily at ${at(min, hr)}`;
+    if (/^\d+$/.test(min) && /^\d+$/.test(hr) && dom === "*" && mon === "*" && /^\d+$/.test(dow)) return `${DAYS[Number(dow) % 7]} at ${at(min, hr)}`;
+    if (/^\d+$/.test(min) && /^\d+$/.test(hr) && /^\d+$/.test(dom) && mon === "*" && dow === "*") return `monthly on the ${dom} at ${at(min, hr)}`;
+    return cron;
+  }
+
+  /** "in 3h 12m" / "2d ago" — coarse on purpose; the exact time is the title. */
+  function relSpan(ms: number): string {
+    const abs = Math.abs(ms);
+    const m = Math.round(abs / 60000);
+    const label = m < 1 ? "now" : m < 60 ? `${m}m` : m < 60 * 48 ? `${Math.floor(m / 60)}h ${m % 60 ? `${m % 60}m` : ""}`.trim() : `${Math.round(m / 1440)}d`;
+    if (label === "now") return ms >= 0 ? "about now" : "just now";
+    return ms >= 0 ? `in ${label}` : `${label} ago`;
+  }
+
+  /** Escape, then turn bare URLs into links — a run whose output names a built
+   *  app / uploaded artifact becomes clickable without trusting any HTML. */
+  function linkifyOutput(text: string): string {
+    const esc = relEsc(text);
+    return esc.replace(/https?:\/\/[^\s<>"')\]]+/g, (u) => `<a href="${u}" target="_blank" rel="noreferrer">${u}</a>`);
+  }
+
+  async function renderTasksIntoSlot(body: HTMLElement, slot: TasksSlot): Promise<void> {
+    body.classList.add("ws-tasks-body");
+    body.innerHTML = `
+      <div class="ws-rel-toolbar">
+        <span class="ws-tasks-heading">Scheduled tasks</span>
+        <span class="ws-rel-note"></span>
+        <button type="button" class="ws-icon-btn ws-tasks-refresh" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+        </button>
+      </div>
+      <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>`;
+    const note = body.querySelector(".ws-rel-note") as HTMLElement;
+    const list = body.querySelector(".ws-tasks-list") as HTMLElement;
+    const setNote = (text: string, err = false): void => { note.textContent = text; note.classList.toggle("err", err); };
+    // Run-now executes on the DESKTOP scheduler — the web surface has no local
+    // scheduler to hand the task to, so the button simply doesn't exist there.
+    const canRunNow = !!tasksIpc().libraryAgentTaskRunNow
+      && !(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+
+    interface Row { agent: WbAgentRow; task: WbTaskRow; next: Date | null }
+    let rows: Row[] = [];
+
+    async function load(): Promise<void> {
+      const agents = await tasksIpc().libraryAgentsList?.().catch(() => null);
+      if (!agents?.ok) { list.innerHTML = `<div class="ws-rel-empty">${relEsc(agents?.error || "Couldn't load agents — sign in and try again.")}</div>`; return; }
+      const now = new Date();
+      const all: Row[] = [];
+      await Promise.all((agents.data ?? []).map(async (agent) => {
+        const t = await tasksIpc().libraryAgentTasks?.(agent.id).catch(() => null);
+        for (const task of t?.ok ? t.data ?? [] : []) {
+          all.push({ agent, task, next: task.enabled ? cronNext(task.cron, now) : null });
+        }
+      }));
+      // Soonest-next first; disabled tasks sink to the bottom.
+      all.sort((a, b) => (a.next?.getTime() ?? Infinity) - (b.next?.getTime() ?? Infinity));
+      rows = all;
+    }
+
+    function paintList(): void {
+      if (!body.isConnected) return;
+      if (!rows.length) {
+        list.innerHTML = `<div class="ws-rel-empty">No scheduled tasks yet — give an agent a schedule (Settings → Agents → Tasks, or just ask the agent) and it shows up here.</div>`;
+        return;
+      }
+      list.textContent = "";
+      const now = Date.now();
+      for (const r of rows) {
+        const card = document.createElement("div");
+        card.className = "ws-task-card" + (r.task.enabled ? "" : " off");
+        const status = r.task.lastStatus
+          ? `<span class="ws-task-chip ${r.task.lastStatus === "ok" ? "ok" : "err"}">${r.task.lastStatus === "ok" ? "ok" : "error"}</span>`
+          : `<span class="ws-task-chip">never run</span>`;
+        const next = r.task.enabled
+          ? (r.next ? `<span class="ws-task-next" title="${relEsc(r.next.toLocaleString())}">${relEsc(relSpan(r.next.getTime() - now))}</span>` : `<span class="ws-task-next">—</span>`)
+          : `<span class="ws-task-next">paused</span>`;
+        card.innerHTML = `
+          <div class="ws-task-head">
+            <span class="ws-task-name">${relEsc(r.task.name)}</span>
+            ${status}${next}
+          </div>
+          <div class="ws-task-sub">
+            <span class="ws-task-agent">${relEsc(r.agent.name)}</span>
+            <span class="ws-task-kind">${relEsc(r.task.kind.replace("_", " "))}</span>
+            <span class="ws-task-target">${relEsc(r.task.target)}</span>
+            <span class="ws-task-cron" title="${relEsc(r.task.cron)}">${relEsc(cronHuman(r.task.cron))}</span>
+          </div>
+          ${r.task.lastError ? `<div class="ws-task-lasterr">${relEsc(r.task.lastError)}</div>` : ""}`;
+        card.addEventListener("click", () => { slot.taskId = r.task.id; void paintDetail(r); });
+        list.appendChild(card);
+      }
+    }
+
+    async function paintDetail(r: Row): Promise<void> {
+      if (!body.isConnected) return;
+      list.innerHTML = `
+        <div class="ws-task-detail-head">
+          <button type="button" class="action-btn ws-task-back">‹ All tasks</button>
+          <span class="ws-task-name">${relEsc(r.task.name)}</span>
+          <span class="ws-task-cron">${relEsc(cronHuman(r.task.cron))}</span>
+          ${canRunNow ? `<button type="button" class="action-btn primary ws-task-run">Run now</button>` : ""}
+        </div>
+        <div class="ws-task-runs"><div class="ws-rel-empty">Loading history…</div></div>`;
+      list.querySelector(".ws-task-back")?.addEventListener("click", () => { slot.taskId = undefined; paintList(); });
+      list.querySelector(".ws-task-run")?.addEventListener("click", async (ev) => {
+        const btn = ev.currentTarget as HTMLButtonElement;
+        btn.disabled = true; btn.textContent = "Running…";
+        try {
+          const res = await tasksIpc().libraryAgentTaskRunNow?.(r.agent.id, r.task.id);
+          setNote(res?.ok ? "Run started" : res?.error || "Couldn't start the run", !res?.ok);
+        } catch { setNote("Couldn't start the run", true); }
+        // The run reports back to the server when it finishes — re-pull shortly.
+        setTimeout(() => { if (body.isConnected && slot.taskId === r.task.id) void paintDetail(r); }, 4000);
+        btn.disabled = false; btn.textContent = "Run now";
+      });
+      const runsHost = list.querySelector(".ws-task-runs") as HTMLElement;
+      const runs = await tasksIpc().libraryAgentTaskRuns?.(r.agent.id, r.task.id).catch(() => null);
+      if (!body.isConnected || slot.taskId !== r.task.id) return;
+      if (!runs?.ok) { runsHost.innerHTML = `<div class="ws-rel-empty">${relEsc(runs?.error || "Couldn't load run history")}</div>`; return; }
+      if (!runs.data?.length) { runsHost.innerHTML = `<div class="ws-rel-empty">No runs yet.</div>`; return; }
+      runsHost.textContent = "";
+      for (const run of runs.data) {
+        const el = document.createElement("div");
+        el.className = "ws-task-run" + (run.status === "ok" ? "" : " failed");
+        const when = new Date(run.startedAt);
+        el.innerHTML = `
+          <div class="ws-task-run-head">
+            <span class="ws-task-chip ${run.status === "ok" ? "ok" : "err"}">${relEsc(run.status)}</span>
+            <span class="ws-task-run-when" title="${relEsc(when.toLocaleString())}">${relEsc(relSpan(when.getTime() - Date.now()))}</span>
+            ${run.durationMs != null ? `<span class="ws-task-run-dur">${relEsc((run.durationMs / 1000).toFixed(1))}s</span>` : ""}
+          </div>
+          ${run.error ? `<pre class="ws-task-run-err">${relEsc(run.error)}</pre>` : ""}
+          ${run.output ? `<pre class="ws-task-run-out">${linkifyOutput(run.output)}</pre>` : ""}`;
+        runsHost.appendChild(el);
+      }
+    }
+
+    body.querySelector(".ws-tasks-refresh")?.addEventListener("click", () => { void load().then(() => { if (!slot.taskId) paintList(); }); });
+    await load();
+    const opened = slot.taskId ? rows.find((r) => r.task.id === slot.taskId) : null;
+    if (opened) void paintDetail(opened); else { slot.taskId = undefined; paintList(); }
+  }
+
   // ── Diff view ──
   async function renderDiffIntoSlot(body: HTMLElement, slot: DiffSlot): Promise<void> {
     registerLiveFsPanel(slot, body);
@@ -7006,8 +7229,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases", "tasks"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

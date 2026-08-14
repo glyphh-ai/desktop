@@ -16365,6 +16365,56 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 
 /* ── Releases workbench view (ws-rel-*) — release management for built apps ── */
 .ws-rel-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+/* Tasks view — scheduled work at a glance. Rides the ws-rel toolbar voice;
+   its own classes carry only card/feed layout (sizes; colors from theme vars). */
+.ws-tasks-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.ws-tasks-heading { font-weight: 700; font-size: 12.5px; color: var(--text); }
+.ws-tasks-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.ws-task-card {
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-2);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ws-task-card:hover { border-color: var(--accent); }
+.ws-task-card.off { opacity: 0.55; }
+.ws-task-head { display: flex; align-items: center; gap: 8px; }
+.ws-task-name { font-weight: 600; font-size: 12.5px; color: var(--text); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-task-chip { flex: 0 0 auto; font-size: 10px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-2); color: var(--text-3); }
+.ws-task-chip.ok { color: var(--ok, #3fb96f); border-color: currentColor; }
+.ws-task-chip.err { color: var(--danger, #e5534b); border-color: currentColor; }
+.ws-task-next { flex: 0 0 auto; font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ws-task-sub { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 11px; color: var(--text-3); min-width: 0; }
+.ws-task-sub > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-task-kind { flex: 0 0 auto; text-transform: capitalize; }
+.ws-task-cron { margin-left: auto; flex: 0 0 auto; }
+.ws-task-lasterr { margin-top: 6px; font-size: 11px; color: var(--danger, #e5534b); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-task-detail-head { display: flex; align-items: center; gap: 10px; padding: 2px 2px 8px; }
+.ws-task-detail-head .ws-task-name { flex: 1 1 auto; }
+.ws-task-runs { display: flex; flex-direction: column; gap: 8px; }
+.ws-task-run { border: 1px solid var(--border-2); border-radius: 10px; background: var(--surface-2); padding: 8px 10px; }
+.ws-task-run.failed { border-color: color-mix(in srgb, var(--danger, #e5534b) 45%, var(--border-2)); }
+.ws-task-run-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-3); }
+.ws-task-run-when { font-variant-numeric: tabular-nums; }
+.ws-task-run-dur { margin-left: auto; font-variant-numeric: tabular-nums; }
+.ws-task-run-out, .ws-task-run-err {
+  margin: 6px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-2, var(--text));
+  background: var(--surface-3);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.ws-task-run-err { color: var(--danger, #e5534b); }
+.ws-task-run-out a { color: var(--accent); }
 .ws-rel-toolbar {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; border-bottom: 1px solid var(--border-2);

@@ -578,6 +578,13 @@ export function initHelp() {
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => openSettingsModal(btn.dataset.settingsSub!));
   });
+  // Tasks is the one rail item that opens IN the workbench (a panel view, not
+  // a settings page) — scheduled work is a daily glance. The view is deliberately
+  // absent from the workbench "Add view" menu and the layout tool list; this
+  // button is its only door.
+  document.getElementById("rail-tasks-btn")?.addEventListener("click", () => {
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks");
+  });
   // (Artifacts rides the same data-settings-sub path — every rail link opens
   // the settings modal; the files PAGE stays reachable via gotoSection for
   // other callers, and closing the modal parks the adopted node back.)
