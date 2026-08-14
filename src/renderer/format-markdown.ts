@@ -28,7 +28,17 @@ export function formatMarkdown(text: string): string {
         `${prefix}<a class="yo-md-link" href="${url}" title="${url}">${url}</a>`
       );
 
-  const lines = text.split("\n");
+  // Some models emit a whole pipe table on ONE LINE (rows joined with spaces:
+  // "…| Use Case | | :--- | :--- | | Pinecone |…"). Re-split rows on the
+  // "| |" boundary — only for paragraphs that really are tables (a ":---"
+  // separator cell present), so prose with pipes is never touched.
+  const repaired = text.replace(/^.*\|\s*:?-{3,}.*$/gm, (para) =>
+    /\|\s+\|/.test(para) && /\|\s*:?-{3,}:?\s*\|/.test(para)
+      ? para.replace(/\|\s+\|/g, "|\n|")
+      : para,
+  );
+
+  const lines = repaired.split("\n");
   const out: string[] = [];
   let i = 0;
 
@@ -87,6 +97,28 @@ export function formatMarkdown(text: string): string {
       continue;
     }
 
+    // Table — a header row of pipes with a :--- separator line under it.
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1]) && lines[i + 1].includes("-")) {
+      const cells = (row: string): string[] =>
+        row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      const head = cells(line);
+      i += 2; // skip header + separator
+      const rows: string[][] = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        rows.push(cells(lines[i]));
+        i++;
+      }
+      // Wide tables scroll in their own container — the bubble never does.
+      out.push(
+        `<div class="yo-md-tablewrap"><table class="yo-md-table"><thead><tr>` +
+          head.map((h) => `<th>${inline(esc(h))}</th>`).join("") +
+        `</tr></thead><tbody>` +
+          rows.map((r) => `<tr>${head.map((_h, ci) => `<td>${inline(esc(r[ci] ?? ""))}</td>`).join("")}</tr>`).join("") +
+        `</tbody></table></div>`,
+      );
+      continue;
+    }
+
     // Unordered list
     if (/^[-*+]\s+/.test(line)) {
       const items: string[] = [];
@@ -122,7 +154,10 @@ export function formatMarkdown(text: string): string {
       !lines[i].match(/^[-*+]\s+/) &&
       !lines[i].match(/^\d+\.\s+/) &&
       !lines[i].startsWith("> ") &&
-      !/^(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i])
+      !/^(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i]) &&
+      // a table header (pipe row with a :--- separator under it) starts its
+      // own block - the paragraph must not swallow it
+      !(/^\s*\|.*\|\s*$/.test(lines[i]) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1]) && lines[i + 1].includes("-"))
     ) {
       paraLines.push(lines[i]);
       i++;

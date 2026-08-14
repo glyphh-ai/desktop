@@ -16389,6 +16389,15 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
    (dash-starter cards, stacked single-file inside their column) beside the
    recent-runs feed. */
 .ws-tasks-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+
+/* Markdown tables in the thread — themed, compact, wide ones scroll inside
+   their own wrapper (the bubble never scrolls horizontally). */
+.yo-md-tablewrap { overflow-x: auto; margin: 8px 0; border: 1px solid var(--border-2); border-radius: 10px; }
+.yo-md-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.yo-md-table th, .yo-md-table td { padding: 7px 12px; text-align: left; border-bottom: 1px solid var(--border-2); vertical-align: top; }
+.yo-md-table th { font-weight: 650; color: var(--text); background: var(--surface-3); white-space: nowrap; }
+.yo-md-table td { color: var(--text-2, var(--text)); }
+.yo-md-table tbody tr:last-child td { border-bottom: none; }
 .ws-tasks-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .ws-tasks-col .ws-tasks-prompts.dash-starters { grid-template-columns: 1fr; }
 
