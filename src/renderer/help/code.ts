@@ -4912,6 +4912,8 @@ export function openRunSession(run: {
 /** A NEW session with `text` ready in the composer — the dashboard's
  *  "Recommended for you" entries land here. (The legacy `space` arg is
  *  ignored: every session is the Code agent now.) */
+// The workbench bundle (a separate esbuild output) reaches this through the
+// window hook below — the Tasks page's prompt cards seed the composer with it.
 export function seedNewSession(text: string, _space?: "chat" | "cowork" | "code"): void {
   // No record until the user actually SENDS — the seed just fills the
   // composer on a cleared selection.
@@ -4922,6 +4924,7 @@ export function seedNewSession(text: string, _space?: "chat" | "cowork" | "code"
   seedComposer(text);
   void checkWorkdirGate();
 }
+(window as unknown as { __glyphhSeedSession?: (text: string) => void }).__glyphhSeedSession = seedNewSession;
 
 /** The composer's ORIGINAL home (inside .code-agent) — remembered on the
  *  first adoption so it can always return. */

@@ -16388,6 +16388,10 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
   padding: 0 10px; color: var(--text); font-size: 12px;
 }
 .ws-tasks-create input:focus, .ws-tasks-create select:focus { border-color: var(--accent); outline: none; }
+.ws-tasks-prompts { display: flex; flex-direction: column; gap: 8px; }
+/* The cards are .dash-starter — the + New Session landing's own style. Only
+   the blurb clamp is local (these prompts run longer than the landing's). */
+.ws-tasks-prompts .dash-starter-blurb { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ws-tc-row { display: flex; gap: 8px; }
 .ws-tc-row > * { flex: 1 1 0; min-width: 0; }
 .ws-tc-note { font-size: 11px; color: var(--text-3); min-height: 14px; }

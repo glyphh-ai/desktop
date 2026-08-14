@@ -5579,27 +5579,8 @@ async function init(): Promise<void> {
         </div>
         <div class="ws-tasks-cols">
           <div class="ws-tasks-create">
-            <div class="ws-tasks-coltitle">New scheduled task</div>
-            <select class="ws-tc-agent" title="Which agent owns this task"></select>
-            <input class="ws-tc-name" type="text" placeholder="Task name" spellcheck="false">
-            <div class="ws-tc-row">
-              <select class="ws-tc-kind" title="What runs">
-                <option value="skill">Skill</option><option value="loop">Loop</option><option value="app_command">App command</option>
-              </select>
-              <input class="ws-tc-target" type="text" placeholder="skill / loop / app slug" spellcheck="false">
-            </div>
-            <div class="ws-tc-row">
-              <select class="ws-tc-sched" title="When it runs">
-                <option value="0 9 * * *">Daily at 9:00</option>
-                <option value="0 * * * *">Hourly</option>
-                <option value="*/15 * * * *">Every 15 min</option>
-                <option value="0 9 * * 1">Mondays at 9:00</option>
-                <option value="custom">Custom cron…</option>
-              </select>
-              <input class="ws-tc-cron hidden" type="text" placeholder="m h dom mon dow" spellcheck="false">
-            </div>
-            <button type="button" class="action-btn primary ws-tc-create">Create task</button>
-            <div class="ws-tc-note"></div>
+            <div class="ws-tasks-coltitle">Create with the agent</div>
+            <div class="ws-tasks-prompts"></div>
           </div>
           <div class="ws-tasks-recents">
             <div class="ws-tasks-coltitle">Recent runs</div>
@@ -5613,7 +5594,6 @@ async function init(): Promise<void> {
     const scroll = body.querySelector(".ws-tasks-scroll") as HTMLElement;
     const list = body.querySelector(".ws-tasks-list") as HTMLElement;
     const recentsHost = body.querySelector(".ws-tasks-recent-list") as HTMLElement;
-    const note = body.querySelector(".ws-tc-note") as HTMLElement;
     const canRunNow = !!tasksIpc().libraryAgentTaskRunNow
       && !(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
 
@@ -5808,30 +5788,32 @@ async function init(): Promise<void> {
       }
     }
 
-    // ── Create form wiring ──
-    const agentSel = body.querySelector(".ws-tc-agent") as HTMLSelectElement;
-    const schedSel = body.querySelector(".ws-tc-sched") as HTMLSelectElement;
-    const cronInput = body.querySelector(".ws-tc-cron") as HTMLInputElement;
-    schedSel.addEventListener("change", () => cronInput.classList.toggle("hidden", schedSel.value !== "custom"));
-    body.querySelector(".ws-tc-create")?.addEventListener("click", async () => {
-      const name = (body.querySelector(".ws-tc-name") as HTMLInputElement).value.trim();
-      const kind = (body.querySelector(".ws-tc-kind") as HTMLSelectElement).value;
-      const target = (body.querySelector(".ws-tc-target") as HTMLInputElement).value.trim();
-      const cron = schedSel.value === "custom" ? cronInput.value.trim() : schedSel.value;
-      const agentRef = agentSel.value;
-      if (!agentRef || !name || !target || !cron) { note.textContent = "Agent, name, target and schedule are all required."; return; }
-      note.textContent = "Creating…";
-      try {
-        const res = await (tasksIpc() as unknown as { libraryAgentTaskAdd?: (ref: string, input: unknown) => Promise<{ ok: boolean; error?: string }> })
-          .libraryAgentTaskAdd?.(agentRef, { name, kind, target, cron, args: {} });
-        note.textContent = res?.ok ? "Created." : res?.error || "Couldn't create the task.";
-        if (res?.ok) { await load(); paintOverview(); }
-      } catch (err) { note.textContent = err instanceof Error ? err.message : "Couldn't create the task."; }
-    });
+    // ── Prompt cards — creating a scheduled task is a CONVERSATION, not a
+    // form: each card seeds the composer with a prompt the agent knows how to
+    // fulfil (build the skill + schedule it), then the user makes it theirs.
+    const TASK_PROMPTS: Array<{ title: string; prompt: string }> = [
+      { title: "Morning inbox brief", prompt: "Create a skill that checks my email every weekday at 8:00, summarizes what needs a reply, and schedule it as a daily task." },
+      { title: "Daily digest", prompt: "Build a skill that runs every day at 9:00 and writes me a short digest of yesterday: what my agents did, anything that failed, anything waiting on me. Schedule it." },
+      { title: "Watch a page", prompt: "Create a skill that checks a web page for changes every hour and messages me only when something meaningful changed. Ask me for the page, then schedule it." },
+      { title: "Weekly report", prompt: "Create a skill that runs Mondays at 9:00 and drafts my weekly report from last week's sessions and tasks. Schedule it weekly." },
+      { title: "Something else", prompt: "Help me create a scheduled task: ask me what should happen and when, then build the skill and schedule it." },
+    ];
+    const promptsHost = body.querySelector(".ws-tasks-prompts") as HTMLElement;
+    for (const tp of TASK_PROMPTS) {
+      // The + New Session landing's starter cards ARE the look — same classes,
+      // so the theme styles this page for free.
+      const cardEl = document.createElement("button");
+      cardEl.type = "button";
+      cardEl.className = "dash-starter";
+      cardEl.innerHTML = `<span class="dash-starter-top"><span class="dash-starter-title">${relEsc(tp.title)}</span></span><span class="dash-starter-blurb">${relEsc(tp.prompt)}</span>`;
+      cardEl.addEventListener("click", () => {
+        (window as unknown as { __glyphhSeedSession?: (text: string) => void }).__glyphhSeedSession?.(tp.prompt);
+      });
+      promptsHost.appendChild(cardEl);
+    }
 
     body.querySelector(".ws-tasks-refresh")?.addEventListener("click", () => { void load().then(() => { if (!slot.taskId) paintOverview(); }); });
     await load();
-    agentSel.innerHTML = agents.map((a) => `<option value="${relEsc(a.id)}">${relEsc(a.name)}</option>`).join("");
     const opened = slot.taskId ? rows.find((r) => r.task.id === slot.taskId) : null;
     if (opened) void paintDetail(opened); else { slot.taskId = undefined; paintOverview(); }
   }
