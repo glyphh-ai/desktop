@@ -30,7 +30,27 @@ import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
-import { getAccountInfo } from "./auth";
+import { getAccountInfo, AUTH_SERVER, getAuthToken, ensureFreshToken } from "./auth";
+
+/** ONE MEMORY PLANE: Ada lives on the regional stator, reached through the
+ *  server's proxy (/api/stator/*). The desktop's local sqlite Ada store is
+ *  dead doctrine (2026-08-02 "Ada cloud-only") — these tools rode it anyway
+ *  until 2026-08-13, which is why memory written on one surface never
+ *  recalled on another. */
+async function statorCall(path: "recall" | "write", body: Record<string, unknown>): Promise<string> {
+  await ensureFreshToken();
+  const token = getAuthToken();
+  if (!token) return "ERROR: signed out — cloud memory needs a session";
+  const res = await fetch(`${AUTH_SERVER}/api/stator/${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) return `ERROR: memory ${path} failed (${res.status}) ${text.slice(0, 200)}`;
+  return text;
+}
+
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
 import { getClient, appCache } from "./glyphh-client";
 import { fetchServerLayouts } from "./layout-manager";
@@ -1043,28 +1063,10 @@ const TOOLS: ToolDef[] = [
     run: async (a) => {
       const fact = String(a.fact ?? "").trim();
       if (!fact) return "ERROR: fact is required";
-      const facts = await enrichFact(fact);
-      const r = adaTellRaw(fact, facts, { key: a.key ? String(a.key) : undefined, speaker: "glyphh" });
-      return `remembered (${r.slots} slots${r.version ? `, v${r.version}` : ""})`;
-    },
-  },
-  {
-    name: "ada_ask",
-    doc: "ada_ask(op) — exact query over Ada's facts. op ∈ {lookup(person,slot), prev(person,slot), count(conditions), count_not(slot,value), top(slot,k?), who(conditions), compare(slot,a,b)}; slots are layer.role (entity.kind, spatial.location, relational.object, …)",
-    action: () => ({ kind: "read", title: "Ask Ada" }),
-    run: async (a) => {
-      // Models often send bare {person, slot} (or the args object itself) with
-      // no `op` — infer the obvious lookup rather than failing the turn; only
-      // a truly unusable call gets the corrective example back.
-      const raw = (a.op ?? a) as Partial<AdaOp> & Record<string, unknown>;
-      const op = raw && typeof raw === "object" && typeof raw.op === "string"
-        ? raw
-        : (raw?.person && raw?.slot ? { ...raw, op: "lookup" } : null);
-      if (!op) {
-        return "ERROR: ada_ask needs an op — e.g. {op:\"lookup\", person:\"chris\", slot:\"entity.kind\"}. Valid ops: lookup, prev, count, count_not, top, who, compare. For free-text questions use ada_recall(query) instead.";
-      }
-      try { return adaExecuteOp(op as AdaOp); }
-      catch (err) { return `ERROR: ${err instanceof Error ? err.message : String(err)}`; }
+      // Cloud memory: absorbed by the stator's own enricher — the same plane
+      // every surface recalls from.
+      const out = await statorCall("write", { text: fact, mode: "absorb", speaker: "glyphh" });
+      return out.startsWith("ERROR") ? out : "remembered (cloud memory)";
     },
   },
   {
@@ -1072,17 +1074,12 @@ const TOOLS: ToolDef[] = [
     doc: "ada_recall(query, k?) — lexical recall of stored facts (exact prose back, scored)",
     action: (a) => ({ kind: "read", title: `Recall "${String(a.query ?? "").slice(0, 60)}"` }),
     run: async (a) => {
-      const hits = adaRecall(String(a.query ?? ""), Math.max(1, Math.min(10, Number(a.k) || 5)));
-      return cap(hits.map((h) => `${h.score.toFixed(2)} ${h.content}`).join("\n") || "(nothing recalled)");
-    },
-  },
-  {
-    name: "ada_history",
-    doc: "ada_history(key) — the versioned chain of a keyed fact (v1, v2, …)",
-    action: (a) => ({ kind: "read", title: `History of "${String(a.key ?? "")}"` }),
-    run: async (a) => {
-      const rows = adaHistory(String(a.key ?? ""));
-      return cap(rows.map((r) => `v${r.version}: ${r.content}`).join("\n") || "(no versions)");
+      const out = await statorCall("recall", { query: String(a.query ?? ""), topK: Math.max(1, Math.min(10, Number(a.k) || 5)) });
+      if (out.startsWith("ERROR")) return out;
+      try {
+        const parsed = JSON.parse(out) as { block?: string };
+        return cap(parsed.block?.trim() || "(nothing recalled)");
+      } catch { return cap(out); }
     },
   },
   {
