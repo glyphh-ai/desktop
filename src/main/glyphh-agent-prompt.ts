@@ -191,7 +191,11 @@ export async function composeTurn(
     })(),
     skillsIndexBlock(),
   ]);
-  const system = [base[0]?.content ?? "", extras, skillsIndex].filter(Boolean).join("\n\n");
+  // The user watches tool chips fire in the thread — a turn that opens with
+  // silent tool calls reads as the agent ignoring them. One sentence of plan
+  // first, always.
+  const NARRATE = "NARRATE YOUR WORK: before your FIRST tool call of a turn, tell the user in one short sentence what you are about to do and why. Give a brief note when you change direction or find something load-bearing. Never open a turn with a silent tool call.";
+  const system = [base[0]?.content ?? "", NARRATE, extras, skillsIndex].filter(Boolean).join("\n\n");
   const lastUser = [
     history ? `<conversation_so_far>\n${history}\n</conversation_so_far>` : "",
     recallBlock,
