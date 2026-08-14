@@ -19,7 +19,7 @@
     "bench:code-index-ab": "npm run build:main && node dist/main/code-index/benchmark-ab.js",
     "start": "electron .",
     "build:web": "npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:app-libs && npm run build:web-bridge && npm run build:web-mobile",
-    "build:web-bridge": "esbuild web/src/bridge.js --bundle --outfile=dist/renderer/glyphh-web-bundle.js --platform=browser --format=iife --sourcemap",
+    "build:web-bridge": "esbuild web/src/bridge.js --bundle --outfile=dist/renderer/glyphh-web-bundle.js --platform=browser --format=iife --sourcemap --define:__GLYPHH_VERSION__=\\\"$npm_package_version\\\"",
     "build:web-mobile": "esbuild web/src/mobile.tsx --bundle --outfile=dist/renderer/glyphh-mobile.js --platform=browser --format=iife --jsx=automatic --sourcemap --define:__GLYPHH_VERSION__=\\\"$npm_package_version\\\" && shx cp web/mobile.html web/mobile.css dist/renderer/ && shx cp web/pwa/manifest.webmanifest web/pwa/sw.js dist/renderer/ && shx mkdir -p dist/renderer/brand/icons && shx cp web/pwa/icons/icon-192.png web/pwa/icons/icon-512.png web/pwa/icons/icon-180.png dist/renderer/brand/icons/",
     "web": "node web/serve.mjs",
     "dev:web": "npm run build:web && npm run web",

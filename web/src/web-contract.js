@@ -160,7 +160,9 @@ export function buildContract(client, deps) {
       try { await client.me(); return { status: 'active' }; }
       catch { return { status: 'anonymous' }; }
     },
-    getAppVersion: async () => '',
+    // Injected at build time (esbuild --define, same as mobile.tsx) — the
+    // typeof guard keeps vitest (no define) from a ReferenceError.
+    getAppVersion: async () => (typeof __GLYPHH_VERSION__ !== 'undefined' ? __GLYPHH_VERSION__ : ''),
     // Timezone (users.timezone) is edited only through Settings › Account,
     // which goes straight at client.profile.update via the account API.
 
