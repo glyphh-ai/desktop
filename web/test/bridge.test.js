@@ -100,12 +100,16 @@ describe('bridge KNOWN wiring', () => {
     expect(out).toMatchObject({ ok: true, canBuild: true });
   });
 
-  it('loopRoles(loop) → loops.roles(loop, selections), envelope', async () => {
+  it('loopRoles(loop) → loops.roles(loop, selections, context), envelope', async () => {
     const out = await glyphh.loopRoles('web');
-    // The second arg is the web's stored per-loop model picks (localStorage;
-    // empty here) — loopRoleSet writes them, loopRoles rides them.
-    expect(fake.loops.roles).toHaveBeenCalledWith('web', {});
+    // Second arg: the web's stored per-loop model picks (localStorage; empty
+    // here) — loopRoleSet writes them, loopRoles rides them. Third: the
+    // execution context opts — empty unless the caller passes "cloud".
+    expect(fake.loops.roles).toHaveBeenCalledWith('web', {}, {});
     expect(out).toEqual({ ok: true, loop: 'web', roles: [{ name: 'planner', modelId: 'm', choices: [] }] });
+
+    await glyphh.loopRoles('web', false, 'cloud');
+    expect(fake.loops.roles).toHaveBeenCalledWith('web', {}, { context: 'cloud' });
   });
 
   it('librarySkillsList → skills.list wrapped in {ok,data}', async () => {
