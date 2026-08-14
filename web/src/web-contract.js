@@ -303,6 +303,7 @@ export function buildContract(client, deps) {
     libraryAgentsList: lib(() => client.agents.list()),
     libraryAgentGet: lib((ref) => client.agents.get(ref)),
     libraryAgentTasks: lib((ref) => client.agents.tasks(ref)),
+    libraryAgentTaskAdd: lib((ref, input) => client.agents.addTask(ref, input)),
     libraryAgentTaskRuns: lib((ref, taskId) => client.agents.taskRuns(ref, taskId)),
 
     // ── Library grids (LibraryClient: layouts / drips) ────────────────────────────

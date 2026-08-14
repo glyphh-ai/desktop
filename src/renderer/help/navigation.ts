@@ -150,7 +150,14 @@ export function gotoSection(section: string, sub?: string): void {
   // INTO the settings modal — each is a settings sub-panel now, not a full-page
   // rail section. (The rail keeps its Layouts quick-launch tray, which opens a
   // layout directly rather than this management page.)
-  if (["apps", "connections", "loops", "skills", "agents", "layouts"].includes(section)) {
+  // Apps / Connections / Workspaces are WORKBENCH sections now (the rail's
+  // panels); only the management-shaped pages (loops/skills/agents) stay in
+  // the settings modal.
+  if (["apps", "connections", "layouts"].includes(section)) {
+    (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
+    return;
+  }
+  if (["loops", "skills", "agents"].includes(section)) {
     void window.glyphh.setPreference?.("homeLastSection", "settings");
     void window.glyphh.setPreference?.("homeLastSub", section);
     openSettingsModal(section);
@@ -575,8 +582,17 @@ export function initHelp() {
   // Three rail links — Connections / Apps / Layouts — each opens the SETTINGS
   // MODAL at its section (the pages live in the modal; the rail is otherwise
   // + New session and Recents only).
+  // Rail items open IN THE WORKBENCH (section cards) — the rail is the
+  // workspace's front door, and Settings stays a small preferences surface.
+  // "artifacts" is the files section's rail name.
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", connections: "connections", layouts: "layouts", artifacts: "files" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
-    btn.addEventListener("click", () => openSettingsModal(btn.dataset.settingsSub!));
+    btn.addEventListener("click", () => {
+      const sub = btn.dataset.settingsSub!;
+      const wb = RAIL_WB_SECTIONS[sub];
+      if (wb) (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(wb);
+      else openSettingsModal(sub);
+    });
   });
   // Tasks is the one rail item that opens IN the workbench (a panel view, not
   // a settings page) — scheduled work is a daily glance. The view is deliberately

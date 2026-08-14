@@ -5542,48 +5542,177 @@ async function init(): Promise<void> {
     return esc.replace(/https?:\/\/[^\s<>"')\]]+/g, (u) => `<a href="${u}" target="_blank" rel="noreferrer">${u}</a>`);
   }
 
+  /** Load the bundled Chart.js (an IIFE → window.Chart) once. */
+  let chartLibP: Promise<unknown> | null = null;
+  function ensureChartJs(): Promise<unknown> {
+    const w = window as unknown as { Chart?: unknown };
+    if (w.Chart) return Promise.resolve(w.Chart);
+    chartLibP ??= new Promise((resolve, reject) => {
+      const sc = document.createElement("script");
+      sc.src = "app-libs/chart.js";
+      sc.onload = () => resolve(w.Chart);
+      sc.onerror = () => { chartLibP = null; reject(new Error("chart lib failed to load")); };
+      document.head.appendChild(sc);
+    });
+    return chartLibP;
+  }
+
   async function renderTasksIntoSlot(body: HTMLElement, slot: TasksSlot): Promise<void> {
     body.classList.add("ws-tasks-body");
+    // The panel header already says "Tasks" — no second heading. Layout:
+    // chart (runs/day, ok vs failed) → two columns (create | recent runs) →
+    // the full task list. A clicked task swaps the whole scroll to its
+    // run-history detail; ‹ returns to the overview.
     body.innerHTML = `
-      <div class="ws-rel-toolbar">
-        <span class="ws-tasks-heading">Scheduled tasks</span>
-        <span class="ws-rel-note"></span>
-        <button type="button" class="ws-icon-btn ws-tasks-refresh" title="Refresh">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-        </button>
-      </div>
-      <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>`;
-    const note = body.querySelector(".ws-rel-note") as HTMLElement;
+      <div class="ws-tasks-scroll">
+        <div class="ws-tasks-chartwrap">
+          <canvas class="ws-tasks-canvas"></canvas>
+          <button type="button" class="ws-icon-btn ws-tasks-refresh" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+          </button>
+        </div>
+        <div class="ws-tasks-cols">
+          <div class="ws-tasks-create">
+            <div class="ws-tasks-coltitle">New scheduled task</div>
+            <select class="ws-tc-agent" title="Which agent owns this task"></select>
+            <input class="ws-tc-name" type="text" placeholder="Task name" spellcheck="false">
+            <div class="ws-tc-row">
+              <select class="ws-tc-kind" title="What runs">
+                <option value="skill">Skill</option><option value="loop">Loop</option><option value="app_command">App command</option>
+              </select>
+              <input class="ws-tc-target" type="text" placeholder="skill / loop / app slug" spellcheck="false">
+            </div>
+            <div class="ws-tc-row">
+              <select class="ws-tc-sched" title="When it runs">
+                <option value="0 9 * * *">Daily at 9:00</option>
+                <option value="0 * * * *">Hourly</option>
+                <option value="*/15 * * * *">Every 15 min</option>
+                <option value="0 9 * * 1">Mondays at 9:00</option>
+                <option value="custom">Custom cron…</option>
+              </select>
+              <input class="ws-tc-cron hidden" type="text" placeholder="m h dom mon dow" spellcheck="false">
+            </div>
+            <button type="button" class="action-btn primary ws-tc-create">Create task</button>
+            <div class="ws-tc-note"></div>
+          </div>
+          <div class="ws-tasks-recents">
+            <div class="ws-tasks-coltitle">Recent runs</div>
+            <div class="ws-tasks-recent-list"><div class="ws-rel-empty">Loading…</div></div>
+          </div>
+        </div>
+        <div class="ws-tasks-coltitle ws-tasks-alltitle">All tasks</div>
+        <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>
+      </div>`;
+    const scroll = body.querySelector(".ws-tasks-scroll") as HTMLElement;
     const list = body.querySelector(".ws-tasks-list") as HTMLElement;
-    const setNote = (text: string, err = false): void => { note.textContent = text; note.classList.toggle("err", err); };
-    // Run-now executes on the DESKTOP scheduler — the web surface has no local
-    // scheduler to hand the task to, so the button simply doesn't exist there.
+    const recentsHost = body.querySelector(".ws-tasks-recent-list") as HTMLElement;
+    const note = body.querySelector(".ws-tc-note") as HTMLElement;
     const canRunNow = !!tasksIpc().libraryAgentTaskRunNow
       && !(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
 
     interface Row { agent: WbAgentRow; task: WbTaskRow; next: Date | null }
+    interface RecentRun extends WbTaskRun { taskName: string; agentName: string }
     let rows: Row[] = [];
+    let recents: RecentRun[] = [];
+    let agents: WbAgentRow[] = [];
 
     async function load(): Promise<void> {
-      const agents = await tasksIpc().libraryAgentsList?.().catch(() => null);
-      if (!agents?.ok) { list.innerHTML = `<div class="ws-rel-empty">${relEsc(agents?.error || "Couldn't load agents — sign in and try again.")}</div>`; return; }
+      const a = await tasksIpc().libraryAgentsList?.().catch(() => null);
+      if (!a?.ok) { list.innerHTML = `<div class="ws-rel-empty">${relEsc(a?.error || "Couldn't load agents — sign in and try again.")}</div>`; return; }
+      agents = a.data ?? [];
       const now = new Date();
       const all: Row[] = [];
-      await Promise.all((agents.data ?? []).map(async (agent) => {
+      await Promise.all(agents.map(async (agent) => {
         const t = await tasksIpc().libraryAgentTasks?.(agent.id).catch(() => null);
         for (const task of t?.ok ? t.data ?? [] : []) {
           all.push({ agent, task, next: task.enabled ? cronNext(task.cron, now) : null });
         }
       }));
-      // Soonest-next first; disabled tasks sink to the bottom.
-      all.sort((a, b) => (a.next?.getTime() ?? Infinity) - (b.next?.getTime() ?? Infinity));
+      all.sort((x, y) => (x.next?.getTime() ?? Infinity) - (y.next?.getTime() ?? Infinity));
       rows = all;
+      // Run history for the chart + recents: the tasks that have actually run,
+      // capped so a big fleet doesn't fan out dozens of reads.
+      const ran = all.filter((r) => r.task.lastRunAt).slice(0, 12);
+      const merged: RecentRun[] = [];
+      await Promise.all(ran.map(async (r) => {
+        const res = await tasksIpc().libraryAgentTaskRuns?.(r.agent.id, r.task.id).catch(() => null);
+        for (const run of res?.ok ? res.data ?? [] : []) {
+          merged.push({ ...run, taskName: r.task.name, agentName: r.agent.name });
+        }
+      }));
+      merged.sort((x, y) => Date.parse(y.startedAt) - Date.parse(x.startedAt));
+      recents = merged;
+    }
+
+    function paintChart(): void {
+      const canvas = body.querySelector(".ws-tasks-canvas") as HTMLCanvasElement | null;
+      if (!canvas) return;
+      const css = getComputedStyle(document.documentElement);
+      const accent = css.getPropertyValue("--accent").trim() || "#8c3bf2";
+      const danger = css.getPropertyValue("--danger").trim() || "#e5534b";
+      const text3 = css.getPropertyValue("--text-3").trim() || "#888";
+      // Last 14 days, oldest → newest.
+      const days: string[] = [];
+      const keys: string[] = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+        keys.push(d.toDateString());
+        days.push(d.toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+      }
+      const ok = new Array(14).fill(0);
+      const bad = new Array(14).fill(0);
+      for (const run of recents) {
+        const idx = keys.indexOf(new Date(run.startedAt).toDateString());
+        if (idx === -1) continue;
+        if (run.status === "ok") ok[idx]++; else bad[idx]++;
+      }
+      void ensureChartJs().then((ChartLib) => {
+        if (!body.isConnected || !ChartLib) return;
+        type ChartCtor = new (el: HTMLCanvasElement, cfg: unknown) => { destroy(): void };
+        const Chart = ChartLib as ChartCtor & { getChart?: (el: HTMLCanvasElement) => { destroy(): void } | undefined };
+        Chart.getChart?.(canvas)?.destroy();
+        new Chart(canvas, {
+          type: "bar",
+          data: {
+            labels: days,
+            datasets: [
+              { label: "ok", data: ok, backgroundColor: accent, borderRadius: 3, maxBarThickness: 18 },
+              { label: "failed", data: bad, backgroundColor: danger, borderRadius: 3, maxBarThickness: 18 },
+            ],
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false } },
+            scales: {
+              x: { stacked: true, grid: { display: false }, ticks: { color: text3, font: { size: 10 } } },
+              y: { stacked: true, beginAtZero: true, grid: { color: "rgba(128,128,128,0.12)" }, ticks: { color: text3, precision: 0, font: { size: 10 } } },
+            },
+          },
+        });
+      }).catch(() => { /* chartless is fine — the lists still work */ });
+    }
+
+    function paintRecents(): void {
+      if (!recents.length) { recentsHost.innerHTML = `<div class="ws-rel-empty">No runs yet.</div>`; return; }
+      recentsHost.textContent = "";
+      for (const run of recents.slice(0, 15)) {
+        const el = document.createElement("div");
+        el.className = "ws-task-recent" + (run.status === "ok" ? "" : " failed");
+        const when = new Date(run.startedAt);
+        el.innerHTML = `
+          <span class="ws-task-chip ${run.status === "ok" ? "ok" : "err"}">${relEsc(run.status)}</span>
+          <span class="ws-task-recent-name">${relEsc(run.taskName)}</span>
+          <span class="ws-task-run-when" title="${relEsc(when.toLocaleString())}">${relEsc(relSpan(when.getTime() - Date.now()))}</span>`;
+        const owner = rows.find((r) => r.task.name === run.taskName && r.agent.name === run.agentName);
+        if (owner) el.addEventListener("click", () => { slot.taskId = owner.task.id; void paintDetail(owner); });
+        recentsHost.appendChild(el);
+      }
     }
 
     function paintList(): void {
       if (!body.isConnected) return;
       if (!rows.length) {
-        list.innerHTML = `<div class="ws-rel-empty">No scheduled tasks yet — give an agent a schedule (Settings → Agents → Tasks, or just ask the agent) and it shows up here.</div>`;
+        list.innerHTML = `<div class="ws-rel-empty">No scheduled tasks yet — create one on the left, or just ask the agent.</div>`;
         return;
       }
       list.textContent = "";
@@ -5614,9 +5743,17 @@ async function init(): Promise<void> {
       }
     }
 
+    function paintOverview(): void {
+      paintChart(); paintRecents(); paintList();
+    }
+
     async function paintDetail(r: Row): Promise<void> {
       if (!body.isConnected) return;
-      list.innerHTML = `
+      scroll.classList.add("hidden");
+      let detail = body.querySelector<HTMLElement>(".ws-task-detailwrap");
+      if (!detail) { detail = document.createElement("div"); detail.className = "ws-task-detailwrap"; body.appendChild(detail); }
+      detail.classList.remove("hidden");
+      detail.innerHTML = `
         <div class="ws-task-detail-head">
           <button type="button" class="action-btn ws-task-back">‹ All tasks</button>
           <span class="ws-task-name">${relEsc(r.task.name)}</span>
@@ -5624,19 +5761,23 @@ async function init(): Promise<void> {
           ${canRunNow ? `<button type="button" class="action-btn primary ws-task-run">Run now</button>` : ""}
         </div>
         <div class="ws-task-runs"><div class="ws-rel-empty">Loading history…</div></div>`;
-      list.querySelector(".ws-task-back")?.addEventListener("click", () => { slot.taskId = undefined; paintList(); });
-      list.querySelector(".ws-task-run")?.addEventListener("click", async (ev) => {
+      detail.querySelector(".ws-task-back")?.addEventListener("click", () => {
+        slot.taskId = undefined;
+        detail!.classList.add("hidden");
+        scroll.classList.remove("hidden");
+        paintOverview();
+      });
+      detail.querySelector(".ws-task-run")?.addEventListener("click", async (ev) => {
         const btn = ev.currentTarget as HTMLButtonElement;
         btn.disabled = true; btn.textContent = "Running…";
         try {
           const res = await tasksIpc().libraryAgentTaskRunNow?.(r.agent.id, r.task.id);
-          setNote(res?.ok ? "Run started" : res?.error || "Couldn't start the run", !res?.ok);
-        } catch { setNote("Couldn't start the run", true); }
-        // The run reports back to the server when it finishes — re-pull shortly.
+          if (!res?.ok) btn.textContent = res?.error ? "Failed" : "Run now";
+        } catch { /* reported below on refresh */ }
         setTimeout(() => { if (body.isConnected && slot.taskId === r.task.id) void paintDetail(r); }, 4000);
         btn.disabled = false; btn.textContent = "Run now";
       });
-      const runsHost = list.querySelector(".ws-task-runs") as HTMLElement;
+      const runsHost = detail.querySelector(".ws-task-runs") as HTMLElement;
       const runs = await tasksIpc().libraryAgentTaskRuns?.(r.agent.id, r.task.id).catch(() => null);
       if (!body.isConnected || slot.taskId !== r.task.id) return;
       if (!runs?.ok) { runsHost.innerHTML = `<div class="ws-rel-empty">${relEsc(runs?.error || "Couldn't load run history")}</div>`; return; }
@@ -5658,10 +5799,32 @@ async function init(): Promise<void> {
       }
     }
 
-    body.querySelector(".ws-tasks-refresh")?.addEventListener("click", () => { void load().then(() => { if (!slot.taskId) paintList(); }); });
+    // ── Create form wiring ──
+    const agentSel = body.querySelector(".ws-tc-agent") as HTMLSelectElement;
+    const schedSel = body.querySelector(".ws-tc-sched") as HTMLSelectElement;
+    const cronInput = body.querySelector(".ws-tc-cron") as HTMLInputElement;
+    schedSel.addEventListener("change", () => cronInput.classList.toggle("hidden", schedSel.value !== "custom"));
+    body.querySelector(".ws-tc-create")?.addEventListener("click", async () => {
+      const name = (body.querySelector(".ws-tc-name") as HTMLInputElement).value.trim();
+      const kind = (body.querySelector(".ws-tc-kind") as HTMLSelectElement).value;
+      const target = (body.querySelector(".ws-tc-target") as HTMLInputElement).value.trim();
+      const cron = schedSel.value === "custom" ? cronInput.value.trim() : schedSel.value;
+      const agentRef = agentSel.value;
+      if (!agentRef || !name || !target || !cron) { note.textContent = "Agent, name, target and schedule are all required."; return; }
+      note.textContent = "Creating…";
+      try {
+        const res = await (tasksIpc() as unknown as { libraryAgentTaskAdd?: (ref: string, input: unknown) => Promise<{ ok: boolean; error?: string }> })
+          .libraryAgentTaskAdd?.(agentRef, { name, kind, target, cron, args: {} });
+        note.textContent = res?.ok ? "Created." : res?.error || "Couldn't create the task.";
+        if (res?.ok) { await load(); paintOverview(); }
+      } catch (err) { note.textContent = err instanceof Error ? err.message : "Couldn't create the task."; }
+    });
+
+    body.querySelector(".ws-tasks-refresh")?.addEventListener("click", () => { void load().then(() => { if (!slot.taskId) paintOverview(); }); });
     await load();
+    agentSel.innerHTML = agents.map((a) => `<option value="${relEsc(a.id)}">${relEsc(a.name)}</option>`).join("");
     const opened = slot.taskId ? rows.find((r) => r.task.id === slot.taskId) : null;
-    if (opened) void paintDetail(opened); else { slot.taskId = undefined; paintList(); }
+    if (opened) void paintDetail(opened); else { slot.taskId = undefined; paintOverview(); }
   }
 
   // ── Diff view ──
