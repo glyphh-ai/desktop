@@ -3645,7 +3645,12 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
   padding: 0 24px;
 }
 /* The usage chart's filter row: range, stack-by, and narrowing dropdowns. */
-.dash-usage-filters { display: flex; align-items: center; gap: 6px; }
+.dash-usage-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 1 1 auto; min-width: 0; }
+/* The KPI column ("34 credits · 10 calls") holds its line — the wide member
+   filter was crushing it to a one-word-per-line stack on web. */
+.dash-card-head > div:first-child { flex: 0 0 auto; }
+.dash-card-head .dash-card-value { white-space: nowrap; }
+.dash-usage-select { max-width: 220px; }
 .dash-usage-select {
   background: var(--surface-2); color: var(--text-2);
   border: 1px solid var(--border); border-radius: 7px;
@@ -16377,11 +16382,12 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .ws-tasks-title { font-size: 18px; font-weight: 600; color: var(--text); letter-spacing: 0; margin: 14px 0 0; }
 .ws-tasks-page > .section-desc { margin: 0 0 4px; }
 .ws-tasks-scroll.hidden { display: none; }
-.ws-tasks-chartwrap { position: relative; height: 140px; flex: 0 0 auto; border: 1px solid var(--border-2); border-radius: 10px; background: var(--surface-2); padding: 10px 12px; }
+.ws-tasks-chartwrap { position: relative; height: 200px; flex: 0 0 auto; border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface-2); padding: 14px 16px 10px; }
 .ws-tasks-canvas { width: 100% !important; height: 100% !important; }
 .ws-tasks-chartwrap .ws-tasks-refresh { position: absolute; top: 8px; right: 8px; }
-.ws-tasks-cols { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 12px; align-items: start; }
-.ws-tasks-create { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--surface-2); padding: 12px; }
+/* Under the chart: the + New Session landing composition — the starter grid
+   (dash-starters) full-width, then the recents + all-tasks lists. */
+
 .ws-tasks-create input, .ws-tasks-create select {
   width: 100%; box-sizing: border-box; height: 30px;
   background: var(--surface-3); border: 1px solid var(--border-2); border-radius: 8px;

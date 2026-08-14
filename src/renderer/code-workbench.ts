@@ -5577,16 +5577,10 @@ async function init(): Promise<void> {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
           </button>
         </div>
-        <div class="ws-tasks-cols">
-          <div class="ws-tasks-create">
-            <div class="ws-tasks-coltitle">Create with the agent</div>
-            <div class="ws-tasks-prompts"></div>
-          </div>
-          <div class="ws-tasks-recents">
-            <div class="ws-tasks-coltitle">Recent runs</div>
-            <div class="ws-tasks-recent-list"><div class="ws-rel-empty">Loading…</div></div>
-          </div>
-        </div>
+        <div class="ws-tasks-coltitle">Create with the agent</div>
+        <div class="ws-tasks-prompts dash-starters"></div>
+        <div class="ws-tasks-coltitle">Recent runs</div>
+        <div class="ws-tasks-recent-list"><div class="ws-rel-empty">Loading…</div></div>
         <div class="ws-tasks-coltitle ws-tasks-alltitle">All tasks</div>
         <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>
         </div>
@@ -5663,16 +5657,19 @@ async function init(): Promise<void> {
           data: {
             labels: days,
             datasets: [
-              { label: "ok", data: ok, backgroundColor: accent, borderRadius: 3, maxBarThickness: 18 },
-              { label: "failed", data: bad, backgroundColor: danger, borderRadius: 3, maxBarThickness: 18 },
+              { label: "ok", data: ok, backgroundColor: accent, borderRadius: 3, maxBarThickness: 34 },
+              { label: "failed", data: bad, backgroundColor: danger, borderRadius: 3, maxBarThickness: 34 },
             ],
           },
           options: {
             responsive: true, maintainAspectRatio: false, animation: false,
-            plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false } },
+            plugins: {
+              legend: { position: "bottom", labels: { color: text3, usePointStyle: true, pointStyle: "circle", boxWidth: 6, boxHeight: 6, font: { size: 11 } } },
+              tooltip: { mode: "index", intersect: false },
+            },
             scales: {
-              x: { stacked: true, grid: { display: false }, ticks: { color: text3, font: { size: 10 } } },
-              y: { stacked: true, beginAtZero: true, grid: { color: "rgba(128,128,128,0.12)" }, ticks: { color: text3, precision: 0, font: { size: 10 } } },
+              x: { stacked: true, grid: { display: false }, ticks: { color: text3, maxRotation: 0, autoSkip: true } },
+              y: { stacked: true, beginAtZero: true, grid: { color: css.getPropertyValue("--border").trim() || "rgba(255,255,255,0.08)" }, ticks: { color: text3, precision: 0 } },
             },
           },
         });
