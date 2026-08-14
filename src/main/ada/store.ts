@@ -39,9 +39,14 @@ export interface AdaTold { thoughtId: string; slots: number; key?: string; versi
 // live database through scope changes.
 let dbProvider: (() => BetterSqlite3.Database) | null = null;
 
-export function initAdaStore(provider: () => BetterSqlite3.Database): void {
-  dbProvider = provider;
-  const db = provider();
+// Which HANDLES have the schema. The DDL used to run once at boot — but a
+// user-scope switch (login/logout) reopens a DIFFERENT per-user database file,
+// and every Ada call on the new scope threw "no such table: ada_thoughts".
+// Schema now rides the accessor: any newly-resolved handle gets the DDL once.
+const schemaReady = new WeakSet<BetterSqlite3.Database>();
+
+function ensureSchema(db: BetterSqlite3.Database): void {
+  if (schemaReady.has(db)) return;
   db.exec(`
     CREATE TABLE IF NOT EXISTS ada_thoughts (
       thought_id TEXT PRIMARY KEY,
@@ -74,11 +79,19 @@ export function initAdaStore(provider: () => BetterSqlite3.Database): void {
     CREATE INDEX IF NOT EXISTS idx_slots_key ON fact_slots(space_id, key, version);
     CREATE INDEX IF NOT EXISTS idx_slots_thought ON fact_slots(thought_id);
   `);
+  schemaReady.add(db);
+}
+
+export function initAdaStore(provider: () => BetterSqlite3.Database): void {
+  dbProvider = provider;
+  ensureSchema(provider());
 }
 
 function d(): BetterSqlite3.Database {
   if (!dbProvider) throw new Error("Ada store not initialized");
-  return dbProvider();
+  const db = dbProvider();
+  ensureSchema(db);
+  return db;
 }
 
 const SPACE = "main";

@@ -127,25 +127,28 @@ let skillsIndexCache: { at: number; block: string } | null = null;
 const SKILLS_INDEX_TTL = 5 * 60_000;
 async function skillsIndexBlock(): Promise<string> {
   if (skillsIndexCache && Date.now() - skillsIndexCache.at < SKILLS_INDEX_TTL) return skillsIndexCache.block;
-  let block = "";
   try {
     const skills = await getClient().skills.list();
     const rows = skills.slice(0, 20).map((s) => {
       const when = (s as { manifest?: { whenToUse?: string } }).manifest?.whenToUse || s.description || "";
       return `- ${s.slug}: ${String(when).slice(0, 200)}`;
     });
-    if (rows.length) {
-      block = [
-        "## Skills",
-        "Named procedures the org has published. When a request matches one's",
-        "when-to-use, call skills_get(slug) FIRST and follow its instructions —",
-        "do not improvise what a skill already prescribes.",
-        ...rows,
-      ].join("\n");
-    }
-  } catch { /* offline / signed out — no index this turn */ }
-  skillsIndexCache = { at: Date.now(), block };
-  return block;
+    const block = rows.length
+      ? [
+          "## Skills",
+          "Named procedures the org has published. When a request matches one's",
+          "when-to-use, call skills_get(slug) FIRST and follow its instructions —",
+          "do not improvise what a skill already prescribes.",
+          ...rows,
+        ].join("\n")
+      : "";
+    // Cache only SUCCESS — caching a transient failure blanked the index for
+    // five minutes of turns.
+    skillsIndexCache = { at: Date.now(), block };
+    return block;
+  } catch {
+    return skillsIndexCache?.block ?? ""; // offline this instant — last good index stands
+  }
 }
 
 export interface ComposedTurn {
