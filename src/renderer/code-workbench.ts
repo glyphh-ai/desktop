@@ -3544,7 +3544,10 @@ async function init(): Promise<void> {
       }
       const existing = openList.find((x) => x.tile.slug === `page:${section}`);
       if (existing?.card) { flash(existing.card); return; }
-      const name = title || (section === "dashboard" ? "Home" : section.charAt(0).toUpperCase() + section.slice(1));
+      // USER-FACING title from the section map first — a bare capitalize
+      // leaked internal names ("layouts" → "Layouts"; the product word is
+      // "Workspaces").
+      const name = title || SECTION_TITLES[section] || (section === "dashboard" ? "Home" : section.charAt(0).toUpperCase() + section.slice(1));
       const entry = adHoc({ name, slug: `page:${section}`, kind: "app" });
       const card = openShell(entry);
       if (!card) return;
