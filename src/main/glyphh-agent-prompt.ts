@@ -116,6 +116,38 @@ export async function skillSeedFor(ask: string): Promise<string> {
   }
 }
 
+/**
+ * A compact SKILLS INDEX for the system prompt — slug + when-to-use, nothing
+ * more. Without it the agent had no idea org skills existed unless the user
+ * typed "/slug", so a request squarely covered by a skill (NotebookLM research
+ * → notebook-research) sent it groping the filesystem instead. Cached: the
+ * system prompt must stay byte-stable within the cache TTL.
+ */
+let skillsIndexCache: { at: number; block: string } | null = null;
+const SKILLS_INDEX_TTL = 5 * 60_000;
+async function skillsIndexBlock(): Promise<string> {
+  if (skillsIndexCache && Date.now() - skillsIndexCache.at < SKILLS_INDEX_TTL) return skillsIndexCache.block;
+  let block = "";
+  try {
+    const skills = await getClient().skills.list();
+    const rows = skills.slice(0, 20).map((s) => {
+      const when = (s as { manifest?: { whenToUse?: string } }).manifest?.whenToUse || s.description || "";
+      return `- ${s.slug}: ${String(when).slice(0, 200)}`;
+    });
+    if (rows.length) {
+      block = [
+        "## Skills",
+        "Named procedures the org has published. When a request matches one's",
+        "when-to-use, call skills_get(slug) FIRST and follow its instructions —",
+        "do not improvise what a skill already prescribes.",
+        ...rows,
+      ].join("\n");
+    }
+  } catch { /* offline / signed out — no index this turn */ }
+  skillsIndexCache = { at: Date.now(), block };
+  return block;
+}
+
 export interface ComposedTurn {
   /** The system prompt: persona + memory + summary + workspace extras. Byte-
    *  stable between runs so the model's prompt cache keeps hitting. */
@@ -146,7 +178,7 @@ export async function composeTurn(
   const history = base.slice(1, -1)
     .map((m) => `${m.role === "user" ? "User" : "Glyphh"}: ${m.content}`)
     .join("\n");
-  const [extras, skillSeed, recallBlock, filesHint] = await Promise.all([
+  const [extras, skillSeed, recallBlock, filesHint, skillsIndex] = await Promise.all([
     workspaceExtras(workdir),
     skillSeedFor(ask),
     chatId ? shortTermRecallBlock(chatId, ask).catch(() => "") : Promise.resolve(""),
@@ -154,8 +186,9 @@ export async function composeTurn(
       const wd = workdir || getExplicitWorkingDirectory();
       return wd ? relevantFilesHint(wd, ask).catch(() => "") : "";
     })(),
+    skillsIndexBlock(),
   ]);
-  const system = [base[0]?.content ?? "", extras].filter(Boolean).join("\n\n");
+  const system = [base[0]?.content ?? "", extras, skillsIndex].filter(Boolean).join("\n\n");
   const lastUser = [
     history ? `<conversation_so_far>\n${history}\n</conversation_so_far>` : "",
     recallBlock,
