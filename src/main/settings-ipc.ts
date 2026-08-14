@@ -29,6 +29,9 @@ interface SettingsIpcDeps {
   getMainWindow: () => BrowserWindow | null;
   /** Detach the home view so the onboarding overlay is visible (logout). */
   hidePanels: () => void;
+  /** Deliver an event to EVERY renderer that paints identity (main window +
+   *  home view) — the rail's chip lives in home.html, not index.html. */
+  broadcastAccountUpdated?: (info: unknown) => void;
 }
 
 export function registerSettingsIpc(deps: SettingsIpcDeps): void {
@@ -126,6 +129,10 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     const mainWindow = getMainWindow();
     logout();
     hidePanels();
+    // The identity chips reset immediately — without this the rail kept the
+    // previous user's name while signed out (and, before the home-view send
+    // existed, for the whole next login too).
+    deps.broadcastAccountUpdated?.(null);
     mainWindow?.webContents.send("show-onboarding");
   });
 

@@ -453,7 +453,14 @@ async function boot() {
     // The rail's identity chip repaints from this — without it, logging out
     // and back in as a DIFFERENT account kept showing the previous user's
     // name for the whole app run (the renderer filled it once at boot).
+    // The rail lives in the HOME VIEW (home.html), not the main window's
+    // index.html — sending only to mainWindow meant the repaint never
+    // arrived and the chip stayed on the previous identity. Send to both.
     mainWindow?.webContents.send("account-updated", getAccountInfo());
+    const home = homeView.webContents;
+    if (home && !home.isDestroyed()) {
+      try { home.send("account-updated", getAccountInfo()); } catch { /* view swapping */ }
+    }
     const locked = hb.status === "disabled";
     if (locked === accountLocked) return;
     accountLocked = locked;
@@ -871,6 +878,13 @@ async function boot() {
     execCommand,
     getMainWindow: () => mainWindow,
     hidePanels: () => { if (mainWindow) homeView.hide(mainWindow); },
+    broadcastAccountUpdated: (info) => {
+      mainWindow?.webContents.send("account-updated", info);
+      const home = homeView.webContents;
+      if (home && !home.isDestroyed()) {
+        try { home.send("account-updated", info); } catch { /* view swapping */ }
+      }
+    },
   });
 
   // Settings › Billing / Organization / Account — the customer-facing account
