@@ -3234,6 +3234,17 @@ function App() {
     // and the user sees an honest "connecting" state up front instead of a stall
     // on their first submit.
     const chat = chatFor(s.id);
+    // A session born on ANOTHER surface has no locus on this device — but its
+    // SOURCE syncs with the thread. Without this adoption the header named the
+    // machine (sourceOf reads the thread) while the RUN targeted the cloud
+    // (isLocal reads chat.source, which only the locus store populated):
+    // "shows connected to my desktop but is running in the cloud".
+    if (!chat.source) {
+      const src = (threads ?? []).find((t) => t.id === s.id)?.source;
+      if (src?.kind === 'local') {
+        chat.source = { kind: 'local', ...(src.machineId ? { machineId: src.machineId } : {}), path: src.path || '' };
+      }
+    }
     // LOCAL (machine-bound) sessions run ON the desktop over the relay — no cloud
     // pod to provision; the turn connects per-run via attach.run. Cloud sessions
     // provision their pod up front.
