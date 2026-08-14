@@ -16385,8 +16385,12 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .ws-tasks-chartwrap { position: relative; height: 200px; flex: 0 0 auto; border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface-2); padding: 14px 16px 10px; }
 .ws-tasks-canvas { width: 100% !important; height: 100% !important; }
 .ws-tasks-chartwrap .ws-tasks-refresh { position: absolute; top: 8px; right: 8px; }
-/* Under the chart: the + New Session landing composition — the starter grid
-   (dash-starters) full-width, then the recents + all-tasks lists. */
+/* Under the chart: TWO EQUAL columns — the landing-style prompt starters
+   (dash-starter cards, stacked single-file inside their column) beside the
+   recent-runs feed. */
+.ws-tasks-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.ws-tasks-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ws-tasks-col .ws-tasks-prompts.dash-starters { grid-template-columns: 1fr; }
 
 .ws-tasks-create input, .ws-tasks-create select {
   width: 100%; box-sizing: border-box; height: 30px;
