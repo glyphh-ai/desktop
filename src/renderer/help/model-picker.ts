@@ -125,10 +125,12 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
     return;
   }
 
-  // A MULTI-slot loop turns the menu into a small form: picking one slot's model
-  // must not close it (the other slots still need setting) — the X does. A
-  // single-slot menu keeps the one-click-and-done behavior.
+  // Collapsible sections exist only when several SLOTS render headers.
   const multi = roles.length > 1;
+  // The menu closes on a pick ONLY when there was exactly one option to pick —
+  // with a real choice on offer (any slot count), picking must not yank the
+  // menu away: the check moves live and the X closes it.
+  const closeOnPick = roles.reduce((n, r) => n + r.choices.length, 0) <= 1;
 
   // Search stays pinned; only the list below it scrolls. A workspace can allow
   // dozens of models across several slots, and scrolling past the search box to
@@ -252,16 +254,14 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
 
         item.addEventListener("click", () => {
           closeTips();
-          // One slot: pick-and-done. Several: the menu is a form — it stays up
-          // (the check moves live) and the X closes it.
-          if (!multi) menu.classList.add("hidden");
+          if (closeOnPick) menu.classList.add("hidden");
           void (async () => {
             try {
               const r = await window.glyphh.loopRoleSet?.(loop, role.name, choice.id);
               if (r?.roles) roles = r.roles;
             } catch { /* the pick did not take; the next open shows the truth */ }
             onPicked();
-            if (multi && !menu.classList.contains("hidden")) paint(search.value);
+            if (!closeOnPick && !menu.classList.contains("hidden")) paint(search.value);
           })();
         });
         list.appendChild(item);

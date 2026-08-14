@@ -622,14 +622,37 @@ async function boot() {
     }, 1200);
   };
   // The About "Relaunch to Update" button invokes this via the update-install
-  // IPC. If the download is still in flight, show the updating splash now and
-  // install the moment it lands.
+  // IPC. ALWAYS re-check the feed first: a downloaded update can go stale while
+  // the app sits open (beta.5 downloaded, beta.7 shipped since), and installing
+  // the stale one marched users through every version in sequence. The re-check
+  // downloads the feed's CURRENT latest (cache hit if unchanged) and installs
+  // that; only if the check cannot complete (offline, feed error) do we fall
+  // back to the update already on disk.
   const requestUpdateInstall = () => {
-    if (pendingUpdate?.ready) { doUpdateInstall(); return; }
     installWhenReady = true;
     broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
     if (mainWindow) homeView.hide(mainWindow);
-    autoUpdater.checkForUpdates().catch(() => {});
+    // Backstop: a hung feed check must not strand the updating splash — after
+    // 30s install what we have, or restore the UI if nothing ever downloaded.
+    const backstop = setTimeout(() => {
+      if (!installWhenReady) return;
+      if (pendingUpdate?.ready) { doUpdateInstall(); return; }
+      installWhenReady = false;
+      broadcastUpdate({ status: "error", error: "update check timed out" });
+      if (mainWindow) homeView.show(mainWindow);
+    }, 30_000);
+    backstop.unref();
+    // The user asked to install — download regardless of the auto-download pref.
+    autoUpdater.autoDownload = true;
+    autoUpdater.checkForUpdates().catch(() => {
+      clearTimeout(backstop);
+      if (pendingUpdate?.ready) doUpdateInstall();
+      else {
+        installWhenReady = false;
+        broadcastUpdate({ status: "error", error: "update check failed" });
+        if (mainWindow) homeView.show(mainWindow);
+      }
+    });
   };
 
   autoUpdater.on("update-available", (info: { version: string }) => {
@@ -646,11 +669,25 @@ async function boot() {
     if (installWhenReady) doUpdateInstall();
   });
   autoUpdater.on("update-not-available", () => {
+    // Mid-install-request this means "you already run the latest" (or the feed
+    // rolled back): nothing to install, so bring the UI back instead of leaving
+    // the updating splash up forever.
+    if (installWhenReady) {
+      installWhenReady = false;
+      if (mainWindow) homeView.show(mainWindow);
+    }
     pendingUpdate = null;
     broadcastUpdate({ status: "none" });
   });
   autoUpdater.on("error", (err: Error) => {
     console.error("[auto-update] error:", err.message);
+    // Mid-install-request: fall back to the update already on disk, or give
+    // the UI back — never leave the updating splash stranded.
+    if (installWhenReady) {
+      if (pendingUpdate?.ready) { doUpdateInstall(); return; }
+      installWhenReady = false;
+      if (mainWindow) homeView.show(mainWindow);
+    }
     broadcastUpdate({ status: "error", error: err.message });
   });
 
