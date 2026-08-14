@@ -360,7 +360,7 @@ declare global {
       // Connectors (Pipedream Connect)
       connectorsGetApps: (search?: string, offset?: number) => Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean }>;
       connectorsGetAccounts: () => Promise<Array<{ id: string; appSlug: string; appName: string; createdAt: string; healthy: boolean }>>;
-      connectorsConnect: (appSlug: string) => Promise<{ ok: boolean; error?: string }>;
+      connectorsConnect?: (appSlug: string) => Promise<{ ok: boolean; error?: string }>;
       connectorsDisconnect: (accountId: string) => Promise<boolean>;
       connectorsRefreshMcp: () => Promise<{ ok: boolean; error?: string; toolCount: number }>;
       connectorsListTools: () => Promise<Array<{ slug: string; name: string; description: string }>>;

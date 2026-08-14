@@ -236,6 +236,10 @@ export function buildContract(client, deps) {
     connectionToolsList: (id) =>
       read(() => client.connections.resolvedTools(), (r) => toLegacyConnectionTools(r, id), EMPTY.tools)(),
     connectorsGetApps: read((search) => client.connections.apps({ search }), toLegacyConnectorApps, EMPTY.connectorApps),
+    // EXPLICIT STUB (rule 3): the connector OAuth flow runs through desktop
+    // main-process windows; the web surface points the user there instead of
+    // crashing the catalog card.
+    connectorsConnect: async () => ({ ok: false, error: "Connect from the desktop app" }),
     mcpConnectionsList: read(
       async () => {
         const [personal, org] = await Promise.all([

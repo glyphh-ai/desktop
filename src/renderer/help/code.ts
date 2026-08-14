@@ -1736,9 +1736,9 @@ function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
     card.status = "connecting";
     paint();
     void saveStore();
-    void window.glyphh.connectorsConnect(card.appId).then((res) => {
-      card.status = res.ok ? "connected" : "failed";
-      if (!res.ok) card.error = res.error || "Authorization failed.";
+    void window.glyphh.connectorsConnect?.(card.appId).then((res) => {
+      card.status = res?.ok ? "connected" : "failed";
+      if (!res?.ok) card.error = res?.error || "Authorization failed.";
       paint();
       void saveStore();
       // answer the WAITING tool (retries after a failure answer again — the

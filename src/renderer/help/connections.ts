@@ -555,8 +555,10 @@ async function loadCatalog(search?: string): Promise<void> {
       const nameEl = card.querySelector(".connector-card-name")!;
       nameEl.textContent = "Connecting…";
       const beforeIds = new Set(connections.map((c) => c.id));
-      const result = await window.glyphh.connectorsConnect(app.id);
-      if (!result.ok) { nameEl.textContent = result.error || "Failed"; setTimeout(() => { nameEl.textContent = app.name; }, 2500); return; }
+      // Optional-chained: the web bridge stubs this (the OAuth connect flow is
+      // desktop-driven) — an undefined result must read as a failure, not throw.
+      const result = await window.glyphh.connectorsConnect?.(app.id);
+      if (!result?.ok) { nameEl.textContent = result?.error || "Failed"; setTimeout(() => { nameEl.textContent = app.name; }, 2500); return; }
       // The overlay is already up (the "verifying" phase raised it). The SLOW
       // tail is here — reloading the list and fetching the detail screen's
       // tool catalog — so it stays up until the details actually paint.
