@@ -833,7 +833,7 @@ async function init(): Promise<void> {
   /** While an Echo panel is mounted, every agent/panel tool routes into
    *  Echo's own slots — set by renderEchoIntoSlot, cleared on teardown. */
   interface EchoCtlType {
-    openApp(app: { slug: string; name: string; url: string; glyphh?: boolean }): void;
+    openApp(app: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean }): void;
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> }): void;
     openSection(section: string): void;
     openAgent(): void;
@@ -1635,7 +1635,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** WEB: the card's streamed-panel handle. Card teardown must dispose it
        *  or the desktop keeps casting to a removed element. */
@@ -1999,12 +1999,14 @@ async function init(): Promise<void> {
     /** The wall tile for an APP row — shared by the first build and by apps
      *  that appear later (glyphh:apps-changed), so a Glyphh app the user
      *  creates mid-session joins the wall like a new layout does. */
-    const appTileOf = (a: { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null }): EchoTile => {
+    const appTileOf = (a: { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; launchConfig?: Record<string, unknown> | null; connection?: { accountId?: string; pipedreamSlug: string } | null }): EchoTile => {
       const slug = (a.slug || a.id).toLowerCase();
       const icon = { slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null };
       return {
         name: a.name, slug, appId: a.id, url: a.url || undefined,
         glyphh: a.appArchetype === "glyphh-app" || undefined,
+        // A WORKBENCH app is a chromeless panel — no address bar, ever.
+        workbench: (a.launchConfig as { workbench?: unknown } | null | undefined)?.workbench === true || undefined,
         iconUrl: appIconUrl(icon) || undefined, kind: "app",
         orderKey: `app:${slug}`,
       };
@@ -3348,10 +3350,12 @@ async function init(): Promise<void> {
             getURL: () => appUrl,
             addEventListener: () => {},
           } as unknown as WebviewEl;
-          const { chrome: gChrome, urlbar: gUrlbar } = buildAppChrome(glyphhAdapter, () => appUrl);
-          gUrlbar.value = appUrl;
-          card.querySelector(".echo-card-head")!.after(gChrome);
-          wireCardUrlBar(card, gChrome);
+          if (!t.workbench) {
+            const { chrome: gChrome, urlbar: gUrlbar } = buildAppChrome(glyphhAdapter, () => appUrl);
+            gUrlbar.value = appUrl;
+            card.querySelector(".echo-card-head")!.after(gChrome);
+            wireCardUrlBar(card, gChrome);
+          }
           return;
         }
         const url = t.url || "https://www.google.com";
@@ -3419,10 +3423,12 @@ async function init(): Promise<void> {
           if (wcId !== undefined && t.slug) rpaYo().rpaRegister?.(t.slug, wcId);
         });
         card.querySelector(".echo-card-body")!.appendChild(wv);
-        const { chrome, urlbar } = buildAppChrome(wv as unknown as WebviewEl, () => t.url || "");
-        urlbar.value = t.url || "";
-        card.querySelector(".echo-card-head")!.after(chrome);
-        wireCardUrlBar(card, chrome);
+        if (!t.workbench) {
+          const { chrome, urlbar } = buildAppChrome(wv as unknown as WebviewEl, () => t.url || "");
+          urlbar.value = t.url || "";
+          card.querySelector(".echo-card-head")!.after(chrome);
+          wireCardUrlBar(card, chrome);
+        }
       }
     };
     /** Tear a card's content down (agent/sections park, PTYs die, RPA
@@ -3617,7 +3623,7 @@ async function init(): Promise<void> {
           return;
         }
         const tile: EchoTile | undefined = findTile(key)?.tile
-          ?? ((app.url || app.glyphh) ? { name: app.name || app.slug, slug: key, url: app.url || undefined, glyphh: app.glyphh, kind: "app" } : undefined);
+          ?? ((app.url || app.glyphh) ? { name: app.name || app.slug, slug: key, url: app.url || undefined, glyphh: app.glyphh, workbench: app.workbench, kind: "app" } : undefined);
         if (!tile) return;
         const pinned = openList.find((x) => x.tile.sticky && x.card);
         if (pinned) { retargetCard(pinned, tile); return; }
@@ -4499,7 +4505,7 @@ async function init(): Promise<void> {
     (window as unknown as { glyphh?: { wbAppsChanged?: (apps: Array<{ slug: string; name: string }>) => void } }).glyphh?.wbAppsChanged?.(open);
   }
 
-  interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
+  interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean }
   interface WbLayoutCell extends WbAppRef { col: number; row: number; span?: number; sticky?: boolean; tool?: string; config?: { url?: string; cmd?: string; keepAlive?: boolean } }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 

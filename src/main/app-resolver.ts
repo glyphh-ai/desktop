@@ -34,7 +34,7 @@ export interface ServerApp {
   launchConfig?: Record<string, unknown> | null;
 }
 
-interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean }
+interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean }
 
 // ── Browser homepage (the built-in "browser" app's start page) ──
 export function resolveBrowserHomeUrl(): string {
@@ -135,7 +135,11 @@ function builtinRef(key: string): WbAppRef | "terminal" | { tool: string } | nul
  *  out of the app BEFORE panel resolution. Anything with a web surface
  *  (top-level url, or a url stashed in launchConfig for legacy rows) opens. */
 function toWbRef(app: ServerApp): WbAppRef {
-  if (isGlyphhAppRow(app)) return { slug: app.slug, name: app.name, url: "", glyphh: true };
+  if (isGlyphhAppRow(app)) {
+    // A WORKBENCH app renders as a chromeless panel — no URL bar, no address.
+    const wb = (app.launchConfig as { workbench?: unknown } | null | undefined)?.workbench === true;
+    return { slug: app.slug, name: app.name, url: "", glyphh: true, ...(wb ? { workbench: true } : {}) };
+  }
   const lc = app.launchConfig as { url?: unknown; homepage?: unknown } | null | undefined;
   const url = app.url
     || (typeof lc?.url === "string" ? lc.url : "")

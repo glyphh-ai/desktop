@@ -539,7 +539,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "update_app",
-    doc: "update_app() — build-then-ship the app in the working folder: packages the compiled dist/ (Vite project) or the folder's files (legacy single-file app) and installs it. For a Vite project, run `npm run build` FIRST. Call after every change or tool calls run the OLD version",
+    doc: "update_app() — build-then-ship the app in the working folder: packages the compiled dist/ (Vite project) or the folder's files (legacy single-file app) and installs it. For a Vite project, run `npm run build` FIRST. Call after every change or tool calls run the OLD version. WORKBENCH APPS: when the user asks for a 'workbench app' — a panel that lives inside their agent workbench with no public URL — build it like any Glyphh app but register it server-side with create_app_entry (kind glyphh, config {workbench:true}, via find_tools/call_tool) and build_app; declare its MCP tools + capabilities in the manifest so the harness can call them. Workbench apps are members-only by force, show under Apps, install into Workspace slots, and render chromeless (no address bar). Keep them inside the capability sandbox — the same guards as every app: declared capabilities only, no remote assets, no agent.run tool.",
     action: () => ({ kind: "edit", title: "Update app from source" }),
     run: async () => {
       // Declared-connector validation reads the governed catalog (fresh at
@@ -641,7 +641,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "open_app",
-    doc: "open_app(name) — open an INSTALLED app from the user's library (or 'terminal') as a panel beside this conversation. To show something you built or deployed, use open_browser(url) instead — the user wants the browser surface for previews, not the raw app panel.",
+    doc: "open_app(name) — open an INSTALLED app from the user's library (or 'terminal') as a panel beside this conversation. To show something you built or deployed, use open_browser(url) instead — EXCEPT workbench apps (config workbench:true), which have no URL by design and are previewed with open_app itself.",
     action: (a) => ({ kind: "command", title: `Open app "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const r = await openAppByRef(String(a.name ?? ""));
