@@ -153,11 +153,11 @@ export function gotoSection(section: string, sub?: string): void {
   // Apps / Connections / Workspaces are WORKBENCH sections now (the rail's
   // panels); only the management-shaped pages (loops/skills/agents) stay in
   // the settings modal.
-  if (["apps", "connections", "layouts"].includes(section)) {
+  if (["apps", "connections", "layouts", "agents"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
-  if (["loops", "skills", "agents"].includes(section)) {
+  if (["loops", "skills"].includes(section)) {
     void window.glyphh.setPreference?.("homeLastSection", "settings");
     void window.glyphh.setPreference?.("homeLastSub", section);
     openSettingsModal(section);
@@ -594,12 +594,41 @@ export function initHelp() {
       else openSettingsModal(sub);
     });
   });
-  // Tasks is the one rail item that opens IN the workbench (a panel view, not
-  // a settings page) — scheduled work is a daily glance. The view is deliberately
-  // absent from the workbench "Add view" menu and the layout tool list; this
-  // button is its only door.
-  document.getElementById("rail-tasks-btn")?.addEventListener("click", () => {
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks");
+  // The More fly-out — second-tier rail destinations, every one a WORKBENCH
+  // surface (Scheduled Tasks is the hidden tasks view; Agents a section card).
+  const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
+    { label: "Scheduled Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
+      open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks") },
+    { label: "Agents", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>`,
+      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("agents") },
+  ];
+  const moreToggle = document.getElementById("rail-more-toggle");
+  let moreMenu: HTMLDivElement | null = null;
+  const closeMore = (): void => { moreMenu?.remove(); moreMenu = null; moreToggle?.classList.remove("open"); document.removeEventListener("click", onMoreOutside, true); };
+  const onMoreOutside = (ev: MouseEvent): void => {
+    if (!(ev.target as HTMLElement).closest("#rail-more-menu, #rail-more-toggle")) closeMore();
+  };
+  moreToggle?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (moreMenu) { closeMore(); return; }
+    const menu = document.createElement("div");
+    menu.id = "rail-more-menu";
+    menu.className = "code-menu rail-more-menu";
+    for (const it of MORE_ITEMS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "app-rail-nav-item";
+      b.innerHTML = `${it.icon}<span>${it.label}</span>`;
+      b.addEventListener("click", () => { closeMore(); it.open(); });
+      menu.appendChild(b);
+    }
+    document.body.appendChild(menu);
+    moreMenu = menu;
+    const r = moreToggle.getBoundingClientRect();
+    menu.style.left = `${r.right + 6}px`;
+    menu.style.top = `${Math.min(r.top, window.innerHeight - menu.offsetHeight - 8)}px`;
+    moreToggle.classList.add("open");
+    setTimeout(() => document.addEventListener("click", onMoreOutside, true), 0);
   });
   // (Artifacts rides the same data-settings-sub path — every rail link opens
   // the settings modal; the files PAGE stays reachable via gotoSection for
