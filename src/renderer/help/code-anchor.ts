@@ -1,0 +1,265 @@
+/**
+ * code-anchor.ts — WHERE THE AGENT SITS.
+ *
+ * The agent used to own a fixed column beside the workbench. This module lets it
+ * dock instead, so the layout manager can have the rest of the screen:
+ *
+ *   rail    the agent is a workbench SLOT (`view:"coding"`) — the long-standing
+ *           default. Every layout with no opinion resolves here, so nothing
+ *           changes for anyone until they opt in.
+ *   left    the agent docks to the left edge; the ENTIRE right side is layout.
+ *   right   mirrored.
+ *   center  the agent becomes a one-line bar along the BOTTOM and the layout
+ *           takes everything above it. This is COLLAPSED MODE.
+ *   none    no agent on screen.
+ *
+ * `center` IS collapsed mode. There is deliberately no second `collapsed` flag —
+ * that would be two sources of truth for one thing.
+ *
+ * THREE INVARIANTS, each of which cost a real bug to learn:
+ *
+ *  1. LEFT/RIGHT flip with CSS `order`, never by moving DOM. `parkAgent()` in
+ *     code-workbench.ts re-asserts the agent's DOM position before every rails
+ *     rebuild, so a DOM-move approach fights the workbench on every render.
+ *  2. Collapsed mode RELOCATES the session buttons by MOVING the nodes.
+ *     `#code-session-new` / `#code-session-history` are wired with
+ *     addEventListener on the node itself (help/code.ts), so appendChild keeps
+ *     their handlers — but any innerHTML near them silently unwires them.
+ *  3. The header is HIDDEN, never deleted. `#code-session-back`, `-title`,
+ *     `-locus`, `-kebab` and the view toggles must survive so flipping back to
+ *     left/right restores a working header.
+ */
+
+export type AnchorMode = "rail" | "left" | "right" | "center" | "none";
+
+const MODES: Array<{ id: AnchorMode; label: string; hint: string }> = [
+  { id: "rail", label: "In the workspace", hint: "The agent is a panel, like today" },
+  { id: "left", label: "Dock left", hint: "Agent on the left, layout fills the right" },
+  { id: "center", label: "Dock bottom", hint: "One line along the bottom, layout above" },
+  { id: "right", label: "Dock right", hint: "Agent on the right, layout fills the left" },
+  { id: "none", label: "Hide the agent", hint: "Layout only — bring it back from here" },
+];
+
+const MODE_PREF = "glyphhAnchorMode";
+const FRAC_PREF = "glyphhAnchorFraction";
+const DEFAULT_FRACTION = 0.32;
+/** Same band `clampFraction` uses in main/screen-layout.ts — one dock, one range. */
+const clampFraction = (f: number): number => Math.max(0.2, Math.min(0.6, f));
+
+let mode: AnchorMode = "rail";
+let fraction = DEFAULT_FRACTION;
+
+const root = (): HTMLElement | null => document.querySelector<HTMLElement>(".code-root");
+const byId = (id: string): HTMLElement | null => document.getElementById(id);
+
+export function anchorMode(): AnchorMode { return mode; }
+export function isCollapsed(): boolean { return mode === "center"; }
+
+// ── Applying the mode ───────────────────────────────────────────────────────
+
+/**
+ * Move the session controls between the header and the composer's source row.
+ * MOVES nodes (append/insertBefore keep listeners); never re-creates them.
+ */
+function relocateActions(collapsed: boolean): void {
+  const bar = byId("code-bar-actions");
+  const head = document.querySelector<HTMLElement>(".session-head-actions");
+  const kebab = byId("code-session-kebab-wrap");
+  if (!bar || !head) return;
+  // Order matters: transcript sits LEFT of recents, per the collapsed-bar spec.
+  const ids = ["code-transcript-btn", "code-session-history", "code-session-new", "code-anchor-btn"];
+  for (const id of ids) {
+    const node = byId(id);
+    if (!node) continue;
+    if (collapsed) bar.appendChild(node);
+    else if (kebab && kebab.parentElement === head) head.insertBefore(node, kebab);
+    else head.appendChild(node);
+  }
+}
+
+/** Paint the dock width custom property (left/right only). */
+function applyFraction(): void {
+  const el = root();
+  if (!el) return;
+  el.style.setProperty("--agent-dock-frac", String(fraction));
+}
+
+export function applyAnchor(next: AnchorMode = mode): void {
+  mode = next;
+  const el = root();
+  if (!el) return;
+  // `none` with nothing else on screen would leave a blank window and no way
+  // back, so it degrades to the workspace default.
+  if (mode === "none" && !document.querySelector("#code-wb-rails .ws-right-rail")) mode = "rail";
+  el.dataset.anchor = mode;
+  document.body.dataset.glyphhAnchor = mode;
+  applyFraction();
+  const collapsed = mode === "center";
+  relocateActions(collapsed);
+  const status = byId("code-status-line");
+  if (status) (status as HTMLButtonElement).hidden = !collapsed;
+  if (!collapsed) closePeek();
+  paintAnchorMenu();
+  // The dock changes how much room the rails have; the workbench owns that math.
+  (window as unknown as { __wbReflow?: () => void }).__wbReflow?.();
+}
+
+export function setAnchor(next: AnchorMode): void {
+  applyAnchor(next);
+  void window.glyphh.setPreference?.(MODE_PREF, mode);
+}
+
+// ── Peek ────────────────────────────────────────────────────────────────────
+//
+// The peek does NOT copy messages. `renderThread()` wipes #code-thread's
+// children on every repaint, so any clone is stale within a frame — and the
+// streamer writes into that same element. Peek therefore just REPOSITIONS the
+// live thread as an overlay; "the last few messages" falls out of the existing
+// bottom-pinned scroll plus a max-height.
+
+export function isPeeking(): boolean { return root()?.classList.contains("peeking") ?? false; }
+
+export function closePeek(): void {
+  root()?.classList.remove("peeking");
+  document.body.classList.remove("peek-open");
+}
+
+export function togglePeek(): void {
+  if (!isCollapsed()) return;
+  const el = root();
+  if (!el) return;
+  // The transcript panel owns the thread when it is open; peeking would steal
+  // it out of the panel. One home, one owner.
+  if (el.classList.contains("thread-hosted")) {
+    (window as unknown as { __wbFlashThread?: () => void }).__wbFlashThread?.();
+    return;
+  }
+  const open = el.classList.toggle("peeking");
+  document.body.classList.toggle("peek-open", open);
+  if (open) {
+    const thread = byId("code-thread");
+    if (thread) thread.scrollTop = thread.scrollHeight;
+    byId("code-status-line")?.classList.remove("has-unread");
+  }
+}
+
+// ── The picker ──────────────────────────────────────────────────────────────
+
+function paintAnchorMenu(): void {
+  const menu = byId("code-anchor-menu");
+  if (!menu || menu.classList.contains("hidden")) return;
+  buildAnchorMenu(menu);
+}
+
+function buildAnchorMenu(menu: HTMLElement): void {
+  menu.textContent = "";
+  for (const m of MODES) {
+    const item = document.createElement("button");
+    item.className = "code-drop-item" + (m.id === mode ? " selected" : "");
+    item.type = "button";
+    const lines = document.createElement("span");
+    lines.className = "drop-lines";
+    const label = document.createElement("span");
+    label.textContent = m.label;
+    const hint = document.createElement("span");
+    hint.className = "drop-hint";
+    hint.textContent = m.hint;
+    lines.append(label, hint);
+    item.appendChild(lines);
+    if (m.id === mode) {
+      item.insertAdjacentHTML("beforeend",
+        `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`);
+    }
+    item.addEventListener("click", () => {
+      setAnchor(m.id);
+      menu.classList.add("hidden");
+    });
+    menu.appendChild(item);
+  }
+}
+
+// ── The dock splitter ───────────────────────────────────────────────────────
+
+function wireDockEdge(): void {
+  const edge = byId("code-agent-edge");
+  const el = root();
+  if (!edge || !el) return;
+  edge.addEventListener("mousedown", (e) => {
+    if (mode !== "left" && mode !== "right") return;
+    e.preventDefault();
+    edge.classList.add("dragging");
+    document.body.classList.add("wb-mouse-drag");
+    const rootW = el.getBoundingClientRect().width || 1;
+    const onMove = (ev: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      // Right-anchored, the dock grows as the pointer moves LEFT.
+      const raw = mode === "left" ? (ev.clientX - rect.left) / rootW : (rect.right - ev.clientX) / rootW;
+      fraction = clampFraction(raw);
+      applyFraction();
+    };
+    const onUp = () => {
+      edge.classList.remove("dragging");
+      document.body.classList.remove("wb-mouse-drag");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      void window.glyphh.setPreference?.(FRAC_PREF, fraction);
+      (window as unknown as { __wbReflow?: () => void }).__wbReflow?.();
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+
+/** Read the device's anchor preference and apply it. Called from loadCode(). */
+export async function initAnchor(): Promise<void> {
+  try {
+    const savedMode = (await window.glyphh.getPreference?.(MODE_PREF, "rail")) as AnchorMode;
+    if (MODES.some((m) => m.id === savedMode)) mode = savedMode;
+    const savedFrac = Number(await window.glyphh.getPreference?.(FRAC_PREF, DEFAULT_FRACTION));
+    fraction = clampFraction(Number.isFinite(savedFrac) && savedFrac > 0 ? savedFrac : DEFAULT_FRACTION);
+  } catch {
+    /* first run / prefs unavailable — the workspace default is correct */
+  }
+  applyAnchor(mode);
+}
+
+/** One-time event wiring. Safe to call once at init. */
+export function initAnchorEvents(): void {
+  const btn = byId("code-anchor-btn");
+  const menu = byId("code-anchor-menu");
+  btn?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (!menu) return;
+    const show = menu.classList.contains("hidden");
+    document.querySelectorAll(".code-drop").forEach((d) => d.classList.add("hidden"));
+    if (show) { buildAnchorMenu(menu); menu.classList.remove("hidden"); }
+  });
+  document.addEventListener("click", (ev) => {
+    if (menu && !menu.classList.contains("hidden") && !menu.contains(ev.target as Node)) menu.classList.add("hidden");
+  });
+
+  byId("code-status-line")?.addEventListener("click", (ev) => { ev.stopPropagation(); togglePeek(); });
+
+  // The transcript PANEL is the "thread" workbench slot. Until that lands the
+  // button still has to do something honest, so it falls back to the peek —
+  // and upgrades itself the moment __wbOpenThread exists.
+  byId("code-transcript-btn")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const open = (window as unknown as { __wbOpenThread?: () => void }).__wbOpenThread;
+    if (open) open();
+    else togglePeek();
+  });
+
+  // Dismissal: click outside the agent, or Escape.
+  document.addEventListener("pointerdown", (ev) => {
+    if (!isPeeking()) return;
+    if (!(ev.target as HTMLElement).closest(".code-agent")) closePeek();
+  }, true);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && isPeeking()) { ev.stopPropagation(); closePeek(); }
+  });
+
+  wireDockEdge();
+}

@@ -547,7 +547,7 @@ async function init(): Promise<void> {
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; glyphh?: { mode: "rail" | "left" | "right" | "center" | "none"; fraction?: number } | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -700,7 +700,18 @@ async function init(): Promise<void> {
     // 2.5.0: there is no center agent column — the rails ARE the surface.
     const root = document.querySelector<HTMLElement>(".code-root");
     const rootW = root ? root.getBoundingClientRect().width : window.innerWidth;
-    return Math.max(260, rootW);
+    // ...unless the agent is ANCHORED, in which case it is a sibling that really
+    // does take room. Measure the dock, not the aside: the aside is width:auto
+    // (sized BY the rails), so budgeting from it would be circular. Only left/right
+    // compete horizontally — in `rail` the agent is display:none, and in `center`
+    // it is a full-width bottom bar that costs height, not width.
+    const anchor = root?.dataset.anchor;
+    let dockW = 0;
+    if (root && (anchor === "left" || anchor === "right")) {
+      const agent = root.querySelector<HTMLElement>(":scope > .code-agent");
+      dockW = agent ? agent.getBoundingClientRect().width : 0;
+    }
+    return Math.max(260, rootW - dockW);
   }
   function applyResponsiveWidths(): void {
     const container = document.getElementById("code-wb-rails");
@@ -6946,7 +6957,10 @@ async function init(): Promise<void> {
   // resize). The user's preferred widths are preserved; we only adjust
   // displayed widths to fit the new container size, then snap back when
   // space is restored. ──
-  const railsContainer = document.querySelector<HTMLElement>(".code-root");
+  // Observe the ASIDE, not `.code-root`: the root keeps its size when the agent
+  // dock is resized (dock + aside split it), so a root-only observer never sees a
+  // dock drag. The aside's width tracks both, so it catches window resize too.
+  const railsContainer = document.getElementById("code-workbench") ?? document.querySelector<HTMLElement>(".code-root");
   if (railsContainer && typeof ResizeObserver !== "undefined") {
     let scheduled = false;
     const ro = new ResizeObserver(() => {
@@ -7284,6 +7298,9 @@ async function init(): Promise<void> {
     __wbOpenSection?: (section: string) => void;
   };
   wbApp.__wbOpenApp = (app, _newPanel) => openAppCard(app);
+  // The agent dock changes how much width the rails get, but the workbench owns
+  // that math — the anchor module asks for a reflow rather than duplicating it.
+  (wbApp as { __wbReflow?: () => void }).__wbReflow = () => { applyResponsiveWidths(); };
   wbApp.__wbOpenApps = (apps, layoutName?: string) => {
     // A NAMED layout comes up through the grid path — its definition plus the
     // user's remembered geometry — never as a flat stack. The old fallback

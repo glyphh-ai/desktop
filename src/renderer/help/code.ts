@@ -19,6 +19,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
+import { initAnchor, initAnchorEvents, isCollapsed } from "./code-anchor.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -1016,6 +1017,47 @@ function broadcastTimeline(running: boolean): void {
   try {
     document.dispatchEvent(new CustomEvent("glyphh-agent:timeline", { detail: { steps: [...(currentRun()?.steps ?? [])], running } }));
   } catch { /* no listeners */ }
+}
+
+/**
+ * The collapsed bar's single status line — the whole conversation reduced to
+ * one row. Derived from state this module already holds, so there is no second
+ * subscription onto the frame stream; `initCode` just repaints it whenever the
+ * timeline broadcasts. Failure is the existing "✕" convention (the Plan slot
+ * uses the same predicate), so the two never disagree about what failed.
+ */
+function paintStatusLine(running = !!currentRun()): void {
+  const line = el("code-status-line");
+  const text = el("code-status-text");
+  if (!line || !text) return;
+  if (!isCollapsed()) return;
+  const run = currentRun();
+  const steps = run?.steps ?? [];
+  const last = steps.length ? steps[steps.length - 1]! : "";
+  const blocked = !!document.querySelector("#code-ask-dock .ask-card, #code-ask-dock .approval-card");
+  const failed = !running && last.startsWith("✕");
+
+  line.classList.toggle("is-running", running && !blocked);
+  line.classList.toggle("is-blocked", blocked);
+  line.classList.toggle("is-error", failed);
+
+  if (blocked) text.textContent = "Waiting on you — approve to continue";
+  else if (running) text.textContent = last || "Working…";
+  else if (failed) text.textContent = last;
+  else {
+    const c = current();
+    const msgs = c?.messages ?? [];
+    const lastAgent = [...msgs].reverse().find((m) => m.role === "assistant" && (m.text ?? "").trim());
+    const summary = (lastAgent?.text ?? "").trim().split("\n").find((l) => l.trim()) ?? "";
+    text.textContent = summary || "Ask Glyphh anything";
+  }
+  // A message that landed while collapsed and unpeeked is unread.
+  if (!isPeekingNow() && (running || last)) line.classList.add("has-unread");
+}
+
+/** Local read of the peek state without importing a cycle back into code.ts. */
+function isPeekingNow(): boolean {
+  return document.querySelector(".code-root")?.classList.contains("peeking") ?? false;
 }
 
 /** Micro-credits → a "N credits" label — the number the user is billed, the
@@ -4268,6 +4310,7 @@ async function applyPanelPrefs(): Promise<void> {
 // ── Entry points ─────────────────────────────────────────────────────────
 export function loadCode(): void {
   void applyPanelPrefs();
+  void initAnchor();
   void (async () => {
     await loadStore();
     // Don't auto-select a session on load — a fresh open highlights no Recent
@@ -4344,6 +4387,13 @@ export function initCode(): void {
   syncSpaceAttrs();   // styled from the first frame, tab click or not
   if (inited) return;
   inited = true;
+  initAnchorEvents();
+  // The collapsed bar's one-line status rides the SAME timeline event the Plan
+  // slot already consumes — no second subscription onto the frame stream.
+  document.addEventListener("glyphh-agent:timeline", (ev) => {
+    paintStatusLine(!!(ev as CustomEvent<{ running?: boolean }>).detail?.running);
+  });
+  paintStatusLine();
   // "/" in the composer pops the installed-skill menu at the caret.
   const composerTa = input();
   if (composerTa) { attachSlashMenu(composerTa); watchComposerWidth(composerTa); }

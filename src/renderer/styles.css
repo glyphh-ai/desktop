@@ -16536,3 +16536,139 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .app-rail-more-toggle:hover, .app-rail-more-toggle.open { opacity: 1; }
 .rail-more-menu { position: fixed; z-index: 300; display: flex; flex-direction: column; gap: 2px; min-width: 172px; padding: 6px; }
 .rail-more-menu .app-rail-nav-item { width: 100%; }
+
+/* ── Agent anchor ───────────────────────────────────────────────────────────
+   Where the agent sits relative to the workspace. `rail` is the default and
+   is deliberately absent here: with no [data-anchor="left|right|center|none"]
+   every rule below is inert, so today's layout is untouched until the user
+   opts in.
+
+   LEFT/RIGHT flip with `order`, never by moving DOM — parkAgent() re-asserts
+   the agent's DOM position before every rails rebuild, so a DOM move would
+   fight the workbench on every render. Colours come from the theme; these
+   rules only ever set geometry. */
+
+.code-root[data-anchor="left"],
+.code-root[data-anchor="right"],
+.code-root[data-anchor="none"] { --agent-dock-w: clamp(320px, calc(var(--agent-dock-frac, 0.32) * 100%), 60%); }
+
+.code-root[data-anchor="left"] > .code-agent,
+.code-root[data-anchor="right"] > .code-agent {
+  display: flex;
+  flex: 0 0 var(--agent-dock-w);
+  min-width: 0;
+  position: relative;
+}
+.code-root[data-anchor="left"]  > .code-agent     { order: 0; }
+.code-root[data-anchor="left"]  > .code-workbench { order: 1; }
+.code-root[data-anchor="right"] > .code-agent     { order: 1; }
+.code-root[data-anchor="right"] > .code-workbench { order: 0; }
+
+/* Anchored modes give the aside the whole remainder. */
+.code-root[data-anchor="left"]  > .code-workbench,
+.code-root[data-anchor="right"] > .code-workbench,
+.code-root[data-anchor="center"] > .code-workbench { flex: 1 1 auto; min-width: 0; }
+
+.code-root[data-anchor="none"] > .code-agent { display: none; }
+
+/* The workbench's own edge handle assumes the aside is at the RIGHT edge
+   (`dx = startX - clientX`), so in right-anchor it would invert. Hidden while
+   anchored; #code-agent-edge drives the dock instead, and each rail keeps its
+   own .ws-resize-v. */
+.code-root[data-anchor="left"]  #code-wb-edge,
+.code-root[data-anchor="right"] #code-wb-edge,
+.code-root[data-anchor="center"] #code-wb-edge,
+.code-root[data-anchor="none"]  #code-wb-edge { display: none; }
+
+.code-agent-edge { display: none; }
+.code-root[data-anchor="left"] > .code-agent > .code-agent-edge,
+.code-root[data-anchor="right"] > .code-agent > .code-agent-edge {
+  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+}
+.code-root[data-anchor="left"]  > .code-agent > .code-agent-edge { right: -3px; }
+.code-root[data-anchor="right"] > .code-agent > .code-agent-edge { left: -3px; }
+.code-agent-edge:hover, .code-agent-edge.dragging { background: var(--accent); opacity: 0.5; }
+
+/* ── Collapsed (centre) ─────────────────────────────────────────────────────
+   The agent becomes a one-line bar along the bottom; the layout takes
+   everything above. z-index is explicit because container-type:inline-size on
+   .code-agent makes it a stacking context — without this the peek renders
+   BEHIND the layout. */
+.code-root[data-anchor="center"] { flex-direction: column; }
+.code-root[data-anchor="center"] > .code-workbench { order: 0; min-height: 0; }
+.code-root[data-anchor="center"] > .code-agent {
+  order: 1;
+  display: flex;
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 30;
+  border-top: 1px solid var(--border-2);
+}
+/* Hidden, never removed — flipping back must restore a working header. */
+.code-root[data-anchor="center"] .code-agent-head { display: none; }
+.code-root[data-anchor="center"] > .code-agent > .code-thread { display: none; }
+/* The 880px cap is right for a column and wrong for a full-width bar. */
+.code-root[data-anchor="center"] .code-composer { max-width: min(1200px, 100%); padding: 6px 16px 10px; }
+
+.code-bar-actions { display: none; }
+.code-root[data-anchor="center"] .code-bar-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+
+.code-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 6px 16px 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-3);
+}
+.code-status-line:hover { color: var(--text); }
+.code-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.code-status-line .code-peek-caret { flex-shrink: 0; opacity: 0.7; }
+.code-status-line.is-running { color: var(--text); }
+.code-status-line.is-blocked { border-left: 2px solid var(--accent); padding-left: 14px; }
+.code-status-line.has-unread .code-peek-caret { opacity: 1; color: var(--accent); }
+
+/* ── Peek ───────────────────────────────────────────────────────────────────
+   Repositions the LIVE thread rather than copying it: renderThread() wipes
+   #code-thread on every repaint and the streamer writes into that same
+   element, so a clone would be stale within a frame. "Last few messages"
+   falls out of the existing bottom-pinned scroll plus max-height. */
+.code-root[data-anchor="center"].peeking > .code-agent > .code-thread {
+  display: block;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1200px, 100%);
+  max-height: min(42vh, 520px);
+  padding: 12px 20px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  z-index: 2;
+}
+/* Webview compositing beats every z-index (see the note at .wb-app-layer), so
+   an open app panel would paint straight over the peek. Same escape hatch the
+   modal path already uses. Deliberate trade-off: app panels blank while
+   peeking. */
+body[data-glyphh-anchor="center"].peek-open #code-wb-applayer { visibility: hidden !important; }
+
+.code-anchor-wrap { position: relative; display: inline-flex; }
+.code-anchor-menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 232px; z-index: 40; }
+.code-root[data-anchor="center"] .code-anchor-menu { top: auto; bottom: calc(100% + 6px); }
