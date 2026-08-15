@@ -13063,7 +13063,11 @@ select:focus {
                                  a clip makes it unclickable */
   gap: 8px;
   min-height: 38px;
-  padding: 4px 12px;
+  /* In a WIDE window the head's controls stop chasing the panel edges: the
+     inline padding grows so its content clamps to the same ~880px column the
+     thread and composer sit in, while the bar's background + border still
+     span the full width. */
+  padding: 4px max(12px, calc((100% - 856px) / 2));
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
 }
