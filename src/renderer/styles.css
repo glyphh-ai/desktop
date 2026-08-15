@@ -3471,9 +3471,10 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
    the chips row directly above owns the small gap to the input, so the input
    never floats detached from its buttons. */
 .dash-composer-slot { width: 100%; margin: 0 0 26px; }
-/* flush with the cowork columns: the composer's own thread-matching
-   max-width and gutters don't apply on Home */
-.dash-composer-slot .code-composer { width: 100%; max-width: none; padding: 0; margin: 0; }
+/* The Home composer stays CENTERED and CAPPED like the in-session one — a
+   wide window must not stretch the input to the extents. (It used to run
+   flush with the cowork columns via max-width:none.) */
+.dash-composer-slot .code-composer { width: 100%; max-width: 880px; padding: 0; margin: 0 auto; }
 /* The HOME landing input is roomier — it opens showing ~2 rows of text (a
    full extra row over the in-session composer's single line). autoGrow sets an
    inline height to scrollHeight, but min-height clamps the empty box up to two
@@ -13063,11 +13064,7 @@ select:focus {
                                  a clip makes it unclickable */
   gap: 8px;
   min-height: 38px;
-  /* In a WIDE window the head's controls stop chasing the panel edges: the
-     inline padding grows so its content clamps to the same ~880px column the
-     thread and composer sit in, while the bar's background + border still
-     span the full width. */
-  padding: 4px max(12px, calc((100% - 856px) / 2));
+  padding: 4px 12px;
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
 }
