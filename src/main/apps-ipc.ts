@@ -610,10 +610,21 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // it with no compile error and the renderer's catch would silently render an
   // empty menu. A missing module now fails main at boot, loudly.
   ipcMain.handle("drips-builtin-effects", () => BUILTIN_EFFECT_LIST);
+  // A PREVIEW is windowed + time-bounded. It used to inherit the command path's
+  // full-screen default and, for a looping effect, no timeout at all — an
+  // always-on-top click-through overlay over every display, forever, with no way
+  // to dismiss it. That is the "black screen, no renderer" report.
   ipcMain.handle("drips-preview", async (_e, recipe: string) => {
     if (!dripManager) return "drip manager not ready";
-    return dripManager.execute(recipe.split(/\s+/));
+    return dripManager.execute(recipe.split(/\s+/), { preview: true });
   });
+  // The escape hatch every effect needs and none had.
+  ipcMain.handle("drips-stop", async () => {
+    if (!dripManager) return "drip manager not ready";
+    dripManager.stopAll();
+    return "stopped";
+  });
+  ipcMain.handle("drips-running", async () => (dripManager ? dripManager.running() : []));
 
   // Renderer-side tier check (same gate the connect IPCs enforce) so the UI
   // can lock the MCP / Connection tabs for Free users instead of showing a

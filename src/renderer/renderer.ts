@@ -194,7 +194,7 @@ declare global {
       layoutsOpen: (name: string) => Promise<{ ok: boolean; error?: string }>;
       layoutsSave: (name: string, panelIds: string[]) => Promise<boolean>;
       layoutsPickFolder: () => Promise<string | null>;
-      layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => Promise<boolean>;
+      layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "center" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => Promise<boolean>;
       layoutsDelete: (name: string) => Promise<boolean>;
       pickDirectory: () => Promise<string | null>;
       pickExecutable: () => Promise<string | null>;
@@ -246,6 +246,8 @@ declare global {
       dripsDelete: (name: string) => Promise<string>;
       dripsPreview: (recipe: string) => Promise<string>;
       dripsBuiltinEffects: () => Promise<Array<{ name: string; kind: "one-shot" | "loop" }>>;
+      dripsStop: () => Promise<string>;
+      dripsRunning: () => Promise<string[]>;
       // Theme
       getTheme: () => Promise<string>;
       exportGlyphhSkill: (provider: string) => Promise<{ ok: boolean; path?: string; error?: string }>;

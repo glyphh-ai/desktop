@@ -40,6 +40,9 @@ interface ServerDrip { id: string; name: string; recipe: string; }
 // UUID for patch/delete. The command path saves optimistically (updates the
 // cache + writes in the background); the Drips tab IPC awaits the server.
 
+/** How long a Settings "Preview" may hold the screen before it tears itself down. */
+const PREVIEW_MAX_MS = 12_000;
+
 // Module singleton — main.ts registers its instance so tool surfaces
 // (Glyphh, relay) can reach the running manager without importing main.
 let current: DripManager | null = null;
@@ -134,12 +137,19 @@ export class DripManager {
     return name in ONE_SHOT_EFFECTS || name in this.customs;
   }
 
-  /** Parse and execute a drip command. Returns status string.
-   *  `.drip .` (leading "." arg) plays IN-APP (windowed over the yo window);
-   *  otherwise the effect plays FULL-SCREEN over every app (OS overlay). */
-  execute(args: string[]): string {
-    let fullscreen = true;
+  /**
+   * Parse and execute a drip command. Returns status string.
+   * `.drip .` (leading "." arg) plays IN-APP (windowed over the yo window);
+   * otherwise the effect plays FULL-SCREEN over every app (OS overlay).
+   *
+   * `opts.preview` is the Settings "Preview" button: it forces WINDOWED and bounds
+   * the effect's lifetime. A preview must never seize every display — a full-screen
+   * always-on-top overlay with no timeout reads exactly like a dead app.
+   */
+  execute(args: string[], opts: { preview?: boolean; maxMs?: number } = {}): string {
+    let fullscreen = !opts.preview;
     if (args.length > 0 && args[0] === ".") { fullscreen = false; args = args.slice(1); }
+    const maxMs = opts.maxMs ?? (opts.preview ? PREVIEW_MAX_MS : 0);
 
     if (args.length === 0) { this.fireOneShot("fireworks", -1, fullscreen); return ""; }
 
@@ -164,21 +174,21 @@ export class DripManager {
 
     // Check if first non-number arg is a custom
     if (args.length === 1 && this.customs[sub]) {
-      return this.executeRaw(this.customs[sub], fullscreen);
+      return this.executeRaw(this.customs[sub], fullscreen, maxMs);
     }
 
-    return this.executeRaw(args.join(" "), fullscreen);
+    return this.executeRaw(args.join(" "), fullscreen, maxMs);
   }
 
   /** Parse raw drip string: [count] [effects...] or [-1] [opacity] [effects...]
    *  (grammar lives in shared parseDripRecipe; customs expand via the cache). */
-  private executeRaw(raw: string, fullscreen: boolean): string {
+  private executeRaw(raw: string, fullscreen: boolean, maxMs = 0): string {
     const { count, opacity, effects } = parseDripRecipe(raw, (name) =>
       this.customs[name] ? this.resolveCustomEffects(name) : null);
 
     if (count === -1) {
       const op = opacity > 0 ? opacity : 0.5;
-      for (const effect of effects) this.firePersistent(effect, op, fullscreen);
+      for (const effect of effects) this.firePersistent(effect, op, fullscreen, maxMs);
       return `drip: ${effects.join(" + ")} constant`;
     }
 
@@ -227,7 +237,7 @@ export class DripManager {
     setTimeout(() => { if (!overlay.isDestroyed()) overlay.close(); }, oneShotSafetyMs(effect));
   }
 
-  private firePersistent(effect: string, opacity: number, fullscreen = false): void {
+  private firePersistent(effect: string, opacity: number, fullscreen = false, maxMs = 0): void {
     const existing = this.persistent.get(effect);
     if (existing && !existing.isDestroyed()) {
       existing.close();
@@ -239,8 +249,24 @@ export class DripManager {
     const html = buildLoopHtml(effect, bounds.width, bounds.height, opacity);
     const overlay = this.createOverlay(bounds, fullscreen);
     overlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    overlay.on("closed", () => this.persistent.delete(effect));
+    // A LOOP overlay used to live forever with no bound and no UI to kill it: a
+    // full-screen, always-on-top, click-through window that renders as a black
+    // sheet over every display while input passes straight through it. That is
+    // indistinguishable from "the app died". Previews are always bounded.
+    let timer: NodeJS.Timeout | null = null;
+    if (maxMs > 0) {
+      timer = setTimeout(() => { if (!overlay.isDestroyed()) overlay.close(); }, maxMs);
+    }
+    overlay.on("closed", () => {
+      if (timer) clearTimeout(timer);
+      this.persistent.delete(effect);
+    });
     this.persistent.set(effect, overlay);
+  }
+
+  /** Is any persistent effect currently on screen? Drives the UI's stop affordance. */
+  running(): string[] {
+    return [...this.persistent.entries()].filter(([, ov]) => !ov.isDestroyed()).map(([name]) => name);
   }
 
   stopAll(): void {

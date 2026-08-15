@@ -414,6 +414,17 @@ async function boot() {
     });
   }
 
+  // ⌘⇧. anywhere on the system: kill every playing effect. A full-screen drip
+  // overlay is always-on-top and click-through, so a stuck one looks like a dead
+  // machine — the recovery hatch must NOT live behind the UI it is covering.
+  globalShortcut.register("CommandOrControl+Shift+.", () => {
+    try {
+      dripManager?.stopAll();
+    } catch (e) {
+      console.error("[drips] stop shortcut failed:", (e as Error).message);
+    }
+  });
+
   // ⌘⇧Space anywhere on the system: front Glyphh and open the command
   // center (the renderer's opener applies the desktop-overlay preference).
   globalShortcut.register("CommandOrControl+Shift+Space", () => {

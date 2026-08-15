@@ -310,13 +310,13 @@ contextBridge.exposeInMainWorld("glyphh", {
   panelsGetZoom: () => ipcRenderer.invoke("panels-get-zoom") as Promise<number>,
 
   // Layouts CRUD
-  layoutsList: () => ipcRenderer.invoke("layouts-list") as Promise<Array<{ name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> }>>,
+  layoutsList: () => ipcRenderer.invoke("layouts-list") as Promise<Array<{ name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; loop?: string | null; modelSelections?: Record<string, string>; glyphh?: { mode: "rail" | "left" | "right" | "center" | "none"; fraction?: number } | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> }>>,
   // Open a layout at the OS level (real tiled windows) — hands off to the OS
   // layout manager, not the legacy in-window one.
   layoutsOpen: (name: string) => ipcRenderer.invoke("layouts-open", name) as Promise<{ ok: boolean; error?: string }>,
   layoutsSave: (name: string, panelIds: string[]) => ipcRenderer.invoke("layouts-save", name, panelIds) as Promise<boolean>,
   layoutsPickFolder: () => ipcRenderer.invoke("layouts-pick-folder") as Promise<string | null>,
-  layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) =>
+  layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "center" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) =>
     ipcRenderer.invoke("layouts-save-grid", grid) as Promise<boolean>,
   layoutsDelete: (name: string) => ipcRenderer.invoke("layouts-delete", name) as Promise<boolean>,
   pickDirectory: () => ipcRenderer.invoke("pick-directory") as Promise<string | null>,
@@ -328,6 +328,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   dripsDelete: (name: string) => ipcRenderer.invoke("drips-delete", name) as Promise<string>,
   dripsPreview: (recipe: string) => ipcRenderer.invoke("drips-preview", recipe) as Promise<string>,
   dripsBuiltinEffects: () => ipcRenderer.invoke("drips-builtin-effects") as Promise<Array<{ name: string; kind: "one-shot" | "loop" }>>,
+  dripsStop: () => ipcRenderer.invoke("drips-stop") as Promise<string>,
+  dripsRunning: () => ipcRenderer.invoke("drips-running") as Promise<string[]>,
 
   // Mid-run prompt injection — add a user message to the CURRENT live run of a
   // session; the pod starts a fresh turn at the next between-turn boundary.
