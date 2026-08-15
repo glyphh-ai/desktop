@@ -14838,7 +14838,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 }
 /* In the tile, the home column's 44px gutters waste the width — a few px. */
 .ws-rail-slot[data-view="coding"] .code-thread { padding: 14px 14px; }
-.ws-rail-slot[data-view="coding"] .code-composer { padding: 4px 6px 12px; max-width: none; }
+/* Hosted composers stay CAPPED + CENTERED like the standalone agent — a wide
+   card must not stretch the input to its extents. */
+.ws-rail-slot[data-view="coding"] .code-composer { padding: 4px 6px 12px; max-width: 880px; margin: 0 auto; }
 /* While hosted, the home column contributes nothing — the workbench owns the row. */
 .code-root.agent-hosted > .code-agent { display: none; }
 /* The header's session dropdown — the composer menus' surface, fixed-positioned. */
@@ -15923,7 +15925,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* Inside a workbench/layout panel the composer's default 48/52px gutters +
    880px centering cap scrunch the input into a narrow column. Drop the gutters
    right down and release the cap so the input uses the panel's full width. */
-.echo-card-body .code-composer { padding: 4px 12px 14px; max-width: none; margin: 0; }
+.echo-card-body .code-composer { padding: 4px 12px 14px; max-width: 880px; margin: 0 auto; }
 .echo-card-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* bare glyph buttons — no UA button chrome (the gray box) */
 .echo-card-head .ws-icon-btn {
