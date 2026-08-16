@@ -20,7 +20,10 @@ export function mountDocThumb(thumb: HTMLElement, file: string): void {
     thumb.appendChild(sheet);
   };
   const hit = docThumbCache.get(file);
-  if (hit !== undefined) { paint(hit); return; }
+  // A cache hit paints via microtask: callers build the card BEFORE appending
+  // it, so a synchronous paint would see isConnected=false and skip — the
+  // "previews vanish once the cache warms" bug.
+  if (hit !== undefined) { queueMicrotask(() => paint(hit)); return; }
   void (window as unknown as { glyphh?: { gdocRead?: (f: string) => Promise<{ ok: boolean; markdown?: string }> } })
     .glyphh?.gdocRead?.(file)
     .then((res) => {
