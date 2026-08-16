@@ -519,7 +519,7 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
   let apps: Array<{ id: string; name: string }>;
   try {
     apps = (await window.glyphh.panelAppsList()).filter((a: any) =>
-      (a.url || a.isBrowser === false) && a.appArchetype !== "glyphh-self" && a.slug !== "glyphh");
+      (a.url || a.isBrowser === false || a.appArchetype === "glyphh-app") && a.appArchetype !== "glyphh-self" && a.slug !== "glyphh");
   } catch {
     apps = [];
   }
@@ -785,7 +785,11 @@ function cellBlocked(panelId: string): boolean {
   if (isToolPanel(panelId)) return false;
   if (panelId.startsWith("agent:") || panelId === "agents-tabbed") return false;
   const app = resolveApp(panelId);
-  if (!app || app.appArchetype === "glyphh-self") return false;
+  // Glyphh-built apps (glyphh-self = the agent, glyphh-app = Office/Slides/etc.) run as
+  // webview PANELS inside a workspace, not native OS windows — never block them, even
+  // when they carry no browser url. Only a genuine native app (its own .app/exec, or a
+  // browser-off desktop app) is blocked: it opens in its own OS window, not a panel.
+  if (!app || app.appArchetype === "glyphh-self" || app.appArchetype === "glyphh-app") return false;
   return app.isBrowser === false || !!app.execPath;
 }
 
