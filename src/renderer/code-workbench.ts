@@ -7506,6 +7506,11 @@ async function init(): Promise<void> {
   // The agent dock changes how much width the rails get, but the workbench owns
   // that math — the anchor module asks for a reflow rather than duplicating it.
   (wbApp as { __wbReflow?: () => void }).__wbReflow = () => { applyResponsiveWidths(); };
+  // Re-home the agent OUT of any Echo card back to `.code-root`'s direct child (clearing
+  // `agent-hosted`) — the ONLY DOM spot the dock CSS (`.code-root[data-anchor] > .code-agent`)
+  // can style. applyAnchor() calls this whenever the anchor is a dock mode, so PICKING the
+  // dock from the menu finally moves the agent. Lightweight (no render) to avoid recursion.
+  (wbApp as { __wbParkAgent?: () => void }).__wbParkAgent = () => { parkAgent(); };
   // The collapsed bar's transcript button — TOGGLES the transcript panel:
   // open it if absent, close it (parking the thread home) if present.
   (wbApp as { __wbOpenThread?: () => void }).__wbOpenThread = () => {

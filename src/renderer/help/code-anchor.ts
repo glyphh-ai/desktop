@@ -126,6 +126,12 @@ export function applyAnchor(next: AnchorMode = domMode()): void {
   if (mode === "none" && !document.querySelector("#code-wb-rails .ws-right-rail")) mode = "rail";
   el.dataset.anchor = mode;
   document.body.dataset.glyphhAnchor = mode;
+  // A DOCK mode needs the agent as `.code-root`'s DIRECT child (out of any Echo card,
+  // `agent-hosted` cleared) or none of the dock CSS above matches — the agent stays
+  // wherever it was hosted and NOTHING moves. Ask the workbench to re-home it.
+  if (mode === "left" || mode === "right" || mode === "center") {
+    (window as unknown as { __wbParkAgent?: () => void }).__wbParkAgent?.();
+  }
   applyFraction();
   const collapsed = mode === "center";
   relocateActions(collapsed);
