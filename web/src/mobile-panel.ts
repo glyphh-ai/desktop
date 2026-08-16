@@ -5,16 +5,23 @@
  * it flows, base64-JPEG canvas as the always-on floor), and drives it with FULL
  * TOUCH input translated into the desktop's `panel.input` vocabulary.
  *
- * It is a hand port, not an import: the renderer component captures MOUSE +
- * KEYBOARD events; a phone has neither. Everything else — the wire protocol
- * (`{t:"req",id,method,params}` req/res, `{t:"push",channel,data}` frames),
- * the WebRTC offer/answer/ice flow, the JPEG floor, the transport swap, the
- * coord scaling (touch → intrinsic stream pixels) — matches panel-stream.ts and
- * the desktop host (src/main/panel-host.ts / panel-webrtc.ts) exactly.
+ * It is a hand port, not an import: the renderer component captures MOUSE
+ * events; a phone has none, so pointer drive is touch-translated here. Text
+ * entry IS shared — the hidden key proxy (src/renderer/panel-kb.ts, mounted by
+ * both surfaces) is what lets the virtual keyboard type into a REMOTE field:
+ * a tap focuses it (the user gesture iOS requires to raise the keyboard), and
+ * it forwards committed text/keys/paste over panel.input. Everything else —
+ * the wire protocol (`{t:"req",id,method,params}` req/res,
+ * `{t:"push",channel,data}` frames), the WebRTC offer/answer/ice flow, the
+ * JPEG floor, the transport swap, the coord scaling (touch → intrinsic stream
+ * pixels) — matches panel-stream.ts and the desktop host
+ * (src/main/panel-host.ts / panel-webrtc.ts) exactly.
  *
  * The module is framework-free (pure DOM); the React tray (mobile.tsx) mounts the
  * returned `.el` into a holder and reads the connection `state` for its overlay.
  */
+
+import { mountPanelKb } from "../../src/renderer/panel-kb";
 
 // ── the SDK handle the web bridge exposes (window.glyphhSdk) ─────────────────
 
@@ -239,6 +246,25 @@ export function mountMobilePanel(opts: MobilePanelOptions): MobilePanelHandle {
   }
   function input(event: Record<string, unknown>): void { if (panelId) send("panel.input", { panelId, event }); }
 
+  // ── keyboard: the shared hidden key proxy (src/renderer/panel-kb.ts) ────────
+  // iOS raises a virtual keyboard only for a focused local editable, and its
+  // soft keyboard delivers text via beforeinput/composition rather than real
+  // keydowns — the proxy captures both and forwards insertText batches plus
+  // named special keys (the desktop derives VK codes). Copy/cut round-trip the
+  // far page's selection back onto THIS device's clipboard.
+  const kb = mountPanelKb(root, {
+    key: (ev) => input(ev as unknown as Record<string, unknown>),
+    insertText: (text) => input({ type: "insertText", text }),
+    clipboard: (action) => { void remoteClipboard(action); },
+  });
+  async function remoteClipboard(action: "copy" | "cut"): Promise<void> {
+    if (!panelId) return;
+    try {
+      const r = (await call("panel.clipboard", { panelId, action })) as { text?: string };
+      if (r?.text) await navigator.clipboard?.writeText(r.text);
+    } catch { /* nothing selected, or clipboard needs a fresher gesture — nothing to land */ }
+  }
+
   // Gesture state machine. One finger = pointer (tap→click, drag→down/move/up,
   // hold→right-click). Two fingers = wheel/scroll (no button held). We send
   // move+down synthetically so text selection and drag-drop work on the far page.
@@ -321,6 +347,10 @@ export function mountMobilePanel(opts: MobilePanelOptions): MobilePanelHandle {
         if (quick) {
           input({ type: "mouse", action: "down", x: startX, y: startY, button: "left", buttons: 1, mods: 0, clickCount: 1 });
           input({ type: "mouse", action: "up", x: startX, y: startY, button: "left", buttons: 0, mods: 0, clickCount: 1 });
+          // The tap IS the user gesture iOS demands: focus the hidden key proxy
+          // NOW so a tapped remote field can be typed into (there is no local
+          // editable to focus — the page lives on the desktop).
+          kb.focus();
         }
       }
     }
@@ -421,6 +451,7 @@ export function mountMobilePanel(opts: MobilePanelOptions): MobilePanelHandle {
     if (disposed) return;
     disposed = true;
     clearLongPress();
+    kb.dispose();
     try { ro.disconnect(); } catch { /* noop */ }
     if (resizeTimer) clearTimeout(resizeTimer);
     for (const [, p] of pending) { clearTimeout(p.timer); p.reject(new Error("panel disposed")); }

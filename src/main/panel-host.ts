@@ -35,7 +35,7 @@
  * negotiates a WebRTC peer for the media and falls back to this automatically.
  */
 
-import { BrowserWindow } from "electron";
+import { BrowserWindow, clipboard as osClipboard } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-client.js";
 import { toCdp, clampDim } from "./panel-input.js";
@@ -57,6 +57,19 @@ import { maybeStartWebrtc, handleWebrtcSignal, isWebrtcSignal, closeWebrtc, feed
  * for a JPEG stream. The persistent default partition still applies (the
  * user's real logged-in cookies), and CDP stays attached for INPUT + nav.
  */
+/** Top-frame selection reader for {@link ElectronPanelSource.clipboard}:
+ *  prefers the focused input/textarea's own range (window.getSelection() is
+ *  empty inside form controls), falls back to the document selection. */
+const SELECTION_JS = `(() => {
+  const el = document.activeElement;
+  if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
+    const v = String(el.value ?? "");
+    const s = el.selectionStart, e = el.selectionEnd;
+    if (typeof s === "number" && typeof e === "number" && e > s) return v.slice(s, e);
+  }
+  return String(window.getSelection() || "");
+})()`;
+
 export class ElectronPanelSource implements PanelSource {
   private win: BrowserWindow | null = null;
   private quality = 70;
@@ -159,6 +172,37 @@ export class ElectronPanelSource implements PanelSource {
     const cmd = toCdp(ev);
     if (!cmd) return;
     await this.cdp(cmd.method, cmd.params).catch(() => {});
+  }
+
+  async clipboard(action: "copy" | "cut"): Promise<{ text: string }> {
+    const wc = this.wc;
+    if (this.closed || !wc) return { text: "" };
+    // Selection first: reading it over CDP has no clipboard side effects and
+    // covers focused inputs/textareas (where window.getSelection() is empty).
+    let text = "";
+    try {
+      const r = (await this.cdp("Runtime.evaluate", { expression: SELECTION_JS, returnByValue: true })) as { result?: { value?: unknown } };
+      if (typeof r?.result?.value === "string") text = r.result.value;
+    } catch { /* selection unreadable (e.g. cross-origin frame) — fall back to the OS clipboard below */ }
+    const needPoll = !text;
+    const before = osClipboard.readText();
+    if (action === "cut") {
+      // Cut must really edit the page, not just report the text.
+      try { wc.cut(); } catch { /* view mid-teardown */ }
+    } else if (needPoll) {
+      try { wc.copy(); } catch { /* view mid-teardown */ }
+    }
+    if (needPoll) {
+      // copy()/cut() land in the OS clipboard asynchronously with no completion
+      // event — poll briefly and only trust a CHANGED value (an unchanged one is
+      // the user's pre-existing desktop clipboard, not this selection).
+      for (let i = 0; i < 8 && !text; i++) {
+        await new Promise<void>((r) => setTimeout(r, 50));
+        const now = osClipboard.readText();
+        if (now && now !== before) text = now;
+      }
+    }
+    return { text };
   }
 
   async nav(action: PanelNavAction, url?: string): Promise<void> {
@@ -298,6 +342,18 @@ export function installPanelHost(): void {
     }
     await source.nav(action, p?.url);
     return { ok: true };
+  });
+
+  // The copy/cut round-trip: run the verb in the streamed page, hand the text
+  // back so the web client writes it to ITS OWN clipboard (key events can't
+  // move data between the remote page and the browser's machine).
+  registerRelayHandler("panel.clipboard", async (params) => {
+    const p = params as { panelId?: string; action?: string } | null;
+    const source = sources.get(String(p?.panelId ?? ""));
+    if (!source) throw new Error(`panel ${p?.panelId ?? ""} is not open`);
+    const action = p?.action;
+    if (action !== "copy" && action !== "cut") throw new Error("panel.clipboard requires an action: copy | cut");
+    return source.clipboard(action);
   });
 
   registerRelayHandler("panel.close", async (params) => {
