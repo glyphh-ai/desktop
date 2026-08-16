@@ -231,6 +231,31 @@ export function buildContract(client, deps) {
     getBackgroundMode: async () => (await prefsCache.get()).backgroundMode ?? false,
     setBackgroundMode: (enabled) => prefsCache.set('backgroundMode', !!enabled),
 
+    // ── Glyphh Office · Slides (OfficeSlidesClient) ──────────────────────────────
+    // Same wire shapes as the desktop preload, so the Slides panel (wb-gpoint)
+    // is surface-agnostic: the org's R2 library through the SDK on every surface.
+    gpointList: async () => {
+      try {
+        const decks = (await client.officeSlides.list()).map((m) => ({
+          file: m.file, title: m.title, slides: m.slides,
+          mtime: Date.parse(m.updatedAt) || 0, size: m.sizeBytes,
+        }));
+        return { ok: true, decks };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err), decks: [] }; }
+    },
+    gpointRead: async (file) => {
+      try { return { ok: true, content: (await client.officeSlides.get(file)).html }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gpointDelete: async (file) => {
+      try { await client.officeSlides.delete(file); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gpointWrite: async (file, html) => {
+      try { await client.officeSlides.put(file, html); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+
     // ── Connections (ConnectionsClient) ──────────────────────────────────────────
     connectionsList: read(() => client.connections.resolvedTools(), toLegacyConnections, EMPTY.connections),
     connectionToolsList: (id) =>

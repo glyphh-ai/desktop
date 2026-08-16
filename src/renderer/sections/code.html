@@ -88,10 +88,35 @@
                         <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                         <span>Plan</span>
                       </button>
-                      <button class="code-view-btn code-view-menu-item" data-view="releases" title="Releases — manage and publish your app's builds">
-                        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                        <span>Releases</span>
-                      </button>
+                      <!-- Office ▸ — Glyphh Office: agent-authored documents
+                           (Slides live; Drive/Docs/Sheets join as they ship). -->
+                      <div class="code-view-menu-sub-wrap">
+                        <button class="code-view-btn code-view-menu-item code-view-menu-more" type="button" title="Glyphh Office">
+                          <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          <span>Office</span>
+                          <svg class="code-view-menu-sub-caret" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>
+                        </button>
+                        <div class="code-drop code-view-submenu">
+                          <button class="code-view-btn code-view-menu-item" data-view="gpoint" title="Glyphh Slides — agent-built presentations">
+                            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="13" rx="2"/><polygon points="10 6.5 15 9.5 10 12.5"/><line x1="12" y1="16" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>
+                            <span>Slides</span>
+                          </button>
+                        </div>
+                      </div>
+                      <!-- More ▸ — the less-used panels, one flyout deeper. -->
+                      <div class="code-view-menu-sub-wrap">
+                        <button class="code-view-btn code-view-menu-item code-view-menu-more" type="button" title="More panels">
+                          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+                          <span>More</span>
+                          <svg class="code-view-menu-sub-caret" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>
+                        </button>
+                        <div class="code-drop code-view-submenu">
+                          <button class="code-view-btn code-view-menu-item" data-view="releases" title="Releases — manage and publish your app's builds">
+                            <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                            <span>Releases</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

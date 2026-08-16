@@ -27,7 +27,8 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { openAppByRef, openBrowserAt, openGPointPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName } from "./gpoints";
 import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
 import { getAccountInfo, AUTH_SERVER, getAuthToken, ensureFreshToken } from "./auth";
@@ -660,6 +661,68 @@ const TOOLS: ToolDef[] = [
     doc: "list_windows() — the app panels currently open beside this conversation",
     action: () => ({ kind: "read", title: "List open windows" }),
     run: async () => cap(JSON.stringify(await listOpenAppWindows(), null, 1)),
+  },
+  // ── Glyphh Office · SLIDES: self-contained HTML slide decks in the ORG'S
+  //    library (R2 via the SDK). The Slides panel is read-only (library → reader →
+  //    presenter); these tools are the ONLY way decks get built or changed. ──
+  {
+    name: "list_gpoints",
+    doc: "list_gpoints() — the org's Slides library (Glyphh Office slide decks): file, title, slide count",
+    action: () => ({ kind: "read", title: "List slide decks" }),
+    run: async () => {
+      const decks = await listGPoints();
+      if (!decks.length) return "(no slide decks yet — create_gpoint builds one)";
+      return cap(JSON.stringify(decks.map(({ file, title, slides }) => ({ file, title, slides })), null, 1));
+    },
+  },
+  {
+    name: "read_gpoint",
+    doc: "read_gpoint(name) — a slide deck's HTML source (to revise it, edit and create_gpoint under the same name)",
+    action: (a) => ({ kind: "read", title: `Read deck "${String(a.name ?? "")}"` }),
+    run: async (a) => cap(await readGPoint(a.name), READ_CAP),
+  },
+  {
+    name: "create_gpoint",
+    doc: "create_gpoint(name, html) — create or overwrite a Glyphh Slides deck in the org's shared library. html must be ONE self-contained document (all fonts/images inlined, no network): a fixed 1920×1080 #stage the script scales to fit the window, <section class=\"slide\" id=\"s1\">…\"sN\" pages, optional .frag[data-step] build steps revealed in groups, a #prog progress bar, and a nav script (ArrowRight/Space/click = next step, ArrowLeft = back, Home/End, hash #sN deep-links a slide with frags revealed). Model it on an existing deck via read_gpoint.",
+    action: (a) => ({
+      kind: "edit",
+      title: `Create deck "${String(a.name ?? "")}"`,
+      detail: `${String(a.html ?? "").length} chars`,
+    }),
+    run: async (a) => {
+      const html = String(a.html ?? "");
+      if (!/<section[^>]*class="[^"]*\bslide\b/i.test(html)) {
+        return 'ERROR: not a slide deck — the document needs <section class="slide"> pages';
+      }
+      const r = await writeGPoint(a.name, html);
+      return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — it's in the org's Slides panel now, on every surface; open_gpoint("${r.file}") jumps straight to it`;
+    },
+  },
+  {
+    name: "delete_gpoint",
+    doc: "delete_gpoint(name) — permanently delete a slide deck from the org library",
+    action: (a) => ({ kind: "dangerous", title: `Delete deck "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      await deleteGPoint(a.name);
+      return `deleted ${gpointFileName(a.name)}`;
+    },
+  },
+  {
+    name: "open_gpoint",
+    doc: "open_gpoint(name?) — open the Slides panel beside this conversation; with a deck name it opens straight into that deck's reader",
+    action: (a) => ({ kind: "command", title: a.name ? `Open deck "${String(a.name)}"` : "Open the Slides panel" }),
+    run: async (a) => {
+      if (!a.name) { openGPointPanel(); return "opened the Slides panel"; }
+      const file = gpointFileName(a.name);
+      const html = await readGPoint(file).catch(() => null);
+      if (html === null) {
+        const decks = await listGPoints();
+        return `ERROR: no deck "${file}" — available: ${decks.map((d) => d.file).join(", ") || "(none)"}`;
+      }
+      const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() || undefined;
+      openGPointPanel(file, title);
+      return `opened ${file} in the Slides panel`;
+    },
   },
   // ── RPA — drive an open app panel (the same handlers the attach socket and
   // loopback MCP expose, invoked here directly on-machine). ──

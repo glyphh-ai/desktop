@@ -4144,6 +4144,25 @@ function paintAppsGrid(host: RailGridHost): void {
   });
   list.appendChild(home);
 
+  // SLIDES — Glyphh Office's first app: a FIXED tile beside Home (a builtin
+  // tool panel, not an installed app row — no row backs it, so no edit/delete).
+  const slides = document.createElement("button");
+  slides.className = "app-rail-tile";
+  slides.type = "button";
+  slides.title = "Slides — Glyphh Office";
+  const slIcon = document.createElement("div");
+  slIcon.className = "tile-icon";
+  slIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2" y="3" width="20" height="13" rx="2"/><polygon points="10 6.5 15 9.5 10 12.5"/><line x1="12" y1="16" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>`;
+  const slName = document.createElement("div");
+  slName.className = "tile-name";
+  slName.textContent = "Slides";
+  slides.append(slIcon, slName);
+  slides.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gpoint");
+  });
+  list.appendChild(slides);
+
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
   host.page = ap.page;
   for (const a of ap.items) {
@@ -4544,6 +4563,7 @@ export function initCode(): void {
     if (cmd.action === "open" && cmd.app) w.__wbOpenApp?.(cmd.app);
     else if (cmd.action === "terminal") (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
     else if (cmd.action === "tool" && (cmd as { tool?: string }).tool) (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.((cmd as { tool?: string }).tool!);
+    else if (cmd.action === "gpoint") (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
     else if (cmd.action === "popup" && (cmd as { url?: string }).url) (window as unknown as { __wbOpenPopup?: (u: string) => void }).__wbOpenPopup?.((cmd as { url?: string }).url!);
     else if (cmd.action === "open-many" && cmd.apps) {
       // A NAMED layout goes through the one true layout-open (the switcher's

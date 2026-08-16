@@ -27,10 +27,10 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import * as THREE from "three";
-// The anchor module is ALSO bundled into the help build (home.js) — two module
-// instances. That's safe because code-anchor derives its live mode from the
-// DOM (body[data-glyphh-anchor]), the one shared source of truth.
-import { applyAnchor, type AnchorMode } from "./help/code-anchor.js";
+// anchorMode() reads the live global anchor (body[data-glyphh-anchor]) — used to keep
+// a DOCKED agent out of layout cards/seats so the dock is permanent.
+import { anchorMode } from "./help/code-anchor.js";
+import { initGPoint, type GPointPanel } from "./wb-gpoint.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -78,7 +78,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "thread" | "section" | "app";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "thread" | "section" | "app" | "gpoint";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -148,6 +148,22 @@ interface PreviewSlot {
   tabs?: PreviewTab[]; activeTab?: number;
 }
 
+/** gPoint — Glyphh power points. The deck library (~/.glyphh/gpoints) as
+ *  cards; opening one flips the SAME slot into a reader (slide rail + stage).
+ *  `file` is runtime-only — a restored layout always lands on the library.
+ *  There are NO edit affordances anywhere: the agent builds decks. */
+interface GPointSlot {
+  id: number; view: "gpoint";
+  /** The open deck's filename inside the gpoints folder (unset = library). */
+  file?: string;
+  /** The open deck's title — the reader bar and slot header show it. */
+  title?: string;
+  /** Current slide — survives re-renders and seeds presenter mode. */
+  slideIdx?: number;
+  /** Reader slide-rail width (px) — the drag handle's setting. */
+  railWidth?: number;
+  sticky?: boolean;
+}
 interface PlanSlot {
   id: number; view: "plan";
   sticky?: boolean;
@@ -174,7 +190,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot | GPointSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -207,6 +223,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
   thread:   { title: "Transcript", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
+  gpoint:   { title: "Slides",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="13" rx="2"/><polygon points="10 6.5 15 9.5 10 12.5"/><line x1="12" y1="16" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>` },
 };
 
 // ── Browser panel: start page + error pages ─────────────────────────────
@@ -556,7 +573,7 @@ async function init(): Promise<void> {
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; glyphh?: { mode: "rail" | "left" | "right" | "center" | "none"; fraction?: number } | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -669,7 +686,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "releases") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "releases" || v === "gpoint") {
           slots.push(makeSlot(v));
         }
       }
@@ -802,7 +819,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint");
       return;
     }
     placeSlot(makeSlot(view));
@@ -866,7 +883,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint"): void;
     openPreviewHtml(html: string, label?: string): void;
     openPreviewUrl(url: string): void;
     openFileTab(node: { name: string; path: string }, content: string, mode?: "preview" | "code"): void;
@@ -978,6 +995,7 @@ async function init(): Promise<void> {
     if (view === "echo") return { id, view };
     if (view === "releases") return { id, view };
     if (view === "tasks") return { id, view };
+    if (view === "gpoint") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1436,6 +1454,7 @@ async function init(): Promise<void> {
     const meta = VIEW_META[slot.view] || { title: slot.view, icon: "" };
     const title = slot.view === "app" ? slot.name
       : slot.view === "section" ? (SECTION_TITLES[slot.section] || slot.section)
+      : slot.view === "gpoint" && slot.file ? (slot.title || meta.title)
       : meta.title;
     const icon = slot.view === "coding" ? "" : meta.icon;
     const wrap = document.createElement("div");
@@ -1447,11 +1466,21 @@ async function init(): Promise<void> {
     const urlToggle = slot.view === "app"
       ? `<button class="ws-icon-btn slot-urltoggle${(slot as AppSlot).urlBarHidden ? "" : " active"}" title="Address bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>`
       : "";
+    // Pop-out: web panels (http apps, the Browser) and Slides can leave the
+    // app for a standalone OS window. Glyphh apps stay — their file:// entry
+    // needs the in-app webview capabilities.
+    const canPopout = slot.view === "gpoint"
+      || slot.view === "preview"
+      || (slot.view === "app" && !slot.glyphh && /^https?:\/\//i.test(slot.url));
+    const popoutBtn = canPopout
+      ? `<button class="ws-icon-btn slot-popout" title="Pop out — its own window"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`
+      : "";
     wrap.innerHTML = `
       <div class="ws-rail-slot-header" draggable="true" title="Drag to rearrange">
         ${icon}
         <span class="title"></span>
         ${urlToggle}
+        ${popoutBtn}
         <button class="ws-icon-btn slot-maximize" title="${isMax ? "Restore" : "Maximize"}">
           ${isMax ? RESTORE_SVG : MAXIMIZE_SVG}
         </button>
@@ -1464,6 +1493,19 @@ async function init(): Promise<void> {
       <div class="ws-rail-slot-body"></div>
     `;
     (wrap.querySelector(".title") as HTMLElement).textContent = title;
+    wrap.querySelector(".slot-popout")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const yo = (window as unknown as { glyphh?: { panelPopout?: (r: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
+      if (!yo?.panelPopout) return;
+      if (slot.view === "gpoint") {
+        void yo.panelPopout({ kind: "slides", file: slot.file, title: slot.title || "Slides" });
+      } else {
+        const url = slot.view === "app" ? slot.url : (slot as PreviewSlot).url || "";
+        if (!/^https?:\/\//i.test(url)) return;
+        void yo.panelPopout({ kind: "url", url, title });
+      }
+      closeSlot(slot.id);
+    });
     wrap.querySelector(".slot-maximize")!.addEventListener("click", (ev) => {
       ev.stopPropagation();
       toggleMaximize(slot.id);
@@ -1541,6 +1583,12 @@ async function init(): Promise<void> {
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
+    else if (slot.view === "gpoint") {
+      // Sync, inline-styled first paint — immune to CSS/theme/module state.
+      // The real render replaces it; if that dies, this text stays visible.
+      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
+      void renderGPointIntoSlot(body, slot, wrap);
+    }
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
     else if (slot.view === "echo") {
@@ -1560,6 +1608,48 @@ async function init(): Promise<void> {
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
   }
+
+  // ── gPoint — Glyphh power points (implementation: wb-gpoint.ts) ─────────
+  // The workbench lends the panel its confirm modal, a repaint and a live
+  // slot lookup; everything deck-shaped lives in the module. A lazy singleton
+  // behind a HOISTED renderer — the same shape as every other panel's render
+  // function, so the dispatch works no matter when the first render fires
+  // (a const assigned mid-init is in the TDZ for any render before it).
+  let gpointPanel: GPointPanel | null = null;
+  function gpointPanelInstance(): GPointPanel {
+    if (!gpointPanel) {
+      gpointPanel = initGPoint({
+        confirm: (o) => appConfirm(o),
+        slotById: (id) => rails.flatMap((r) => r.slots).find((s) => s.id === id && s.view === "gpoint") as GPointSlot | undefined,
+        icon: VIEW_META.gpoint.icon,
+      });
+    }
+    return gpointPanel;
+  }
+  function renderGPointIntoSlot(body: HTMLElement, slot: GPointSlot, wrap: HTMLElement): Promise<void> {
+    return gpointPanelInstance().renderIntoSlot(body, slot, wrap);
+  }
+
+  // The agent's open_gpoint (and any main-side opener) lands here: reuse the
+  // open gPoint panel or place one, optionally straight onto a deck.
+  (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint = (file, title) => {
+    const land = (s: GPointSlot): void => {
+      if (!file) return;
+      gpointPanelInstance().invalidate(file);   // the agent may have just rebuilt it
+      s.file = file;
+      s.title = title || file.replace(/\.html$/i, "");
+      s.slideIdx = 0;
+    };
+    const slot = rails.flatMap((r) => r.slots).find((s) => s.view === "gpoint") as GPointSlot | undefined;
+    if (!slot) {
+      const fresh = makeSlot("gpoint") as GPointSlot;
+      land(fresh);
+      placeSlot(fresh);
+      return;
+    }
+    land(slot);
+    renderRails();
+  };
 
   // ── Coding Agent view — the SAME agent, reparented into a tile ──
   // The slot hosts the live .code-agent element (thread, composer, everything
@@ -2118,6 +2208,14 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "preview",
       };
+      // Slides — Glyphh Office's first app rides the wall beside the Browser.
+      const slidesTile: EchoTile = {
+        name: VIEW_META.gpoint.title,
+        slug: "gpoint",
+        glyphSvg: VIEW_META.gpoint.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
+        kind: "tool",
+        toolView: "gpoint",
+      };
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
       // HOME is the wall's FIRST, FIXED tile: the mascot mark, always back to
       // the + New Session landing. It is not an installed app — it can't be
@@ -2129,7 +2227,7 @@ async function init(): Promise<void> {
         kind: "app",
         sticky: true,
       };
-      const midBand = [glyphhTile, browserTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      const midBand = [glyphhTile, browserTile, slidesTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       buildWall([midBand]);
     }).catch(() => buildWall([]));
 
@@ -2965,6 +3063,35 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      // Pop-out — same rule as the rail-slot header: web panels (http apps,
+      // the Browser) and Slides can leave the app for a standalone OS window.
+      // Glyphh apps stay (their file:// entry needs in-app webview caps).
+      const canPop = e.tile.toolView === "gpoint"
+        || e.tile.toolView === "preview"
+        || (e.tile.kind === "app" && !e.tile.glyphh && /^https?:\/\//i.test(e.tile.url || ""));
+      if (canPop) {
+        const popBtn = document.createElement("button");
+        popBtn.className = "ws-icon-btn echo-card-popout";
+        popBtn.title = "Pop out — its own window";
+        popBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+        card.querySelector(".echo-card-head")!.insertBefore(popBtn, card.querySelector(".echo-card-expand"));
+        popBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const yo = (window as unknown as { glyphh?: { panelPopout?: (r: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
+          if (!yo?.panelPopout) return;
+          if (e.tile.toolView === "gpoint") {
+            const s = e.toolSlot as GPointSlot | undefined;
+            void yo.panelPopout({ kind: "slides", file: s?.file, title: s?.title || "Slides" });
+          } else {
+            const url = e.tile.toolView === "preview"
+              ? ((e.toolSlot as PreviewSlot | undefined)?.url || "")
+              : (e.tile.url || "");
+            if (!/^https?:\/\//i.test(url)) return;
+            void yo.panelPopout({ kind: "url", url, title: e.tile.name });
+          }
+          closeCard(e);
+        });
+      }
       wireCardDrag(e, card, card.querySelector<HTMLElement>(".echo-card-head")!);
       card.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
@@ -3110,7 +3237,10 @@ async function init(): Promise<void> {
       if (!card) return null;
       card.classList.add("echo-agent-card");
       const agent = document.querySelector<HTMLElement>(".code-agent");
-      if (agent) {
+      // A DOCKED agent (global anchor) is PERMANENT — never steal it out of the dock
+      // into an Echo card (that sets `agent-hosted`, which hides the dock). Only the
+      // in-workspace `rail` anchor lets the agent be hosted as a card/seat.
+      if (agent && anchorMode() === "rail") {
         card.querySelector<HTMLElement>(".echo-card-body")!.appendChild(agent);
         document.querySelector(".code-root")?.classList.add("agent-hosted");
       }
@@ -3211,8 +3341,12 @@ async function init(): Promise<void> {
           let entry: TileEntry | null = null;
           if (id.startsWith("tool:")) {
             const v = id.slice(5) === "editor" ? "monaco" : id.slice(5);
+            // A DOCKED agent is already on screen — skip a layout's agent cell so the
+            // dock stays put and the layout just fills the workspace around it. (In
+            // `rail` the agent IS a layout panel, so the card is created as before.)
+            if (v === "coding" && anchorMode() !== "rail") continue;
             if (v === "coding") entry = openAgentCard();
-            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "releases") {
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "releases" || v === "gpoint") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
@@ -3578,6 +3712,10 @@ async function init(): Promise<void> {
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
         else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
+        else if (slot.view === "gpoint") {
+          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
+          void renderGPointIntoSlot(body, slot, card);
+        }
         return;
       }
       if (t.navApp) {
@@ -3640,7 +3778,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint"): TileEntry => {
       let entry = openList.find((x) => x.tile.toolView === view);
       if (!entry) {
         entry = entries.find((x) => x.tile.toolView === view)
@@ -6949,7 +7087,7 @@ async function init(): Promise<void> {
       // excluded like coding — Echo must never adopt the live transcript.)
       if (echoCtl && v !== "echo" && v !== "coding" && v !== "thread") {
         if (echoCtl.hasTool(v)) echoCtl.closeTool(v);
-        else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases");
+        else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint");
         moreMenu?.classList.add("hidden");
         return;
       }
@@ -7130,12 +7268,13 @@ async function init(): Promise<void> {
   }
 
   function openLayoutRowArranged(layout: LayoutRow, appRows: PanelAppRow[]): void {
-    // The layout's ANCHOR opinion applies first (same "no opinion" contract as
-    // folder/loop/sessionMode: absent = leave the anchor alone). applyAnchor
-    // reads/writes the DOM, so both bundles' anchor-module instances agree.
-    if (layout.glyphh?.mode) applyAnchor(layout.glyphh.mode as AnchorMode);
+    // The agent anchor is a GLOBAL setting (the agent's own picker → glyphhAnchorMode),
+    // never a layout property: opening a layout leaves the agent exactly where the user
+    // anchored it and just fills the available workspace.
     // Echo IS the layout manager: while it is mounted, a layout open lands
     // as Echo cards on the layout's grid (folder switching already ran).
+    // A DOCKED agent is never a layout panel — openAgentCard() refuses to steal it and
+    // the layout's agent cell is skipped, so the dock simply survives the open.
     if (echoCtl) { echoCtl.openLayout(layout); return; }
     const resolveCell = (panelId: string): PanelAppRow | undefined => {
       const key = panelId.trim().toLowerCase();
@@ -7263,7 +7402,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "releases"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "releases", "gpoint"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -7476,8 +7615,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases", "tasks"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases", "tasks", "gpoint"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

@@ -63,6 +63,7 @@ type WbCmd =
   | { action: "open-many"; apps: WbAppRef[]; layoutName?: string }
   | { action: "terminal" }
   | { action: "tool"; tool: string }
+  | { action: "gpoint"; file?: string; title?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -121,7 +122,7 @@ function focusGlyphhWindow(): void {
 /** Built-in apps that aren't in the server library. */
 const TOOL_BUILTINS: Record<string, string> = {
   plan: "plan", files: "files", editor: "monaco", monaco: "monaco",
-  diff: "diff", echo: "echo",
+  diff: "diff", echo: "echo", gpoint: "gpoint", gpoints: "gpoint",
 };
 function builtinRef(key: string): WbAppRef | "terminal" | { tool: string } | null {
   if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
@@ -225,6 +226,12 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   return { slug: app.slug, name: app.name };
 }
 
+
+/** Open the gPoint panel — with a deck file, straight into its reader
+ *  (the agent's open_gpoint; the plain panel rides open_app("gpoint")). */
+export function openGPointPanel(file?: string, title?: string): void {
+  sendWbCmd(file ? { action: "gpoint", file, title } : { action: "tool", tool: "gpoint" });
+}
 
 /** Open the tabbed Browser panel at a specific URL (the agent's preview
  *  surface for built/deployed apps — url bar, tabs, DevTools, unlike the raw
