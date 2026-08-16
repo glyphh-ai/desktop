@@ -4689,15 +4689,13 @@ export function initCode(): void {
     // undo the collapsed-mode surgery), never yank it to a full-screen "new session" one-off.
     if (anchorMode() !== "rail") applyAnchor(); else gotoSection("agent");
   };
-  // The rail's + starts a new Code session, straight to the agent.
-  el("code-new-chat")?.addEventListener("click", () => newSessionLanding());
-  // HOME — the rail's mark and the wall's first tile. Home IS the new-session
-  // screen now (the dashboard is no longer the landing), so the rail's Home
-  // button runs the exact same full-reset landing as the rail's + New Session.
-  el("rail-home-btn")?.addEventListener("click", () => newSessionLanding());
-  // The GLYPHH icon (command-center tile + rail home tile) opens the NEW SESSION
-  // screen — same as the rail's + New Session — not the dashboard.
-  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionLanding;
+  // A new session JUST LOADS THE AGENT in place — no separate "New Session"
+  // screen. The rail's +, Home, and the GLYPHH tile all empty the current
+  // thread and keep the agent exactly where it is (docked, hosted, or full),
+  // the same as the agent header's own + button.
+  el("code-new-chat")?.addEventListener("click", () => newSessionInPlace());
+  el("rail-home-btn")?.addEventListener("click", () => newSessionInPlace());
+  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.
