@@ -28,7 +28,7 @@ import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openBrowserAt, openGPointPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
-import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName } from "./gpoints";
+import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
 import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
 import { getAccountInfo, AUTH_SERVER, getAuthToken, ensureFreshToken } from "./auth";
@@ -662,45 +662,93 @@ const TOOLS: ToolDef[] = [
     action: () => ({ kind: "read", title: "List open windows" }),
     run: async () => cap(JSON.stringify(await listOpenAppWindows(), null, 1)),
   },
-  // ── Glyphh Office · SLIDES: self-contained HTML slide decks in the ORG'S
-  //    library (R2 via the SDK). The Slides panel is read-only (library → reader →
-  //    presenter); these tools are the ONLY way decks get built or changed. ──
+  // ── Glyphh Office · SLIDES: org-shared, agent-authored HTML decks (R2 via
+  //    the SDK). The Slides panel is read-only (library → reader → presenter);
+  //    THESE tools are the write surface. create_slides/update_slides ride the
+  //    CANONICAL SHELL (buildDeckDocument): the tool owns the stage/scaling/
+  //    nav/progress harness — the agent authors ONLY slide content. Spec:
+  //    docs/glyphh-slides-spec.md. ──
   {
-    name: "list_gpoints",
-    doc: "list_gpoints() — the org's Slides library (Glyphh Office slide decks): file, title, slide count",
+    name: "list_slides",
+    doc: "list_slides() — the org's Slides library (Glyphh Office decks): file, title, slide count",
     action: () => ({ kind: "read", title: "List slide decks" }),
     run: async () => {
       const decks = await listGPoints();
-      if (!decks.length) return "(no slide decks yet — create_gpoint builds one)";
+      if (!decks.length) return "(no slide decks yet — create_slides builds one)";
       return cap(JSON.stringify(decks.map(({ file, title, slides }) => ({ file, title, slides })), null, 1));
     },
   },
   {
-    name: "read_gpoint",
-    doc: "read_gpoint(name) — a slide deck's HTML source (to revise it, edit and create_gpoint under the same name)",
+    name: "read_slides",
+    doc: "read_slides(name) — a deck's full HTML source (inspect before update_slides surgery)",
     action: (a) => ({ kind: "read", title: `Read deck "${String(a.name ?? "")}"` }),
     run: async (a) => cap(await readGPoint(a.name), READ_CAP),
   },
   {
-    name: "create_gpoint",
-    doc: "create_gpoint(name, html) — create or overwrite a Glyphh Slides deck in the org's shared library. html must be ONE self-contained document (all fonts/images inlined, no network): a fixed 1920×1080 #stage the script scales to fit the window, <section class=\"slide\" id=\"s1\">…\"sN\" pages, optional .frag[data-step] build steps revealed in groups, a #prog progress bar, and a nav script (ArrowRight/Space/click = next step, ArrowLeft = back, Home/End, hash #sN deep-links a slide with frags revealed). Model it on an existing deck via read_gpoint.",
+    name: "create_slides",
+    doc: 'create_slides(name, title, slides_html) — create or overwrite a Glyphh Slides deck. Author ONLY the slide content: slides_html is a sequence of <section class="slide">…</section> blocks (first one also class "on"; ids s1…sN recommended; inline all styles/fonts, no network). Elements with class "frag" reveal as build steps — same data-step value reveals together. The tool wraps your sections in the STANDARD deck shell (1920×1080 stage with CSS scaling, keyboard/click nav, progress bar) — never write your own harness. Advanced: pass html (a complete document) instead to import an existing deck verbatim.',
     action: (a) => ({
       kind: "edit",
       title: `Create deck "${String(a.name ?? "")}"`,
-      detail: `${String(a.html ?? "").length} chars`,
+      detail: `${String(a.slides_html ?? a.html ?? "").length} chars`,
     }),
     run: async (a) => {
-      const html = String(a.html ?? "");
-      if (!/<section[^>]*class="[^"]*\bslide\b/i.test(html)) {
-        return 'ERROR: not a slide deck — the document needs <section class="slide"> pages';
+      const full = String(a.html ?? "");
+      const sections = String(a.slides_html ?? "");
+      let doc: string;
+      if (full) {
+        doc = full;
+      } else {
+        if (!sections) return "ERROR: pass slides_html (the <section class=\"slide\"> blocks) — the tool supplies the shell";
+        if (/<html[\s>]/i.test(sections)) return "ERROR: slides_html must be slide SECTIONS only — for a complete document use the html argument";
+        doc = buildDeckDocument(String(a.title ?? a.name ?? "Deck"), sections);
       }
-      const r = await writeGPoint(a.name, html);
-      return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — it's in the org's Slides panel now, on every surface; open_gpoint("${r.file}") jumps straight to it`;
+      if (!/<section[^>]*class="[^"]*\bslide\b/i.test(doc)) {
+        return 'ERROR: not a slide deck — it needs <section class="slide"> pages';
+      }
+      const r = await writeGPoint(a.name, doc);
+      return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — it's in the org's Slides panel on every surface; open_slides("${r.file}") jumps straight to it`;
     },
   },
   {
-    name: "delete_gpoint",
-    doc: "delete_gpoint(name) — permanently delete a slide deck from the org library",
+    name: "update_slides",
+    doc: 'update_slides(name, …ops) — surgical deck edits, 1-BASED slide indexes. Ops (any combination, applied in this order): title="…" renames; replace_slide={index, html} swaps one <section class="slide"> block; insert_slide={index?, html} inserts BEFORE index (omit index to append); remove_slide=index deletes; hide_slide=index / unhide_slide=index toggle the presenter-skip flag. html values are single slide sections, same rules as create_slides.',
+    action: (a) => ({
+      kind: "edit",
+      title: `Update deck "${String(a.name ?? "")}"`,
+      detail: Object.keys(a).filter((k) => k !== "name").join(", "),
+    }),
+    run: async (a) => {
+      let doc = await readGPoint(a.name);
+      const before = slideSpans(doc).length;
+      const idx = (v: unknown): number => Math.trunc(Number(v)) - 1;
+      const section = (v: unknown): string => {
+        const h = String((v as { html?: unknown } | null | undefined)?.html ?? "");
+        if (!/<section[^>]*class="[^"]*\bslide\b/i.test(h)) throw new Error('slide html must be a <section class="slide"> block');
+        return h;
+      };
+      if (a.title !== undefined) doc = setDeckTitle(doc, String(a.title));
+      if (a.replace_slide !== undefined) {
+        const r = a.replace_slide as { index?: unknown };
+        doc = replaceSlideAt(doc, idx(r.index), section(a.replace_slide));
+      }
+      if (a.insert_slide !== undefined) {
+        const ins = a.insert_slide as { index?: unknown };
+        doc = insertSlideAt(doc, ins.index === undefined ? Number.MAX_SAFE_INTEGER : idx(ins.index), section(a.insert_slide));
+      }
+      if (a.remove_slide !== undefined) {
+        if (before <= 1) return "ERROR: a deck needs at least one slide — delete_slides removes the whole deck";
+        doc = removeSlideAt(doc, idx(a.remove_slide));
+      }
+      if (a.hide_slide !== undefined) doc = setSlideHiddenAt(doc, idx(a.hide_slide), true);
+      if (a.unhide_slide !== undefined) doc = setSlideHiddenAt(doc, idx(a.unhide_slide), false);
+      const r = await writeGPoint(a.name, doc);
+      return `updated ${r.file} — now ${r.slides} slide${r.slides === 1 ? "" : "s"}`;
+    },
+  },
+  {
+    name: "delete_slides",
+    doc: "delete_slides(name) — permanently delete a deck from the org library",
     action: (a) => ({ kind: "dangerous", title: `Delete deck "${String(a.name ?? "")}"` }),
     run: async (a) => {
       await deleteGPoint(a.name);
@@ -708,8 +756,8 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "open_gpoint",
-    doc: "open_gpoint(name?) — open the Slides panel beside this conversation; with a deck name it opens straight into that deck's reader",
+    name: "open_slides",
+    doc: "open_slides(name?) — open the Slides panel beside this conversation; with a deck name it opens straight into that deck's reader",
     action: (a) => ({ kind: "command", title: a.name ? `Open deck "${String(a.name)}"` : "Open the Slides panel" }),
     run: async (a) => {
       if (!a.name) { openGPointPanel(); return "opened the Slides panel"; }
@@ -1323,6 +1371,12 @@ const RENAMED_TOOLS: Record<string, string> = {
   list_layouts: "list_workspaces",
   open_layout: "open_workspace",
   save_layout: "save_workspace",
+  // The gPoint era (2026-08-16, hours long) — recorded skills may still say it.
+  list_gpoints: "list_slides",
+  read_gpoint: "read_slides",
+  create_gpoint: "create_slides",
+  delete_gpoint: "delete_slides",
+  open_gpoint: "open_slides",
 };
 
 export async function executeGlyphhTool(
