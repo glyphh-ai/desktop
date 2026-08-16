@@ -913,7 +913,11 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onMe
   useEffect(() => {
     const sv = svRef.current; if (!sv) return;
     const comp = sv.querySelector('.m-composer') as HTMLElement | null;
-    const setH = () => sv.style.setProperty('--composer-h', `${comp?.offsetHeight ?? 200}px`);
+    // `||` not `??`: a composer measured mid-transition (or a since-detached
+    // node) reads 0 — writing "--composer-h: 0px" collapses the transcript's
+    // bottom padding and traps the last message under the composer. Zero is
+    // never a real composer height; fall back instead of recording it.
+    const setH = () => sv.style.setProperty('--composer-h', `${comp?.offsetHeight || 200}px`);
     setH();
     const ro = comp && 'ResizeObserver' in window ? new ResizeObserver(setH) : null;
     if (comp && ro) ro.observe(comp);
@@ -935,10 +939,23 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onMe
   // Follow the stream smoothly: while the user is at the bottom, pin to the bottom
   // with a SINGLE coalesced rAF per change (instant scrollTop, no per-frame
   // scrollTo animations fighting the growing content — that was the "jumping").
+  // NEVER pin while a finger is on the scroller. Programmatic scrollTop writes
+  // against a live touch/momentum gesture are the classic WebKit wedge: touch
+  // delivery dies PAGE-WIDE (rendering intact, nothing tappable) until reload —
+  // the mobile freeze report. The pin resumes on touch end if still following.
+  const touchActiveRef = useRef(false);
+  const onTouchStart = () => { touchActiveRef.current = true; };
+  const onTouchEnd = () => {
+    touchActiveRef.current = false;
+    if (followRef.current) { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }
+  };
   useEffect(() => {
-    if (!followRef.current) return;
+    if (!followRef.current || touchActiveRef.current) return;
     cancelAnimationFrame(scrollRafRef.current);
-    scrollRafRef.current = requestAnimationFrame(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; });
+    scrollRafRef.current = requestAnimationFrame(() => {
+      if (touchActiveRef.current) return; // a touch began between schedule and frame
+      const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight;
+    });
     return () => cancelAnimationFrame(scrollRafRef.current);
   }, [msgs, comp.sending]);
   // Roll up every file-editing tool step (those with a diff badge) across the
@@ -1011,7 +1028,7 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onMe
         </div>
       </header>
       )}
-      <div className="m-sv-messages" ref={scrollRef} onScroll={onScroll}>
+      <div className="m-sv-messages" ref={scrollRef} onScroll={onScroll} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
         {msgs === null
           ? <div className="m-list-note">Loading…</div>
           : msgs.length === 0 && !comp.sending
@@ -3132,7 +3149,13 @@ function App() {
   const renderThrottled = () => {
     if (renderPendRef.current) return;
     renderPendRef.current = true;
-    requestAnimationFrame(() => { renderPendRef.current = false; renderConvo(); });
+    // Self-healing: rAF can be starved/stopped by iOS (backgrounding, a wedged
+    // gesture). The old latch only reset INSIDE the rAF callback, so a starved
+    // rAF silently froze the stream forever. The timeout races it; first wins.
+    let done = false;
+    const paint = () => { if (done) return; done = true; renderPendRef.current = false; renderConvo(); };
+    requestAnimationFrame(paint);
+    setTimeout(paint, 120);
   };
   // Spaces are gone — every session is a Code session (the full toolset). The
   // server still persists a `mode` field for compatibility, so we hardcode it.
@@ -3225,9 +3248,15 @@ function App() {
     convoRef.current = []; setMsgs(null);
     glyphh().sessions.thread(s.id)
       .then((t: { messages?: ThreadMsg[] }) => {
+        // `streaming` here is a STALE CLOSURE (captured when loadSession ran).
+        // If the user sent a turn while this fetch was in flight, the stale
+        // false clobbered the live bubbles AND double-attached an observer that
+        // replayed the same run from cursor 0 — duplicated assistant messages.
+        // The abort ref is live state: set exactly while a turn is in flight.
+        if (streamAbortRef.current) return;
         convoRef.current = (t.messages ?? []).map(normalizeMsg); renderConvo();
         // Now that the transcript is in, tail whatever is running on this thread.
-        if (!streaming) observeActiveRun(s, chatFor(s.id));
+        observeActiveRun(s, chatFor(s.id));
       })
       .catch(() => { convoRef.current = []; renderConvo(); });
     // Connect the runtime the moment the session opens — so the turn is instant

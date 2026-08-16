@@ -588,7 +588,6 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-anchor: none;        /* we pin to the bottom ourselves; don't fight it */
-  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -596,7 +595,7 @@ body {
      composer's REAL height is measured into --composer-h (it varies with the
      chips row, attachment strip, multi-line input) so the last message always
      rests above it and can be scrolled fully into view. */
-  padding: calc(var(--safe-top) + 74px) 16px calc(var(--composer-h, 200px) + 28px) calc(var(--safe-left) + 16px);
+  padding: calc(var(--safe-top) + 74px) 16px calc(max(var(--composer-h, 200px), 120px) + 28px) calc(var(--safe-left) + 16px);
 }
 /* Session composer FLOATS over the transcript + frosted band (like the chats
    New chat / search), and the box is translucent-frosted so text fuzzes behind. */
@@ -924,7 +923,8 @@ body {
 @keyframes gs-caret { 50% { opacity: 0; } }
 
 /* ── Agent prompt (parked approval / ask) — portaled bottom sheet ─────────── */
-.m-prompt-overlay { position: fixed; inset: 0; z-index: 260; display: flex; align-items: flex-end; }
+.m-prompt-overlay { position: fixed; inset: 0; z-index: 260; display: flex; align-items: flex-end; pointer-events: none; }
+.m-prompt-overlay .m-prompt { pointer-events: auto; }
 .m-prompt-scrim { position: absolute; inset: 0; background: var(--overlay-bg); }
 .m-prompt {
   position: relative; width: 100%; box-sizing: border-box;
