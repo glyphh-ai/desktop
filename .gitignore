@@ -14,3 +14,4 @@ native/mac-window-helper/build/
 # CI-only: vendored file:../sdk for the Fly Docker build (deploy-web.yml)
 .sdk-vendor/
 .sdk-src/
+vendor/

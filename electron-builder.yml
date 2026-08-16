@@ -56,6 +56,19 @@ files:
   - dist/**/*
   - package.json
 
+# The LOCAL HARNESS POD, vendored. CI builds rrotor (dist + pruned
+# node_modules; no native modules — better-sqlite3 loads lazily and the local
+# pod runs the memory backend) into vendor/rrotor, and the app spawns it as
+# Electron-as-node (glyphh-harness-run.ts vendoredRotor). Outside the asar on
+# purpose: the pod is a separate PROCESS tree (plus the Agent SDK's own
+# subprocess), and subprocesses need real files, not asar members. Without
+# this a packaged build had NO local pod at all — `rrotor` on PATH can never
+# resolve from a dock launch (GUI PATH is /usr/bin:/bin:...), so the first
+# local-folder session died with a swallowed ENOENT dressed as a 15s timeout.
+extraResources:
+  - from: vendor/rrotor
+    to: rrotor
+
 asarUnpack:
   - node_modules/better-sqlite3/**/*
   - node_modules/node-pty/**/*
