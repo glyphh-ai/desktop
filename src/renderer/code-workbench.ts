@@ -2741,6 +2741,10 @@ async function init(): Promise<void> {
       const shadowOn = cardsLayer.classList.contains("echo-shadow");
       const hidden = (layoutUp || cardsUp) && !shadowOn;
       canvas.style.visibility = hidden ? "hidden" : "";
+      // visibility:hidden blanks the wall but the raycaster lives on `stage`
+      // (mousedown/move/wheel), so a hidden wall stayed CLICKABLE behind the
+      // cards — the user hit tiles by accident. Retire its pointer events too.
+      stage.style.pointerEvents = hidden ? "none" : "";
       // The Chat/Work/Code space tabs were removed — every session is one type
     // (the most-capable Code toolset), so the wall no longer switches spaces.
     const bar = body.querySelector<HTMLElement>(".echo-topbar");
@@ -3317,6 +3321,10 @@ async function init(): Promise<void> {
       e.open = true;
       drawTile(e);
       openList.push(e);
+      // Retire the wall NOW that the card is registered — setShadow() above ran
+      // before this push, so cardsUp was still false when it computed. Re-run so
+      // the freshly-opened card actually hides (and de-clicks) the wall.
+      syncWallVisibility();
       // A layout with a freed slot ADOPTS the new card into that hole —
       // an accidental close is undone by just reopening something. (Layout
       // opens assign cells explicitly; never claim during one.)

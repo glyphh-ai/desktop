@@ -8,6 +8,9 @@
  * deleting a folder re-parents its contents.
  */
 
+import { deckHtml, staticDoc, fillThumbs } from "./wb-gpoint.js";
+import { formatMarkdown } from "./format-markdown.js";
+
 export interface DriveFolder { id: string; name: string; parentId: string | null }
 export interface DriveEntry {
   kind: "slides" | "docs";
@@ -62,6 +65,18 @@ function popMenu(x: number, y: number, items: PopItem[]): void {
 }
 
 const fmtSize = (n: number): string => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+
+/** Doc markdown for the mini paper thumbs (small cache, first 1.5KB is plenty). */
+const docThumbCache = new Map<string, string>();
+async function docThumbMd(file: string): Promise<string | null> {
+  const hit = docThumbCache.get(file);
+  if (hit !== undefined) return hit;
+  const res = await (window as unknown as { glyphh?: { gdocRead?: (f: string) => Promise<{ ok: boolean; markdown?: string }> } }).glyphh?.gdocRead?.(file);
+  if (!res?.ok || typeof res.markdown !== "string") return null;
+  const head = res.markdown.slice(0, 1500);
+  docThumbCache.set(file, head);
+  return head;
+}
 
 export interface GDrivePanel {
   renderIntoSlot: (body: HTMLElement, slot: GDriveSlotState, wrap: HTMLElement) => Promise<void>;
@@ -209,13 +224,35 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         const card = document.createElement("div");
         card.className = compact ? "gdrive-card gdrive-card-compact" : "gdrive-card";
         card.innerHTML = `
-          <span class="gdrive-card-ic">${f.kind === "slides" ? host.icons.slides : host.icons.docs}</span>
-          <span class="gdrive-card-title"></span>
-          <span class="gdrive-card-meta">${f.kind === "slides" ? "Slides" : "Docs"} · ${fmtSize(f.sizeBytes)}</span>
-          <button class="ws-icon-btn gdrive-card-kebab" title="Options">
-            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
-          </button>`;
+          <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${f.kind === "slides" ? host.icons.slides : host.icons.docs}</div></div>
+          <div class="gdrive-card-row">
+            <span class="gdrive-card-ic">${f.kind === "slides" ? host.icons.slides : host.icons.docs}</span>
+            <span class="gdrive-card-title"></span>
+            <button class="ws-icon-btn gdrive-card-kebab" title="Options">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+            </button>
+          </div>
+          <span class="gdrive-card-meta">${f.kind === "slides" ? "Slides" : "Docs"} · ${fmtSize(f.sizeBytes)}</span>`;
         (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = f.title || f.file;
+        // The SAME previews the libraries show: decks render slide 1 in a
+        // srcdoc thumb; docs render a mini sheet of the markdown's head.
+        const thumb = card.querySelector<HTMLElement>(".gdrive-thumb")!;
+        if (f.kind === "slides") {
+          void deckHtml(f.file).then((html) => {
+            if (html && thumb.isConnected) fillThumbs([{ host: thumb, doc: staticDoc(html, 0) }]);
+          });
+        } else {
+          void docThumbMd(f.file).then((md) => {
+            if (md === null || !thumb.isConnected) return;
+            const sheet = document.createElement("div");
+            sheet.className = "gdrive-docthumb";
+            const inner = document.createElement("div");
+            inner.className = "gdrive-docthumb-inner";
+            inner.innerHTML = formatMarkdown(md);
+            sheet.appendChild(inner);
+            thumb.appendChild(sheet);
+          });
+        }
         card.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".gdrive-card-kebab")) return;
           host.openFile(f.kind, f.file, f.title || f.file);

@@ -55,7 +55,7 @@ const gpointApi = () => (window as unknown as { glyphh?: {
 /** Deck HTML by filename — decks are a few hundred KB and re-render on every
  *  rail drag; one IPC read per deck per session is plenty. */
 const htmlCache = new Map<string, string>();
-async function deckHtml(file: string): Promise<string | null> {
+export async function deckHtml(file: string): Promise<string | null> {
   const hit = htmlCache.get(file);
   if (hit) return hit;
   const res = await gpointApi().gpointRead?.(file);
@@ -111,7 +111,7 @@ function stripHidden(html: string): string {
 /** A deck frozen onto ONE fully-revealed slide — thumbnail document. The
  *  tail-appended nodes are hoisted into <body> and run before
  *  DOMContentLoaded, after the deck's own init. */
-function staticDoc(html: string, slide: number): string {
+export function staticDoc(html: string, slide: number): string {
   return html
     + `<style>*{transition:none!important;animation:none!important}</style>`
     + `<script>addEventListener("DOMContentLoaded",()=>{document.querySelectorAll(".slide").forEach((s,k)=>{`
@@ -152,7 +152,7 @@ function startAt(html: string, slide: number): string {
 
 /** Thumbnails render 2 per frame — a rail drag re-renders the panel and a
  *  deck is a whole document per thumb; a burst would jank the drag. */
-function fillThumbs(jobs: Array<{ host: HTMLElement; doc: string }>): void {
+export function fillThumbs(jobs: Array<{ host: HTMLElement; doc: string }>): void {
   let i = 0;
   const step = (): void => {
     if (i >= jobs.length || !jobs.some((j) => j.host.isConnected)) return;

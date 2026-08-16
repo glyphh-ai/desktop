@@ -17031,3 +17031,29 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px; align-content: start;
 }
+
+/* New header/bar icons missed the per-class svg sizing the slot header uses
+   (.slot-close/.slot-maximize) — unsized SVGs clip to slivers ("purple bars"). */
+.slot-popout svg, .slot-present svg, .echo-card-popout svg, .gpoint-pdf svg,
+.office-refresh svg, .gpoint-back svg, .gdoc-back svg, .gdrive-card-kebab svg,
+.office-card-kebab svg, .gpoint-kebab svg, .gdoc-row-kebab svg, .gpoint-refresh svg {
+  width: 13px; height: 13px; display: block;
+}
+
+/* Drive file cards carry the same previews the libraries do. */
+.gdrive-card-row { display: flex; align-items: center; gap: 6px; }
+.gdrive-card-row .gdrive-card-ic { display: none; }   /* the thumb identifies it */
+.gdrive-card-row .gdrive-card-title { flex: 1; min-width: 0; }
+.gdrive-card .gdrive-card-kebab { position: static; }
+.gdrive-docthumb {
+  position: absolute; inset: 0; background: #ffffff; overflow: hidden;
+}
+.gdrive-docthumb-inner {
+  width: 300%; transform: scale(0.3333); transform-origin: top left;
+  padding: 26px 30px; box-sizing: border-box;
+  font-family: Georgia, 'Times New Roman', serif; font-size: 14px; line-height: 1.6; color: #1a1a1e;
+  pointer-events: none;
+}
+.gdrive-docthumb-inner h1, .gdrive-docthumb-inner h2, .gdrive-docthumb-inner h3 {
+  font-family: Inter, -apple-system, system-ui, sans-serif; color: #111;
+}
