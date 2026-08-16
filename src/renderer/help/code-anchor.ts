@@ -53,9 +53,17 @@ const root = (): HTMLElement | null => document.querySelector<HTMLElement>(".cod
 const byId = (id: string): HTMLElement | null => document.getElementById(id);
 /** Preference bridge via a cast, not the global Window.glyphh declaration —
  *  this module is also bundled into code-workbench-bundle.js, which is
- *  typechecked standalone (no renderer.ts globals in scope there). */
-const prefs = (): { getPreference?: (k: string, d?: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => Promise<unknown> } =>
-  (window as unknown as { glyphh?: { getPreference?: (k: string, d?: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => Promise<unknown> } }).glyphh ?? {};
+ *  typechecked standalone (no renderer.ts globals in scope there).
+ *
+ *  getPreference/setPreference are the SERVER prefs map (preferences-db.ts →
+ *  client.profile.prefs) — the DB via the SDK, not local disk. The read WAITS for
+ *  the map to load when signed in (get-preference IPC), so a boot-time read gets
+ *  the saved value, not the default. */
+type PrefsBridge = {
+  getPreference?: (k: string, d?: unknown) => Promise<unknown>;
+  setPreference?: (k: string, v: unknown) => Promise<unknown> | void;
+};
+const prefs = (): PrefsBridge => (window as unknown as { glyphh?: PrefsBridge }).glyphh ?? {};
 
 /** The LIVE mode comes from the DOM, not the module variable: this module is
  *  bundled into BOTH the help build and the code-workbench bundle (a layout's
@@ -243,6 +251,7 @@ function wireDockEdge(): void {
 export async function initAnchor(): Promise<void> {
   try {
     const savedMode = (await prefs().getPreference?.(MODE_PREF, "rail")) as AnchorMode;
+    console.log(`[anchor] initAnchor read glyphhAnchorMode="${savedMode}"`);
     if (MODES.some((m) => m.id === savedMode)) mode = savedMode;
     const savedFrac = Number(await prefs().getPreference?.(FRAC_PREF, DEFAULT_FRACTION));
     fraction = clampFraction(Number.isFinite(savedFrac) && savedFrac > 0 ? savedFrac : DEFAULT_FRACTION);
@@ -252,8 +261,18 @@ export async function initAnchor(): Promise<void> {
   applyAnchor(mode);
 }
 
+let prefsReadyWired = false;
+
 /** One-time event wiring. Safe to call once at init. */
 export function initAnchorEvents(): void {
+  // The server prefs map may finish loading AFTER this view booted (the boot read
+  // races the fetch). Re-read + re-apply the saved anchor when it lands. Registered
+  // once even if initAnchorEvents runs again.
+  if (!prefsReadyWired) {
+    prefsReadyWired = true;
+    (window as unknown as { glyphh?: { onPrefsReady?: (cb: () => void) => void } })
+      .glyphh?.onPrefsReady?.(() => { void initAnchor(); });
+  }
   const btn = byId("code-anchor-btn");
   const menu = byId("code-anchor-menu");
   btn?.addEventListener("click", (ev) => {

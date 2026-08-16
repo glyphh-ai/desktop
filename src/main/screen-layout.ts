@@ -80,33 +80,7 @@ export function toggleRailCollapsed(): boolean {
   return setRailCollapsed(!railCollapsed);
 }
 
-
-// ── Per-layout Glyphh placement (the old Settings "screen layout" dock,
-//    reborn as a LAYOUT property) ─────────────────────────────────────────
-
-/**
- * Where the Glyphh agent sits relative to the workspace:
- *
- *   rail   the agent is a workbench SLOT (`view:"coding"`) — today's default, and what
- *          every layout with no opinion resolves to.
- *   left   the agent docks to the left edge; the whole right side is the layout manager.
- *   right  mirrored.
- *   center the agent docks to the BOTTOM as a collapsed one-line bar, layout above it.
- *   none   no agent on screen at all.
- *
- * `center` IS collapsed mode — there is deliberately no second `collapsed` flag, which
- * would be a second source of truth for one thing.
- */
-export type GlyphhPlacementMode = "rail" | "left" | "right" | "center" | "none";
-export interface GlyphhPlacement {
-  mode: GlyphhPlacementMode;
-  /**
-   * Docked width as a fraction of the work area — LEFT/RIGHT only. `center` ignores it
-   * (the bar is content-height); a resizable bar height would need its own field rather
-   * than an overload of a width fraction clamped to 0.2–0.6.
-   */
-  fraction?: number;
-}
-
-const clampFraction = (f: number): number => Math.max(0.2, Math.min(0.6, f));
+// NOTE: per-layout Glyphh placement (the old "screen layout" dock as a LAYOUT property)
+// was removed — the agent anchor is a GLOBAL device setting owned by the agent
+// (help/code-anchor.ts → the `glyphhAnchorMode` preference), never a layout property.
 

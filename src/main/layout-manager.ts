@@ -11,7 +11,6 @@
 
 import fs from "fs";
 import path from "path";
-import type { GlyphhPlacement } from "./screen-layout.js";
 import { userScopedPath } from "./app-paths.js";
 import { getClient } from "./glyphh-client";
 import { appCache } from "./glyphh-client";
@@ -28,7 +27,6 @@ export interface ServerLayout {
   cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>;
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
-  glyphh?: GlyphhPlacement;
   /** The loop this layout activates on open — its program AND its models. Absent
    *  → the layout has no opinion; the active loop stays as-is. */
   loop?: string;
@@ -49,11 +47,31 @@ export interface ServerLayout {
 
 const LAYOUTS_CACHE_KEY = "/api/layouts";
 
+// The agent anchor used to be baked into each layout as a `glyphh` placement; it is now
+// a GLOBAL device setting owned by the agent. Any saved layout still carrying that field
+// is migrated ONCE (background, best-effort) so nothing lingers to move the agent.
+let strippedLegacyAnchors = false;
+async function stripLegacyLayoutAnchors(items: Array<{ id: string; name: string; data?: unknown }>): Promise<void> {
+  if (strippedLegacyAnchors) return;
+  strippedLegacyAnchors = true;
+  const stale = items.filter((it) => it.data && typeof it.data === "object" && "glyphh" in (it.data as object));
+  if (stale.length === 0) return;
+  for (const it of stale) {
+    try {
+      const { glyphh: _drop, ...clean } = it.data as Record<string, unknown>;
+      await getClient().layouts.save({ id: it.id, name: it.name, data: clean });
+    } catch { /* best-effort — a failed strip just retries next boot */ }
+  }
+  if (stale.length) { strippedLegacyAnchors = true; appCache.invalidate(LAYOUTS_CACHE_KEY); }
+}
+
 /** The server's saved layouts (library kind `layout`), flattened to the spec
  *  shape and cached — shared by the palette, app resolver, and agent tools. */
 export function fetchServerLayouts(): Promise<ServerLayout[]> {
   return appCache.cached(LAYOUTS_CACHE_KEY, async () => {
     const items = await getClient().layouts.list();
+    // Migrate away any legacy per-layout anchor, once, in the background.
+    void stripLegacyLayoutAnchors(items);
     const layouts: ServerLayout[] = [];
     for (const item of items) {
       const data = (item.data ?? {}) as Partial<Omit<ServerLayout, "id" | "name">>;
@@ -66,7 +84,6 @@ export function fetchServerLayouts(): Promise<ServerLayout[]> {
         cells: data.cells,
         folderMode: data.folderMode === "multi" ? "multi" : "single",
         target: data.target === "desktop" ? "desktop" : "glyphh",
-        ...(data.glyphh && typeof data.glyphh === "object" ? { glyphh: data.glyphh as GlyphhPlacement } : {}),
         ...(typeof data.loop === "string" && data.loop ? { loop: data.loop } : {}),
         ...(data.sessionMode === "new" || data.sessionMode === "last" ? { sessionMode: data.sessionMode } : {}),
         ...(typeof data.folder === "string" && data.folder ? { folder: data.folder } : {}),
@@ -118,8 +135,6 @@ export interface GridLayout {
    *  Glyphh window) or "desktop" (cells open ON the desktop: native apps
    *  launch, web apps open as positioned webview windows). */
   target?: "glyphh" | "desktop";
-  /** Desktop layouts: where Glyphh itself sits (rail/left/right/none). */
-  glyphh?: GlyphhPlacement;
   /** The loop this layout activates on open — its program AND its models. */
   loop?: string;
   /** For that loop: role → catalog model id. */
@@ -231,7 +246,6 @@ export class LayoutManager {
       cells: sl.cells,
       folderMode: sl.folderMode,
       target: sl.target,
-      ...(sl.glyphh ? { glyphh: sl.glyphh } : {}),
       ...(sl.loop ? { loop: sl.loop } : {}),
       ...(sl.modelSelections ? { modelSelections: sl.modelSelections } : {}),
       ...(sl.sessionMode ? { sessionMode: sl.sessionMode } : {}),
@@ -249,7 +263,6 @@ export class LayoutManager {
       cells: grid.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, ...(c.config ? { config: c.config } : {}) })),
       folderMode: grid.folderMode ?? "single",
       target: grid.target ?? "glyphh",
-      ...(grid.glyphh ? { glyphh: grid.glyphh } : {}),
       ...(grid.loop ? { loop: grid.loop } : {}),
       ...(grid.modelSelections && Object.keys(grid.modelSelections).length ? { modelSelections: grid.modelSelections } : {}),
       ...(grid.sessionMode && grid.sessionMode !== "keep" ? { sessionMode: grid.sessionMode } : {}),
