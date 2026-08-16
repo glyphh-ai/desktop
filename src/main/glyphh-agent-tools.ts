@@ -681,9 +681,13 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "read_slides",
-    doc: "read_slides(name) — a deck's full HTML source (inspect before update_slides surgery)",
-    action: (a) => ({ kind: "read", title: `Read deck "${String(a.name ?? "")}"` }),
-    run: async (a) => cap(await readGPoint(a.name), READ_CAP),
+    doc: "read_slides(name, raw?) — a deck's READABLE TEXT, per slide (the default — the raw document is mostly font bytes and will blow your context). Pass raw:true ONLY when you need exact HTML for update_slides surgery.",
+    action: (a) => ({ kind: "read", title: `Read deck "${String(a.name ?? "")}"${a.raw ? " (raw)" : ""}` }),
+    run: async (a) => {
+      if (a.raw) return cap(await readGPoint(a.name), READ_CAP);
+      const t = await getClient().officeSlides.text(gpointFileName(a.name));
+      return cap(`${t.title} — ${t.slides} slides\n\n${t.text}`, READ_CAP);
+    },
   },
   {
     name: "create_slides",
