@@ -279,7 +279,6 @@ declare global {
       threadsPush?: (id: string, body: { title?: string; mode?: string; source?: unknown; messages?: unknown[]; updatedAt: number }) => Promise<{ applied: boolean; thread: { id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number } }>;
       threadsDelete?: (id: string) => Promise<void>;
       glyphhRemember: (fact: string) => Promise<boolean>;
-      adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
       libraryLoopGet: (ref: string) => Promise<LibEnvelope>;
       libraryLoopCreate: (input: unknown) => Promise<LibEnvelope>;
       libraryLoopUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
@@ -325,8 +324,6 @@ declare global {
       // @-mention summon (ghost overlay): alias lookup + summon.
       loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) => Promise<{ ok: boolean; loop: string }>;
       loopSetRoleDefault: (loopId: string, role: string, modelId: string | null) => Promise<{ ok: boolean; error?: string }>;
-      adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
-      adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
       glyphhContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;
       glyphhCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
       glyphhStop: (chatId?: string) => Promise<boolean>;

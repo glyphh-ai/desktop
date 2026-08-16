@@ -44,9 +44,6 @@ import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, 
 import { LayoutManager } from "./layout-manager";
 import { canSaveLayout, canUseCustomMcp } from "./entitlements";
 import { getPreference, setPreference } from "./stores/preferences-db";
-import { initAdaStore } from "./ada/store";
-import { registerAdaSync } from "./ada/indexer";
-import { registerAdaIpc } from "./ada/ipc";
 import { getLocalDb } from "./local-db";
 import { SessionCache } from "./session-cache";
 import { resolveShellPath } from "./shell-path";
@@ -229,13 +226,12 @@ async function boot() {
   // boot-time read (window bounds, prefs) hits the default-scope DB while
   // post-auth writes land in the user's, and nothing survives a restart.
   restoreUserScopeFromSidecar();
-  // Initialize local SQLite database (agents, layouts, preferences)
+  // Initialize local SQLite database (agents, layouts, preferences).
+  // NOTE: this store is on death row — the zero-local-storage law (2026-08-15)
+  // says every piece of user state goes through the SDK to the server. The
+  // local Ada fact store already went (Ada is cloud-only; the agent's
+  // ada_remember/ada_recall tools ride the stator via statorCall).
   initLocalDb();
-  // Ada — schema-on-write fact memory. A PROVIDER, not the handle: local-db
-  // reopens on user-scope switches and Ada must follow the live connection.
-  initAdaStore(() => getLocalDb());
-  registerAdaIpc();
-  registerAdaSync(); // mirror the workspace catalog into facts (idempotent)
   const migrationResult = migrateFromFiles();
   if (migrationResult.migrated) {
     console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs, ${migrationResult.prefsV2} stranded prefs`);

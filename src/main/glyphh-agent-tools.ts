@@ -56,12 +56,9 @@ import { getClient, appCache } from "./glyphh-client";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
-import { adaTellRaw, adaExecuteOp, adaRecall, adaHistory, type AdaOp } from "./ada/store";
-import { indexConnectorTools } from "./ada/indexer";
 import { indexToolVectors, rankConnectorTools } from "./tool-vectors";
 import { updateAppFromWorkdir } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
-import { enrichFact } from "./ada/enricher";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 
 const OUTPUT_CAP = 8000;
@@ -248,10 +245,9 @@ export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
     });
     slugs.add(t.slug);
   }
-  for (const slug of slugs) {
-    const tools = catalog.filter((t) => t.slug === slug).map((t) => ({ name: t.name, description: t.description }));
-    try { indexConnectorTools(slug, tools); } catch { /* Ada not ready — she catches up on heartbeat */ }
-  }
+  // (The per-slug indexConnectorTools mirror died with the local Ada store —
+  // cloud memory is the one plane, and indexToolVectors below already encodes
+  // the catalog for per-ask selection.)
   lastWireDefs = defs;
   // Encode the catalog for per-ask tool selection (incremental — only new or
   // changed descriptions embed). Fire-and-forget: the first run after a
