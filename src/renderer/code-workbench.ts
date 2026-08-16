@@ -29,7 +29,7 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import * as THREE from "three";
 // anchorMode() reads the live global anchor (body[data-glyphh-anchor]) — used to keep
 // a DOCKED agent out of layout cards/seats so the dock is permanent.
-import { anchorMode } from "./help/code-anchor.js";
+import { anchorMode, applyAnchor } from "./help/code-anchor.js";
 import { initGPoint, type GPointPanel } from "./wb-gpoint.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
@@ -1260,6 +1260,12 @@ async function init(): Promise<void> {
   function openSectionInWorkbench(section: string): void {
     const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
     if (section === "agent") {
+      // DOCKED anchor: dock the agent (`.code-root`'s direct child) — never the wall.
+      if (anchorMode() !== "rail") {
+        renderRails();
+        applyAnchor();
+        return;
+      }
       // The Glyphh mark is the UNIVERSAL CHAT ICON: the current layout
       // clears (memory saved) and the chat loads alone.
       openEchoSurface();
@@ -1276,6 +1282,17 @@ async function init(): Promise<void> {
         const kept = rails[i].slots.filter((sl) => sl.view !== "section");
         if (kept.length !== rails[i].slots.length) { rails[i].slots = kept; changed = true; }
         if (!rails[i].slots.length) rails.splice(i, 1);
+      }
+      // DOCKED anchor (center/left/right): the agent must live as `.code-root`'s
+      // DIRECT CHILD — the ONLY DOM position the dock CSS (`.code-root[data-anchor]
+      // > .code-agent`) can style. Hosting it in an Echo card leaves `data-anchor`
+      // pointing at an element that isn't there, which is why the dock never did
+      // anything. Re-home it (renderRails → parkAgent clears `agent-hosted` and moves
+      // the singleton back), then apply the dock. NEVER open the Echo wall when docked.
+      if (section === "code" && anchorMode() !== "rail") {
+        renderRails();
+        applyAnchor();
+        return;
       }
       if (section === "code" && echoCtl) {
         // Parity with the standard-mode flip below (section slots close):

@@ -4794,8 +4794,9 @@ export function initCode(): void {
   });
   void window.glyphh.getPreference?.(LAST_SESSION_PREF, "").then((lco) => {
     lastSession = String(lco || "");
-    // boot: paint the agent's state but DON'T navigate (boot lands on Home)
-    enterAgent(false);
+    // boot: RESUME the last session and load the agent — not a fresh New Session.
+    // enterAgent(true) lands on lastSession when it exists (else the empty agent).
+    enterAgent(true);
   });
   el("code-rail-toggle")?.addEventListener("click", () => {
     const collapsed = el("app-rail")!.classList.toggle("collapsed");
