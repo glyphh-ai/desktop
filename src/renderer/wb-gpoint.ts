@@ -49,6 +49,7 @@ const gpointApi = () => (window as unknown as { glyphh?: {
   gpointRead?: (file: string) => Promise<{ ok: boolean; content?: string; error?: string }>;
   gpointDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
   gpointWrite?: (file: string, html: string) => Promise<{ ok: boolean; error?: string }>;
+  officeExportPdf?: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string }) => Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>;
 } }).glyphh ?? {};
 
 /** Deck HTML by filename — decks are a few hundred KB and re-render on every
@@ -471,6 +472,9 @@ export function initGPoint(host: GPointHost): GPointPanel {
           </button>
           <input class="gpoint-reader-title" spellcheck="false" autocomplete="off" title="Click to rename" />
           <span class="gpoint-reader-count" data-total="${total}">${start + 1} / ${total}</span>
+          <button class="ws-icon-btn gpoint-pdf" title="Export as PDF">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
           <button class="action-btn primary gpoint-present" title="Fills the whole app — Esc exits">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg>
             <span>Present</span>
@@ -489,6 +493,18 @@ export function initGPoint(host: GPointHost): GPointPanel {
     // In-bar Present: hosts without a rail-slot header (Echo cards) keep the
     // feature; in rail slots it simply doubles the header button.
     body.querySelector(".gpoint-present")?.addEventListener("click", () => { void present(slot, refresh); });
+    // PDF export is DESKTOP machinery (offscreen capture in main) — the button
+    // only exists where the bridge does.
+    const pdfBtn = body.querySelector<HTMLElement>(".gpoint-pdf");
+    const exportPdf = gpointApi().officeExportPdf;
+    if (!exportPdf) pdfBtn?.remove();
+    else pdfBtn?.addEventListener("click", () => {
+      void (async () => {
+        if (!slot.file) return;
+        const res = await exportPdf({ kind: "slides", file: slot.file }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+        if (!res.ok) void host.confirm({ title: "Couldn't export the PDF", body: ("error" in res ? res.error : undefined) || "Unknown error.", confirmLabel: "OK" });
+      })();
+    });
     const stage = body.querySelector<HTMLElement>(".gpoint-stage")!;
     const frame = document.createElement("iframe");
     frame.className = "gpoint-frame";

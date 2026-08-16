@@ -87,6 +87,7 @@ import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
 import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
+import { registerOfficeExportIpc } from "./office-export";
 import { registerRunStreamIpc } from "./run-stream-ipc";
 import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
@@ -978,6 +979,9 @@ async function boot() {
 
   // Panel pop-out — any web panel (and Slides) as a standalone OS window.
   registerPopoutIpc();
+
+  // Glyphh Office PDF export (slides page-per-slide, docs on Letter).
+  registerOfficeExportIpc();
 
   // Run-stream observer bridge — the renderer watches runs executing on OTHER
   // surfaces (web/cloud) through the main-process SDK client.

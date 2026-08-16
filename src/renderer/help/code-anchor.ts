@@ -37,7 +37,6 @@ const MODES: Array<{ id: AnchorMode; label: string; hint: string }> = [
   { id: "left", label: "Dock left", hint: "Agent on the left, layout fills the right" },
   { id: "center", label: "Dock bottom", hint: "One line along the bottom, layout above" },
   { id: "right", label: "Dock right", hint: "Agent on the right, layout fills the left" },
-  { id: "none", label: "Hide the agent", hint: "Layout only — bring it back from here" },
 ];
 
 const MODE_PREF = "glyphhAnchorMode";
@@ -87,16 +86,18 @@ export function isCollapsed(): boolean { return domMode() === "center"; }
 function relocateActions(collapsed: boolean): void {
   const bar = byId("code-bar-actions");
   const head = document.querySelector<HTMLElement>(".session-head-actions");
-  const kebab = byId("code-session-kebab-wrap");
   if (!bar || !head) return;
-  // Order matters: transcript sits LEFT of recents, per the collapsed-bar spec.
-  const ids = ["code-transcript-btn", "code-session-history", "code-session-new", "code-anchor-btn"];
-  for (const id of ids) {
+  // ONE consistent order EVERYWHERE the agent loads (docked, hosted, or full):
+  //   <chat icon> <anchor> <recents> <new session> <three-dots>
+  // Move the anchor + kebab WRAPS (button AND their popup menu) — moving only the
+  // button orphaned the menu, which is why the anchor popup did nothing when docked.
+  const target = collapsed ? bar : head;
+  for (const id of [
+    "code-transcript-btn", "code-anchor-wrap", "code-session-history",
+    "code-session-new", "code-session-kebab-wrap",
+  ]) {
     const node = byId(id);
-    if (!node) continue;
-    if (collapsed) bar.appendChild(node);
-    else if (kebab && kebab.parentElement === head) head.insertBefore(node, kebab);
-    else head.appendChild(node);
+    if (node) target.appendChild(node);
   }
 }
 

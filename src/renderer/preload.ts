@@ -941,6 +941,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   gpointRead: (file: string) => ipcRenderer.invoke("gpoint-read", file) as Promise<{ ok: boolean; content?: string; error?: string }>,
   gpointDelete: (file: string) => ipcRenderer.invoke("gpoint-delete", file) as Promise<{ ok: boolean; error?: string }>,
   gpointWrite: (file: string, html: string) => ipcRenderer.invoke("gpoint-write", file, html) as Promise<{ ok: boolean; error?: string }>,
+  // Glyphh Office → PDF (slides page-per-slide, docs on Letter).
+  officeExportPdf: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string }) => ipcRenderer.invoke("office-export-pdf", req) as Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>,
   // Pop a panel off the app into a standalone OS window (traffic lights).
   panelPopout: (req: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => ipcRenderer.invoke("panel-popout", req) as Promise<{ ok: boolean; error?: string }>,
 

@@ -223,6 +223,15 @@ export function setSlideHiddenAt(html: string, i: number, hidden: boolean): stri
     : open.replace(/\s*data-gp-hidden(="[^"]*")?/i, "");
   return html.slice(0, s.start) + next + html.slice(s.openEnd);
 }
+/** The deck with every data-gp-hidden slide removed — what export/present see. */
+export function stripHiddenSlides(html: string): string {
+  const hidden = slideSpans(html).filter((s) => s.hidden);
+  for (let i = hidden.length - 1; i >= 0; i--) {
+    html = html.slice(0, hidden[i]!.start) + html.slice(hidden[i]!.end);
+  }
+  return html;
+}
+
 export function setDeckTitle(html: string, title: string): string {
   const esc = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return /<title[^>]*>[\s\S]*?<\/title>/i.test(html)

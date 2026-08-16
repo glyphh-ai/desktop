@@ -877,6 +877,9 @@ async function init(): Promise<void> {
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> }): void;
     openSection(section: string): void;
     openAgent(): void;
+    /** The agent was docked (parked out to the rail/dock) — close its now-empty
+     *  Echo card WITHOUT forgetting the session it still hosts. */
+    detachAgent(): void;
     /** The universal chat icon: clear the surface, load the chat alone. */
     openChat(): void;
     hasTool(view: string): boolean;
@@ -2956,13 +2959,15 @@ async function init(): Promise<void> {
      *  setting it on the entry afterwards was too late (the shell had
      *  already spawned) and the parked pty was orphaned. */
     let pendingParkedTerms: TermSlot | null = null;
-    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean }): void => {
+    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean }): void => {
       const card = e.card;
       if (!card) return;
       // The AGENT card IS the session. Closing it must un-current that session
       // for its space — the card path bypasses closeSlot entirely, which is
       // why closing on web left the session as the tab's resume target.
-      if (e.tile.kind === "agent" || card.querySelector(".code-agent")) {
+      // keepSession: the agent was DOCKED (parked out to .code-root) — the card
+      // is an empty husk, the session lives on in the dock. Never forget it.
+      if (!opts?.keepSession && (e.tile.kind === "agent" || card.querySelector(".code-agent"))) {
         (window as unknown as { __glyphhForgetSession?: () => void }).__glyphhForgetSession?.();
       }
       e.card = undefined;
@@ -3860,6 +3865,12 @@ async function init(): Promise<void> {
         openSectionCard(section);
       },
       openAgent: () => { void openAgentCard(); },
+      detachAgent: () => {
+        // The dock already moved .code-agent out to .code-root; the leftover
+        // agent card is empty. Close it, keeping the session alive.
+        const x = openList.find((c) => c.tile.kind === "agent");
+        if (x) closeCard(x, { keepSession: true });
+      },
       openChat: () => {
         // THE universal chat icon: whatever layout is up clears (its memory
         // is saved by the reset) and the chat loads alone. Already alone →
@@ -7510,7 +7521,12 @@ async function init(): Promise<void> {
   // `agent-hosted`) — the ONLY DOM spot the dock CSS (`.code-root[data-anchor] > .code-agent`)
   // can style. applyAnchor() calls this whenever the anchor is a dock mode, so PICKING the
   // dock from the menu finally moves the agent. Lightweight (no render) to avoid recursion.
-  (wbApp as { __wbParkAgent?: () => void }).__wbParkAgent = () => { parkAgent(); };
+  (wbApp as { __wbParkAgent?: () => void }).__wbParkAgent = () => {
+    parkAgent();
+    // Docked → the Echo card the agent lived in is now an empty husk. Close it
+    // (session stays alive) so a docked agent isn't shadowed by a blank panel.
+    echoCtl?.detachAgent();
+  };
   // The collapsed bar's transcript button — TOGGLES the transcript panel:
   // open it if absent, close it (parking the thread home) if present.
   (wbApp as { __wbOpenThread?: () => void }).__wbOpenThread = () => {
