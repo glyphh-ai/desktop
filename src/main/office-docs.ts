@@ -72,6 +72,46 @@ export function registerOfficeDocsIpc(): void {
       return { ok: false, error: errText(err) };
     }
   });
+  ipcMain.handle("gdrive-list", async (_e, q: unknown) => {
+    try {
+      const listing = await getClient().officeDrive.list(q ? String(q) : undefined);
+      return { ok: true, ...listing };
+    } catch (err) {
+      return { ok: false, error: errText(err), folders: [], files: [] };
+    }
+  });
+  ipcMain.handle("gdrive-mkdir", async (_e, name: unknown, parentId: unknown) => {
+    try {
+      return { ok: true, folder: await getClient().officeDrive.createFolder(String(name ?? ""), parentId ? String(parentId) : null) };
+    } catch (err) {
+      return { ok: false, error: errText(err) };
+    }
+  });
+  ipcMain.handle("gdrive-move", async (_e, kind: unknown, file: unknown, folderId: unknown) => {
+    try {
+      const k = String(kind ?? "");
+      if (k !== "slides" && k !== "docs") throw new Error("kind must be slides or docs");
+      await getClient().officeDrive.move(k, String(file ?? ""), folderId ? String(folderId) : null);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errText(err) };
+    }
+  });
+  ipcMain.handle("gdrive-folder-rename", async (_e, id: unknown, name: unknown) => {
+    try {
+      return { ok: true, folder: await getClient().officeDrive.updateFolder(String(id ?? ""), { name: String(name ?? "") }) };
+    } catch (err) {
+      return { ok: false, error: errText(err) };
+    }
+  });
+  ipcMain.handle("gdrive-folder-delete", async (_e, id: unknown) => {
+    try {
+      await getClient().officeDrive.deleteFolder(String(id ?? ""));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errText(err) };
+    }
+  });
   ipcMain.handle("gdoc-templates", async () => {
     try {
       return { ok: true, templates: await getClient().officeDocs.templates() };

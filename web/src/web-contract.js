@@ -286,6 +286,26 @@ export function buildContract(client, deps) {
       try { return { ok: true, suggestion: await client.officeDocs.resolveSuggestion(id, approve) }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
+    gdriveList: async (q) => {
+      try { const l = await client.officeDrive.list(q || undefined); return { ok: true, folders: l.folders, files: l.files }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), folders: [], files: [] }; }
+    },
+    gdriveMkdir: async (name, parentId) => {
+      try { return { ok: true, folder: await client.officeDrive.createFolder(name, parentId ?? null) }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gdriveMove: async (kind, file, folderId) => {
+      try { await client.officeDrive.move(kind, file, folderId ?? null); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gdriveFolderRename: async (id, name) => {
+      try { await client.officeDrive.updateFolder(id, { name }); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gdriveFolderDelete: async (id) => {
+      try { await client.officeDrive.deleteFolder(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
     gdocTemplates: async () => {
       try { return { ok: true, templates: await client.officeDocs.templates() }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), templates: [] }; }

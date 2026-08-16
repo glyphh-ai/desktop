@@ -124,7 +124,7 @@ function focusGlyphhWindow(): void {
 const TOOL_BUILTINS: Record<string, string> = {
   plan: "plan", files: "files", editor: "monaco", monaco: "monaco",
   diff: "diff", echo: "echo", gpoint: "gpoint", gpoints: "gpoint",
-  slides: "gpoint", docs: "gdoc", gdoc: "gdoc",
+  slides: "gpoint", docs: "gdoc", gdoc: "gdoc", drive: "gdrive", gdrive: "gdrive",
 };
 function builtinRef(key: string): WbAppRef | "terminal" | { tool: string } | null {
   if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };

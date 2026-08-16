@@ -950,6 +950,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   gdocDelete: (file: string) => ipcRenderer.invoke("gdoc-delete", file) as Promise<{ ok: boolean; error?: string }>,
   gdocSuggestions: (file: string, status?: string) => ipcRenderer.invoke("gdoc-suggestions", file, status) as Promise<{ ok: boolean; suggestions: Array<{ id: string; file: string; section: string; beforeMd: string; afterMd: string; note: string; authorKind: string; status: string; createdAt: string }>; error?: string }>,
   gdocResolve: (id: string, approve: boolean) => ipcRenderer.invoke("gdoc-resolve", id, approve) as Promise<{ ok: boolean; suggestion?: { id: string; status: string }; error?: string }>,
+  gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: "slides" | "docs"; file: string; title: string; sizeBytes: number; folderId: string | null; updatedAt: string }>; error?: string }>,
+  gdriveMkdir: (name: string, parentId?: string | null) => ipcRenderer.invoke("gdrive-mkdir", name, parentId) as Promise<{ ok: boolean; folder?: { id: string; name: string }; error?: string }>,
+  gdriveMove: (kind: "slides" | "docs", file: string, folderId: string | null) => ipcRenderer.invoke("gdrive-move", kind, file, folderId) as Promise<{ ok: boolean; error?: string }>,
+  gdriveFolderRename: (id: string, name: string) => ipcRenderer.invoke("gdrive-folder-rename", id, name) as Promise<{ ok: boolean; error?: string }>,
+  gdriveFolderDelete: (id: string) => ipcRenderer.invoke("gdrive-folder-delete", id) as Promise<{ ok: boolean; error?: string }>,
   gdocTemplates: () => ipcRenderer.invoke("gdoc-templates") as Promise<{ ok: boolean; templates: Array<{ slug: string; name: string; category: string; description: string; markdown: string }>; error?: string }>,
   // Pop a panel off the app into a standalone OS window (traffic lights).
   panelPopout: (req: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => ipcRenderer.invoke("panel-popout", req) as Promise<{ ok: boolean; error?: string }>,
