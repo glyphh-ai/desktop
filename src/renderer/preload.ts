@@ -940,6 +940,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   gpointList: () => ipcRenderer.invoke("gpoint-list") as Promise<{ ok: boolean; decks: Array<{ file: string; title: string; slides: number; mtime: number; size: number }>; error?: string }>,
   gpointRead: (file: string) => ipcRenderer.invoke("gpoint-read", file) as Promise<{ ok: boolean; content?: string; error?: string }>,
   gpointDelete: (file: string) => ipcRenderer.invoke("gpoint-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  gpointNew: (name: string, title?: string) => ipcRenderer.invoke("gpoint-new", name, title) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
   gpointWrite: (file: string, html: string) => ipcRenderer.invoke("gpoint-write", file, html) as Promise<{ ok: boolean; error?: string }>,
   // Glyphh Office → PDF (slides page-per-slide, docs on Letter).
   officeExportPdf: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string; print?: boolean }) => ipcRenderer.invoke("office-export-pdf", req) as Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>,

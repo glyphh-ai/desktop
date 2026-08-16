@@ -286,6 +286,24 @@ export function registerGPointIpc(): void {
   });
   // The panel's ONE write: per-slide hide/delete re-saves the whole deck
   // document (decks stay agent-authored; this is surgery, not an editor).
+  // ＋ New in the panel: a one-slide starter through the CANONICAL shell —
+  // the panel never writes its own harness (same law as the agent tools).
+  ipcMain.handle("gpoint-new", async (_e, name: unknown, title: unknown) => {
+    try {
+      const t = String(title ?? name ?? "Untitled").trim() || "Untitled";
+      const esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const starter = `<section class="slide on" id="s1">
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;text-align:center">
+    <div style="font:700 96px/1.1 Inter,-apple-system,system-ui,sans-serif;letter-spacing:-.02em">${esc}</div>
+    <div class="frag" style="font:400 30px Inter,-apple-system,system-ui,sans-serif;color:#8e8e9c">Ask Glyphh to build this deck out</div>
+  </div>
+</section>`;
+      const r = await writeGPoint(name, buildDeckDocument(t, starter));
+      return { ok: true, file: r.file, title: t };
+    } catch (err) {
+      return { ok: false, error: errText(err) };
+    }
+  });
   ipcMain.handle("gpoint-write", async (_e, name: unknown, html: unknown) => {
     try {
       await writeGPoint(name, String(html ?? ""));

@@ -311,27 +311,51 @@ export function initGPoint(host: GPointHost): GPointPanel {
   async function renderLibrary(body: HTMLElement, slot: GPointSlotState, refresh: () => void): Promise<void> {
     body.innerHTML = `
       <div class="gpoint-lib">
-        <div class="gpoint-lib-head">
-          <span class="gpoint-lib-title">Slides</span>
-          <span class="gpoint-lib-sub">Glyphh Office · your decks</span>
-          <button class="ws-icon-btn gpoint-refresh" title="Refresh">
+        <div class="office-toolbar">
+          <input class="office-search" type="text" placeholder="Search decks…" spellcheck="false" autocomplete="off" />
+          <button class="action-btn primary office-new">＋ New</button>
+          <button class="ws-icon-btn office-refresh" title="Refresh">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
           </button>
         </div>
         <div class="gpoint-grid"></div>
-        <div class="gpoint-empty hidden">No decks yet.<br>Ask Glyphh for one — “make me a slide deck about…”.</div>
+        <div class="gpoint-empty hidden">No decks yet.<br>＋ New starts one, or ask Glyphh — "make me a slide deck about…".</div>
       </div>`;
-    body.querySelector(".gpoint-refresh")?.addEventListener("click", () => { void renderLibrary(body, slot, refresh); });
+    body.querySelector(".office-refresh")?.addEventListener("click", refresh);
     const grid = body.querySelector<HTMLElement>(".gpoint-grid")!;
     const empty = body.querySelector<HTMLElement>(".gpoint-empty");
     const showEmpty = (html: string): void => {
       if (empty) { empty.innerHTML = html; empty.classList.remove("hidden"); }
     };
+
+    const openDeck = (deck: GPointDeck): void => {
+      slot.file = deck.file;
+      slot.title = deck.title;
+      slot.slideIdx = 0;
+      refresh();
+    };
+
+    // ＋ New: a one-slide starter through the MAIN-side canonical shell —
+    // hidden on surfaces without that bridge (the agent path still works).
+    const api = gpointApi() as ReturnType<typeof gpointApi> & { gpointNew?: (name: string, title?: string) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }> };
+    const newBtn = body.querySelector<HTMLElement>(".office-new");
+    if (!(window as unknown as { glyphh?: { gpointNew?: unknown } }).glyphh?.gpointNew) newBtn?.remove();
+    else newBtn?.addEventListener("click", () => {
+      void (async () => {
+        const list = await api.gpointList?.();
+        const taken = new Set((list?.ok ? list.decks : []).map((d) => d.file));
+        let stem = "untitled", n = 2;
+        while (taken.has(`${stem}.html`)) stem = `untitled-${n++}`;
+        const res = await (window as unknown as { glyphh: { gpointNew: (name: string, title?: string) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }> } }).glyphh.gpointNew(stem, "Untitled");
+        if (!res.ok) { void host.confirm({ title: "Couldn't create the deck", body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
+        openDeck({ file: res.file || `${stem}.html`, title: res.title || "Untitled", slides: 1, mtime: 0, size: 0 });
+      })();
+    });
+
     // NEVER leave the body dark and silent: a missing bridge, a dead handler
-    // and a real list failure each paint their own message. The web surface is
-    // REAL now (web-contract.js wires gpoint* to the SDK) — but its Proxy
+    // and a real list failure each paint their own message. The web Proxy
     // fallback fakes unknown methods as async no-ops returning undefined, so
-    // the shape guard below stays load-bearing for a stale web bundle.
+    // the shape guard stays load-bearing for a stale web bundle.
     const list = gpointApi().gpointList;
     if (!list) {
       showEmpty("Slides' bridge isn't loaded in this session.");
@@ -346,31 +370,20 @@ export function initGPoint(host: GPointHost): GPointPanel {
       return;
     }
     if (!body.isConnected) return;
-    // A stubbed bridge (or an old main) can resolve to nothing — treat any
-    // shape without a real ok/decks as "no deck store here".
     if (!res || typeof res.ok !== "boolean") {
       showEmpty("This surface has no deck store.<br>Slides runs in the desktop app.");
       return;
     }
     if (!res.ok) {
-      showEmpty(`Couldn't read ~/.glyphh/gpoints.<br>${res.error ?? "Unknown error."}`);
+      showEmpty(`Couldn't read the deck library.<br>${res.error ?? "Unknown error."}`);
       return;
     }
     const decks = Array.isArray(res.decks) ? res.decks : [];
-    if (!decks.length) {
-      empty?.classList.remove("hidden");
-      return;
-    }
-    const openDeck = (deck: GPointDeck): void => {
-      slot.file = deck.file;
-      slot.title = deck.title;
-      slot.slideIdx = 0;
-      refresh();
-    };
+
     const deleteDeck = async (deck: GPointDeck): Promise<void> => {
       const ok = await host.confirm({
         title: `Delete “${deck.title}”?`,
-        body: "The deck file is removed from ~/.glyphh/gpoints. This can't be undone.",
+        body: "The deck is removed from the org library. This can't be undone.",
         confirmLabel: "Delete",
         danger: true,
       });
@@ -383,35 +396,51 @@ export function initGPoint(host: GPointHost): GPointPanel {
       htmlCache.delete(deck.file);
       if (body.isConnected) void renderLibrary(body, slot, refresh);
     };
-    for (const deck of decks) {
-      const card = document.createElement("div");
-      card.className = "gpoint-card";
-      card.innerHTML = `
-        <div class="gpoint-thumb"><div class="gpoint-thumb-ph">${host.icon}</div></div>
-        <div class="gpoint-card-row">
-          <div class="gpoint-card-meta">
-            <div class="gpoint-card-title"></div>
-            <div class="gpoint-card-sub">${deck.slides} slide${deck.slides === 1 ? "" : "s"}</div>
-          </div>
-          <button class="ws-icon-btn gpoint-kebab" title="Options">
-            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
-          </button>
-        </div>`;
-      (card.querySelector(".gpoint-card-title") as HTMLElement).textContent = deck.title;
-      card.addEventListener("click", (ev) => {
-        if ((ev.target as HTMLElement).closest(".gpoint-kebab")) return;
-        openDeck(deck);
-      });
-      card.querySelector(".gpoint-kebab")?.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        openCardMenu(ev.currentTarget as HTMLElement, () => openDeck(deck), () => void deleteDeck(deck));
-      });
-      grid.appendChild(card);
-      const host_ = card.querySelector<HTMLElement>(".gpoint-thumb")!;
-      void deckHtml(deck.file).then((html) => {
-        if (html && host_.isConnected) fillThumbs([{ host: host_, doc: staticDoc(html, 0) }]);
-      });
-    }
+
+    const paint = (query: string): void => {
+      grid.textContent = "";
+      const q = query.toLowerCase();
+      const inView = decks.filter((d) => !q || d.title.toLowerCase().includes(q) || d.file.toLowerCase().includes(q));
+      empty?.classList.toggle("hidden", inView.length > 0 || decks.length === 0);
+      if (!decks.length) empty?.classList.remove("hidden");
+      for (const deck of inView) {
+        const card = document.createElement("div");
+        card.className = "gpoint-card";
+        card.innerHTML = `
+          <div class="gpoint-thumb"><div class="gpoint-thumb-ph">${host.icon}</div></div>
+          <div class="gpoint-card-row">
+            <div class="gpoint-card-meta">
+              <div class="gpoint-card-title"></div>
+              <div class="gpoint-card-sub">${deck.slides} slide${deck.slides === 1 ? "" : "s"}</div>
+            </div>
+            <button class="ws-icon-btn gpoint-kebab" title="Options">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+            </button>
+          </div>`;
+        (card.querySelector(".gpoint-card-title") as HTMLElement).textContent = deck.title;
+        card.addEventListener("click", (ev) => {
+          if ((ev.target as HTMLElement).closest(".gpoint-kebab")) return;
+          openDeck(deck);
+        });
+        card.querySelector(".gpoint-kebab")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openCardMenu(ev.currentTarget as HTMLElement, () => openDeck(deck), () => void deleteDeck(deck));
+        });
+        grid.appendChild(card);
+        const host_ = card.querySelector<HTMLElement>(".gpoint-thumb")!;
+        void deckHtml(deck.file).then((html) => {
+          if (html && host_.isConnected) fillThumbs([{ host: host_, doc: staticDoc(html, 0) }]);
+        });
+      }
+    };
+    const search = body.querySelector<HTMLInputElement>(".office-search")!;
+    let debounce = 0;
+    search.addEventListener("keydown", (e) => e.stopPropagation());
+    search.addEventListener("input", () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => paint(search.value.trim()), 160);
+    });
+    paint("");
   }
 
   /** Contain every failure: renderSlot void-calls this, so an uncaught throw

@@ -144,18 +144,17 @@ export function initGDocs(host: GDocHost): GDocPanel {
   async function renderLibrary(body: HTMLElement, slot: GDocSlotState, refresh: () => void): Promise<void> {
     body.innerHTML = `
       <div class="gdoc-lib">
-        <div class="gdoc-lib-head">
-          <span class="gdoc-lib-title">Docs</span>
-          <span class="gdoc-lib-sub">Glyphh Office · your documents</span>
-          <button class="action-btn primary gdoc-new">＋ New</button>
-          <button class="ws-icon-btn gdoc-refresh" title="Refresh">
+        <div class="office-toolbar">
+          <input class="office-search" type="text" placeholder="Search documents…" spellcheck="false" autocomplete="off" />
+          <button class="action-btn primary office-new">＋ New</button>
+          <button class="ws-icon-btn office-refresh" title="Refresh">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
           </button>
         </div>
-        <div class="gdoc-rows"></div>
+        <div class="office-grid"></div>
         <div class="gdoc-empty hidden">No documents yet.<br>＋ New starts from a template, or ask Glyphh — "write me a…".</div>
       </div>`;
-    body.querySelector(".gdoc-refresh")?.addEventListener("click", refresh);
+    body.querySelector(".office-refresh")?.addEventListener("click", refresh);
 
     const openDoc = (d: { file: string; title: string }): void => {
       slot.file = d.file;
@@ -163,7 +162,7 @@ export function initGDocs(host: GDocHost): GDocPanel {
       refresh();
     };
 
-    body.querySelector(".gdoc-new")?.addEventListener("click", (ev) => {
+    body.querySelector(".office-new")?.addEventListener("click", (ev) => {
       void (async () => {
         const res = await gdocApi().gdocTemplates?.();
         const templates = res?.ok ? res.templates : [];
@@ -189,11 +188,11 @@ export function initGDocs(host: GDocHost): GDocPanel {
       })();
     });
 
-    const rows = body.querySelector<HTMLElement>(".gdoc-rows")!;
+    const grid = body.querySelector<HTMLElement>(".office-grid")!;
+    const empty = body.querySelector<HTMLElement>(".gdoc-empty");
     const res = await gdocApi().gdocList?.();
     if (!body.isConnected) return;
     if (!res || !Array.isArray(res.docs) || (!res.ok && !res.docs.length)) {
-      const empty = body.querySelector<HTMLElement>(".gdoc-empty");
       if (empty) {
         empty.innerHTML = res && !res.ok
           ? `Couldn't load the library.<br>${res.error ?? "Unknown error."}`
@@ -202,44 +201,55 @@ export function initGDocs(host: GDocHost): GDocPanel {
       }
       return;
     }
-    if (!res.docs.length) {
-      body.querySelector(".gdoc-empty")?.classList.remove("hidden");
-      return;
-    }
-    for (const d of res.docs) {
-      const row = document.createElement("div");
-      row.className = "gdoc-row";
-      row.innerHTML = `
-        <span class="gdoc-row-icon">${host.icon}</span>
-        <span class="gdoc-row-title"></span>
-        <span class="gdoc-row-file"></span>
-        <span class="gdoc-row-date">${fmtDate(d.mtime)}</span>
-        <button class="ws-icon-btn gdoc-row-kebab" title="Options">
-          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
-        </button>`;
-      (row.querySelector(".gdoc-row-title") as HTMLElement).textContent = d.title || d.file;
-      (row.querySelector(".gdoc-row-file") as HTMLElement).textContent = d.file;
-      row.addEventListener("click", (ev) => {
-        if ((ev.target as HTMLElement).closest(".gdoc-row-kebab")) return;
-        openDoc(d);
-      });
-      row.querySelector(".gdoc-row-kebab")?.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-        popMenu(r.right - 150, r.bottom + 4, [
-          { label: "Open", fn: () => openDoc(d) },
-          { label: "Delete…", danger: true, fn: () => void (async () => {
-            const ok = await host.confirm({ title: `Delete “${d.title || d.file}”?`, body: "The document is removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
-            if (!ok) return;
-            const del = await gdocApi().gdocDelete?.(d.file);
-            if (del && !del.ok) { void host.confirm({ title: "Couldn't delete", body: del.error || "Unknown error.", confirmLabel: "OK" }); return; }
-            mdCache.delete(d.file);
-            refresh();
-          })() },
-        ]);
-      });
-      rows.appendChild(row);
-    }
+    const docs = res.docs;
+
+    const paint = (query: string): void => {
+      grid.textContent = "";
+      const q = query.toLowerCase();
+      const inView = docs.filter((d) => !q || (d.title || "").toLowerCase().includes(q) || d.file.toLowerCase().includes(q));
+      empty?.classList.toggle("hidden", inView.length > 0);
+      if (!docs.length) empty?.classList.remove("hidden");
+      for (const d of inView) {
+        const card = document.createElement("div");
+        card.className = "office-card";
+        card.innerHTML = `
+          <span class="office-card-ic">${host.icon}</span>
+          <span class="office-card-title"></span>
+          <span class="office-card-meta">${fmtDate(d.mtime)}</span>
+          <button class="ws-icon-btn office-card-kebab" title="Options">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+          </button>`;
+        (card.querySelector(".office-card-title") as HTMLElement).textContent = d.title || d.file;
+        card.addEventListener("click", (ev) => {
+          if ((ev.target as HTMLElement).closest(".office-card-kebab")) return;
+          openDoc(d);
+        });
+        card.querySelector(".office-card-kebab")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+          popMenu(r.right - 150, r.bottom + 4, [
+            { label: "Open", fn: () => openDoc(d) },
+            { label: "Delete…", danger: true, fn: () => void (async () => {
+              const ok = await host.confirm({ title: `Delete “${d.title || d.file}”?`, body: "The document is removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
+              if (!ok) return;
+              const del = await gdocApi().gdocDelete?.(d.file);
+              if (del && !del.ok) { void host.confirm({ title: "Couldn't delete", body: del.error || "Unknown error.", confirmLabel: "OK" }); return; }
+              mdCache.delete(d.file);
+              refresh();
+            })() },
+          ]);
+        });
+        grid.appendChild(card);
+      }
+    };
+    const search = body.querySelector<HTMLInputElement>(".office-search")!;
+    let debounce = 0;
+    search.addEventListener("keydown", (e) => e.stopPropagation());
+    search.addEventListener("input", () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => paint(search.value.trim()), 160);
+    });
+    paint("");
   }
 
   // ── DOCUMENT ───────────────────────────────────────────────────────────────

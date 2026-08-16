@@ -16741,9 +16741,6 @@ body[data-glyphh-anchor="center"].peek-open #code-wb-applayer { visibility: hidd
   display: flex; flex-direction: column; gap: 12px;
   padding: 14px; height: 100%; box-sizing: border-box; overflow-y: auto;
 }
-.gpoint-lib-head { display: flex; align-items: center; gap: 8px; }
-.gpoint-lib-title { font-size: 13px; font-weight: 600; color: var(--text); }
-.gpoint-lib-sub { flex: 1; font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
 .gpoint-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -16875,10 +16872,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 /* ── Glyphh Docs — the paper panel ───────────────────────────────────────── */
 .ws-gdoc-body { display: flex; flex-direction: column; overflow: hidden; }
 .gdoc-lib { display: flex; flex-direction: column; gap: 10px; padding: 14px; height: 100%; box-sizing: border-box; overflow-y: auto; }
-.gdoc-lib-head { display: flex; align-items: center; gap: 8px; }
-.gdoc-lib-title { font-size: 13px; font-weight: 600; color: var(--text); }
-.gdoc-lib-sub { flex: 1; font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
-.gdoc-lib-head .action-btn.primary { height: 24px; padding: 3px 12px; font-size: 11.5px; flex: none; }
 .gdoc-rows { display: flex; flex-direction: column; gap: 2px; }
 .gdoc-row {
   display: flex; align-items: center; gap: 10px; padding: 8px 10px;
@@ -16961,39 +16954,10 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 /* ── Glyphh Drive ────────────────────────────────────────────────────────── */
 .ws-gdrive-body { display: flex; flex-direction: column; overflow: hidden; }
 .gdrive { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-.gdrive-head { display: flex; align-items: center; gap: 8px; flex: none; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-.gdrive-title { font-size: 13px; font-weight: 600; color: var(--text); }
-.gdrive-search {
-  flex: 1; min-width: 0; background: var(--surface-2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px;
-  font: inherit; font-size: 12px; outline: none;
-}
-.gdrive-search:focus { border-color: var(--accent); }
-.gdrive-head .action-btn.primary { height: 24px; padding: 3px 12px; font-size: 11.5px; flex: none; }
-.gdrive-main { flex: 1; display: flex; min-height: 0; }
-.gdrive-folders {
-  flex: 0 0 190px; overflow-y: auto; padding: 10px 6px;
-  display: flex; flex-direction: column; gap: 1px; border-right: 1px solid var(--border);
-}
-.gdrive-folder {
-  display: flex; align-items: center; gap: 8px;
-  background: none; border: none; cursor: pointer; text-align: left;
-  font: inherit; font-size: 12px; color: var(--text-2);
-  padding: 5px 10px; border-radius: 7px;
-}
-.gdrive-folder:hover { background: var(--hover); color: var(--text); }
-.gdrive-folder.active { background: var(--surface-2); color: var(--text); }
-.gdrive-folder-ic svg { width: 14px; height: 14px; display: block; }
-.gdrive-folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gdrive-newfolder-input {
   margin: 2px 6px 6px; background: var(--surface-2); color: var(--text);
   border: 1px solid var(--accent); border-radius: 6px; padding: 4px 8px;
   font: inherit; font-size: 12px; outline: none;
-}
-.gdrive-files {
-  flex: 1; min-width: 0; overflow-y: auto; padding: 12px;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 10px; align-content: start;
 }
 .gdrive-card {
   display: flex; flex-direction: column; gap: 6px; padding: 12px;
@@ -17007,3 +16971,63 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gdrive-card-meta { font-size: 10px; color: var(--text-muted); }
 .gdrive-card-kebab { position: absolute; top: 8px; right: 6px; }
 .gdrive-menu { min-width: 170px; padding: 5px; max-height: 50vh; overflow-y: auto; }
+
+/* ── Glyphh Office — the shared Apps-root toolbar + card grid ────────────── */
+.office-toolbar { display: flex; align-items: center; gap: 8px; flex: none; }
+.gdrive .office-toolbar { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.office-search {
+  flex: 1; min-width: 0; background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px;
+  font: inherit; font-size: 12px; outline: none;
+}
+.office-search:focus { border-color: var(--accent); }
+.office-toolbar .action-btn.primary { height: 26px; padding: 3px 12px; font-size: 11.5px; flex: none; }
+.office-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px; align-content: start;
+}
+.office-card {
+  display: flex; flex-direction: column; gap: 6px; padding: 12px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: 10px; cursor: pointer; position: relative;
+  transition: background 0.15s, border-color 0.15s;
+}
+.office-card:hover { background: var(--surface-2); border-color: var(--border-3); }
+.office-card-ic svg { width: 20px; height: 20px; display: block; color: var(--text-2); }
+.office-card-title { font-size: 12px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.office-card-meta { font-size: 10px; color: var(--text-muted); }
+.office-card-kebab { position: absolute; top: 8px; right: 6px; }
+
+/* Drive — Google-Drive shape: crumbs, Recents strip, folder cards, files. */
+.gdrive-crumbs { display: flex; align-items: center; gap: 4px; flex: none; padding: 8px 12px 0; }
+.gdrive-crumb {
+  background: none; border: none; cursor: pointer; font: inherit;
+  font-size: 12px; color: var(--text-2); padding: 2px 6px; border-radius: 6px;
+}
+.gdrive-crumb:hover { background: var(--hover); color: var(--text); }
+.gdrive-crumb.current { color: var(--text); font-weight: 600; cursor: default; }
+.gdrive-crumb.current:hover { background: none; }
+.gdrive-crumb-sep { color: var(--text-muted); font-size: 12px; }
+.gdrive-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 18px; }
+.gdrive-section { display: flex; flex-direction: column; gap: 8px; }
+.gdrive-section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.gdrive-recents { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.gdrive-recents .gdrive-card-compact { flex: 0 0 170px; }
+.gdrive-folder-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px; align-content: start;
+}
+.gdrive-foldercard {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: 10px; cursor: pointer; position: relative;
+  transition: background 0.15s, border-color 0.15s;
+}
+.gdrive-foldercard:hover { background: var(--surface-2); border-color: var(--border-3); }
+.gdrive-foldercard-ic svg { width: 18px; height: 18px; display: block; color: var(--text-2); }
+.gdrive-foldercard-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdrive-foldercard .gdrive-card-kebab { position: static; }
+.gdrive-files {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px; align-content: start;
+}
