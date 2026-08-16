@@ -19,7 +19,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { initAnchor, initAnchorEvents, isCollapsed } from "./code-anchor.js";
+import { initAnchor, initAnchorEvents, isCollapsed, anchorMode, applyAnchor } from "./code-anchor.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -4628,6 +4628,9 @@ export function initCode(): void {
     void checkWorkdirGate();
     const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent");
     if (hosted) return;
+    // A DOCKED agent (global anchor) stays exactly where it is on a new session —
+    // never full-screened. Just re-assert the dock so the empty thread renders in place.
+    if (anchorMode() !== "rail") { applyAnchor(); return; }
     gotoSection("agent");
   };
 
@@ -4681,7 +4684,10 @@ export function initCode(): void {
     renderHistory();
     renderThread();
     void checkWorkdirGate();
-    gotoSection("agent");
+    // A DOCKED agent stays docked — only the in-workspace `rail` anchor full-screens the
+    // agent for a new session. Docked: re-assert the dock (the panel-close above can
+    // undo the collapsed-mode surgery), never yank it to a full-screen "new session" one-off.
+    if (anchorMode() !== "rail") applyAnchor(); else gotoSection("agent");
   };
   // The rail's + starts a new Code session, straight to the agent.
   el("code-new-chat")?.addEventListener("click", () => newSessionLanding());
