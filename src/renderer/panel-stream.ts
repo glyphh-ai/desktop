@@ -29,6 +29,9 @@ import { panelStateFragment, type PanelStateKey } from "./browser-error-page.js"
 // The relay envelope (auth'd /ws/panel socket, req/res/push frames) lives in
 // the shared relay-socket helper — the remote terminal rides the same one.
 import { connectRelaySocket, relaySdk, type RelaySocket } from "./relay-socket.js";
+// Keyboard + clipboard capture rides the shared hidden-proxy module (the
+// mobile tray mounts the same one) — see panel-kb.ts for the why.
+import { mountPanelKb, modBits } from "./panel-kb.js";
 
 // ── wire shapes (mirror src/main/panel-host.ts + panel-webrtc.ts) ────────────
 
@@ -80,8 +83,10 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
 
   // The video surfaces. Canvas is always present (JPEG floor); the <video> is
   // shown only once WebRTC media flows, layered over the canvas.
+  // Not focusable itself — keystrokes belong to the hidden key proxy (panel-kb),
+  // which mousedown/connect focus instead.
   const canvas = document.createElement("canvas");
-  canvas.width = 1280; canvas.height = 800; canvas.tabIndex = 0;
+  canvas.width = 1280; canvas.height = 800;
   canvas.style.cssText = "flex:1;min-height:0;width:100%;height:100%;object-fit:contain;background:transparent;outline:none;cursor:default;";
   const video = document.createElement("video");
   video.autoplay = true; video.muted = true; (video as HTMLVideoElement).playsInline = true;
@@ -223,19 +228,31 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     const r = canvas.getBoundingClientRect();
     return { x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) };
   }
-  function modBits(e: MouseEvent | KeyboardEvent | WheelEvent): number {
-    return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
-  }
   const BTN = ["left", "middle", "right"] as const;
   function input(event: Record<string, unknown>): void { if (panelId) send("panel.input", { panelId, event }); }
 
+  // Keyboard + clipboard ride the shared hidden-proxy (panel-kb.ts): the KEY
+  // NAME crosses the wire (desktop derives VK codes — Backspace/arrows work),
+  // paste sends the LOCAL clipboard as insertText, copy/cut round-trip the far
+  // page's selection back onto the local clipboard.
+  const kb = mountPanelKb(root, {
+    key: (ev) => input(ev as unknown as Record<string, unknown>),
+    insertText: (text) => input({ type: "insertText", text }),
+    clipboard: (action) => { void remoteClipboard(action); },
+  });
+  async function remoteClipboard(action: "copy" | "cut"): Promise<void> {
+    if (!panelId) return;
+    try {
+      const r = (await call("panel.clipboard", { panelId, action })) as { text?: string };
+      if (r?.text) await navigator.clipboard?.writeText(r.text);
+    } catch { /* nothing selected, or clipboard permission denied — nothing to land */ }
+  }
+
   canvas.addEventListener("mousemove", (e) => { const { x, y } = pt(e); input({ type: "mouse", action: "move", x, y, buttons: e.buttons, mods: modBits(e) }); });
-  canvas.addEventListener("mousedown", (e) => { canvas.focus(); const { x, y } = pt(e); input({ type: "mouse", action: "down", x, y, button: BTN[e.button] ?? "left", buttons: e.buttons, mods: modBits(e), clickCount: e.detail || 1 }); });
+  canvas.addEventListener("mousedown", (e) => { kb.focus(); const { x, y } = pt(e); input({ type: "mouse", action: "down", x, y, button: BTN[e.button] ?? "left", buttons: e.buttons, mods: modBits(e), clickCount: e.detail || 1 }); });
   canvas.addEventListener("mouseup", (e) => { const { x, y } = pt(e); input({ type: "mouse", action: "up", x, y, button: BTN[e.button] ?? "left", buttons: e.buttons, mods: modBits(e), clickCount: e.detail || 1 }); });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   canvas.addEventListener("wheel", (e) => { e.preventDefault(); const { x, y } = pt(e); input({ type: "wheel", x, y, dx: e.deltaX, dy: e.deltaY, mods: modBits(e) }); }, { passive: false });
-  canvas.addEventListener("keydown", (e) => { e.preventDefault(); const text = e.key.length === 1 ? e.key : ""; input({ type: "key", action: "down", key: e.key, code: e.code, text, mods: modBits(e) }); });
-  canvas.addEventListener("keyup", (e) => { e.preventDefault(); input({ type: "key", action: "up", key: e.key, code: e.code, mods: modBits(e) }); });
 
   // Resize: when the element's box changes, tell the far side to re-render at the
   // new device size (debounced to avoid a cast-restart storm during a drag).
@@ -323,7 +340,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
       const h1 = Math.max(1, Math.round(after.height));
       if ((w1 !== w0 || h1 !== h0) && w1 > 1 && h1 > 1) input({ type: "resize", width: w1, height: h1 });
       setOverlay(null);
-      canvas.focus();
+      kb.focus();
       void startWebrtc();
     } catch (err) {
       if (!disposed && gen === bootGen) setOverlay(offlineHtml("failed", (err as Error).message || undefined));
@@ -345,6 +362,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     if (disposed) return;
     disposed = true;
     try { ro.disconnect(); } catch { /* noop */ }
+    kb.dispose();
     if (resizeTimer) clearTimeout(resizeTimer);
     try { pc?.close(); } catch { /* noop */ }
     pc = null;

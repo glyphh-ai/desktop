@@ -100,6 +100,12 @@ export interface PanelSource {
   /** Address-bar navigation from the web chrome (url / back / forward / reload). */
   nav(action: PanelNavAction, url?: string): Promise<void>;
 
+  /** Run a clipboard verb against the page's current selection and return its
+   *  text, so the web client can land it on ITS OWN clipboard — forwarding
+   *  Cmd/Ctrl+C as keystrokes can't move data between machines. `cut` also
+   *  performs the deletion in the page. */
+  clipboard(action: "copy" | "cut"): Promise<{ text: string }>;
+
   /** Re-size the rendered surface + restart the stream at the new dimensions. */
   resize(width: number, height: number): Promise<void>;
 
