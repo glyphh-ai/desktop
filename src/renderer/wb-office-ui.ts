@@ -2,6 +2,40 @@
  * wb-office-ui.ts — small shared UI for the Glyphh Office panels.
  */
 
+import { formatMarkdown } from "./format-markdown.js";
+
+/** Mount the mini white-paper preview of a document into a thumb box — the
+ *  ONE implementation both the Docs library and Drive render, so they always
+ *  match. Fetches the markdown head lazily (small cache). */
+const docThumbCache = new Map<string, string>();
+export function mountDocThumb(thumb: HTMLElement, file: string): void {
+  const paint = (md: string): void => {
+    if (!thumb.isConnected) return;
+    const sheet = document.createElement("div");
+    sheet.className = "gdrive-docthumb";
+    const inner = document.createElement("div");
+    inner.className = "gdrive-docthumb-inner";
+    inner.innerHTML = formatMarkdown(md);
+    sheet.appendChild(inner);
+    thumb.appendChild(sheet);
+  };
+  const hit = docThumbCache.get(file);
+  if (hit !== undefined) { paint(hit); return; }
+  void (window as unknown as { glyphh?: { gdocRead?: (f: string) => Promise<{ ok: boolean; markdown?: string }> } })
+    .glyphh?.gdocRead?.(file)
+    .then((res) => {
+      if (!res?.ok || typeof res.markdown !== "string") return;
+      const head = res.markdown.slice(0, 1500);
+      docThumbCache.set(file, head);
+      paint(head);
+    });
+}
+
+/** Drop a document's cached thumb source (it changed). */
+export function invalidateDocThumb(file: string): void {
+  docThumbCache.delete(file);
+}
+
 /** A Prev / "x of y" / Next pager, or null when one page holds everything. */
 export function officePager(total: number, page: number, per: number, onPage: (p: number) => void): HTMLElement | null {
   const pages = Math.max(1, Math.ceil(total / per));

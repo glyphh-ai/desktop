@@ -13,7 +13,7 @@
  */
 
 import { formatMarkdown } from "./format-markdown.js";
-import { officePager, officePage } from "./wb-office-ui.js";
+import { officePager, officePage, mountDocThumb, invalidateDocThumb } from "./wb-office-ui.js";
 
 export interface GDocMeta { file: string; title: string; size: number; folderId: string | null; mtime: number }
 export interface GDocSuggestion {
@@ -221,15 +221,18 @@ export function initGDocs(host: GDocHost): GDocPanel {
       if (pager && !q) grid.parentElement?.appendChild(pager);
       for (const d of inView) {
         const card = document.createElement("div");
-        card.className = "office-card";
+        card.className = "gdrive-card";
         card.innerHTML = `
-          <span class="office-card-ic">${host.icon}</span>
-          <span class="office-card-title"></span>
-          <span class="office-card-meta">${fmtDate(d.mtime)}</span>
-          <button class="ws-icon-btn office-card-kebab" title="Options">
-            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
-          </button>`;
-        (card.querySelector(".office-card-title") as HTMLElement).textContent = d.title || d.file;
+          <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${host.icon}</div></div>
+          <div class="gdrive-card-row">
+            <span class="gdrive-card-title"></span>
+            <button class="ws-icon-btn office-card-kebab" title="Options">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+            </button>
+          </div>
+          <span class="gdrive-card-meta">${fmtDate(d.mtime)}</span>`;
+        (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = d.title || d.file;
+        mountDocThumb(card.querySelector<HTMLElement>(".gdrive-thumb")!, d.file);
         card.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".office-card-kebab")) return;
           openDoc(d);
@@ -298,6 +301,7 @@ export function initGDocs(host: GDocHost): GDocPanel {
       const res = await write(file, next).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
       if (!res || !res.ok) { void host.confirm({ title: "Couldn't save the document", body: (res as { error?: string } | undefined)?.error || "Unknown error.", confirmLabel: "OK" }); return false; }
       mdCache.set(file, next);
+      invalidateDocThumb(file);
       if ("title" in res && res.title) slot.title = res.title;
       return true;
     };

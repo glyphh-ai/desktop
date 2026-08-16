@@ -14927,6 +14927,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
+/* Docked at the BOTTOM the three-dots menu must open UPWARD (a downward menu
+   falls off the bottom edge behind the app). */
+.code-root[data-anchor="center"] .code-view-more-menu { top: auto; bottom: calc(100% + 6px); z-index: 200; }
 .code-view-more-menu .code-view-menu-item {
   /* The base .code-view-btn is a centered 28px square — undo that here or
      every row centers icon+label as a group and the icons zig-zag. */
@@ -16639,23 +16642,6 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .code-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .code-status-line .code-peek-caret { flex-shrink: 0; opacity: 0.7; }
 .code-status-line.is-running { color: var(--text); }
-/* Live spinner in the collapsed bar — a running agent shows motion, not just
-   the static "Working…" word. Hidden unless running; swaps in for the caret. */
-.code-status-spin {
-  display: none;
-  flex-shrink: 0;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 2px solid var(--border-2);
-  border-top-color: var(--accent);
-}
-.code-status-line.is-running .code-status-spin {
-  display: inline-block;
-  animation: code-status-spin 0.7s linear infinite;
-}
-.code-status-line.is-running .code-peek-caret { display: none; }
-@keyframes code-status-spin { to { transform: rotate(360deg); } }
 .code-status-line.is-blocked { border-left: 2px solid var(--accent); padding-left: 14px; }
 .code-status-line.has-unread .code-peek-caret { opacity: 1; color: var(--accent); }
 
@@ -16994,17 +16980,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px; align-content: start;
 }
-.office-card {
-  display: flex; flex-direction: column; gap: 6px; padding: 12px;
-  background: var(--surface-3); border: 1px solid var(--border);
-  border-radius: 10px; cursor: pointer; position: relative;
-  transition: background 0.15s, border-color 0.15s;
-}
-.office-card:hover { background: var(--surface-2); border-color: var(--border-3); }
-.office-card-ic svg { width: 20px; height: 20px; display: block; color: var(--text-2); }
-.office-card-title { font-size: 12px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.office-card-meta { font-size: 10px; color: var(--text-muted); }
-.office-card-kebab { position: absolute; top: 8px; right: 6px; }
 
 /* Drive — Google-Drive shape: crumbs, Recents strip, folder cards, files. */
 .gdrive-crumbs { display: flex; align-items: center; gap: 4px; flex: none; padding: 8px 12px 0; }
@@ -17019,8 +16994,10 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gdrive-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 18px; }
 .gdrive-section { display: flex; flex-direction: column; gap: 8px; }
 .gdrive-section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
-.gdrive-recents { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
-.gdrive-recents .gdrive-card { flex: 0 0 190px; }
+.gdrive-recents {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px; align-content: start;
+}
 .gdrive-folder-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px; align-content: start;

@@ -787,6 +787,10 @@ let currentId = "";
 let inited = false;
 let thinking = false;
 let spinner: GlyphhSpinner | null = null;
+// The collapsed bar's own instance of the SAME glyphh spinner the thread uses —
+// the thread (and its spinner) are hidden when docked-bottom, so the status line
+// shows this cube while the agent works instead of a bare "Working…".
+let statusSpinner: GlyphhSpinner | null = null;
 // One live run PER SESSION — sessions are independent in main (concurrent
 // runs) and independent streams here: each chat accumulates its own run
 // (chat-keyed, not DOM-keyed), and the panel paints only the CURRENT chat's.
@@ -1040,6 +1044,19 @@ function paintStatusLine(running = !!currentRun()): void {
   line.classList.toggle("is-running", running && !blocked);
   line.classList.toggle("is-blocked", blocked);
   line.classList.toggle("is-error", failed);
+
+  // The SAME glyphh spinner the thread uses — mount a cube-only instance at the
+  // head of the bar while working, tear it down when the run ends.
+  if (running && !blocked) {
+    if (!statusSpinner) {
+      statusSpinner = createGlyphhSpinner({ size: 15, phrases: false });
+      line.insertBefore(statusSpinner.el, line.firstChild);
+    }
+  } else if (statusSpinner) {
+    statusSpinner.destroy();
+    statusSpinner.el.remove();
+    statusSpinner = null;
+  }
 
   if (blocked) text.textContent = "Waiting on you — approve to continue";
   else if (running) text.textContent = last || "Working…";
@@ -4770,12 +4787,13 @@ export function initCode(): void {
     void checkWorkdirGate();
     if (!navigate) return;
     gotoSection("agent");
-    // ALWAYS re-apply the anchor on boot — not just when docked. gotoSection
-    // lands the agent in the rail with the RAW header order; applyAnchor() both
-    // re-homes it into the saved dock AND runs relocateActions to normalize the
-    // button order. Skipping it in rail mode is exactly why boot showed a
-    // different button layout than a reset (which always goes through applyAnchor).
-    applyAnchor();
+    // Re-READ the saved anchor from prefs and apply it AFTER the agent mounts.
+    // NOT applyAnchor() — that defaults to domMode() (the DOM's data-anchor),
+    // which RACES the async initAnchor() at boot and almost always still reads
+    // "rail", silently dropping the saved dock EVERY reload. initAnchor() reads
+    // the pref itself (glyphhAnchorMode), so the restore can't lose the race; it
+    // also runs relocateActions to normalize the header order.
+    void initAnchor();
     paintCw();
   };
   // The command centre / workbench used to switch spaces; with one type they

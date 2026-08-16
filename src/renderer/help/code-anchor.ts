@@ -92,9 +92,12 @@ function relocateActions(collapsed: boolean): void {
   // Move the anchor + kebab WRAPS (button AND their popup menu) — moving only the
   // button orphaned the menu, which is why the anchor popup did nothing when docked.
   const target = collapsed ? bar : head;
+  // Last item is code-view-more-wrap, NOT the kebab: the Code agent's kebab is
+  // hidden by design (its session actions live in the "More" menu), so relocating
+  // the kebab showed no three-dots at all when docked. Move the working one.
   for (const id of [
     "code-transcript-btn", "code-anchor-wrap", "code-session-history",
-    "code-session-new", "code-session-kebab-wrap",
+    "code-session-new", "code-view-more-wrap",
   ]) {
     const node = byId(id);
     if (node) target.appendChild(node);
@@ -146,7 +149,10 @@ export function applyAnchor(next: AnchorMode = domMode()): void {
 
 export function setAnchor(next: AnchorMode): void {
   applyAnchor(next);
-  void prefs().setPreference?.(MODE_PREF, mode);
+  console.log(`[anchor] setAnchor persisting glyphhAnchorMode="${mode}"`);
+  void Promise.resolve(prefs().setPreference?.(MODE_PREF, mode))
+    .then(() => console.log(`[anchor] setAnchor SAVED glyphhAnchorMode="${mode}"`))
+    .catch((e) => console.warn(`[anchor] setAnchor FAILED to save`, e));
 }
 
 // ── Peek ────────────────────────────────────────────────────────────────────

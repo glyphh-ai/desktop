@@ -9,8 +9,7 @@
  */
 
 import { deckHtml, staticDoc, fillThumbs } from "./wb-gpoint.js";
-import { formatMarkdown } from "./format-markdown.js";
-import { officePager, officePage } from "./wb-office-ui.js";
+import { officePager, officePage, mountDocThumb } from "./wb-office-ui.js";
 
 export interface DriveFolder { id: string; name: string; parentId: string | null }
 export interface DriveEntry {
@@ -74,17 +73,6 @@ function popMenu(x: number, y: number, items: PopItem[]): void {
 
 const fmtSize = (n: number): string => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
-/** Doc markdown for the mini paper thumbs (small cache, first 1.5KB is plenty). */
-const docThumbCache = new Map<string, string>();
-async function docThumbMd(file: string): Promise<string | null> {
-  const hit = docThumbCache.get(file);
-  if (hit !== undefined) return hit;
-  const res = await (window as unknown as { glyphh?: { gdocRead?: (f: string) => Promise<{ ok: boolean; markdown?: string }> } }).glyphh?.gdocRead?.(file);
-  if (!res?.ok || typeof res.markdown !== "string") return null;
-  const head = res.markdown.slice(0, 1500);
-  docThumbCache.set(file, head);
-  return head;
-}
 
 export interface GDrivePanel {
   renderIntoSlot: (body: HTMLElement, slot: GDriveSlotState, wrap: HTMLElement) => Promise<void>;
@@ -303,16 +291,7 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
             if (html && thumb.isConnected) fillThumbs([{ host: thumb, doc: staticDoc(html, 0) }]);
           });
         } else {
-          void docThumbMd(f.file).then((md) => {
-            if (md === null || !thumb.isConnected) return;
-            const sheet = document.createElement("div");
-            sheet.className = "gdrive-docthumb";
-            const inner = document.createElement("div");
-            inner.className = "gdrive-docthumb-inner";
-            inner.innerHTML = formatMarkdown(md);
-            sheet.appendChild(inner);
-            thumb.appendChild(sheet);
-          });
+          mountDocThumb(thumb, f.file);
         }
         return card;
       };
