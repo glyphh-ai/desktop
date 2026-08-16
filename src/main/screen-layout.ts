@@ -80,16 +80,7 @@ export function toggleRailCollapsed(): boolean {
   return setRailCollapsed(!railCollapsed);
 }
 
-
-// ── Per-layout Glyphh placement (the old Settings "screen layout" dock,
-//    reborn as a LAYOUT property) ─────────────────────────────────────────
-
-export type GlyphhPlacementMode = "rail" | "left" | "right" | "none";
-export interface GlyphhPlacement {
-  mode: GlyphhPlacementMode;
-  /** Docked width as a fraction of the work area (left/right modes). */
-  fraction?: number;
-}
-
-const clampFraction = (f: number): number => Math.max(0.2, Math.min(0.6, f));
+// NOTE: per-layout Glyphh placement (the old "screen layout" dock as a LAYOUT property)
+// was removed — the agent anchor is a GLOBAL device setting owned by the agent
+// (help/code-anchor.ts → the `glyphhAnchorMode` preference), never a layout property.
 

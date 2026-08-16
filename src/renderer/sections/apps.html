@@ -383,6 +383,38 @@
 
                   <div class="app-detail-section-sep"></div>
 
+                  <!-- Dedicated server: the app on its OWN machine + database, sized
+                       for real traffic and reachable on a custom domain. -->
+                  <label class="settings-label">Dedicated server</label>
+                  <p class="proxy-field-hint" style="margin:2px 0 14px;">Run this app on its own machine with its own database — sized for real traffic, and reachable on a custom domain. Billed at the size's monthly rate while it runs.</p>
+                  <div id="server-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                  <label class="settings-label">Size</label>
+                  <select id="server-size" class="settings-input"><option value="">Loading sizes…</option></select>
+                  <p class="proxy-field-hint" id="server-size-hint"></p>
+                  <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                    <span id="server-note" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                    <button id="server-deploy-btn" class="action-btn primary" type="button">Deploy server</button>
+                  </div>
+                  <div id="server-list" style="margin-top:14px;"></div>
+
+                  <div class="app-detail-section-sep"></div>
+
+                  <!-- Custom domains: point your own hostname at a running server.
+                       Cloudflare mints the cert; we hand back the DNS to publish. -->
+                  <label class="settings-label">Custom domains</label>
+                  <p class="proxy-field-hint" style="margin:2px 0 14px;">Point your own domain at a running server. We handle the HTTPS certificate; you publish the DNS records we give you.</p>
+                  <div id="domain-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                  <label class="settings-label">Server</label>
+                  <select id="domain-deployment" class="settings-input"><option value="">No running server yet</option></select>
+                  <label class="settings-label" style="margin-top:10px;">Hostname</label>
+                  <input id="domain-hostname" type="text" class="settings-input" placeholder="e.g. app.acme.com" />
+                  <div class="settings-actions" style="margin-top:12px;">
+                    <button id="domain-add-btn" class="action-btn primary" type="button">Add domain</button>
+                  </div>
+                  <div id="domain-list" style="margin-top:14px;"></div>
+
+                  <div class="app-detail-section-sep"></div>
+
                   <label class="settings-label">Own your code</label>
                   <p class="proxy-field-hint" style="margin:2px 0 14px;">Export this app as a standalone repo backed by your own Supabase — the app's source plus a runtime shim (<code>db</code>/<code>vector</code>/<code>llm</code>), Postgres migrations, and a README. Deploy it anywhere; it no longer needs Glyphh.</p>
                   <div id="graduate-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>

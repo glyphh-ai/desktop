@@ -118,6 +118,24 @@ type AppReleaseRow = {
 };
 
 declare global {
+  // A custom domain + the DNS records to publish — mirror of the SDK CustomDomain
+  // contract (Phase F). Global so the app-detail hosting tab (help/apps.ts) shares it.
+  type CustomDomainWire = {
+    id: string;
+    deploymentId: string;
+    hostname: string;
+    status: string;
+    dnsInstructions: {
+      hostname: string;
+      isApex: boolean;
+      records: Array<{ type: "CNAME" | "A" | "AAAA" | "TXT"; name: string; value: string }>;
+      apexUnsupported: boolean;
+    };
+    error: string | null;
+    verifiedAt: string | null;
+    createdAt: string;
+  };
+
   interface Window {
     glyphh: {
       copyToClipboard: (text: string) => void;
@@ -159,6 +177,7 @@ declare global {
       dashboardRuns: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       homeGotoSection: (section: string) => Promise<{ ok: boolean }>;
       onGotoSection: (cb: (section: string) => void) => void;
+      onPrefsReady: (cb: () => void) => void;
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
@@ -177,6 +196,13 @@ declare global {
       hostingStatus: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>;
       hostingDeploy: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
       hostingDestroy: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      appServersList: () => Promise<{ ok: boolean; images?: Array<{ key: string; region: string; description: string; ramMb: number; diskGb: number; monthlyCredits: number; active: boolean; sort: number }>; error?: string }>;
+      appServerDeploy: (slug: string, imageKey: string, releaseId?: string) => Promise<{ ok: boolean; queued?: { deploymentId: string; status: string }; error?: string }>;
+      appServerDeployments: (slug: string) => Promise<{ ok: boolean; deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>; error?: string }>;
+      appServerDestroy: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
+      appDomainsList: (slug: string) => Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>;
+      appDomainAdd: (slug: string, deploymentId: string, hostname: string) => Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>;
+      appDomainRemove: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
       appListingSet: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
       appListingImageAdd: (slug: string, kind: "icon" | "screenshot") => Promise<{ ok: boolean; key?: string; error?: string }>;
       appListingImageRemove: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
@@ -194,7 +220,7 @@ declare global {
       layoutsOpen: (name: string) => Promise<{ ok: boolean; error?: string }>;
       layoutsSave: (name: string, panelIds: string[]) => Promise<boolean>;
       layoutsPickFolder: () => Promise<string | null>;
-      layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => Promise<boolean>;
+      layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => Promise<boolean>;
       layoutsDelete: (name: string) => Promise<boolean>;
       pickDirectory: () => Promise<string | null>;
       pickExecutable: () => Promise<string | null>;
@@ -246,6 +272,8 @@ declare global {
       dripsDelete: (name: string) => Promise<string>;
       dripsPreview: (recipe: string) => Promise<string>;
       dripsBuiltinEffects: () => Promise<Array<{ name: string; kind: "one-shot" | "loop" }>>;
+      dripsStop: () => Promise<string>;
+      dripsRunning: () => Promise<string[]>;
       // Theme
       getTheme: () => Promise<string>;
       exportGlyphhSkill: (provider: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
@@ -277,7 +305,6 @@ declare global {
       threadsPush?: (id: string, body: { title?: string; mode?: string; source?: unknown; messages?: unknown[]; updatedAt: number }) => Promise<{ applied: boolean; thread: { id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number } }>;
       threadsDelete?: (id: string) => Promise<void>;
       glyphhRemember: (fact: string) => Promise<boolean>;
-      adaRecall: (query: string, k?: number) => Promise<Array<{ content: string; score: number }>>;
       libraryLoopGet: (ref: string) => Promise<LibEnvelope>;
       libraryLoopCreate: (input: unknown) => Promise<LibEnvelope>;
       libraryLoopUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
@@ -323,8 +350,6 @@ declare global {
       // @-mention summon (ghost overlay): alias lookup + summon.
       loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) => Promise<{ ok: boolean; loop: string }>;
       loopSetRoleDefault: (loopId: string, role: string, modelId: string | null) => Promise<{ ok: boolean; error?: string }>;
-      adaAsk: (op: unknown) => Promise<{ ok: boolean; answer?: string; error?: string }>;
-      adaStats: () => Promise<{ thoughts: number; slots: number; keys: number }>;
       glyphhContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;
       glyphhCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
       glyphhStop: (chatId?: string) => Promise<boolean>;

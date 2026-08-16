@@ -43,10 +43,7 @@ import { registerHotkey } from "./hotkey";
 import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { canSaveLayout, canUseCustomMcp } from "./entitlements";
-import { getPreference, setPreference } from "./stores/preferences-db";
-import { initAdaStore } from "./ada/store";
-import { registerAdaSync } from "./ada/indexer";
-import { registerAdaIpc } from "./ada/ipc";
+import { getPreference, setPreference, loadPreferences } from "./stores/preferences-db";
 import { getLocalDb } from "./local-db";
 import { SessionCache } from "./session-cache";
 import { resolveShellPath } from "./shell-path";
@@ -88,6 +85,8 @@ import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
+import { registerGPointIpc } from "./gpoints";
+import { registerPopoutIpc } from "./popout";
 import { registerRunStreamIpc } from "./run-stream-ipc";
 import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
@@ -229,13 +228,12 @@ async function boot() {
   // boot-time read (window bounds, prefs) hits the default-scope DB while
   // post-auth writes land in the user's, and nothing survives a restart.
   restoreUserScopeFromSidecar();
-  // Initialize local SQLite database (agents, layouts, preferences)
+  // Initialize local SQLite database (agents, layouts, preferences).
+  // NOTE: this store is on death row — the zero-local-storage law (2026-08-15)
+  // says every piece of user state goes through the SDK to the server. The
+  // local Ada fact store already went (Ada is cloud-only; the agent's
+  // ada_remember/ada_recall tools ride the stator via statorCall).
   initLocalDb();
-  // Ada — schema-on-write fact memory. A PROVIDER, not the handle: local-db
-  // reopens on user-scope switches and Ada must follow the live connection.
-  initAdaStore(() => getLocalDb());
-  registerAdaIpc();
-  registerAdaSync(); // mirror the workspace catalog into facts (idempotent)
   const migrationResult = migrateFromFiles();
   if (migrationResult.migrated) {
     console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs, ${migrationResult.prefsV2} stranded prefs`);
@@ -409,10 +407,29 @@ async function boot() {
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
-    ipcMain.handle("get-preference", (_e, key: string, defaultVal: unknown) => {
-      return getPreference(key, defaultVal);
+    ipcMain.handle("get-preference", async (_e, key: string, defaultVal: unknown) => {
+      // The prefs map is the SERVER map (zero-local law), loaded async after auth.
+      // Boot-time reads — session resume (lastSessionCode), the agent anchor, theme —
+      // must WAIT for that load, else they race it and get DEFAULTS: the session never
+      // resumes ("starts new every load") and settings read as un-persisted. When
+      // signed in, await the shared in-flight load so the map is warm before we answer.
+      if (isAuthenticated()) await loadPreferences();
+      const v = getPreference(key, defaultVal);
+      if (key === "glyphhAnchorMode") console.log(`[prefs] READ glyphhAnchorMode → ${JSON.stringify(v)} (authed=${isAuthenticated()})`);
+      return v;
     });
   }
+
+  // ⌘⇧. anywhere on the system: kill every playing effect. A full-screen drip
+  // overlay is always-on-top and click-through, so a stuck one looks like a dead
+  // machine — the recovery hatch must NOT live behind the UI it is covering.
+  globalShortcut.register("CommandOrControl+Shift+.", () => {
+    try {
+      dripManager?.stopAll();
+    } catch (e) {
+      console.error("[drips] stop shortcut failed:", (e as Error).message);
+    }
+  });
 
   // ⌘⇧Space anywhere on the system: front Glyphh and open the command
   // center (the renderer's opener applies the desktop-overlay preference).
@@ -501,6 +518,28 @@ async function boot() {
   // Initialize auth — restore session, schedule refresh, start heartbeat.
   // Hard 3s timeout so splash never hangs if server is unreachable.
   await Promise.race([initAuth(), new Promise((r) => setTimeout(r, 3000))]);
+
+  // LOAD-THEN-ADJUST. The window + renderer booted BEFORE the prefs fetch (createWindow
+  // above runs before initAuth), so the shell opened at a default size and no pref-driven
+  // UI could apply — the "inconsistent on boot / shell doesn't adjust" race. Now that auth
+  // and its prefs load have settled, warm the map, restore the saved window bounds, and
+  // signal the renderer to re-apply everything pref-shaped (the agent anchor, theme).
+  if (isAuthenticated()) {
+    await loadPreferences();
+    const b = getPreference<{ x?: number; y?: number; width?: number; height?: number; maximized?: boolean } | null>("windowBounds", null);
+    if (b && mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        if (b.maximized) mainWindow.maximize();
+        else if (b.width && b.height) {
+          const cur = mainWindow.getBounds();
+          mainWindow.setBounds({ x: b.x ?? cur.x, y: b.y ?? cur.y, width: b.width, height: b.height });
+        }
+      } catch { /* bounds off-screen or window torn down */ }
+    }
+    for (const wc of webContents.getAllWebContents()) {
+      try { wc.send("prefs-ready"); } catch { /* view mid-swap */ }
+    }
+  }
 
   // Keep OAuth-authed remote MCP connections alive: refresh their tokens ahead
   // of expiry and re-stamp the server-side connection header (the server dials
@@ -933,6 +972,12 @@ async function boot() {
 
   // Files — the artifacts gallery's transport, same main-process SDK client.
   registerFilesIpc();
+
+  // Glyphh Office · Slides — the Slides panel's org deck library.
+  registerGPointIpc();
+
+  // Panel pop-out — any web panel (and Slides) as a standalone OS window.
+  registerPopoutIpc();
 
   // Run-stream observer bridge — the renderer watches runs executing on OTHER
   // surfaces (web/cloud) through the main-process SDK client.

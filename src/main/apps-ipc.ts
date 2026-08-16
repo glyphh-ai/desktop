@@ -531,7 +531,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       colWidths: l.colWidths,
       rowHeights: l.rowHeights,
       target: (l as { target?: "glyphh" | "desktop" }).target ?? "glyphh",
-      glyphh: (l as { glyphh?: { mode: string; fraction?: number } }).glyphh ?? null,
       loop: (l as { loop?: string }).loop ?? null,
       modelSelections: (l as { modelSelections?: Record<string, string> }).modelSelections ?? {},
       sessionMode: (l as { sessionMode?: "keep" | "new" | "last" }).sessionMode ?? "keep",
@@ -565,7 +564,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
+  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);
@@ -610,10 +609,21 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // it with no compile error and the renderer's catch would silently render an
   // empty menu. A missing module now fails main at boot, loudly.
   ipcMain.handle("drips-builtin-effects", () => BUILTIN_EFFECT_LIST);
+  // A PREVIEW is windowed + time-bounded. It used to inherit the command path's
+  // full-screen default and, for a looping effect, no timeout at all — an
+  // always-on-top click-through overlay over every display, forever, with no way
+  // to dismiss it. That is the "black screen, no renderer" report.
   ipcMain.handle("drips-preview", async (_e, recipe: string) => {
     if (!dripManager) return "drip manager not ready";
-    return dripManager.execute(recipe.split(/\s+/));
+    return dripManager.execute(recipe.split(/\s+/), { preview: true });
   });
+  // The escape hatch every effect needs and none had.
+  ipcMain.handle("drips-stop", async () => {
+    if (!dripManager) return "drip manager not ready";
+    dripManager.stopAll();
+    return "stopped";
+  });
+  ipcMain.handle("drips-running", async () => (dripManager ? dripManager.running() : []));
 
   // Renderer-side tier check (same gate the connect IPCs enforce) so the UI
   // can lock the MCP / Connection tabs for Free users instead of showing a
@@ -706,6 +716,62 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("hosting-destroy", async (_e, id: string) => {
     try {
       await getClient().hosting.destroy(id);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // ── Dedicated app servers + custom domains (last-mile Phase F) ───────────────
+  // Deploy an app to its OWN Fly machine (sized by an app-server image) and point a
+  // custom domain at it. Everything through the SDK — the main process holds no state.
+  ipcMain.handle("app-servers-list", async () => {
+    try {
+      return { ok: true, images: await getClient().appServers.list() };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-server-deploy", async (_e, slug: string, imageKey: string, releaseId?: string) => {
+    try {
+      const d = await getClient().hosting.deployToServer(slug, releaseId ? { imageKey, releaseId } : { imageKey });
+      return { ok: true, queued: d };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-server-deployments", async (_e, slug: string) => {
+    try {
+      return { ok: true, deployments: await getClient().hosting.serverDeployments(slug) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-server-destroy", async (_e, slug: string, id: string) => {
+    try {
+      await getClient().hosting.destroyServer(slug, id);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-domains-list", async (_e, slug: string) => {
+    try {
+      return { ok: true, domains: await getClient().hosting.domains(slug) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-domain-add", async (_e, slug: string, deploymentId: string, hostname: string) => {
+    try {
+      return { ok: true, domain: await getClient().hosting.addDomain(slug, { deploymentId, hostname }) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-domain-remove", async (_e, slug: string, id: string) => {
+    try {
+      await getClient().hosting.removeDomain(slug, id);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };

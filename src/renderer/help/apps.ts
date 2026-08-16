@@ -1503,6 +1503,99 @@ async function loadDeployTab(): Promise<void> {
     statusEl.innerHTML = `<span class="deploy-dot"></span>Not deployed`;
     deployBtn.textContent = "Deploy";
   }
+
+  // The dedicated-server + custom-domains section shares this tab.
+  void loadServerSection();
+}
+
+// ── Dedicated server + custom domains (last-mile Phase F) ──────────────────────
+// One section under the hosting tab: pick a size and deploy the app to its OWN
+// machine, then point custom domains at a running server. All through the SDK
+// (window.glyphh.*), so it works identically on desktop and app-web.
+const SERVER_PROVISIONING = new Set(["queued", "building", "starting"]);
+let serverPollTimer: number | null = null;
+
+/** One deployment row — status dot, size/state, live link, tear-down. */
+function renderServerRow(d: { id: string; imageKey: string; status: string; url: string | null; error: string | null }): string {
+  const dot = d.status === "live" ? "on" : SERVER_PROVISIONING.has(d.status) ? "pending" : "";
+  const link = d.url && d.status === "live"
+    ? ` · <a href="${escMkt(d.url)}" target="_blank" rel="noreferrer">${escMkt(d.url.replace(/^https?:\/\//, ""))}</a>` : "";
+  const error = d.error ? ` · <span style="color:var(--danger,#e5484d);">${escMkt(d.error)}</span>` : "";
+  return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border-1,#2a2a2a);">
+    <span class="deploy-dot ${dot}"></span>
+    <span style="flex:1;">${escMkt(d.imageKey)} · ${escMkt(d.status)}${link}${error}</span>
+    <button class="action-btn danger" type="button" data-server-destroy="${escMkt(d.id)}">Tear down</button>
+  </div>`;
+}
+
+/** One custom-domain row — status, remove, and the DNS records to publish. */
+function renderDomainRow(dm: CustomDomainWire): string {
+  const dot = dm.status === "active" ? "on" : dm.status === "error" ? "" : "pending";
+  const error = dm.error ? ` · <span style="color:var(--danger,#e5484d);">${escMkt(dm.error)}</span>` : "";
+  const apex = dm.dnsInstructions?.apexUnsupported
+    ? `<p class="proxy-field-hint" style="color:var(--danger,#e5484d);margin-top:6px;">Bare apex domains aren't supported yet — use a subdomain like <code>www</code>.</p>` : "";
+  const records = (dm.dnsInstructions?.records ?? []).map((r) =>
+    `<div style="font-family:var(--font-mono,monospace);font-size:11px;line-height:1.7;">
+       <span style="display:inline-block;width:52px;color:var(--text-3);">${escMkt(r.type)}</span>${escMkt(r.name)} → ${escMkt(r.value)}</div>`).join("");
+  const dns = records
+    ? `<div style="margin-top:6px;padding:8px 10px;background:var(--bg-2,#1b1b1b);border-radius:6px;">
+         <div class="proxy-field-hint" style="margin:0 0 4px;">Publish these DNS records:</div>${records}</div>` : "";
+  return `<div style="padding:10px 0;border-top:1px solid var(--border-1,#2a2a2a);">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="deploy-dot ${dot}"></span>
+      <span style="flex:1;">${escMkt(dm.hostname)} · ${escMkt(dm.status)}${error}</span>
+      <button class="action-btn danger" type="button" data-domain-remove="${escMkt(dm.id)}">Remove</button>
+    </div>${apex}${dns}
+  </div>`;
+}
+
+/** Load (and re-poll while provisioning) the dedicated-server + domains section. */
+async function loadServerSection(): Promise<void> {
+  const sizeSel = document.getElementById("server-size") as HTMLSelectElement | null;
+  const sizeHint = document.getElementById("server-size-hint");
+  const listEl = document.getElementById("server-list");
+  const domSel = document.getElementById("domain-deployment") as HTMLSelectElement | null;
+  const domListEl = document.getElementById("domain-list");
+  if (!sizeSel || !listEl || !domSel || !domListEl) return;
+  const slug = currentApp?.slug || currentAppId;
+
+  // Sizes are the org's region catalog — fill once, keep the user's choice on refresh.
+  if (sizeSel.dataset.filled !== "1") {
+    const imgRes = await window.glyphh.appServersList?.();
+    if (imgRes?.ok && imgRes.images?.length) {
+      sizeSel.innerHTML = imgRes.images
+        .map((i) => `<option value="${escMkt(i.key)}" data-desc="${escMkt(i.description)}">${escMkt(i.description)} — ${i.monthlyCredits} cr/mo</option>`)
+        .join("");
+      sizeSel.dataset.filled = "1";
+      if (sizeHint) sizeHint.textContent = `${imgRes.images[0]!.ramMb} MB RAM · ${imgRes.images[0]!.diskGb} GB disk`;
+    } else {
+      sizeSel.innerHTML = `<option value="">No sizes available in your region</option>`;
+    }
+  }
+
+  const depRes = await window.glyphh.appServerDeployments?.(slug);
+  const deps = depRes?.ok ? (depRes.deployments ?? []) : [];
+  const visible = deps.filter((d) => d.status !== "destroyed");
+  listEl.innerHTML = visible.length ? visible.map(renderServerRow).join("") : `<p class="proxy-field-hint">No dedicated servers yet.</p>`;
+
+  // A domain can only target a server that is up (or coming up).
+  const targetable = deps.filter((d) => d.status === "live" || SERVER_PROVISIONING.has(d.status));
+  domSel.innerHTML = targetable.length
+    ? targetable.map((d) => `<option value="${escMkt(d.id)}">${escMkt(d.imageKey)} · ${escMkt(d.status)}</option>`).join("")
+    : `<option value="">No running server yet</option>`;
+
+  const domRes = await window.glyphh.appDomainsList?.(slug);
+  const domains = domRes?.ok ? (domRes.domains ?? []) : [];
+  domListEl.innerHTML = domains.length ? domains.map(renderDomainRow).join("") : `<p class="proxy-field-hint">No custom domains yet.</p>`;
+
+  // Keep polling while anything is still provisioning or verifying.
+  if (serverPollTimer) { clearTimeout(serverPollTimer); serverPollTimer = null; }
+  const busy = deps.some((d) => SERVER_PROVISIONING.has(d.status)) || domains.some((d) => d.status === "pending" || d.status === "verifying");
+  if (busy) {
+    serverPollTimer = window.setTimeout(() => {
+      if (document.getElementById("server-list")?.isConnected) void loadServerSection();
+    }, 5000);
+  }
 }
 
 /** Spell out what the chosen access actually means — "public" is the one that
@@ -2268,6 +2361,70 @@ function initApps() {
     btn.disabled = false; btn.textContent = prev;
     if (!res?.ok) { if (err) { err.textContent = res?.error || "Take-down failed."; err.classList.remove("hidden"); } return; }
     await loadDeployTab();
+  });
+
+  // ── Dedicated server: deploy, tear down (delegated) ─────────────────────────
+  document.getElementById("server-deploy-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("server-deploy-btn") as HTMLButtonElement;
+    const sizeSel = document.getElementById("server-size") as HTMLSelectElement | null;
+    const err = document.getElementById("server-error");
+    err?.classList.add("hidden");
+    const imageKey = sizeSel?.value;
+    if (!imageKey) { if (err) { err.textContent = "Pick a size first."; err.classList.remove("hidden"); } return; }
+    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Deploying…";
+    const res = await window.glyphh.appServerDeploy?.(currentApp?.slug || currentAppId, imageKey);
+    btn.disabled = false; btn.textContent = prev;
+    if (!res?.ok) { if (err) { err.textContent = res?.error || "Deploy failed."; err.classList.remove("hidden"); } return; }
+    await loadServerSection();
+  });
+
+  document.getElementById("server-list")?.addEventListener("click", async (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-server-destroy]")?.dataset.serverDestroy;
+    if (!id) return;
+    const ok = await confirmAction({
+      title: "Tear down this server?",
+      body: "Its machine and dedicated database are destroyed. Custom domains pointed at it stop resolving.",
+      confirmLabel: "Tear down", danger: true,
+    });
+    if (!ok) return;
+    const res = await window.glyphh.appServerDestroy?.(currentApp?.slug || currentAppId, id);
+    const err = document.getElementById("server-error");
+    if (!res?.ok) { if (err) { err.textContent = res?.error || "Tear-down failed."; err.classList.remove("hidden"); } return; }
+    await loadServerSection();
+  });
+
+  // ── Custom domains: add, remove (delegated) ─────────────────────────────────
+  document.getElementById("domain-add-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("domain-add-btn") as HTMLButtonElement;
+    const depSel = document.getElementById("domain-deployment") as HTMLSelectElement | null;
+    const hostInput = document.getElementById("domain-hostname") as HTMLInputElement | null;
+    const err = document.getElementById("domain-error");
+    err?.classList.add("hidden");
+    const deploymentId = depSel?.value;
+    const hostname = hostInput?.value.trim().toLowerCase();
+    if (!deploymentId) { if (err) { err.textContent = "Deploy a server first, then point a domain at it."; err.classList.remove("hidden"); } return; }
+    if (!hostname) { if (err) { err.textContent = "Enter a hostname."; err.classList.remove("hidden"); } return; }
+    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Adding…";
+    const res = await window.glyphh.appDomainAdd?.(currentApp?.slug || currentAppId, deploymentId, hostname);
+    btn.disabled = false; btn.textContent = prev;
+    if (!res?.ok) { if (err) { err.textContent = res?.error || "Couldn't add the domain."; err.classList.remove("hidden"); } return; }
+    if (hostInput) hostInput.value = "";
+    await loadServerSection();
+  });
+
+  document.getElementById("domain-list")?.addEventListener("click", async (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-domain-remove]")?.dataset.domainRemove;
+    if (!id) return;
+    const ok = await confirmAction({
+      title: "Remove this domain?",
+      body: "It stops resolving to your app and its certificate is released.",
+      confirmLabel: "Remove", danger: true,
+    });
+    if (!ok) return;
+    const res = await window.glyphh.appDomainRemove?.(currentApp?.slug || currentAppId, id);
+    const err = document.getElementById("domain-error");
+    if (!res?.ok) { if (err) { err.textContent = res?.error || "Couldn't remove the domain."; err.classList.remove("hidden"); } return; }
+    await loadServerSection();
   });
 
   // Production tab: graduate to a standalone Supabase repo (download zip).

@@ -24,6 +24,12 @@
                 <div class="code-spacer"></div>
 
                 <div class="session-head-actions">
+                  <!-- Opens the full transcript as a workbench panel. Sits LEFT of
+                       recents once collapsed mode relocates this whole group into
+                       the composer's source row. -->
+                  <button id="code-transcript-btn" class="code-icon-btn" title="Open the transcript panel" type="button">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  </button>
                   <button id="code-session-new" class="code-icon-btn" title="New session" type="button">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   </button>
@@ -46,6 +52,13 @@
                 <!-- Workbench view toggles (old wb-section-toggles): each opens
                      its rail on the right; accent = open. Code space only. -->
                 <div class="code-view-toggles">
+                  <!-- Where the agent sits: left / centre / right / hidden. -->
+                  <div class="code-anchor-wrap">
+                    <button id="code-anchor-btn" class="code-view-btn" title="Anchor the agent" type="button">
+                      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>
+                    </button>
+                    <div id="code-anchor-menu" class="code-drop code-anchor-menu hidden"></div>
+                  </div>
                   <div class="code-view-more-wrap">
                     <button id="code-view-more" class="code-view-btn" title="More panels" type="button">
                       <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
@@ -75,16 +88,49 @@
                         <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                         <span>Plan</span>
                       </button>
-                      <button class="code-view-btn code-view-menu-item" data-view="releases" title="Releases — manage and publish your app's builds">
-                        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                        <span>Releases</span>
-                      </button>
+                      <!-- Office ▸ — Glyphh Office: agent-authored documents
+                           (Slides live; Drive/Docs/Sheets join as they ship). -->
+                      <div class="code-view-menu-sub-wrap">
+                        <button class="code-view-btn code-view-menu-item code-view-menu-more" type="button" title="Glyphh Office">
+                          <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          <span>Office</span>
+                          <svg class="code-view-menu-sub-caret" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>
+                        </button>
+                        <div class="code-drop code-view-submenu">
+                          <button class="code-view-btn code-view-menu-item" data-view="gpoint" title="Glyphh Slides — agent-built presentations">
+                            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="13" rx="2"/><polygon points="10 6.5 15 9.5 10 12.5"/><line x1="12" y1="16" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>
+                            <span>Slides</span>
+                          </button>
+                        </div>
+                      </div>
+                      <!-- More ▸ — the less-used panels, one flyout deeper. -->
+                      <div class="code-view-menu-sub-wrap">
+                        <button class="code-view-btn code-view-menu-item code-view-menu-more" type="button" title="More panels">
+                          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+                          <span>More</span>
+                          <svg class="code-view-menu-sub-caret" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>
+                        </button>
+                        <div class="code-drop code-view-submenu">
+                          <button class="code-view-btn code-view-menu-item" data-view="releases" title="Releases — manage and publish your app's builds">
+                            <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                            <span>Releases</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div id="code-thread" class="code-thread"></div>
+              <!-- Collapsed (centre-anchored) mode: the thread is hidden and the
+                   whole conversation reduces to this one line. The caret PEEKS —
+                   it floats the live thread up over the layout without costing
+                   the layout any space. A <button> so it is keyboard-reachable. -->
+              <button id="code-status-line" class="code-status-line" type="button" hidden>
+                <span id="code-status-text" class="code-status-text"></span>
+                <svg class="code-peek-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+              </button>
               <div class="code-composer">
                 <div id="code-ask-dock" class="code-ask-dock" hidden></div>
                 <!-- Notes typed while the agent is running. They wait here until the
@@ -109,6 +155,11 @@
                 <button id="code-workdir-add" class="code-icon-btn" title="Add folder" type="button">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
                 </button>
+                <!-- Collapsed mode parks [transcript][recents][+][anchor] here, at
+                     the right end of the source/folder/git row. The nodes are MOVED,
+                     never re-rendered, so their listeners ride along. Nothing in the
+                     anchor code may set innerHTML on this element. -->
+                <div id="code-bar-actions" class="code-bar-actions"></div>
                 </div>
                 <div class="code-input-wrap">
                   <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
@@ -128,6 +179,13 @@
                     <div id="code-plus-wrap" class="code-chipwrap">
                       <button id="code-plus-chip" class="code-chip code-plus-chip" type="button" title="Add to this session — files, folders, images (paste and drag-drop work too)">+</button>
                     </div>
+                    <!-- Collapsed (centre-anchored) mode only: the left rail is
+                         out of reach, so Apps + Workspaces open as DROP-UP
+                         popovers from these chips. Hidden in every other mode. -->
+                    <div id="code-mini-trays" class="code-mini-trays">
+                      <button id="code-tray-apps" class="code-chip" type="button" title="Apps">Apps</button>
+                      <button id="code-tray-layouts" class="code-chip" type="button" title="Workspaces">Workspaces</button>
+                    </div>
                   </div>
                   <div class="code-bar-right">
                     <div id="code-model-wrap" class="code-chipwrap">
@@ -145,6 +203,10 @@
                   </div>
                 </div>
               </div>
+              <!-- Dock splitter. Only live in left/right; the workbench's own
+                   #code-wb-edge assumes the aside is at the right edge, so it is
+                   hidden while anchored rather than taught to invert. -->
+              <div id="code-agent-edge" class="code-agent-edge" title="Drag to resize"></div>
             </section>
 
             <!-- Right — the workbench rails (the old workbench engine, ported:

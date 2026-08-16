@@ -17,6 +17,7 @@ import type { DevicePrompt } from "@glyphh/sdk";
 import { GLYPHH_DIR } from "./app-paths.js";
 import { setActiveUser } from "./user-scope.js";
 import { getClient, resetClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, SESSION_FILE, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";
+import { loadPreferences, clearPreferences } from "./stores/preferences-db.js";
 
 export const AUTH_SERVER = SERVER_URL;
 export const PLATFORM_URL = PLATFORM;
@@ -93,6 +94,7 @@ setSignedOutHandler(() => {
   cachedAccount = null;
   cachedHeartbeat = null;
   setActiveUser(null);
+  clearPreferences(); // the next user must never read this map
   attachStop();
   triggerReauth();
 });
@@ -194,7 +196,11 @@ export async function initAuth(): Promise<void> {
     // main.ts races this whole init against a 3s cap so splash never hangs.
     await ensureFreshToken();
     await refreshAccountState().catch(() => null);
-    if (signedIn) attachStart();
+    if (signedIn) {
+      attachStart();
+      // Prefs are the SERVER map now (zero-local law); warm it with the session.
+      void loadPreferences();
+    }
   }
   if (accountTimer) clearInterval(accountTimer);
   accountTimer = setInterval(() => {
@@ -319,6 +325,7 @@ export async function startDeviceLogin(
     await ensureFreshToken();
     await refreshAccountState();
     attachStart();
+    void loadPreferences(); // server prefs map, warmed with the session
     return { ok: true };
   } catch (err) {
     const message = (err as Error)?.message || String(err);

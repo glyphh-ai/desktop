@@ -114,6 +114,8 @@ const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   // Echo — the command center as a 3D wall (moved here from the agent's
   // ⋮ menu: it opens like an app, via layouts or the picker).
   { id: "tool:echo",     label: "Echo", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
+  // gPoint — Glyphh power points: the deck library / reader panel.
+  { id: "tool:gpoint",   label: "Slides", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="13" rx="2"/><polygon points="10 6.5 15 9.5 10 12.5"/><line x1="12" y1="16" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>` },
 ];
 const toolPanelIcon = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.icon || "";
 
@@ -184,6 +186,10 @@ const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSe
 // ── Loop + models this layout activates on open ──────────────────────────
 const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
 const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
+// The agent anchor is a GLOBAL device setting owned by the agent (the anchor
+// picker in the agent header → the `glyphhAnchorMode` preference), NOT a layout
+// property. A layout opens into whatever workspace the anchor leaves available and
+// never moves the agent. (This deliberately drops the old per-layout anchor opinion.)
 const layoutFolderInput = document.getElementById("layout-folder-input") as HTMLInputElement | null;
 const layoutFolderPickBtn = document.getElementById("layout-folder-pick") as HTMLButtonElement | null;
 const layoutFolderClearBtn = document.getElementById("layout-folder-clear") as HTMLButtonElement | null;
@@ -513,7 +519,7 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
   let apps: Array<{ id: string; name: string }>;
   try {
     apps = (await window.glyphh.panelAppsList()).filter((a: any) =>
-      (a.url || a.isBrowser === false) && a.appArchetype !== "glyphh-self" && a.slug !== "glyphh");
+      (a.url || a.isBrowser === false || a.appArchetype === "glyphh-app") && a.appArchetype !== "glyphh-self" && a.slug !== "glyphh");
   } catch {
     apps = [];
   }
@@ -779,7 +785,11 @@ function cellBlocked(panelId: string): boolean {
   if (isToolPanel(panelId)) return false;
   if (panelId.startsWith("agent:") || panelId === "agents-tabbed") return false;
   const app = resolveApp(panelId);
-  if (!app || app.appArchetype === "glyphh-self") return false;
+  // Glyphh-built apps (glyphh-self = the agent, glyphh-app = Office/Slides/etc.) run as
+  // webview PANELS inside a workspace, not native OS windows — never block them, even
+  // when they carry no browser url. Only a genuine native app (its own .app/exec, or a
+  // browser-off desktop app) is blocked: it opens in its own OS window, not a panel.
+  if (!app || app.appArchetype === "glyphh-self" || app.appArchetype === "glyphh-app") return false;
   return app.isBrowser === false || !!app.execPath;
 }
 

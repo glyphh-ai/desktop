@@ -208,6 +208,10 @@ function openDripEditor(name: string, recipe: string) {
 }
 
 function closeDripEditor() {
+  // Leaving the editor stops anything it started. A preview is scoped to the
+  // editor that played it — a looping effect must never outlive the screen you
+  // launched it from and sit over the app with no way to reach it.
+  void window.glyphh.dripsStop().catch(() => { /* manager gone — nothing to stop */ });
   dripEditor.classList.add("hidden");
   dripsListEl.classList.remove("hidden");
   dripsToolbar.classList.remove("hidden");
@@ -267,6 +271,9 @@ export function initDripsEvents() {
   document.getElementById("drip-preview-btn")!.addEventListener("click", () => {
     const recipe = buildDripRecipe();
     if (recipe) window.glyphh.dripsPreview(recipe);
+  });
+  document.getElementById("drip-stop-btn")!.addEventListener("click", () => {
+    void window.glyphh.dripsStop().catch(() => { /* manager gone — nothing to stop */ });
   });
   dripModeSelect.addEventListener("change", () => {
     dripCountInput.classList.toggle("hidden", dripModeSelect.value !== "counted");

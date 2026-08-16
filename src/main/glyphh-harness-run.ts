@@ -86,6 +86,27 @@ function localRotorCmd(): string | undefined {
 }
 
 /**
+ * The VENDORED rotor — a packaged build's pod. CI places rrotor (dist +
+ * pruned node_modules, no native deps: better-sqlite3 loads lazily and the
+ * local pod runs the memory backend) under resources/rrotor, and we run it
+ * with OUR OWN binary as node (ELECTRON_RUN_AS_NODE). Two hard-won details:
+ *
+ *  - `bin`/`preArgs` (structured), NOT the whitespace-split `cmd` string —
+ *    process.execPath is ".../Glyphh Desktop.app/Contents/MacOS/Glyphh",
+ *    and the space in "Glyphh Desktop" would split the command in half.
+ *  - This exists because a packaged app's PATH is the GUI default
+ *    (/usr/bin:/bin:...): `rrotor` on PATH can never resolve from the dock,
+ *    which surfaced as a swallowed ENOENT + a 15s "did not become healthy".
+ */
+function vendoredRotor(): { bin: string; preArgs: string[]; env: Record<string, string> } | undefined {
+  if (process.env.GLYPHH_LOCAL_ROTOR_CMD?.trim()) return undefined; // explicit override wins
+  if (!app.isPackaged) return undefined;
+  const vendored = join(process.resourcesPath, "rrotor", "dist", "cli.js");
+  if (!existsSync(vendored)) return undefined;
+  return { bin: process.execPath, preArgs: [vendored], env: { ELECTRON_RUN_AS_NODE: "1" } };
+}
+
+/**
  * The pod's URL, starting it if needed. `ensureLocalHarnessPod` is idempotent
  * and atomic across processes: a healthy discovery record attaches, otherwise
  * the mkdir lock elects one starter and everyone else waits for its record. A
@@ -94,8 +115,10 @@ function localRotorCmd(): string | undefined {
  */
 async function ensurePod(): Promise<string> {
   const cmd = localRotorCmd();
+  const bundled = vendoredRotor();
   const pod = await ensureLocalHarnessPod({
-    ...(cmd ? { cmd } : {}),
+    ...(bundled ?? {}),
+    ...(cmd && !bundled ? { cmd } : {}),
     // Electron's boot is busy; a cold pod (node + SDK load) needs more than
     // the supervisor's 15s default on a first run.
     startTimeoutMs: 30_000,
