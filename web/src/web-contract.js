@@ -362,6 +362,37 @@ export function buildContract(client, deps) {
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
 
+    // ── Dedicated app servers + custom domains (Phase F). Straight to the SDK; the
+    // main process contributes nothing, so desktop and web share one renderer.
+    appServersList: async () => {
+      try { return { ok: true, images: await client.appServers.list() }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appServerDeploy: async (slug, imageKey, releaseId) => {
+      try { return { ok: true, queued: await client.hosting.deployToServer(slug, releaseId ? { imageKey, releaseId } : { imageKey }) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appServerDeployments: async (slug) => {
+      try { return { ok: true, deployments: await client.hosting.serverDeployments(slug) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appServerDestroy: async (slug, id) => {
+      try { await client.hosting.destroyServer(slug, id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appDomainsList: async (slug) => {
+      try { return { ok: true, domains: await client.hosting.domains(slug) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appDomainAdd: async (slug, deploymentId, hostname) => {
+      try { return { ok: true, domain: await client.hosting.addDomain(slug, { deploymentId, hostname }) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appDomainRemove: async (slug, id) => {
+      try { await client.hosting.removeDomain(slug, id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+
     // ── Models governance (OrgModelsClient / CatalogClient) ───────────────────────
     orgModelsList: lib(() => client.orgModels.list()),
     orgCustomModelsList: lib(() => client.orgModels.listCustom()),

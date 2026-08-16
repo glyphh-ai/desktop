@@ -263,6 +263,20 @@ interface LoopRoleView {
   }>;
 }
 
+// A custom domain + the DNS records to publish — structural mirror of the SDK
+// CustomDomain contract (Phase F), so the preload stays SDK-import-free.
+type DnsRecordWire = { type: "CNAME" | "A" | "AAAA" | "TXT"; name: string; value: string };
+type CustomDomainWire = {
+  id: string;
+  deploymentId: string;
+  hostname: string;
+  status: string;
+  dnsInstructions: { hostname: string; isApex: boolean; records: DnsRecordWire[]; apexUnsupported: boolean };
+  error: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+};
+
 contextBridge.exposeInMainWorld("glyphh", {
   copyToClipboard: (text: string) => ipcRenderer.invoke("copy-to-clipboard", text),
   // Toggle the full-screen command overlay (also bound to a global hotkey).
@@ -491,6 +505,30 @@ contextBridge.exposeInMainWorld("glyphh", {
   hostingStatus: (slug: string) => ipcRenderer.invoke("hosting-status", slug) as Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>,
   hostingDeploy: (slug: string) => ipcRenderer.invoke("hosting-deploy", slug) as Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>,
   hostingDestroy: (id: string) => ipcRenderer.invoke("hosting-destroy", id) as Promise<{ ok: boolean; error?: string }>,
+  // Dedicated app servers + custom domains (Phase F) — deploy an app to its own
+  // machine and point a domain at it. Shapes MIRROR the SDK app-servers contract
+  // (structural, like the Files store above — no SDK import in the preload).
+  appServersList: () => ipcRenderer.invoke("app-servers-list") as Promise<{
+    ok: boolean;
+    images?: Array<{ key: string; region: string; description: string; ramMb: number; diskGb: number; monthlyCredits: number; active: boolean; sort: number }>;
+    error?: string;
+  }>,
+  appServerDeploy: (slug: string, imageKey: string, releaseId?: string) =>
+    ipcRenderer.invoke("app-server-deploy", slug, imageKey, releaseId) as Promise<{ ok: boolean; queued?: { deploymentId: string; status: string }; error?: string }>,
+  appServerDeployments: (slug: string) =>
+    ipcRenderer.invoke("app-server-deployments", slug) as Promise<{
+      ok: boolean;
+      deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>;
+      error?: string;
+    }>,
+  appServerDestroy: (slug: string, id: string) =>
+    ipcRenderer.invoke("app-server-destroy", slug, id) as Promise<{ ok: boolean; error?: string }>,
+  appDomainsList: (slug: string) =>
+    ipcRenderer.invoke("app-domains-list", slug) as Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>,
+  appDomainAdd: (slug: string, deploymentId: string, hostname: string) =>
+    ipcRenderer.invoke("app-domain-add", slug, deploymentId, hostname) as Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>,
+  appDomainRemove: (slug: string, id: string) =>
+    ipcRenderer.invoke("app-domain-remove", slug, id) as Promise<{ ok: boolean; error?: string }>,
   // Marketplace listing — copy, images, and the list/unlist decision.
   appListingSet: (slug: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("app-listing-set", slug, patch) as Promise<{ ok: boolean; error?: string }>,

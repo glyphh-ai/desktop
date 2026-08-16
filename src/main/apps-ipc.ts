@@ -723,6 +723,62 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     }
   });
 
+  // ── Dedicated app servers + custom domains (last-mile Phase F) ───────────────
+  // Deploy an app to its OWN Fly machine (sized by an app-server image) and point a
+  // custom domain at it. Everything through the SDK — the main process holds no state.
+  ipcMain.handle("app-servers-list", async () => {
+    try {
+      return { ok: true, images: await getClient().appServers.list() };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-server-deploy", async (_e, slug: string, imageKey: string, releaseId?: string) => {
+    try {
+      const d = await getClient().hosting.deployToServer(slug, releaseId ? { imageKey, releaseId } : { imageKey });
+      return { ok: true, queued: d };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-server-deployments", async (_e, slug: string) => {
+    try {
+      return { ok: true, deployments: await getClient().hosting.serverDeployments(slug) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-server-destroy", async (_e, slug: string, id: string) => {
+    try {
+      await getClient().hosting.destroyServer(slug, id);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-domains-list", async (_e, slug: string) => {
+    try {
+      return { ok: true, domains: await getClient().hosting.domains(slug) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-domain-add", async (_e, slug: string, deploymentId: string, hostname: string) => {
+    try {
+      return { ok: true, domain: await getClient().hosting.addDomain(slug, { deploymentId, hostname }) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle("app-domain-remove", async (_e, slug: string, id: string) => {
+    try {
+      await getClient().hosting.removeDomain(slug, id);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // ── Releases tab: the app's version history ─────────────────────────────────
   // Read + the owner actions. Cutting a release is the BUILD path
   // (glyphh-app-builder) — annotate/promote what it produced, or run it right

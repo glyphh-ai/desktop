@@ -118,6 +118,24 @@ type AppReleaseRow = {
 };
 
 declare global {
+  // A custom domain + the DNS records to publish — mirror of the SDK CustomDomain
+  // contract (Phase F). Global so the app-detail hosting tab (help/apps.ts) shares it.
+  type CustomDomainWire = {
+    id: string;
+    deploymentId: string;
+    hostname: string;
+    status: string;
+    dnsInstructions: {
+      hostname: string;
+      isApex: boolean;
+      records: Array<{ type: "CNAME" | "A" | "AAAA" | "TXT"; name: string; value: string }>;
+      apexUnsupported: boolean;
+    };
+    error: string | null;
+    verifiedAt: string | null;
+    createdAt: string;
+  };
+
   interface Window {
     glyphh: {
       copyToClipboard: (text: string) => void;
@@ -177,6 +195,13 @@ declare global {
       hostingStatus: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>;
       hostingDeploy: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
       hostingDestroy: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      appServersList: () => Promise<{ ok: boolean; images?: Array<{ key: string; region: string; description: string; ramMb: number; diskGb: number; monthlyCredits: number; active: boolean; sort: number }>; error?: string }>;
+      appServerDeploy: (slug: string, imageKey: string, releaseId?: string) => Promise<{ ok: boolean; queued?: { deploymentId: string; status: string }; error?: string }>;
+      appServerDeployments: (slug: string) => Promise<{ ok: boolean; deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>; error?: string }>;
+      appServerDestroy: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
+      appDomainsList: (slug: string) => Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>;
+      appDomainAdd: (slug: string, deploymentId: string, hostname: string) => Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>;
+      appDomainRemove: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
       appListingSet: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
       appListingImageAdd: (slug: string, kind: "icon" | "screenshot") => Promise<{ ok: boolean; key?: string; error?: string }>;
       appListingImageRemove: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
