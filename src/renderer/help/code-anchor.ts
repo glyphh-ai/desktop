@@ -51,9 +51,24 @@ let fraction = DEFAULT_FRACTION;
 
 const root = (): HTMLElement | null => document.querySelector<HTMLElement>(".code-root");
 const byId = (id: string): HTMLElement | null => document.getElementById(id);
+/** Preference bridge via a cast, not the global Window.glyphh declaration —
+ *  this module is also bundled into code-workbench-bundle.js, which is
+ *  typechecked standalone (no renderer.ts globals in scope there). */
+const prefs = (): { getPreference?: (k: string, d?: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => Promise<unknown> } =>
+  (window as unknown as { glyphh?: { getPreference?: (k: string, d?: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => Promise<unknown> } }).glyphh ?? {};
 
-export function anchorMode(): AnchorMode { return mode; }
-export function isCollapsed(): boolean { return mode === "center"; }
+/** The LIVE mode comes from the DOM, not the module variable: this module is
+ *  bundled into BOTH the help build and the code-workbench bundle (a layout's
+ *  anchor opinion applies from there), and two module instances would each
+ *  keep their own `mode`. body[data-glyphh-anchor] is the one shared truth —
+ *  every applyAnchor writes it, so both instances always agree. */
+function domMode(): AnchorMode {
+  const m = document.body.dataset.glyphhAnchor as AnchorMode | undefined;
+  return m && MODES.some((x) => x.id === m) ? m : mode;
+}
+
+export function anchorMode(): AnchorMode { return domMode(); }
+export function isCollapsed(): boolean { return domMode() === "center"; }
 
 // ── Applying the mode ───────────────────────────────────────────────────────
 
@@ -77,6 +92,15 @@ function relocateActions(collapsed: boolean): void {
   }
 }
 
+/** The live dock fraction, DOM-first for the same two-instance reason as
+ *  domMode(): the drag handler lives in the help instance, but a layout's
+ *  anchor opinion applies from the workbench bundle — without this, that
+ *  apply would reset a dragged width to the default. */
+function domFraction(): number {
+  const raw = parseFloat(root()?.style.getPropertyValue("--agent-dock-frac") || "");
+  return Number.isFinite(raw) && raw > 0 ? clampFraction(raw) : fraction;
+}
+
 /** Paint the dock width custom property (left/right only). */
 function applyFraction(): void {
   const el = root();
@@ -84,8 +108,9 @@ function applyFraction(): void {
   el.style.setProperty("--agent-dock-frac", String(fraction));
 }
 
-export function applyAnchor(next: AnchorMode = mode): void {
+export function applyAnchor(next: AnchorMode = domMode()): void {
   mode = next;
+  fraction = domFraction();
   const el = root();
   if (!el) return;
   // `none` with nothing else on screen would leave a blank window and no way
@@ -106,7 +131,7 @@ export function applyAnchor(next: AnchorMode = mode): void {
 
 export function setAnchor(next: AnchorMode): void {
   applyAnchor(next);
-  void window.glyphh.setPreference?.(MODE_PREF, mode);
+  void prefs().setPreference?.(MODE_PREF, mode);
 }
 
 // ── Peek ────────────────────────────────────────────────────────────────────
@@ -153,9 +178,10 @@ function paintAnchorMenu(): void {
 
 function buildAnchorMenu(menu: HTMLElement): void {
   menu.textContent = "";
+  const cur = domMode();
   for (const m of MODES) {
     const item = document.createElement("button");
-    item.className = "code-drop-item" + (m.id === mode ? " selected" : "");
+    item.className = "code-drop-item" + (m.id === cur ? " selected" : "");
     item.type = "button";
     const lines = document.createElement("span");
     lines.className = "drop-lines";
@@ -166,7 +192,7 @@ function buildAnchorMenu(menu: HTMLElement): void {
     hint.textContent = m.hint;
     lines.append(label, hint);
     item.appendChild(lines);
-    if (m.id === mode) {
+    if (m.id === cur) {
       item.insertAdjacentHTML("beforeend",
         `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`);
     }
@@ -185,7 +211,8 @@ function wireDockEdge(): void {
   const el = root();
   if (!edge || !el) return;
   edge.addEventListener("mousedown", (e) => {
-    if (mode !== "left" && mode !== "right") return;
+    const m = domMode();
+    if (m !== "left" && m !== "right") return;
     e.preventDefault();
     edge.classList.add("dragging");
     document.body.classList.add("wb-mouse-drag");
@@ -193,7 +220,7 @@ function wireDockEdge(): void {
     const onMove = (ev: MouseEvent) => {
       const rect = el.getBoundingClientRect();
       // Right-anchored, the dock grows as the pointer moves LEFT.
-      const raw = mode === "left" ? (ev.clientX - rect.left) / rootW : (rect.right - ev.clientX) / rootW;
+      const raw = m === "left" ? (ev.clientX - rect.left) / rootW : (rect.right - ev.clientX) / rootW;
       fraction = clampFraction(raw);
       applyFraction();
     };
@@ -202,7 +229,7 @@ function wireDockEdge(): void {
       document.body.classList.remove("wb-mouse-drag");
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
-      void window.glyphh.setPreference?.(FRAC_PREF, fraction);
+      void prefs().setPreference?.(FRAC_PREF, fraction);
       (window as unknown as { __wbReflow?: () => void }).__wbReflow?.();
     };
     document.addEventListener("mousemove", onMove);
@@ -215,9 +242,9 @@ function wireDockEdge(): void {
 /** Read the device's anchor preference and apply it. Called from loadCode(). */
 export async function initAnchor(): Promise<void> {
   try {
-    const savedMode = (await window.glyphh.getPreference?.(MODE_PREF, "rail")) as AnchorMode;
+    const savedMode = (await prefs().getPreference?.(MODE_PREF, "rail")) as AnchorMode;
     if (MODES.some((m) => m.id === savedMode)) mode = savedMode;
-    const savedFrac = Number(await window.glyphh.getPreference?.(FRAC_PREF, DEFAULT_FRACTION));
+    const savedFrac = Number(await prefs().getPreference?.(FRAC_PREF, DEFAULT_FRACTION));
     fraction = clampFraction(Number.isFinite(savedFrac) && savedFrac > 0 ? savedFrac : DEFAULT_FRACTION);
   } catch {
     /* first run / prefs unavailable — the workspace default is correct */

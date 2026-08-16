@@ -11,7 +11,7 @@
  * center header carries its workdir controls and view toggles.
  */
 
-import { showDropDetail, confirmAction } from "./shared.js";
+import { showDropDetail, confirmAction, placeDropup } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
@@ -3972,12 +3972,23 @@ interface RailLayout { name: string; splits: Array<{ panelId: string }> }
 let railApps: RailApp[] = [];
 let railLayouts: RailLayout[] = [];
 let railRecentTs: Record<string, number> = {};
-let railAppsPage = 0;
-let railLayoutsPage = 0;
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
 // as one system rather than two differently-sized lists.
 const RAIL_APPS_PER_PAGE = 15;
 const RAIL_LAYOUTS_PER_PAGE = 15;
+
+// ── Rail grid HOSTS — every surface showing one of these grids ─────────────
+// The left rail registers its (list, search) pair once at init; the collapsed
+// bar's mini-tray popovers register on open and are dropped by the
+// isConnected sweep once their popover leaves the DOM. Every render loops the
+// live hosts, so data refreshes (recents, cc-order, icon priming) repaint the
+// tray and the rail from the same code path.
+interface RailGridHost { list: HTMLElement; search: HTMLInputElement | null; page: number }
+const railAppsHosts = new Set<RailGridHost>();
+const railLayoutsHosts = new Set<RailGridHost>();
+function registerRailGridHost(kind: "apps" | "layouts", host: RailGridHost): void {
+  (kind === "apps" ? railAppsHosts : railLayoutsHosts).add(host);
+}
 
 /** Slice items to a page, clamping in-range (palette parity). */
 function railPaginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; totalPages: number } {
@@ -4083,9 +4094,15 @@ function railEmpty(list: HTMLElement, q: string, label: string, section: string)
 }
 
 function renderRailApps(): void {
-  const list = el<HTMLDivElement>("recent-apps-list");
-  if (!list) return;
-  const q = (el<HTMLInputElement>("recent-apps-search")?.value || "").trim().toLowerCase();
+  for (const host of [...railAppsHosts]) {
+    if (!host.list.isConnected) { railAppsHosts.delete(host); continue; }
+    paintAppsGrid(host);
+  }
+}
+
+function paintAppsGrid(host: RailGridHost): void {
+  const list = host.list;
+  const q = (host.search?.value || "").trim().toLowerCase();
   list.textContent = "";
 
   // ORDER FOLLOWS THE COMMAND CENTRE: the wall is where apps are dragged, and
@@ -4127,8 +4144,8 @@ function renderRailApps(): void {
   });
   list.appendChild(home);
 
-  const ap = railPaginate(apps, railAppsPage, RAIL_APPS_PER_PAGE);
-  railAppsPage = ap.page;
+  const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
+  host.page = ap.page;
   for (const a of ap.items) {
     const tile = document.createElement("button");
     tile.className = "app-rail-tile";
@@ -4152,14 +4169,20 @@ function renderRailApps(): void {
     });
     list.appendChild(tile);
   }
-  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { railAppsPage = pg; renderRailApps(); }));
+  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { host.page = pg; paintAppsGrid(host); }));
   if (!apps.length) railEmpty(list, q, "App", "apps");
 }
 
 function renderRailLayouts(): void {
-  const list = el<HTMLDivElement>("recent-layouts-list");
-  if (!list) return;
-  const q = (el<HTMLInputElement>("recent-layouts-search")?.value || "").trim().toLowerCase();
+  for (const host of [...railLayoutsHosts]) {
+    if (!host.list.isConnected) { railLayoutsHosts.delete(host); continue; }
+    paintLayoutsGrid(host);
+  }
+}
+
+function paintLayoutsGrid(host: RailGridHost): void {
+  const list = host.list;
+  const q = (host.search?.value || "").trim().toLowerCase();
   list.textContent = "";
 
   // Mini icon stacks; same open (into the workbench) as the Layouts page.
@@ -4170,8 +4193,8 @@ function renderRailLayouts(): void {
       const tb = railRecentTs[`layout:${b.name}`] || 0;
       return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
     });
-  const lp = railPaginate(layouts, railLayoutsPage, RAIL_LAYOUTS_PER_PAGE);
-  railLayoutsPage = lp.page;
+  const lp = railPaginate(layouts, host.page, RAIL_LAYOUTS_PER_PAGE);
+  host.page = lp.page;
   for (const l of lp.items) {
     const tile = document.createElement("button");
     tile.className = "app-rail-tile";
@@ -4199,7 +4222,7 @@ function renderRailLayouts(): void {
     tile.addEventListener("click", () => { openCommandCenter(); void openLayoutInWorkbench(l.name); });
     list.appendChild(tile);
   }
-  if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { railLayoutsPage = pg; renderRailLayouts(); }));
+  if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { host.page = pg; paintLayoutsGrid(host); }));
   if (!layouts.length) railEmpty(list, q, "Workspace", "layouts");
 }
 
@@ -4245,6 +4268,16 @@ function initRecentsVsplit(): void {
 
 /** Wire the rail's Apps grid: restore its height, load, and bind search. */
 function initRailApps(): void {
+  // The left rail's two grids are the FIRST hosts — registered once here,
+  // before the initial load, so behavior is exactly as before the registry.
+  const leftApps: RailGridHost | null = el<HTMLDivElement>("recent-apps-list")
+    ? { list: el<HTMLDivElement>("recent-apps-list")!, search: el<HTMLInputElement>("recent-apps-search"), page: 0 }
+    : null;
+  if (leftApps) registerRailGridHost("apps", leftApps);
+  const leftLayouts: RailGridHost | null = el<HTMLDivElement>("recent-layouts-list")
+    ? { list: el<HTMLDivElement>("recent-layouts-list")!, search: el<HTMLInputElement>("recent-layouts-search"), page: 0 }
+    : null;
+  if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
   void (async () => {
     const recentsH = Number(await window.glyphh.getPreference?.("codeRecentsH", 0)) || 0;
     if (recentsH > 0) railRecentsH = recentsH;
@@ -4260,14 +4293,78 @@ function initRailApps(): void {
   initRailSections();
 
   // Apps search — its own page; Enter runs the text as a command (palette parity).
-  wireRailSearch(el<HTMLInputElement>("recent-apps-search"), () => { railAppsPage = 0; renderRailApps(); });
+  if (leftApps) wireRailSearch(leftApps.search, () => { leftApps.page = 0; paintAppsGrid(leftApps); });
   el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     const text = (e.target as HTMLInputElement).value.trim();
     if (text) void window.glyphh.execCommand(text.replace(/^\./, ""));
   });
   // Layouts search — its own page + list.
-  wireRailSearch(el<HTMLInputElement>("recent-layouts-search"), () => { railLayoutsPage = 0; renderRailLayouts(); });
+  if (leftLayouts) wireRailSearch(leftLayouts.search, () => { leftLayouts.page = 0; paintLayoutsGrid(leftLayouts); });
+
+  initMiniTrays();
+}
+
+// ── Collapsed-bar mini trays — Apps + Workspaces as drop-up popovers ──────
+// Each chip opens a body-appended popover (search + grid) that registers as a
+// RailGridHost on open, so refreshes repaint it like the left rail; closing
+// removes the popover and the isConnected sweep drops the host.
+function openMiniTray(kind: "apps" | "layouts", anchor: HTMLElement): void {
+  const existing = document.querySelector<HTMLElement>(".code-mini-tray");
+  const wasKind = existing?.dataset.kind;
+  existing?.remove();
+  if (wasKind === kind) return;   // second click on the same chip = toggle off
+
+  const pop = document.createElement("div");
+  pop.className = "code-mini-tray";
+  pop.dataset.kind = kind;
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "app-rail-search";
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "rail-recents-search";
+  search.placeholder = kind === "apps" ? "Search apps…" : "Search layouts…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  searchWrap.appendChild(search);
+  const list = document.createElement("div");
+  list.className = "app-rail-grid";
+  pop.append(searchWrap, list);
+
+  const host: RailGridHost = { list, search, page: 0 };
+  registerRailGridHost(kind, host);
+  const paint = kind === "apps" ? paintAppsGrid : paintLayoutsGrid;
+  paint(host);
+  wireRailSearch(search, () => { host.page = 0; paint(host); });
+
+  document.body.appendChild(pop);
+  placeDropup(anchor, pop);
+  search.focus();
+
+  const dismiss = (e: Event): void => {
+    const t = e.target as Node;
+    if (pop.contains(t) || anchor.contains(t)) return;
+    close();
+  };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
+  const close = (): void => {
+    pop.remove();   // host leaves the DOM → the isConnected sweep drops it
+    document.removeEventListener("mousedown", dismiss, true);
+    document.removeEventListener("keydown", onKey, true);
+  };
+  document.addEventListener("mousedown", dismiss, true);
+  document.addEventListener("keydown", onKey, true);
+}
+
+function initMiniTrays(): void {
+  el("code-tray-apps")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    openMiniTray("apps", ev.currentTarget as HTMLElement);
+  });
+  el("code-tray-layouts")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    openMiniTray("layouts", ev.currentTarget as HTMLElement);
+  });
 }
 
 // ── Left-rail splitter ───────────────────────────────────────────────────
@@ -4792,21 +4889,9 @@ export function initCode(): void {
       }
     };
     paint();
-    const r = anchor.getBoundingClientRect();
-    menu.style.position = "fixed";
-    menu.style.visibility = "hidden";   // measure before showing
-    document.body.appendChild(menu);
     // Clamp inside the viewport: right-align to the anchor, but never off
     // either edge; below the anchor, but flip up if the bottom would clip.
-    const mw = menu.offsetWidth;
-    const mh = menu.offsetHeight;
-    const left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
-    const top = r.bottom + 6 + mh > window.innerHeight - 8
-      ? Math.max(8, r.top - mh - 6)
-      : r.bottom + 6;
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-    menu.style.visibility = "";
+    placeDropup(anchor, menu);
     const dismiss = (e: MouseEvent): void => {
       if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
     };

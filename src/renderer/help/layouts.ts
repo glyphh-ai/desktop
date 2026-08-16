@@ -184,6 +184,15 @@ const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSe
 // ── Loop + models this layout activates on open ──────────────────────────
 const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
 const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
+// Agent anchor — the revived half of the glyphh-placement row (folder-mode
+// stays cut). "" = no opinion: the saved grid omits the field entirely and
+// opening the layout leaves the anchor alone.
+const layoutAnchorSelect = document.getElementById("layout-anchor-mode") as HTMLSelectElement | null;
+type LayoutAnchorMode = "rail" | "left" | "right" | "center" | "none";
+const ANCHOR_MODES: readonly LayoutAnchorMode[] = ["rail", "left", "right", "center", "none"];
+/** The edited layout's saved dock fraction — carried through a re-save so
+ *  picking a mode never wipes a width the user already dragged. */
+let builderAnchorFraction: number | undefined;
 const layoutFolderInput = document.getElementById("layout-folder-input") as HTMLInputElement | null;
 const layoutFolderPickBtn = document.getElementById("layout-folder-pick") as HTMLButtonElement | null;
 const layoutFolderClearBtn = document.getElementById("layout-folder-clear") as HTMLButtonElement | null;
@@ -716,6 +725,11 @@ async function editLayout(name: string) {
     const sm = (layout as { sessionMode?: string })?.sessionMode;
     layoutSessionSelect.value = sm === "new" || sm === "last" ? sm : "keep";
   }
+  const anchor = (layout as { glyphh?: { mode?: string; fraction?: number } | null })?.glyphh;
+  builderAnchorFraction = typeof anchor?.fraction === "number" ? anchor.fraction : undefined;
+  if (layoutAnchorSelect) {
+    layoutAnchorSelect.value = ANCHOR_MODES.includes(anchor?.mode as LayoutAnchorMode) ? (anchor!.mode as string) : "";
+  }
   if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
   // Loop + models this layout activates on open.
   builderLoop = (layout as { loop?: string })?.loop ?? "";
@@ -747,6 +761,8 @@ async function newLayout() {
   gridRowsSelect.value = "1";
   if (folderModeSelect) folderModeSelect.value = "single";
   if (layoutSessionSelect) layoutSessionSelect.value = "keep";
+  if (layoutAnchorSelect) layoutAnchorSelect.value = "";
+  builderAnchorFraction = undefined;
   if (layoutFolderInput) layoutFolderInput.value = "";
   builderLoop = "";
   builderModelSelections = {};
@@ -838,6 +854,10 @@ async function saveLayout() {
     ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
     sessionMode: (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last"
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
+    // No opinion ("") omits the field — opening leaves the anchor alone.
+    ...(ANCHOR_MODES.includes(layoutAnchorSelect?.value as LayoutAnchorMode)
+      ? { glyphh: { mode: layoutAnchorSelect!.value as LayoutAnchorMode, ...(builderAnchorFraction !== undefined ? { fraction: builderAnchorFraction } : {}) } }
+      : {}),
     folder: layoutFolderInput?.value.trim() || null,
   });
   cancelLayout();

@@ -46,6 +46,31 @@ export function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// ── Fixed popover placement ────────────────────────────────
+
+/**
+ * Place a body-appended, position:fixed menu against its anchor: right-aligned
+ * to the anchor but clamped inside the viewport, below the anchor but FLIPPED
+ * ABOVE it when the bottom would clip (the drop-up case — anchors along the
+ * collapsed bar always flip). Appends the menu to <body> if it isn't mounted,
+ * and measures before showing so the first paint lands in place.
+ */
+export function placeDropup(anchor: HTMLElement, menu: HTMLElement): void {
+  const r = anchor.getBoundingClientRect();
+  menu.style.position = "fixed";
+  menu.style.visibility = "hidden";   // measure before showing
+  if (!menu.isConnected) document.body.appendChild(menu);
+  const mw = menu.offsetWidth;
+  const mh = menu.offsetHeight;
+  const left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
+  const top = r.bottom + 6 + mh > window.innerHeight - 8
+    ? Math.max(8, r.top - mh - 6)
+    : r.bottom + 6;
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.style.visibility = "";
+}
+
 // ── Drop-up detail pane ────────────────────────────────────
 
 /**

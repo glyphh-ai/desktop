@@ -16672,3 +16672,39 @@ body[data-glyphh-anchor="center"].peek-open #code-wb-applayer { visibility: hidd
 .code-anchor-wrap { position: relative; display: inline-flex; }
 .code-anchor-menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 232px; z-index: 40; }
 .code-root[data-anchor="center"] .code-anchor-menu { top: auto; bottom: calc(100% + 6px); }
+
+/* ── Transcript panel (the "thread" workbench slot) ─────────────────────────
+   Hosts the LIVE #code-thread (moved, never cloned). Sizing/spacing only —
+   the thread keeps its own chrome; colors stay on the existing classes. */
+.ws-thread-body { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.ws-thread-body > .code-thread { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; }
+/* Peeking while the panel owns the thread flashes the panel instead (the
+   thread stays put). One accent outline, briefly. */
+.ws-rail-slot.ws-thread-flash { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── Collapsed-bar mini trays (Apps + Workspaces chips → drop-up grids) ─────
+   The chips only exist in centre-anchored (collapsed) mode, where the left
+   rail is out of reach. Sizes/spacing only — chips are stock .code-chip and
+   the tiles keep .app-rail-tile's own colors. */
+.code-mini-trays { display: none; }
+.code-root[data-anchor="center"] .code-mini-trays { display: flex; align-items: center; gap: 4px; }
+.code-mini-tray {
+  display: flex; flex-direction: column;
+  width: 296px; max-height: min(52vh, 460px);
+  padding: 8px 0 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  overflow: hidden;
+}
+.code-mini-tray .app-rail-grid {
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 4px;
+  padding: 2px 8px 8px;
+}
+/* Scoped SIZE override — a popover tile is a touch tighter than the rail's. */
+.code-mini-tray .app-rail-tile { padding: 6px 2px 5px; gap: 4px; }
+.code-mini-tray .app-rail-tile .tile-icon { width: 26px; height: 26px; }
+.code-mini-tray .app-rail-tile .tile-name { font-size: 10px; }

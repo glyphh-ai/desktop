@@ -27,6 +27,10 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import * as THREE from "three";
+// The anchor module is ALSO bundled into the help build (home.js) — two module
+// instances. That's safe because code-anchor derives its live mode from the
+// DOM (body[data-glyphh-anchor]), the one shared source of truth.
+import { applyAnchor, type AnchorMode } from "./help/code-anchor.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -74,7 +78,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "section" | "app";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "thread" | "section" | "app";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -123,6 +127,10 @@ interface TasksSlot { id: number; view: "tasks"; taskId?: string; sticky?: boole
 /** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
  *  composer); nothing of its own beyond the header's session controls. */
 interface CodingSlot { id: number; view: "coding"; sticky?: boolean }
+/** The Transcript panel — HOSTS the live #code-thread DOM (renderThread()
+ *  wipes it every repaint and the streamer writes into it, so it is MOVED,
+ *  never cloned). Opens on demand from the collapsed bar; never persisted. */
+interface ThreadSlot { id: number; view: "thread"; sticky?: boolean }
 /** A whole app SECTION (Home, Apps, Settings, Drips, …) hosted as a panel —
  *  the section's singleton DOM is adopted into the slot body (the same
  *  reparenting trick the coding slot uses for the agent). */
@@ -166,7 +174,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -197,6 +205,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   releases: { title: "Releases", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
+  thread:   { title: "Transcript", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
 };
 
@@ -654,9 +663,11 @@ async function init(): Promise<void> {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
         } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
           slots.push({ id: nextSlotId++, view: "section", section: v.section });
-        } else if (v === "coding") {
+        } else if (v === "coding" || v === "thread") {
           // NEVER restore an agent slot — the agent opens on demand; a stale one
           // saved by the old force-place would otherwise re-open every load.
+          // The transcript panel is the same deal: it hosts live singleton DOM
+          // and re-opens on demand, never from a saved layout.
           continue;
         } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "releases") {
           slots.push(makeSlot(v));
@@ -788,8 +799,9 @@ async function init(): Promise<void> {
   }
   function placeView(view: Exclude<ViewKind, "app">): void {
     // Echo owns the workspace while it's up — a tool opens as an ECHO CARD,
-    // never as a rail slot beside it. (echo/coding have their own paths.)
-    if (echoCtl && view !== "echo" && view !== "coding") {
+    // never as a rail slot beside it. (echo/coding/thread have their own
+    // paths — Echo must never adopt the transcript and fight parkThread.)
+    if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
       echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases");
       return;
     }
@@ -962,6 +974,7 @@ async function init(): Promise<void> {
     }
     if (view === "diff") return { id, view };
     if (view === "coding") return { id, view };
+    if (view === "thread") return { id, view };
     if (view === "echo") return { id, view };
     if (view === "releases") return { id, view };
     if (view === "tasks") return { id, view };
@@ -986,9 +999,12 @@ async function init(): Promise<void> {
       if (idx >= 0) {
         const wasSection = r.slots[idx].view === "section";
         const wasEcho = r.slots[idx].view === "echo";
+        const wasThread = r.slots[idx].view === "thread";
         const wasSeat = isAgentSeat(r.slots[idx]);
         r.slots.splice(idx, 1);
         if (wasSeat) queueMicrotask(notifySeatClosed);
+        // The transcript goes home to the agent the moment its panel closes.
+        if (wasThread) parkThread();
         if (r.slots.length === 0) rails.splice(i, 1);
         // Leaving Echo does NOT spawn an agent session (see closeAllOfView).
         void wasEcho;
@@ -1158,6 +1174,32 @@ async function init(): Promise<void> {
     document.querySelector(".code-root")?.classList.remove("agent-hosted");
   }
 
+  /** Return the live #code-thread to its home in .code-agent (before any
+   *  rails rebuild, and when the transcript panel closes). Same contract as
+   *  parkAgent — adopt on render, park before wipe. insertBefore the composer,
+   *  NEVER appendChild: the composer must stay the agent's last child. */
+  function parkThread(): void {
+    const thread = document.getElementById("code-thread");
+    const agent = document.querySelector<HTMLElement>(".code-agent");
+    if (thread && agent && thread.parentElement !== agent) {
+      const composer = agent.querySelector<HTMLElement>(":scope > .code-composer");
+      if (composer) agent.insertBefore(thread, composer);
+      else agent.appendChild(thread);
+    }
+    document.querySelector(".code-root")?.classList.remove("thread-hosted");
+  }
+
+  /** Adopt the LIVE #code-thread into the transcript slot. MOVE, never clone:
+   *  renderThread() wipes this element on every repaint and the streamer
+   *  writes into it — a copy is stale within a frame. */
+  function renderThreadIntoSlot(body: HTMLElement): void {
+    const thread = document.getElementById("code-thread");
+    if (!thread) { body.innerHTML = `<div class="ws-empty">The transcript is unavailable.</div>`; return; }
+    body.classList.add("ws-thread-body");
+    body.appendChild(thread);
+    document.querySelector(".code-root")?.classList.add("thread-hosted");
+  }
+
   /** Exactly one non-band rail holding exactly one slot — the solo panel. */
   function soloPanel(): boolean {
     return rails.length === 1 && rails[0]!.slots.length === 1 && !rails[0]!.banner;
@@ -1246,6 +1288,7 @@ async function init(): Promise<void> {
     const container = document.getElementById("code-wb-rails");
     if (!container) return;
     parkAgent();
+    parkThread();
     parkSections();
     // Custom slot heights (drag-set or layout-set) live as inline flex on the
     // slot elements — a rebuild would silently reset them (e.g. opening a
@@ -1499,6 +1542,7 @@ async function init(): Promise<void> {
     else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
+    else if (slot.view === "thread") renderThreadIntoSlot(body);
     else if (slot.view === "echo") {
       // The 3D command-center wall can throw on browsers the desktop shell was
       // never meant to run in (e.g. iPad Safari via the web-served "Desktop
@@ -6901,8 +6945,9 @@ async function init(): Promise<void> {
       // The header toggles cover every view except Monaco (spawned by the
       // Files tree, never toggled directly).
       const v = btn.dataset.view as Exclude<ViewKind, "app">;
-      // In Echo the toggle acts on the CARD, not on a rail slot.
-      if (echoCtl && v !== "echo" && v !== "coding") {
+      // In Echo the toggle acts on the CARD, not on a rail slot. (thread is
+      // excluded like coding — Echo must never adopt the live transcript.)
+      if (echoCtl && v !== "echo" && v !== "coding" && v !== "thread") {
         if (echoCtl.hasTool(v)) echoCtl.closeTool(v);
         else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases");
         moreMenu?.classList.add("hidden");
@@ -7085,6 +7130,10 @@ async function init(): Promise<void> {
   }
 
   function openLayoutRowArranged(layout: LayoutRow, appRows: PanelAppRow[]): void {
+    // The layout's ANCHOR opinion applies first (same "no opinion" contract as
+    // folder/loop/sessionMode: absent = leave the anchor alone). applyAnchor
+    // reads/writes the DOM, so both bundles' anchor-module instances agree.
+    if (layout.glyphh?.mode) applyAnchor(layout.glyphh.mode as AnchorMode);
     // Echo IS the layout manager: while it is mounted, a layout open lands
     // as Echo cards on the layout's grid (folder switching already ran).
     if (echoCtl) { echoCtl.openLayout(layout); return; }
@@ -7301,6 +7350,24 @@ async function init(): Promise<void> {
   // The agent dock changes how much width the rails get, but the workbench owns
   // that math — the anchor module asks for a reflow rather than duplicating it.
   (wbApp as { __wbReflow?: () => void }).__wbReflow = () => { applyResponsiveWidths(); };
+  // The collapsed bar's transcript button — TOGGLES the transcript panel:
+  // open it if absent, close it (parking the thread home) if present.
+  (wbApp as { __wbOpenThread?: () => void }).__wbOpenThread = () => {
+    const it = rails.flatMap((r) => r.slots).find((s) => s.view === "thread");
+    if (it) closeSlot(it.id);
+    else placeSlot(makeSlot("thread"));
+  };
+  // Peeking while the transcript panel is open flashes the panel instead of
+  // stealing the thread out of it (code-anchor's togglePeek calls this).
+  (wbApp as { __wbFlashThread?: () => void }).__wbFlashThread = () => {
+    const slotEl = document.querySelector<HTMLElement>(".ws-rail-slot[data-view=\"thread\"]");
+    if (!slotEl) return;
+    slotEl.classList.remove("ws-thread-flash");
+    // Force a restyle so back-to-back flashes re-trigger.
+    void slotEl.offsetWidth;
+    slotEl.classList.add("ws-thread-flash");
+    window.setTimeout(() => slotEl.classList.remove("ws-thread-flash"), 900);
+  };
   wbApp.__wbOpenApps = (apps, layoutName?: string) => {
     // A NAMED layout comes up through the grid path — its definition plus the
     // user's remembered geometry — never as a flat stack. The old fallback
