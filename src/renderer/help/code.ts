@@ -4163,6 +4163,24 @@ function paintAppsGrid(host: RailGridHost): void {
   });
   list.appendChild(slides);
 
+  // DOCS — Glyphh Office documents, the same fixed-tile treatment.
+  const gdocs = document.createElement("button");
+  gdocs.className = "app-rail-tile";
+  gdocs.type = "button";
+  gdocs.title = "Docs — Glyphh Office";
+  const gdIcon = document.createElement("div");
+  gdIcon.className = "tile-icon";
+  gdIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>`;
+  const gdName = document.createElement("div");
+  gdName.className = "tile-name";
+  gdName.textContent = "Docs";
+  gdocs.append(gdIcon, gdName);
+  gdocs.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdoc");
+  });
+  list.appendChild(gdocs);
+
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
   host.page = ap.page;
   for (const a of ap.items) {
@@ -4732,8 +4750,13 @@ export function initCode(): void {
     refreshCtxMeter();
     void checkWorkdirGate();
     if (!navigate) return;
-    if (last) gotoSection("agent");
-    else gotoSection("agent");
+    gotoSection("agent");
+    // ALWAYS re-apply the anchor on boot — not just when docked. gotoSection
+    // lands the agent in the rail with the RAW header order; applyAnchor() both
+    // re-homes it into the saved dock AND runs relocateActions to normalize the
+    // button order. Skipping it in rail mode is exactly why boot showed a
+    // different button layout than a reset (which always goes through applyAnchor).
+    applyAnchor();
     paintCw();
   };
   // The command centre / workbench used to switch spaces; with one type they

@@ -104,7 +104,7 @@ async function savePdf(pdf: Buffer, suggestedName: string): Promise<{ ok: boolea
 }
 
 export function registerOfficeExportIpc(): void {
-  ipcMain.handle("office-export-pdf", async (_e, req: { kind?: string; file?: string; title?: string; html?: string } | undefined) => {
+  ipcMain.handle("office-export-pdf", async (_e, req: { kind?: string; file?: string; title?: string; html?: string; print?: boolean } | undefined) => {
     try {
       if (req?.kind === "slides") {
         const file = String(req.file ?? "");
@@ -119,6 +119,15 @@ export function registerOfficeExportIpc(): void {
         const html = String(req.html ?? "");
         if (!html) throw new Error("document html is required");
         const title = String(req.title ?? "Document");
+        if (req.print) {
+          // File → Print: the OS print dialog over the same paper document.
+          const win = await offscreen(1200, 800);
+          await win.loadURL(dataUrl(docPrintDoc(title, html)));
+          await new Promise<void>((resolve) => {
+            win.webContents.print({}, () => { win.destroy(); resolve(); });
+          });
+          return { ok: true };
+        }
         const pdf = await printHtml(docPrintDoc(title, html));
         return await savePdf(pdf, title.replace(/[\\/:]/g, "-") + ".pdf");
       }

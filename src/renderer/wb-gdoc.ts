@@ -1,0 +1,431 @@
+/**
+ * wb-gdoc.ts — the DOCS workbench panel (Glyphh Office).
+ *
+ * A document is MARKDOWN in the org library, rendered as PAPER — a white page
+ * with a table of contents, Google-Docs-shaped. Editing is deliberately
+ * minimal: the agent authors documents; a human can click one section's ✎ and
+ * fix its markdown, rename via the title, or review-and-approve the agent's
+ * pending suggestions. File ▾ carries Print / Export PDF / Delete.
+ *
+ * Library → document; all transitions re-render the panel body in place
+ * (never the rails — same lesson as Slides). One module serves rail slots,
+ * Echo cards, and (later) a popped-out window.
+ */
+
+import { formatMarkdown } from "./format-markdown.js";
+
+export interface GDocMeta { file: string; title: string; size: number; folderId: string | null; mtime: number }
+export interface GDocSuggestion {
+  id: string; file: string; section: string; beforeMd: string; afterMd: string;
+  note: string; authorKind: string; status: string; createdAt: string;
+}
+export interface GDocTemplate { slug: string; name: string; category: string; description: string; markdown: string }
+
+export interface GDocSlotState {
+  id: number;
+  file?: string;
+  title?: string;
+}
+
+export interface GDocHost {
+  confirm: (opts: { title: string; body?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
+  /** The panel's VIEW_META glyph — list rows + empty states. */
+  icon: string;
+}
+
+const gdocApi = () => (window as unknown as { glyphh?: {
+  gdocList?: () => Promise<{ ok: boolean; docs: GDocMeta[]; error?: string }>;
+  gdocRead?: (file: string) => Promise<{ ok: boolean; markdown?: string; title?: string; error?: string }>;
+  gdocWrite?: (file: string, markdown: string) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }>;
+  gdocDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
+  gdocSuggestions?: (file: string, status?: string) => Promise<{ ok: boolean; suggestions: GDocSuggestion[]; error?: string }>;
+  gdocResolve?: (id: string, approve: boolean) => Promise<{ ok: boolean; error?: string }>;
+  gdocTemplates?: () => Promise<{ ok: boolean; templates: GDocTemplate[]; error?: string }>;
+  officeExportPdf?: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string; print?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+} }).glyphh ?? {};
+
+const mdCache = new Map<string, string>();
+async function docMarkdown(file: string): Promise<string | null> {
+  const hit = mdCache.get(file);
+  if (hit !== undefined) return hit;
+  const res = await gdocApi().gdocRead?.(file);
+  if (!res?.ok || typeof res.markdown !== "string") return null;
+  mdCache.set(file, res.markdown);
+  return res.markdown;
+}
+
+// ── Section model — heading-bounded spans over the SOURCE (fence-aware) ──────
+export interface GDocSection { heading: string; level: number; start: number; end: number }
+export function splitSections(md: string): GDocSection[] {
+  const lines = md.split("\n");
+  const marks: Array<{ at: number; level: number; heading: string }> = [];
+  let fence = false;
+  let pos = 0;
+  for (const line of lines) {
+    const at = pos;
+    pos += line.length + 1;
+    if (/^(```|~~~)/.test(line.trim())) { fence = !fence; continue; }
+    if (fence) continue;
+    const m = line.match(/^(#{1,3})\s+(.+?)\s*$/);
+    if (m) marks.push({ at, level: m[1]!.length, heading: m[2]! });
+  }
+  const out: GDocSection[] = [];
+  if (!marks.length || marks[0]!.at > 0) {
+    out.push({ heading: "", level: 0, start: 0, end: marks.length ? marks[0]!.at : md.length });
+  }
+  for (let i = 0; i < marks.length; i++) {
+    out.push({ heading: marks[i]!.heading, level: marks[i]!.level, start: marks[i]!.at, end: marks[i + 1]?.at ?? md.length });
+  }
+  // Drop an empty whitespace-only preamble so it never renders as a ghost block.
+  return out.filter((s) => s.heading || md.slice(s.start, s.end).trim().length > 0);
+}
+
+/** Rename = rewrite the first H1 (or prepend one). Title IS the document's. */
+export function retitleMarkdown(md: string, title: string): string {
+  const m = md.match(/^#\s+.+$/m);
+  if (m && m.index !== undefined) return md.slice(0, m.index) + `# ${title}` + md.slice(m.index + m[0].length);
+  return `# ${title}\n\n${md}`;
+}
+
+const fmtDate = (ms: number): string => (ms ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
+
+interface PopItem { label: string; danger?: boolean; fn: () => void }
+function popMenu(x: number, y: number, items: PopItem[]): void {
+  document.querySelectorAll(".gdoc-menu").forEach((el) => el.remove());
+  const menu = document.createElement("div");
+  menu.className = "ws-popover gdoc-menu";
+  for (const it of items) {
+    const b = document.createElement("button");
+    b.className = "ws-popover-item" + (it.danger ? " danger" : "");
+    b.textContent = it.label;
+    b.addEventListener("click", () => { close(); it.fn(); });
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+  menu.style.top = `${Math.min(y, window.innerHeight - menu.offsetHeight - 8)}px`;
+  menu.style.left = `${Math.min(x, window.innerWidth - menu.offsetWidth - 8)}px`;
+  const onDoc = (ev: MouseEvent): void => { if (!menu.contains(ev.target as Node)) close(); };
+  const close = (): void => { menu.remove(); document.removeEventListener("mousedown", onDoc, true); };
+  document.addEventListener("mousedown", onDoc, true);
+}
+
+export interface GDocPanel {
+  renderIntoSlot: (body: HTMLElement, slot: GDocSlotState, wrap: HTMLElement) => Promise<void>;
+  invalidate: (file: string) => void;
+}
+
+export function initGDocs(host: GDocHost): GDocPanel {
+
+  async function renderIntoSlot(body: HTMLElement, slot: GDocSlotState, wrap: HTMLElement): Promise<void> {
+    try {
+      await renderInner(body, slot, wrap);
+    } catch (err) {
+      console.warn("[gdoc] render failed:", err);
+      if (body.isConnected) {
+        body.innerHTML = `<div class="gdoc-empty">Docs hit an error rendering this view.<br><code class="gpoint-err"></code></div>`;
+        const code = body.querySelector(".gpoint-err");
+        if (code) code.textContent = err instanceof Error ? err.message : String(err);
+      }
+    }
+  }
+
+  async function renderInner(body: HTMLElement, slot: GDocSlotState, wrap: HTMLElement): Promise<void> {
+    body.classList.add("ws-gdoc-body");
+    const refresh = (): void => { if (body.isConnected) void renderIntoSlot(body, slot, wrap); };
+    // Rail-slot header title tracks the open document (Echo cards just miss).
+    const titleEl = wrap.querySelector(".ws-rail-slot-header .title");
+    if (titleEl) titleEl.textContent = slot.file ? (slot.title || "Docs") : "Docs";
+    if (!slot.file) { await renderLibrary(body, slot, refresh); return; }
+    await renderDoc(body, slot, refresh);
+  }
+
+  // ── LIBRARY ────────────────────────────────────────────────────────────────
+
+  async function renderLibrary(body: HTMLElement, slot: GDocSlotState, refresh: () => void): Promise<void> {
+    body.innerHTML = `
+      <div class="gdoc-lib">
+        <div class="gdoc-lib-head">
+          <span class="gdoc-lib-title">Docs</span>
+          <span class="gdoc-lib-sub">Glyphh Office · your documents</span>
+          <button class="action-btn primary gdoc-new">＋ New</button>
+          <button class="ws-icon-btn gdoc-refresh" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
+          </button>
+        </div>
+        <div class="gdoc-rows"></div>
+        <div class="gdoc-empty hidden">No documents yet.<br>＋ New starts from a template, or ask Glyphh — "write me a…".</div>
+      </div>`;
+    body.querySelector(".gdoc-refresh")?.addEventListener("click", refresh);
+
+    const openDoc = (d: { file: string; title: string }): void => {
+      slot.file = d.file;
+      slot.title = d.title;
+      refresh();
+    };
+
+    body.querySelector(".gdoc-new")?.addEventListener("click", (ev) => {
+      void (async () => {
+        const res = await gdocApi().gdocTemplates?.();
+        const templates = res?.ok ? res.templates : [];
+        const r = (ev.currentTarget as HTMLElement).getBoundingClientRect?.() ?? { left: (ev as MouseEvent).clientX, bottom: (ev as MouseEvent).clientY };
+        const uniqueName = (stem: string, taken: Set<string>): string => {
+          let name = stem, n = 2;
+          while (taken.has(`${name}.md`)) name = `${stem}-${n++}`;
+          return name;
+        };
+        const createFrom = async (stem: string, markdown: string): Promise<void> => {
+          const list = await gdocApi().gdocList?.();
+          const taken = new Set((list?.ok ? list.docs : []).map((d) => d.file));
+          const name = uniqueName(stem, taken);
+          const w = await gdocApi().gdocWrite?.(name, markdown);
+          if (!w?.ok) { void host.confirm({ title: "Couldn't create the document", body: w?.error || "Unknown error.", confirmLabel: "OK" }); return; }
+          mdCache.set(w.file || `${name}.md`, markdown);
+          openDoc({ file: w.file || `${name}.md`, title: w.title || stem });
+        };
+        popMenu(("left" in r ? r.left : 0), ("bottom" in r ? r.bottom + 4 : 0), [
+          { label: "Blank document", fn: () => void createFrom("untitled", "# Untitled\n\n") },
+          ...templates.map((t) => ({ label: `${t.name} — ${t.category}`, fn: () => void createFrom(t.slug, t.markdown) })),
+        ]);
+      })();
+    });
+
+    const rows = body.querySelector<HTMLElement>(".gdoc-rows")!;
+    const res = await gdocApi().gdocList?.();
+    if (!body.isConnected) return;
+    if (!res || !Array.isArray(res.docs) || (!res.ok && !res.docs.length)) {
+      const empty = body.querySelector<HTMLElement>(".gdoc-empty");
+      if (empty) {
+        empty.innerHTML = res && !res.ok
+          ? `Couldn't load the library.<br>${res.error ?? "Unknown error."}`
+          : "This surface has no document library.";
+        empty.classList.remove("hidden");
+      }
+      return;
+    }
+    if (!res.docs.length) {
+      body.querySelector(".gdoc-empty")?.classList.remove("hidden");
+      return;
+    }
+    for (const d of res.docs) {
+      const row = document.createElement("div");
+      row.className = "gdoc-row";
+      row.innerHTML = `
+        <span class="gdoc-row-icon">${host.icon}</span>
+        <span class="gdoc-row-title"></span>
+        <span class="gdoc-row-file"></span>
+        <span class="gdoc-row-date">${fmtDate(d.mtime)}</span>
+        <button class="ws-icon-btn gdoc-row-kebab" title="Options">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+        </button>`;
+      (row.querySelector(".gdoc-row-title") as HTMLElement).textContent = d.title || d.file;
+      (row.querySelector(".gdoc-row-file") as HTMLElement).textContent = d.file;
+      row.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).closest(".gdoc-row-kebab")) return;
+        openDoc(d);
+      });
+      row.querySelector(".gdoc-row-kebab")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+        popMenu(r.right - 150, r.bottom + 4, [
+          { label: "Open", fn: () => openDoc(d) },
+          { label: "Delete…", danger: true, fn: () => void (async () => {
+            const ok = await host.confirm({ title: `Delete “${d.title || d.file}”?`, body: "The document is removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
+            if (!ok) return;
+            const del = await gdocApi().gdocDelete?.(d.file);
+            if (del && !del.ok) { void host.confirm({ title: "Couldn't delete", body: del.error || "Unknown error.", confirmLabel: "OK" }); return; }
+            mdCache.delete(d.file);
+            refresh();
+          })() },
+        ]);
+      });
+      rows.appendChild(row);
+    }
+  }
+
+  // ── DOCUMENT ───────────────────────────────────────────────────────────────
+
+  async function renderDoc(body: HTMLElement, slot: GDocSlotState, refresh: () => void): Promise<void> {
+    const file = slot.file!;
+    const md = await docMarkdown(file);
+    if (!body.isConnected) return;
+    if (md === null) {
+      slot.file = undefined; slot.title = undefined;
+      await renderLibrary(body, slot, refresh);
+      return;
+    }
+    const sections = splitSections(md);
+
+    body.innerHTML = `
+      <div class="gdoc-doc">
+        <div class="gdoc-bar">
+          <button class="gpoint-back gdoc-back" title="Back to Docs">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
+            <span>Docs</span>
+          </button>
+          <input class="gpoint-reader-title gdoc-title" spellcheck="false" autocomplete="off" title="Click to rename" />
+          <button class="action-btn gdoc-file-menu">File ▾</button>
+        </div>
+        <div class="gdoc-review hidden"></div>
+        <div class="gdoc-main">
+          <div class="gdoc-toc"></div>
+          <div class="gdoc-scroll"><div class="gdoc-paper"></div></div>
+        </div>
+      </div>`;
+
+    const saveDoc = async (next: string): Promise<boolean> => {
+      const write = gdocApi().gdocWrite;
+      if (!write) { void host.confirm({ title: "Can't save", body: "This surface can't write documents yet.", confirmLabel: "OK" }); return false; }
+      const res = await write(file, next).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+      if (!res || !res.ok) { void host.confirm({ title: "Couldn't save the document", body: (res as { error?: string } | undefined)?.error || "Unknown error.", confirmLabel: "OK" }); return false; }
+      mdCache.set(file, next);
+      if ("title" in res && res.title) slot.title = res.title;
+      return true;
+    };
+
+    // Back + rename.
+    body.querySelector(".gdoc-back")?.addEventListener("click", () => {
+      slot.file = undefined; slot.title = undefined;
+      refresh();
+    });
+    const titleInput = body.querySelector<HTMLInputElement>(".gdoc-title")!;
+    titleInput.value = slot.title || file;
+    titleInput.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); titleInput.blur(); }
+      else if (e.key === "Escape") { titleInput.value = slot.title || file; titleInput.blur(); }
+    });
+    titleInput.addEventListener("blur", () => {
+      void (async () => {
+        const next = titleInput.value.trim();
+        if (!next || next === (slot.title || "")) { titleInput.value = slot.title || file; return; }
+        if (await saveDoc(retitleMarkdown(md, next))) { slot.title = next; refresh(); }
+        else titleInput.value = slot.title || file;
+      })();
+    });
+
+    // File ▾ — Print, Export PDF, Delete.
+    body.querySelector(".gdoc-file-menu")?.addEventListener("click", (ev) => {
+      const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+      const exporter = gdocApi().officeExportPdf;
+      const renderedHtml = (): string => formatMarkdown(mdCache.get(file) ?? md);
+      popMenu(r.left, r.bottom + 4, [
+        ...(exporter ? [
+          { label: "Print…", fn: () => void exporter({ kind: "doc-html", title: slot.title || file, html: renderedHtml(), print: true }) },
+          { label: "Export as PDF", fn: () => void (async () => {
+            const res = await exporter({ kind: "doc-html", title: slot.title || file, html: renderedHtml() });
+            if (!res.ok) void host.confirm({ title: "Couldn't export", body: res.error || "Unknown error.", confirmLabel: "OK" });
+          })() },
+        ] : []),
+        { label: "Delete document…", danger: true, fn: () => void (async () => {
+          const ok = await host.confirm({ title: `Delete “${slot.title || file}”?`, body: "Removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
+          if (!ok) return;
+          await gdocApi().gdocDelete?.(file);
+          mdCache.delete(file);
+          slot.file = undefined; slot.title = undefined;
+          refresh();
+        })() },
+      ]);
+    });
+
+    // TOC + paper, section by section.
+    const toc = body.querySelector<HTMLElement>(".gdoc-toc")!;
+    const paper = body.querySelector<HTMLElement>(".gdoc-paper")!;
+    sections.forEach((sec, i) => {
+      const block = document.createElement("div");
+      block.className = "gdoc-block";
+      block.dataset.sec = String(i);
+      block.innerHTML = formatMarkdown(md.slice(sec.start, sec.end));
+      const edit = document.createElement("button");
+      edit.className = "ws-icon-btn gdoc-block-edit";
+      edit.title = "Edit this section";
+      edit.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`;
+      block.appendChild(edit);
+      edit.addEventListener("click", () => {
+        // Swap the block for a section editor — the ONE sanctioned hand-edit.
+        const cur = mdCache.get(file) ?? md;
+        const spans = splitSections(cur);
+        const span = spans[i];
+        if (!span) { refresh(); return; }
+        const editor = document.createElement("div");
+        editor.className = "gdoc-editor";
+        const ta = document.createElement("textarea");
+        ta.className = "gdoc-editor-ta";
+        ta.value = cur.slice(span.start, span.end);
+        ta.rows = Math.min(24, Math.max(6, ta.value.split("\n").length + 1));
+        const bar = document.createElement("div");
+        bar.className = "gdoc-editor-bar";
+        const save = document.createElement("button");
+        save.className = "action-btn primary";
+        save.textContent = "Save";
+        const cancel = document.createElement("button");
+        cancel.className = "action-btn";
+        cancel.textContent = "Cancel";
+        bar.append(save, cancel);
+        editor.append(ta, bar);
+        block.replaceWith(editor);
+        ta.focus();
+        cancel.addEventListener("click", refresh);
+        save.addEventListener("click", () => {
+          void (async () => {
+            const next = cur.slice(0, span.start) + ta.value.replace(/\s*$/, "\n\n") + cur.slice(span.end);
+            if (await saveDoc(next)) refresh();
+          })();
+        });
+      });
+      paper.appendChild(block);
+
+      if (sec.heading) {
+        const item = document.createElement("button");
+        item.className = `gdoc-toc-item lvl${sec.level}`;
+        item.textContent = sec.heading;
+        item.addEventListener("click", () => block.scrollIntoView({ behavior: "smooth", block: "start" }));
+        toc.appendChild(item);
+      }
+    });
+    if (!toc.children.length) toc.classList.add("hidden");
+
+    // Suggestions — the review-and-approve strip.
+    void (async () => {
+      const res = await gdocApi().gdocSuggestions?.(file, "pending");
+      if (!body.isConnected || !res?.ok || !res.suggestions.length) return;
+      const strip = body.querySelector<HTMLElement>(".gdoc-review")!;
+      strip.classList.remove("hidden");
+      const paint = (open: boolean): void => {
+        strip.innerHTML = `<button class="gdoc-review-toggle">${res.suggestions.length} pending edit${res.suggestions.length === 1 ? "" : "s"} to review ${open ? "▴" : "▾"}</button>`;
+        strip.querySelector(".gdoc-review-toggle")?.addEventListener("click", () => paint(!open));
+        if (!open) return;
+        for (const sug of res.suggestions) {
+          const card = document.createElement("div");
+          card.className = "gdoc-sug";
+          card.innerHTML = `
+            <div class="gdoc-sug-head"><span class="gdoc-sug-sec"></span><span class="gdoc-sug-note"></span></div>
+            ${sug.beforeMd ? `<pre class="gdoc-sug-before"></pre>` : ""}
+            <pre class="gdoc-sug-after"></pre>
+            <div class="gdoc-sug-actions">
+              <button class="action-btn primary gdoc-sug-approve">Approve</button>
+              <button class="action-btn gdoc-sug-reject">Reject</button>
+            </div>`;
+          (card.querySelector(".gdoc-sug-sec") as HTMLElement).textContent = sug.section || "Document";
+          (card.querySelector(".gdoc-sug-note") as HTMLElement).textContent = sug.note;
+          const before = card.querySelector(".gdoc-sug-before");
+          if (before) before.textContent = sug.beforeMd;
+          (card.querySelector(".gdoc-sug-after") as HTMLElement).textContent = sug.afterMd;
+          const resolve = (approve: boolean): void => {
+            void (async () => {
+              const r = await gdocApi().gdocResolve?.(sug.id, approve);
+              if (r && !r.ok) { void host.confirm({ title: "Couldn't resolve", body: r.error || "Unknown error.", confirmLabel: "OK" }); return; }
+              mdCache.delete(file);
+              refresh();
+            })();
+          };
+          card.querySelector(".gdoc-sug-approve")?.addEventListener("click", () => resolve(true));
+          card.querySelector(".gdoc-sug-reject")?.addEventListener("click", () => resolve(false));
+          strip.appendChild(card);
+        }
+      };
+      paint(false);
+    })();
+  }
+
+  return { renderIntoSlot, invalidate: (file) => { mdCache.delete(file); } };
+}

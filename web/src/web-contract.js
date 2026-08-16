@@ -256,6 +256,41 @@ export function buildContract(client, deps) {
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
 
+    // ── Glyphh Office · Docs (OfficeDocsClient) — same wire shapes as preload ──
+    gdocList: async () => {
+      try {
+        const docs = (await client.officeDocs.list()).map((d) => ({
+          file: d.file, title: d.title, size: d.sizeBytes, folderId: d.folderId,
+          mtime: Date.parse(d.updatedAt) || 0,
+        }));
+        return { ok: true, docs };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err), docs: [] }; }
+    },
+    gdocRead: async (file) => {
+      try { const d = await client.officeDocs.get(file); return { ok: true, markdown: d.markdown, title: d.title }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gdocWrite: async (file, markdown) => {
+      try { const m = await client.officeDocs.put(file, markdown); return { ok: true, file: m.file, title: m.title }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gdocDelete: async (file) => {
+      try { await client.officeDocs.delete(file); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gdocSuggestions: async (file, status) => {
+      try { return { ok: true, suggestions: await client.officeDocs.suggestions(file, status) }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), suggestions: [] }; }
+    },
+    gdocResolve: async (id, approve) => {
+      try { return { ok: true, suggestion: await client.officeDocs.resolveSuggestion(id, approve) }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gdocTemplates: async () => {
+      try { return { ok: true, templates: await client.officeDocs.templates() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), templates: [] }; }
+    },
+
     // ── Connections (ConnectionsClient) ──────────────────────────────────────────
     connectionsList: read(() => client.connections.resolvedTools(), toLegacyConnections, EMPTY.connections),
     connectionToolsList: (id) =>

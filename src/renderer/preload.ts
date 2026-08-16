@@ -942,7 +942,15 @@ contextBridge.exposeInMainWorld("glyphh", {
   gpointDelete: (file: string) => ipcRenderer.invoke("gpoint-delete", file) as Promise<{ ok: boolean; error?: string }>,
   gpointWrite: (file: string, html: string) => ipcRenderer.invoke("gpoint-write", file, html) as Promise<{ ok: boolean; error?: string }>,
   // Glyphh Office → PDF (slides page-per-slide, docs on Letter).
-  officeExportPdf: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string }) => ipcRenderer.invoke("office-export-pdf", req) as Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>,
+  officeExportPdf: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string; print?: boolean }) => ipcRenderer.invoke("office-export-pdf", req) as Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>,
+  // Glyphh Office · Docs (the Docs panel's org library).
+  gdocList: () => ipcRenderer.invoke("gdoc-list") as Promise<{ ok: boolean; docs: Array<{ file: string; title: string; size: number; folderId: string | null; mtime: number }>; error?: string }>,
+  gdocRead: (file: string) => ipcRenderer.invoke("gdoc-read", file) as Promise<{ ok: boolean; markdown?: string; title?: string; error?: string }>,
+  gdocWrite: (file: string, markdown: string) => ipcRenderer.invoke("gdoc-write", file, markdown) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  gdocDelete: (file: string) => ipcRenderer.invoke("gdoc-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  gdocSuggestions: (file: string, status?: string) => ipcRenderer.invoke("gdoc-suggestions", file, status) as Promise<{ ok: boolean; suggestions: Array<{ id: string; file: string; section: string; beforeMd: string; afterMd: string; note: string; authorKind: string; status: string; createdAt: string }>; error?: string }>,
+  gdocResolve: (id: string, approve: boolean) => ipcRenderer.invoke("gdoc-resolve", id, approve) as Promise<{ ok: boolean; suggestion?: { id: string; status: string }; error?: string }>,
+  gdocTemplates: () => ipcRenderer.invoke("gdoc-templates") as Promise<{ ok: boolean; templates: Array<{ slug: string; name: string; category: string; description: string; markdown: string }>; error?: string }>,
   // Pop a panel off the app into a standalone OS window (traffic lights).
   panelPopout: (req: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => ipcRenderer.invoke("panel-popout", req) as Promise<{ ok: boolean; error?: string }>,
 

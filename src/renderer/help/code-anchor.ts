@@ -280,17 +280,23 @@ export function initAnchorEvents(): void {
     (window as unknown as { glyphh?: { onPrefsReady?: (cb: () => void) => void } })
       .glyphh?.onPrefsReady?.(() => { void initAnchor(); });
   }
-  const btn = byId("code-anchor-btn");
-  const menu = byId("code-anchor-menu");
-  btn?.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    if (!menu) return;
-    const show = menu.classList.contains("hidden");
-    document.querySelectorAll(".code-drop").forEach((d) => d.classList.add("hidden"));
-    if (show) { buildAnchorMenu(menu); menu.classList.remove("hidden"); }
-  });
+  // DELEGATED, not bound to a node: the anchor button + menu are relocated and
+  // re-homed as the agent moves (rail → Echo card → dock), so a listener pinned
+  // to the boot-time node goes stale — the dead dropdown when docked. Re-query
+  // by id on every click instead.
   document.addEventListener("click", (ev) => {
-    if (menu && !menu.classList.contains("hidden") && !menu.contains(ev.target as Node)) menu.classList.add("hidden");
+    const t = ev.target as HTMLElement;
+    const menu = byId("code-anchor-menu");
+    if (t.closest("#code-anchor-btn")) {
+      ev.stopPropagation();
+      if (!menu) return;
+      const show = menu.classList.contains("hidden");
+      document.querySelectorAll(".code-drop").forEach((d) => d.classList.add("hidden"));
+      if (show) { buildAnchorMenu(menu); menu.classList.remove("hidden"); }
+      return;
+    }
+    // Outside click dismisses an open menu.
+    if (menu && !menu.classList.contains("hidden") && !menu.contains(t)) menu.classList.add("hidden");
   });
 
   byId("code-status-line")?.addEventListener("click", (ev) => { ev.stopPropagation(); togglePeek(); });
