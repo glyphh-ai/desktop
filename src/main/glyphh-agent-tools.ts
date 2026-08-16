@@ -27,8 +27,9 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { openAppByRef, openBrowserAt, openGPointPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
+import { gdocFileName as docsFileName } from "./office-docs";
 import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
 import { getAccountInfo, AUTH_SERVER, getAuthToken, ensureFreshToken } from "./auth";
@@ -770,6 +771,120 @@ const TOOLS: ToolDef[] = [
       const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() || undefined;
       openGPointPanel(file, title);
       return `opened ${file} in the Slides panel`;
+    },
+  },
+  // ── Glyphh Office · DOCS: org-shared markdown documents rendered as paper.
+  //    Direct writes draft; suggest_docs is the REVIEWED path (the user
+  //    approves in the panel). Spec: docs/glyphh-slides-spec.md sibling. ──
+  {
+    name: "list_docs",
+    doc: "list_docs() — the org's Docs library: file, title, folderId",
+    action: () => ({ kind: "read", title: "List documents" }),
+    run: async () => {
+      const docs = await getClient().officeDocs.list();
+      if (!docs.length) return "(no documents yet — create_docs writes one; list_doc_templates has starting points)";
+      return cap(JSON.stringify(docs.map(({ file, title, folderId }) => ({ file, title, folderId })), null, 1));
+    },
+  },
+  {
+    name: "read_docs",
+    doc: "read_docs(name) — a document's markdown source",
+    action: (a) => ({ kind: "read", title: `Read document "${String(a.name ?? "")}"` }),
+    run: async (a) => cap((await getClient().officeDocs.get(docsFileName(a.name))).markdown, READ_CAP),
+  },
+  {
+    name: "create_docs",
+    doc: "create_docs(name, markdown) — create or overwrite a document. Markdown only; the first `# H1` is the document's title; h1-h3 headings become its table of contents. Start from a template via list_doc_templates when one fits, filling the {{placeholders}} from what the user told you.",
+    action: (a) => ({ kind: "edit", title: `Create document "${String(a.name ?? "")}"`, detail: `${String(a.markdown ?? "").length} chars` }),
+    run: async (a) => {
+      const md = String(a.markdown ?? "");
+      if (!md.trim()) return "ERROR: markdown is required";
+      const meta = await getClient().officeDocs.put(docsFileName(a.name), md);
+      return `created ${meta.file} ("${meta.title}") — it's in the org's Docs panel on every surface; open_docs("${meta.file}") opens it`;
+    },
+  },
+  {
+    name: "update_docs",
+    doc: "update_docs(name, markdown) — overwrite a document you are actively drafting. For a document the user considers DONE, use suggest_docs instead so they review the change.",
+    action: (a) => ({ kind: "edit", title: `Update document "${String(a.name ?? "")}"`, detail: `${String(a.markdown ?? "").length} chars` }),
+    run: async (a) => {
+      const md = String(a.markdown ?? "");
+      if (!md.trim()) return "ERROR: markdown is required";
+      const meta = await getClient().officeDocs.put(docsFileName(a.name), md);
+      return `updated ${meta.file} ("${meta.title}")`;
+    },
+  },
+  {
+    name: "suggest_docs",
+    doc: 'suggest_docs(name, after, before?, section?, note?) — propose a REVIEWED edit: replace the exact `before` text with `after` (omit before to append). The user sees a review card in the Docs panel and approves or rejects; approval applies it. Always include a short note saying why.',
+    action: (a) => ({ kind: "edit", title: `Suggest edit to "${String(a.name ?? "")}"`, detail: String(a.note ?? "").slice(0, 200) }),
+    run: async (a) => {
+      const sug = await getClient().officeDocs.suggest(docsFileName(a.name), {
+        afterMd: String(a.after ?? ""),
+        beforeMd: String(a.before ?? ""),
+        section: String(a.section ?? ""),
+        note: String(a.note ?? ""),
+        authorKind: "agent",
+      });
+      return `suggestion ${sug.id} is pending — the user reviews it in the Docs panel (approve applies it)`;
+    },
+  },
+  {
+    name: "delete_docs",
+    doc: "delete_docs(name) — permanently delete a document from the org library",
+    action: (a) => ({ kind: "dangerous", title: `Delete document "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      await getClient().officeDocs.delete(docsFileName(a.name));
+      return `deleted ${docsFileName(a.name)}`;
+    },
+  },
+  {
+    name: "open_docs",
+    doc: "open_docs(name?) — open the Docs panel beside this conversation; with a document name it opens straight into that document",
+    action: (a) => ({ kind: "command", title: a.name ? `Open document "${String(a.name)}"` : "Open the Docs panel" }),
+    run: async (a) => {
+      if (!a.name) { openGDocPanel(); return "opened the Docs panel"; }
+      const file = docsFileName(a.name);
+      const doc = await getClient().officeDocs.get(file).catch(() => null);
+      if (!doc) {
+        const docs = await getClient().officeDocs.list();
+        return `ERROR: no document "${file}" — available: ${docs.map((d) => d.file).join(", ") || "(none)"}`;
+      }
+      openGDocPanel(file, doc.title);
+      return `opened ${file} in the Docs panel`;
+    },
+  },
+  {
+    name: "list_doc_templates",
+    doc: "list_doc_templates() — the org's document templates (resume, bill of sale, …): slug, name, category, and the markdown with {{placeholders}} to fill",
+    action: () => ({ kind: "read", title: "List document templates" }),
+    run: async () => cap(JSON.stringify(await getClient().officeDocs.templates(), null, 1)),
+  },
+  // ── Glyphh DRIVE: folders + pointers over every Office file. ──
+  {
+    name: "drive_list",
+    doc: "drive_list(query?) — folders + every Office file pointer (slides AND docs); query searches names/titles",
+    action: (a) => ({ kind: "read", title: a.query ? `Search Drive "${String(a.query)}"` : "List Drive" }),
+    run: async (a) => cap(JSON.stringify(await getClient().officeDrive.list(a.query ? String(a.query) : undefined), null, 1)),
+  },
+  {
+    name: "drive_mkdir",
+    doc: "drive_mkdir(name, parent_id?) — create a Drive folder",
+    action: (a) => ({ kind: "edit", title: `Create folder "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const folder = await getClient().officeDrive.createFolder(String(a.name ?? ""), a.parent_id ? String(a.parent_id) : null);
+      return `created folder "${folder.name}" (${folder.id})`;
+    },
+  },
+  {
+    name: "drive_move",
+    doc: 'drive_move(kind, file, folder_id?) — file an Office document: kind "slides" or "docs", folder_id from drive_list (omit for the root)',
+    action: (a) => ({ kind: "edit", title: `Move ${String(a.kind ?? "?")}/${String(a.file ?? "?")}` }),
+    run: async (a) => {
+      const kind = String(a.kind ?? "");
+      if (kind !== "slides" && kind !== "docs") return 'ERROR: kind must be "slides" or "docs"';
+      await getClient().officeDrive.move(kind, String(a.file ?? ""), a.folder_id ? String(a.folder_id) : null);
+      return `moved ${a.file} ${a.folder_id ? "into the folder" : "to the root"}`;
     },
   },
   // ── RPA — drive an open app panel (the same handlers the attach socket and

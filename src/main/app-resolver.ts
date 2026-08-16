@@ -64,6 +64,7 @@ type WbCmd =
   | { action: "terminal" }
   | { action: "tool"; tool: string }
   | { action: "gpoint"; file?: string; title?: string }
+  | { action: "gdoc"; file?: string; title?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -232,6 +233,11 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
  *  (the agent's open_gpoint; the plain panel rides open_app("gpoint")). */
 export function openGPointPanel(file?: string, title?: string): void {
   sendWbCmd(file ? { action: "gpoint", file, title } : { action: "tool", tool: "gpoint" });
+}
+
+/** Open the Docs panel — with a file, straight into that document. */
+export function openGDocPanel(file?: string, title?: string): void {
+  sendWbCmd(file ? { action: "gdoc", file, title } : { action: "tool", tool: "gdoc" });
 }
 
 /** Open the tabbed Browser panel at a specific URL (the agent's preview
