@@ -2746,12 +2746,30 @@ function SearchOverlay({ open, inputRef, onClose }: {
   );
 }
 
+/* Google's four-colour "G" mark — same paths as web-login.js googleG() (which
+   matches platform's GoogleG), so the face reads identical to the regular login. */
+function GoogleG() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62z" />
+      <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
+      <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
+      <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
+    </svg>
+  );
+}
+
 /* ── Login: the one never-themed surface. Magic link + Google, over the muse
-   canvas. Redeems the ?token= callback on /m itself. ─────────────────────── */
+   canvas. Redeems the ?token= callback on /m itself. PRESENTATION is the
+   REGULAR login's (web/src/web-login.js + styles.css auth-shell): wordmark
+   header, headline + gradient slogan, Google face over the hidden GIS button,
+   "or" divider, labelled email field, white primary, legal line. ─────────── */
 function Login({ onSignedIn }: { onSignedIn: () => void }) {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [gBusy, setGBusy] = useState(false);  // Google exchange in flight — face shows "Connecting…"
+  const [gDead, setGDead] = useState(false);  // GIS failed to load — drop the affordance (web-login fallback)
   const [err, setErr] = useState('');
   const [devUrl, setDevUrl] = useState('');   // dev servers w/o an emailer return the link
   const gRef = useRef<HTMLDivElement>(null);
@@ -2767,18 +2785,27 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
       g.accounts.id.initialize({
         client_id: clientId,
         callback: async (resp: { credential: string }) => {
-          try { setBusy(true); setErr(''); await signInWithGoogle(resp.credential); await syncGating(); onSignedIn(); }
-          catch { setErr('Google sign-in failed. Try the magic link.'); setBusy(false); }
+          try { setGBusy(true); setBusy(true); setErr(''); await signInWithGoogle(resp.credential); await syncGating(); onSignedIn(); }
+          catch { setErr('Google sign-in failed. Try the magic link.'); setBusy(false); setGBusy(false); }
         },
       });
-      g.accounts.id.renderButton(gRef.current, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 300 });
+      // The real GIS button is the click target but sits INVISIBLE under our own
+      // face (web-login.js renderGoogleButton pattern) — size it to the wrapper.
+      g.accounts.id.renderButton(gRef.current, {
+        type: 'standard', theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with',
+        logo_alignment: 'center', width: Math.round(gRef.current.getBoundingClientRect().width) || 320,
+      });
     };
     if ((window as unknown as { google?: any }).google?.accounts?.id) { mount(); return; }
     const s = document.createElement('script');
     s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true; s.onload = mount;
+    // GIS unreachable → drop the Google face (dead button otherwise), keep magic-link.
+    s.onerror = () => { if (!cancelled) setGDead(true); };
     document.head.appendChild(s);
     return () => { cancelled = true; };
-  }, [clientId, onSignedIn]);
+    // `sent` is a dep because leaving the sent state REMOUNTS the GIS container —
+    // Google's button must be rendered into the fresh node or the face sits dead.
+  }, [clientId, onSignedIn, sent]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2798,8 +2825,11 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <div className="m-login">
       <SplashFlow />
-      <div className="m-login-card">
+      {/* The wordmark rides the top-left like the regular login's .auth-shell-header. */}
+      <header className="m-login-brand">
         <img className="m-login-logo" src="/brand/glyphh-logo-white.png" alt="Glyphh" />
+      </header>
+      <div className="m-login-card">
         {sent ? (
           <div className="m-login-sent">
             {devUrl ? (
@@ -2820,11 +2850,25 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
           <>
             <div className="m-login-title">Question Everything.</div>
             <div className="m-login-tagline">Every dream starts with a dreamer.</div>
-            {clientId && <div className="m-login-google" ref={gRef} />}
-            {clientId && <div className="m-login-or"><span>or</span></div>}
+            {clientId && !gDead && (
+              /* Web-login's google-btn pattern: the real GIS button (click target)
+                 sits under our own face, overlaid pointer-events:none — the user
+                 sees the app's button, Google's captures the tap. */
+              <div className="m-login-google">
+                <div className="m-login-google-gis" ref={gRef} />
+                <span className="m-login-google-face" aria-hidden="true">
+                  <GoogleG />
+                  <span>{gBusy ? 'Connecting…' : 'Continue with Google'}</span>
+                </span>
+              </div>
+            )}
+            {clientId && !gDead && <div className="m-login-or"><span>or</span></div>}
             <form className="m-login-form" onSubmit={submit}>
-              <input className="m-login-input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none"
-                placeholder="you@work.com" value={email} onChange={(e) => setEmail((e.target as HTMLInputElement).value)} />
+              <div className="m-login-field">
+                <label className="m-login-label" htmlFor="m-login-email">Email</label>
+                <input id="m-login-email" className="m-login-input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none"
+                  placeholder="you@example.com" value={email} onChange={(e) => setEmail((e.target as HTMLInputElement).value)} />
+              </div>
               <button className="m-login-primary" type="submit" disabled={busy}>{busy ? 'Sending…' : 'Continue with email'}</button>
             </form>
             {err && <div className="m-login-err">{err}</div>}

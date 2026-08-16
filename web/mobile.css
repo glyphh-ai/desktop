@@ -1613,56 +1613,87 @@ body {
 .m-home-loop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-home-loop svg { flex: 0 0 15px; width: 15px; height: 15px; color: var(--text-3); }
 
-/* ── Login — the ONE never-themed surface (fixed brand over the muse canvas) ── */
+/* ── Login — the ONE never-themed surface (fixed brand over the muse canvas).
+   The PRESENTATION is the REGULAR login's (web/src/web-login.js markup +
+   styles.css `#onboarding-overlay` auth-shell rules). The mobile bundle can't
+   import the desktop CSS, so every rule below replicates the source values
+   verbatim and names its source class — keep them in lockstep. This surface
+   never themes, so the desktop DARK-theme token values are hardcoded:
+   --border #3f3f46 · --text-2 #c4c4c4 · --text-3 #a7a7a7 · --text-muted
+   #828282 · --danger #f85149 · --white #fff. */
 .m-login {
   position: absolute;
   inset: 0;
   z-index: 120;
-  background: #0e0c14;
+  background: #0e0c14;               /* the muse canvas ground (SplashFlow paints over it) */
   display: flex;
   align-items: center;
   justify-content: center;
   padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bottom) + 24px);
-  color: #f4f2f8;
+  color: #f1f1f1;                    /* --text (dark) */
 }
+/* source: .auth-shell-header — the wordmark rides the top-left, not the card. */
+.m-login-brand {
+  position: absolute;
+  top: calc(var(--safe-top) + 0.75rem);
+  left: 1.5rem;
+  z-index: 1;
+}
+/* source: .onboarding-wordmark .glyphh-logo (56px on desktop, phone-scaled). */
+.m-login-logo { height: 40px; width: auto; display: block; }
+/* source: .auth-shell-content — ONE centered column with the same 460px cap on
+   phone AND tablet, so nothing stretches or floats loose at iPad widths. */
 .m-login-card {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 380px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
+  max-width: 460px;
   text-align: center;
 }
-.m-login-logo { width: 176px; max-width: 62%; height: auto; margin-bottom: 6px; }
-.m-login-title { font: 700 32px/1.12 var(--font-sans); letter-spacing: -0.03em; color: #fff; }
-/* The web login's gradient tagline, phone-scaled. */
+/* source: .auth-shell-title (clamp(2.4rem,3.2vw,3.1rem) on desktop — the vw
+   term is re-based so a 390px phone lands ~2rem and a tablet meets the cap). */
+.m-login-title {
+  font: 700 clamp(2rem, 8vw, 3.1rem)/1.08 var(--font-sans);
+  letter-spacing: -0.03em;
+  color: #fff;
+  margin-bottom: 0.75rem;
+}
+/* source: .auth-shell-slogan — the web's --grad-text, verbatim. */
 .m-login-tagline {
-  font: 600 17px/1.35 var(--font-sans);
+  margin: 0 0 2rem;
+  font: 600 clamp(1.0625rem, 4.4vw, 1.5rem)/1.35 var(--font-sans);
   letter-spacing: -0.015em;
   background: linear-gradient(to top right, #c084fc, #f0abfc);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  margin: -6px 0 6px;
 }
-.m-login-sub { margin: 0; max-width: 32ch; font: 400 16px/1.55 var(--font-sans); color: rgba(255,255,255,0.62); }
-.m-login-form { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+/* source: .auth-shell-lede (sent-state copy). */
+.m-login-sub { margin: 0 0 0.25rem; font: 400 0.9375rem/1.55 var(--font-sans); color: #c4c4c4; }
+/* source: .auth-shell-form. */
+.m-login-form { width: 100%; display: flex; flex-direction: column; gap: 1.125rem; }
+/* source: .auth-shell-field. */
+.m-login-field { display: flex; flex-direction: column; gap: 0.4375rem; }
+/* source: .auth-shell-label. */
+.m-login-label { font: 500 0.75rem/1 var(--font-sans); letter-spacing: 0.01em; color: #c4c4c4; text-align: left; }
+/* source: .auth-shell-input. Font is 1rem, NOT the source's 0.9375rem — iOS
+   Safari zooms the page when focusing any input under 16px. */
 .m-login-input {
   width: 100%;
-  height: 54px;
-  padding: 0 18px;
-  border-radius: 15px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(255,255,255,0.06);
+  padding: 0.875rem 1rem;
+  background: transparent;
+  border: 1px solid #3f3f46;
+  border-radius: 10px;
   color: #fff;
-  font: 400 18px/1 var(--font-sans);
+  font: 400 1rem/1.3 var(--font-sans);
   outline: none;
+  transition: border-color 200ms ease, background 200ms ease;
 }
-.m-login-input::placeholder { color: rgba(255,255,255,0.4); }
-.m-login-input:focus { border-color: rgba(255,255,255,0.42); background: rgba(255,255,255,0.09); }
+.m-login-input::placeholder { color: #828282; }   /* --text-muted (dark) */
+.m-login-input:focus { border-color: #fff; box-shadow: 0 0 0 1px #fff; background: transparent; }
+/* The settings screens (help / keys / invites) reuse .m-login-primary — this
+   GLOBAL rule keeps serving them unchanged; the login card scopes its own
+   regular-login treatment below. */
 .m-login-primary {
   width: 100%;
   height: 54px;
@@ -1674,18 +1705,102 @@ body {
   font: 600 18px/1 var(--font-sans);
 }
 .m-login-primary:disabled { opacity: 0.6; }
+/* source: .btn.btn-primary.btn-lg.btn-full — white resting / black text, the
+   accent→pink gradient (--grad-accent) wipes in under white text on press and
+   while disabled ("Sending…"), exactly like the regular login's primary. */
+.m-login-card .m-login-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  height: auto;
+  padding: 0.875rem 1.25rem;
+  border-radius: 10px;               /* source: .btn-lg */
+  font: 600 0.9375rem/1.2 var(--font-sans);
+  color: #000;
+  transition: color 220ms ease, opacity 160ms ease;
+}
+.m-login-card .m-login-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(to top right, #8c3bf2, #ec4899);  /* --grad-accent */
+  transform: translateX(-100%);
+  transition: none;
+}
+.m-login-card .m-login-primary:active:not(:disabled)::before {
+  transform: translateX(0);
+  transition: transform 280ms ease;
+}
+.m-login-card .m-login-primary:disabled::before { transform: translateX(0); transition: none; }
+.m-login-card .m-login-primary:active:not(:disabled),
+.m-login-card .m-login-primary:disabled { color: #fff; }
+.m-login-card .m-login-primary:disabled { opacity: 0.5; }     /* source: .btn:disabled */
 /* Dev sign-in link — the primary button rendered as an anchor. */
 .m-login-devlink { display: flex; align-items: center; justify-content: center; text-decoration: none; box-sizing: border-box; }
-.m-login-or { display: flex; align-items: center; gap: 12px; width: 100%; color: rgba(255,255,255,0.42); font: 500 13px/1 var(--font-sans); }
-.m-login-or::before, .m-login-or::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.14); }
-.m-login-google { display: flex; justify-content: center; min-height: 44px; width: 100%; }
-.m-login-err { color: #ff8a8a; font: 400 14px/1.4 var(--font-sans); }
-.m-login-alt { border: 0; background: none; color: rgba(255,255,255,0.72); font: 500 15px/1 var(--font-sans); cursor: pointer; text-decoration: underline; }
-/* .m-login-card is a flex column with a 16px gap already applied between every
-   child, so this margin STACKS on top of that gap rather than replacing it —
-   pull it negative to counteract most of the gap and sit snug under the button. */
-.m-login-legal { margin-top: -8px; font: 400 13px/1.55 var(--font-sans); color: rgba(255,255,255,0.45); }
-.m-login-legal a { color: rgba(255,255,255,0.78); }
+/* source: .auth-shell-divider. */
+.m-login-or {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  width: 100%;
+  margin: 1.375rem 0;
+  color: #a7a7a7;                    /* --text-3 (dark) */
+  font: 400 0.75rem/1 var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.m-login-or::before, .m-login-or::after { content: ""; flex: 1; height: 1px; background: #3f3f46; }
+/* source: .google-btn — the real GIS button (click target) sits under our own
+   face, which is overlaid pointer-events:none so taps fall through to Google's. */
+.m-login-google { position: relative; width: 100%; height: 48px; }
+/* source: .google-btn-gis. `color-scheme: light` is LOAD-BEARING: the page runs
+   color-scheme:dark, and a cross-color-scheme iframe (Google's is light) gets
+   an opaque WHITE backing — the white rectangle around the GSI button. */
+.m-login-google-gis {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  overflow: hidden;
+  color-scheme: light;
+}
+/* source: .btn.btn-lg.btn-full.btn-social.google-btn-face (bg var(--bg) → this
+   login's fixed ground, covering the GIS visuals; only ours shows). */
+.m-login-google-face {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  background: #0e0c14;
+  color: #fff;
+  border: 1px solid #3f3f46;
+  border-radius: 10px;
+  font: 500 0.9375rem/1 var(--font-sans);
+}
+/* source: .auth-shell-error. */
+.m-login-err { margin-top: 0.75rem; color: #f85149; font: 400 0.8125rem/1.4 var(--font-sans); }
+/* source: .auth-shell-meta a — quiet underlined link, not a button. */
+.m-login-alt {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-top: 0.5rem;
+  color: #f1f1f1;
+  font: 400 0.8125rem/1.4 var(--font-sans);
+  cursor: pointer;
+  text-decoration: none;
+  border-bottom: 1px solid #a7a7a7;
+}
+/* source: .auth-shell-legal (net ~0.625rem under the button, snug). */
+.m-login-legal { margin-top: 0.625rem; font: 400 0.75rem/1.6 var(--font-sans); color: #a7a7a7; text-align: center; }
+.m-login-legal a { color: #c4c4c4; text-decoration: none; }
+.m-login-legal a:active { color: #fff; }
 .m-login-sent { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 
 /* ── Settings sub-trays: profile form + billing/usage cards ──────────────── */
