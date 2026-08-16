@@ -1,45 +1,69 @@
 /**
- * PreferencesDb — SQLite-backed key-value store for user preferences.
+ * Preferences — the SERVER map (`/api/me/prefs`), cached in memory.
  *
- * The only preferences store: every main-process module and the renderer
- * (via settings-ipc) read and write through here. Reads and writes are local
- * and synchronous (the sqlite cache IS the store).
+ * ZERO-LOCAL-STORAGE LAW (2026-08-15): the app stores nothing locally; every
+ * piece of user state goes through the SDK. This file's previous SQLite
+ * implementation said, in its own header, that prefs were "device-local until
+ * a governed preference surface exists in the SDK — at which point the sync
+ * belongs there". That surface exists (`client.profile.prefs()`), app-web has
+ * been riding it all along (web/src/web-contract.js prefsCache), and desktop
+ * SQLite prefs were the fork that kept the two surfaces from sharing state.
  *
- * Roaming was removed with the SDK cutover: it wrote through to
- * `/api/me/preferences`, which no longer exists on the server. Preferences are
- * device-local until a governed preference surface exists in the SDK — at which
- * point the sync belongs there, not in a hand-rolled write-through here.
- *
- * Backed by the local-db singleton (already per-user scoped); callers run
- * after initLocalDb().
+ * Semantics are the WEB'S, exactly, so the shared renderer sees one behavior:
+ *   - fetched ONCE per signed-in user (loadPreferences, called after auth);
+ *   - reads are synchronous from the in-memory map (main-process callers like
+ *     screen-layout's railWidth() are sync by contract) — before the first
+ *     load, or signed out, a read answers its default, never throws;
+ *   - writes update the map optimistically then persist via setPrefs;
+ *     a failed persist logs and keeps the optimistic value (same as web);
+ *   - sign-out clears the map (clearPreferences).
  */
 
-import { getLocalDb } from "../local-db";
+import { getClient } from "../glyphh-client";
 
-/**
- * Get a preference value by key. Returns `defaultValue` if not found.
- */
-export function getPreference<T = unknown>(key: string, defaultValue?: T): T {
-  // Resilient by contract: IPC handlers race boot (before initLocalDb) and
-  // quit (after close) — a preference read answers its default instead of
-  // throwing through the handler.
-  let db;
-  try { db = getLocalDb(); } catch { return defaultValue as T; }
-  const row = db.prepare(
-    "SELECT value FROM preferences WHERE key = ?"
-  ).get(key) as { value: string } | undefined;
-  if (!row) return defaultValue as T;
-  try {
-    return JSON.parse(row.value) as T;
-  } catch {
-    return row.value as unknown as T;
+let prefs: Record<string, unknown> | null = null;
+let loading: Promise<void> | null = null;
+
+/** Fetch the server map once. Safe to call repeatedly; concurrent calls share
+ *  one flight. Call after auth is ready (and again after user switch). */
+export function loadPreferences(): Promise<void> {
+  if (!loading) {
+    loading = (async () => {
+      try {
+        prefs = await getClient().profile.prefs();
+      } catch (e) {
+        // Boot on defaults rather than storming the API per read — the web
+        // caches {} on a failed load for the same reason.
+        console.error("[prefs] load failed — serving defaults:", (e as Error).message);
+        prefs = prefs ?? {};
+      }
+    })();
   }
+  return loading;
 }
 
-/** Set a preference value. Serializes to JSON. */
+/** Sign-out / user-switch: drop the map so the next user never reads it. */
+export function clearPreferences(): void {
+  prefs = null;
+  loading = null;
+}
+
+/** Get a preference. Synchronous from the cached server map; its default
+ *  before the first load or when signed out. */
+export function getPreference<T = unknown>(key: string, defaultValue?: T): T {
+  if (!prefs || !(key in prefs)) return defaultValue as T;
+  return prefs[key] as T;
+}
+
+/** Set a preference: optimistic in the map, persisted to the server.
+ *  `null`/`undefined` deletes the key (the server treats null as delete). */
 export function setPreference(key: string, value: unknown): void {
-  const db = getLocalDb();
-  db.prepare(
-    "INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)"
-  ).run(key, JSON.stringify(value));
+  if (!prefs) prefs = {};
+  if (value === null || value === undefined) delete prefs[key];
+  else prefs[key] = value;
+  void getClient()
+    .profile.setPrefs({ [key]: value ?? null })
+    .catch((e: unknown) => {
+      console.error(`[prefs] persist failed for "${key}":`, (e as Error).message);
+    });
 }
