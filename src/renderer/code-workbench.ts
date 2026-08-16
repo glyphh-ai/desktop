@@ -244,6 +244,17 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   gpoint:   { title: "Slides",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="13" rx="2"/><polygon points="10 6.5 15 9.5 10 12.5"/><line x1="12" y1="16" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>` },
 };
 
+// ── Echo wall persistence ────────────────────────────────────────────────
+// The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
+// cards — is saved to a server-backed pref (window.glyphh.setPreference →
+// /api/me/prefs, the SDK path) so the next boot reopens exactly what the user
+// was looking at. Module scope so the one-shot restore survives wall remounts
+// within a single app launch (but re-arms on a fresh launch).
+const WALL_STATE_PREF = "echoWallState";
+let wallRestored = false;
+type WallCard = { kind: "app" | "tool" | "section"; slug?: string; url?: string; name?: string; section?: string; toolView?: string };
+type WallState = { layout: string | null; cards: WallCard[] };
+
 // ── Browser panel: start page + error pages ─────────────────────────────
 //
 // Both read state that lives OUTSIDE the workbench (the user's preferences,
@@ -2280,13 +2291,17 @@ async function init(): Promise<void> {
       panelAppsList?: () => Promise<PanelRowLite[]>;
       layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
+      setPreference?: (k: string, v: unknown) => Promise<unknown>;
     };
     const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
       yoApi?.panelAppsList?.() ?? [],
       yoApi?.layoutsList?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccIconOrder", []) ?? [],
-    ]).then(([rows, layouts, orderPref]) => {
+      // Read the saved wall state HERE, atomically at boot, before the agent
+      // card or anything else can schedule a save that overwrites it.
+      yoApi?.getPreference?.(WALL_STATE_PREF, null) ?? null,
+    ]).then(([rows, layouts, orderPref, savedWall]) => {
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
       const appsAll = (rows || []).filter(wallAppRow);
@@ -2347,7 +2362,55 @@ async function init(): Promise<void> {
       };
       const midBand = [glyphhTile, browserTile, slidesTile, docsTile, driveTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       buildWall([midBand]);
+      // echoCtl + entries + layouts are all ready now — reopen last session's wall.
+      restoreWallOnce(layouts || [], savedWall as WallState | null);
     }).catch(() => buildWall([]));
+
+    // ── Wall-state persistence (save + restore) ──────────────────────────────
+    // Serialize the OPEN arrangement: a layout by name, else the ad-hoc app/tool/
+    // section cards. The AGENT (and the fixed + front-door tile) are excluded —
+    // the boot path owns the agent; replaying it would double-open it.
+    let wallSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    function serializeWall(): WallState {
+      if (echoLayoutName) return { layout: echoLayoutName, cards: [] };
+      const cards: WallCard[] = [];
+      for (const e of openList) {
+        const t = e.tile;
+        if (t.kind === "agent" || t.slug === "glyphh-home") continue;
+        if (t.slug && t.slug.startsWith("page:")) cards.push({ kind: "section", section: t.slug.slice(5) });
+        else if (t.kind === "tool" && t.toolView) cards.push({ kind: "tool", toolView: t.toolView });
+        else if (t.kind === "app" && t.slug) cards.push({ kind: "app", slug: t.slug, url: t.url, name: t.name });
+      }
+      return { layout: null, cards };
+    }
+    function scheduleWallSave(): void {
+      // Gate: never write until the boot restore has run, or the agent card
+      // opening at boot would serialize an EMPTY wall and clobber the real state.
+      if (!wallRestored) return;
+      if (wallSaveTimer) clearTimeout(wallSaveTimer);
+      wallSaveTimer = setTimeout(() => {
+        wallSaveTimer = null;
+        try { void yoApi?.setPreference?.(WALL_STATE_PREF, serializeWall()); } catch { /* pref unavailable */ }
+      }, 400);
+    }
+    function restoreWallOnce(layouts: LayoutRow[], saved: WallState | null): void {
+      if (wallRestored) return;
+      wallRestored = true;   // arm saves + block a second restore on remount
+      try {
+        if (!saved || !echoCtl) return;
+        if (saved.layout) {
+          const key = saved.layout.toLowerCase();
+          const layout = layouts.find((l) => (l.name || "").toLowerCase() === key);
+          if (layout) echoCtl.openLayout(layout);
+          return;
+        }
+        for (const c of saved.cards || []) {
+          if (c.kind === "section" && c.section) echoCtl.openSection(c.section);
+          else if (c.kind === "tool" && c.toolView) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
+          else if (c.kind === "app" && c.slug) echoCtl.openApp({ slug: c.slug, name: c.name || c.slug, url: c.url || "" });
+        }
+      } catch { /* corrupt/unavailable state — ignore */ }
+    }
 
     // The wall outlives the Layouts page (echo stays mounted behind
     // layouts), so an edit there — e.g. the layout's SPACE — must repaint
@@ -3082,6 +3145,7 @@ async function init(): Promise<void> {
       drawTile(e);
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
+      scheduleWallSave();   // the open set changed — persist it
       if (echoGrid) {
         // The freed slot becomes a HOLE — the next open fills it first.
         const freed = echoGrid.cells.find((c) => c.entry === e);
@@ -3325,6 +3389,7 @@ async function init(): Promise<void> {
       // before this push, so cardsUp was still false when it computed. Re-run so
       // the freshly-opened card actually hides (and de-clicks) the wall.
       syncWallVisibility();
+      scheduleWallSave();   // the open set changed — persist it
       // A layout with a freed slot ADOPTS the new card into that hole —
       // an accidental close is undone by just reopening something. (Layout
       // opens assign cells explicitly; never claim during one.)
@@ -3440,6 +3505,7 @@ async function init(): Promise<void> {
         // layout's panels remain.
         for (const x of [...openList]) closeCard(x, { parkTerms: true });
         echoLayoutName = layout.name || null;
+        scheduleWallSave();   // a layout is now the wall's state — persist its name
         echoActiveLayout = echoLayoutName ? { name: echoLayoutName, mode: layout.sessionMode ?? "keep" } : null;
         // B1: mint the shared id for every panel THIS open fans out.
         activeLayoutId = `layout-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -4396,6 +4462,7 @@ async function init(): Promise<void> {
       setShadow(false, false);
       userMoved = false;
       refit?.();
+      scheduleWallSave();   // the wall was cleared — persist the empty state
     };
     body.querySelector(".echo-z-reset")!.addEventListener("click", resetEcho);
 

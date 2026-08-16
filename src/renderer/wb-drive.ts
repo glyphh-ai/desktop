@@ -10,6 +10,7 @@
 
 import { deckHtml, staticDoc, fillThumbs } from "./wb-gpoint.js";
 import { formatMarkdown } from "./format-markdown.js";
+import { officePager, officePage } from "./wb-office-ui.js";
 
 export interface DriveFolder { id: string; name: string; parentId: string | null }
 export interface DriveEntry {
@@ -25,6 +26,13 @@ export interface GDriveSlotState {
   id: number;
   /** Selected folder (null/undefined = root view). */
   folderId?: string | null;
+  /** The folder rail — open by default, collapsible from the toolbar. */
+  railOpen?: boolean;
+  /** "browse" (folders + recents) or "list" (every file, newest first). */
+  viewMode?: "browse" | "list";
+  /** Files-grid page (browse) and list page. */
+  page?: number;
+  listPage?: number;
 }
 
 export interface GDriveHost {
@@ -100,10 +108,14 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
   async function renderInner(body: HTMLElement, slot: GDriveSlotState, _wrap: HTMLElement): Promise<void> {
     body.classList.add("ws-gdrive-body");
     const refresh = (): void => { if (body.isConnected) void renderIntoSlot(body, slot, _wrap); };
+    const railOpen = slot.railOpen !== false;
 
     body.innerHTML = `
       <div class="gdrive">
         <div class="office-toolbar">
+          <button class="ws-icon-btn gdrive-rail-toggle${railOpen ? " active" : ""}" title="${railOpen ? "Hide" : "Show"} the folder rail">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+          </button>
           <input class="office-search" type="text" placeholder="Search Drive…" spellcheck="false" autocomplete="off" />
           <button class="action-btn primary office-new">＋ Folder</button>
           <button class="ws-icon-btn office-refresh" title="Refresh">
@@ -111,23 +123,17 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
           </button>
         </div>
         <div class="gdrive-crumbs hidden"></div>
-        <div class="gdrive-scroll">
-          <div class="gdrive-section gdrive-recents-wrap hidden">
-            <div class="gdrive-section-title">Recents</div>
-            <div class="gdrive-recents"></div>
-          </div>
-          <div class="gdrive-section gdrive-folders-wrap hidden">
-            <div class="gdrive-section-title">Folders</div>
-            <div class="gdrive-folder-grid"></div>
-          </div>
-          <div class="gdrive-section">
-            <div class="gdrive-section-title gdrive-files-title">Files</div>
-            <div class="gdrive-files"></div>
-          </div>
+        <div class="gdrive-body">
+          <div class="gdrive-rail${railOpen ? "" : " hidden"}"></div>
+          <div class="gdrive-scroll"></div>
         </div>
         <div class="gdoc-empty gdrive-empty hidden"></div>
       </div>`;
     body.querySelector(".office-refresh")?.addEventListener("click", refresh);
+    body.querySelector(".gdrive-rail-toggle")?.addEventListener("click", () => {
+      slot.railOpen = !(slot.railOpen !== false);
+      refresh();
+    });
 
     const api = driveApi();
     if (!api.gdriveList) {
@@ -143,19 +149,20 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
     search.addEventListener("keydown", (e) => e.stopPropagation());
     search.addEventListener("input", () => {
       window.clearTimeout(debounce);
-      debounce = window.setTimeout(() => { query = search.value.trim(); void paint(); }, 220);
+      debounce = window.setTimeout(() => { query = search.value.trim(); slot.page = 0; void paint(); }, 220);
     });
 
-    // ＋ Folder — inline name editor at the top of the folder grid.
+    // ＋ Folder — inline name editor at the top of the rail (opens it if shut).
     body.querySelector(".office-new")?.addEventListener("click", () => {
-      const gridEl = body.querySelector<HTMLElement>(".gdrive-folder-grid")!;
-      body.querySelector(".gdrive-folders-wrap")?.classList.remove("hidden");
-      if (gridEl.querySelector(".gdrive-newfolder-input")) return;
+      slot.railOpen = true;
+      const rail = body.querySelector<HTMLElement>(".gdrive-rail")!;
+      rail.classList.remove("hidden");
+      if (rail.querySelector(".gdrive-newfolder-input")) return;
       const input = document.createElement("input");
       input.className = "gdrive-newfolder-input";
       input.placeholder = "Folder name…";
       input.spellcheck = false;
-      gridEl.prepend(input);
+      rail.prepend(input);
       input.focus();
       const done = (commit: boolean): void => {
         const name = input.value.trim();
@@ -175,6 +182,9 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       input.addEventListener("blur", () => done(true));
     });
 
+    const GRID_PER = 18;
+    const LIST_PER = 20;
+
     async function paint(): Promise<void> {
       const res = await api.gdriveList?.(query || undefined);
       if (!body.isConnected || !res) return;
@@ -187,46 +197,90 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       body.querySelector(".gdrive-empty")?.classList.add("hidden");
       const { folders, files } = res;
       const here = slot.folderId ?? null;
+      const scroll = body.querySelector<HTMLElement>(".gdrive-scroll")!;
+      scroll.textContent = "";
 
-      // ── Breadcrumbs — Drive › folder › subfolder (click walks up). ──
-      const crumbs = body.querySelector<HTMLElement>(".gdrive-crumbs")!;
-      crumbs.textContent = "";
-      if (here && !query) {
-        const chain: DriveFolder[] = [];
-        let cur: string | null = here;
-        for (let hops = 0; cur && hops < 50; hops++) {
-          const f = folders.find((x) => x.id === cur);
-          if (!f) break;
-          chain.unshift(f);
-          cur = f.parentId;
+      // ── The folder RAIL (collapsible; tree by parent). ──
+      const rail = body.querySelector<HTMLElement>(".gdrive-rail")!;
+      rail.textContent = "";
+      const depthOf = (f: DriveFolder): number => {
+        let d = 0;
+        let cur = f.parentId;
+        for (let hops = 0; cur && hops < 50; hops++) { d++; cur = folders.find((x) => x.id === cur)?.parentId ?? null; }
+        return d;
+      };
+      const ordered: DriveFolder[] = [];
+      const addChildren = (parentId: string | null): void => {
+        for (const f of folders.filter((x) => x.parentId === parentId).sort((a, b) => a.name.localeCompare(b.name))) {
+          ordered.push(f);
+          addChildren(f.id);
         }
-        const mk = (label: string, id: string | null, last: boolean): void => {
-          const b = document.createElement("button");
-          b.className = "gdrive-crumb" + (last ? " current" : "");
-          b.textContent = label;
-          if (!last) b.addEventListener("click", () => { slot.folderId = id; void paint(); });
-          crumbs.appendChild(b);
-          if (!last) {
-            const sep = document.createElement("span");
-            sep.className = "gdrive-crumb-sep";
-            sep.textContent = "›";
-            crumbs.appendChild(sep);
-          }
-        };
-        mk("Drive", null, false);
-        chain.forEach((f, i) => mk(f.name, f.id, i === chain.length - 1));
-        crumbs.classList.remove("hidden");
-      } else {
-        crumbs.classList.add("hidden");
-      }
+      };
+      addChildren(null);
+      const railRow = (id: string | null, name: string, depth: number): HTMLElement => {
+        const row = document.createElement("button");
+        row.className = "gdrive-railrow" + (here === id && !query && slot.viewMode !== "list" ? " active" : "");
+        row.style.paddingLeft = `${10 + depth * 14}px`;
+        row.innerHTML = `<span class="gdrive-railrow-ic">${host.icons.folder}</span><span class="gdrive-railrow-name"></span>`;
+        (row.querySelector(".gdrive-railrow-name") as HTMLElement).textContent = name;
+        row.addEventListener("click", () => {
+          slot.folderId = id;
+          slot.viewMode = "browse";
+          slot.page = 0;
+          query = ""; search.value = "";
+          void paint();
+        });
+        if (id !== null) {
+          row.addEventListener("contextmenu", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const f = folders.find((x) => x.id === id)!;
+            popMenu(ev.clientX, ev.clientY, folderMenuItems(f));
+          });
+        }
+        return row;
+      };
+      rail.appendChild(railRow(null, "My Drive", 0));
+      for (const f of ordered) rail.appendChild(railRow(f.id, f.name, depthOf(f)));
 
-      const fileCard = (f: DriveEntry, compact: boolean): HTMLElement => {
+      const folderMenuItems = (f: DriveFolder): Array<{ label: string; danger?: boolean; fn: () => void }> => [
+        { label: "Open", fn: () => { slot.folderId = f.id; slot.viewMode = "browse"; slot.page = 0; void paint(); } },
+        { label: "Rename…", fn: () => {
+          const input = document.createElement("input");
+          input.className = "gdrive-newfolder-input";
+          input.value = f.name;
+          rail.prepend(input);
+          input.focus(); input.select();
+          const done = (commit: boolean): void => {
+            const next = input.value.trim();
+            input.remove();
+            void (async () => {
+              if (commit && next && next !== f.name) await api.gdriveFolderRename?.(f.id, next);
+              void paint();
+            })();
+          };
+          input.addEventListener("keydown", (e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") done(true);
+            else if (e.key === "Escape") done(false);
+          });
+          input.addEventListener("blur", () => done(true));
+        } },
+        { label: "Delete folder…", danger: true, fn: () => void (async () => {
+          const ok = await host.confirm({ title: `Delete “${f.name}”?`, body: "Files and subfolders inside move up a level — nothing is lost.", confirmLabel: "Delete", danger: true });
+          if (!ok) return;
+          await api.gdriveFolderDelete?.(f.id);
+          if (slot.folderId === f.id) slot.folderId = f.parentId ?? null;
+          void paint();
+        })() },
+      ];
+
+      const fileCard = (f: DriveEntry): HTMLElement => {
         const card = document.createElement("div");
-        card.className = compact ? "gdrive-card gdrive-card-compact" : "gdrive-card";
+        card.className = "gdrive-card";
         card.innerHTML = `
           <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${f.kind === "slides" ? host.icons.slides : host.icons.docs}</div></div>
           <div class="gdrive-card-row">
-            <span class="gdrive-card-ic">${f.kind === "slides" ? host.icons.slides : host.icons.docs}</span>
             <span class="gdrive-card-title"></span>
             <button class="ws-icon-btn gdrive-card-kebab" title="Options">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
@@ -234,8 +288,15 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
           </div>
           <span class="gdrive-card-meta">${f.kind === "slides" ? "Slides" : "Docs"} · ${fmtSize(f.sizeBytes)}</span>`;
         (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = f.title || f.file;
-        // The SAME previews the libraries show: decks render slide 1 in a
-        // srcdoc thumb; docs render a mini sheet of the markdown's head.
+        card.addEventListener("click", (ev) => {
+          if ((ev.target as HTMLElement).closest(".gdrive-card-kebab")) return;
+          host.openFile(f.kind, f.file, f.title || f.file);
+        });
+        card.querySelector(".gdrive-card-kebab")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+          popMenu(r.right - 170, r.bottom + 4, fileMenuItems(f));
+        });
         const thumb = card.querySelector<HTMLElement>(".gdrive-thumb")!;
         if (f.kind === "slides") {
           void deckHtml(f.file).then((html) => {
@@ -253,114 +314,193 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
             thumb.appendChild(sheet);
           });
         }
-        card.addEventListener("click", (ev) => {
-          if ((ev.target as HTMLElement).closest(".gdrive-card-kebab")) return;
-          host.openFile(f.kind, f.file, f.title || f.file);
-        });
-        card.querySelector(".gdrive-card-kebab")?.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-          popMenu(r.right - 170, r.bottom + 4, [
-            { label: "Open", fn: () => host.openFile(f.kind, f.file, f.title || f.file) },
-            { label: "Move to root", fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.file, null); void paint(); })() },
-            ...folders.map((fo) => ({
-              label: `Move to ${fo.name}`,
-              fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.file, fo.id); void paint(); })(),
-            })),
-            { label: "Delete…", danger: true, fn: () => void (async () => {
-              const ok = await host.confirm({ title: `Delete “${f.title || f.file}”?`, body: "Removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
-              if (!ok) return;
-              if (f.kind === "slides") await driveApi().gpointDelete?.(f.file);
-              else await driveApi().gdocDelete?.(f.file);
-              void paint();
-            })() },
-          ]);
-        });
         return card;
       };
 
-      // ── Recents — a row across the top (root view only, like Drive). ──
-      const recentsWrap = body.querySelector<HTMLElement>(".gdrive-recents-wrap")!;
-      const recentsEl = body.querySelector<HTMLElement>(".gdrive-recents")!;
-      recentsEl.textContent = "";
-      if (!query && !here && files.length) {
-        for (const f of [...files].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 8)) {
-          recentsEl.appendChild(fileCard(f, true));
-        }
-        recentsWrap.classList.remove("hidden");
-      } else {
-        recentsWrap.classList.add("hidden");
-      }
+      const fileMenuItems = (f: DriveEntry): Array<{ label: string; danger?: boolean; fn: () => void }> => [
+        { label: "Open", fn: () => host.openFile(f.kind, f.file, f.title || f.file) },
+        { label: "Move to root", fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.file, null); void paint(); })() },
+        ...folders.map((fo) => ({
+          label: `Move to ${fo.name}`,
+          fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.file, fo.id); void paint(); })(),
+        })),
+        { label: "Delete…", danger: true, fn: () => void (async () => {
+          const ok = await host.confirm({ title: `Delete “${f.title || f.file}”?`, body: "Removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
+          if (!ok) return;
+          if (f.kind === "slides") await driveApi().gpointDelete?.(f.file);
+          else await driveApi().gdocDelete?.(f.file);
+          void paint();
+        })() },
+      ];
 
-      // ── Folders — cards (children of the current folder). ──
-      const foldersWrap = body.querySelector<HTMLElement>(".gdrive-folders-wrap")!;
-      const folderGrid = body.querySelector<HTMLElement>(".gdrive-folder-grid")!;
-      folderGrid.textContent = "";
-      const children = query ? [] : folders.filter((f) => (f.parentId ?? null) === here).sort((a, b) => a.name.localeCompare(b.name));
-      for (const f of children) {
-        const card = document.createElement("div");
-        card.className = "gdrive-foldercard";
-        card.innerHTML = `<span class="gdrive-foldercard-ic">${host.icons.folder}</span><span class="gdrive-foldercard-name"></span>
+      const fileRow = (f: DriveEntry): HTMLElement => {
+        const row = document.createElement("div");
+        row.className = "gdrive-listrow";
+        row.innerHTML = `
+          <span class="gdrive-listrow-ic">${f.kind === "slides" ? host.icons.slides : host.icons.docs}</span>
+          <span class="gdrive-listrow-title"></span>
+          <span class="gdrive-listrow-kind">${f.kind === "slides" ? "Slides" : "Docs"}</span>
+          <span class="gdrive-listrow-size">${fmtSize(f.sizeBytes)}</span>
+          <span class="gdrive-listrow-date">${new Date(f.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
           <button class="ws-icon-btn gdrive-card-kebab" title="Options">
             <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
           </button>`;
-        (card.querySelector(".gdrive-foldercard-name") as HTMLElement).textContent = f.name;
-        card.addEventListener("click", (ev) => {
+        (row.querySelector(".gdrive-listrow-title") as HTMLElement).textContent = f.title || f.file;
+        row.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".gdrive-card-kebab")) return;
-          slot.folderId = f.id;
-          void paint();
+          host.openFile(f.kind, f.file, f.title || f.file);
         });
-        card.querySelector(".gdrive-card-kebab")?.addEventListener("click", (ev) => {
+        row.querySelector(".gdrive-card-kebab")?.addEventListener("click", (ev) => {
           ev.stopPropagation();
           const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-          popMenu(r.right - 170, r.bottom + 4, [
-            { label: "Open", fn: () => { slot.folderId = f.id; void paint(); } },
-            { label: "Rename…", fn: () => {
-              const input = document.createElement("input");
-              input.className = "gdrive-newfolder-input";
-              input.value = f.name;
-              card.replaceWith(input);
-              input.focus(); input.select();
-              const done = (commit: boolean): void => {
-                const next = input.value.trim();
-                void (async () => {
-                  if (commit && next && next !== f.name) await api.gdriveFolderRename?.(f.id, next);
-                  void paint();
-                })();
-              };
-              input.addEventListener("keydown", (e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") done(true);
-                else if (e.key === "Escape") done(false);
-              });
-              input.addEventListener("blur", () => done(true));
-            } },
-            { label: "Delete folder…", danger: true, fn: () => void (async () => {
-              const ok = await host.confirm({ title: `Delete “${f.name}”?`, body: "Files and subfolders inside move up a level — nothing is lost.", confirmLabel: "Delete", danger: true });
-              if (!ok) return;
-              await api.gdriveFolderDelete?.(f.id);
-              if (slot.folderId === f.id) slot.folderId = f.parentId ?? null;
-              void paint();
-            })() },
-          ]);
+          popMenu(r.right - 170, r.bottom + 4, fileMenuItems(f));
         });
-        folderGrid.appendChild(card);
-      }
-      foldersWrap.classList.toggle("hidden", children.length === 0);
+        return row;
+      };
 
-      // ── Files — the current folder's (or every match on search). ──
-      const filesEl = body.querySelector<HTMLElement>(".gdrive-files")!;
-      const filesTitle = body.querySelector<HTMLElement>(".gdrive-files-title")!;
-      filesTitle.textContent = query ? `Results for “${query}”` : "Files";
-      filesEl.textContent = "";
+      const sectionHead = (title: string, linkLabel?: string, onLink?: () => void): HTMLElement => {
+        const head = document.createElement("div");
+        head.className = "gdrive-section-head";
+        const t = document.createElement("div");
+        t.className = "gdrive-section-title";
+        t.textContent = title;
+        head.appendChild(t);
+        if (linkLabel && onLink) {
+          const link = document.createElement("button");
+          link.className = "gdrive-viewall";
+          link.textContent = linkLabel;
+          link.addEventListener("click", onLink);
+          head.appendChild(link);
+        }
+        return head;
+      };
+
+      // ── Breadcrumbs — Drive › folder › subfolder (browse mode only). ──
+      const crumbs = body.querySelector<HTMLElement>(".gdrive-crumbs")!;
+      crumbs.textContent = "";
+      if (here && !query && slot.viewMode !== "list") {
+        const chain: DriveFolder[] = [];
+        let cur: string | null = here;
+        for (let hops = 0; cur && hops < 50; hops++) {
+          const f = folders.find((x) => x.id === cur);
+          if (!f) break;
+          chain.unshift(f);
+          cur = f.parentId;
+        }
+        const mk = (label: string, id: string | null, last: boolean): void => {
+          const b = document.createElement("button");
+          b.className = "gdrive-crumb" + (last ? " current" : "");
+          b.textContent = label;
+          if (!last) b.addEventListener("click", () => { slot.folderId = id; slot.page = 0; void paint(); });
+          crumbs.appendChild(b);
+          if (!last) {
+            const sep = document.createElement("span");
+            sep.className = "gdrive-crumb-sep";
+            sep.textContent = "›";
+            crumbs.appendChild(sep);
+          }
+        };
+        mk("Drive", null, false);
+        chain.forEach((f, i) => mk(f.name, f.id, i === chain.length - 1));
+        crumbs.classList.remove("hidden");
+      } else {
+        crumbs.classList.add("hidden");
+      }
+
+      // ── LIST view — every file, newest → oldest, paginated. ──
+      if (slot.viewMode === "list" && !query) {
+        const sec = document.createElement("div");
+        sec.className = "gdrive-section";
+        sec.appendChild(sectionHead("All files — newest first", "‹ Back", () => {
+          slot.viewMode = "browse";
+          void paint();
+        }));
+        const listEl = document.createElement("div");
+        listEl.className = "gdrive-list";
+        const sorted = [...files].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+        const paged = officePage(sorted, slot.listPage ?? 0, LIST_PER);
+        slot.listPage = paged.page;
+        for (const f of paged.items) listEl.appendChild(fileRow(f));
+        sec.appendChild(listEl);
+        const pager = officePager(sorted.length, paged.page, LIST_PER, (pg) => { slot.listPage = pg; void paint(); });
+        if (pager) sec.appendChild(pager);
+        scroll.appendChild(sec);
+        return;
+      }
+
+      // ── BROWSE — Recents (top 5, root only), Folders, Files. ──
+      if (!query && !here && files.length) {
+        const sec = document.createElement("div");
+        sec.className = "gdrive-section";
+        sec.appendChild(sectionHead("Recents", "View all", () => {
+          slot.viewMode = "list";
+          slot.listPage = 0;
+          void paint();
+        }));
+        const strip = document.createElement("div");
+        strip.className = "gdrive-recents";
+        for (const f of [...files].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5)) {
+          strip.appendChild(fileCard(f));
+        }
+        sec.appendChild(strip);
+        scroll.appendChild(sec);
+      }
+
+      const children = query ? [] : folders.filter((f) => (f.parentId ?? null) === here).sort((a, b) => a.name.localeCompare(b.name));
+      if (children.length) {
+        const sec = document.createElement("div");
+        sec.className = "gdrive-section";
+        sec.appendChild(sectionHead("Folders"));
+        const grid = document.createElement("div");
+        grid.className = "gdrive-folder-grid";
+        for (const f of children) {
+          const card = document.createElement("div");
+          card.className = "gdrive-foldercard";
+          card.innerHTML = `<span class="gdrive-foldercard-ic">${host.icons.folder}</span><span class="gdrive-foldercard-name"></span>
+            <button class="ws-icon-btn gdrive-card-kebab" title="Options">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+            </button>`;
+          (card.querySelector(".gdrive-foldercard-name") as HTMLElement).textContent = f.name;
+          card.addEventListener("click", (ev) => {
+            if ((ev.target as HTMLElement).closest(".gdrive-card-kebab")) return;
+            slot.folderId = f.id;
+            slot.page = 0;
+            void paint();
+          });
+          card.querySelector(".gdrive-card-kebab")?.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+            popMenu(r.right - 170, r.bottom + 4, folderMenuItems(f));
+          });
+          grid.appendChild(card);
+        }
+        sec.appendChild(grid);
+        scroll.appendChild(sec);
+      }
+
+      const sec = document.createElement("div");
+      sec.className = "gdrive-section";
+      sec.appendChild(sectionHead(query ? `Results for “${query}”` : "Files", query ? undefined : "All files", query ? undefined : () => {
+        slot.viewMode = "list";
+        slot.listPage = 0;
+        void paint();
+      }));
+      const filesEl = document.createElement("div");
+      filesEl.className = "gdrive-files";
       const inView = query ? files : files.filter((f) => (f.folderId ?? null) === here);
+      const paged = officePage(inView, query ? 0 : (slot.page ?? 0), GRID_PER);
+      if (!query) slot.page = paged.page;
       if (!inView.length) {
         const none = document.createElement("div");
         none.className = "gdoc-empty";
         none.textContent = query ? "No matches." : "Nothing here yet — the agent's decks and documents land in Drive automatically.";
         filesEl.appendChild(none);
       }
-      for (const f of inView) filesEl.appendChild(fileCard(f, false));
+      for (const f of paged.items) filesEl.appendChild(fileCard(f));
+      sec.appendChild(filesEl);
+      const pager = officePager(inView.length, paged.page, GRID_PER, (pg) => { slot.page = pg; void paint(); });
+      if (pager && !query) sec.appendChild(pager);
+      scroll.appendChild(sec);
     }
 
     await paint();

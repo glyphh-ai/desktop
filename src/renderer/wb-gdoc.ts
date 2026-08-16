@@ -13,6 +13,7 @@
  */
 
 import { formatMarkdown } from "./format-markdown.js";
+import { officePager, officePage } from "./wb-office-ui.js";
 
 export interface GDocMeta { file: string; title: string; size: number; folderId: string | null; mtime: number }
 export interface GDocSuggestion {
@@ -25,6 +26,8 @@ export interface GDocSlotState {
   id: number;
   file?: string;
   title?: string;
+  /** Library page — survives re-renders. */
+  page?: number;
 }
 
 export interface GDocHost {
@@ -203,12 +206,19 @@ export function initGDocs(host: GDocHost): GDocPanel {
     }
     const docs = res.docs;
 
+    const PER_PAGE = 18;
     const paint = (query: string): void => {
       grid.textContent = "";
+      body.querySelector(".office-pager")?.remove();
       const q = query.toLowerCase();
-      const inView = docs.filter((d) => !q || (d.title || "").toLowerCase().includes(q) || d.file.toLowerCase().includes(q));
-      empty?.classList.toggle("hidden", inView.length > 0);
+      const matches = docs.filter((d) => !q || (d.title || "").toLowerCase().includes(q) || d.file.toLowerCase().includes(q));
+      empty?.classList.toggle("hidden", matches.length > 0);
       if (!docs.length) empty?.classList.remove("hidden");
+      const paged = officePage(matches, q ? 0 : (slot.page ?? 0), PER_PAGE);
+      if (!q) slot.page = paged.page;
+      const inView = paged.items;
+      const pager = officePager(matches.length, paged.page, PER_PAGE, (pg) => { slot.page = pg; paint(query); });
+      if (pager && !q) grid.parentElement?.appendChild(pager);
       for (const d of inView) {
         const card = document.createElement("div");
         card.className = "office-card";

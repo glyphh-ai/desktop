@@ -16689,11 +16689,19 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 body[data-glyphh-anchor="center"].peek-open #code-wb-applayer { visibility: hidden !important; }
 
 .code-anchor-wrap { position: relative; display: inline-flex; }
-.code-anchor-menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 232px; z-index: 40; }
+/* Solid surface — the menu had ONLY position set, so it rendered transparent and
+   the thread bled through. Match the standard drop-up chrome. */
+.code-anchor-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); min-width: 232px; z-index: 40;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  padding: 5px;
+}
 /* Docked at the BOTTOM, the menu must open UPWARD (a downward menu would fall
    off the bottom edge, behind the app) and sit above everything on screen. */
 .code-root[data-anchor="center"] .code-anchor-menu { top: auto; bottom: calc(100% + 6px); z-index: 200; }
-.code-root[data-anchor="center"] .code-anchor-menu { top: auto; bottom: calc(100% + 6px); }
 
 /* ── Transcript panel (the "thread" workbench slot) ─────────────────────────
    Hosts the LIVE #code-thread (moved, never cloned). Sizing/spacing only —
@@ -17012,7 +17020,7 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gdrive-section { display: flex; flex-direction: column; gap: 8px; }
 .gdrive-section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
 .gdrive-recents { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
-.gdrive-recents .gdrive-card-compact { flex: 0 0 170px; }
+.gdrive-recents .gdrive-card { flex: 0 0 190px; }
 .gdrive-folder-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px; align-content: start;
@@ -17042,7 +17050,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 
 /* Drive file cards carry the same previews the libraries do. */
 .gdrive-card-row { display: flex; align-items: center; gap: 6px; }
-.gdrive-card-row .gdrive-card-ic { display: none; }   /* the thumb identifies it */
 .gdrive-card-row .gdrive-card-title { flex: 1; min-width: 0; }
 .gdrive-card .gdrive-card-kebab { position: static; }
 .gdrive-docthumb {
@@ -17057,3 +17064,44 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gdrive-docthumb-inner h1, .gdrive-docthumb-inner h2, .gdrive-docthumb-inner h3 {
   font-family: Inter, -apple-system, system-ui, sans-serif; color: #111;
 }
+
+/* Drive: collapsible folder rail + list view + shared pager. */
+.gdrive-body { flex: 1; display: flex; min-height: 0; }
+.gdrive-rail {
+  flex: 0 0 190px; overflow-y: auto; padding: 10px 6px;
+  display: flex; flex-direction: column; gap: 1px; border-right: 1px solid var(--border);
+}
+.gdrive-rail.hidden { display: none; }
+.gdrive-railrow {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: none; cursor: pointer; text-align: left;
+  font: inherit; font-size: 12px; color: var(--text-2);
+  padding: 5px 10px; border-radius: 7px;
+}
+.gdrive-railrow:hover { background: var(--hover); color: var(--text); }
+.gdrive-railrow.active { background: var(--surface-2); color: var(--text); }
+.gdrive-railrow-ic svg { width: 14px; height: 14px; display: block; }
+.gdrive-railrow-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdrive-rail-toggle.active { color: var(--accent); }
+.gdrive-rail-toggle svg { width: 14px; height: 14px; }
+.gdrive-section-head { display: flex; align-items: baseline; gap: 10px; }
+.gdrive-section-head .gdrive-section-title { flex: 1; }
+.gdrive-viewall {
+  background: none; border: none; cursor: pointer; font: inherit;
+  font-size: 11px; font-weight: 600; color: var(--accent); padding: 0 2px;
+}
+.gdrive-viewall:hover { text-decoration: underline; }
+.gdrive-list { display: flex; flex-direction: column; gap: 2px; }
+.gdrive-listrow {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+}
+.gdrive-listrow:hover { background: var(--surface-2); border-color: var(--border); }
+.gdrive-listrow-ic svg { width: 15px; height: 15px; display: block; color: var(--text-2); }
+.gdrive-listrow-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdrive-listrow-kind { font-size: 10.5px; color: var(--text-3); width: 44px; }
+.gdrive-listrow-size { font-size: 10.5px; color: var(--text-muted); width: 52px; text-align: right; }
+.gdrive-listrow-date { font-size: 10.5px; color: var(--text-3); width: 52px; text-align: right; }
+.office-pager { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 0 2px; }
+.office-pager-btn { height: 24px; padding: 3px 12px; font-size: 12px; }
+.office-pager-label { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }

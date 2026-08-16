@@ -19,6 +19,7 @@
 // The presenter overlay is a DOM layer over the whole app — the same
 // BrowserView freeze/hide dance every DOM modal needs (panels paint above).
 import { hidePanelsForModal, restorePanelsForModal } from "./yo-modal.js";
+import { officePager, officePage } from "./wb-office-ui.js";
 
 export interface GPointDeck { file: string; title: string; slides: number; mtime: number; size: number }
 
@@ -30,6 +31,8 @@ export interface GPointSlotState {
   slideIdx?: number;
   /** Reader slide-rail width (px) — set by the drag handle, survives re-renders. */
   railWidth?: number;
+  /** Library page — survives re-renders. */
+  page?: number;
 }
 
 /** What the workbench lends the panel: its confirm modal and a live-slot
@@ -397,12 +400,19 @@ export function initGPoint(host: GPointHost): GPointPanel {
       if (body.isConnected) void renderLibrary(body, slot, refresh);
     };
 
+    const PER_PAGE = 18;
     const paint = (query: string): void => {
       grid.textContent = "";
+      body.querySelector(".office-pager")?.remove();
       const q = query.toLowerCase();
-      const inView = decks.filter((d) => !q || d.title.toLowerCase().includes(q) || d.file.toLowerCase().includes(q));
-      empty?.classList.toggle("hidden", inView.length > 0 || decks.length === 0);
+      const matches = decks.filter((d) => !q || d.title.toLowerCase().includes(q) || d.file.toLowerCase().includes(q));
+      empty?.classList.toggle("hidden", matches.length > 0 || decks.length === 0);
       if (!decks.length) empty?.classList.remove("hidden");
+      const paged = officePage(matches, q ? 0 : (slot.page ?? 0), PER_PAGE);
+      if (!q) slot.page = paged.page;
+      const inView = paged.items;
+      const pager = officePager(matches.length, paged.page, PER_PAGE, (pg) => { slot.page = pg; paint(query); });
+      if (pager && !q) grid.parentElement?.appendChild(pager);
       for (const deck of inView) {
         const card = document.createElement("div");
         card.className = "gpoint-card";
