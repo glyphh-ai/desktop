@@ -151,7 +151,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
     if (tab === 0) renderFacts(pane, slot, data, search, refresh);
     else if (tab === 1) renderSemantic(pane, slot, data, search, refresh);
     else if (tab === 2) renderShortTerm(pane, slot, data);
-    else if (tab === 3) renderAdal(pane, data, search);
+    else if (tab === 3) await renderAdal(pane, data, search);
     else await renderGlyphh(pane, search, refresh);
   }
 
@@ -311,15 +311,17 @@ export function initMemory(host: MemoryHost): MemoryPanel {
     const row = (text: string, score: number | null): HTMLElement => {
       const meta = parseTurn(text);
       const el = document.createElement("div");
-      el.className = "gmem-chunk";
+      el.className = "gmem-chunk collapsed";
       el.innerHTML = `
         ${score !== null ? `<span class="gmem-score" style="--s:${Math.round(score * 100)}%">${score.toFixed(2)}</span>` : ""}
         <div class="gmem-chunk-main">
-          <div class="gmem-chunk-text"></div>
+          <div class="gmem-chunk-text" title="Click to expand"></div>
           <div class="gmem-chunk-meta"></div>
         </div>
         <button class="ws-icon-btn gmem-del" title="Forget this chunk">✕</button>`;
-      (el.querySelector(".gmem-chunk-text") as HTMLElement).textContent = meta.text;
+      const textEl = el.querySelector<HTMLElement>(".gmem-chunk-text")!;
+      textEl.textContent = meta.text;
+      textEl.addEventListener("click", () => el.classList.toggle("collapsed"));
       (el.querySelector(".gmem-chunk-meta") as HTMLElement).textContent =
         [meta.date, meta.speaker, `${text.length} chars`].filter(Boolean).join(" · ");
       el.querySelector(".gmem-del")?.addEventListener("click", () => {
@@ -397,19 +399,32 @@ export function initMemory(host: MemoryHost): MemoryPanel {
 
   // ── adaL  // ── adaL — the context graph (entities ↔ fillers over role edges) ──────────
 
-  function renderAdal(pane: HTMLElement, data: { facts: MemFact[] }, search: HTMLInputElement): void {
+  async function renderAdal(pane: HTMLElement, data: { facts: MemFact[] }, search: HTMLInputElement): Promise<void> {
     const facts = data.facts.filter((f) => f.is_current);
-    pane.innerHTML = `<div class="gmem-adal"><svg class="gmem-adal-svg"></svg><div class="gdoc-empty hidden">No facts to graph yet.</div></div>`;
-    const svg = pane.querySelector<SVGSVGElement>(".gmem-adal-svg")!;
+    pane.innerHTML = `
+      <div class="gmem-3d">
+        <canvas class="gmem-3d-canvas"></canvas>
+        <div class="gmem-3d-legend">
+          <span><i style="background:#8c3bf2"></i> entity</span>
+          <span><i style="background:#f5f5f7"></i> filler</span>
+          <span class="gmem-hint">drag orbits · wheel zooms · shift-drag pans · click a node</span>
+        </div>
+        <div class="gmem-3d-info hidden"></div>
+        <div class="gdoc-empty hidden">No facts to graph yet.</div>
+      </div>`;
+    const canvas = pane.querySelector<HTMLCanvasElement>(".gmem-3d-canvas")!;
+    const info = pane.querySelector<HTMLElement>(".gmem-3d-info")!;
     if (!facts.length) {
       pane.querySelector(".gdoc-empty")?.classList.remove("hidden");
       return;
     }
+    const THREE: any = await loadThree();
+    if (!pane.isConnected) return;
 
-    // Entity hubs spaced on a wide ring (a lone entity sits center); each
-    // entity's fillers spiral outward around it, one per fact, with enough
-    // arc distance that labels never stack. Role names live in the hover
-    // title (and highlight), not as always-on text — that was the smear.
+    // Entities on a wide XZ ring (a lone entity sits center); each entity's
+    // fillers on a GENEROUS Fibonacci sphere around it — even spread in 3D,
+    // no two labels fighting for the same pixel. Shared fillers are one node
+    // homed to their first entity; every edge still lands on them.
     const entities = [...new Set(facts.map((f) => f.entity))];
     const byEntity = new Map<string, MemFact[]>();
     for (const f of facts) {
@@ -418,90 +433,194 @@ export function initMemory(host: MemoryHost): MemoryPanel {
       byEntity.set(f.entity, l);
     }
     const biggest = Math.max(...[...byEntity.values()].map((l) => l.length));
-    // Radius grows with the densest fan so ~26px of arc separates neighbors.
-    const fanR = Math.max(150, (biggest * 27) / (Math.PI * 1.6));
-    const W = entities.length === 1 ? fanR * 2.6 + 260 : 1600;
-    const H = entities.length === 1 ? fanR * 2.6 + 200 : 1200;
-    const cx = W / 2, cy = H / 2;
-    const epos = new Map<string, { x: number; y: number }>();
-    if (entities.length === 1) epos.set(entities[0]!, { x: cx, y: cy });
-    else {
-      const ringR = Math.min(W, H) * 0.28;
-      entities.forEach((e, i) => {
-        const a = (i / entities.length) * Math.PI * 2 - Math.PI / 2;
-        epos.set(e, { x: cx + Math.cos(a) * ringR, y: cy + Math.sin(a) * ringR });
-      });
-    }
-    const fillers = new Map<string, { x: number; y: number }>();
+    const sphereR = Math.max(18, Math.sqrt(biggest) * 6.5);
+    const ringR = entities.length === 1 ? 0 : sphereR * 2.6;
+    const epos = new Map<string, [number, number, number]>();
+    entities.forEach((e, i) => {
+      const a = (i / entities.length) * Math.PI * 2;
+      epos.set(e, [Math.cos(a) * ringR, 0, Math.sin(a) * ringR]);
+    });
+    const fpos = new Map<string, [number, number, number]>();
+    const GOLD = Math.PI * (3 - Math.sqrt(5));
     for (const [e, list] of byEntity) {
       const origin = epos.get(e)!;
-      const full = entities.length === 1;
-      const baseA = full ? -Math.PI / 2 : Math.atan2(origin.y - cy, origin.x - cx);
-      const spread = full ? Math.PI * 2 : Math.PI * 1.1;
-      list.forEach((f, i) => {
-        if (fillers.has(f.filler)) return;
-        const t = list.length === 1 ? 0.5 : i / (full ? list.length : list.length - 1);
-        const a = baseA - (full ? 0 : spread / 2) + t * spread;
-        const r = fanR + (i % 2) * 44; // alternate rings so labels breathe
-        fillers.set(f.filler, { x: origin.x + Math.cos(a) * r, y: origin.y + Math.sin(a) * r });
+      const fresh = list.filter((f) => !fpos.has(f.filler));
+      fresh.forEach((f, i) => {
+        const n = fresh.length;
+        const y = n === 1 ? 0 : 1 - (2 * (i + 0.5)) / n;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const a = GOLD * i;
+        fpos.set(f.filler, [origin[0] + Math.cos(a) * r * sphereR, origin[1] + y * sphereR, origin[2] + Math.sin(a) * r * sphereR]);
       });
     }
 
-    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-    const parts: string[] = [];
-    for (const f of facts) {
-      const a = epos.get(f.entity)!, b = fillers.get(f.filler)!;
-      parts.push(`<line class="gmem-adal-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${esc(`${f.entity} —${f.role}→ ${f.filler}`)}</title></line>`);
-    }
-    for (const [name, p2] of fillers) {
-      const roles = facts.filter((f) => f.filler === name).map((f) => f.role).join(", ");
-      parts.push(`<g class="gmem-adal-node filler" data-name="${esc(name)}"><circle cx="${p2.x}" cy="${p2.y}" r="4.5"><title>${esc(`${name} (${roles})`)}</title></circle><text x="${p2.x}" y="${p2.y - 9}">${esc(name.length > 24 ? name.slice(0, 23) + "…" : name)}</text></g>`);
-    }
-    for (const [name, p2] of epos) {
-      parts.push(`<g class="gmem-adal-node entity" data-name="${esc(name)}"><circle cx="${p2.x}" cy="${p2.y}" r="8"/><text x="${p2.x}" y="${p2.y - 14}">${esc(name)}</text></g>`);
-    }
-    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-    svg.innerHTML = parts.join("");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 3000);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1);
+    keyLight.position.set(1, 1.4, 0.8);
+    scene.add(keyLight);
 
-    // Pan + zoom on the viewBox; highlight on search (name OR role).
-    let vb = { x: 0, y: 0, w: W, h: H };
-    const applyVb = (): void => svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
-    svg.addEventListener("wheel", (ev) => {
-      ev.preventDefault();
-      const scale = ev.deltaY > 0 ? 1.12 : 1 / 1.12;
-      const nw = Math.min(W * 3, Math.max(W * 0.12, vb.w * scale));
-      const nh = nw * (H / W);
-      const rect = svg.getBoundingClientRect();
-      const px = vb.x + ((ev.clientX - rect.left) / rect.width) * vb.w;
-      const py = vb.y + ((ev.clientY - rect.top) / rect.height) * vb.h;
-      vb = { x: px - ((px - vb.x) / vb.w) * nw, y: py - ((py - vb.y) / vb.h) * nh, w: nw, h: nh };
-      applyVb();
-    }, { passive: false });
-    let drag: { x: number; y: number } | null = null;
-    svg.addEventListener("mousedown", (ev) => { drag = { x: ev.clientX, y: ev.clientY }; });
-    window.addEventListener("mousemove", (ev) => {
-      if (!drag) return;
-      const rect = svg.getBoundingClientRect();
-      vb.x -= ((ev.clientX - drag.x) / rect.width) * vb.w;
-      vb.y -= ((ev.clientY - drag.y) / rect.height) * vb.h;
-      drag = { x: ev.clientX, y: ev.clientY };
-      applyVb();
+    // A text label that always reads: canvas-texture sprite, depth-free.
+    const label = (text: string, at: [number, number, number], scalePx: number, color: string): any => {
+      const c = document.createElement("canvas");
+      const ctx = c.getContext("2d")!;
+      const font = `600 28px -apple-system, system-ui, sans-serif`;
+      ctx.font = font;
+      const w = Math.min(560, Math.ceil(ctx.measureText(text).width) + 16);
+      c.width = w; c.height = 40;
+      ctx.font = font;
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(0, 0, w, 40);
+      ctx.fillStyle = color;
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, 8, 21, w - 16);
+      const tex = new THREE.CanvasTexture(c);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+      sp.scale.set((w / 40) * scalePx, scalePx, 1);
+      sp.position.set(at[0], at[1] + scalePx * 0.9, at[2]);
+      return sp;
+    };
+
+    interface Pick { mesh: any; name: string; kind: "entity" | "filler" }
+    const picks: Pick[] = [];
+    const entityMat = new THREE.MeshStandardMaterial({ color: 0x8c3bf2, roughness: 0.3, metalness: 0.3 });
+    const fillerGeo = new THREE.SphereGeometry(0.65, 14, 14);
+    const entityGeo = new THREE.BoxGeometry(2.1, 2.1, 2.1);
+    for (const [name, at] of epos) {
+      const mesh = new THREE.Mesh(entityGeo, entityMat.clone());
+      mesh.position.set(at[0], at[1], at[2]);
+      scene.add(mesh);
+      scene.add(label(name, at, 3.4, "#ffffff"));
+      picks.push({ mesh, name, kind: "entity" });
+    }
+    for (const [name, at] of fpos) {
+      const mesh = new THREE.Mesh(fillerGeo, new THREE.MeshStandardMaterial({ color: 0xe8e8ee, roughness: 0.5, metalness: 0.1 }));
+      mesh.position.set(at[0], at[1], at[2]);
+      scene.add(mesh);
+      scene.add(label(name.length > 30 ? name.slice(0, 29) + "…" : name, at, 2.1, "#d9d9e2"));
+      picks.push({ mesh, name, kind: "filler" });
+    }
+    const edgePos = new Float32Array(facts.length * 6);
+    facts.forEach((f, i) => {
+      edgePos.set(epos.get(f.entity)!, i * 6);
+      edgePos.set(fpos.get(f.filler)!, i * 6 + 3);
     });
-    window.addEventListener("mouseup", () => { drag = null; });
+    const edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute("position", new THREE.BufferAttribute(edgePos, 3));
+    scene.add(new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: 0x8c3bf2, transparent: true, opacity: 0.3 })));
 
+    // Same hand-rolled controls as the Glyphh space.
+    const target = new THREE.Vector3(0, 0, 0);
+    let theta = 0.8, phi = 1.15, radius = (ringR + sphereR) * 2.6 + 24;
+    const applyCam = (): void => {
+      camera.position.set(
+        target.x + radius * Math.sin(phi) * Math.cos(theta),
+        target.y + radius * Math.cos(phi),
+        target.z + radius * Math.sin(phi) * Math.sin(theta),
+      );
+      camera.lookAt(target);
+    };
+    let mode: "rotate" | "pan" | null = null;
+    let last = { x: 0, y: 0 };
+    canvas.addEventListener("mousedown", (ev) => {
+      mode = ev.button === 2 || ev.shiftKey ? "pan" : "rotate";
+      last = { x: ev.clientX, y: ev.clientY };
+    });
+    canvas.addEventListener("contextmenu", (ev) => ev.preventDefault());
+    const onMove = (ev: MouseEvent): void => {
+      if (!mode) return;
+      const dx = ev.clientX - last.x, dy = ev.clientY - last.y;
+      last = { x: ev.clientX, y: ev.clientY };
+      if (mode === "rotate") {
+        theta += dx * 0.005;
+        phi = Math.min(Math.PI - 0.05, Math.max(0.05, phi - dy * 0.005));
+      } else {
+        const scale = radius * 0.0016;
+        const right = new THREE.Vector3().subVectors(camera.position, target).cross(camera.up).normalize();
+        target.addScaledVector(right, dx * scale);
+        target.addScaledVector(camera.up, dy * scale);
+      }
+      applyCam();
+    };
+    const onUp = (): void => { mode = null; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    canvas.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      radius = Math.min(2000, Math.max(12, radius * (ev.deltaY > 0 ? 1.1 : 1 / 1.1)));
+      applyCam();
+    }, { passive: false });
+
+    // Click a node → its facts in the info card.
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    canvas.addEventListener("click", (ev) => {
+      const rect = canvas.getBoundingClientRect();
+      pointer.set(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(picks.map((p2) => p2.mesh))[0];
+      if (!hit) { info.classList.add("hidden"); return; }
+      const pick = picks.find((p2) => p2.mesh === hit.object)!;
+      const related = pick.kind === "entity"
+        ? facts.filter((f) => f.entity === pick.name)
+        : facts.filter((f) => f.filler === pick.name);
+      info.classList.remove("hidden");
+      info.innerHTML = `
+        <div class="gmem-3d-info-kind" style="color:${pick.kind === "entity" ? "#8c3bf2" : "#d9d9e2"}">${pick.kind}</div>
+        <div class="gmem-3d-info-text"></div>
+        <div class="gmem-3d-info-meta gmem-3d-info-lines"></div>`;
+      (info.querySelector(".gmem-3d-info-text") as HTMLElement).textContent = pick.name;
+      (info.querySelector(".gmem-3d-info-meta") as HTMLElement).textContent =
+        related.slice(0, 8).map((f) => `${f.entity} —${f.role}→ ${f.filler}`).join("\n") + (related.length > 8 ? `\n… ${related.length - 8} more` : "");
+    });
+
+    // Search: matching nodes (name or role) grow; the rest recede.
     search.oninput = () => {
       const q = search.value.trim().toLowerCase();
       const roleHit = new Set(facts.filter((f) => q && f.role.toLowerCase().includes(q)).map((f) => f.filler));
-      svg.querySelectorAll<SVGGElement>(".gmem-adal-node").forEach((n) => {
-        const name = (n.dataset.name ?? "").toLowerCase();
-        const hit = !!q && (name.includes(q) || roleHit.has(n.dataset.name ?? ""));
-        n.classList.toggle("hit", hit);
-        n.classList.toggle("dim", !!q && !hit);
-      });
+      for (const p2 of picks) {
+        const hit = !!q && (p2.name.toLowerCase().includes(q) || roleHit.has(p2.name));
+        const sc = hit ? 2 : q ? 0.55 : 1;
+        p2.mesh.scale.set(sc, sc, sc);
+        (p2.mesh.material as { opacity: number; transparent: boolean }).transparent = true;
+        (p2.mesh.material as { opacity: number }).opacity = q && !hit ? 0.3 : 1;
+      }
+    };
+
+    const size = (): void => {
+      const r = pane.getBoundingClientRect();
+      const w = Math.max(80, r.width), h = Math.max(80, r.height);
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    const ro = new ResizeObserver(size);
+    ro.observe(pane);
+    size();
+    applyCam();
+    let raf = 0;
+    const loop = (): void => {
+      if (!mode) theta += 0.0006;
+      applyCam();
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+    disposeScene = () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      renderer.dispose();
+      fillerGeo.dispose();
+      entityGeo.dispose();
     };
   }
 
-  // ── Glyphh  // ── Glyphh — the full semantic space, three.js ─────────────────────────────
+  // ── Glyphh  // ── Glyphh  // ── Glyphh — the full semantic space, three.js ─────────────────────────────
 
   async function renderGlyphh(pane: HTMLElement, search: HTMLInputElement, refresh: () => void): Promise<void> {
     pane.innerHTML = `
