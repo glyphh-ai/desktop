@@ -15,6 +15,8 @@
  * app-lib the first time the Glyphh tab opens.
  */
 
+import { officePager, officePage } from "./wb-office-ui.js";
+
 // ── wire shapes (structural mirrors of the SDK contract) ─────────────────────
 interface MemFact {
   entity: string; role: string; filler: string;
@@ -28,6 +30,8 @@ export interface MemorySlotState {
   id: number;
   tab?: number;
   showHistory?: boolean;
+  /** Per-section page cursors ("facts:long", "sem", …) — survive re-renders. */
+  pages?: Record<string, number>;
 }
 
 export interface MemoryHost {
@@ -145,10 +149,42 @@ export function initMemory(host: MemoryHost): MemoryPanel {
     const data = browseCache;
 
     if (tab === 0) renderFacts(pane, slot, data, search, refresh);
-    else if (tab === 1) renderSemantic(pane, data, search, refresh);
-    else if (tab === 2) renderShortTerm(pane, data);
+    else if (tab === 1) renderSemantic(pane, slot, data, search, refresh);
+    else if (tab === 2) renderShortTerm(pane, slot, data);
     else if (tab === 3) renderAdal(pane, data, search);
     else await renderGlyphh(pane, search, refresh);
+  }
+
+  // ── collapsible, paginated list sections (every list tab rides this) ───────
+
+  const PER_PAGE = 25;
+  function listSection<T>(
+    parent: HTMLElement,
+    slot: MemorySlotState,
+    key: string,
+    title: string,
+    hint: string,
+    items: T[],
+    rowOf: (item: T) => HTMLElement,
+    open = true,
+  ): void {
+    const sec = document.createElement("details");
+    sec.className = "gmem-sec";
+    sec.open = open;
+    sec.innerHTML = `<summary>${title} <em class="gmem-sec-count">${items.length}</em><span class="gmem-hint">${hint}</span></summary><div class="gmem-list"></div>`;
+    const list = sec.querySelector<HTMLElement>(".gmem-list")!;
+    const paint = (): void => {
+      list.textContent = "";
+      sec.querySelector(".office-pager")?.remove();
+      slot.pages ??= {};
+      const paged = officePage(items, slot.pages[key] ?? 0, PER_PAGE);
+      slot.pages[key] = paged.page;
+      for (const item of paged.items) list.appendChild(rowOf(item));
+      const pager = officePager(items.length, paged.page, PER_PAGE, (pg) => { slot.pages![key] = pg; paint(); });
+      if (pager) sec.appendChild(pager);
+    };
+    paint();
+    parent.appendChild(sec);
   }
 
   // ── Facts — the stored facts, plainly ──────────────────────────────────────
@@ -171,19 +207,76 @@ export function initMemory(host: MemoryHost): MemoryPanel {
           <span class="gmem-count"></span>
           <label class="gmem-history"><input type="checkbox" ${slot.showHistory ? "checked" : ""}/> show superseded versions</label>
         </div>
-        <div class="gmem-list"></div>
+        <div class="gmem-secs"></div>
         <div class="gdoc-empty hidden">No stored facts yet — they accumulate as you work.</div>
       </div>`;
     pane.querySelector<HTMLInputElement>(".gmem-history input")?.addEventListener("change", (ev) => {
       slot.showHistory = (ev.target as HTMLInputElement).checked;
       refresh();
     });
-    const list = pane.querySelector<HTMLElement>(".gmem-list")!;
+    const secs = pane.querySelector<HTMLElement>(".gmem-secs")!;
     const empty = pane.querySelector<HTMLElement>(".gdoc-empty")!;
     const count = pane.querySelector<HTMLElement>(".gmem-count")!;
 
+    const factRow = (f: MemFact): HTMLElement => {
+      const row = document.createElement("div");
+      row.className = "gmem-fact" + (f.is_current ? "" : " superseded");
+      row.innerHTML = `
+        ${tierBadge(f.tier)}
+        <span class="gmem-fact-entity"></span>
+        <span class="gmem-fact-role"></span>
+        <span class="gmem-fact-filler" title="Click to edit"></span>
+        <span class="gmem-fact-meta"></span>
+        <button class="ws-icon-btn gmem-del" title="Forget this fact">✕</button>`;
+      (row.querySelector(".gmem-fact-entity") as HTMLElement).textContent = f.entity;
+      (row.querySelector(".gmem-fact-role") as HTMLElement).textContent = f.role;
+      (row.querySelector(".gmem-fact-filler") as HTMLElement).textContent = f.filler;
+      (row.querySelector(".gmem-fact-meta") as HTMLElement).textContent =
+        [f.speaker, f.session ? `session ${f.session.slice(0, 8)}` : ""].filter(Boolean).join(" · ");
+      const fillerEl = row.querySelector<HTMLElement>(".gmem-fact-filler")!;
+      fillerEl.addEventListener("click", () => {
+        if (!f.is_current || fillerEl.querySelector("input")) return;
+        const input = document.createElement("input");
+        input.className = "gmem-edit";
+        input.value = f.filler;
+        fillerEl.textContent = "";
+        fillerEl.appendChild(input);
+        input.focus();
+        input.select();
+        const done = (commit: boolean): void => {
+          const v = input.value.trim();
+          if (!commit || !v || v === f.filler) { fillerEl.textContent = f.filler; return; }
+          void (async () => {
+            const r = await api().memoryAmend?.({ entity: f.entity, role: f.role, filler: v, ...(f.key ? { key: f.key } : {}), ...(f.tier ? { tier: f.tier } : {}) });
+            if (!r?.ok) { void host.confirm({ title: "Couldn't amend", body: r?.error ?? "Unknown error.", confirmLabel: "OK" }); fillerEl.textContent = f.filler; return; }
+            browseCache = null; graphCache = null;
+            refresh();
+          })();
+        };
+        input.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") done(true);
+          if (ev.key === "Escape") done(false);
+        });
+        input.addEventListener("blur", () => done(true));
+      });
+      row.querySelector(".gmem-del")?.addEventListener("click", () => {
+        void (async () => {
+          const yes = await host.confirm({
+            title: "Forget this fact?",
+            body: `${f.entity} · ${f.role} · ${f.filler}\n\nRemoved from the org's memory for real${f.key ? " (the whole version chain)" : ""}.`,
+            confirmLabel: "Forget", danger: true,
+          });
+          if (!yes) return;
+          await api().memoryForget?.({ fact: f.key ? { key: f.key } : { entity: f.entity, role: f.role, filler: f.filler } });
+          browseCache = null; graphCache = null;
+          refresh();
+        })();
+      });
+      return row;
+    };
+
     const paint = (q: string): void => {
-      list.textContent = "";
+      secs.textContent = "";
       const ql = q.toLowerCase();
       const rows = data.facts
         .filter((f) => slot.showHistory || f.is_current)
@@ -192,85 +285,28 @@ export function initMemory(host: MemoryHost): MemoryPanel {
         .reverse();
       count.textContent = `${rows.length} fact${rows.length === 1 ? "" : "s"}`;
       empty.classList.toggle("hidden", rows.length > 0);
-      for (const f of rows) {
-        const row = document.createElement("div");
-        row.className = "gmem-fact" + (f.is_current ? "" : " superseded");
-        row.innerHTML = `
-          ${tierBadge(f.tier)}
-          <span class="gmem-fact-entity"></span>
-          <span class="gmem-fact-role"></span>
-          <span class="gmem-fact-filler" title="Click to edit"></span>
-          <span class="gmem-fact-meta"></span>
-          <button class="ws-icon-btn gmem-del" title="Forget this fact">✕</button>`;
-        (row.querySelector(".gmem-fact-entity") as HTMLElement).textContent = f.entity;
-        (row.querySelector(".gmem-fact-role") as HTMLElement).textContent = f.role;
-        (row.querySelector(".gmem-fact-filler") as HTMLElement).textContent = f.filler;
-        (row.querySelector(".gmem-fact-meta") as HTMLElement).textContent =
-          [f.speaker, f.session ? `session ${f.session.slice(0, 8)}` : ""].filter(Boolean).join(" · ");
-        // Edit-in-place: commit SUPERSEDES the chain (keyed) or replaces (keyless).
-        const fillerEl = row.querySelector<HTMLElement>(".gmem-fact-filler")!;
-        fillerEl.addEventListener("click", () => {
-          if (!f.is_current || fillerEl.querySelector("input")) return;
-          const input = document.createElement("input");
-          input.className = "gmem-edit";
-          input.value = f.filler;
-          fillerEl.textContent = "";
-          fillerEl.appendChild(input);
-          input.focus();
-          input.select();
-          const done = (commit: boolean): void => {
-            const v = input.value.trim();
-            if (!commit || !v || v === f.filler) { fillerEl.textContent = f.filler; return; }
-            void (async () => {
-              const r = await api().memoryAmend?.({ entity: f.entity, role: f.role, filler: v, ...(f.key ? { key: f.key } : {}), ...(f.tier ? { tier: f.tier } : {}) });
-              if (!r?.ok) { void host.confirm({ title: "Couldn't amend", body: r?.error ?? "Unknown error.", confirmLabel: "OK" }); fillerEl.textContent = f.filler; return; }
-              browseCache = null; graphCache = null;
-              refresh();
-            })();
-          };
-          input.addEventListener("keydown", (ev) => {
-            if (ev.key === "Enter") done(true);
-            if (ev.key === "Escape") done(false);
-          });
-          input.addEventListener("blur", () => done(true));
-        });
-        row.querySelector(".gmem-del")?.addEventListener("click", () => {
-          void (async () => {
-            const yes = await host.confirm({
-              title: "Forget this fact?",
-              body: `${f.entity} · ${f.role} · ${f.filler}\n\nRemoved from the org's memory for real${f.key ? " (the whole version chain)" : ""}.`,
-              confirmLabel: "Forget", danger: true,
-            });
-            if (!yes) return;
-            await api().memoryForget?.({ fact: f.key ? { key: f.key } : { entity: f.entity, role: f.role, filler: f.filler } });
-            browseCache = null; graphCache = null;
-            refresh();
-          })();
-        });
-        list.appendChild(row);
-      }
+      const byTier: Record<string, MemFact[]> = { long: [], mid: [], short: [] };
+      for (const f of rows) (byTier[f.tier ?? "long"] ?? byTier.long!).push(f);
+      listSection(secs, slot, "facts:long", "Long-term", "lifelong facts + standing directives", byTier.long!, factRow);
+      listSection(secs, slot, "facts:mid", "Mid-term", "decay after ~5 sessions", byTier.mid!, factRow, byTier.mid!.length > 0);
+      listSection(secs, slot, "facts:short", "Short-term", "this session only", byTier.short!, factRow, byTier.short!.length > 0);
     };
     paint(search.value.trim());
     search.oninput = () => paint(search.value.trim());
   }
 
-  // ── Semantic — the similarity corpus, chunk by chunk ───────────────────────
+  // ── Semantic  // ── Semantic — the similarity corpus, chunk by chunk ───────────────────────
 
   function renderSemantic(
     pane: HTMLElement,
+    slot: MemorySlotState,
     data: { turns: string[] },
     search: HTMLInputElement,
     refresh: () => void,
   ): void {
-    pane.innerHTML = `
-      <div class="gmem-sem">
-        <div class="gmem-facts-head"><span class="gmem-count"></span><span class="gmem-hint">the mid-term similarity corpus — search ranks by cosine</span></div>
-        <div class="gmem-list"></div>
-        <div class="gdoc-empty hidden">Nothing in the corpus yet.</div>
-      </div>`;
-    const list = pane.querySelector<HTMLElement>(".gmem-list")!;
+    pane.innerHTML = `<div class="gmem-sem"><div class="gmem-secs"></div><div class="gdoc-empty hidden">Nothing in the corpus yet.</div></div>`;
+    const secs = pane.querySelector<HTMLElement>(".gmem-secs")!;
     const empty = pane.querySelector<HTMLElement>(".gdoc-empty")!;
-    const count = pane.querySelector<HTMLElement>(".gmem-count")!;
 
     const row = (text: string, score: number | null): HTMLElement => {
       const meta = parseTurn(text);
@@ -299,22 +335,20 @@ export function initMemory(host: MemoryHost): MemoryPanel {
     };
 
     const paintAll = (): void => {
-      list.textContent = "";
+      secs.textContent = "";
       const turns = data.turns.slice().reverse();
-      count.textContent = `${turns.length} chunk${turns.length === 1 ? "" : "s"}`;
       empty.classList.toggle("hidden", turns.length > 0);
-      for (const t of turns) list.appendChild(row(t, null));
+      listSection(secs, slot, "sem", "Similarity corpus", "the mid-term chunks — search ranks by cosine", turns, (t) => row(t, null));
     };
     let seq = 0;
     const paintSearch = async (q: string): Promise<void> => {
       const mine = ++seq;
-      const res = await api().memorySearch?.(q, 20);
-      if (mine !== seq || !list.isConnected) return;
-      list.textContent = "";
+      const res = await api().memorySearch?.(q, 40);
+      if (mine !== seq || !secs.isConnected) return;
+      secs.textContent = "";
       const hits = res?.ok ? res.recalled : [];
-      count.textContent = `${hits.length} hit${hits.length === 1 ? "" : "s"}`;
       empty.classList.toggle("hidden", hits.length > 0);
-      for (const h of hits) list.appendChild(row(h.text, h.score));
+      listSection(secs, slot, "sem:hits", "Semantic hits", "cosine-ranked against your query", hits, (h) => row(h.text, h.score));
     };
     paintAll();
     search.oninput = () => {
@@ -324,41 +358,44 @@ export function initMemory(host: MemoryHost): MemoryPanel {
     };
   }
 
-  // ── Short-term — the recency window, pure ──────────────────────────────────
+  // ── Short-term  // ── Short-term — the recency window, pure ──────────────────────────────────
 
-  function renderShortTerm(pane: HTMLElement, data: { facts: MemFact[]; window: Array<{ speaker: string; text: string }> }): void {
+  function renderShortTerm(pane: HTMLElement, slot: MemorySlotState, data: { facts: MemFact[]; window: Array<{ speaker: string; text: string }> }): void {
     const shortFacts = data.facts.filter((f) => f.is_current && f.tier === "short");
-    pane.innerHTML = `
-      <div class="gmem-short">
-        <div class="gmem-sec-title">Recency window <span class="gmem-hint">the last exchanges the session carries verbatim — no embeddings, pure order</span></div>
-        <div class="gmem-window"></div>
-        <div class="gmem-sec-title">Short-tier facts <span class="gmem-hint">visible to this session only</span></div>
-        <div class="gmem-list gmem-short-facts"></div>
-      </div>`;
-    const win = pane.querySelector<HTMLElement>(".gmem-window")!;
-    if (!data.window.length) win.innerHTML = `<div class="gdoc-empty">The window is empty — it fills as the session talks.</div>`;
-    for (const w of data.window) {
-      const el = document.createElement("div");
-      el.className = "gmem-turn" + (w.speaker === "user" ? " user" : "");
-      el.innerHTML = `<span class="gmem-turn-speaker"></span><span class="gmem-turn-text"></span>`;
-      (el.querySelector(".gmem-turn-speaker") as HTMLElement).textContent = w.speaker;
-      (el.querySelector(".gmem-turn-text") as HTMLElement).textContent = w.text;
-      win.appendChild(el);
-    }
-    const list = pane.querySelector<HTMLElement>(".gmem-short-facts")!;
-    if (!shortFacts.length) list.innerHTML = `<div class="gdoc-empty">No short-tier facts right now.</div>`;
-    for (const f of shortFacts) {
+    pane.innerHTML = `<div class="gmem-short"><div class="gmem-secs"></div></div>`;
+    const secs = pane.querySelector<HTMLElement>(".gmem-secs")!;
+
+    listSection(secs, slot, "st:window", "Recency window",
+      "the last exchanges the session carries verbatim — pure order, no embeddings",
+      data.window.slice().reverse(),
+      (w) => {
+        const el = document.createElement("div");
+        el.className = "gmem-turn" + (w.speaker === "user" ? " user" : "");
+        el.innerHTML = `<span class="gmem-turn-speaker"></span><span class="gmem-turn-text"></span>`;
+        (el.querySelector(".gmem-turn-speaker") as HTMLElement).textContent = w.speaker;
+        (el.querySelector(".gmem-turn-text") as HTMLElement).textContent = w.text;
+        return el;
+      });
+
+    listSection(secs, slot, "st:facts", "Short-tier facts", "visible to this session only", shortFacts, (f) => {
       const el = document.createElement("div");
       el.className = "gmem-fact";
       el.innerHTML = `${tierBadge("short")}<span class="gmem-fact-entity"></span><span class="gmem-fact-role"></span><span class="gmem-fact-filler"></span>`;
       (el.querySelector(".gmem-fact-entity") as HTMLElement).textContent = f.entity;
       (el.querySelector(".gmem-fact-role") as HTMLElement).textContent = f.role;
       (el.querySelector(".gmem-fact-filler") as HTMLElement).textContent = f.filler;
-      list.appendChild(el);
+      return el;
+    }, shortFacts.length > 0);
+
+    if (!data.window.length && !shortFacts.length) {
+      const emptyEl = document.createElement("div");
+      emptyEl.className = "gdoc-empty";
+      emptyEl.textContent = "Nothing short-term right now — it fills as the session talks.";
+      secs.appendChild(emptyEl);
     }
   }
 
-  // ── adaL — the context graph (entities ↔ fillers over role edges) ──────────
+  // ── adaL  // ── adaL — the context graph (entities ↔ fillers over role edges) ──────────
 
   function renderAdal(pane: HTMLElement, data: { facts: MemFact[] }, search: HTMLInputElement): void {
     const facts = data.facts.filter((f) => f.is_current);
@@ -369,59 +406,70 @@ export function initMemory(host: MemoryHost): MemoryPanel {
       return;
     }
 
-    // Entities on an inner ring, their fillers fanned outside them; a filler
-    // shared by entities becomes ONE node — the join is the graph's value.
+    // Entity hubs spaced on a wide ring (a lone entity sits center); each
+    // entity's fillers spiral outward around it, one per fact, with enough
+    // arc distance that labels never stack. Role names live in the hover
+    // title (and highlight), not as always-on text — that was the smear.
     const entities = [...new Set(facts.map((f) => f.entity))];
-    const fillers = new Map<string, { x: number; y: number }>();
-    const epos = new Map<string, { x: number; y: number }>();
-    const W = 1200, H = 900, cx = W / 2, cy = H / 2;
-    const eR = Math.min(W, H) * 0.22;
-    entities.forEach((e, i) => {
-      const a = (i / entities.length) * Math.PI * 2 - Math.PI / 2;
-      epos.set(e, { x: cx + Math.cos(a) * eR, y: cy + Math.sin(a) * eR });
-    });
     const byEntity = new Map<string, MemFact[]>();
     for (const f of facts) {
       const l = byEntity.get(f.entity) ?? [];
       l.push(f);
       byEntity.set(f.entity, l);
     }
+    const biggest = Math.max(...[...byEntity.values()].map((l) => l.length));
+    // Radius grows with the densest fan so ~26px of arc separates neighbors.
+    const fanR = Math.max(150, (biggest * 27) / (Math.PI * 1.6));
+    const W = entities.length === 1 ? fanR * 2.6 + 260 : 1600;
+    const H = entities.length === 1 ? fanR * 2.6 + 200 : 1200;
+    const cx = W / 2, cy = H / 2;
+    const epos = new Map<string, { x: number; y: number }>();
+    if (entities.length === 1) epos.set(entities[0]!, { x: cx, y: cy });
+    else {
+      const ringR = Math.min(W, H) * 0.28;
+      entities.forEach((e, i) => {
+        const a = (i / entities.length) * Math.PI * 2 - Math.PI / 2;
+        epos.set(e, { x: cx + Math.cos(a) * ringR, y: cy + Math.sin(a) * ringR });
+      });
+    }
+    const fillers = new Map<string, { x: number; y: number }>();
     for (const [e, list] of byEntity) {
       const origin = epos.get(e)!;
-      const baseA = Math.atan2(origin.y - cy, origin.x - cx);
+      const full = entities.length === 1;
+      const baseA = full ? -Math.PI / 2 : Math.atan2(origin.y - cy, origin.x - cx);
+      const spread = full ? Math.PI * 2 : Math.PI * 1.1;
       list.forEach((f, i) => {
         if (fillers.has(f.filler)) return;
-        const spread = Math.PI * 0.9;
-        const a = baseA - spread / 2 + (list.length === 1 ? spread / 2 : (i / (list.length - 1)) * spread);
-        const r = eR + 130 + (i % 3) * 62;
-        fillers.set(f.filler, { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+        const t = list.length === 1 ? 0.5 : i / (full ? list.length : list.length - 1);
+        const a = baseA - (full ? 0 : spread / 2) + t * spread;
+        const r = fanR + (i % 2) * 44; // alternate rings so labels breathe
+        fillers.set(f.filler, { x: origin.x + Math.cos(a) * r, y: origin.y + Math.sin(a) * r });
       });
     }
 
-    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     const parts: string[] = [];
     for (const f of facts) {
       const a = epos.get(f.entity)!, b = fillers.get(f.filler)!;
-      parts.push(`<line class="gmem-adal-edge" data-role="${esc(f.role)}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${esc(`${f.entity} —${f.role}→ ${f.filler}`)}</title></line>`);
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      parts.push(`<text class="gmem-adal-role" x="${mx}" y="${my}">${esc(f.role)}</text>`);
+      parts.push(`<line class="gmem-adal-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${esc(`${f.entity} —${f.role}→ ${f.filler}`)}</title></line>`);
     }
-    for (const [name, p] of fillers) {
-      parts.push(`<g class="gmem-adal-node filler" data-name="${esc(name)}"><circle cx="${p.x}" cy="${p.y}" r="7"/><text x="${p.x}" y="${p.y - 13}">${esc(name.length > 26 ? name.slice(0, 25) + "…" : name)}</text></g>`);
+    for (const [name, p2] of fillers) {
+      const roles = facts.filter((f) => f.filler === name).map((f) => f.role).join(", ");
+      parts.push(`<g class="gmem-adal-node filler" data-name="${esc(name)}"><circle cx="${p2.x}" cy="${p2.y}" r="4.5"><title>${esc(`${name} (${roles})`)}</title></circle><text x="${p2.x}" y="${p2.y - 9}">${esc(name.length > 24 ? name.slice(0, 23) + "…" : name)}</text></g>`);
     }
-    for (const [name, p] of epos) {
-      parts.push(`<g class="gmem-adal-node entity" data-name="${esc(name)}"><circle cx="${p.x}" cy="${p.y}" r="12"/><text x="${p.x}" y="${p.y - 19}">${esc(name)}</text></g>`);
+    for (const [name, p2] of epos) {
+      parts.push(`<g class="gmem-adal-node entity" data-name="${esc(name)}"><circle cx="${p2.x}" cy="${p2.y}" r="8"/><text x="${p2.x}" y="${p2.y - 14}">${esc(name)}</text></g>`);
     }
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = parts.join("");
 
-    // Pan + zoom on the viewBox; highlight on search.
+    // Pan + zoom on the viewBox; highlight on search (name OR role).
     let vb = { x: 0, y: 0, w: W, h: H };
     const applyVb = (): void => svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
     svg.addEventListener("wheel", (ev) => {
       ev.preventDefault();
       const scale = ev.deltaY > 0 ? 1.12 : 1 / 1.12;
-      const nw = Math.min(W * 3, Math.max(W * 0.15, vb.w * scale));
+      const nw = Math.min(W * 3, Math.max(W * 0.12, vb.w * scale));
       const nh = nw * (H / W);
       const rect = svg.getBoundingClientRect();
       const px = vb.x + ((ev.clientX - rect.left) / rect.width) * vb.w;
@@ -443,14 +491,17 @@ export function initMemory(host: MemoryHost): MemoryPanel {
 
     search.oninput = () => {
       const q = search.value.trim().toLowerCase();
+      const roleHit = new Set(facts.filter((f) => q && f.role.toLowerCase().includes(q)).map((f) => f.filler));
       svg.querySelectorAll<SVGGElement>(".gmem-adal-node").forEach((n) => {
-        n.classList.toggle("hit", !!q && (n.dataset.name ?? "").toLowerCase().includes(q));
-        n.classList.toggle("dim", !!q && !(n.dataset.name ?? "").toLowerCase().includes(q));
+        const name = (n.dataset.name ?? "").toLowerCase();
+        const hit = !!q && (name.includes(q) || roleHit.has(n.dataset.name ?? ""));
+        n.classList.toggle("hit", hit);
+        n.classList.toggle("dim", !!q && !hit);
       });
     };
   }
 
-  // ── Glyphh — the full semantic space, three.js ─────────────────────────────
+  // ── Glyphh  // ── Glyphh — the full semantic space, three.js ─────────────────────────────
 
   async function renderGlyphh(pane: HTMLElement, search: HTMLInputElement, refresh: () => void): Promise<void> {
     pane.innerHTML = `
@@ -509,7 +560,8 @@ export function initMemory(host: MemoryHost): MemoryPanel {
     scene.add(key);
 
     // The cortex glyphs — one instanced cube per node.
-    const cube = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+    // TINY — the space reads as a starfield of glyphs, not a pile of boxes.
+    const cube = new THREE.BoxGeometry(0.45, 0.45, 0.45);
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.25 });
     const mesh = new THREE.InstancedMesh(cube, mat, g.nodes.length);
     const m4 = new THREE.Matrix4();
@@ -620,7 +672,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
     const baseScale = new Map<number, number>();
     const restyle = (hitIdx: Map<number, number>): void => {
       g.nodes.forEach((n, i) => {
-        const s = hitIdx.has(i) ? 1.9 + (hitIdx.get(i) ?? 0) : (hitIdx.size ? 0.55 : 1);
+        const s = hitIdx.has(i) ? 2.6 + (hitIdx.get(i) ?? 0) * 2 : (hitIdx.size ? 0.5 : 1);
         if (baseScale.get(i) === s) return;
         baseScale.set(i, s);
         m4.makeTranslation(pts[i]![0], pts[i]![1], pts[i]![2]);

@@ -17450,6 +17450,21 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   border: 1px solid var(--border-2);
 }
 
+.gmem-secs { display: flex; flex-direction: column; gap: 8px; }
+.gmem-sec { border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
+.gmem-sec > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 9px 12px;
+  font-size: 12px; font-weight: 700; color: var(--text-2);
+}
+.gmem-sec > summary::-webkit-details-marker { display: none; }
+.gmem-sec > summary::before { content: "▸"; color: var(--text-3); font-size: 10px; }
+.gmem-sec[open] > summary::before { content: "▾"; }
+.gmem-sec-count { font-style: normal; font-family: var(--mono, monospace); font-size: 10.5px; color: var(--accent); }
+.gmem-sec .gmem-list { padding: 0 10px 10px; }
+.gmem-sec .office-pager { padding: 0 10px 10px; }
+
 .gmem-sec-title { font-size: 12px; font-weight: 700; color: var(--text-2); margin: 6px 0 8px; display: flex; gap: 10px; align-items: baseline; }
 .gmem-window { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
 .gmem-turn {
@@ -17464,10 +17479,11 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmem-adal { position: absolute; inset: 0; }
 .gmem-adal-svg { width: 100%; height: 100%; cursor: grab; }
 .gmem-adal-svg:active { cursor: grabbing; }
-.gmem-adal-edge { stroke: color-mix(in srgb, var(--accent) 35%, transparent); stroke-width: 1.2; }
+.gmem-adal-edge { stroke: color-mix(in srgb, var(--accent) 28%, transparent); stroke-width: 1; }
 .gmem-adal-role { font-size: 10px; fill: var(--text-3); text-anchor: middle; pointer-events: none; }
-.gmem-adal-node text { font-size: 12px; fill: var(--text-2); text-anchor: middle; }
+.gmem-adal-node text { font-size: 10.5px; fill: var(--text-2); text-anchor: middle; }
 .gmem-adal-node.entity circle { fill: var(--accent); }
+.gmem-adal-node.entity text { font-size: 12px; }
 .gmem-adal-node.entity text { fill: var(--text); font-weight: 650; }
 .gmem-adal-node.filler circle { fill: var(--surface); stroke: var(--border-2); stroke-width: 1.5; }
 .gmem-adal-node.hit circle { stroke: #ec4899; stroke-width: 3; }
