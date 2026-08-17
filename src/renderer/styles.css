@@ -3557,7 +3557,7 @@ body[data-session-space="chat"] #code-mode-wrap { display: none; }
 }
 .code-connect-card .ccx-btn:disabled { opacity: 0.75; cursor: default; }
 .code-connect-card[data-status="connected"] .ccx-btn { background: var(--active-bg); color: var(--text); }
-.code-connect-card[data-status="failed"] .ccx-sub { color: #e5484d; }
+.code-connect-card[data-status="failed"] .ccx-sub { color: var(--danger); }
 
 /* the + menu's folder actions belong to the folder-bearing spaces only */
 body[data-session-space="chat"] .plus-folder-only { display: none !important; }
@@ -4605,7 +4605,7 @@ ol.docs-list li::before {
 .yo-modal-btn-confirm { background: var(--accent); color: #fff; border-color: var(--accent); }
 .yo-modal-btn-confirm:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .yo-modal-btn-confirm:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 2px; }
-.yo-modal-btn-danger { background: #e5484d; border-color: #e5484d; }
+.yo-modal-btn-danger { background: #e5484d; border-color: var(--danger); }
 .yo-modal-btn-danger:hover { background: #d93a3f; border-color: #d93a3f; }
 
 /* ── Settings modal (A1) — the two-column settings UI in a centered overlay
@@ -8054,8 +8054,8 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   transition: transform 0.12s;
 }
 .files-rail-navhead.open .files-rail-navchevron { transform: rotate(180deg); }
-.files-rail-navdanger { color: #d5635b; }
-.files-rail-navdanger svg { color: #d5635b; }
+.files-rail-navdanger { color: var(--danger); }
+.files-rail-navdanger svg { color: var(--danger); }
 .files-rail-navdanger:hover { background: rgba(213, 99, 91, 0.12); }
 .files-rail-settings-menu {
   display: flex;
@@ -8102,11 +8102,11 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   margin: 4px 6px;
   background: var(--border);
 }
-.files-rail-ctx-danger { color: #d5635b; }
+.files-rail-ctx-danger { color: var(--danger); }
 .files-rail-ctx-danger:hover { background: rgba(213, 99, 91, 0.12) !important; }
 .confirm-danger-btn {
   background: #d5635b;
-  border-color: #d5635b;
+  border-color: var(--danger);
   color: #fff;
 }
 .confirm-danger-btn:hover { background: #c4514a; border-color: #c4514a; }
@@ -10838,7 +10838,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   color: var(--text-2);
 }
 .capture-warning-body p { margin: 0; }
-.capture-warning-body strong { color: #e53935; }
+.capture-warning-body strong { color: var(--danger); }
 .capture-warning-actions {
   display: flex;
   justify-content: flex-end;
@@ -10861,7 +10861,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .capture-warning-cancel:hover { background: var(--hover); color: var(--text); }
 .capture-warning-confirm {
   background: #e53935;
-  border-color: #e53935;
+  border-color: var(--danger);
   color: #fff;
 }
 .capture-warning-confirm:hover { background: #c62828; border-color: #c62828; }
@@ -13139,7 +13139,7 @@ select:focus {
 /* Kebab items lead with an icon (SessionHeader: IcRename / IcPin / IcTrash). */
 .session-head-menu .code-menu-item { display: flex; align-items: center; gap: 8px; }
 .session-head-menu .code-menu-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-3); }
-.session-head-menu .code-menu-item.danger svg { color: #e5484d; }
+.session-head-menu .code-menu-item.danger svg { color: var(--danger); }
 .session-head-kebab { -webkit-app-region: no-drag; }
 /* New-chat / landing screen: the header STAYS — the code menu (history / +
    new / session kebab / view toggles) lives in the top-right and must be
@@ -13235,7 +13235,7 @@ select:focus {
 /* "+N -M" diff badge on edit breadcrumbs. */
 .code-diff-badge { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; }
 .code-diff-badge .diff-add { color: #3fb950; }
-.code-diff-badge .diff-del { color: #f85149; }
+.code-diff-badge .diff-del { color: var(--danger); }
 
 /* Markdown rhythm inside agent transcript text. */
 .code-agent-text { white-space: normal; }
@@ -13292,7 +13292,7 @@ select:focus {
   white-space: nowrap;
 }
 .code-run-card.failed { border-color: rgba(248, 81, 73, 0.4); }
-.code-run-card.failed .crc-cmd { color: #f85149; }
+.code-run-card.failed .crc-cmd { color: var(--danger); }
 
 /* Composer attachments — chips queue above the input and ride the send. */
 .code-attach-chips {
@@ -15657,7 +15657,7 @@ body.code-dragging webview { pointer-events: none !important; }
 
 .code-menu-item:hover { background: var(--hover); }
 
-.code-menu-item.danger { color: #e5484d; }
+.code-menu-item.danger { color: var(--danger); }
 
 .code-menu-item.danger:hover { background: rgba(229, 72, 77, 0.1); }
 
