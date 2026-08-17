@@ -42,6 +42,12 @@ export function registerAccountIpc(): void {
   ipcMain.handle("billing-status", () => getClient().billing.status());
   ipcMain.handle("billing-credits", () => getClient().billing.credits());
   ipcMain.handle("billing-invoices", () => getClient().billing.invoices());
+
+  // ── voice settings (STT input + TTS output + voice) ───────────────────────
+  ipcMain.handle("catalog-models", () => getClient().catalog.models());
+  ipcMain.handle("catalog-voices", (_e, provider: string) => getClient().catalog.voices(provider));
+  ipcMain.handle("voice-settings-get", () => getClient().profile.voiceSettings());
+  ipcMain.handle("voice-settings-set", (_e, patch: unknown) => getClient().profile.setVoiceSettings(patch as never));
   ipcMain.handle("billing-autotopup-get", () => getClient().billing.autotopup());
 
   // ── Billing (writes + Stripe hand-offs) ─────────────────────────────────

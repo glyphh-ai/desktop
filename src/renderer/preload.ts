@@ -245,6 +245,14 @@ export interface MarketplaceAppDetail extends MarketplaceApp {
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
 
 /** One model slot a loop declares, resolved for this caller — what a picker renders. */
+interface VoiceSettingsView {
+  inputModel: string | null;
+  outputModel: string | null;
+  voiceId: string | null;
+  mode: "off" | "push-to-talk" | "continuous";
+  autoplay: boolean;
+}
+
 interface LoopRoleView {
   name: string;
   label: string;
@@ -586,6 +594,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   billingStatus: () => ipcRenderer.invoke("billing-status") as Promise<AccountSubscription>,
   billingCredits: () => ipcRenderer.invoke("billing-credits") as Promise<AccountCredits>,
   billingInvoices: () => ipcRenderer.invoke("billing-invoices") as Promise<AccountInvoice[]>,
+  // ── voice settings ──
+  catalogModels: () => ipcRenderer.invoke("catalog-models") as Promise<Array<{ id: string; name: string; providerSlug: string; modality: string; active: boolean }>>,
+  catalogVoices: (provider: string) => ipcRenderer.invoke("catalog-voices", provider) as Promise<Array<{ id: string; name: string; providerSlug: string; previewUrl?: string; category?: string }>>,
+  voiceSettingsGet: () => ipcRenderer.invoke("voice-settings-get") as Promise<VoiceSettingsView>,
+  voiceSettingsSet: (patch: Partial<VoiceSettingsView>) => ipcRenderer.invoke("voice-settings-set", patch) as Promise<VoiceSettingsView>,
   billingAutotopupGet: () => ipcRenderer.invoke("billing-autotopup-get") as Promise<AccountAutotopup>,
   billingAutotopupSet: (input: AccountAutotopup) =>
     ipcRenderer.invoke("billing-autotopup-set", input) as Promise<{ ok: boolean; config?: AccountAutotopup; error?: string }>,

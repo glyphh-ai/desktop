@@ -25,6 +25,7 @@ import { loadRuntime } from "./settings-runtime.js";
 import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadAdminModels, loadAdminPlans, loadAdminUsage, loadAdminOrgs } from "./settings-admin.js";
+import { loadVoiceSettings } from "./settings-voice.js";
 
 const overlay = getHelpOverlay();
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
@@ -423,6 +424,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "apikeys") void loadApiKeys();
+  else if (sub === "voice") void loadVoiceSettings();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
   else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
