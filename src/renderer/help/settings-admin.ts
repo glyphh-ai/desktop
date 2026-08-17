@@ -501,7 +501,7 @@ async function addProviderKeyFromForm(): Promise<void> {
 
 /** The two credit-rate inputs are per-unit; the unit depends on the model's modality.
  *  Relabel them so a super-admin pricing an image model sees "per image", not "per token". */
-const RATE_UNIT_TEXT: Record<string, string> = { mtok: "1M tokens", image: "image", second: "second", mchar: "1M chars", minute: "minute" };
+const RATE_UNIT_TEXT: Record<string, string> = { mtok: "1M tokens", image: "image", second: "second", mchar: "1M chars", kchar: "1K chars", minute: "minute", hour: "hour", generation: "generation" };
 function relabelModelRates(unit: string): void {
   const t = RATE_UNIT_TEXT[unit] ?? "unit";
   const inl = $("pa-model-in-label"); if (inl) inl.textContent = `Input credits / ${t}`;
