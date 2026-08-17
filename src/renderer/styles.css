@@ -17148,3 +17148,10 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gsheet-thumbbox table { border-collapse: collapse; font-size: 7px; width: 100%; }
 .gsheet-thumbbox th { background: #eceef2; color: #333; font-weight: 600; text-align: left; }
 .gsheet-thumbbox th, .gsheet-thumbbox td { border: 1px solid #d5d7dd; padding: 2px 4px; color: #222; overflow: hidden; white-space: nowrap; max-width: 40px; text-overflow: ellipsis; }
+
+/* Sheets header: the sort affordance is VISIBLE — ↕ on every column, accent
+   ▲/▼ on the sorted one. */
+.gsheet-sort { margin-left: 7px; font-size: 9px; color: var(--text-3); opacity: 0.45; }
+.gsheet-table thead th:hover .gsheet-sort { opacity: 0.9; }
+.gsheet-sort.active { color: var(--accent); opacity: 1; }
+.gsheet-table thead th .gsheet-cell-input { min-width: 80px; }

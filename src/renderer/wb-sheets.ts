@@ -24,6 +24,9 @@ export interface GSheetSlotState {
   tab?: number;
   rowPage?: number;
   page?: number;
+  /** Sorted column + direction (view state; the sort itself persists in rows). */
+  sortCol?: number;
+  sortDesc?: boolean;
 }
 
 export interface GSheetHost {
@@ -335,35 +338,133 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
       tabs.appendChild(t);
     });
 
-    // Header (sort repaints rows in place — no panel refresh, no focus loss).
+    // ── Header: visible sort state, double-click rename, right-click ops. ──
     const thead = body.querySelector<HTMLElement>("thead")!;
-    const headRow = document.createElement("tr");
-    const corner = document.createElement("th");
-    corner.className = "gsheet-corner";
-    headRow.appendChild(corner);
-    sheet.columns.forEach((c, i) => {
-      const th = document.createElement("th");
-      th.className = "gsheet-col";
-      th.title = c.aiPrompt ? `AI column — ${c.aiPrompt}\n(click to sort)` : `${colLetter(i)} — click to sort`;
-      th.innerHTML = `<span class="gsheet-col-name"></span>${c.aiPrompt ? `<span class="gsheet-ai">✦</span>` : ""}`;
-      (th.querySelector(".gsheet-col-name") as HTMLElement).textContent = c.name;
-      th.addEventListener("click", () => {
-        const val = (row: SheetCell[]): string | number => {
-          const v = cellValue(row[i] ?? null);
-          return typeof v === "number" ? v : String(v ?? "").toLowerCase();
-        };
-        const asc = [...sheet.rows].sort((x, y) => {
-          const vx = val(x), vy = val(y);
-          return typeof vx === "number" && typeof vy === "number" ? vx - vy : String(vx).localeCompare(String(vy));
-        });
-        const wasAsc = JSON.stringify(asc) === JSON.stringify(sheet.rows);
-        sheet.rows = wasAsc ? asc.reverse() : asc;
+
+    const applySort = (i: number, desc: boolean): void => {
+      slot.sortCol = i;
+      slot.sortDesc = desc;
+      const val = (row: SheetCell[]): string | number => {
+        const v = cellValue(row[i] ?? null);
+        return typeof v === "number" ? v : String(v ?? "").toLowerCase();
+      };
+      sheet.rows.sort((x, y) => {
+        const vx = val(x), vy = val(y);
+        const cmp = typeof vx === "number" && typeof vy === "number" ? vx - vy : String(vx).localeCompare(String(vy));
+        return desc ? -cmp : cmp;
+      });
+      paintHeader();
+      paintRows();
+      scheduleSave();
+    };
+
+    const addColumn = (at: number): void => {
+      sheet.columns.splice(at, 0, { name: `Column ${sheet.columns.length + 1}` });
+      sheet.rows.forEach((r) => { if (r.length >= at) r.splice(at, 0, null); });
+      slot.sortCol = undefined;
+      paintHeader();
+      paintRows();
+      scheduleSave();
+    };
+
+    const removeColumn = (i: number): void => {
+      void (async () => {
+        if (sheet.columns.length <= 1) {
+          void host.confirm({ title: "Can't delete the last column", body: "A sheet needs at least one column.", confirmLabel: "OK" });
+          return;
+        }
+        const ok = await host.confirm({ title: `Delete column “${sheet.columns[i]!.name}”?`, body: "Its values are removed from every row.", confirmLabel: "Delete", danger: true });
+        if (!ok) return;
+        sheet.columns.splice(i, 1);
+        sheet.rows.forEach((r) => { if (r.length > i) r.splice(i, 1); });
+        slot.sortCol = undefined;
+        paintHeader();
         paintRows();
         scheduleSave();
+      })();
+    };
+
+    const renameColumn = (i: number, th: HTMLElement): void => {
+      const nameEl = th.querySelector<HTMLElement>(".gsheet-col-name");
+      if (!nameEl || th.querySelector("input")) return;
+      const input = document.createElement("input");
+      input.className = "gsheet-cell-input";
+      input.value = sheet.columns[i]!.name;
+      input.spellcheck = false;
+      nameEl.replaceWith(input);
+      input.focus(); input.select();
+      let done = false;
+      const commit = (write: boolean): void => {
+        if (done) return;
+        done = true;
+        const next = input.value.trim();
+        if (write && next) sheet.columns[i]!.name = next;
+        paintHeader();
+        if (write && next) scheduleSave();
+      };
+      input.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); commit(true); }
+        else if (e.key === "Escape") commit(false);
       });
-      headRow.appendChild(th);
-    });
-    thead.appendChild(headRow);
+      input.addEventListener("blur", () => commit(true));
+      input.addEventListener("click", (e) => e.stopPropagation());
+      input.addEventListener("mousedown", (e) => e.stopPropagation());
+    };
+
+    function paintHeader(): void {
+      thead.textContent = "";
+      const headRow = document.createElement("tr");
+      const corner = document.createElement("th");
+      corner.className = "gsheet-corner";
+      headRow.appendChild(corner);
+      sheet.columns.forEach((c, i) => {
+        const th = document.createElement("th");
+        th.className = "gsheet-col";
+        const sorted = slot.sortCol === i;
+        th.title = `${c.aiPrompt ? `AI column — ${c.aiPrompt}\n` : ""}${colLetter(i)} — click to sort, double-click to rename, right-click for more`;
+        th.innerHTML = `<span class="gsheet-col-name"></span>${c.aiPrompt ? `<span class="gsheet-ai">✦</span>` : ""}<span class="gsheet-sort${sorted ? " active" : ""}">${sorted ? (slot.sortDesc ? "▼" : "▲") : "↕"}</span>`;
+        (th.querySelector(".gsheet-col-name") as HTMLElement).textContent = c.name;
+        th.addEventListener("click", () => applySort(i, slot.sortCol === i ? !slot.sortDesc : false));
+        th.addEventListener("dblclick", (e) => { e.stopPropagation(); renameColumn(i, th); });
+        th.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          popMenu(e.clientX, e.clientY, [
+            { label: "Rename column…", fn: () => renameColumn(i, th) },
+            { label: "Add column left", fn: () => addColumn(i) },
+            { label: "Add column right", fn: () => addColumn(i + 1) },
+            { label: "Sort A → Z", fn: () => applySort(i, false) },
+            { label: "Sort Z → A", fn: () => applySort(i, true) },
+            { label: "Delete column…", danger: true, fn: () => removeColumn(i) },
+          ]);
+        });
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+    }
+    paintHeader();
+
+    // ── Row ops (right-click any cell or the row number). ──
+    const insertRow = (at: number): void => {
+      sheet.rows.splice(at, 0, sheet.columns.map(() => null));
+      paintRows();
+      scheduleSave();
+    };
+    const deleteRow = (i: number): void => {
+      sheet.rows.splice(i, 1);
+      paintRows();
+      scheduleSave();
+    };
+    const rowMenu = (e: MouseEvent, i: number): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      popMenu(e.clientX, e.clientY, [
+        { label: "Add row above", fn: () => insertRow(i) },
+        { label: "Add row below", fn: () => insertRow(i + 1) },
+        { label: "Delete row", danger: true, fn: () => deleteRow(i) },
+      ]);
+    };
 
     const tbody = body.querySelector<HTMLElement>("tbody")!;
     const foot = body.querySelector<HTMLElement>(".gsheet-foot")!;
@@ -438,6 +539,7 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
         const num = document.createElement("td");
         num.className = "gsheet-rownum";
         num.textContent = String(i + 1);
+        num.addEventListener("contextmenu", (e) => rowMenu(e, i));
         tr.appendChild(num);
         sheet.columns.forEach((c, ci) => {
           const td = document.createElement("td");
@@ -447,9 +549,11 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
           td.addEventListener("mousedown", (ev) => {
             // mousedown (not click): the previous editor's blur-commit runs
             // without a repaint, so THIS cell is still there to receive it.
+            if (ev.button !== 0) return;
             ev.preventDefault();
             openEditor(i, ci);
           });
+          td.addEventListener("contextmenu", (e) => rowMenu(e, i));
           tr.appendChild(td);
         });
         tbody.appendChild(tr);
