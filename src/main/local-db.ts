@@ -181,6 +181,14 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Enriched retrieval paragraphs: thin catalog descriptions embed badly, so
+    // a cheap back-path model writes a "when you'd reach for this" paragraph
+    // per tool and THAT is what gets embedded. Tied to the row's content hash —
+    // a changed def re-enriches on the next catalog refresh.
+    version: 7,
+    sql: `ALTER TABLE tool_vectors ADD COLUMN paragraph TEXT;`,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

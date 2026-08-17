@@ -225,6 +225,35 @@ async function ensureCloudPod(chatId: string, source: RunSource): Promise<PodTar
   return { url: live.runtimeUrl, token: runtimeToken, cloud: true };
 }
 
+/**
+ * Build + deploy a Glyphh app IN THE CLOUD POD — the remote-dev counterpart of
+ * `deployAppFromWorkdir`. The pod runs `npm install && npm run build` in the SAME
+ * workspace the session's turns use, then uploads + deploys via the control plane
+ * (POST {runtimeUrl}/apps/deploy). So a user with no local machine can still ship —
+ * and, since deploy/promote are server-side, push to production.
+ */
+export async function deployAppFromCloud(
+  slug: string, chatId: string, source: RunSource,
+): Promise<{ ok: boolean; result?: string; error?: string }> {
+  const pod = await ensureCloudPod(chatId, source);
+  // Key the pod's workspace to the SAME session its runs resolve (sessionId when
+  // bound, else the client thread id) so the build sees the app's source.
+  const sessionId = loadSessions().chats.find((c) => c.id === chatId)?.runtime?.sessionId;
+  const res = await fetch(`${pod.url.replace(/\/+$/, "")}/apps/deploy`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${pod.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ slug, ...(sessionId ? { sessionId } : { threadId: chatId }), distDir: "dist" }),
+  });
+  const json = (await res.json().catch(() => null)) as
+    | { ok?: boolean; result?: string; error?: string; stage?: string }
+    | null;
+  if (!res.ok || !json?.ok) {
+    const detail = json?.error ? `${json.stage ? `${json.stage}: ` : ""}${json.error}` : `cloud deploy failed (${res.status})`;
+    return { ok: false, error: detail };
+  }
+  return { ok: true, result: json.result };
+}
+
 // ── The run ────────────────────────────────────────────────────────────────
 
 /**

@@ -62,7 +62,7 @@ import type { DesignSystem } from "@glyphh/sdk";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
-import { indexToolVectors, rankConnectorTools } from "./tool-vectors";
+import { indexToolVectors, rankConnectorTools, enrichToolVectors, noteToolUsed } from "./tool-vectors";
 import { updateAppFromWorkdir } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
@@ -258,7 +258,9 @@ export async function connectorWireTools(): Promise<ConnectorWireDef[]> {
   // Encode the catalog for per-ask tool selection (incremental — only new or
   // changed descriptions embed). Fire-and-forget: the first run after a
   // catalog change may select lexically while this catches up.
-  void indexToolVectors(defs).catch(() => {});
+  // Index first (embeds raw descriptions), then the back-path enrichment pass
+  // rewrites thin ones as retrieval paragraphs and re-embeds. Both best-effort.
+  void indexToolVectors(defs).then(() => enrichToolVectors(defs)).catch(() => {});
   return defs;
 }
 
@@ -392,7 +394,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "find_tools",
-    doc: "find_tools(query, k?) — search ALL connected-account tools AND every desktop builtin (including ones not loaded for this session's space, e.g. rpa_*/scrape_page in a Code session) by meaning. When you need a tool that isn't wired, find it here, then run it with call_tool. Read-only.",
+    doc: "find_tools(query, k?) — search ALL connected-account tools AND every desktop builtin (including ones not loaded for this session's space, e.g. rpa_*/scrape_page in a Code session) by meaning. Phrase the TASK, not a keyword — 'get a signed PDF back from the customer' beats 'pdf'. Families you can find tools in: connectors (email, calendar, CRM, payments, files, social, …) · office (slides/docs/sheets/drive) · design systems · dev (files, git, terminal, apps, deploy) · browser/rpa · memory · workspace. When you need a tool that isn't wired, find it here, then run it with call_tool. Read-only.",
     action: (a) => ({ kind: "read", title: `Find tools "${String(a.query ?? "").slice(0, 60)}"` }),
     run: async (a) => {
       const query = String(a.query ?? "").trim();
@@ -408,7 +410,9 @@ const TOOLS: ToolDef[] = [
       const hits = (await rankConnectorTools(query, [...lastWireDefs, ...builtinDefs]))
         .filter((r) => r.score > 0).slice(0, k);
       if (!hits.length) return "(no connected-account or builtin tools match — the account may not be connected)";
-      return cap(hits.map((r) => `${r.def.name} — ${r.def.description}`).join("\n"));
+      // The enriched paragraph when one exists — it carries the when-to-use
+      // language the raw catalog description usually lacks.
+      return cap(hits.map((r) => `${r.def.name} — ${r.blurb ?? r.def.description}`).join("\n"));
     },
   },
   {
@@ -519,7 +523,10 @@ const TOOLS: ToolDef[] = [
     run: async (a) => {
       const inner = String(a.name ?? "");
       const wired = wireMap.get(inner);
-      if (wired) return cap(await callConnectorTool(wired.slug, wired.tool, (a.arguments ?? {}) as Record<string, unknown>));
+      if (wired) {
+        noteToolUsed(inner);
+        return cap(await callConnectorTool(wired.slug, wired.tool, (a.arguments ?? {}) as Record<string, unknown>));
+      }
       const builtin = TOOLS.find((t) => t.name === inner && t.name !== "call_tool" && t.name !== "find_tools");
       if (builtin) return builtin.run((a.arguments ?? {}) as Record<string, unknown>);
       return `ERROR: unknown tool "${inner}" — use find_tools to get the exact name`;
@@ -1784,7 +1791,10 @@ async function executeGlyphhToolInner(
   if (!tool) {
     // Not a builtin — a wired connector tool dispatches through yo-server.
     const wired = wireMap.get(call.name);
-    if (wired) return executeConnectorWire(wc, wired, call.arguments ?? {});
+    if (wired) {
+      noteToolUsed(call.name);
+      return executeConnectorWire(wc, wired, call.arguments ?? {});
+    }
     const wires = [...wireMap.keys()];
     const available = [...TOOLS.map((t) => t.name), ...wires.slice(0, 40)].join(", ");
     return {
