@@ -4240,6 +4240,24 @@ function paintAppsGrid(host: RailGridHost): void {
 
   list.appendChild(gdrive);
 
+  // DESIGN — the org's design systems, same fixed-tile treatment.
+  const gdesign = document.createElement("button");
+  gdesign.className = "app-rail-tile";
+  gdesign.type = "button";
+  gdesign.title = "Design — the org's design systems";
+  const dzIcon = document.createElement("div");
+  dzIcon.className = "tile-icon";
+  dzIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4"/></svg>`;
+  const dzName = document.createElement("div");
+  dzName.className = "tile-name";
+  dzName.textContent = "Design";
+  gdesign.append(dzIcon, dzName);
+  gdesign.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdesign");
+  });
+  list.appendChild(gdesign);
+
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
   host.page = ap.page;
   for (const a of ap.items) {
@@ -4643,6 +4661,7 @@ export function initCode(): void {
     else if (cmd.action === "gpoint") (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
     else if (cmd.action === "gdoc") (window as unknown as { __wbOpenGDoc?: (file?: string, title?: string) => void }).__wbOpenGDoc?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
     else if (cmd.action === "gsheet") (window as unknown as { __wbOpenGSheet?: (file?: string, title?: string) => void }).__wbOpenGSheet?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
+    else if (cmd.action === "gdesign") (window as unknown as { __wbOpenDesign?: (file?: string, title?: string) => void }).__wbOpenDesign?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
     else if (cmd.action === "popup" && (cmd as { url?: string }).url) (window as unknown as { __wbOpenPopup?: (u: string) => void }).__wbOpenPopup?.((cmd as { url?: string }).url!);
     else if (cmd.action === "open-many" && cmd.apps) {
       // A NAMED layout goes through the one true layout-open (the switcher's
