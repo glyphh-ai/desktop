@@ -347,6 +347,28 @@ export function buildContract(client, deps) {
       try { await client.designs.deleteAsset(file, assetId); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
+    memoryBrowse: async (threadId) => {
+      try { const r = await client.stator.browse(threadId || undefined); return { ok: true, ...r }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), facts: [], turns: [], window: [] }; }
+    },
+    memoryGraph: async (opts) => {
+      try { const r = await client.stator.graph(opts ?? {}); return { ok: true, ...r }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), nodes: [], coords: [], edges: [] }; }
+    },
+    memorySearch: async (query, topK) => {
+      try {
+        const r = await client.stator.recall({ query: String(query ?? ''), topK: topK || 12, threshold: 0.05 });
+        return { ok: true, recalled: r.recalled, directives: r.directives };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err), recalled: [], directives: [] }; }
+    },
+    memoryForget: async (input) => {
+      try { const r = await client.stator.forget(input); return { ok: true, deleted: r.deleted }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    memoryAmend: async (input) => {
+      try { const r = await client.stator.amend(input); return { ok: true, written: r.written }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
     gdriveList: async (q) => {
       try { const l = await client.officeDrive.list(q || undefined); return { ok: true, folders: l.folders, files: l.files }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), folders: [], files: [] }; }

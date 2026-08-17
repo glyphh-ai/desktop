@@ -4258,6 +4258,24 @@ function paintAppsGrid(host: RailGridHost): void {
   });
   list.appendChild(gdesign);
 
+  // MEMORY — the stator visualized, same fixed-tile treatment.
+  const gmemory = document.createElement("button");
+  gmemory.className = "app-rail-tile";
+  gmemory.type = "button";
+  gmemory.title = "Memory — your org's memory, visualized";
+  const gmIcon = document.createElement("div");
+  gmIcon.className = "tile-icon";
+  gmIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><path d="M12 2.5a5 5 0 0 0-5 5c-2 .5-3.5 2.2-3.5 4.4 0 1.7.9 3.1 2.2 3.9-.1.4-.2.8-.2 1.2a4 4 0 0 0 4 4c.9 0 1.8-.3 2.5-.9.7.6 1.6.9 2.5.9a4 4 0 0 0 4-4c0-.4-.1-.8-.2-1.2 1.3-.8 2.2-2.2 2.2-3.9 0-2.2-1.5-3.9-3.5-4.4a5 5 0 0 0-5-5z" style="fill:#5eead4"/><circle cx="9" cy="10" r="1.4" style="fill:#0f766e"/><circle cx="15" cy="9" r="1.4" style="fill:#0f766e"/><circle cx="12" cy="14.5" r="1.4" style="fill:#0f766e"/></svg>`;
+  const gmName = document.createElement("div");
+  gmName.className = "tile-name";
+  gmName.textContent = "Memory";
+  gmemory.append(gmIcon, gmName);
+  gmemory.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gmemory");
+  });
+  list.appendChild(gmemory);
+
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
   host.page = ap.page;
   for (const a of ap.items) {
