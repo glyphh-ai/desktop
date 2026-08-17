@@ -36,6 +36,7 @@ import { initGDrive, type GDrivePanel } from "./wb-drive.js";
 import { initGSheets, type GSheetPanel } from "./wb-sheets.js";
 import { initDesign, type DesignPanel, type DesignSlotState } from "./wb-design.js";
 import { initMemory, type MemoryPanel, type MemorySlotState } from "./wb-memory.js";
+import { initMedia, type MediaPanel, type MediaSlotState, type MediaView } from "./wb-media.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -83,7 +84,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "thread" | "section" | "app" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "thread" | "section" | "app" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -193,6 +194,9 @@ interface GDesignSlot extends DesignSlotState { view: "gdesign"; sticky?: boolea
 
 /** Memory — the stator visualized (wb-memory.ts). */
 interface GMemorySlot extends MemorySlotState { view: "gmemory"; sticky?: boolean }
+
+/** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
+interface GMediaSlot extends MediaSlotState { sticky?: boolean }
 /** Drive — folders + pointers over every Office file. */
 interface GDriveSlot {
   id: number; view: "gdrive";
@@ -225,7 +229,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot | GPointSlot | GDocSlot | GDriveSlot | GSheetSlot | GDesignSlot | GMemorySlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot | GPointSlot | GDocSlot | GDriveSlot | GSheetSlot | GDesignSlot | GMemorySlot | GMediaSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -261,6 +265,9 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   gsheet:   { title: "Sheets",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg>` },
   gdesign:  { title: "Design",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899;stroke:none"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4;stroke:none"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4;stroke:none"/></svg>` },
   gmemory:  { title: "Memory",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a5 5 0 0 0-5 5c-2 .5-3.5 2.2-3.5 4.4 0 1.7.9 3.1 2.2 3.9-.1.4-.2.8-.2 1.2a4 4 0 0 0 4 4c.9 0 1.8-.3 2.5-.9.7.6 1.6.9 2.5.9a4 4 0 0 0 4-4c0-.4-.1-.8-.2-1.2 1.3-.8 2.2-2.2 2.2-3.9 0-2.2-1.5-3.9-3.5-4.4a5 5 0 0 0-5-5z" style="fill:#5eead4;stroke:none"/><circle cx="9" cy="10" r="1.4" style="fill:#0f766e;stroke:none"/><circle cx="15" cy="9" r="1.4" style="fill:#0f766e;stroke:none"/><circle cx="12" cy="14.5" r="1.4" style="fill:#0f766e;stroke:none"/><path d="M9.9 10.9 11.3 13.4M14.2 10.2 12.7 13.3M10.4 10.2 13.7 9.4" style="stroke:#0f766e;stroke-width:1.1"/></svg>` },
+  gimage:   { title: "Image",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b;stroke:none"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff;stroke:none"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309;stroke:none"/></svg>` },
+  gvideo:   { title: "Video",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444;stroke:none"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff;stroke:none"/></svg>` },
+  gsound:   { title: "Sounds",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8;stroke:none"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
   gdrive:   { title: "Drive",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg>` },
   gdoc:     { title: "Docs",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg>` },
   gpoint:   { title: "Slides",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#8c3bf2;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>` },
@@ -737,7 +744,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "releases" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "releases" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory" || v === "gimage" || v === "gvideo" || v === "gsound") {
           slots.push(makeSlot(v));
         }
       }
@@ -870,7 +877,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound");
       return;
     }
     placeSlot(makeSlot(view));
@@ -937,7 +944,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound"): void;
     openPreviewHtml(html: string, label?: string): void;
     openPreviewUrl(url: string): void;
     openFileTab(node: { name: string; path: string }, content: string, mode?: "preview" | "code"): void;
@@ -1055,6 +1062,7 @@ async function init(): Promise<void> {
     if (view === "gsheet") return { id, view };
     if (view === "gdesign") return { id, view };
     if (view === "gmemory") return { id, view };
+    if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1682,6 +1690,9 @@ async function init(): Promise<void> {
     } else if (slot.view === "gmemory") {
       body.classList.add("ws-gmemory-body");
       void renderMemoryIntoSlot(body, slot, wrap);
+    } else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
+      body.classList.add("ws-gmedia-body");
+      void renderMediaIntoSlot(body, slot, wrap);
     }
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
@@ -1853,6 +1864,42 @@ async function init(): Promise<void> {
       placeSlot(makeSlot("gmemory") as GMemorySlot);
       return;
     }
+    renderRails();
+  };
+
+  // ── Media — Image / Video / Sounds (wb-media.ts) ──────────────────────────
+  let gmediaPanel: MediaPanel | null = null;
+  function gmediaPanelInstance(): MediaPanel {
+    if (!gmediaPanel) {
+      gmediaPanel = initMedia({
+        confirm: (o) => appConfirm(o),
+        icons: {
+          gimage: VIEW_META.gimage.icon,
+          gvideo: VIEW_META.gvideo.icon,
+          gsound: VIEW_META.gsound.icon,
+        },
+      });
+    }
+    return gmediaPanel;
+  }
+  function renderMediaIntoSlot(body: HTMLElement, slot: GMediaSlot, wrap: HTMLElement): Promise<void> {
+    return gmediaPanelInstance().renderIntoSlot(body, slot, wrap);
+  }
+  (window as unknown as { __wbOpenMedia?: (view: MediaView, assetId?: string) => void }).__wbOpenMedia = (view, assetId) => {
+    const land = (t: GMediaSlot): void => {
+      if (assetId) {
+        gmediaPanelInstance().invalidate();
+        t.assetId = assetId;
+      }
+    };
+    const slot = rails.flatMap((r) => r.slots).find((t) => t.view === view) as GMediaSlot | undefined;
+    if (!slot) {
+      const fresh = makeSlot(view) as GMediaSlot;
+      land(fresh);
+      placeSlot(fresh);
+      return;
+    }
+    land(slot);
     renderRails();
   };
 
@@ -2510,7 +2557,28 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "gmemory",
       };
-      const midBand = [glyphhTile, browserTile, slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      const gimageTile: EchoTile = {
+        name: VIEW_META.gimage.title,
+        slug: "gimage",
+        glyphSvg: VIEW_META.gimage.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
+        kind: "tool",
+        toolView: "gimage",
+      };
+      const gvideoTile: EchoTile = {
+        name: VIEW_META.gvideo.title,
+        slug: "gvideo",
+        glyphSvg: VIEW_META.gvideo.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
+        kind: "tool",
+        toolView: "gvideo",
+      };
+      const gsoundTile: EchoTile = {
+        name: VIEW_META.gsound.title,
+        slug: "gsound",
+        glyphSvg: VIEW_META.gsound.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
+        kind: "tool",
+        toolView: "gsound",
+      };
+      const midBand = [glyphhTile, browserTile, slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       buildWall([midBand]);
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
@@ -3704,7 +3772,7 @@ async function init(): Promise<void> {
             // The agent cell always mounts now: a docked agent was un-anchored above
             // so the layout owns it (layout wins), and `rail` hosts it as before.
             if (v === "coding") entry = openAgentCard();
-            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "releases" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory") {
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "releases" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory" || v === "gimage" || v === "gvideo" || v === "gsound") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
@@ -4056,6 +4124,9 @@ async function init(): Promise<void> {
         } else if (slot.view === "gmemory") {
           body.classList.add("ws-gmemory-body");
           void renderMemoryIntoSlot(body, slot, card);
+        } else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
+          body.classList.add("ws-gmedia-body");
+          void renderMediaIntoSlot(body, slot, card);
         }
     };
 
@@ -4178,7 +4249,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound"): TileEntry => {
       let entry = openList.find((x) => x.tile.toolView === view);
       if (!entry) {
         entry = entries.find((x) => x.tile.toolView === view)
@@ -7496,7 +7567,7 @@ async function init(): Promise<void> {
       // excluded like coding — Echo must never adopt the live transcript.)
       if (echoCtl && v !== "echo" && v !== "coding" && v !== "thread") {
         if (echoCtl.hasTool(v)) echoCtl.closeTool(v);
-        else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory");
+        else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound");
         moreMenu?.classList.add("hidden");
         return;
       }
@@ -7811,7 +7882,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "releases", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gmemory"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "releases", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gmemory", "gimage", "gvideo", "gsound"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -8034,8 +8105,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases", "tasks", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gmemory"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases", "tasks", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gmemory", "gimage", "gvideo", "gsound"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

@@ -27,7 +27,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openDesignPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openDesignPanel, openMediaPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { gsheetFileName, saveWorkbook } from "./office-sheets";
 import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell } from "../shared/sheets-engine";
 import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
@@ -58,6 +58,7 @@ async function statorCall(path: "recall" | "write", body: Record<string, unknown
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
 import { getClient, appCache } from "./glyphh-client";
 import { designFileName, extractSiteDesign, imagePalette } from "./design";
+import { uploadMediaFile, mediaFileUrl } from "./media-panel";
 import type { DesignSystem } from "@glyphh/sdk";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
@@ -1132,6 +1133,100 @@ const TOOLS: ToolDef[] = [
     action: (a) => ({ kind: "read", title: `Palette of ${String(a.path ?? "")}` }),
     run: async (a) => cap(JSON.stringify(await imagePalette(String(a.path ?? "")), null, 1)),
   },
+  // ── Glyphh IMAGE / VIDEO / SOUNDS: generation with ANY catalog media model,
+  //    metered in credits (the job is the charge; failure charges nothing).
+  //    Models ride the org's governed catalog — list_media_models shows what
+  //    this org may spend on. Outputs land in the org media library. ──
+  {
+    name: "list_media_models",
+    doc: "list_media_models() — the media models this org can generate with (id, modality image|video|speech|music|audio, rate unit). Pick from HERE; a model the org hasn't enabled will refuse.",
+    action: () => ({ kind: "read", title: "List media models" }),
+    run: async () => {
+      const models = await getClient().models.available();
+      const media = models.filter((m) => /image|video|speech|music|audio/.test(String((m as { modality?: string }).modality ?? "")));
+      if (!media.length) return "(no media models enabled for this org — an admin enables them in the catalog)";
+      return cap(JSON.stringify(media.map((m) => ({ id: m.id, modality: (m as { modality?: string }).modality })), null, 1));
+    },
+  },
+  {
+    name: "generate_image",
+    doc: 'generate_image(prompt, model?, size?, title?) — generate an image (costs credits; charged only on success). model defaults to the org\'s first image model; size like "1024x1024"|"1536x1024". Returns the asset id + credits charged. open_image(id) shows it.',
+    action: (a) => ({ kind: "network", title: `Generate image`, detail: String(a.prompt ?? "").slice(0, 200) }),
+    run: (a) => generateMedia("image", a),
+  },
+  {
+    name: "generate_video",
+    doc: 'generate_video(prompt, model?, seconds?, size?, image_url?, title?) — generate a video clip (costs credits — video is the expensive one; say the cost). size "16:9"|"9:16"|"1:1"; image_url drives image-to-video where the model supports it. Minutes-long wait is normal.',
+    action: (a) => ({ kind: "network", title: `Generate video`, detail: String(a.prompt ?? "").slice(0, 200) }),
+    run: (a) => generateMedia("video", a),
+  },
+  {
+    name: "generate_music",
+    doc: "generate_music(prompt, seconds?, model?, title?) — generate a music track from a text brief (genre, mood, instrumentation, tempo). Costs credits by the minute.",
+    action: (a) => ({ kind: "network", title: `Generate music`, detail: String(a.prompt ?? "").slice(0, 200) }),
+    run: (a) => generateMedia("music", a),
+  },
+  {
+    name: "generate_sound_effect",
+    doc: "generate_sound_effect(prompt, seconds?, title?) — generate a sound effect ('glass shattering on a marble floor', max ~22s). Costs credits per generation.",
+    action: (a) => ({ kind: "network", title: `Generate sound effect`, detail: String(a.prompt ?? "").slice(0, 200) }),
+    run: (a) => generateMedia("audio", a),
+  },
+  {
+    name: "speak",
+    doc: "speak(text, voice?, model?, title?) — text-to-speech into the Sounds library (costs credits by characters). voice is a provider voice id; omit for the stock narrator.",
+    action: (a) => ({ kind: "network", title: `Speak ${String(a.text ?? "").length} chars` }),
+    run: (a) => generateMedia("speech", { ...a, prompt: a.text }),
+  },
+  {
+    name: "upload_media",
+    doc: "upload_media(path, title?, kind?) — upload a local file (image/video/audio) into the org media library (presigned to R2). Returns the asset id.",
+    action: (a) => ({ kind: "read", title: `Upload ${String(a.path ?? "")}` }),
+    run: async (a) => {
+      const r = await uploadMediaFile(String(a.path ?? ""), {
+        ...(a.title ? { title: String(a.title) } : {}),
+        ...(a.kind ? { kind: a.kind as never } : {}),
+      });
+      return `uploaded ${r.id} ("${r.title}", ${r.kind}) — open_${r.kind === "image" ? "image" : r.kind === "video" ? "video" : "sounds"}("${r.id}") shows it`;
+    },
+  },
+  {
+    name: "list_media",
+    doc: "list_media(kind?, q?) — the org media library (kind image|video|audio|voice|avatar|recording|script; q searches titles + prompts). Returns id, title, status, duration/size.",
+    action: (a) => ({ kind: "read", title: `List media${a.kind ? ` (${String(a.kind)})` : ""}` }),
+    run: async (a) => {
+      const assets = await getClient().media.list(a.kind ? (String(a.kind) as never) : undefined, a.q ? String(a.q) : undefined);
+      if (!assets.length) return "(no media yet — generate_* or upload_media adds some)";
+      return cap(JSON.stringify(assets.slice(0, 60).map((x) => ({
+        id: x.id, kind: x.kind, title: x.title, status: x.status,
+        ...(x.durationMs ? { seconds: Math.round(x.durationMs / 1000) } : {}),
+      })), null, 1));
+    },
+  },
+  {
+    name: "read_media",
+    doc: "read_media(id) — one asset's full metadata (mime, dimensions, duration, generation prompt/model, cost trail).",
+    action: (a) => ({ kind: "read", title: `Read media ${String(a.id ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await getClient().media.get(String(a.id ?? "")), null, 1)),
+  },
+  {
+    name: "open_image",
+    doc: "open_image(id?) — open the Image panel; with an asset id it opens straight onto that image",
+    action: (a) => ({ kind: "command", title: a.id ? "Open image" : "Open the Image panel" }),
+    run: async (a) => { openMediaPanel("gimage", a.id ? String(a.id) : undefined); return "opened the Image panel"; },
+  },
+  {
+    name: "open_video",
+    doc: "open_video(id?) — open the Video panel; with an asset id it opens straight onto that clip",
+    action: (a) => ({ kind: "command", title: a.id ? "Open video" : "Open the Video panel" }),
+    run: async (a) => { openMediaPanel("gvideo", a.id ? String(a.id) : undefined); return "opened the Video panel"; },
+  },
+  {
+    name: "open_sounds",
+    doc: "open_sounds(id?) — open the Sounds panel (music, sound effects, speech); with an asset id it opens straight onto that track",
+    action: (a) => ({ kind: "command", title: a.id ? "Open sound" : "Open the Sounds panel" }),
+    run: async (a) => { openMediaPanel("gsound", a.id ? String(a.id) : undefined); return "opened the Sounds panel"; },
+  },
   {
     name: "open_design",
     doc: "open_design(name?) — open the Design panel beside this conversation; with a system name it opens straight into that studio",
@@ -1750,6 +1845,38 @@ async function runRolePacket(
     messages = messages.concat([{ role: "user", content: results }]);
   }
   return `ERROR: the ${role} packet stopped after ${ROLE_RUN_ROUNDS} tool rounds without finishing — split the task into smaller packets`;
+}
+
+/** One metered generation: resolve a model of the modality (explicit or the
+ *  org's first), run the job to a terminal state, answer with the asset id and
+ *  the credits actually charged. Failure comes back as the provider's reason. */
+async function generateMedia(
+  modality: "image" | "video" | "speech" | "music" | "audio",
+  a: Record<string, unknown>,
+): Promise<string> {
+  const prompt = String(a.prompt ?? "").trim();
+  if (!prompt) return "ERROR: prompt is required";
+  let model = a.model ? String(a.model) : "";
+  if (!model) {
+    const models = await getClient().models.available();
+    const first = models.find((m) => String((m as { modality?: string }).modality ?? "") === modality);
+    if (!first) return `ERROR: this org has no enabled ${modality} model — list_media_models shows what's available`;
+    model = first.id;
+  }
+  const options: Record<string, unknown> = {};
+  if (a.size) options.size = String(a.size);
+  if (a.seconds !== undefined) options.seconds = Number(a.seconds);
+  if (a.voice) options.voice = String(a.voice);
+  if (a.image_url) options.imageUrl = String(a.image_url);
+  const started = await getClient().media.generate({
+    model, prompt,
+    ...(a.title ? { title: String(a.title) } : {}),
+    options,
+  });
+  const job = await getClient().media.waitForJob(started.job.id);
+  if (job.status === "failed") return `ERROR: generation failed — ${job.error ?? "unknown"} (nothing was charged)`;
+  const open = started.outputKind === "image" ? "open_image" : started.outputKind === "video" ? "open_video" : "open_sounds";
+  return `generated ${job.assetId} with ${job.model} — ${job.creditsCharged.toFixed(2)} credits charged. ${open}("${job.assetId}") shows it in the panel.`;
 }
 
 /** Docs are MARKDOWN ONLY — structural HTML is how an agent breaks the paper.

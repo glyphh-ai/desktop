@@ -92,6 +92,7 @@ import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
 import { registerDesignIpc } from "./design";
 import { registerMemoryPanelIpc } from "./memory-panel";
+import { registerMediaPanelIpc } from "./media-panel";
 import { registerRunStreamIpc } from "./run-stream-ipc";
 import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
@@ -994,6 +995,7 @@ async function boot() {
   registerOfficeSheetsIpc();
   registerDesignIpc();
   registerMemoryPanelIpc();
+  registerMediaPanelIpc();
 
   // Run-stream observer bridge — the renderer watches runs executing on OTHER
   // surfaces (web/cloud) through the main-process SDK client.

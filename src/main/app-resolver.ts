@@ -67,6 +67,7 @@ type WbCmd =
   | { action: "gdoc"; file?: string; title?: string }
   | { action: "gsheet"; file?: string; title?: string }
   | { action: "gdesign"; file?: string; title?: string }
+  | { action: "gmedia"; view: "gimage" | "gvideo" | "gsound"; assetId?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -251,6 +252,11 @@ export function openGSheetPanel(file?: string, title?: string): void {
 /** Open the Design panel — with a file, straight into that system's studio. */
 export function openDesignPanel(file?: string, title?: string): void {
   sendWbCmd(file ? { action: "gdesign", file, title } : { action: "tool", tool: "gdesign" });
+}
+
+/** Open a media panel (Image / Video / Sounds) — optionally straight at an asset. */
+export function openMediaPanel(view: "gimage" | "gvideo" | "gsound", assetId?: string): void {
+  sendWbCmd(assetId ? { action: "gmedia", view, assetId } : { action: "tool", tool: view });
 }
 
 /** Open the tabbed Browser panel at a specific URL (the agent's preview

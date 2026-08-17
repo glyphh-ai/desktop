@@ -1,0 +1,291 @@
+/**
+ * wb-media.ts — ONE library panel, three apps: Glyphh IMAGE, VIDEO and SOUNDS.
+ * The same grid-and-viewer over the org media library, parameterized by kind:
+ * Image shows generations/uploads as thumbnails, Video shows clips (and screen
+ * recordings) with durations, Sounds shows music/effects/speech with players.
+ *
+ * Library → viewer. Playback URLs come from the main process (presigned when
+ * the store can, tmp-cached file:// when it can't) — no bearer in here. A
+ * generating job strip sits above the grid and polls itself to done.
+ */
+
+import { officePager, officePage } from "./wb-office-ui.js";
+
+export interface MediaAssetLite {
+  id: string;
+  kind: string;
+  title: string;
+  mime: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  status: string;
+  meta: Record<string, unknown>;
+  updatedAt: string;
+}
+interface MediaJobLite { id: string; status: string; model: string; assetId: string | null; error: string | null; creditsCharged: number }
+
+export type MediaView = "gimage" | "gvideo" | "gsound";
+
+export interface MediaSlotState {
+  id: number;
+  view: MediaView;
+  assetId?: string;
+  page?: number;
+}
+
+export interface MediaHost {
+  confirm: (opts: { title: string; body?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
+  icons: Record<MediaView, string>;
+}
+
+const api = () => (window as unknown as { glyphh?: {
+  mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: MediaAssetLite[]; error?: string }>;
+  mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
+  mediaDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  mediaJob?: (id: string) => Promise<{ ok: boolean; job?: MediaJobLite; error?: string }>;
+  mediaUploadPick?: (kind?: string) => Promise<{ ok: boolean; id?: string; title?: string; error?: string }>;
+} }).glyphh ?? {};
+
+/** What each view shows and says. */
+const VIEWS: Record<MediaView, { title: string; kinds: string[]; empty: string; searchPh: string }> = {
+  gimage: { title: "Image", kinds: ["image", "avatar"], empty: 'No images yet — ask Glyphh: "generate an image of…", or Upload.', searchPh: "Search images…" },
+  gvideo: { title: "Video", kinds: ["video", "recording"], empty: 'No video yet — ask Glyphh: "make a video of…", or Upload.', searchPh: "Search video…" },
+  gsound: { title: "Sounds", kinds: ["audio", "voice"], empty: 'No sounds yet — ask Glyphh for music, a sound effect, or narration.', searchPh: "Search sounds…" },
+};
+
+const urlCache = new Map<string, string>();
+async function assetUrl(id: string): Promise<string | null> {
+  const hit = urlCache.get(id);
+  if (hit) return hit;
+  const res = await api().mediaUrl?.(id);
+  if (!res?.ok || !res.url) return null;
+  urlCache.set(id, res.url);
+  return res.url;
+}
+
+const fmtDur = (ms: number | null): string => {
+  if (!ms) return "";
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+const fmtSize = (b: number): string => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1e3)} KB`);
+
+export interface MediaPanel {
+  renderIntoSlot: (body: HTMLElement, slot: MediaSlotState, wrap: HTMLElement) => Promise<void>;
+  invalidate: () => void;
+}
+
+export function initMedia(host: MediaHost): MediaPanel {
+  async function renderIntoSlot(body: HTMLElement, slot: MediaSlotState, wrap: HTMLElement): Promise<void> {
+    try {
+      await renderInner(body, slot, wrap);
+    } catch (err) {
+      console.warn("[gmedia] render failed:", err);
+      if (body.isConnected) {
+        body.innerHTML = `<div class="gdoc-empty">Media hit an error rendering.<br><code class="gpoint-err"></code></div>`;
+        const code = body.querySelector(".gpoint-err");
+        if (code) code.textContent = err instanceof Error ? err.message : String(err);
+      }
+    }
+  }
+
+  async function renderInner(body: HTMLElement, slot: MediaSlotState, wrap: HTMLElement): Promise<void> {
+    body.classList.add("ws-gmedia-body");
+    const view = VIEWS[slot.view] ?? VIEWS.gimage;
+    const titleEl = wrap.querySelector(".ws-rail-slot-header .title");
+    if (titleEl) titleEl.textContent = view.title;
+    const refresh = (): void => { if (body.isConnected) void renderIntoSlot(body, slot, wrap); };
+    if (slot.assetId) { await renderViewer(body, slot, refresh); return; }
+    await renderLibrary(body, slot, view, refresh);
+  }
+
+  async function renderLibrary(
+    body: HTMLElement,
+    slot: MediaSlotState,
+    view: (typeof VIEWS)[MediaView],
+    refresh: () => void,
+  ): Promise<void> {
+    body.innerHTML = `
+      <div class="gdoc-lib">
+        <div class="office-toolbar">
+          <input class="office-search" type="text" placeholder="${view.searchPh}" spellcheck="false" autocomplete="off" />
+          <button class="action-btn primary gmedia-upload">↑ Upload</button>
+          <button class="ws-icon-btn office-refresh" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
+          </button>
+        </div>
+        <div class="gmedia-grid"></div>
+        <div class="gdoc-empty hidden">${view.empty}</div>
+      </div>`;
+    body.querySelector(".office-refresh")?.addEventListener("click", refresh);
+    body.querySelector(".gmedia-upload")?.addEventListener("click", () => {
+      void (async () => {
+        const r = await api().mediaUploadPick?.(view.kinds[0]);
+        if (r && !r.ok && r.error && r.error !== "cancelled") {
+          void host.confirm({ title: "Upload failed", body: r.error, confirmLabel: "OK" });
+          return;
+        }
+        if (r?.ok) refresh();
+      })();
+    });
+
+    const grid = body.querySelector<HTMLElement>(".gmedia-grid")!;
+    const empty = body.querySelector<HTMLElement>(".gdoc-empty")!;
+    const lists = await Promise.all(view.kinds.map((k) => api().mediaList?.(k)));
+    if (!body.isConnected) return;
+    const anyErr = lists.find((r) => r && !r.ok);
+    const assets = lists.flatMap((r) => (r?.ok ? r.assets : []))
+      .filter((x) => x.status === "ready")
+      .sort((x, y) => y.updatedAt.localeCompare(x.updatedAt));
+    if (anyErr && !assets.length) {
+      empty.innerHTML = `Couldn't load the library.<br>${anyErr.error ?? "Unknown error."}`;
+      empty.classList.remove("hidden");
+      return;
+    }
+
+    const PER_PAGE = 24;
+    const paint = (query: string): void => {
+      grid.textContent = "";
+      body.querySelector(".office-pager")?.remove();
+      const q = query.toLowerCase();
+      const matches = assets.filter((m) =>
+        !q || m.title.toLowerCase().includes(q) || String(m.meta.prompt ?? "").toLowerCase().includes(q));
+      empty.classList.toggle("hidden", matches.length > 0 || assets.length === 0);
+      if (!assets.length) empty.classList.remove("hidden");
+      const paged = officePage(matches, q ? 0 : (slot.page ?? 0), PER_PAGE);
+      if (!q) slot.page = paged.page;
+      const pager = officePager(matches.length, paged.page, PER_PAGE, (pg) => { slot.page = pg; paint(query); });
+      if (pager && !q) grid.parentElement?.appendChild(pager);
+      for (const m of paged.items) {
+        const card = document.createElement("div");
+        card.className = "gmedia-card";
+        card.innerHTML = `
+          <div class="gmedia-thumb"><span class="gmedia-thumb-ph">${host.icons[slot.view]}</span></div>
+          <div class="gdrive-card-row">
+            <span class="gdrive-card-title"></span>
+            <button class="ws-icon-btn office-card-kebab" title="Options">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+            </button>
+          </div>
+          <span class="gdrive-card-meta"></span>`;
+        (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = m.title;
+        (card.querySelector(".gdrive-card-meta") as HTMLElement).textContent =
+          [m.kind, fmtDur(m.durationMs), fmtSize(m.sizeBytes)].filter(Boolean).join(" · ");
+        const thumb = card.querySelector<HTMLElement>(".gmedia-thumb")!;
+        if (m.mime.startsWith("image/")) {
+          void assetUrl(m.id).then((u) => {
+            if (!u || !thumb.isConnected) return;
+            thumb.innerHTML = "";
+            thumb.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`;
+          });
+        } else if (m.mime.startsWith("audio/")) {
+          thumb.classList.add("gmedia-thumb-audio");
+        } else {
+          const dur = document.createElement("span");
+          dur.className = "gmedia-thumb-dur";
+          dur.textContent = fmtDur(m.durationMs) || "▶";
+          thumb.appendChild(dur);
+        }
+        card.addEventListener("click", (ev) => {
+          if ((ev.target as HTMLElement).closest(".office-card-kebab")) return;
+          slot.assetId = m.id;
+          refresh();
+        });
+        card.querySelector(".office-card-kebab")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          void (async () => {
+            const yes = await host.confirm({ title: `Delete "${m.title}"?`, body: "Removed from the org library for real.", confirmLabel: "Delete", danger: true });
+            if (!yes) return;
+            await api().mediaDelete?.(m.id);
+            urlCache.delete(m.id);
+            refresh();
+          })();
+        });
+        grid.appendChild(card);
+      }
+    };
+    paint("");
+    body.querySelector<HTMLInputElement>(".office-search")?.addEventListener("input", (ev) => {
+      paint((ev.target as HTMLInputElement).value.trim());
+    });
+  }
+
+  async function renderViewer(body: HTMLElement, slot: MediaSlotState, refresh: () => void): Promise<void> {
+    const id = slot.assetId!;
+    body.innerHTML = `
+      <div class="gmedia-viewer">
+        <div class="gdz-topbar">
+          <button class="action-btn gmedia-back">‹ ${VIEWS[slot.view]?.title ?? "Library"}</button>
+          <span class="gmedia-viewer-title"></span>
+          <button class="ws-icon-btn gmem-del gmedia-viewer-del" title="Delete">✕</button>
+        </div>
+        <div class="gmedia-stage"><div class="gdoc-empty">Loading…</div></div>
+        <div class="gmedia-meta"></div>
+      </div>`;
+    body.querySelector(".gmedia-back")?.addEventListener("click", () => { delete slot.assetId; refresh(); });
+
+    const lists = await Promise.all((VIEWS[slot.view]?.kinds ?? []).map((k) => api().mediaList?.(k)));
+    const asset = lists.flatMap((r) => (r?.ok ? r.assets : [])).find((x) => x.id === id);
+    const stage = body.querySelector<HTMLElement>(".gmedia-stage")!;
+    if (!asset) {
+      stage.innerHTML = `<div class="gdoc-empty">This asset is gone.</div>`;
+      return;
+    }
+    (body.querySelector(".gmedia-viewer-title") as HTMLElement).textContent = asset.title;
+    body.querySelector(".gmedia-viewer-del")?.addEventListener("click", () => {
+      void (async () => {
+        const yes = await host.confirm({ title: `Delete "${asset.title}"?`, confirmLabel: "Delete", danger: true });
+        if (!yes) return;
+        await api().mediaDelete?.(id);
+        urlCache.delete(id);
+        delete slot.assetId;
+        refresh();
+      })();
+    });
+    const url = await assetUrl(id);
+    if (!stage.isConnected) return;
+    if (!url) { stage.innerHTML = `<div class="gdoc-empty">Couldn't load the bytes.</div>`; return; }
+    stage.textContent = "";
+    if (asset.mime.startsWith("image/")) {
+      const img = document.createElement("img");
+      img.className = "gmedia-full";
+      img.src = url;
+      stage.appendChild(img);
+    } else if (asset.mime.startsWith("video/")) {
+      const vid = document.createElement("video");
+      vid.className = "gmedia-full";
+      vid.src = url;
+      vid.controls = true;
+      vid.autoplay = false;
+      stage.appendChild(vid);
+    } else {
+      const wrapEl = document.createElement("div");
+      wrapEl.className = "gmedia-audio-wrap";
+      wrapEl.innerHTML = `<div class="gmedia-audio-art">♫</div>`;
+      const aud = document.createElement("audio");
+      aud.src = url;
+      aud.controls = true;
+      wrapEl.appendChild(aud);
+      stage.appendChild(wrapEl);
+    }
+    const meta = body.querySelector<HTMLElement>(".gmedia-meta")!;
+    const prompt = typeof asset.meta.prompt === "string" ? asset.meta.prompt : "";
+    const model = typeof asset.meta.model === "string" ? asset.meta.model : "";
+    meta.innerHTML = `
+      ${prompt ? `<div class="gmedia-meta-prompt"></div>` : ""}
+      <div class="gmedia-meta-row"></div>`;
+    if (prompt) (meta.querySelector(".gmedia-meta-prompt") as HTMLElement).textContent = `“${prompt}”`;
+    (meta.querySelector(".gmedia-meta-row") as HTMLElement).textContent = [
+      model, asset.mime,
+      asset.width && asset.height ? `${asset.width}×${asset.height}` : "",
+      fmtDur(asset.durationMs), fmtSize(asset.sizeBytes),
+    ].filter(Boolean).join(" · ");
+  }
+
+  return {
+    renderIntoSlot,
+    invalidate: () => urlCache.clear(),
+  };
+}

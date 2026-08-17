@@ -373,6 +373,31 @@ export function buildContract(client, deps) {
       try { const r = await client.stator.amend(input); return { ok: true, written: r.written }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
+    mediaList: async (kind, q) => {
+      try { return { ok: true, assets: await client.media.list(kind || undefined, q || undefined) }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), assets: [] }; }
+    },
+    mediaUrl: async (id) => {
+      try {
+        const r = await client.media.playbackUrl(id);
+        if (r.url) return { ok: true, url: r.url };
+        return { ok: false, error: "no direct URL on this surface" };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaDelete: async (id) => {
+      try { await client.media.delete(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaGenerate: async (input) => {
+      try { const r = await client.media.generate(input); return { ok: true, job: r.job, outputKind: r.outputKind }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaJob: async (id) => {
+      try { return { ok: true, job: await client.media.job(id) }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    // Web upload rides the panel's own file input in a later pass — explicit gap.
+    mediaUploadPick: async () => ({ ok: false, error: "uploads ride the desktop for now" }),
     gdriveList: async (q) => {
       try { const l = await client.officeDrive.list(q || undefined); return { ok: true, folders: l.folders, files: l.files }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), folders: [], files: [] }; }
