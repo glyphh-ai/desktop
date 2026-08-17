@@ -5,6 +5,8 @@ import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
 import { exportServerApp } from "./glyphh-app-package";
 import { deployAppFromWorkdir } from "./glyphh-app-builder";
+import { deployAppFromCloud, isCloudSource } from "./glyphh-harness-run";
+import { loadSessions } from "./glyphh-agent-context";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import { getClient } from "./glyphh-client";
 import { probeMcpAuth, authorizeMcpServer } from "./mcp-oauth";
@@ -786,6 +788,16 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // release's source archive is gone from storage ("rebuild the app").
   ipcMain.handle("app-build-deploy", async (_e, slug: string) => {
     try {
+      // Auto by session source: a CLOUD session has no local workdir — its app
+      // source lives in the pod, so build+deploy runs THERE (remote dev). A local
+      // session builds from the working folder as before. Deploy/promote are
+      // server-side, so they already work from either.
+      const { chats, currentId } = loadSessions();
+      const chat = chats.find((c) => c.id === currentId);
+      if (chat && isCloudSource(chat.source)) {
+        const r = await deployAppFromCloud(slug, chat.id, chat.source ?? { kind: "cloud-new" });
+        return { ok: r.ok, result: r.result, error: r.error };
+      }
       const r = await deployAppFromWorkdir(slug || undefined);
       return { ok: r.status === "ready", result: r, error: r.error };
     } catch (err) {

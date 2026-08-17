@@ -234,7 +234,7 @@ async function ensureCloudPod(chatId: string, source: RunSource): Promise<PodTar
  */
 export async function deployAppFromCloud(
   slug: string, chatId: string, source: RunSource,
-): Promise<{ ok: boolean; result?: string; error?: string }> {
+): Promise<{ ok: boolean; result?: { version?: string; url?: string }; error?: string }> {
   const pod = await ensureCloudPod(chatId, source);
   // Key the pod's workspace to the SAME session its runs resolve (sessionId when
   // bound, else the client thread id) so the build sees the app's source.
@@ -251,7 +251,17 @@ export async function deployAppFromCloud(
     const detail = json?.error ? `${json.stage ? `${json.stage}: ` : ""}${json.error}` : `cloud deploy failed (${res.status})`;
     return { ok: false, error: detail };
   }
-  return { ok: true, result: json.result };
+  // build_app's text result carries the slug/version/url — surface them like the
+  // local path so the Releases tab shows the same "Built vX — live at …".
+  let info: { version?: string; url?: string } = {};
+  try {
+    const p = JSON.parse(json.result ?? "") as Record<string, unknown>;
+    info = {
+      version: typeof p.version === "string" ? p.version : undefined,
+      url: typeof p.url === "string" ? p.url : (typeof p.deployUrl === "string" ? p.deployUrl : undefined),
+    };
+  } catch { /* non-JSON text — no structured fields */ }
+  return { ok: true, result: info };
 }
 
 // ── The run ────────────────────────────────────────────────────────────────
