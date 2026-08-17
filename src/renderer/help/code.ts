@@ -643,6 +643,12 @@ function initComposerControls(): void {
     mmenu.id = "code-model-menu";
     mmenu.className = "code-drop-up hidden";
     modelWrap.appendChild(mmenu);
+    // NOTHING inside the menu should reach the document dismiss handler. The
+    // multi-slot menu re-renders (paint) on header toggles and picks, which
+    // DETACHES the clicked node — the dismiss check `modelWrap.contains(target)`
+    // then reads false and wrongly closes it. Swallow clicks at the container so
+    // it only closes via the X, the chip toggle, or a genuine outside click.
+    mmenu.addEventListener("click", (e) => e.stopPropagation());
     el("code-model-chip")?.addEventListener("click", (e) => {
       e.stopPropagation();
       el("code-effort-pop")?.classList.add("hidden");

@@ -252,7 +252,12 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
         sub.textContent = [windowLabel(choice.contextWindow), price, note].filter(Boolean).join(" · ");
         item.appendChild(sub);
 
-        item.addEventListener("click", () => {
+        item.addEventListener("click", (ev) => {
+          // Stop the click reaching the document dismiss handler: paint() below
+          // re-renders the list and detaches THIS node, so the outside-click check
+          // (modelWrap.contains(target)) would fail and wrongly close a multi-slot
+          // menu after the first pick.
+          ev.stopPropagation();
           closeTips();
           if (closeOnPick) menu.classList.add("hidden");
           void (async () => {

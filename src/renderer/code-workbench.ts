@@ -3920,6 +3920,50 @@ async function init(): Promise<void> {
       mountAppIntoCard(pinned, card);
       flash(card);
     };
+    /** Build a TOOL panel (Files/Terminal/…/Office) inside an echo card —
+     *  shared by fresh opens and pin retargets. */
+    const mountToolIntoCard = (e: TileEntry, card: HTMLElement): void => {
+      const t = e.tile;
+      if (!t.toolView || t.toolView === "coding" || t.toolView === "echo") return;
+        const body = card.querySelector<HTMLElement>(".echo-card-body")!;
+        body.classList.add("ws-rail-slot-body");   // the panels' own CSS scope
+        const slot = makeSlot(t.toolView);
+        // Adopt a PARKED terminal here, before the renderer runs: with the
+        // live pty + xterm already in the slot, renderTerminalIntoSlot takes
+        // its re-attach path (same process, same scrollback) instead of
+        // spawning a fresh shell.
+        if (slot.view === "terminal" && pendingParkedTerms) {
+          slot.terminals = pendingParkedTerms.terminals;
+          slot.activeIdx = pendingParkedTerms.activeIdx;
+          pendingParkedTerms = null;
+        }
+        e.toolSlot = slot;
+        if (slot.view === "files") void renderFilesIntoSlot(body, slot);
+        else if (slot.view === "terminal") renderTerminalIntoSlot(body, slot);
+        else if (slot.view === "monaco") void renderMonacoIntoSlot(body, slot);
+        else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
+        else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
+        else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
+        else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
+    else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
+        else if (slot.view === "gpoint") {
+          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
+          void renderGPointIntoSlot(body, slot, card);
+        }
+        else if (slot.view === "gdoc") {
+          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Docs — loading your documents…</div>`;
+          void renderGDocIntoSlot(body, slot, card);
+        }
+        else if (slot.view === "gdrive") {
+          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Drive — loading…</div>`;
+          void renderGDriveIntoSlot(body, slot, card);
+        }
+        else if (slot.view === "gsheet") {
+          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Sheets — loading your workbooks…</div>`;
+          void renderGSheetIntoSlot(body, slot, card);
+        }
+    };
+
     let openingLayout = false;
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
@@ -3958,45 +4002,25 @@ async function init(): Promise<void> {
         return;
       }
       if (t.toolView && t.toolView !== "coding" && t.toolView !== "echo") {
+        // THE SAME open rule apps follow (his rule, everywhere): a PINNED card
+        // is the landing target; otherwise an active LAYOUT clears and the
+        // panel opens standalone. Tools were exempt and jammed in beside
+        // layout cells — Slides/Docs/Sheets/Drive/Browser are apps to the user.
+        const pinnedT = openList.find((x) => x.tile.sticky && x.card && x !== e);
+        if (pinnedT && !openingLayout) {
+          const card = pinnedT.card!;
+          setShadow(false, false);
+          clearCardContent(pinnedT, card);
+          pinnedT.tile = { ...t, sticky: true };
+          card.querySelector(".echo-card-head span")!.textContent = t.name;
+          mountToolIntoCard(pinnedT, card);
+          flash(card);
+          return;
+        }
+        if (!openingLayout && openList.some((x) => x !== e && x.layoutId != null)) resetEcho();
         const card = openShell(e);
         if (!card) return;
-        const body = card.querySelector<HTMLElement>(".echo-card-body")!;
-        body.classList.add("ws-rail-slot-body");   // the panels' own CSS scope
-        const slot = makeSlot(t.toolView);
-        // Adopt a PARKED terminal here, before the renderer runs: with the
-        // live pty + xterm already in the slot, renderTerminalIntoSlot takes
-        // its re-attach path (same process, same scrollback) instead of
-        // spawning a fresh shell.
-        if (slot.view === "terminal" && pendingParkedTerms) {
-          slot.terminals = pendingParkedTerms.terminals;
-          slot.activeIdx = pendingParkedTerms.activeIdx;
-          pendingParkedTerms = null;
-        }
-        e.toolSlot = slot;
-        if (slot.view === "files") void renderFilesIntoSlot(body, slot);
-        else if (slot.view === "terminal") renderTerminalIntoSlot(body, slot);
-        else if (slot.view === "monaco") void renderMonacoIntoSlot(body, slot);
-        else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
-        else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
-        else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-        else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
-    else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
-        else if (slot.view === "gpoint") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
-          void renderGPointIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gdoc") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Docs — loading your documents…</div>`;
-          void renderGDocIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gdrive") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Drive — loading…</div>`;
-          void renderGDriveIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gsheet") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Sheets — loading your workbooks…</div>`;
-          void renderGSheetIntoSlot(body, slot, card);
-        }
+        mountToolIntoCard(e, card);
         return;
       }
       if (t.navApp) {
