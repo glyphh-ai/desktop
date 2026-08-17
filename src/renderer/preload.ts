@@ -951,6 +951,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   gdocDelete: (file: string) => ipcRenderer.invoke("gdoc-delete", file) as Promise<{ ok: boolean; error?: string }>,
   gdocSuggestions: (file: string, status?: string) => ipcRenderer.invoke("gdoc-suggestions", file, status) as Promise<{ ok: boolean; suggestions: Array<{ id: string; file: string; section: string; beforeMd: string; afterMd: string; note: string; authorKind: string; status: string; createdAt: string }>; error?: string }>,
   gdocResolve: (id: string, approve: boolean) => ipcRenderer.invoke("gdoc-resolve", id, approve) as Promise<{ ok: boolean; suggestion?: { id: string; status: string }; error?: string }>,
+  // Glyphh Office · Sheets (the Sheets panel's org workbook library).
+  gsheetList: () => ipcRenderer.invoke("gsheet-list") as Promise<{ ok: boolean; sheets: Array<{ file: string; title: string; sheets: number; totalRows: number; size: number; folderId: string | null; mtime: number }>; error?: string }>,
+  gsheetRead: (file: string) => ipcRenderer.invoke("gsheet-read", file) as Promise<{ ok: boolean; title?: string; workbook?: unknown; error?: string }>,
+  gsheetWrite: (file: string, title: string, workbook: unknown) => ipcRenderer.invoke("gsheet-write", file, title, workbook) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  gsheetDelete: (file: string) => ipcRenderer.invoke("gsheet-delete", file) as Promise<{ ok: boolean; error?: string }>,
   gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: "slides" | "docs"; file: string; title: string; sizeBytes: number; folderId: string | null; updatedAt: string }>; error?: string }>,
   gdriveMkdir: (name: string, parentId?: string | null) => ipcRenderer.invoke("gdrive-mkdir", name, parentId) as Promise<{ ok: boolean; folder?: { id: string; name: string }; error?: string }>,
   gdriveMove: (kind: "slides" | "docs", file: string, folderId: string | null) => ipcRenderer.invoke("gdrive-move", kind, file, folderId) as Promise<{ ok: boolean; error?: string }>,

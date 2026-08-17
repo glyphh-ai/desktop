@@ -27,7 +27,9 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { gsheetFileName, saveWorkbook } from "./office-sheets";
+import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell } from "../shared/sheets-engine";
 import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
 import { gdocFileName as docsFileName } from "./office-docs";
 import { currentLoop, resolveRoles } from "./loop-selections";
@@ -880,13 +882,168 @@ const TOOLS: ToolDef[] = [
       return `created folder "${folder.name}" (${folder.id})`;
     },
   },
+  // ── Glyphh Office · SHEETS: JSON workbooks; the SHARED engine recalcs every
+  //    write, so formula cells always land with fresh materialized values.
+  //    Refs read materialized values row-major — keep totals LAST. ──
+  {
+    name: "list_sheets",
+    doc: "list_sheets() — the org's workbooks: file, title, sheet + row counts",
+    action: () => ({ kind: "read", title: "List workbooks" }),
+    run: async () => {
+      const sheets = await getClient().officeSheets.list();
+      if (!sheets.length) return "(no workbooks yet — create_sheets builds one)";
+      return cap(JSON.stringify(sheets.map(({ file, title, sheets: n, totalRows }) => ({ file, title, sheets: n, totalRows })), null, 1));
+    },
+  },
+  {
+    name: "read_sheets",
+    doc: "read_sheets(name, raw?) — a workbook's READABLE TEXT (headers + sample rows; the default). raw:true returns the full JSON workbook for surgical edits.",
+    action: (a) => ({ kind: "read", title: `Read workbook "${String(a.name ?? "")}"${a.raw ? " (raw)" : ""}` }),
+    run: async (a) => {
+      if (a.raw) {
+        const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+        return cap(JSON.stringify(s.workbook, null, 1), READ_CAP);
+      }
+      const t = await getClient().officeSheets.text(gsheetFileName(a.name));
+      return cap(`${t.title} — ${t.sheets} sheet${t.sheets === 1 ? "" : "s"}, ${t.totalRows} rows\n\n${t.text}`, READ_CAP);
+    },
+  },
+  {
+    name: "create_sheets",
+    doc: 'create_sheets(name, title, columns, rows?) — create or overwrite a workbook. columns: ["Name", …] or [{name, type?: "text"|"number"|"date"|"currency", ai_prompt?}]; rows: array of cell arrays — a cell is a value, or {f: "=SUM(B1:B4)"} for a formula (arithmetic, A1 refs, SUM/AVG/COUNT/MIN/MAX over ranges; put totals LAST). The engine computes values on save. AI columns: set ai_prompt on the column, then materialize with fill_column.',
+    action: (a) => ({ kind: "edit", title: `Create workbook "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const cols = (Array.isArray(a.columns) ? a.columns : []).map((c): SheetColumn =>
+        typeof c === "string" ? { name: c } : {
+          name: String((c as { name?: unknown }).name ?? ""),
+          ...((c as { type?: SheetColumn["type"] }).type ? { type: (c as { type?: SheetColumn["type"] }).type } : {}),
+          ...((c as { ai_prompt?: unknown }).ai_prompt ? { aiPrompt: String((c as { ai_prompt?: unknown }).ai_prompt) } : {}),
+        });
+      if (!cols.length || cols.some((c) => !c.name)) return "ERROR: columns are required (names)";
+      const rows = (Array.isArray(a.rows) ? a.rows : []) as SheetCell[][];
+      const r = await saveWorkbook(a.name, String(a.title ?? a.name ?? "Untitled"), { sheets: [{ name: "Sheet1", columns: cols, rows }] });
+      return `created ${r.file} ("${r.title}", ${r.totalRows} rows) — open_sheets("${r.file}") opens it`;
+    },
+  },
+  {
+    name: "update_sheets",
+    doc: 'update_sheets(name, …ops) — surgical workbook edits (sheet? names the worksheet, default first). Ops in order: title="…"; set_cell={cell:"B3", value?|formula?}; add_rows={rows}; add_column={name, type?, ai_prompt?}; remove_column={column} (name or letter); sort={by, desc?} (column name or letter). The engine recalcs on save.',
+    action: (a) => ({ kind: "edit", title: `Update workbook "${String(a.name ?? "")}"`, detail: Object.keys(a).filter((k) => k !== "name" && k !== "sheet").join(", ") }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheetName = a.sheet ? String(a.sheet) : undefined;
+      const sheet: Worksheet | undefined = sheetName ? wb.sheets.find((x) => x.name === sheetName) : wb.sheets[0];
+      if (!sheet) return `ERROR: no worksheet ${sheetName ?? "(first)"} — sheets: ${wb.sheets.map((x) => x.name).join(", ")}`;
+      const colIndex = (ref: unknown): number => {
+        const t = String(ref ?? "").trim();
+        const byName = sheet.columns.findIndex((c) => c.name.toLowerCase() === t.toLowerCase());
+        if (byName >= 0) return byName;
+        const a1 = parseA1(`${t}1`);
+        return a1 ? a1.col : -1;
+      };
+      let title = String(s.title);
+      if (a.title !== undefined) title = String(a.title);
+      if (a.set_cell !== undefined) {
+        const sc = a.set_cell as { cell?: unknown; value?: unknown; formula?: unknown };
+        const rc = parseA1(String(sc.cell ?? ""));
+        if (!rc) return 'ERROR: set_cell needs cell like "B3"';
+        while (sheet.rows.length <= rc.row) sheet.rows.push(sheet.columns.map(() => null));
+        const row = sheet.rows[rc.row]!;
+        while (row.length <= rc.col) row.push(null);
+        row[rc.col] = sc.formula !== undefined ? { f: String(sc.formula) } : ((sc.value ?? null) as SheetCell);
+      }
+      if (a.add_rows !== undefined) {
+        const rows = ((a.add_rows as { rows?: unknown }).rows ?? a.add_rows) as SheetCell[][];
+        if (!Array.isArray(rows)) return "ERROR: add_rows takes {rows: [[…], …]}";
+        for (const r of rows) sheet.rows.push(r as SheetCell[]);
+      }
+      if (a.add_column !== undefined) {
+        const c = a.add_column as { name?: unknown; type?: SheetColumn["type"]; ai_prompt?: unknown };
+        if (!c.name) return "ERROR: add_column needs a name";
+        sheet.columns.push({ name: String(c.name), ...(c.type ? { type: c.type } : {}), ...(c.ai_prompt ? { aiPrompt: String(c.ai_prompt) } : {}) });
+        for (const row of sheet.rows) row.push(null);
+      }
+      if (a.remove_column !== undefined) {
+        const i = colIndex((a.remove_column as { column?: unknown }).column ?? a.remove_column);
+        if (i < 0 || i >= sheet.columns.length) return "ERROR: remove_column — no such column";
+        sheet.columns.splice(i, 1);
+        for (const row of sheet.rows) row.splice(i, 1);
+      }
+      if (a.sort !== undefined) {
+        const so = a.sort as { by?: unknown; desc?: unknown };
+        const i = colIndex(so.by);
+        if (i < 0) return "ERROR: sort — no such column";
+        const val = (row: SheetCell[]): string | number => {
+          const c = row[i];
+          const v = c !== null && typeof c === "object" ? (c.v ?? "") : (c ?? "");
+          return typeof v === "number" ? v : String(v).toLowerCase();
+        };
+        sheet.rows.sort((x, y) => {
+          const vx = val(x), vy = val(y);
+          const cmp = typeof vx === "number" && typeof vy === "number" ? vx - vy : String(vx).localeCompare(String(vy));
+          return so.desc ? -cmp : cmp;
+        });
+      }
+      const r = await saveWorkbook(a.name, title, wb);
+      return `updated ${r.file} — ${r.totalRows} rows`;
+    },
+  },
+  {
+    name: "fill_column",
+    doc: 'fill_column(name, column, values, sheet?) — MATERIALIZE a column (the AI-column write path): values is an array aligned to the rows (row 1 first). Compute the values yourself from the column\'s ai_prompt over each row, then write them here — nothing evaluates prompts at render time.',
+    action: (a) => ({ kind: "edit", title: `Fill "${String(a.column ?? "")}" in ${String(a.name ?? "")}`, detail: `${Array.isArray(a.values) ? a.values.length : 0} values` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const i = sheet.columns.findIndex((c) => c.name.toLowerCase() === String(a.column ?? "").toLowerCase());
+      if (i < 0) return `ERROR: no column "${String(a.column)}" — columns: ${sheet.columns.map((c) => c.name).join(", ")}`;
+      const values = Array.isArray(a.values) ? (a.values as Array<string | number | null>) : null;
+      if (!values) return "ERROR: values must be an array";
+      values.forEach((v, r) => {
+        if (r >= sheet.rows.length) return;
+        const row = sheet.rows[r]!;
+        while (row.length <= i) row.push(null);
+        row[i] = v;
+      });
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `filled ${Math.min(values.length, sheet.rows.length)} values into "${sheet.columns[i]!.name}" (${r.file})`;
+    },
+  },
+  {
+    name: "delete_sheets",
+    doc: "delete_sheets(name) — permanently delete a workbook from the org library",
+    action: (a) => ({ kind: "dangerous", title: `Delete workbook "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      await getClient().officeSheets.delete(gsheetFileName(a.name));
+      return `deleted ${gsheetFileName(a.name)}`;
+    },
+  },
+  {
+    name: "open_sheets",
+    doc: "open_sheets(name?) — open the Sheets panel beside this conversation; with a workbook name it opens straight into it",
+    action: (a) => ({ kind: "command", title: a.name ? `Open workbook "${String(a.name)}"` : "Open the Sheets panel" }),
+    run: async (a) => {
+      if (!a.name) { openGSheetPanel(); return "opened the Sheets panel"; }
+      const file = gsheetFileName(a.name);
+      const s = await getClient().officeSheets.get(file).catch(() => null);
+      if (!s) {
+        const sheets = await getClient().officeSheets.list();
+        return `ERROR: no workbook "${file}" — available: ${sheets.map((x) => x.file).join(", ") || "(none)"}`;
+      }
+      openGSheetPanel(file, s.title);
+      return `opened ${file} in the Sheets panel`;
+    },
+  },
   {
     name: "drive_move",
     doc: 'drive_move(kind, file, folder_id?) — file an Office document: kind "slides" or "docs", folder_id from drive_list (omit for the root)',
     action: (a) => ({ kind: "edit", title: `Move ${String(a.kind ?? "?")}/${String(a.file ?? "?")}` }),
     run: async (a) => {
       const kind = String(a.kind ?? "");
-      if (kind !== "slides" && kind !== "docs") return 'ERROR: kind must be "slides" or "docs"';
+      if (kind !== "slides" && kind !== "docs" && kind !== "sheets") return 'ERROR: kind must be "slides", "docs" or "sheets"';
       await getClient().officeDrive.move(kind, String(a.file ?? ""), a.folder_id ? String(a.folder_id) : null);
       return `moved ${a.file} ${a.folder_id ? "into the folder" : "to the root"}`;
     },

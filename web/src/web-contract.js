@@ -286,6 +286,27 @@ export function buildContract(client, deps) {
       try { return { ok: true, suggestion: await client.officeDocs.resolveSuggestion(id, approve) }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
+    gsheetList: async () => {
+      try {
+        const sheets = (await client.officeSheets.list()).map((m) => ({
+          file: m.file, title: m.title, sheets: m.sheets, totalRows: m.totalRows,
+          size: m.sizeBytes, folderId: m.folderId, mtime: Date.parse(m.updatedAt) || 0,
+        }));
+        return { ok: true, sheets };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err), sheets: [] }; }
+    },
+    gsheetRead: async (file) => {
+      try { const s = await client.officeSheets.get(file); return { ok: true, title: s.title, workbook: s.workbook }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gsheetWrite: async (file, title, workbook) => {
+      try { const m = await client.officeSheets.put(file, title, workbook); return { ok: true, file: m.file, title: m.title }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gsheetDelete: async (file) => {
+      try { await client.officeSheets.delete(file); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
     gdriveList: async (q) => {
       try { const l = await client.officeDrive.list(q || undefined); return { ok: true, folders: l.folders, files: l.files }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), folders: [], files: [] }; }

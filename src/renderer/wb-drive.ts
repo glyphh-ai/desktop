@@ -10,10 +10,11 @@
 
 import { deckHtml, staticDoc, fillThumbs } from "./wb-gpoint.js";
 import { officePager, officePage, mountDocThumb } from "./wb-office-ui.js";
+import { mountSheetThumb } from "./wb-sheets.js";
 
 export interface DriveFolder { id: string; name: string; parentId: string | null }
 export interface DriveEntry {
-  kind: "slides" | "docs";
+  kind: "slides" | "docs" | "sheets";
   file: string;
   title: string;
   sizeBytes: number;
@@ -37,14 +38,15 @@ export interface GDriveSlotState {
 export interface GDriveHost {
   confirm: (opts: { title: string; body?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
   /** Route an entry to its own panel (Slides / Docs). */
-  openFile: (kind: "slides" | "docs", file: string, title: string) => void;
-  icons: { slides: string; docs: string; folder: string };
+  openFile: (kind: "slides" | "docs" | "sheets", file: string, title: string) => void;
+  icons: { slides: string; docs: string; sheets: string; folder: string };
 }
 
 const driveApi = () => (window as unknown as { glyphh?: {
   gdriveList?: (q?: string) => Promise<{ ok: boolean; folders: DriveFolder[]; files: DriveEntry[]; error?: string }>;
   gdriveMkdir?: (name: string, parentId?: string | null) => Promise<{ ok: boolean; error?: string }>;
-  gdriveMove?: (kind: "slides" | "docs", file: string, folderId: string | null) => Promise<{ ok: boolean; error?: string }>;
+  gdriveMove?: (kind: "slides" | "docs" | "sheets", file: string, folderId: string | null) => Promise<{ ok: boolean; error?: string }>;
+  gsheetDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
   gdriveFolderRename?: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
   gdriveFolderDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   gpointDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
@@ -267,14 +269,14 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         const card = document.createElement("div");
         card.className = "gdrive-card";
         card.innerHTML = `
-          <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${f.kind === "slides" ? host.icons.slides : host.icons.docs}</div></div>
+          <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${f.kind === "slides" ? host.icons.slides : f.kind === "sheets" ? host.icons.sheets : host.icons.docs}</div></div>
           <div class="gdrive-card-row">
             <span class="gdrive-card-title"></span>
             <button class="ws-icon-btn gdrive-card-kebab" title="Options">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
             </button>
           </div>
-          <span class="gdrive-card-meta">${f.kind === "slides" ? "Slides" : "Docs"} · ${fmtSize(f.sizeBytes)}</span>`;
+          <span class="gdrive-card-meta">${f.kind === "slides" ? "Slides" : f.kind === "sheets" ? "Sheets" : "Docs"} · ${fmtSize(f.sizeBytes)}</span>`;
         (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = f.title || f.file;
         card.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".gdrive-card-kebab")) return;
@@ -290,6 +292,8 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
           void deckHtml(f.file).then((html) => {
             if (html && thumb.isConnected) fillThumbs([{ host: thumb, doc: staticDoc(html, 0) }]);
           });
+        } else if (f.kind === "sheets") {
+          mountSheetThumb(thumb, f.file);
         } else {
           mountDocThumb(thumb, f.file);
         }
@@ -307,6 +311,7 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
           const ok = await host.confirm({ title: `Delete “${f.title || f.file}”?`, body: "Removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
           if (!ok) return;
           if (f.kind === "slides") await driveApi().gpointDelete?.(f.file);
+          else if (f.kind === "sheets") await driveApi().gsheetDelete?.(f.file);
           else await driveApi().gdocDelete?.(f.file);
           void paint();
         })() },
@@ -316,9 +321,9 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         const row = document.createElement("div");
         row.className = "gdrive-listrow";
         row.innerHTML = `
-          <span class="gdrive-listrow-ic">${f.kind === "slides" ? host.icons.slides : host.icons.docs}</span>
+          <span class="gdrive-listrow-ic">${f.kind === "slides" ? host.icons.slides : f.kind === "sheets" ? host.icons.sheets : host.icons.docs}</span>
           <span class="gdrive-listrow-title"></span>
-          <span class="gdrive-listrow-kind">${f.kind === "slides" ? "Slides" : "Docs"}</span>
+          <span class="gdrive-listrow-kind">${f.kind === "slides" ? "Slides" : f.kind === "sheets" ? "Sheets" : "Docs"}</span>
           <span class="gdrive-listrow-size">${fmtSize(f.sizeBytes)}</span>
           <span class="gdrive-listrow-date">${new Date(f.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
           <button class="ws-icon-btn gdrive-card-kebab" title="Options">

@@ -4214,6 +4214,24 @@ function paintAppsGrid(host: RailGridHost): void {
     openCommandCenter();
     (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdrive");
   });
+  // SHEETS — same fixed-tile treatment.
+  const gsheets = document.createElement("button");
+  gsheets.className = "app-rail-tile";
+  gsheets.type = "button";
+  gsheets.title = "Sheets — Glyphh Office";
+  const gsIcon = document.createElement("div");
+  gsIcon.className = "tile-icon";
+  gsIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>`;
+  const gsName = document.createElement("div");
+  gsName.className = "tile-name";
+  gsName.textContent = "Sheets";
+  gsheets.append(gsIcon, gsName);
+  gsheets.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gsheet");
+  });
+  list.appendChild(gsheets);
+
   list.appendChild(gdrive);
 
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
@@ -4618,6 +4636,7 @@ export function initCode(): void {
     else if (cmd.action === "tool" && (cmd as { tool?: string }).tool) (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.((cmd as { tool?: string }).tool!);
     else if (cmd.action === "gpoint") (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
     else if (cmd.action === "gdoc") (window as unknown as { __wbOpenGDoc?: (file?: string, title?: string) => void }).__wbOpenGDoc?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
+    else if (cmd.action === "gsheet") (window as unknown as { __wbOpenGSheet?: (file?: string, title?: string) => void }).__wbOpenGSheet?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
     else if (cmd.action === "popup" && (cmd as { url?: string }).url) (window as unknown as { __wbOpenPopup?: (u: string) => void }).__wbOpenPopup?.((cmd as { url?: string }).url!);
     else if (cmd.action === "open-many" && cmd.apps) {
       // A NAMED layout goes through the one true layout-open (the switcher's

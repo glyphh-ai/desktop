@@ -65,6 +65,7 @@ type WbCmd =
   | { action: "tool"; tool: string }
   | { action: "gpoint"; file?: string; title?: string }
   | { action: "gdoc"; file?: string; title?: string }
+  | { action: "gsheet"; file?: string; title?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -125,6 +126,7 @@ const TOOL_BUILTINS: Record<string, string> = {
   plan: "plan", files: "files", editor: "monaco", monaco: "monaco",
   diff: "diff", echo: "echo", gpoint: "gpoint", gpoints: "gpoint",
   slides: "gpoint", docs: "gdoc", gdoc: "gdoc", drive: "gdrive", gdrive: "gdrive",
+  sheets: "gsheet", gsheet: "gsheet",
 };
 function builtinRef(key: string): WbAppRef | "terminal" | { tool: string } | null {
   if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
@@ -238,6 +240,11 @@ export function openGPointPanel(file?: string, title?: string): void {
 /** Open the Docs panel — with a file, straight into that document. */
 export function openGDocPanel(file?: string, title?: string): void {
   sendWbCmd(file ? { action: "gdoc", file, title } : { action: "tool", tool: "gdoc" });
+}
+
+/** Open the Sheets panel — with a file, straight into that workbook. */
+export function openGSheetPanel(file?: string, title?: string): void {
+  sendWbCmd(file ? { action: "gsheet", file, title } : { action: "tool", tool: "gsheet" });
 }
 
 /** Open the tabbed Browser panel at a specific URL (the agent's preview

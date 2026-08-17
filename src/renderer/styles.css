@@ -505,10 +505,34 @@ body {
 /* Splash background follows the theme (var(--bg)) — let the logo swap. */
 .splash-logo {
   margin-bottom: 24px;
-  display: flex;
+  /* inline-flex so the box hugs the logo (centered by .splash-content's
+     text-align) — that lets the Beta badge anchor to the LOGO's top-right
+     corner rather than the full-width container edge. */
+  display: inline-flex;
   justify-content: center;
+  position: relative;
 }
 .splash-logo .glyphh-logo { height: 140px; }
+/* Beta badge — above the logo, top-right. Theme-aware: the accent pill (with a
+   brand-purple fallback for the pre-theme boot frame) + white text reads on both
+   light and dark splash backgrounds. */
+.splash-beta {
+  position: absolute;
+  top: -12px;
+  right: -20px;
+  z-index: 3;
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: #fff;
+  background: var(--accent, #8c3bf2);
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+}
 
 .splash-tagline {
   font-size: 18px;
@@ -17082,3 +17106,45 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .office-pager { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 0 2px; }
 .office-pager-btn { height: 24px; padding: 3px 12px; font-size: 12px; }
 .office-pager-label { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
+
+/* ── Glyphh Sheets ───────────────────────────────────────────────────────── */
+.ws-gsheet-body { display: flex; flex-direction: column; overflow: hidden; }
+.gsheet { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.gsheet-tabs { display: flex; gap: 2px; flex: none; padding: 4px 10px 0; border-bottom: 1px solid var(--border); }
+.gsheet-tab {
+  background: none; border: 1px solid transparent; border-bottom: none; cursor: pointer;
+  font: inherit; font-size: 11.5px; color: var(--text-2);
+  padding: 4px 12px; border-radius: 7px 7px 0 0;
+}
+.gsheet-tab.active { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.gsheet-scroll { flex: 1; min-height: 0; overflow: auto; }
+.gsheet-table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 12px; }
+.gsheet-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-2); color: var(--text);
+  font-weight: 600; text-align: left; padding: 6px 10px;
+  border: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+}
+.gsheet-table thead th:hover { background: var(--hover); }
+.gsheet-corner { width: 34px; cursor: default !important; }
+.gsheet-ai { margin-left: 6px; color: var(--accent); }
+.gsheet-rownum {
+  background: var(--surface-2); color: var(--text-3); text-align: right;
+  font-family: var(--font-mono); font-size: 10px; padding: 4px 6px;
+  border: 1px solid var(--border); user-select: none;
+}
+.gsheet-table td { border: 1px solid var(--border); padding: 4px 10px; color: var(--text); min-width: 80px; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: cell; }
+.gsheet-table td.gsheet-num { text-align: right; font-variant-numeric: tabular-nums; }
+.gsheet-table td.gsheet-formula { color: var(--accent); }
+.gsheet-cell-input {
+  width: 100%; box-sizing: border-box; background: var(--surface); color: var(--text);
+  border: 1px solid var(--accent); border-radius: 3px; padding: 2px 6px;
+  font: inherit; outline: none;
+}
+.gsheet-foot { flex: none; }
+.gdoc-bar .action-btn { height: 24px; padding: 3px 10px; font-size: 11.5px; flex: none; }
+.gsheet-menu { min-width: 150px; padding: 5px; }
+.gsheet-thumbbox { position: absolute; inset: 0; background: #ffffff; overflow: hidden; padding: 8px; }
+.gsheet-thumbbox table { border-collapse: collapse; font-size: 7px; width: 100%; }
+.gsheet-thumbbox th { background: #eceef2; color: #333; font-weight: 600; text-align: left; }
+.gsheet-thumbbox th, .gsheet-thumbbox td { border: 1px solid #d5d7dd; padding: 2px 4px; color: #222; overflow: hidden; white-space: nowrap; max-width: 40px; text-overflow: ellipsis; }
