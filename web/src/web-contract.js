@@ -591,6 +591,11 @@ export function buildContract(client, deps) {
     // Provider rows are a CATALOG read (the whole catalog ⊕ the org's enablement state);
     // ProvidersClient itself is write-only.
     orgProvidersList: lib(() => client.catalog.providers()),
+    // ── Voice settings (Settings › Voice) — same SDK calls the desktop IPC makes ──
+    catalogModels: lib(() => client.catalog.models()),
+    catalogVoices: lib((provider) => client.catalog.voices(provider)),
+    voiceSettingsGet: lib(() => client.profile.voiceSettings()),
+    voiceSettingsSet: lib((patch) => client.profile.setVoiceSettings(patch)),
     // WRITES — these existed only as desktop IPC; on web the glyphh Proxy
     // fabricated them (resolved undefined) and the Models page threw on `r.ok`.
     // Same SDK calls the desktop's main process makes.
