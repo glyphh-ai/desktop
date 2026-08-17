@@ -26,6 +26,20 @@ interface VoiceBridge {
 const bridge = (): VoiceBridge => (window as unknown as { glyphh: VoiceBridge }).glyphh;
 const $ = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 
+/** Normalize a bridge response to an array — desktop IPC returns raw arrays, the web
+ *  contract wraps results (or returns undefined on error). Never let a shape mismatch
+ *  crash the panel. */
+function asArray<T>(v: unknown): T[] {
+  if (Array.isArray(v)) return v as T[];
+  if (v && typeof v === "object") {
+    for (const k of ["data", "value", "result", "items"]) {
+      const inner = (v as Record<string, unknown>)[k];
+      if (Array.isArray(inner)) return inner as T[];
+    }
+  }
+  return [];
+}
+
 let wired = false;
 
 function setErr(msg: string): void {
@@ -49,7 +63,7 @@ async function refreshVoices(outputModelId: string, selectedVoice: string): Prom
   const provider = providerOf(outputModelId);
   if (!provider) { el.innerHTML = `<option value="">Provider default</option>`; return; }
   try {
-    const voices = (await bridge().catalogVoices?.(provider)) ?? [];
+    const voices = asArray<VoiceItem>(await bridge().catalogVoices?.(provider));
     el.innerHTML = `<option value="">Provider default</option>` +
       voices.map((v) => `<option value="${v.id}">${v.name}</option>`).join("");
     el.value = selectedVoice;
@@ -76,10 +90,12 @@ function wire(): void {
 export async function loadVoiceSettings(): Promise<void> {
   setErr("");
   try {
-    const [models, settings] = await Promise.all([
-      bridge().catalogModels?.() ?? Promise.resolve<CatalogModel[]>([]),
-      bridge().voiceSettingsGet?.() ?? Promise.resolve<VoiceSettingsView | null>(null),
+    const [modelsRaw, settingsRaw] = await Promise.all([
+      Promise.resolve(bridge().catalogModels?.()).catch(() => undefined),
+      Promise.resolve(bridge().voiceSettingsGet?.()).catch(() => undefined),
     ]);
+    const models = asArray<CatalogModel>(modelsRaw);
+    const settings = (settingsRaw && typeof settingsRaw === "object" && !Array.isArray(settingsRaw)) ? (settingsRaw as VoiceSettingsView) : null;
     const stt = models.filter((m) => m.modality === "transcription" && m.active);
     const tts = models.filter((m) => m.modality === "speech" && m.active);
     fillModelSelect("voice-input-model", stt, settings?.inputModel ?? "");
